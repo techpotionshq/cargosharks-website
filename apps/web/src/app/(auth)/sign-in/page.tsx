@@ -27,7 +27,9 @@
 
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
+import { getSession, homeFor } from '@/lib/session'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Icon, type IconName } from '@/ui/icon'
@@ -47,6 +49,17 @@ const ASSURANCES: readonly { icon: IconName; key: 'live' | 'scoped' | 'bilingual
 ]
 
 export default async function SignInPage() {
+  /*
+    Somebody already signed in has no business on this form.
+
+    Left reachable, it is a small trap rather than a cosmetic flaw: the page
+    offers a fresh sign-in, so an operator who lands here from a stale tab or a
+    bookmark authenticates a second time and replaces their own session. They
+    are sent to whichever shell their actor type belongs to instead.
+  */
+  const existing = await getSession()
+  if (existing) redirect(homeFor(existing))
+
   const t = await getTranslations('signIn')
   const brand = getBrand()
   const resolved = await getLocale()
@@ -54,7 +67,8 @@ export default async function SignInPage() {
   const established = brand.identity.established
 
   return (
-    <div className="grid min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.05fr_1fr]">
+    /* Full viewport: there is no header above this any more to subtract. */
+    <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       {/* ---- the operator's half -------------------------------------- */}
       <aside className="relative hidden overflow-hidden border-e border-line bg-canvas lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div

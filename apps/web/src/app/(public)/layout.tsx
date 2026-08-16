@@ -34,7 +34,15 @@ export default async function PublicLayout({ children }: { children: React.React
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
-          <Link href="/" className="rounded-sm outline-offset-4">
+          {/*
+            The mark goes to tracking, not to the root.
+
+            The root is a redirect now that the landing page is gone, so a
+            customer clicking the logo would have been bounced to a sign-in
+            form they have no account for. Tracking is the only thing in this
+            shell and the only thing they came for.
+          */}
+          <Link href="/track" className="rounded-sm outline-offset-4">
             <Logo brand={brand} locale={locale} size="md" />
           </Link>
 

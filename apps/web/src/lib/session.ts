@@ -193,6 +193,25 @@ export async function requireSession(): Promise<Session> {
 }
 
 /**
+ * Where a signed-in principal belongs.
+ *
+ * Four audiences are served as four route groups (§3), and each shell already
+ * bounces the wrong actor to the right place. This states that mapping once so
+ * the *entry* points agree with the shells — the root redirect and the sign-in
+ * guard both need it, and a copy of it in each is how they drift apart.
+ */
+export function homeFor(session: Session): '/dashboard' | '/portal' | '/agent' {
+  switch (session.actor.type) {
+    case 'customer_contact':
+      return '/portal'
+    case 'agent_contact':
+      return '/agent'
+    default:
+      return '/dashboard'
+  }
+}
+
+/**
  * The Better Auth session cookie.
  *
  * `advanced.cookiePrefix` is `qabandi`, and Better Auth appends its own
