@@ -272,15 +272,28 @@ export interface ThemeSpec {
  */
 export function lightTheme(spec: ThemeSpec): ThemeColors {
   return {
-    canvas: oklch(0.981, 0.004, spec.hue),
+    canvas: oklch(0.975, 0.005, spec.hue),
     surface: oklch(1, 0, 0),
     surfaceRaised: oklch(1, 0, 0),
     surfaceSunken: oklch(0.965, 0.006, spec.hue),
-    /** The sidebar is the chrome ramp's darkest stop: the frame, not the page. */
-    chrome: spec.chrome[950],
-    chromeInk: oklch(0.97, 0.008, spec.hue),
-    chromeInkMuted: oklch(0.78, 0.018, spec.hue),
-    chromeLine: oklch(0.34, 0.028, spec.hue),
+    /**
+     * The rail is light in the light theme.
+     *
+     * It used to be the chrome ramp's darkest stop, on the reasoning that the
+     * frame should be visibly the frame. That reasoning holds for a chrome
+     * that carries navigation *and nothing else*; it stops holding once the
+     * rail also carries counts, a workspace switcher and a user card, because
+     * a dark slab beside a white board splits the screen into two products.
+     *
+     * A hair darker than the canvas and a hair cooler, so the rail still
+     * reads as structure while every element inside it uses the same ink
+     * scale as the page. The dark theme keeps a genuinely dark chrome, where
+     * the same reasoning points the other way.
+     */
+    chrome: oklch(0.988, 0.003, spec.hue),
+    chromeInk: oklch(0.24, 0.016, spec.hue),
+    chromeInkMuted: oklch(0.52, 0.014, spec.hue),
+    chromeLine: oklch(0.915, 0.006, spec.hue),
     ink: oklch(0.24, 0.016, spec.hue),
     inkMuted: oklch(0.5, 0.014, spec.hue),
     inkSubtle: oklch(0.62, 0.012, spec.hue),

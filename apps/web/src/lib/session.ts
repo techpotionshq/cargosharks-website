@@ -140,7 +140,15 @@ export const getSession = cache(async (): Promise<Session | null> => {
       .from(principalBranchRoles)
       .innerJoin(roles, eq(roles.id, principalBranchRoles.roleId))
       .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-      .where(eq(principalBranchRoles.principalId, row.principalId))
+      // Revoked grants are filtered here rather than at the call sites, so a
+      // revocation takes effect everywhere on the principal's next request —
+      // including in the RLS branch list the actor carries (FR-ID-08).
+      .where(
+        and(
+          eq(principalBranchRoles.principalId, row.principalId),
+          eq(principalBranchRoles.isActive, true),
+        ),
+      )
 
     const branchRoles = new Map<string, string>()
     const permissions = new Set<string>()

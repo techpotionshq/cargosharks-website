@@ -37,14 +37,40 @@ export interface PoolConfig {
 }
 
 export function createPool(config: PoolConfig): pg.Pool {
-  return new pg.Pool({
+  const pool = new pg.Pool({
     connectionString: config.connectionString,
     max: config.max ?? 10,
     // Fail fast rather than queue behind a dead database.
     connectionTimeoutMillis: 10_000,
-    idleTimeoutMillis: 30_000,
+    /**
+     * Idle connections are dropped quickly and kept alive while they live.
+     *
+     * Managed Postgres in front of a pooler will close an idle connection
+     * without telling the client, which surfaces much later as "Connection
+     * terminated unexpectedly" on a query that did nothing wrong. Retiring our
+     * own idle connections before the far end does, and sending TCP keepalives
+     * on the ones still in use, turns that class of failure into nothing.
+     */
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 5_000,
     application_name: 'qabandi',
   })
+
+  /**
+   * Idle-client errors must be handled or they take the process with them.
+   *
+   * `pg.Pool` emits `error` for a connection that dies while *idle in the
+   * pool* — nobody is awaiting it, so there is no promise to reject, and an
+   * unhandled `error` event on an EventEmitter is a hard crash in Node. The
+   * pool removes the dead client by itself; all this listener has to do is
+   * exist, and say so when it fires.
+   */
+  pool.on('error', (error) => {
+    console.error('[db] idle client error, connection discarded:', error.message)
+  })
+
+  return pool
 }
 
 export function createDatabase(config: PoolConfig) {

@@ -78,7 +78,16 @@ const DEFAULT_TYPOGRAPHY: BrandTypography = {
 }
 
 const DEFAULT_SHAPE: BrandShape = {
-  radius: 10,
+  /**
+   * 14, not 10.
+   *
+   * The radius is the single token that does the most to date an interface.
+   * At 10 the cards read as 2016 Bootstrap; at 14 — with `sm` at 10 for
+   * controls and `lg` at 20 for the panels that carry a whole section — they
+   * read as current without tipping into the pill-shaped everything that
+   * makes a dense operational board hard to scan.
+   */
+  radius: 14,
   logoRadius: 0.235,
   borderWidth: 1,
 }

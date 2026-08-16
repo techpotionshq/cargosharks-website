@@ -261,7 +261,7 @@ export async function missingDocumentTypes(actor: Actor): Promise<number> {
       .where(
         and(
           eq(documentTypes.isRequiredForClearance, true),
-          sql`not exists (select 1 from documents d where d.document_type_id = ${documentTypes.id})`,
+          sql`not exists (select 1 from documents d where d.document_type_id = "document_types"."id")`,
         ),
       )
     return row?.count ?? 0

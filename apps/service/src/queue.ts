@@ -55,6 +55,12 @@ export async function getBoss(): Promise<PgBoss> {
   boss = new PgBoss({
     connectionString: config.DATABASE_URL,
     schema: config.PGBOSS_SCHEMA,
+    // The schema is created by provisioning, owned by app_user (§5.1). pg-boss
+    // would otherwise open its install with `CREATE SCHEMA IF NOT EXISTS`, and
+    // Postgres checks CREATE on the database *before* honouring IF NOT EXISTS —
+    // so that statement fails for app_user whether or not the schema is already
+    // there. Owning the schema is enough to create the tables inside it.
+    createSchema: false,
   })
 
   boss.on('error', (error: unknown) => console.error({ error }, 'pg-boss error'))

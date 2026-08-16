@@ -185,6 +185,8 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
           firstRespondedAt: enquiries.firstRespondedAt,
           customerName: customers.legalNameEn,
           customerNameAr: customers.legalNameAr,
+          contactName: enquiries.contactName,
+          contactEmail: enquiries.contactEmail,
           owner: principals.nameEn,
           originName: origin.nameEn,
           destinationName: destination.nameEn,
@@ -305,8 +307,15 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         status: row.status,
         channel: row.channel,
         mode: row.mode as Mode | null,
-        customerName: row.customerName ?? '—',
-        customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+        /*
+          An enquiry from someone we have never shipped for has no customer
+          row — that is the normal case for a new lead (FR-EQ-02), not missing
+          data. Falling straight to an em-dash rendered the most interesting
+          row on the SLA watch as anonymous. Name, then email, then the dash.
+        */
+        customerName: row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+        customerNameAr:
+          row.customerNameAr ?? row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
         originName: row.originName ?? '—',
         destinationName: row.destinationName ?? '—',
         owner: row.owner,
@@ -354,5 +363,84 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         value: { amount: 0, currency: 'KWD' },
       })),
     }
+  })
+}
+
+/**
+ * The lanes and ports the map draws.
+ *
+ * One statement returning two JSON arrays, because the map needs both and two
+ * queries would be two round trips for one graphic. Live shipments only — a
+ * map of everything ever shipped is a picture of history, and the board's
+ * subject is what is moving now.
+ *
+ * A lane with no coordinates at either end is dropped rather than plotted at
+ * (0, 0), which is in the Atlantic off Ghana and would look like a real route.
+ */
+export interface MapData {
+  readonly lanes: {
+    id: string
+    originName: string
+    originLon: number
+    originLat: number
+    destinationName: string
+    destinationLon: number
+    destinationLat: number
+    count: number
+    mode: string
+  }[]
+  readonly ports: {
+    id: string
+    name: string
+    longitude: number
+    latitude: number
+    count: number
+  }[]
+}
+
+export async function getMapData(actor: Actor): Promise<MapData> {
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      with live as (
+        select j.origin_id, j.destination_id, j.mode
+          from jobs j
+         where j.status not in ('closed', 'cancelled', 'completed')
+      ),
+      lane as (
+        select o.id || ':' || d.id || ':' || l.mode as id,
+               o.name_en as "originName",
+               o.longitude::float8 as "originLon",
+               o.latitude::float8  as "originLat",
+               d.name_en as "destinationName",
+               d.longitude::float8 as "destinationLon",
+               d.latitude::float8  as "destinationLat",
+               l.mode::text as mode,
+               count(*)::int as count
+          from live l
+          join locations o on o.id = l.origin_id
+          join locations d on d.id = l.destination_id
+         where o.latitude is not null and o.longitude is not null
+           and d.latitude is not null and d.longitude is not null
+         group by o.id, o.name_en, o.longitude, o.latitude,
+                  d.id, d.name_en, d.longitude, d.latitude, l.mode
+      ),
+      port as (
+        select p.id,
+               p.name_en as name,
+               p.longitude::float8 as longitude,
+               p.latitude::float8  as latitude,
+               count(*)::int as count
+          from live l
+          join locations p
+            on p.id = l.origin_id or p.id = l.destination_id
+         where p.latitude is not null and p.longitude is not null
+         group by p.id, p.name_en, p.longitude, p.latitude
+      )
+      select coalesce((select json_agg(lane order by count desc) from lane), '[]'::json) as lanes,
+             coalesce((select json_agg(port order by count desc) from port), '[]'::json) as ports
+    `)
+
+    const row = result.rows[0] as unknown as MapData | undefined
+    return { lanes: row?.lanes ?? [], ports: row?.ports ?? [] }
   })
 }

@@ -202,13 +202,15 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
 
         <TableShell>
           <THead>
-            <TH>{t('charge')}</TH>
-            <TH>{t('basis')}</TH>
-            <TH align="end">{t('quantity')}</TH>
-            <TH align="end">{t('buy')}</TH>
-            <TH align="end">{t('sell')}</TH>
-            <TH align="end">{t('margin')}</TH>
-            <TH align="end">{t('amount')}</TH>
+            <TR>
+              <TH>{t('charge')}</TH>
+              <TH>{t('basis')}</TH>
+              <TH align="end">{t('quantity')}</TH>
+              <TH align="end">{t('buy')}</TH>
+              <TH align="end">{t('sell')}</TH>
+              <TH align="end">{t('margin')}</TH>
+              <TH align="end">{t('amount')}</TH>
+            </TR>
           </THead>
           <TBody>
             {(comparison.options[0]?.lines ?? []).map((line) => {

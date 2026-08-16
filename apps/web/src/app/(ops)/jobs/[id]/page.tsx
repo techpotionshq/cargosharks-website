@@ -318,10 +318,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           ) : (
             <TableShell className="border-t border-line" minWidth="none">
               <THead>
-                <TH>{t('equipment')}</TH>
-                <TH>{t('sealNo')}</TH>
-                <TH align="end">{t('discharged')}</TH>
-                <TH align="end">{t('gateOut')}</TH>
+                <TR>
+                  <TH>{t('equipment')}</TH>
+                  <TH>{t('sealNo')}</TH>
+                  <TH align="end">{t('discharged')}</TH>
+                  <TH align="end">{t('gateOut')}</TH>
+                </TR>
               </THead>
               <TBody>
                 {job.containers.map((container) => (

@@ -1,0 +1,481 @@
+/**
+ * Administration dialogs — people, branches, reference data.
+ *
+ * The user dialog deliberately has **no password field**. An administrator
+ * invites someone by creating their identity and their branch roles; the
+ * credential is set by the person who owns it. An administrator who can type a
+ * colleague's password can sign in as them, and the audit log would record it
+ * as the colleague — which quietly destroys the value of having an audit log.
+ */
+
+import { getTranslations } from 'next-intl/server'
+import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
+import { loadOptions } from '@/lib/options'
+import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
+import { saveBranch, saveReferenceRecord, saveUser } from '../form-actions'
+
+const REFERENCE_TABLES = ['commodity', 'charge_type', 'document_type', 'exception_code'] as const
+const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
+
+export interface UserDefaults {
+  readonly id?: string
+  readonly nameEn?: string
+  readonly nameAr?: string | null
+  readonly email?: string
+  readonly phone?: string | null
+  readonly locale?: string
+  readonly roleId?: string | null
+  readonly branchIds?: readonly string[]
+  readonly isActive?: boolean
+}
+
+export async function UserDialog({
+  defaults,
+  variant = 'primary',
+  iconOnly = false,
+}: {
+  readonly defaults?: UserDefaults
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+  readonly iconOnly?: boolean
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.users.write')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('userForm'),
+    getTranslations('common'),
+  ])
+
+  const editing = Boolean(defaults?.id)
+
+  /**
+   * Only branches the administrator holds themselves.
+   *
+   * The server action refuses a grant outside them anyway, so this is about
+   * not offering a choice that will be rejected — but the check on the action
+   * is the one that matters, because this list is a hint and that one is a
+   * boundary.
+   */
+  const grantable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+
+  const fields: FieldSpec[] = [
+    ...(editing ? [{ kind: 'hidden' as const, name: 'principalId', value: defaults!.id! }] : []),
+    {
+      kind: 'text',
+      name: 'nameEn',
+      label: t('nameEn'),
+      span: 6,
+      required: true,
+      defaultValue: defaults?.nameEn,
+    },
+    {
+      kind: 'text',
+      name: 'nameAr',
+      label: t('nameAr'),
+      span: 6,
+      defaultValue: defaults?.nameAr,
+    },
+    {
+      kind: 'email',
+      name: 'email',
+      label: t('email'),
+      span: 6,
+      required: true,
+      hint: t('emailHint'),
+      defaultValue: defaults?.email,
+    },
+    {
+      kind: 'tel',
+      name: 'phone',
+      label: t('phone'),
+      span: 6,
+      defaultValue: defaults?.phone,
+    },
+    {
+      kind: 'select',
+      name: 'roleId',
+      label: t('role'),
+      span: 6,
+      required: true,
+      hint: t('roleHint'),
+      options: options.roles,
+      placeholder: tc('none'),
+      defaultValue: defaults?.roleId,
+    },
+    {
+      kind: 'select',
+      name: 'locale',
+      label: t('locale'),
+      span: 6,
+      required: true,
+      hint: t('localeHint'),
+      options: [
+        { value: 'en', label: t('locales.en') },
+        { value: 'ar', label: t('locales.ar') },
+      ],
+      defaultValue: defaults?.locale ?? 'en',
+    },
+    /*
+      Branch access is a checkbox per branch rather than a multi-select,
+      because with two or three branches the whole choice should be visible
+      and a multi-select hides it behind a click. `name` repeats so the form
+      submits an array (FR-ID-02: a role *per branch*).
+    */
+    {
+      kind: 'section',
+      title: t('access'),
+      hint: t('accessHint'),
+      fields: grantable.map((branch) => ({
+        kind: 'switch' as const,
+        name: 'branchIds',
+        label: branch.label,
+        span: 6 as const,
+        defaultChecked: defaults?.branchIds?.includes(branch.value) ?? false,
+      })),
+    },
+    { kind: 'note', text: t('passwordNote') },
+    {
+      kind: 'switch',
+      name: 'isActive',
+      label: t('active'),
+      span: 12,
+      hint: t('activeHint'),
+      defaultChecked: defaults?.isActive ?? true,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveUser}
+      fields={fields}
+      icon="users"
+      size="lg"
+      variant={variant}
+      iconOnly={iconOnly}
+      submitIcon={editing ? 'check' : 'plus'}
+      labels={{
+        open: editing ? tc('edit') : t('open'),
+        title: editing ? t('editTitle') : t('title'),
+        description: editing ? t('editDescription') : t('description'),
+        submit: editing ? tc('save') : t('submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+export interface BranchDefaults {
+  readonly id?: string
+  readonly code?: string
+  readonly legalNameEn?: string
+  readonly legalNameAr?: string
+  readonly baseCurrency?: string
+  readonly country?: string
+  readonly calendarId?: string
+  readonly timeZone?: string
+  readonly invoiceSeries?: string
+  readonly taxRegistration?: string | null
+  readonly isActive?: boolean
+}
+
+export async function BranchDialog({
+  defaults,
+  calendars,
+  variant = 'primary',
+  iconOnly = false,
+}: {
+  readonly defaults?: BranchDefaults
+  readonly calendars: readonly { value: string; label: string }[]
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+  readonly iconOnly?: boolean
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.reference.write')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('branchForm'),
+    getTranslations('common'),
+  ])
+
+  const editing = Boolean(defaults?.id)
+
+  const fields: FieldSpec[] = [
+    ...(editing ? [{ kind: 'hidden' as const, name: 'branchId', value: defaults!.id! }] : []),
+    {
+      kind: 'text',
+      name: 'code',
+      label: t('code'),
+      span: 4,
+      required: true,
+      hint: t('codeHint'),
+      mono: true,
+      maxLength: 8,
+      defaultValue: defaults?.code,
+    },
+    {
+      kind: 'select',
+      name: 'country',
+      label: t('country'),
+      span: 4,
+      required: true,
+      options: options.countries,
+      placeholder: tc('none'),
+      defaultValue: defaults?.country,
+    },
+    {
+      kind: 'select',
+      name: 'baseCurrency',
+      label: t('currency'),
+      span: 4,
+      required: true,
+      hint: t('currencyHint'),
+      options: options.currencies,
+      placeholder: tc('none'),
+      defaultValue: defaults?.baseCurrency,
+    },
+    {
+      kind: 'text',
+      name: 'legalNameEn',
+      label: t('legalNameEn'),
+      span: 6,
+      required: true,
+      defaultValue: defaults?.legalNameEn,
+    },
+    {
+      kind: 'text',
+      name: 'legalNameAr',
+      label: t('legalNameAr'),
+      span: 6,
+      required: true,
+      hint: t('legalNameArHint'),
+      defaultValue: defaults?.legalNameAr,
+    },
+    {
+      kind: 'select',
+      name: 'calendarId',
+      label: t('calendar'),
+      span: 6,
+      required: true,
+      hint: t('calendarHint'),
+      options: calendars,
+      placeholder: tc('none'),
+      defaultValue: defaults?.calendarId,
+    },
+    {
+      kind: 'text',
+      name: 'timeZone',
+      label: t('timeZone'),
+      span: 6,
+      required: true,
+      hint: t('timeZoneHint'),
+      defaultValue: defaults?.timeZone ?? 'Asia/Kuwait',
+    },
+    {
+      kind: 'text',
+      name: 'taxRegistration',
+      label: t('taxRegistration'),
+      span: 6,
+      mono: true,
+      defaultValue: defaults?.taxRegistration,
+    },
+    ...(editing
+      ? []
+      : [
+          {
+            kind: 'text' as const,
+            name: 'invoiceSeries',
+            label: t('invoiceSeries'),
+            span: 6 as const,
+            mono: true,
+            hint: t('invoiceSeriesHint'),
+          },
+        ]),
+    {
+      kind: 'switch',
+      name: 'isActive',
+      label: t('active'),
+      span: 12,
+      defaultChecked: defaults?.isActive ?? true,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveBranch}
+      fields={fields}
+      icon="branches"
+      size="lg"
+      variant={variant}
+      iconOnly={iconOnly}
+      submitIcon={editing ? 'check' : 'plus'}
+      labels={{
+        open: editing ? tc('edit') : t('open'),
+        title: editing ? t('editTitle') : t('title'),
+        description: editing ? t('editDescription') : t('description'),
+        submit: editing ? tc('save') : t('submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+export interface ReferenceDefaults {
+  readonly id?: string
+  readonly code?: string
+  readonly nameEn?: string
+  readonly nameAr?: string
+  readonly category?: string | null
+  readonly defaultBasis?: string
+  readonly defaultSeverity?: string
+  readonly hsCode?: string | null
+  readonly isActive?: boolean
+}
+
+/**
+ * The four small catalogues, behind one dialog.
+ *
+ * These are the tables that make the product *theirs* — a forwarder whose
+ * charge list, document set and exception codes match how they actually work.
+ * Making them editable in the interface, rather than in a seed file, is the
+ * difference between a whitelabel and a fork.
+ */
+export async function ReferenceDialog({
+  table,
+  defaults,
+  variant = 'primary',
+  iconOnly = false,
+}: {
+  readonly table: (typeof REFERENCE_TABLES)[number]
+  readonly defaults?: ReferenceDefaults
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+  readonly iconOnly?: boolean
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.reference.write')) return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('referenceForm'),
+    getTranslations('common'),
+  ])
+
+  const editing = Boolean(defaults?.id)
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'table', value: table },
+    ...(editing ? [{ kind: 'hidden' as const, name: 'recordId', value: defaults!.id! }] : []),
+    {
+      kind: 'text',
+      name: 'code',
+      label: t('code'),
+      span: 6,
+      required: true,
+      hint: t('codeHint'),
+      mono: true,
+      maxLength: 40,
+      defaultValue: defaults?.code,
+    },
+    ...(table === 'charge_type' || table === 'document_type'
+      ? [
+          {
+            kind: 'text' as const,
+            name: 'category',
+            label: t('category'),
+            span: 6 as const,
+            hint: t('categoryHint'),
+            defaultValue: defaults?.category,
+          },
+        ]
+      : []),
+    ...(table === 'commodity'
+      ? [
+          {
+            kind: 'text' as const,
+            name: 'hsCode',
+            label: t('hsCode'),
+            span: 6 as const,
+            hint: t('hsCodeHint'),
+            mono: true,
+            defaultValue: defaults?.hsCode,
+          },
+        ]
+      : []),
+    {
+      kind: 'text',
+      name: 'nameEn',
+      label: t('nameEn'),
+      span: 6,
+      required: true,
+      defaultValue: defaults?.nameEn,
+    },
+    {
+      kind: 'text',
+      name: 'nameAr',
+      label: t('nameAr'),
+      span: 6,
+      required: true,
+      hint: t('nameArHint'),
+      defaultValue: defaults?.nameAr,
+    },
+    ...(table === 'charge_type'
+      ? [
+          {
+            kind: 'select' as const,
+            name: 'defaultBasis',
+            label: t('basis'),
+            span: 6 as const,
+            required: true,
+            hint: t('basisHint'),
+            options: BASES.map((key) => ({ value: key, label: t(`bases.${key}`) })),
+            defaultValue: defaults?.defaultBasis ?? 'flat',
+          },
+        ]
+      : []),
+    ...(table === 'exception_code'
+      ? [
+          {
+            kind: 'select' as const,
+            name: 'defaultSeverity',
+            label: t('severity'),
+            span: 6 as const,
+            required: true,
+            hint: t('severityHint'),
+            options: SEVERITIES.map((key) => ({ value: key, label: t(`severities.${key}`) })),
+            defaultValue: defaults?.defaultSeverity ?? 'medium',
+          },
+        ]
+      : []),
+    {
+      kind: 'switch',
+      name: 'isActive',
+      label: t('active'),
+      span: 12,
+      hint: t('activeHint'),
+      defaultChecked: defaults?.isActive ?? true,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveReferenceRecord}
+      fields={fields}
+      icon="reference"
+      variant={variant}
+      iconOnly={iconOnly}
+      submitIcon={editing ? 'check' : 'plus'}
+      labels={{
+        open: editing ? tc('edit') : t(`open.${table}`),
+        title: editing ? t(`editTitle.${table}`) : t(`title.${table}`),
+        description: t(`description.${table}`),
+        submit: editing ? tc('save') : tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}

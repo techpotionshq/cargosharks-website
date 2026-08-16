@@ -19,6 +19,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 
 const STATUS_TONE = {
   draft: 'muted',
@@ -54,6 +55,7 @@ export default async function InvoicesPage({
 
   return (
     <Register
+      actions={<InvoiceDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

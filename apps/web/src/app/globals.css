@@ -100,9 +100,16 @@
   --radius-sm: var(--qb-radius-sm);
   --radius-lg: var(--qb-radius-lg);
 
-  --shadow-card: 0 1px 2px -1px var(--qb-shadow-color), 0 1px 3px var(--qb-shadow-color);
-  --shadow-raised: 0 4px 6px -2px var(--qb-shadow-color), 0 12px 24px -8px var(--qb-shadow-color);
-  --shadow-pop: 0 8px 12px -4px var(--qb-shadow-color), 0 24px 48px -12px var(--qb-shadow-color);
+  /*
+   * Depth is spent on *distance from the page*, not on decoration. A resting
+   * card gets a shadow you would not notice if it were missing — the hairline
+   * border is what separates it — while a dialog, which genuinely floats above
+   * everything, gets a wide soft one. The middle step is for things that lift
+   * on hover.
+   */
+  --shadow-card: 0 1px 2px -1px var(--qb-shadow-color);
+  --shadow-raised: 0 2px 4px -2px var(--qb-shadow-color), 0 8px 20px -8px var(--qb-shadow-color);
+  --shadow-pop: 0 8px 16px -6px var(--qb-shadow-color), 0 32px 64px -16px var(--qb-shadow-color);
 }
 
 /**
@@ -116,6 +123,18 @@
 @layer base {
   * {
     border-color: var(--qb-line);
+  }
+
+  :root {
+    /**
+     * The scrim behind a dialog.
+     *
+     * Derived from the neutral ramp's darkest stop rather than declared as a
+     * black, so it inherits the brand's neutral tint like every other surface
+     * — a pure-black scrim over an indigo-tinted interface reads as a hole.
+     * The ramp is theme-independent, so one declaration serves both.
+     */
+    --qb-scrim: color-mix(in oklab, var(--qb-neutral-950) 55%, transparent);
   }
 
   html {
@@ -231,5 +250,67 @@
     .accruing {
       animation: none;
     }
+  }
+
+  /**
+   * A dialog arriving.
+   *
+   * Short and small: 140ms and a 6px rise. Long enough to say "this came from
+   * somewhere", short enough that an operator opening thirty of these a day
+   * never waits for it.
+   */
+  @keyframes qb-modal-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    dialog[open] {
+      animation: none !important;
+    }
+  }
+
+  /**
+   * The select chevron.
+   *
+   * `appearance: none` removes the native arrow along with the native styling,
+   * so it has to come back as a background image. Drawn as an inline SVG with
+   * `currentColor` so it follows the ink token in both themes, and positioned
+   * from the *inline end* so it moves to the left in Arabic.
+   */
+  .qb-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+
+  [dir='rtl'] .qb-select {
+    background-position: left 0.75rem center;
+  }
+
+  /**
+   * The board's section rule.
+   *
+   * A hairline with the section title sitting on it, used instead of a card
+   * where the content is already tabular. It is what keeps the dashboard from
+   * being forty nested boxes.
+   */
+  .rule-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .rule-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background-color: var(--qb-line);
   }
 }

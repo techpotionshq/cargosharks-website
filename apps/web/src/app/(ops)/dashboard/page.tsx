@@ -1,16 +1,25 @@
 /**
- * The operations dashboard — Moment 3, "five mailboxes become one board".
+ * The operations board.
  *
- * The layout answers four questions in the order an operations manager asks
- * them, and the order is the design:
+ * Written for someone on their first week in freight, which changes almost
+ * every decision on the page:
  *
- *   1. **What is on fire?** SLA breaches and the demurrage that is accruing
- *      right now — the two numbers that cost money while you read them.
- *   2. **What is coming?** Live shipments and arrivals this week.
- *   3. **What is it worth?** Win rate and margin, for whoever signs cheques.
- *   4. **What has nobody looked at?** The exceptions register, oldest first
- *      (`FR-JB-09`) — because the exception that has been open longest is by
- *      definition the one the current process missed.
+ *   - **The headline is a sentence, not a number.** "Three things need you
+ *     today" tells a newcomer what to do; a grid of twelve figures tells them
+ *     to go and ask someone.
+ *   - **Every panel says what it means.** One line under each title, in words
+ *     that assume nothing. It is the cheapest usability win available and the
+ *     reference boards all do it.
+ *   - **Jargon carries its definition.** Demurrage, free time and SLA are
+ *     wrapped in `<Term>`, so the word explains itself where it is read
+ *     instead of in a training document.
+ *   - **Charts are paired with a readout.** Beside every plot is a short list
+ *     of the facts you would otherwise have to read off it.
+ *
+ * The order is still the order an operations manager asks in — what is on
+ * fire, what is coming, what is it worth, what has nobody looked at — because
+ * that ordering is right for the expert too. What changed is that a beginner
+ * can now follow it.
  *
  * Everything is a server component reading through the slice's `queries.ts`
  * under the caller's own actor, so the page carries no branch filter of its
@@ -20,23 +29,42 @@
 import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { getOpsOverview } from '@/features/dashboard/queries'
+import { getMapData, getOpsOverview } from '@/features/dashboard/queries'
 import { getSetupState, type SetupStepKey } from '@/features/onboarding/queries'
 import { SetupChecklist } from '@/features/onboarding/ui/setup-checklist'
+import { NewEnquiryButton } from '@/features/enquiries/ui/new-enquiry-dialog'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDateTime, formatDay, formatMoney, formatNumber, formatRelative } from '@/lib/format'
-import { Card, CardHeader } from '@/ui/card'
+import { formatDay, formatMoney, formatNumber, formatRelative, formatTime } from '@/lib/format'
 import { BarList, CompositionBar, TrendColumns } from '@/ui/chart'
-import { Grid, PageHeader, EmptyState, Button, Lane } from '@/ui/layout'
-import { StatTile } from '@/ui/stat'
-import { Badge, ToneDot, jobTone, severityTone, slaTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
-import { MilestoneDots } from '@/ui/timeline'
+import { Button, EmptyState, Grid, Lane } from '@/ui/layout'
+import { Delta, Metric, Spark, TickMeter } from '@/ui/metric'
+import { LaneMap, LaneMapLegend } from '@/ui/lane-map'
+import { EventRow, Panel, Readout } from '@/ui/panel'
+import { Badge, ToneDot, jobTone, severityTone, slaTone } from '@/ui/status'
+import { Term } from '@/ui/term'
+
+/**
+ * Morning, afternoon or evening — in Kuwait, not in the server's zone.
+ *
+ * A board greeting an operator with "Good evening" at 10am because the
+ * container it runs in is set to UTC is a small thing that makes the whole
+ * product feel like it was not built for them.
+ */
+function partOfDay(now: Date, timeZone: string): 'morning' | 'afternoon' | 'evening' {
+  const hour = Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone }).format(now),
+  )
+  if (hour < 12) return 'morning'
+  if (hour < 17) return 'afternoon'
+  return 'evening'
+}
 
 export default async function DashboardPage() {
   const session = await requireSession()
   const overview = await getOpsOverview(session.actor)
   const setup = await getSetupState(session.actor)
+  const map = await getMapData(session.actor)
 
   const t = await getTranslations('dashboard')
   const tSetup = await getTranslations('setup')
@@ -44,29 +72,78 @@ export default async function DashboardPage() {
   const tJob = await getTranslations('job')
   const tEnq = await getTranslations('enquiry')
   const tMode = await getTranslations('mode')
+  const tNav = await getTranslations('nav')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const now = Date.now()
+  const nowDate = new Date()
+  const now = nowDate.getTime()
 
   const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  const firstName = (locale === 'ar' && session.principal.nameAr
+    ? session.principal.nameAr
+    : session.principal.nameEn
+  ).split(' ')[0]!
+
+  /**
+   * The headline count.
+   *
+   * Deliberately *not* the sum of every number on the page. It is the count of
+   * things that require a person to do something today — an overdue reply and
+   * an open exception qualify; forty shipments running to plan do not. A
+   * headline that inflates itself with healthy figures teaches people to
+   * ignore it within a week.
+   */
+  const needsAction = overview.enquiries.breached + overview.exceptions.length
+  const trend = overview.enquiries.trend.map((point) => point.value)
+
+  // Week-over-week on intake, from the two halves of the fortnight the trend
+  // already covers — no second query for a number that is already on the page.
+  const half = Math.floor(trend.length / 2)
+  const previous = trend.slice(0, half).reduce((sum, value) => sum + value, 0)
+  const current = trend.slice(half).reduce((sum, value) => sum + value, 0)
+  const intakeDelta = previous > 0 ? ((current - previous) / previous) * 100 : null
+
+  const busiestLane = overview.topLanes[0]
+  const biggestMode = [...overview.jobs.byMode].sort((a, b) => b.count - a.count)[0]
+  const nextArrival = overview.arrivals[0]
 
   return (
     <>
-      <PageHeader
-        eyebrow={t('operationsEyebrow')}
-        title={t('title')}
-        description={t('subtitle')}
-        actions={
-          <>
-            <Button href="/enquiries" icon="enquiries">
-              {tEnq('title')}
-            </Button>
-            <Button href="/jobs" variant="primary" icon="jobs">
-              {tJob('title')}
-            </Button>
-          </>
-        }
-      />
+      {/* ---- the greeting ------------------------------------------------
+          A named greeting and a plain sentence, in place of the eyebrow and
+          title the rest of the product uses. This is the one screen someone
+          opens first thing in the morning, and it should answer "is anything
+          wrong?" before they have read a single figure. */}
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+            {t(`greeting.${partOfDay(nowDate, 'Asia/Kuwait')}`, { name: firstName })}
+          </h1>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.9375rem] text-ink-muted">
+            {needsAction > 0 ? (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-critical-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-critical">
+                  <Icon name="alert" size={13} weight="fill" />
+                  {t('needsYou', { count: needsAction })}
+                </span>
+                <span>{t('needsYouRest')}</span>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="check" size={15} className="text-positive" weight="bold" />
+                {t('allClear')}
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Button href="/jobs" icon="jobs">
+            {tNav('jobs')}
+          </Button>
+          <NewEnquiryButton />
+        </div>
+      </header>
 
       {/*
         Shown only until the last step is done, and it sits above the board
@@ -93,70 +170,121 @@ export default async function DashboardPage() {
         }}
       />
 
-      {/*
-        Four tiles, and only the two that represent a live cost carry a tone.
-        A row where everything is coloured says nothing at a glance.
-      */}
+      {/* ---- the four numbers -------------------------------------------
+          Only the two that represent a live cost carry a tone. A row where
+          everything is coloured says nothing at a glance. */}
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          label={t('slaBreached')}
+        <Metric
+          label={t('overdueReplies')}
           value={formatNumber(overview.enquiries.breached, locale)}
-          hint={t('slaBreachedHint')}
           icon="alert"
           tone={overview.enquiries.breached > 0 ? 'critical' : 'positive'}
           href="/enquiries?filter=overdue"
-        />
-        <StatTile
-          label={t('accruing')}
+          hint={
+            <>
+              {t('overdueRepliesHint')} <Term name="sla">{t('slaWord')}</Term>.
+            </>
+          }
+        >
+          <p className="text-[0.8125rem] text-ink-muted">
+            <span className="numeric font-semibold text-ink">{overview.enquiries.dueToday}</span>{' '}
+            {t('dueTodayCaption')}
+          </p>
+        </Metric>
+
+        <Metric
+          label={<Term name="demurrage">{t('accruing')}</Term>}
           value={formatMoney(overview.clocks.accruing, locale, { showCurrency: false })}
           unit={overview.clocks.accruing.currency}
-          hint={t('accruingHint', { containers: overview.clocks.containersAtRisk })}
           icon="clock"
-          tone={overview.clocks.accruing.amount > 0 ? 'caution' : 'muted'}
+          tone={overview.clocks.accruing.amount > 0 ? 'caution' : 'neutral'}
           // The one number on the page that is genuinely still moving.
           live={overview.clocks.accruing.amount > 0}
           href="/jobs?filter=exceptions"
-        />
-        <StatTile
+        >
+          <TickMeter
+            value={overview.clocks.containersAtRisk}
+            max={Math.max(overview.clocks.running, overview.clocks.containersAtRisk, 1)}
+            tone="caution"
+            label={t('containersLabel', {
+              atRisk: overview.clocks.containersAtRisk,
+              running: overview.clocks.running,
+            })}
+          />
+        </Metric>
+
+        <Metric
           label={t('openEnquiries')}
           value={formatNumber(overview.enquiries.open, locale)}
-          hint={t('openEnquiriesHint', { unassigned: overview.enquiries.unassigned })}
           icon="enquiries"
-          trend={overview.enquiries.trend.map((p) => p.value)}
+          tone="info"
           href="/enquiries"
-        />
-        <StatTile
+          hint={t('openEnquiriesHint', { unassigned: overview.enquiries.unassigned })}
+        >
+          <Spark points={trend} tone="info" />
+        </Metric>
+
+        <Metric
           label={t('liveJobs')}
           value={formatNumber(overview.jobs.live, locale)}
-          hint={t('liveJobsHint', { arriving: overview.jobs.arrivingThisWeek })}
-          icon="jobs"
+          icon="ship"
+          tone="brand"
           href="/jobs"
-        />
+        >
+          <TickMeter
+            value={overview.jobs.arrivingThisWeek}
+            max={Math.max(overview.jobs.live, 1)}
+            tone="info"
+            label={t('arrivingLabel', { count: overview.jobs.arrivingThisWeek })}
+          />
+        </Metric>
       </div>
 
-      <Grid className="mb-4">
-        {/* --- the exceptions register: the widest panel, because it is the
-            one that changes what someone does next. --------------------- */}
-        <Card className="lg:col-span-8" padding="none">
-          <div className="p-5 pb-3">
-            <CardHeader
-              icon="alert"
-              eyebrow={t('operationsEyebrow')}
-              title={t('exceptions')}
-              description={t('exceptionsHint')}
-              actions={
-                <Button
-                  href="/jobs?filter=exceptions"
-                  size="sm"
-                  variant="ghost"
-                  iconEnd="chevron-end"
-                >
-                  {tc('viewAll')}
-                </Button>
-              }
-            />
-          </div>
+      {/* ---- where the cargo is --------------------------------------
+          The one graphic anybody understands without being told: this is
+          where our cargo comes from and where it goes. Every line is a live
+          shipment and every dot is a port we are currently using. */}
+      <Panel
+        className="mb-4"
+        icon="globe"
+        title={t('map')}
+        explain={t('mapExplain')}
+        actions={
+          <LaneMapLegend
+            modes={overview.jobs.byMode.map((row) => ({
+              mode: row.mode,
+              label: tMode(row.mode),
+              count: row.count,
+            }))}
+          />
+        }
+      >
+        {map.lanes.length === 0 ? (
+          <EmptyState icon="globe" title={t('noLanes')} description={t('mapEmptyHint')} />
+        ) : (
+          <LaneMap
+            lanes={map.lanes.map((lane) => ({ ...lane, href: '/jobs' }))}
+            ports={map.ports.map((port) => ({ ...port, href: '/locations' }))}
+          />
+        )}
+      </Panel>
 
+      <Grid className="mb-4">
+        {/* ---- what is broken ------------------------------------------
+            The widest panel on the board, because it is the only one that
+            changes what somebody does next. */}
+        <Panel
+          className="lg:col-span-8"
+          padding="none"
+          icon="alert"
+          title={t('attention')}
+          explain={t('attentionExplain')}
+          actions={
+            <Button href="/exceptions" size="sm" variant="ghost" iconEnd="chevron-end">
+              {tc('viewAll')}
+            </Button>
+          }
+        >
           {overview.exceptions.length === 0 ? (
             <EmptyState
               icon="check"
@@ -164,7 +292,7 @@ export default async function DashboardPage() {
               description={t('noExceptionsHint')}
             />
           ) : (
-            <ul className="divide-y divide-line border-t border-line">
+            <ul className="divide-y divide-line">
               {overview.exceptions.slice(0, 5).map((exception) => {
                 const overdue = exception.dueAt !== null && exception.dueAt.getTime() < now
                 return (
@@ -173,7 +301,7 @@ export default async function DashboardPage() {
                       href={`/jobs/${exception.jobId}`}
                       className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
-                      <span className="mt-0.5">
+                      <span className="mt-1">
                         <ToneDot tone={severityTone(exception.severity)} />
                       </span>
                       <div className="min-w-0 flex-1">
@@ -185,7 +313,11 @@ export default async function DashboardPage() {
                             {exception.jobReference}
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-[0.75rem] text-ink-muted">
+                        {/* The description is the human sentence — "container
+                            held for inspection, broker notified". Falling back
+                            to the customer name keeps the row informative when
+                            nobody has written one. */}
+                        <p className="mt-0.5 truncate text-[0.8125rem] text-ink-muted">
                           {exception.description ?? exception.customerName}
                         </p>
                       </div>
@@ -198,7 +330,7 @@ export default async function DashboardPage() {
                             overdue ? 'font-medium text-critical' : 'text-ink-subtle'
                           }`}
                         >
-                          {formatRelative(exception.openedAt, locale, now)}
+                          {t('openFor', { since: formatRelative(exception.openedAt, locale, now) })}
                         </span>
                       </div>
                     </Link>
@@ -207,23 +339,166 @@ export default async function DashboardPage() {
               })}
             </ul>
           )}
-        </Card>
+        </Panel>
 
-        {/* --- the SLA watch: unanswered, closest to breach first -------- */}
-        <Card className="lg:col-span-4" padding="none">
-          <div className="p-5 pb-3">
-            <CardHeader
-              icon="clock"
-              eyebrow={t('quotesEyebrow')}
-              title={t('slaWatch')}
-              description={t('slaWatchHint')}
-            />
-          </div>
-
-          {overview.slaWatch.length === 0 ? (
-            <EmptyState icon="check" title={t('noExceptions')} />
+        {/* ---- what is arriving ----------------------------------------
+            The reference boards' "delivery in progress" rail: one shipment,
+            in detail, as an event feed. One rather than ten, because the
+            value here is showing a newcomer what a shipment's life looks
+            like — a list of ten teaches nothing. */}
+        <Panel
+          className="lg:col-span-4"
+          icon="ship"
+          title={t('nextArrival')}
+          explain={t('nextArrivalExplain')}
+          footerHref={nextArrival ? `/jobs/${nextArrival.id}` : undefined}
+          footerLabel={t('openShipment')}
+        >
+          {!nextArrival ? (
+            <EmptyState icon="ship" title={tJob('empty')} description={tJob('emptyHint')} />
           ) : (
-            <ul className="divide-y divide-line border-t border-line">
+            <>
+              <div className="flex items-center gap-3 rounded-sm bg-surface-sunken p-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-ink-muted">
+                  <Icon name={modeIcon(nextArrival.mode)} size={18} />
+                </span>
+                <div className="min-w-0">
+                  <p className="ref numeric truncate text-[0.875rem] font-semibold text-ink">
+                    {nextArrival.reference}
+                  </p>
+                  <p className="truncate text-[0.75rem] text-ink-muted">
+                    {nameOf(nextArrival.customerName, nextArrival.customerNameAr)}
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-3 text-[0.8125rem] text-ink-muted">
+                <Lane
+                  origin={nameOf(nextArrival.originName, nextArrival.originNameAr)}
+                  destination={nameOf(nextArrival.destinationName, nextArrival.destinationNameAr)}
+                />
+              </p>
+
+              <ul className="mt-4">
+                <EventRow
+                  time={nextArrival.etd ? formatTime(nextArrival.etd, locale) : '—'}
+                  date={nextArrival.etd ? formatDay(nextArrival.etd, locale) : undefined}
+                  title={t('events.departed')}
+                  detail={t('events.departedDetail', {
+                    place: nameOf(nextArrival.originName, nextArrival.originNameAr),
+                  })}
+                  tone="positive"
+                />
+                <EventRow
+                  time={nextArrival.eta ? formatTime(nextArrival.eta, locale) : '—'}
+                  date={nextArrival.eta ? formatDay(nextArrival.eta, locale) : undefined}
+                  title={t('events.arriving')}
+                  detail={
+                    nextArrival.vesselOrFlight
+                      ? t('events.arrivingOn', { carrier: nextArrival.vesselOrFlight })
+                      : t('events.arrivingDetail', {
+                          place: nameOf(
+                            nextArrival.destinationName,
+                            nextArrival.destinationNameAr,
+                          ),
+                        })
+                  }
+                  tone="brand"
+                />
+                <EventRow
+                  time="—"
+                  title={t('events.clearance')}
+                  detail={<Term name="clearance">{t('events.clearanceDetail')}</Term>}
+                  tone="muted"
+                  last
+                />
+              </ul>
+            </>
+          )}
+        </Panel>
+      </Grid>
+
+      <Grid className="mb-4">
+        {/* ---- intake, with the facts written out ---------------------- */}
+        <Panel
+          className="lg:col-span-8"
+          icon="trend"
+          title={t('enquiryTrend')}
+          explain={t('enquiryTrendExplain')}
+          bodyClassName="flex"
+        >
+          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_15rem]">
+            <TrendColumns
+              className="flex flex-1 flex-col justify-end"
+              height={190}
+              points={overview.enquiries.trend.map((point, index) => ({
+                ...point,
+                emphasis: index === overview.enquiries.trend.length - 1,
+              }))}
+              label={t('enquiryTrend')}
+            />
+
+            {/* The readout: what the chart says, in words. Reading a
+                superlative off a bar chart is a skill; stating it is free. */}
+            <div className="lg:border-s lg:border-line lg:ps-6">
+              {intakeDelta === null ? (
+                <p className="text-[0.8125rem] text-ink-subtle">{t('noBaseline')}</p>
+              ) : (
+                <Delta value={intakeDelta} goodWhen="up" caption={t('vsLastWeek')} />
+              )}
+              <Readout
+                className="mt-4"
+                facts={[
+                  {
+                    icon: 'enquiries',
+                    label: t('readout.received'),
+                    value: formatNumber(current, locale),
+                  },
+                  {
+                    icon: 'clock',
+                    label: t('readout.median'),
+                    value: t('minutes', { count: overview.quotes.medianResponseMinutes }),
+                  },
+                  {
+                    icon: 'quotes',
+                    label: t('readout.quoted'),
+                    value: formatNumber(overview.quotes.sentThisMonth, locale),
+                    href: '/quotes',
+                  },
+                  {
+                    icon: 'check',
+                    label: t('readout.won'),
+                    value: `${overview.quotes.winRatePct}%`,
+                  },
+                  ...(busiestLane
+                    ? [
+                        {
+                          icon: 'locations' as const,
+                          label: t('readout.busiestLane'),
+                          value: busiestLane.lane,
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            </div>
+          </div>
+        </Panel>
+
+        {/* ---- who is still waiting ------------------------------------ */}
+        <Panel
+          className="lg:col-span-4"
+          padding="none"
+          icon="clock"
+          title={t('slaWatch')}
+          explain={t('slaWatchExplain')}
+          footerHref="/enquiries"
+          footerLabel={tEnq('title')}
+        >
+          {overview.slaWatch.length === 0 ? (
+            <EmptyState icon="check" title={t('allAnswered')} />
+          ) : (
+            <ul className="divide-y divide-line">
               {overview.slaWatch.slice(0, 5).map((enquiry) => {
                 const tone = slaTone(enquiry.slaDueAt, enquiry.firstRespondedAt, now)
                 return (
@@ -254,90 +529,64 @@ export default async function DashboardPage() {
               })}
             </ul>
           )}
-        </Card>
+        </Panel>
       </Grid>
 
-      <Grid className="mb-4">
-        {/* --- intake over a fortnight ---------------------------------- */}
-        {/* `flex-col` with a growing chart: the card matches the height of
-            its row neighbours, and the plot takes the slack rather than
-            leaving a pool of empty white under it. */}
-        <Card className="flex flex-col lg:col-span-5">
-          <CardHeader
-            icon="trend"
-            eyebrow={t('quotesEyebrow')}
-            title={t('enquiryTrend')}
-            description={t('enquiryTrendHint')}
-          />
-          <TrendColumns
-            className="mt-5 flex flex-1 flex-col justify-end"
-            height={150}
-            points={overview.enquiries.trend.map((point, index) => ({
-              ...point,
-              emphasis: index === overview.enquiries.trend.length - 1,
-            }))}
-            label={t('enquiryTrend')}
-          />
-        </Card>
-
-        {/* --- the commercial half: three numbers, no chart ------------- */}
-        <Card className="lg:col-span-3">
-          <CardHeader
-            icon="rates"
-            eyebrow={t('quotesEyebrow')}
-            title={t('avgMargin')}
-            description={t('avgMarginHint')}
-          />
-          <p className="numeric mt-4 font-display text-[2.5rem] leading-none font-semibold tracking-tight text-ink">
+      <Grid>
+        {/* ---- what it is worth ---------------------------------------- */}
+        <Panel
+          className="lg:col-span-4"
+          icon="finance"
+          title={t('avgMargin')}
+          explain={t('avgMarginExplain')}
+        >
+          <p className="numeric font-display text-[2.5rem] leading-none font-semibold tracking-tight text-ink">
             {overview.quotes.averageMarginPct.toFixed(1)}
             <span className="text-[1.25rem] text-ink-subtle">%</span>
           </p>
-          <dl className="mt-5 flex flex-col gap-3 border-t border-line pt-4">
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-[0.8125rem] text-ink-muted">{t('winRate')}</dt>
-              <dd className="numeric text-[0.875rem] font-semibold text-ink">
-                {overview.quotes.winRatePct}%
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-[0.8125rem] text-ink-muted">{t('medianResponse')}</dt>
-              <dd className="numeric text-[0.875rem] font-semibold text-ink">
-                {overview.quotes.medianResponseMinutes} min
-              </dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-[0.8125rem] text-ink-muted">
-                {t('winRateHint', { quoted: overview.quotes.sentThisMonth })}
-              </dt>
-              <dd className="numeric text-[0.875rem] font-semibold text-ink">
-                {formatMoney(overview.quotes.quotedValue, locale, { compact: true })}
-              </dd>
-            </div>
-          </dl>
-        </Card>
-
-        {/* --- composition, not a donut: see `CompositionBar` ----------- */}
-        <Card className="lg:col-span-4">
-          <CardHeader
-            icon="ship"
-            eyebrow={t('operationsEyebrow')}
-            title={t('liveJobs')}
-            description={t('jobsByMode')}
+          <Readout
+            className="mt-4 border-t border-line pt-4"
+            facts={[
+              { label: t('winRate'), value: `${overview.quotes.winRatePct}%` },
+              {
+                label: t('winRateHint', { quoted: overview.quotes.sentThisMonth }),
+                value: formatMoney(overview.quotes.quotedValue, locale, { compact: true }),
+              },
+              {
+                label: t('medianResponse'),
+                value: t('minutes', { count: overview.quotes.medianResponseMinutes }),
+              },
+            ]}
           />
-          <div className="mt-5">
-            <CompositionBar
-              segments={overview.jobs.byMode.map((row) => ({
-                label: tMode(row.mode),
-                value: row.count,
-              }))}
-            />
-          </div>
-          <div className="mt-5 border-t border-line pt-4">
-            <p className="eyebrow mb-3">{t('jobsByStatus')}</p>
+        </Panel>
+
+        {/* ---- how it moves -------------------------------------------- */}
+        <Panel
+          className="lg:col-span-4"
+          icon="container"
+          title={t('jobsByMode')}
+          explain={t('jobsByModeExplain')}
+        >
+          <CompositionBar
+            segments={overview.jobs.byMode.map((row) => ({
+              label: tMode(row.mode),
+              value: row.count,
+            }))}
+          />
+          {biggestMode ? (
+            <p className="mt-4 text-[0.8125rem] text-ink-muted">
+              {t('modeReadout', {
+                mode: tMode(biggestMode.mode),
+                share: Math.round((biggestMode.count / Math.max(overview.jobs.live, 1)) * 100),
+              })}
+            </p>
+          ) : null}
+          <div className="mt-4 border-t border-line pt-4">
             <BarList
               data={overview.jobs.byStatus
                 .slice()
                 .sort((a, b) => b.count - a.count)
+                .slice(0, 5)
                 .map((row) => ({
                   label: (
                     <span className="inline-flex items-center gap-2">
@@ -350,99 +599,29 @@ export default async function DashboardPage() {
                 }))}
             />
           </div>
-        </Card>
-      </Grid>
+        </Panel>
 
-      <Grid>
-        {/* --- arrivals: the week ahead, as a board ---------------------- */}
-        <Card className="lg:col-span-8" padding="none">
-          <div className="p-5 pb-3">
-            <CardHeader
-              icon="calendar"
-              eyebrow={t('operationsEyebrow')}
-              title={t('arrivals')}
-              actions={
-                <Button href="/jobs" size="sm" variant="ghost" iconEnd="chevron-end">
-                  {tc('viewAll')}
-                </Button>
-              }
-            />
-          </div>
-
-          {overview.arrivals.length === 0 ? (
-            <EmptyState icon="ship" title={tJob('empty')} description={tJob('emptyHint')} />
+        {/* ---- where it goes ------------------------------------------- */}
+        <Panel
+          className="lg:col-span-4"
+          icon="locations"
+          title={t('topLanes')}
+          explain={t('topLanesExplain')}
+          footerHref="/locations"
+          footerLabel={t('allPlaces')}
+        >
+          {overview.topLanes.length === 0 ? (
+            <EmptyState icon="locations" title={t('noLanes')} />
           ) : (
-            <ul className="divide-y divide-line border-t border-line">
-              {overview.arrivals.map((job) => (
-                <li key={job.id}>
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
-                  >
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-surface-sunken text-ink-muted">
-                      <Icon name={modeIcon(job.mode)} size={16} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="ref numeric text-[0.8125rem] font-medium text-brand">
-                          {job.reference}
-                        </span>
-                        <span className="truncate text-[0.75rem] text-ink-muted">
-                          {nameOf(job.customerName, job.customerNameAr)}
-                        </span>
-                      </div>
-                      <p className="truncate text-[0.75rem] text-ink-subtle">
-                        <Lane
-                          origin={nameOf(job.originName, job.originNameAr)}
-                          destination={nameOf(job.destinationName, job.destinationNameAr)}
-                        />
-                        {job.vesselOrFlight ? ` · ${job.vesselOrFlight}` : ''}
-                      </p>
-                    </div>
-                    <div className="hidden shrink-0 sm:block">
-                      <MilestoneDots
-                        total={job.milestonesTotal}
-                        completed={job.milestonesDone}
-                        label={`${job.milestonesDone} / ${job.milestonesTotal}`}
-                      />
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      <Badge tone={jobTone(job.status)} dot>
-                        {tJob(`statuses.${job.status}` as 'statuses.booked')}
-                      </Badge>
-                      <span className="numeric text-[0.6875rem] text-ink-subtle">
-                        {tJob('eta')} {formatDay(job.eta, locale)}
-                      </span>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {/* --- lanes: nominal categories, so one hue, ranked ------------- */}
-        <Card className="lg:col-span-4">
-          <CardHeader
-            icon="tracking"
-            eyebrow={t('operationsEyebrow')}
-            title={t('topLanes')}
-            description={t('topLanesHint')}
-          />
-          <div className="mt-5">
             <BarList
-              data={overview.topLanes.map((lane) => ({
+              data={overview.topLanes.slice(0, 6).map((lane) => ({
                 label: lane.lane,
                 value: lane.count,
-                hint: `${lane.count} shipments`,
+                hint: formatMoney(lane.value, locale, { compact: true }),
               }))}
-              emptyLabel={tJob('empty')}
             />
-          </div>
-          <p className="mt-5 border-t border-line pt-3 text-[0.6875rem] text-ink-subtle">
-            {tc('updated', { time: formatDateTime(new Date(now), locale) })}
-          </p>
-        </Card>
+          )}
+        </Panel>
       </Grid>
     </>
   )

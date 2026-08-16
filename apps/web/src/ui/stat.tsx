@@ -1,49 +1,48 @@
 /**
- * The stat tile.
+ * The stat tile — now an adapter over `Metric`.
  *
- * A number the reader is meant to *act* on, not study. The hierarchy is fixed
- * so a row of them scans as one instrument panel: label at the top in the
- * eyebrow treatment, the figure at 30px in tabular numerals, and one line of
- * context underneath.
+ * This used to be a second, near-identical tile: same job, slightly different
+ * label treatment (a tracked uppercase eyebrow rather than sentence case), a
+ * square icon chip rather than a round one, and a coloured *value*. The result
+ * was that the dashboard and the four registers looked like two products, and
+ * the difference was invisible to anyone reading either file on its own.
  *
- * The rule that keeps the row honest: **a tile shows a state, not a
- * decoration.** Tone is passed only where the number itself is a condition —
- * breached SLAs, accruing demurrage — and left neutral everywhere else. Six
- * coloured tiles in a row communicate nothing, because nothing stands out.
+ * So the second implementation is gone and the name stays. Four call sites
+ * keep working, every tile in the application is one component, and there is
+ * no longer a choice to get wrong.
+ *
+ * One behaviour deliberately changed rather than preserved: the value is no
+ * longer tinted by `tone`. `Metric` puts the tone on the icon chip and leaves
+ * the figure in ink, because a row where four numbers are four colours has no
+ * hierarchy left to spend when one of them actually goes wrong. The condition
+ * is still visible — it is just carried by the chip.
  */
 
-import type { Route } from 'next'
-import Link from 'next/link'
 import type { ReactNode } from 'react'
-import { Icon, type IconName } from './icon'
-import { Sparkline } from './chart'
+import { Metric, Spark, type MetricTone } from './metric'
+import type { IconName } from './icon'
 import type { Tone } from './status'
 
-const VALUE_TONE: Record<Tone, string> = {
-  positive: 'text-positive',
-  caution: 'text-caution',
-  critical: 'text-critical',
-  info: 'text-info',
-  muted: 'text-ink',
-  brand: 'text-brand',
+/**
+ * `Tone` is the status vocabulary; `MetricTone` adds `neutral` and drops
+ * `muted`. They mean the same thing, so the mapping is total and lossless.
+ */
+const TONE: Record<Tone, MetricTone> = {
+  positive: 'positive',
+  caution: 'caution',
+  critical: 'critical',
+  info: 'info',
+  brand: 'brand',
+  muted: 'neutral',
 }
 
-const ICON_TONE: Record<Tone, string> = {
-  positive: 'bg-positive-soft text-positive',
-  caution: 'bg-caution-soft text-caution',
-  critical: 'bg-critical-soft text-critical',
-  info: 'bg-info-soft text-info',
-  muted: 'bg-surface-sunken text-ink-muted',
-  brand: 'bg-brand-soft text-brand-soft-ink',
-}
-
-const SPARK_TONE: Record<Tone, string> = {
-  positive: 'var(--qb-positive)',
-  caution: 'var(--qb-caution)',
-  critical: 'var(--qb-critical)',
-  info: 'var(--qb-info)',
-  muted: 'var(--qb-chart-1)',
-  brand: 'var(--qb-chart-1)',
+const SPARK_TONE: Record<Tone, 'brand' | 'positive' | 'critical' | 'caution' | 'info'> = {
+  positive: 'positive',
+  caution: 'caution',
+  critical: 'critical',
+  info: 'info',
+  brand: 'brand',
+  muted: 'info',
 }
 
 export interface StatTileProps {
@@ -74,48 +73,21 @@ export function StatTile({
   live = false,
   className,
 }: StatTileProps) {
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow">{label}</p>
-        {icon ? (
-          <span
-            className={`flex size-7 shrink-0 items-center justify-center rounded-sm ${ICON_TONE[tone]}`}
-          >
-            <Icon name={icon} size={15} strokeWidth={2} />
-          </span>
-        ) : null}
-      </div>
-
-      <p className="mt-3 flex items-baseline gap-1.5">
-        <span
-          className={`numeric font-display text-[1.875rem] leading-none font-semibold tracking-tight ${VALUE_TONE[tone]} ${
-            live ? 'accruing' : ''
-          }`}
-        >
-          {value}
-        </span>
-        {unit ? <span className="text-[0.8125rem] font-medium text-ink-subtle">{unit}</span> : null}
-      </p>
-
-      <div className="mt-2.5 flex items-end justify-between gap-3">
-        {hint ? <p className="min-w-0 truncate text-[0.75rem] text-ink-muted">{hint}</p> : <span />}
-        {trend && trend.length > 1 ? (
-          <Sparkline values={trend} width={72} height={26} tone={SPARK_TONE[tone]} />
-        ) : null}
-      </div>
-    </>
-  )
-
-  const shell =
-    'rounded-card border border-line bg-surface p-4 shadow-card transition-shadow' +
-    (href ? ' hover:border-line-strong hover:shadow-raised' : '')
-
-  return href ? (
-    <Link href={href as Route} className={[shell, 'block', className].filter(Boolean).join(' ')}>
-      {body}
-    </Link>
-  ) : (
-    <div className={[shell, className].filter(Boolean).join(' ')}>{body}</div>
+  return (
+    <Metric
+      label={label}
+      value={value}
+      unit={unit}
+      hint={hint}
+      icon={icon}
+      tone={TONE[tone]}
+      href={href}
+      live={live}
+      className={className}
+    >
+      {trend && trend.length > 1 ? (
+        <Spark points={trend} tone={SPARK_TONE[tone]} height={30} />
+      ) : null}
+    </Metric>
   )
 }

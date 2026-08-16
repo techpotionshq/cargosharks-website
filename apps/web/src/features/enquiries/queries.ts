@@ -80,6 +80,8 @@ export async function listEnquiries(
         firstRespondedAt: enquiries.firstRespondedAt,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
+        contactName: enquiries.contactName,
+        contactEmail: enquiries.contactEmail,
         owner: principals.nameEn,
         originName: origin.nameEn,
         destinationName: destination.nameEn,
@@ -129,8 +131,15 @@ export async function listEnquiries(
         status: row.status,
         channel: row.channel,
         mode: row.mode as Mode | null,
-        customerName: row.customerName ?? '—',
-        customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+        /*
+          An enquiry from a company we have never shipped for has no customer
+          row, and that is the normal state of a new lead (FR-EQ-02) — not
+          missing data. Falling straight to an em-dash rendered the most
+          interesting row in the queue as anonymous.
+        */
+        customerName: row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+        customerNameAr:
+          row.customerNameAr ?? row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
         originName: row.originName ?? '—',
         destinationName: row.destinationName ?? '—',
         owner: row.owner,

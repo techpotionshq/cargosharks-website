@@ -21,6 +21,7 @@ import { Grid, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { ReferenceDialog } from '@/features/admin/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('reference')
@@ -43,7 +44,25 @@ export default async function ReferencePage() {
 
   return (
     <>
-      <PageHeader eyebrow={t('eyebrow')} title={t('title')} description={t('subtitle')} />
+      <PageHeader
+        eyebrow={t('eyebrow')}
+        title={t('title')}
+        description={t('subtitle')}
+        /*
+          All four catalogues are creatable from here, because these are the
+          tables that make the product *theirs*. A forwarder whose charge list
+          and exception codes match how they actually work is using their own
+          system; one who has to live with the seeded list is using ours.
+        */
+        actions={
+          <>
+            <ReferenceDialog table="charge_type" variant="secondary" />
+            <ReferenceDialog table="commodity" variant="secondary" />
+            <ReferenceDialog table="document_type" variant="secondary" />
+            <ReferenceDialog table="exception_code" variant="primary" />
+          </>
+        }
+      />
 
       {empty.length ? (
         <p className="mb-4 flex items-center gap-2 rounded-md bg-caution-soft px-3 py-2 text-[0.8125rem] font-medium text-caution ring-1 ring-caution/25 ring-inset">

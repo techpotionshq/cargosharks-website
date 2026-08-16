@@ -41,7 +41,7 @@ export async function listPartners(actor: Actor, search?: string): Promise<Partn
         openJobs: sql<number>`(
           select count(*)::int from job_partners jp
             join jobs j on j.id = jp.job_id
-           where jp.partner_id = ${partners.id}
+           where jp.partner_id = "partners"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
       })
@@ -83,7 +83,7 @@ export async function listLocations(actor: Actor, search?: string): Promise<Loca
         // the only column that tells you which of four hundred ports matter.
         useCount: sql<number>`(
           select count(*)::int from jobs j
-           where j.origin_id = ${locations.id} or j.destination_id = ${locations.id}
+           where j.origin_id = "locations"."id" or j.destination_id = "locations"."id"
         )`,
       })
       .from(locations)

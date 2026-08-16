@@ -16,6 +16,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { PaymentDialog } from '@/features/ledger/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('payments')
@@ -35,6 +36,7 @@ export default async function PaymentsPage() {
 
   return (
     <Register
+      actions={<PaymentDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

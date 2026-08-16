@@ -12,12 +12,13 @@
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { listBranches } from '@/features/admin/queries'
+import { listCalendarOptions, listBranches } from '@/features/admin/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { BranchDialog } from '@/features/admin/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('branches')
@@ -31,11 +32,15 @@ export default async function BranchesPage() {
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const rows = await listBranches(session.actor)
+  const [rows, calendars] = await Promise.all([
+    listBranches(session.actor),
+    listCalendarOptions(session.actor),
+  ])
   const active = rows.filter((row) => row.isActive).length
 
   return (
     <Register
+      actions={<BranchDialog calendars={calendars} />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

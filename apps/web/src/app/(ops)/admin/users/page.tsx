@@ -26,6 +26,7 @@ import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { UserDialog } from '@/features/admin/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('users')
@@ -58,6 +59,7 @@ export default async function UsersPage() {
 
   return (
     <Register
+      actions={<UserDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

@@ -19,6 +19,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 
 /** Margin from the two frozen totals. Null where either is missing. */
 function marginPercent(sell: string | null, cost: string | null): number | null {
@@ -57,6 +58,7 @@ export default async function QuotesPage({
 
   return (
     <Register
+      actions={<QuoteDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

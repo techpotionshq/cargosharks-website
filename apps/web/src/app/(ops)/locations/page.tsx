@@ -16,6 +16,7 @@ import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { LocationDialog } from '@/features/network/ui/dialogs'
 
 const KIND_ICON = {
   seaport: 'ship',
@@ -47,6 +48,7 @@ export default async function LocationsPage({
 
   return (
     <Register
+      actions={<LocationDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

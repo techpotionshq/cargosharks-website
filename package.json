@@ -12,7 +12,7 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "oxlint && node scripts/check-boundaries.mjs",
+    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-messages.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
@@ -23,14 +23,18 @@
     "db:studio": "pnpm --filter @qabandi/db studio",
     "db:seed": "pnpm --filter @qabandi/db seed",
     "db:create-user": "pnpm --filter @qabandi/db create-user",
+    "db:seed-demo": "pnpm --filter @qabandi/db seed-demo",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
-    "db:reset": "docker compose down -v && docker compose up -d db"
+    "db:reset": "docker compose down -v && docker compose up -d db",
+    "check:messages": "node scripts/check-messages.mjs"
   },
   "devDependencies": {
     "oxlint": "^1.78.0",
     "prettier": "^3.9.6",
+    "topojson-client": "^3.1.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "world-atlas": "^2.0.2"
   }
 }

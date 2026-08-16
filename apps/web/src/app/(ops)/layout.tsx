@@ -143,7 +143,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       */}
       <div className="hidden w-62 shrink-0 border-e border-chrome-line bg-chrome md:block">
         <nav className="sticky top-0 flex h-dvh flex-col">
-          <div className="border-b border-chrome-line/70 px-4 py-4">
+          <div className="border-b border-chrome-line px-4 py-3.5">
             <Link href="/dashboard" className="block rounded-sm outline-offset-4">
               <Logo brand={brand} locale={locale} tone="chrome" size="sm" />
             </Link>
@@ -155,20 +155,20 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             The customer-facing surface, reachable from the inside — an
             operator checking what their customer actually sees.
           */}
-          <div className="border-t border-chrome-line/70 px-3 py-2">
+          <div className="border-t border-chrome-line px-3 py-2">
             <Link
               href="/track"
-              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-white/5 hover:text-chrome-ink"
+              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
             >
-              <Icon name="tracking" size={16} className="opacity-70" />
+              <Icon name="tracking" size={16} className="text-ink-subtle" />
               {t('tracking')}
               <Icon name="external" size={13} className="ms-auto opacity-50" />
             </Link>
           </div>
 
           {/* Who you are signed in as, and the way out. */}
-          <div className="border-t border-chrome-line/70 p-3">
-            <div className="flex items-center gap-2.5">
+          <div className="border-t border-chrome-line p-3">
+            <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[0.75rem] font-semibold text-on-brand">
                 {initials}
               </span>
@@ -185,7 +185,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                   type="submit"
                   title={t('signOut')}
                   aria-label={t('signOut')}
-                  className="flex size-7 items-center justify-center rounded-md text-chrome-ink-muted transition-colors hover:bg-white/7 hover:text-chrome-ink"
+                  className="flex size-7 items-center justify-center rounded-sm text-chrome-ink-muted transition-colors hover:bg-surface hover:text-critical"
                 >
                   <Icon name="sign-out" size={15} />
                 </button>
@@ -206,14 +206,14 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             <Icon
               name="search"
               size={16}
-              className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-ink-subtle"
+              className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-subtle"
             />
             <input
               type="search"
               name="q"
               placeholder={tc('searchPlaceholder')}
               aria-label={tc('search')}
-              className="h-9 w-full rounded-md border border-line bg-surface-sunken ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+              className="h-9 w-full rounded-full border border-line bg-surface-sunken ps-9 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
             />
           </form>
 

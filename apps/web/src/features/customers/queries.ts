@@ -67,7 +67,7 @@ export async function listCustomers(actor: Actor, search?: string): Promise<Cust
         // 300ms round trip, one query per customer is a visibly slow page.
         openJobs: sql<number>`(
           select count(*)::int from jobs j
-           where j.customer_id = ${customers.id}
+           where j.customer_id = "customers"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
       })
@@ -96,7 +96,7 @@ export const getCustomer = cache(
           branchCode: branches.code,
           openJobs: sql<number>`(
           select count(*)::int from jobs j
-           where j.customer_id = ${customers.id}
+           where j.customer_id = "customers"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
         })

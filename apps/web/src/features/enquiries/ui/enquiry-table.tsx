@@ -49,15 +49,17 @@ export async function EnquiryTable({
   return (
     <TableShell>
       <THead>
-        <TH>{t('reference')}</TH>
-        <TH>{t('customer')}</TH>
-        <TH>{t('lane')}</TH>
-        <TH>{t('mode')}</TH>
-        <TH>{t('owner')}</TH>
-        <TH>{t('status')}</TH>
-        {showMargin ? <TH align="end">{t('value')}</TH> : null}
-        {showMargin ? <TH align="end">{t('margin')}</TH> : null}
-        <TH align="end">{t('slaDue')}</TH>
+        <TR>
+          <TH>{t('reference')}</TH>
+          <TH>{t('customer')}</TH>
+          <TH>{t('lane')}</TH>
+          <TH>{t('mode')}</TH>
+          <TH>{t('owner')}</TH>
+          <TH>{t('status')}</TH>
+          {showMargin ? <TH align="end">{t('value')}</TH> : null}
+          {showMargin ? <TH align="end">{t('margin')}</TH> : null}
+          <TH align="end">{t('slaDue')}</TH>
+        </TR>
       </THead>
       <TBody>
         {rows.map((row) => {

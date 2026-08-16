@@ -21,6 +21,7 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { JobDialog } from '@/features/jobs/ui/dialogs'
 
 type Filter = 'live' | 'exceptions' | 'arriving' | 'all'
 
@@ -74,9 +75,12 @@ export default async function JobsPage({
         title={t('title')}
         description={t('subtitle')}
         actions={
-          <Button href="/dashboard" icon="dashboard">
-            {tDash('title')}
-          </Button>
+          <>
+            <Button href="/dashboard" icon="dashboard">
+              {tDash('title')}
+            </Button>
+            <JobDialog />
+          </>
         }
       />
 
@@ -208,14 +212,16 @@ export default async function JobsPage({
         ) : (
           <TableShell>
             <THead>
-              <TH>{t('reference')}</TH>
-              <TH>{t('customer')}</TH>
-              <TH>{t('route')}</TH>
-              <TH>{t('vessel')}</TH>
-              <TH>{t('progress')}</TH>
-              <TH>{t('status')}</TH>
-              <TH>{t('customs')}</TH>
-              <TH align="end">{t('eta')}</TH>
+              <TR>
+                <TH>{t('reference')}</TH>
+                <TH>{t('customer')}</TH>
+                <TH>{t('route')}</TH>
+                <TH>{t('vessel')}</TH>
+                <TH>{t('progress')}</TH>
+                <TH>{t('status')}</TH>
+                <TH>{t('customs')}</TH>
+                <TH align="end">{t('eta')}</TH>
+              </TR>
             </THead>
             <TBody>
               {visible.map((job) => {

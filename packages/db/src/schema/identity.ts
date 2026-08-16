@@ -133,6 +133,16 @@ export const principalBranchRoles = pgTable(
     roleId: ref('role_id')
       .notNull()
       .references(() => roles.id),
+    /**
+     * False where the grant has been revoked — FR-ID-08.
+     *
+     * A retirement flag rather than a deleted row, because `app_user` holds no
+     * DELETE anywhere in this schema (§5.5): the audit trail must not be
+     * editable by the application that wrote it. Revocation takes effect on
+     * the principal's *next request*, since session resolution re-reads this
+     * every time instead of trusting a claim baked into a token.
+     */
+    isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },
   (t) => [

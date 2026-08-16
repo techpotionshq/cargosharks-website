@@ -62,6 +62,13 @@ alter default privileges for role app_migrator in schema public
 -- app_user is the narrow grant that lets it manage its own tables without
 -- giving the application role the ability to create anything else.
 --
+-- This is only half the fix: pg-boss also opens its install with
+-- `CREATE SCHEMA IF NOT EXISTS`, and Postgres checks CREATE on the database
+-- before it honours IF NOT EXISTS — so that statement is refused for app_user
+-- even once this schema exists. The service therefore passes
+-- `createSchema: false` (apps/service/src/queue.ts); a database provisioned
+-- without this line will fail at boot with 42501, not create the schema itself.
+--
 -- `AUTHORIZATION` needs a superuser (or a member of the role), which is why
 -- this lives in the provisioning path rather than in a migration applied by
 -- app_migrator.

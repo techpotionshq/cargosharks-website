@@ -18,6 +18,7 @@ import { formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, severityTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { RaiseExceptionDialog } from '@/features/operations/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('exceptions')
@@ -46,6 +47,7 @@ export default async function ExceptionsPage({
 
   return (
     <Register
+      actions={<RaiseExceptionDialog />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}

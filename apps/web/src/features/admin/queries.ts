@@ -131,6 +131,7 @@ export interface BranchRow {
   readonly invoiceSeries: string | null
   readonly invoiceSeriesNext: number
   readonly isActive: boolean
+  readonly calendarId: string
   readonly calendarName: string | null
   readonly people: number
   readonly openJobs: number
@@ -150,14 +151,15 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         invoiceSeries: branches.invoiceSeries,
         invoiceSeriesNext: branches.invoiceSeriesNext,
         isActive: branches.isActive,
+        calendarId: branches.calendarId,
         calendarName: workingCalendars.nameEn,
         people: sql<number>`(
           select count(*)::int from principal_branch_roles pbr
-           where pbr.branch_id = ${branches.id}
+           where pbr.branch_id = "branches"."id"
         )`,
         openJobs: sql<number>`(
           select count(*)::int from jobs j
-           where j.branch_id = ${branches.id}
+           where j.branch_id = "branches"."id"
              and j.status not in ('closed', 'cancelled')
         )`,
       })
@@ -356,4 +358,24 @@ export async function auditTableCounts(
       .orderBy(desc(sql`count(*)`))
       .limit(12),
   )
+}
+
+/**
+ * The working calendars a branch can be attached to.
+ *
+ * Its own query rather than part of `loadOptions`, because it is needed by
+ * exactly one form and every page that called `loadOptions` would otherwise
+ * pay for the join.
+ */
+export async function listCalendarOptions(
+  actor: Actor,
+): Promise<{ value: string; label: string }[]> {
+  return withActor(actor, async (tx) => {
+    const rows = await tx
+      .select({ id: workingCalendars.id, name: workingCalendars.nameEn })
+      .from(workingCalendars)
+      .where(eq(workingCalendars.isActive, true))
+      .orderBy(asc(workingCalendars.nameEn))
+    return rows.map((row) => ({ value: row.id, label: row.name }))
+  })
 }

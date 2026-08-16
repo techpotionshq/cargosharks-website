@@ -46,10 +46,24 @@ export function TableShell({
   )
 }
 
+/**
+ * The header group. Takes a `<TR>`, exactly like `TBody` does.
+ *
+ * It used to emit its own `<tr>` around whatever it was given, and fifteen of
+ * the twenty call sites passed a `<TR>` anyway — producing `<tr><tr><th>`.
+ * A nested row is not repairable markup: the browser leaves the `<th>`s
+ * outside the table's column algorithm, so the header cells sized themselves
+ * to their text while the body cells sized to the table, and every register in
+ * the product had a header whose columns did not line up with its rows.
+ *
+ * Requiring the `<TR>` is the fix that cannot regress: the header now has the
+ * same shape as the body, so there is no longer a right and a wrong way to
+ * write one.
+ */
 export function THead({ children }: { readonly children: ReactNode }) {
   return (
-    <thead className="sticky top-0 z-10 bg-surface">
-      <tr className="border-b border-line">{children}</tr>
+    <thead className="sticky top-0 z-10 bg-surface [&>tr]:border-b [&>tr]:border-line">
+      {children}
     </thead>
   )
 }

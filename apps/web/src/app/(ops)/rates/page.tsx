@@ -85,13 +85,15 @@ export default async function RatesPage() {
 
         <TableShell className="border-t border-line">
           <THead>
-            <TH>{t('carrier')}</TH>
-            <TH>{tQuote('service')}</TH>
-            <TH align="end">{tQuote('transit')}</TH>
-            <TH align="end">{tQuote('buy')}</TH>
-            <TH align="end">{tQuote('sell')}</TH>
-            <TH align="end">{tQuote('margin')}</TH>
-            <TH align="end">{t('validity')}</TH>
+            <TR>
+              <TH>{t('carrier')}</TH>
+              <TH>{tQuote('service')}</TH>
+              <TH align="end">{tQuote('transit')}</TH>
+              <TH align="end">{tQuote('buy')}</TH>
+              <TH align="end">{tQuote('sell')}</TH>
+              <TH align="end">{tQuote('margin')}</TH>
+              <TH align="end">{t('validity')}</TH>
+            </TR>
           </THead>
           <TBody>
             {options.map((option) => (

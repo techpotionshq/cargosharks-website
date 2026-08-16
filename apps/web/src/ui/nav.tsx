@@ -22,8 +22,10 @@ export interface NavLink {
   readonly href: string
   readonly label: string
   readonly icon: IconName
-  /** Rendered as a count chip — open exceptions, unassigned enquiries. */
+  /** Rendered as a count chip — open exceptions, unanswered enquiries. */
   readonly badge?: number
+  /** Paints the badge as an alarm rather than as a neutral count. */
+  readonly badgeTone?: 'critical' | 'neutral'
 }
 
 export interface NavSection {
@@ -40,36 +42,38 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
   const pathname = usePathname()
 
   return (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+    <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
       {sections.map((section) => (
         <div key={section.label}>
-          <p className="mb-1 px-3 text-[0.625rem] font-semibold tracking-[0.14em] text-chrome-ink-muted/55 uppercase">
+          <p className="mb-1.5 px-3 text-[0.625rem] font-semibold tracking-[0.14em] text-chrome-ink-muted/70 uppercase">
             {section.label}
           </p>
-          <ul className="flex flex-col gap-px">
+          <ul className="flex flex-col gap-0.5">
             {section.items.map((item) => {
               const active = isActive(pathname, item.href)
+              const critical = item.badgeTone !== 'neutral'
               return (
                 <li key={item.href}>
                   <Link
                     href={item.href as Route}
                     aria-current={active ? 'page' : undefined}
                     className={[
-                      'group relative flex items-center gap-2.5 rounded-md py-[0.4rem] ps-3 pe-2 text-[0.8125rem] transition-colors',
+                      'group relative flex items-center gap-2.5 rounded-sm py-[0.44rem] ps-3 pe-2 text-[0.8125rem] transition-colors',
                       active
-                        ? 'bg-white/9 font-semibold text-chrome-ink'
-                        : 'font-medium text-chrome-ink-muted hover:bg-white/5 hover:text-chrome-ink',
+                        ? 'bg-brand-soft font-semibold text-brand-soft-ink'
+                        : 'font-medium text-chrome-ink-muted hover:bg-surface-sunken hover:text-chrome-ink',
                     ].join(' ')}
                   >
                     {/*
-                      The active marker is a rule on the inline-start edge, not
-                      a filled pill: on a dark chrome a solid brand block at
-                      every level of the tree competes with the alarm colours on
-                      the board it is framing.
+                      A soft brand wash for the active row, with a solid rule on
+                      the inline-start edge. The rule is what survives at a
+                      glance — the wash alone is too quiet on a light chrome,
+                      and a fully saturated pill at every level of the tree
+                      competes with the alarm colours on the board it frames.
                     */}
                     <span
                       className={[
-                        'absolute inset-y-1 start-0 w-[3px] rounded-e-full bg-brand transition-opacity',
+                        'absolute inset-y-1.5 start-0 w-[3px] rounded-e-full bg-brand transition-opacity',
                         active ? 'opacity-100' : 'opacity-0',
                       ].join(' ')}
                     />
@@ -77,11 +81,18 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                       name={item.icon}
                       size={17}
                       weight={active ? 'fill' : 'regular'}
-                      className={active ? 'text-brand' : 'opacity-70'}
+                      className={active ? 'text-brand' : 'text-ink-subtle'}
                     />
                     <span className="truncate">{item.label}</span>
                     {item.badge ? (
-                      <span className="numeric ms-auto rounded-full bg-critical px-1.5 py-px text-[0.6875rem] font-semibold text-on-brand">
+                      <span
+                        className={[
+                          'numeric ms-auto min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[0.6875rem] font-semibold',
+                          critical
+                            ? 'bg-critical text-on-brand'
+                            : 'bg-surface-sunken text-ink-muted',
+                        ].join(' ')}
+                      >
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     ) : null}
@@ -111,7 +122,7 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
             href={item.href as Route}
             aria-current={active ? 'page' : undefined}
             className={[
-              'flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.8125rem] transition-colors',
+              'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.8125rem] transition-colors',
               active
                 ? 'bg-brand-soft font-semibold text-brand-soft-ink'
                 : 'font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
@@ -119,6 +130,11 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
           >
             <Icon name={item.icon} size={15} weight={active ? 'fill' : 'regular'} />
             {item.label}
+            {item.badge ? (
+              <span className="numeric rounded-full bg-critical px-1.5 text-[0.625rem] font-semibold text-on-brand">
+                {item.badge > 99 ? '99+' : item.badge}
+              </span>
+            ) : null}
           </Link>
         )
       })}

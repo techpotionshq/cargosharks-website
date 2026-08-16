@@ -17,9 +17,10 @@ import { listEnquiries } from '@/features/enquiries/queries'
 import { EnquiryTable } from '@/features/enquiries/ui/enquiry-table'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Card } from '@/ui/card'
-import { Button, PageHeader } from '@/ui/layout'
+import { PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
 import { formatNumber } from '@/lib/format'
+import { NewEnquiryButton } from '@/features/enquiries/ui/new-enquiry-dialog'
 
 type Filter = 'all' | 'unassigned' | 'overdue' | 'quoted'
 
@@ -69,11 +70,7 @@ export default async function EnquiriesPage({
         eyebrow={tDash('quotesEyebrow')}
         title={t('title')}
         description={t('subtitle')}
-        actions={
-          <Button variant="primary" icon="plus">
-            {t('newEnquiry')}
-          </Button>
-        }
+        actions={<NewEnquiryButton />}
       />
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">

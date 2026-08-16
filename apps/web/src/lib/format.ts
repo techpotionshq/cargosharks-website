@@ -94,6 +94,24 @@ export function formatDay(date: Date | null | undefined, locale: Locale): string
 }
 
 /**
+ * The clock alone — "09:15".
+ *
+ * For an event feed, where the date sits on its own line underneath and
+ * repeating it on every row would bury the thing being scanned. Always
+ * 24-hour, in both languages: a shipping schedule that says "7:00" without
+ * saying which one has caused a missed sailing somewhere.
+ */
+export function formatTime(date: Date | null | undefined, locale: Locale): string {
+  if (!date) return '—'
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: TIME_ZONE,
+  }).format(date)
+}
+
+/**
  * "in 3 hours", "2 days ago".
  *
  * The SLA column is the reason this exists: an operations manager scanning the
