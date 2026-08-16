@@ -17,18 +17,9 @@ import { invoiceSummary, listInvoices } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
-import { Badge } from '@/ui/status'
+import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
-
-const STATUS_TONE = {
-  draft: 'muted',
-  issued: 'info',
-  paid: 'positive',
-  part_paid: 'caution',
-  void: 'muted',
-  overdue: 'critical',
-} as const
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -124,14 +115,7 @@ export default async function InvoicesPage({
                 </TD>
                 <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
                 <TD>
-                  <Badge
-                    tone={
-                      overdue
-                        ? 'critical'
-                        : (STATUS_TONE[row.status as keyof typeof STATUS_TONE] ?? 'muted')
-                    }
-                    dot
-                  >
+                  <Badge tone={overdue ? 'critical' : invoiceTone(row.status)} dot>
                     {overdue ? t('statuses.overdue') : t(`statuses.${row.status}`)}
                   </Badge>
                 </TD>

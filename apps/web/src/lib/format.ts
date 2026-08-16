@@ -58,11 +58,39 @@ export function trimDecimal(value: string | null | undefined): string | null {
   return trimmed === '' || trimmed === '-' ? '0' : trimmed
 }
 
+/**
+ * Anything date-shaped, as a `Date` — or null.
+ *
+ * Every formatter below takes this rather than a bare `Date`, and the reason
+ * is a real bug rather than defensive habit. A `timestamptz` read through the
+ * query builder arrives as a `Date`; the same column read through a raw
+ * `tx.execute` arrives as an **ISO string**, and this codebase now does both.
+ * `Intl.DateTimeFormat.format` throws `RangeError: Invalid time value` on a
+ * string, which took down the quotation page the first time it rendered.
+ *
+ * TypeScript could not catch it: the raw read's row is a cast, so the type
+ * said `Date` and the runtime disagreed. Coercing here fixes every call site
+ * at once and means no future raw query has to remember.
+ *
+ * An unparseable value returns null and formats as an em-dash rather than as
+ * "Invalid Date" — a dash reads as "not recorded", which is what it is.
+ */
+function toDate(value: Date | string | number | null | undefined): Date | null {
+  if (value === null || value === undefined) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 export function formatNumber(value: number, locale: Locale): string {
   return new Intl.NumberFormat(intlLocale(locale)).format(value)
 }
 
-export function formatDate(date: Date | null | undefined, locale: Locale): string {
+export function formatDate(
+  value: Date | string | number | null | undefined,
+  locale: Locale,
+): string {
+  const date = toDate(value)
   if (!date) return '—'
   return new Intl.DateTimeFormat(intlLocale(locale), {
     day: '2-digit',
@@ -72,7 +100,11 @@ export function formatDate(date: Date | null | undefined, locale: Locale): strin
   }).format(date)
 }
 
-export function formatDateTime(date: Date | null | undefined, locale: Locale): string {
+export function formatDateTime(
+  value: Date | string | number | null | undefined,
+  locale: Locale,
+): string {
+  const date = toDate(value)
   if (!date) return '—'
   return new Intl.DateTimeFormat(intlLocale(locale), {
     day: '2-digit',
@@ -84,7 +116,11 @@ export function formatDateTime(date: Date | null | undefined, locale: Locale): s
   }).format(date)
 }
 
-export function formatDay(date: Date | null | undefined, locale: Locale): string {
+export function formatDay(
+  value: Date | string | number | null | undefined,
+  locale: Locale,
+): string {
+  const date = toDate(value)
   if (!date) return '—'
   return new Intl.DateTimeFormat(intlLocale(locale), {
     day: '2-digit',
@@ -101,7 +137,11 @@ export function formatDay(date: Date | null | undefined, locale: Locale): string
  * 24-hour, in both languages: a shipping schedule that says "7:00" without
  * saying which one has caused a missed sailing somewhere.
  */
-export function formatTime(date: Date | null | undefined, locale: Locale): string {
+export function formatTime(
+  value: Date | string | number | null | undefined,
+  locale: Locale,
+): string {
+  const date = toDate(value)
   if (!date) return '—'
   return new Intl.DateTimeFormat(intlLocale(locale), {
     hour: '2-digit',
@@ -120,10 +160,11 @@ export function formatTime(date: Date | null | undefined, locale: Locale): strin
  * which has six of them and which no hand-rolled version survives.
  */
 export function formatRelative(
-  date: Date | null | undefined,
+  value: Date | string | number | null | undefined,
   locale: Locale,
   now = Date.now(),
 ): string {
+  const date = toDate(value)
   if (!date) return '—'
   const diffMs = date.getTime() - now
   const rtf = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: 'auto' })

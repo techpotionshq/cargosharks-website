@@ -162,6 +162,31 @@ export function quoteTone(status: string): Tone {
 }
 
 /**
+ * An invoice's tone from its status.
+ *
+ * `part_paid` is amber rather than green: money has arrived and the ledger is
+ * still open, which is a state somebody has to chase. Overdue is not a status
+ * in the enum — it is a status *and* a date — so callers pass `critical`
+ * themselves when the due date has gone, and this covers the rest.
+ */
+export function invoiceTone(status: string): Tone {
+  switch (status) {
+    case 'paid':
+      return 'positive'
+    case 'issued':
+      return 'info'
+    case 'approved':
+      return 'brand'
+    case 'part_paid':
+      return 'caution'
+    case 'credited':
+      return 'critical'
+    default:
+      return 'muted'
+  }
+}
+
+/**
  * An SLA clock's tone from its remaining time.
  *
  * The thresholds are the point: amber at a quarter of the window left is early

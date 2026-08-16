@@ -119,3 +119,93 @@ export async function partnerTypeCounts(actor: Actor): Promise<{ type: string; c
       .orderBy(asc(partners.type)),
   )
 }
+
+/**
+ * One partner, with everything the file shows.
+ *
+ * Contacts, the shipments they are on, and what they cost. The last of those
+ * is the reason this page is worth having: a partner's value is not their
+ * details, it is which lanes they carry and how often something goes wrong on
+ * one — and neither is visible from the register.
+ */
+export interface PartnerDetail {
+  readonly id: string
+  readonly code: string
+  readonly type: string
+  readonly legalNameEn: string
+  readonly legalNameAr: string | null
+  readonly countryCode: string | null
+  readonly currency: string | null
+  readonly paymentTermsDays: number | null
+  readonly isActive: boolean
+  readonly openJobs: number
+  readonly totalJobs: number
+  readonly openExceptions: number
+  readonly contacts: readonly {
+    id: string
+    nameEn: string
+    email: string | null
+    phone: string | null
+    role: string | null
+  }[]
+  readonly jobs: readonly {
+    id: string
+    reference: string
+    status: string
+    role: string
+    customerName: string | null
+    lane: string | null
+    eta: Date | null
+  }[]
+}
+
+export async function getPartnerDetail(
+  actor: Actor,
+  id: string,
+): Promise<PartnerDetail | undefined> {
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select p.id, p.code, p.type::text as type,
+             p.legal_name_en as "legalNameEn", p.legal_name_ar as "legalNameAr",
+             p.country_code as "countryCode", p.currency,
+             p.payment_terms_days as "paymentTermsDays", p.is_active as "isActive",
+             (select count(*)::int from job_partners jp
+                join jobs j on j.id = jp.job_id
+               where jp.partner_id = p.id
+                 and j.status not in ('closed', 'cancelled')) as "openJobs",
+             (select count(*)::int from job_partners jp
+               where jp.partner_id = p.id) as "totalJobs",
+             /*
+               Exceptions on shipments this partner is on. Not "their fault" —
+               nothing here assigns blame — but it is the number that tells you
+               which agent to have a conversation with.
+             */
+             (select count(*)::int from job_partners jp
+                join exceptions e on e.job_id = jp.job_id
+               where jp.partner_id = p.id and e.closed_at is null) as "openExceptions",
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', pc.id, 'nameEn', pc.name_en, 'email', pc.email,
+                        'phone', pc.phone, 'role', pc.role) order by pc.name_en)
+                 from partner_contacts pc
+                where pc.partner_id = p.id and pc.is_active), '[]'::json) as contacts,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', j.id, 'reference', j.reference, 'status', j.status::text,
+                        'role', jp.role, 'customerName', c.legal_name_en,
+                        'lane', o.name_en || ' → ' || d.name_en, 'eta', j.eta)
+                      order by j.eta nulls last)
+                 from job_partners jp
+                 join jobs j on j.id = jp.job_id
+                 left join customers c on c.id = j.customer_id
+                 left join locations o on o.id = j.origin_id
+                 left join locations d on d.id = j.destination_id
+                where jp.partner_id = p.id
+                  and j.status not in ('closed', 'cancelled')), '[]'::json) as jobs
+        from partners p
+       where p.id = ${id}
+       limit 1
+    `)
+    return result.rows[0] as unknown as PartnerDetail | undefined
+  })
+}

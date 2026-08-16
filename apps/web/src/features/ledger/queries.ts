@@ -358,3 +358,165 @@ export async function topDebtors(actor: Actor, limit = 8): Promise<DebtorRow[]> 
     return result.rows as unknown as DebtorRow[]
   })
 }
+
+// --- detail reads ----------------------------------------------------------
+
+export interface QuoteDetail {
+  readonly id: string
+  readonly reference: string
+  readonly enquiryId: string
+  readonly enquiryReference: string
+  readonly branchId: string
+  readonly branchCode: string | null
+  readonly customerId: string | null
+  readonly customerName: string | null
+  readonly version: number
+  readonly status: string
+  readonly currency: string
+  readonly totalSell: string | null
+  readonly totalCost: string | null
+  readonly validUntil: string | null
+  readonly preparedBy: string | null
+  readonly sentAt: Date | null
+  readonly decidedAt: Date | null
+  readonly createdAt: Date
+  readonly lane: string | null
+  readonly mode: string | null
+  readonly notes: string | null
+  readonly lines: readonly {
+    id: string
+    chargeName: string
+    description: string | null
+    basis: string
+    quantity: string
+    rate: string
+    amount: string
+    currency: string
+  }[]
+  /** Earlier versions of the same quotation, newest first. */
+  readonly history: readonly { id: string; reference: string; version: number; status: string }[]
+}
+
+export async function getQuoteDetail(actor: Actor, id: string): Promise<QuoteDetail | undefined> {
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select q.id, q.reference, q.enquiry_id as "enquiryId", e.reference as "enquiryReference",
+             q.branch_id as "branchId", b.code as "branchCode",
+             e.customer_id as "customerId", c.legal_name_en as "customerName",
+             q.version, q.status::text as status, q.currency,
+             q.total_sell::text as "totalSell", q.total_cost::text as "totalCost",
+             q.valid_until::text as "validUntil",
+             p.name_en as "preparedBy",
+             q.sent_at as "sentAt", q.decided_at as "decidedAt", q.created_at as "createdAt",
+             case when o.name_en is null or d.name_en is null then null
+                  else o.name_en || ' → ' || d.name_en end as lane,
+             e.mode::text as mode,
+             q.priced_snapshot ->> 'notes' as notes,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', ql.id, 'chargeName', ct.name_en, 'description', ql.description,
+                        'basis', ql.basis, 'quantity', ql.quantity::text,
+                        'rate', ql.rate::text, 'amount', ql.amount::text,
+                        'currency', ql.currency) order by ql.sort_order)
+                 from quote_lines ql
+                 join charge_types ct on ct.id = ql.charge_type_id
+                where ql.quote_id = q.id), '[]'::json) as lines,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', h.id, 'reference', h.reference,
+                        'version', h.version, 'status', h.status::text) order by h.version desc)
+                 from quotes h
+                where h.enquiry_id = q.enquiry_id and h.id <> q.id), '[]'::json) as history
+        from quotes q
+        join enquiries e on e.id = q.enquiry_id
+        left join branches  b on b.id = q.branch_id
+        left join customers c on c.id = e.customer_id
+        left join principals p on p.id = q.prepared_by_id
+        left join locations o on o.id = e.origin_id
+        left join locations d on d.id = e.destination_id
+       where q.id = ${id}
+       limit 1
+    `)
+    return result.rows[0] as unknown as QuoteDetail | undefined
+  })
+}
+
+export interface InvoiceDetail {
+  readonly id: string
+  readonly seriesNo: string | null
+  readonly status: string
+  readonly branchId: string
+  readonly branchCode: string | null
+  readonly customerId: string
+  readonly customerName: string | null
+  readonly currency: string
+  readonly subtotal: string
+  readonly taxAmount: string
+  readonly total: string
+  readonly amountPaid: string
+  readonly taxTreatment: string
+  readonly taxRatePercent: string
+  readonly language: string
+  readonly issuedAt: Date | null
+  readonly dueOn: string | null
+  readonly issuedBy: string | null
+  readonly notes: string | null
+  readonly lines: readonly {
+    id: string
+    descriptionEn: string
+    quantity: string
+    unitPrice: string
+    amount: string
+    taxAmount: string
+  }[]
+  readonly allocations: readonly {
+    id: string
+    amount: string
+    receivedOn: string
+    reference: string | null
+    method: string
+  }[]
+}
+
+export async function getInvoiceDetail(
+  actor: Actor,
+  id: string,
+): Promise<InvoiceDetail | undefined> {
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select i.id, i.series_no as "seriesNo", i.status::text as status,
+             i.branch_id as "branchId", b.code as "branchCode",
+             i.customer_id as "customerId", c.legal_name_en as "customerName",
+             i.currency, i.subtotal::text as subtotal, i.tax_amount::text as "taxAmount",
+             i.total::text as total, i.amount_paid::text as "amountPaid",
+             i.tax_treatment::text as "taxTreatment",
+             i.tax_rate_percent::text as "taxRatePercent",
+             i.language::text as language,
+             i.issued_at as "issuedAt", i.due_on::text as "dueOn",
+             p.name_en as "issuedBy", i.notes,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', il.id, 'descriptionEn', il.description_en,
+                        'quantity', il.quantity::text, 'unitPrice', il.unit_price::text,
+                        'amount', il.amount::text, 'taxAmount', il.tax_amount::text)
+                      order by il.sort_order)
+                 from invoice_lines il where il.invoice_id = i.id), '[]'::json) as lines,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', pa.id, 'amount', pa.amount::text,
+                        'receivedOn', pm.received_on::text,
+                        'reference', pm.reference, 'method', pm.method)
+                      order by pm.received_on desc)
+                 from payment_allocations pa
+                 join payments pm on pm.id = pa.payment_id
+                where pa.invoice_id = i.id), '[]'::json) as allocations
+        from invoices i
+        left join branches   b on b.id = i.branch_id
+        left join customers  c on c.id = i.customer_id
+        left join principals p on p.id = i.issued_by_id
+       where i.id = ${id}
+       limit 1
+    `)
+    return result.rows[0] as unknown as InvoiceDetail | undefined
+  })
+}

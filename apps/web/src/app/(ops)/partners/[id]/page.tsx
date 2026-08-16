@@ -1,0 +1,232 @@
+/**
+ * The partner file.
+ *
+ * Linked from the register, which pointed at a route that did not exist.
+ *
+ * The page leads with the two numbers that decide whether a relationship is
+ * working — how much you are giving them, and how often something goes wrong
+ * on it. Neither is visible from the register, and both are the reason anybody
+ * opens a partner in the first place.
+ *
+ * The exception count is deliberately not framed as fault. A carrier on the
+ * Shanghai lane in a bad month carries the delays of that lane, not their own
+ * incompetence. It is a prompt for a conversation, and the wording says so.
+ */
+
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { requireSession } from '@/lib/session'
+import { getPartnerDetail } from '@/features/network/queries'
+import { PartnerDialog } from '@/features/network/ui/dialogs'
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
+import { formatDate, formatNumber } from '@/lib/format'
+import { Icon } from '@/ui/icon'
+import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { Metric } from '@/ui/metric'
+import { Panel } from '@/ui/panel'
+import { Badge, jobTone } from '@/ui/status'
+import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const { id } = await params
+  const partner = await getPartnerDetail(session.actor, id)
+  return { title: partner?.legalNameEn ?? 'Partner' }
+}
+
+export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await requireSession()
+  const { id } = await params
+  const partner = await getPartnerDetail(session.actor, id)
+  if (!partner) notFound()
+
+  const t = await getTranslations('partnerDetail')
+  const tc = await getTranslations('common')
+  const tp = await getTranslations('partners')
+  const tf = await getTranslations('partnerForm')
+  const tJob = await getTranslations('job')
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+
+  const displayName =
+    locale === 'ar' && partner.legalNameAr ? partner.legalNameAr : partner.legalNameEn
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={
+          <span className="inline-flex items-center gap-2">
+            <Link href="/partners" className="hover:text-ink">
+              {tp('title')}
+            </Link>
+            <Icon name="chevron-end" size={12} />
+            <span className="ref">{partner.code}</span>
+          </span>
+        }
+        title={displayName}
+        description={tf(`types.${partner.type}` as 'types.carrier')}
+        actions={
+          <>
+            <Badge tone={partner.isActive ? 'positive' : 'muted'} dot>
+              {partner.isActive ? tc('active') : tc('inactive')}
+            </Badge>
+            <PartnerDialog
+              variant="secondary"
+              defaults={{
+                id: partner.id,
+                code: partner.code,
+                type: partner.type,
+                legalNameEn: partner.legalNameEn,
+                legalNameAr: partner.legalNameAr,
+                countryCode: partner.countryCode,
+                currency: partner.currency,
+                paymentTermsDays: partner.paymentTermsDays,
+                isActive: partner.isActive,
+              }}
+            />
+          </>
+        }
+      />
+
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Metric
+          label={t('openJobs')}
+          value={formatNumber(partner.openJobs, locale)}
+          icon="jobs"
+          tone="brand"
+          hint={t('openJobsHint')}
+        />
+        <Metric
+          label={t('totalJobs')}
+          value={formatNumber(partner.totalJobs, locale)}
+          icon="audit"
+          hint={t('totalJobsHint')}
+        />
+        <Metric
+          label={t('openExceptions')}
+          value={formatNumber(partner.openExceptions, locale)}
+          icon="alert"
+          tone={partner.openExceptions > 0 ? 'caution' : 'positive'}
+          hint={t('openExceptionsHint')}
+          href="/exceptions"
+        />
+        <Metric
+          label={t('terms')}
+          value={
+            partner.paymentTermsDays === null
+              ? '—'
+              : tp('days', { count: partner.paymentTermsDays })
+          }
+          icon="finance"
+          hint={t('termsHint')}
+        />
+      </div>
+
+      <Grid>
+        <Panel
+          className="lg:col-span-8"
+          padding="none"
+          icon="ship"
+          title={t('shipments')}
+          explain={t('shipmentsExplain')}
+          footerHref="/jobs"
+          footerLabel={tJob('title')}
+        >
+          {partner.jobs.length === 0 ? (
+            <EmptyState icon="ship" title={t('noJobs')} description={t('noJobsHint')} />
+          ) : (
+            <TableShell minWidth="none">
+              <THead>
+                <TR>
+                  <TH>{t('reference')}</TH>
+                  <TH>{t('customer')}</TH>
+                  <TH>{t('role')}</TH>
+                  <TH>{tc('status')}</TH>
+                  <TH>{t('eta')}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {partner.jobs.map((job) => (
+                  <TR key={`${job.id}-${job.role}`}>
+                    <TD>
+                      <Link
+                        href={`/jobs/${job.id}`}
+                        className="ref numeric font-medium text-brand hover:underline"
+                      >
+                        {job.reference}
+                      </Link>
+                      {job.lane ? (
+                        <span className="block text-[0.75rem] text-ink-subtle">{job.lane}</span>
+                      ) : null}
+                    </TD>
+                    <TD className="text-ink-muted">{job.customerName ?? '—'}</TD>
+                    <TD className="text-ink-muted">{t(`roles.${job.role}` as 'roles.carrier')}</TD>
+                    <TD>
+                      <Badge tone={jobTone(job.status)} dot>
+                        {tJob(`statuses.${job.status}` as 'statuses.booked')}
+                      </Badge>
+                    </TD>
+                    <TD className="whitespace-nowrap text-ink-muted">
+                      {job.eta ? formatDate(job.eta, locale) : '—'}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </TableShell>
+          )}
+        </Panel>
+
+        <div className="flex flex-col gap-4 lg:col-span-4">
+          <Panel icon="partners" title={t('about')}>
+            <dl className="grid grid-cols-2 gap-4">
+              <Field label={tf('code')} mono>
+                {partner.code}
+              </Field>
+              <Field label={tf('type')}>{tf(`types.${partner.type}` as 'types.carrier')}</Field>
+              <Field label={tf('country')}>{partner.countryCode ?? '—'}</Field>
+              <Field label={tf('currency')}>{partner.currency ?? '—'}</Field>
+              <Field label={tf('legalNameAr')} className="col-span-2">
+                {partner.legalNameAr ?? '—'}
+              </Field>
+            </dl>
+          </Panel>
+
+          <Panel padding="none" icon="users" title={t('contacts')} explain={t('contactsExplain')}>
+            {partner.contacts.length === 0 ? (
+              <EmptyState icon="users" title={t('noContacts')} description={t('noContactsHint')} />
+            ) : (
+              <ul className="divide-y divide-line">
+                {partner.contacts.map((contact) => (
+                  <li key={contact.id} className="px-5 py-3">
+                    <p className="text-[0.875rem] font-medium text-ink">{contact.nameEn}</p>
+                    {contact.role ? (
+                      <p className="text-[0.75rem] text-ink-subtle">{contact.role}</p>
+                    ) : null}
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-ink-muted">
+                      {contact.email ? (
+                        <a href={`mailto:${contact.email}`} className="hover:text-brand">
+                          {contact.email}
+                        </a>
+                      ) : null}
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="numeric hover:text-brand">
+                          {contact.phone}
+                        </a>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      </Grid>
+    </>
+  )
+}

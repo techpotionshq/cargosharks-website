@@ -689,6 +689,18 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
      * is a development affordance and therefore needs the owning role.
      */
     await tx.execute(sql`
+      /*
+        Notifications and messages first: both hold foreign keys to enquiries
+        and jobs, and the outbox in particular fills up as soon as anybody
+        uses the app — the first enquiry created through the dialog is enough
+        to make a reset fail on a constraint.
+      */
+      delete from notification_deliveries;
+      delete from notification_outbox;
+      delete from message_attachments;
+      delete from messages;
+      delete from charge_lines;
+      delete from rate_requests;
       delete from payment_allocations;
       delete from payments;
       delete from invoice_lines;
@@ -698,6 +710,9 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from customs_stages;
       delete from documents;
       delete from equipment;
+      -- Assets outlive the documents that point at them, and the storage key
+      -- is unique, so a reseed collides on a key it created last time.
+      delete from assets;
       delete from job_partners;
       delete from job_milestones;
       delete from jobs;
@@ -1219,6 +1234,15 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         await tx.insert(invoiceLines).values(
           anyCharge.slice(0, 3).map((row: { id: string }, index: number) => {
             const amount = Math.round((subtotal / 3) * 100) / 100
+            /*
+              Line tax has to be set, not left at its zero default.
+
+              The header's tax came from the invoice-level calculation while
+              every line said "—", so the detail page showed a document whose
+              lines did not compose its own total. The header is right; the
+              lines were the ones lying.
+            */
+            const lineTax = Math.round(amount * 0.05 * 1000) / 1000
             return {
               invoiceId: invoice!.id,
               chargeTypeId: row.id,
@@ -1226,6 +1250,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
               quantity: '1',
               unitPrice: String(amount),
               amount: String(amount),
+              taxAmount: String(lineTax),
               isTaxable: true,
               sortOrder: index,
             }
