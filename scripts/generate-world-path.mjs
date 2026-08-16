@@ -34,20 +34,18 @@ const MIN_RING_SIZE = 1.5
 /** Drops a vertex closer than this to the last one kept, in viewBox units. */
 const MIN_STEP = 3.0
 
-const topology = JSON.parse(
-  readFileSync('node_modules/world-atlas/land-110m.json', 'utf8'),
-)
+const topology = JSON.parse(readFileSync('node_modules/world-atlas/land-110m.json', 'utf8'))
 const land = feature(topology, topology.objects.land)
 
-const project = ([lon, lat]) => [
-  ((lon + 180) / 360) * WIDTH,
-  ((90 - lat) / 180) * HEIGHT,
-]
+const project = ([lon, lat]) => [((lon + 180) / 360) * WIDTH, ((90 - lat) / 180) * HEIGHT]
 
 function ringPath(ring) {
   // A ring's extent decides whether it survives: at this size an islet is one
   // sub-pixel speck that costs as much path data as a country.
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   const points = ring.map((coordinate) => {
     const [x, y] = project(coordinate)
     if (x < minX) minX = x

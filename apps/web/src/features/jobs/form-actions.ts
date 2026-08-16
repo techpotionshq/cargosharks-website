@@ -45,7 +45,12 @@ function read(form: FormData, key: string): string | undefined {
 }
 
 const optionalText = (max = 80) =>
-  z.string().trim().max(max).optional().transform((v) => v || null)
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => v || null)
 
 const optionalNumber = z
   .string()
@@ -66,17 +71,34 @@ const jobSchema = z
     jobId: z.uuid().optional(),
     branchId: z.uuid('Choose a branch'),
     customerId: z.uuid('Choose a customer'),
-    quoteId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+    quoteId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
     tradeDirection: z.enum(['import', 'export', 'cross_trade']),
     status: z.enum([
-      'draft', 'booked', 'in_transit', 'arrived', 'customs',
-      'delivered', 'completed', 'closed', 'on_hold', 'cancelled',
+      'draft',
+      'booked',
+      'in_transit',
+      'arrived',
+      'customs',
+      'delivered',
+      'completed',
+      'closed',
+      'on_hold',
+      'cancelled',
     ]),
-    ownerId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+    ownerId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     originId: z.uuid('Choose where it starts'),
     destinationId: z.uuid('Choose where it goes'),
-    commodityId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+    commodityId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     incoterm: optionalText(10),
     masterBillNumber: optionalText(),
     houseBillNumber: optionalText(),
@@ -241,17 +263,17 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
       // Booking a job off an accepted quotation marks the quote as consumed,
       // so the quote register stops showing it as an open opportunity.
       if (data.quoteId) {
-        await tx
-          .update(quotes)
-          .set({ updatedAt: new Date() })
-          .where(eq(quotes.id, data.quoteId))
+        await tx.update(quotes).set({ updatedAt: new Date() }).where(eq(quotes.id, data.quoteId))
       }
 
       return row!.reference
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ masterBillNumber: 'That bill number is already on another shipment.' }, echo(form))
+      return fail(
+        { masterBillNumber: 'That bill number is already on another shipment.' },
+        echo(form),
+      )
     }
     throw error
   }
@@ -271,7 +293,12 @@ export async function addJobPartner(_previous: ActionState, form: FormData): Pro
     branchId: z.uuid(),
     partnerId: z.uuid('Choose a partner'),
     role: z.enum([
-      'carrier', 'origin_agent', 'destination_agent', 'customs_broker', 'haulier', 'terminal',
+      'carrier',
+      'origin_agent',
+      'destination_agent',
+      'customs_broker',
+      'haulier',
+      'terminal',
     ]),
     reference: optionalText(),
   })

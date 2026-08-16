@@ -101,7 +101,9 @@ export async function NewEnquiryButton({
         directions: Object.fromEntries(
           DIRECTIONS.map((direction) => [direction, tDirection(direction)]),
         ),
-        channels: Object.fromEntries(CHANNELS.map((channel) => [channel, t(`channels.${channel}`)])),
+        channels: Object.fromEntries(
+          CHANNELS.map((channel) => [channel, t(`channels.${channel}`)]),
+        ),
       }}
     />
   )

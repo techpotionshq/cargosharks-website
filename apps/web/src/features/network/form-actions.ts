@@ -234,10 +234,7 @@ export async function setNetworkActive(
 
   await withActor(session.actor, async (tx) => {
     if (kind === 'partner') {
-      await tx
-        .update(partners)
-        .set({ isActive, updatedAt: new Date() })
-        .where(eq(partners.id, id))
+      await tx.update(partners).set({ isActive, updatedAt: new Date() }).where(eq(partners.id, id))
     } else {
       await tx
         .update(locations)

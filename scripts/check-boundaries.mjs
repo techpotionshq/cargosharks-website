@@ -114,7 +114,6 @@ for (const file of globSync('apps/web/src/**/*.ts')) {
   }
 }
 
-
 if (failures > 0) {
   console.error(`\n${failures} boundary violation(s).`)
   process.exit(1)

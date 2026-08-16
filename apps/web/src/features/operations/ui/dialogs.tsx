@@ -18,8 +18,14 @@ import { closeException, raiseException, saveCustomsStage } from '../form-action
 const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
 
 const CUSTOMS_STATUSES = [
-  'not_started', 'documents_pending', 'declaration_filed', 'assessed',
-  'duty_paid', 'inspection', 'released', 'held',
+  'not_started',
+  'documents_pending',
+  'declaration_filed',
+  'assessed',
+  'duty_paid',
+  'inspection',
+  'released',
+  'held',
 ] as const
 
 /** Raise an exception. `jobId` is fixed when opened from a shipment. */
@@ -151,10 +157,7 @@ export async function CloseExceptionDialog({ exceptionId }: { readonly exception
   const session = await requireSession()
   if (!can(session, 'job.update')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('exceptionForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('exceptionForm'), getTranslations('common')])
 
   return (
     <RecordDialog

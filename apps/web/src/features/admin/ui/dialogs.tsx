@@ -359,10 +359,7 @@ export async function ReferenceDialog({
   const session = await requireSession()
   if (!can(session, 'admin.reference.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('referenceForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('referenceForm'), getTranslations('common')])
 
   const editing = Boolean(defaults?.id)
 

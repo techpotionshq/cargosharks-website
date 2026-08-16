@@ -19,14 +19,7 @@ import { revalidatePath } from 'next/cache'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { assertTransition, customsMachine } from '@qabandi/core'
-import {
-  customsStages,
-  equipment,
-  exceptions,
-  jobMilestones,
-  jobs,
-  withActor,
-} from '@qabandi/db'
+import { customsStages, equipment, exceptions, jobMilestones, jobs, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
@@ -52,8 +45,16 @@ const raiseSchema = z.object({
   jobId: z.uuid('Choose a shipment'),
   exceptionCodeId: z.uuid('Choose what went wrong'),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
-  description: z.string().trim().max(1000).optional().transform((v) => v || null),
-  ownerId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+  description: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((v) => v || null),
+  ownerId: z
+    .uuid()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   dueAt: localDateTime,
   customerVisible: z.coerce.boolean(),
   costImpact: z
@@ -146,22 +147,50 @@ export async function closeException(_previous: ActionState, form: FormData): Pr
 const customsSchema = z.object({
   jobId: z.uuid('Choose a shipment'),
   status: z.enum([
-    'not_started', 'documents_pending', 'declaration_filed', 'assessed',
-    'duty_paid', 'inspection', 'released', 'held',
+    'not_started',
+    'documents_pending',
+    'declaration_filed',
+    'assessed',
+    'duty_paid',
+    'inspection',
+    'released',
+    'held',
   ]),
-  declarationType: z.string().trim().max(40).optional().transform((v) => v || null),
-  declarationNo: z.string().trim().max(60).optional().transform((v) => v || null),
-  brokerPartnerId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+  declarationType: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => v || null),
+  declarationNo: z
+    .string()
+    .trim()
+    .max(60)
+    .optional()
+    .transform((v) => v || null),
+  brokerPartnerId: z
+    .uuid()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
   dutyAmount: z
     .string()
     .trim()
     .regex(/^\d*\.?\d*$/, 'Numbers only')
     .optional()
     .transform((v) => (v ? v : null)),
-  dutyCurrency: z.string().trim().optional().transform((v) => (v ? v.toUpperCase() : null)),
+  dutyCurrency: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v.toUpperCase() : null)),
   inspectionRequired: z.coerce.boolean(),
   slaDueAt: localDateTime,
-  notes: z.string().trim().max(1000).optional().transform((v) => v || null),
+  notes: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((v) => v || null),
 })
 
 /**
@@ -318,8 +347,18 @@ const containerSchema = z.object({
     .refine((v) => v === null || /^[A-Z]{4}\d{6,7}$/.test(v), {
       message: 'Four letters then six or seven digits, e.g. MSKU4419512',
     }),
-  containerType: z.string().trim().max(20).optional().transform((v) => v || null),
-  sealNo: z.string().trim().max(40).optional().transform((v) => v || null),
+  containerType: z
+    .string()
+    .trim()
+    .max(20)
+    .optional()
+    .transform((v) => v || null),
+  sealNo: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => v || null),
   grossWeightKg: z
     .string()
     .trim()

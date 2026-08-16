@@ -79,9 +79,10 @@ export default async function DashboardPage() {
   const now = nowDate.getTime()
 
   const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
-  const firstName = (locale === 'ar' && session.principal.nameAr
-    ? session.principal.nameAr
-    : session.principal.nameEn
+  const firstName = (
+    locale === 'ar' && session.principal.nameAr
+      ? session.principal.nameAr
+      : session.principal.nameEn
   ).split(' ')[0]!
 
   /**
@@ -397,10 +398,7 @@ export default async function DashboardPage() {
                     nextArrival.vesselOrFlight
                       ? t('events.arrivingOn', { carrier: nextArrival.vesselOrFlight })
                       : t('events.arrivingDetail', {
-                          place: nameOf(
-                            nextArrival.destinationName,
-                            nextArrival.destinationNameAr,
-                          ),
+                          place: nameOf(nextArrival.destinationName, nextArrival.destinationNameAr),
                         })
                   }
                   tone="brand"

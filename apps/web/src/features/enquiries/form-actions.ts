@@ -17,12 +17,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { and, eq, sql } from 'drizzle-orm'
-import {
-  assertTransition,
-  enquiryMachine,
-  slaDueAt,
-  type WorkingCalendar,
-} from '@qabandi/core'
+import { assertTransition, enquiryMachine, slaDueAt, type WorkingCalendar } from '@qabandi/core'
 import {
   branches,
   calendarHolidays,
@@ -39,10 +34,7 @@ import { createEnquirySchema } from './schema'
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
 
-export async function submitEnquiry(
-  _previous: ActionState,
-  form: FormData,
-): Promise<ActionState> {
+export async function submitEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
 

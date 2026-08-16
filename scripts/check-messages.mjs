@@ -39,7 +39,10 @@ const defined = { en: keysOf(catalogues.en), ar: keysOf(catalogues.ar) }
 // --- 1. every key defined in one language exists in the other -------------
 
 let failures = 0
-for (const [have, want] of [['en', 'ar'], ['ar', 'en']]) {
+for (const [have, want] of [
+  ['en', 'ar'],
+  ['ar', 'en'],
+]) {
   const missing = [...defined[have]].filter((key) => !defined[want].has(key)).sort()
   if (missing.length) {
     console.error(`\n${missing.length} key(s) in ${have} but not in ${want}:`)
@@ -56,7 +59,8 @@ for (const [have, want] of [['en', 'ar'], ['ar', 'en']]) {
  * local name; `t('key')` then resolves against it. Both are tracked per file,
  * because one file routinely holds six.
  */
-const BIND = /(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'\s*\)/g
+const BIND =
+  /(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'\s*\)/g
 const CALL = /\b(\w+)\(\s*'([^']+)'/g
 const DYNAMIC = /\b(\w+)\(\s*`/g
 

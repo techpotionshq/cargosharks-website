@@ -294,11 +294,19 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
           span={field.span}
           // On a rejected submit an unchecked box is absent from the FormData
           // entirely, so "present in values" is the only correct read.
-          defaultChecked={state.values ? state.values[field.name] !== undefined : field.defaultChecked}
+          defaultChecked={
+            state.values ? state.values[field.name] !== undefined : field.defaultChecked
+          }
         />
       )
     case 'choices':
-      return <ChoiceCards {...common} options={field.options} defaultValue={echoed ?? field.defaultValue} />
+      return (
+        <ChoiceCards
+          {...common}
+          options={field.options}
+          defaultValue={echoed ?? field.defaultValue}
+        />
+      )
     default:
       return (
         <Input

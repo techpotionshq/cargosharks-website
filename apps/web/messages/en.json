@@ -545,7 +545,14 @@
     "customerLink": "Track a shipment without signing in",
     "submitting": "Signing in…",
     "errorInvalid": "That email and password do not match an account.",
-    "errorMissing": "Enter your email and password."
+    "errorMissing": "Enter your email and password.",
+    "panelTitle": "One board for everything moving.",
+    "panelBody": "Enquiries, quotations, shipments, customs and money — in one place, with the problems at the top and the clock running where it should be.",
+    "assurances": {
+      "live": "Live shipment status, exceptions first, so the oldest problem is the one you see.",
+      "scoped": "You see your own branches and nothing else. Enforced by the database, not by the screen.",
+      "bilingual": "English and Arabic throughout, including the documents you issue."
+    }
   },
   "customers": {
     "eyebrow": "Commercial",

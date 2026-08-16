@@ -16,7 +16,11 @@ import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { createInvoice, createQuote, recordPayment } from '../form-actions'
 
 const TAX_TREATMENTS = [
-  'out_of_scope', 'zero_rated', 'exempt', 'standard', 'reverse_charge',
+  'out_of_scope',
+  'zero_rated',
+  'exempt',
+  'standard',
+  'reverse_charge',
 ] as const
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'card', 'offset'] as const
 

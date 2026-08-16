@@ -363,7 +363,9 @@ export function Switch({
         </span>
         <span className="min-w-0">
           <span className="block text-[0.875rem] font-medium text-ink">{label}</span>
-          {hint ? <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">{hint}</span> : null}
+          {hint ? (
+            <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">{hint}</span>
+          ) : null}
         </span>
       </label>
     </div>
@@ -402,9 +404,7 @@ export function ChoiceCards({
               defaultChecked={defaultValue === option.value}
               className="sr-only"
             />
-            {option.icon ? (
-              <Icon name={option.icon} size={18} className="text-ink-muted" />
-            ) : null}
+            {option.icon ? <Icon name={option.icon} size={18} className="text-ink-muted" /> : null}
             <span className="text-[0.8125rem] font-medium text-ink">{option.label}</span>
             {option.hint ? (
               <span className="text-[0.6875rem] text-ink-subtle">{option.hint}</span>

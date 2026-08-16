@@ -115,7 +115,7 @@ function viewBoxFor(ports: readonly MapPort[]): string {
   // Arcs bow away from the equator and labels run to the right, so the padding
   // is not symmetric: the box needs headroom where the drawing actually goes.
   const padX = Math.max((maxX - minX) * 0.14, 24)
-  const padY = Math.max((maxY - minY) * 0.30, 16)
+  const padY = Math.max((maxY - minY) * 0.3, 16)
   minX -= padX
   maxX += padX * 1.4
   minY -= padY
@@ -240,8 +240,7 @@ export function LaneMap({
         y2: candidate.y + 2 * k,
       }
       const clashes = placed.some(
-        (other) =>
-          box.x1 < other.x2 && box.x2 > other.x1 && box.y1 < other.y2 && box.y2 > other.y1,
+        (other) => box.x1 < other.x2 && box.x2 > other.x1 && box.y1 < other.y2 && box.y2 > other.y1,
       )
       if (!clashes) {
         placed.push(box)
@@ -252,7 +251,11 @@ export function LaneMap({
   }
 
   return (
-    <div className={['relative w-full overflow-hidden rounded-sm', className].filter(Boolean).join(' ')}>
+    <div
+      className={['relative w-full overflow-hidden rounded-sm', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <svg
         viewBox={viewBox}
         className="block w-full"
@@ -358,11 +361,7 @@ export function LaneMap({
 
             return (
               <g key={port.id}>
-                {port.href ? (
-                  <Link href={port.href as Route}>{marker}</Link>
-                ) : (
-                  marker
-                )}
+                {port.href ? <Link href={port.href as Route}>{marker}</Link> : marker}
                 {label ? (
                   <text
                     x={label.x}
@@ -401,7 +400,11 @@ export function LaneMapLegend({
   readonly className?: string
 }) {
   return (
-    <ul className={['flex flex-wrap items-center gap-x-4 gap-y-1.5', className].filter(Boolean).join(' ')}>
+    <ul
+      className={['flex flex-wrap items-center gap-x-4 gap-y-1.5', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       {modes.map((entry) => (
         <li key={entry.mode} className="flex items-center gap-1.5 text-[0.75rem] text-ink-muted">
           <span

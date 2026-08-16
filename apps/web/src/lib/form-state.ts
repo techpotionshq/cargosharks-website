@@ -46,10 +46,7 @@ export function echo(form: FormData): Record<string, string> {
   return out
 }
 
-export function fail(
-  errors: Record<string, string>,
-  values?: Record<string, string>,
-): ActionState {
+export function fail(errors: Record<string, string>, values?: Record<string, string>): ActionState {
   return { errors, values }
 }
 

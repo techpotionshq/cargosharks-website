@@ -32,7 +32,11 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
-import { CloseExceptionDialog, CustomsDialog, RaiseExceptionDialog } from '@/features/operations/ui/dialogs'
+import {
+  CloseExceptionDialog,
+  CustomsDialog,
+  RaiseExceptionDialog,
+} from '@/features/operations/ui/dialogs'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {

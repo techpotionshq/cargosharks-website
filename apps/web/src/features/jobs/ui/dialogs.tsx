@@ -21,8 +21,15 @@ import { saveJob } from '../form-actions'
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
 const STATUSES = [
-  'draft', 'booked', 'in_transit', 'arrived', 'customs',
-  'delivered', 'completed', 'closed', 'on_hold',
+  'draft',
+  'booked',
+  'in_transit',
+  'arrived',
+  'customs',
+  'delivered',
+  'completed',
+  'closed',
+  'on_hold',
 ] as const
 
 const MODE_ICON = {
@@ -323,9 +330,7 @@ export async function JobDialog({
       ],
     },
 
-    ...(editing
-      ? []
-      : [{ kind: 'note' as const, text: t('milestoneNote') }]),
+    ...(editing ? [] : [{ kind: 'note' as const, text: t('milestoneNote') }]),
   ]
 
   return (

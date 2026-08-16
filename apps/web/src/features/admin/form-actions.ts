@@ -54,7 +54,12 @@ function readAll(form: FormData, key: string): string[] {
 }
 
 const optional = (max = 200) =>
-  z.string().trim().max(max).optional().transform((v) => v || null)
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => v || null)
 
 // --- people ----------------------------------------------------------------
 
@@ -226,8 +231,16 @@ const branchSchema = z.object({
    * is a branch that cannot issue an Arabic invoice.
    */
   legalNameAr: z.string().trim().min(2, 'Required — it appears on Arabic invoices').max(200),
-  baseCurrency: z.string().trim().length(3, 'A three-letter code').transform((v) => v.toUpperCase()),
-  country: z.string().trim().length(2, 'Choose a country').transform((v) => v.toUpperCase()),
+  baseCurrency: z
+    .string()
+    .trim()
+    .length(3, 'A three-letter code')
+    .transform((v) => v.toUpperCase()),
+  country: z
+    .string()
+    .trim()
+    .length(2, 'Choose a country')
+    .transform((v) => v.toUpperCase()),
   calendarId: z.uuid('Every branch needs a working calendar'),
   timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
   /** The prefix on this branch's invoice numbers. Defaults to the code. */
@@ -402,7 +415,9 @@ export async function saveReferenceRecord(
       const target = REFERENCE_TABLES[table]
       if (data.recordId) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await tx.update(target as any).set({ ...values, updatedAt: new Date() })
+        await tx
+          .update(target as any)
+          .set({ ...values, updatedAt: new Date() })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .where(eq((target as any).id, data.recordId))
       } else {
@@ -430,10 +445,17 @@ export async function listAssignableRoles(): Promise<{ id: string; key: string; 
     const rows = await tx
       .select({ id: roles.id, key: roles.key, name: roles.nameEn })
       .from(roles)
-      .where(inArray(roles.key, [
-        'administrator', 'finance', 'operations_manager',
-        'coordinator', 'sales', 'customs_broker', 'read_only',
-      ]))
+      .where(
+        inArray(roles.key, [
+          'administrator',
+          'finance',
+          'operations_manager',
+          'coordinator',
+          'sales',
+          'customs_broker',
+          'read_only',
+        ]),
+      )
     return rows
   })
 }

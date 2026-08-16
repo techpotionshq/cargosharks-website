@@ -50,10 +50,7 @@ export interface RateCardRow {
  * glance that a card is populated and roughly where it sits, and the label
  * says as much rather than calling it a price.
  */
-export async function listRateCards(
-  actor: Actor,
-  direction?: string,
-): Promise<RateCardRow[]> {
+export async function listRateCards(actor: Actor, direction?: string): Promise<RateCardRow[]> {
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select rc.id,
@@ -177,8 +174,7 @@ export async function rateCardSummary(actor: Actor): Promise<{
          ) gaps)::int as "uncoveredLanes"
     `)
     const row = result.rows[0] as unknown as
-      | { live: number; expiring: number; lanesCovered: number; uncoveredLanes: number }
-      | undefined
+      { live: number; expiring: number; lanesCovered: number; uncoveredLanes: number } | undefined
     return {
       live: row?.live ?? 0,
       expiring: row?.expiring ?? 0,

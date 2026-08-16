@@ -45,7 +45,10 @@ export default async function RatesPage({
   const { direction } = await searchParams
 
   const [rows, summary, margins] = await Promise.all([
-    listRateCards(session.actor, direction === 'buy' || direction === 'sell' ? direction : undefined),
+    listRateCards(
+      session.actor,
+      direction === 'buy' || direction === 'sell' ? direction : undefined,
+    ),
     rateCardSummary(session.actor),
     laneMargins(session.actor),
   ])
@@ -242,7 +245,9 @@ export default async function RatesPage({
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">
                   {formatDate(new Date(row.validFrom), locale)}
-                  {row.validTo ? ` — ${formatDate(new Date(row.validTo), locale)}` : ` — ${t('openEnded')}`}
+                  {row.validTo
+                    ? ` — ${formatDate(new Date(row.validTo), locale)}`
+                    : ` — ${t('openEnded')}`}
                 </TD>
                 <TD>
                   {row.isLive ? (

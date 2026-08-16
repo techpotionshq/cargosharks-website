@@ -34,14 +34,7 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import {
-  echo,
-  fail,
-  failWith,
-  fieldErrors,
-  succeed,
-  type ActionState,
-} from '@/lib/form-state'
+import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -73,11 +66,20 @@ const optionalMoney = z
 const quoteSchema = z.object({
   enquiryId: z.uuid('Choose an enquiry'),
   branchId: z.uuid('Choose a branch'),
-  currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((v) => v.toUpperCase()),
   totalSell: money('Enter the price you are quoting'),
   totalCost: money('Enter what it costs us — the margin comes from this'),
   validUntil: z.string().trim().min(1, 'A quotation needs an expiry date'),
-  notes: z.string().trim().max(1000).optional().transform((v) => v || null),
+  notes: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((v) => v || null),
 })
 
 /**
@@ -128,8 +130,7 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
     const result = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
     const seq = (result.rows[0] as { seq: string }).seq
     const year = new Date().getUTCFullYear()
-    const newReference =
-      latest?.reference ?? `QUO-${year}-${seq.padStart(5, '0')}`
+    const newReference = latest?.reference ?? `QUO-${year}-${seq.padStart(5, '0')}`
 
     const marginPct =
       Number(data.totalSell) > 0
@@ -188,8 +189,17 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
     basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
     quantity: money('Quantity must be a number'),
     rate: money('Rate must be a number'),
-    currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
-    description: z.string().trim().max(200).optional().transform((v) => v || null),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    description: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((v) => v || null),
   })
 
   const parsed = schema.safeParse({
@@ -286,7 +296,11 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
 const invoiceSchema = z.object({
   branchId: z.uuid('Choose a branch'),
   customerId: z.uuid('Choose a customer'),
-  currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((v) => v.toUpperCase()),
   subtotal: money('Enter the amount before tax'),
   taxTreatment: z.enum(['out_of_scope', 'zero_rated', 'exempt', 'standard', 'reverse_charge']),
   taxRatePercent: z
@@ -296,7 +310,12 @@ const invoiceSchema = z.object({
     .default('0'),
   dueOn: z.string().trim().min(1, 'An invoice needs a due date'),
   language: z.enum(['en', 'ar']),
-  notes: z.string().trim().max(1000).optional().transform((v) => v || null),
+  notes: z
+    .string()
+    .trim()
+    .max(1000)
+    .optional()
+    .transform((v) => v || null),
 })
 
 export async function createInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
@@ -353,7 +372,10 @@ export async function addInvoiceLine(_previous: ActionState, form: FormData): Pr
 
   const schema = z.object({
     invoiceId: z.uuid(),
-    chargeTypeId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+    chargeTypeId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     descriptionEn: z.string().trim().min(1, 'Describe the charge').max(200),
     quantity: money('Quantity must be a number'),
     unitPrice: money('Unit price must be a number'),
@@ -509,14 +531,31 @@ const paymentSchema = z.object({
   branchId: z.uuid('Choose a branch'),
   customerId: z.uuid('Choose a customer'),
   amount: money('Enter the amount received'),
-  currency: z.string().trim().length(3).transform((v) => v.toUpperCase()),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((v) => v.toUpperCase()),
   receivedOn: z.string().trim().min(1, 'When was it received?'),
   method: z.enum(['bank_transfer', 'cheque', 'cash', 'card', 'offset']),
-  reference: z.string().trim().max(80).optional().transform((v) => v || null),
+  reference: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => v || null),
   fxRate: optionalMoney,
-  notes: z.string().trim().max(500).optional().transform((v) => v || null),
+  notes: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((v) => v || null),
   /** Optional: settle one invoice straight away, which is the common case. */
-  invoiceId: z.uuid().optional().or(z.literal('').transform(() => undefined)),
+  invoiceId: z
+    .uuid()
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
 })
 
 export async function recordPayment(_previous: ActionState, form: FormData): Promise<ActionState> {
@@ -623,8 +662,7 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
   `)
 
   const row = result.rows[0] as
-    | { received: string; allocated: string; invoiced: string; settled: string }
-    | undefined
+    { received: string; allocated: string; invoiced: string; settled: string } | undefined
   if (!row) throw new Error('not_found')
 
   const value = Number(amount)

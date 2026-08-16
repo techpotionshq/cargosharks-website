@@ -127,9 +127,7 @@ export default async function FinancePage() {
           value={formatNumber(payments.unallocated, locale)}
           icon="clock"
           tone={payments.unallocated > 0 ? 'caution' : 'neutral'}
-          hint={
-            <Term name="allocation">{t('unallocatedHint')}</Term>
-          }
+          hint={<Term name="allocation">{t('unallocatedHint')}</Term>}
           href="/payments"
         />
       </div>

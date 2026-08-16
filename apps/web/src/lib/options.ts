@@ -55,9 +55,21 @@ export interface ReferenceOptions {
 }
 
 const EMPTY: ReferenceOptions = {
-  branches: [], customers: [], partners: [], locations: [], commodities: [],
-  incoterms: [], countries: [], currencies: [], containerTypes: [], chargeTypes: [],
-  documentTypes: [], exceptionCodes: [], milestoneCodes: [], people: [], roles: [],
+  branches: [],
+  customers: [],
+  partners: [],
+  locations: [],
+  commodities: [],
+  incoterms: [],
+  countries: [],
+  currencies: [],
+  containerTypes: [],
+  chargeTypes: [],
+  documentTypes: [],
+  exceptionCodes: [],
+  milestoneCodes: [],
+  people: [],
+  roles: [],
 }
 
 /**
@@ -67,10 +79,9 @@ const EMPTY: ReferenceOptions = {
  * the name. Putting the name first would break the first case for no gain in
  * the second.
  */
-export const loadOptions = cache(
-  async (actor: Actor): Promise<ReferenceOptions> =>
-    withActor(actor, async (tx) => {
-      const result = await tx.execute(sql`
+export const loadOptions = cache(async (actor: Actor): Promise<ReferenceOptions> =>
+  withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
         with
           b as (
             select json_agg(json_build_object('value', id, 'label', code || ' — ' || legal_name_en)
@@ -170,29 +181,29 @@ export const loadOptions = cache(
           from b, c, p, l, g, i, co, cu, ct, ch, dt, ec, mt, pe, ro
       `)
 
-      const row = result.rows[0] as Record<string, Choice[] | null> | undefined
-      if (!row) return EMPTY
+    const row = result.rows[0] as Record<string, Choice[] | null> | undefined
+    if (!row) return EMPTY
 
-      // `json_agg` over an empty set is NULL, not `[]`. Every list is
-      // normalised here so no call site has to hold that fact.
-      const list = (key: keyof ReferenceOptions): readonly Choice[] => row[key] ?? []
+    // `json_agg` over an empty set is NULL, not `[]`. Every list is
+    // normalised here so no call site has to hold that fact.
+    const list = (key: keyof ReferenceOptions): readonly Choice[] => row[key] ?? []
 
-      return {
-        branches: list('branches'),
-        customers: list('customers'),
-        partners: list('partners'),
-        locations: list('locations'),
-        commodities: list('commodities'),
-        incoterms: list('incoterms'),
-        countries: list('countries'),
-        currencies: list('currencies'),
-        containerTypes: list('containerTypes'),
-        chargeTypes: list('chargeTypes'),
-        documentTypes: list('documentTypes'),
-        exceptionCodes: list('exceptionCodes'),
-        milestoneCodes: list('milestoneCodes'),
-        people: list('people'),
-        roles: list('roles'),
-      }
-    }),
+    return {
+      branches: list('branches'),
+      customers: list('customers'),
+      partners: list('partners'),
+      locations: list('locations'),
+      commodities: list('commodities'),
+      incoterms: list('incoterms'),
+      countries: list('countries'),
+      currencies: list('currencies'),
+      containerTypes: list('containerTypes'),
+      chargeTypes: list('chargeTypes'),
+      documentTypes: list('documentTypes'),
+      exceptionCodes: list('exceptionCodes'),
+      milestoneCodes: list('milestoneCodes'),
+      people: list('people'),
+      roles: list('roles'),
+    }
+  }),
 )
