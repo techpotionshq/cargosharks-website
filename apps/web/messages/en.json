@@ -383,7 +383,8 @@
       "pending": "Scheduled",
       "planned": "Planned",
       "revised": "Revised"
-    }
+    },
+    "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over."
   },
   "public": {
     "heroEyebrow": "Kuwait · Dubai",

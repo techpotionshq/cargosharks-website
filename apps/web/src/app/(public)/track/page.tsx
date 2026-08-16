@@ -248,12 +248,23 @@ export default async function TrackPage({
               {result.documents.length === 0 ? (
                 <p className="mt-4 text-[0.8125rem] text-ink-muted">{t('noDocuments')}</p>
               ) : (
-                <ul className="mt-4 flex flex-col gap-1">
-                  {result.documents.map((document) => (
-                    <li key={document.id}>
-                      <a
-                        href={`/documents/${document.id}`}
-                        className="flex items-center gap-3 rounded-sm px-2 py-2 transition-colors hover:bg-surface-sunken"
+                <>
+                  {/*
+                    Listed, not linked.
+
+                    This page is authenticated by a reference and a verifier
+                    rather than by a session, and the download route needs a
+                    session to decide what the caller may have. Carrying the
+                    verifier into a download URL would put the proof in a query
+                    string and into every log between here and storage — so the
+                    page says which documents are ready and sends the customer
+                    to the portal, where they are signed in.
+                  */}
+                  <ul className="mt-4 flex flex-col gap-1">
+                    {result.documents.map((document) => (
+                      <li
+                        key={document.id}
+                        className="flex items-center gap-3 rounded-sm px-2 py-2"
                       >
                         <Icon name="document" size={16} className="shrink-0 text-ink-subtle" />
                         <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink">
@@ -262,11 +273,14 @@ export default async function TrackPage({
                         <span className="numeric shrink-0 text-[0.6875rem] text-ink-subtle">
                           {formatNumber(document.sizeKb, locale)} KB
                         </span>
-                        <Icon name="download" size={15} className="shrink-0 text-ink-muted" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+                        <Icon name="check" size={15} className="shrink-0 text-positive" />
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 border-t border-line pt-3 text-[0.75rem] text-ink-subtle">
+                    {t('documentsPortalHint')}
+                  </p>
+                </>
               )}
             </Card>
           </div>

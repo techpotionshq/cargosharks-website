@@ -2,7 +2,7 @@
   "name": "qabandi",
   "version": "0.0.0",
   "private": true,
-  "description": "Qabandi Digital Freight Platform — Release One",
+  "description": "Qabandi Digital Freight Platform \u2014 Release One",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
@@ -12,7 +12,7 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-messages.mjs",
+    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
