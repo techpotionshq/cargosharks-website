@@ -248,6 +248,16 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'job.read',
   ],
   operations_manager: [
+    /*
+      Reference data is *operational* here, not administrative.
+
+      An operations manager adds a port, a commodity or an exception code as
+      part of doing the job — a shipment routed through a depot nobody has
+      recorded cannot be booked until somebody records it. Making that wait for
+      an administrator is how a system ends up with a free-text "other" field
+      that swallows the data it was meant to structure.
+    */
+    'admin.reference.write',
     'enquiry.assign',
     'enquiry.cancel',
     'enquiry.close',

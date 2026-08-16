@@ -661,6 +661,16 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
 
   return {
     ...summary,
+    /*
+      The fixture has no real rows to point at, so these are the fixture's own
+      synthetic ids. They are as valid as the rest of it: the pilot path never
+      writes, and an edit form rendered against fixtures is a preview.
+    */
+    branchId: `00000000-0000-7000-8000-0000000000b${seed.branch === 'KWI' ? '1' : '2'}`,
+    customerId: summary.id,
+    originId: null,
+    destinationId: null,
+    commodityId: null,
     customerReference: `PO-${2026}-${String(seed.seq * 3).padStart(4, '0')}`,
     masterBillNumber:
       seed.mode === 'air'
@@ -1041,6 +1051,8 @@ export function pilotQuote(now = Date.now()): QuoteComparison {
     pricedAt: hours(now, -1),
     manualTurnaroundHours: 36,
     pricingMs: 840,
+    hasResponded: false,
+    isClosed: false,
     options: [
       {
         id: 'opt-1',

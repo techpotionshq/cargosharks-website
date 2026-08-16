@@ -110,7 +110,7 @@ export async function listRoles(
         requiresTwoFactor: roles.requiresTwoFactor,
         permissions: sql<number>`(
           select count(*)::int from role_permissions rp
-           where rp.role_id = ${roles.id} and rp.allowed
+           where rp.role_id = "roles"."id" and rp.allowed
         )`,
       })
       .from(roles)

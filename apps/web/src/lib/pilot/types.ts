@@ -116,6 +116,20 @@ export interface JobSummary {
 }
 
 export interface JobDetail extends JobSummary {
+  /**
+   * The foreign keys, alongside the display names `JobSummary` already
+   * carries.
+   *
+   * A read projection that resolves everything to a name is fine for a table
+   * and useless for an edit form: a `<select>` needs the id it is going to
+   * submit. Carrying both on the detail read is cheaper than a second query
+   * whose only job is to undo the joins.
+   */
+  readonly branchId: string
+  readonly customerId: string
+  readonly originId: string | null
+  readonly destinationId: string | null
+  readonly commodityId: string | null
   readonly customerReference: string | null
   readonly masterBillNumber: string | null
   readonly houseBillNumber: string | null
@@ -197,6 +211,15 @@ export interface QuoteComparison {
   /** How long the same enquiry took by hand — Moment 2's punchline. */
   readonly manualTurnaroundHours: number
   readonly pricingMs: number
+  /**
+   * Whether the SLA clock has been stopped, and whether the enquiry is
+   * finished.
+   *
+   * Both drive which actions the page offers, and both belong on this read
+   * rather than on a second query: the page already has the enquiry row open.
+   */
+  readonly hasResponded: boolean
+  readonly isClosed: boolean
   readonly options: readonly QuoteOptionView[]
 }
 

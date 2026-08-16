@@ -99,7 +99,7 @@ export async function trackShipment(
             // Or any container on the job — what a consignee actually has.
             sql`exists (
               select 1 from ${equipment}
-               where ${equipment.jobId} = ${jobs.id}
+               where ${equipment.jobId} = "jobs"."id"
                  and upper(replace(${equipment.containerNo}, ' ', '')) = ${key}
             )`,
           ),

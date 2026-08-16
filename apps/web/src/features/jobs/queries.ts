@@ -66,26 +66,26 @@ const LIVE_STATUSES = ['booked', 'in_transit', 'arrived', 'customs', 'on_hold'] 
  * stays flat, so the board renders without the caller reassembling anything.
  */
 const containerCount = sql<number>`(
-  select count(*)::int from ${equipment} where ${equipment.jobId} = ${jobs.id}
+  select count(*)::int from ${equipment} where ${equipment.jobId} = "jobs"."id"
 )`
 
 const milestonesTotal = sql<number>`(
-  select count(*)::int from ${jobMilestones} where ${jobMilestones.jobId} = ${jobs.id}
+  select count(*)::int from ${jobMilestones} where ${jobMilestones.jobId} = "jobs"."id"
 )`
 
 const milestonesDone = sql<number>`(
   select count(*)::int from ${jobMilestones}
-   where ${jobMilestones.jobId} = ${jobs.id} and ${jobMilestones.actualAt} is not null
+   where ${jobMilestones.jobId} = "jobs"."id" and ${jobMilestones.actualAt} is not null
 )`
 
 const openExceptions = sql<number>`(
   select count(*)::int from ${exceptions}
-   where ${exceptions.jobId} = ${jobs.id} and ${exceptions.closedAt} is null
+   where ${exceptions.jobId} = "jobs"."id" and ${exceptions.closedAt} is null
 )`
 
 const accruingAmount = sql<string | null>`(
   select sum(${freeTimeClocks.accruedAmount}) from ${freeTimeClocks}
-   where ${freeTimeClocks.jobId} = ${jobs.id} and ${freeTimeClocks.endsOn} is null
+   where ${freeTimeClocks.jobId} = "jobs"."id" and ${freeTimeClocks.endsOn} is null
 )`
 
 export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
@@ -251,6 +251,13 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       .select({
         id: jobs.id,
         reference: jobs.reference,
+        // Foreign keys as well as names: the job file is the only screen with
+        // an edit form, and a `<select>` needs the id it will submit.
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+        originId: jobs.originId,
+        destinationId: jobs.destinationId,
+        commodityId: jobs.commodityId,
         status: jobs.status,
         mode: jobs.mode,
         direction: jobs.tradeDirection,
@@ -333,6 +340,13 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
 
     return {
       ...summary,
+      // The foreign keys, carried alongside the resolved names so the edit
+      // form can pre-select without a second round trip.
+      branchId: row.branchId,
+      customerId: row.customerId,
+      originId: row.originId,
+      destinationId: row.destinationId,
+      commodityId: row.commodityId,
       customerReference: row.customerReference,
       masterBillNumber: row.masterBillNumber,
       houseBillNumber: row.houseBillNumber,

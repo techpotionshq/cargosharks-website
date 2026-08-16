@@ -47,12 +47,12 @@ export async function listPortalShipments(actor: Actor): Promise<PortalShipment[
         destinationName: destination.nameEn,
         milestonesTotal: sql<number>`(
           select count(*)::int from ${jobMilestones}
-           where ${jobMilestones.jobId} = ${jobs.id}
+           where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
         )`,
         milestonesDone: sql<number>`(
           select count(*)::int from ${jobMilestones}
-           where ${jobMilestones.jobId} = ${jobs.id}
+           where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
              and ${jobMilestones.actualAt} is not null
         )`,
@@ -60,14 +60,14 @@ export async function listPortalShipments(actor: Actor): Promise<PortalShipment[
         documentsReleased: sql<number>`(
           select count(*)::int from ${documents}
            join ${documentTypes} on ${documentTypes.id} = ${documents.documentTypeId}
-           where ${documents.jobId} = ${jobs.id}
+           where ${documents.jobId} = "jobs"."id"
              and ${documents.releasedAt} is not null
              and ${documents.supersededById} is null
              and ${documentTypes.isCustomerVisible} = true
         )`,
         nextMilestone: sql<string | null>`(
           select ${jobMilestones.nameEn} from ${jobMilestones}
-           where ${jobMilestones.jobId} = ${jobs.id}
+           where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
              and ${jobMilestones.actualAt} is null
            order by ${jobMilestones.seq}

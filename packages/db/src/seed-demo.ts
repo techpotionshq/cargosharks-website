@@ -31,6 +31,7 @@ import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
 import {
+  assets,
   branches,
   chargeTypes,
   commodities,
@@ -38,6 +39,8 @@ import {
   customerContacts,
   customers,
   customsStages,
+  documentTypes,
+  documents,
   enquiries,
   equipment,
   exceptionCodes,
@@ -918,6 +921,76 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           amount: String(paid),
         })
       }
+    }
+  }
+
+  // --- documents -----------------------------------------------------------
+  //
+  // A document row needs an `asset_id`, and an asset is a file in object
+  // storage. The demo has no storage, so each asset is a *record of a file*
+  // with a storage key that resolves to nothing — enough for the register,
+  // the version chain and the release state to be real, and honest about the
+  // bytes not existing. Downloading one is the only thing that will not work.
+
+  const documentTypeRows = await tx
+    .select({ id: documentTypes.id, code: documentTypes.code })
+    .from(documentTypes)
+  const documentType = new Map<string, string>(
+    documentTypeRows.map((row: { id: string; code: string }) => [row.code, row.id]),
+  )
+
+  const shipped = await tx
+    .select({ id: jobs.id, reference: jobs.reference, branchId: jobs.branchId, status: jobs.status })
+    .from(jobs)
+
+  /** Which paperwork exists depends on how far the shipment has actually got. */
+  const PAPERWORK: Record<string, string[]> = {
+    booked: ['invoice_commercial', 'packing_list'],
+    in_transit: ['invoice_commercial', 'packing_list', 'hbl', 'mbl'],
+    arrived: ['invoice_commercial', 'packing_list', 'hbl', 'mbl', 'certificate_origin'],
+    customs: ['invoice_commercial', 'packing_list', 'hbl', 'mbl', 'customs_declaration'],
+    delivered: ['invoice_commercial', 'packing_list', 'hbl', 'mbl', 'customs_declaration', 'delivery_order'],
+    completed: ['invoice_commercial', 'packing_list', 'hbl', 'mbl', 'customs_declaration', 'delivery_order'],
+    on_hold: ['invoice_commercial', 'packing_list', 'hbl'],
+  }
+
+  for (const job of shipped as { id: string; reference: string; branchId: string; status: string }[]) {
+    const codes = PAPERWORK[job.status] ?? []
+    for (const [index, code] of codes.entries()) {
+      const typeId = documentType.get(code)
+      if (!typeId) continue
+
+      const [existing] = await tx
+        .select({ id: documents.id })
+        .from(documents)
+        .where(and(eq(documents.jobId, job.id), eq(documents.documentTypeId, typeId)))
+        .limit(1)
+      if (existing) continue
+
+      const fileName = `${job.reference}-${code}.pdf`
+      const [asset] = await tx
+        .insert(assets)
+        .values({
+          branchId: job.branchId,
+          storageKey: `demo/${job.reference}/${code}.pdf`,
+          fileName,
+          contentType: 'application/pdf',
+          byteSize: String(48_000 + index * 9_000),
+          uploadedById: owner(index),
+        })
+        .returning({ id: assets.id })
+
+      await tx.insert(documents).values({
+        jobId: job.id,
+        documentTypeId: typeId,
+        assetId: asset!.id,
+        version: 1,
+        // A house bill is released to the customer; a commercial invoice from
+        // the shipper is filed but never "released" by us.
+        releasedAt: ['hbl', 'delivery_order'].includes(code) ? days(-2) : null,
+        releasedById: ['hbl', 'delivery_order'].includes(code) ? owner(0) : null,
+        authorId: owner(index),
+      })
     }
   }
 

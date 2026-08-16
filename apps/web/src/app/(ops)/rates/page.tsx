@@ -1,134 +1,269 @@
 /**
- * Rate cards — `FR-RT-01…04`.
+ * The rate-card register.
  *
- * The pilot imports one real card: sea FCL on the busiest lane, plus air on
- * one corridor (Pilot §3.1 item 4). One card is enough, because the engine
- * does not care how many — what it cares about is that a lane resolves, and
- * that is what this screen shows.
+ * This screen used to render only from the pilot fixtures — against a real
+ * database it showed a hardcoded "1", an empty table and a lane name that was
+ * a placeholder string. It is now a register over `rate_cards`.
  *
- * Rate versioning and the full accessorial catalogue are Release One
- * (Pilot §3.2), so this page reads rather than edits.
+ * The number the page leads with is **uncovered lanes**: lanes with live
+ * shipments and no buying rate. That is the one figure here that changes what
+ * somebody does, because every quotation on an uncovered lane is priced by
+ * someone guessing, and nobody finds out until the margin is reconciled at
+ * month end.
+ *
+ * Buy and sell are separate cards, and pairing them is the second panel's job.
+ * A lane with a buy card and no sell card shows its margin as unknown rather
+ * than as zero — the distinction matters, because zero looks like a decision
+ * and unknown is a gap.
  */
 
+import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { laneMargins, listRateCards, rateCardSummary } from '@/features/rates/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
-import { Card, CardHeader } from '@/ui/card'
-import { Button, PageHeader } from '@/ui/layout'
-import { StatTile } from '@/ui/stat'
-import { Badge } from '@/ui/status'
+import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
-import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
-import { pilotQuote } from '@/lib/pilot/fixtures'
-import { usePilotFixtures } from '@/lib/pilot/source'
+import { Lane } from '@/ui/layout'
+import { Metric } from '@/ui/metric'
+import { Panel } from '@/ui/panel'
+import { Register } from '@/ui/register'
+import { Badge } from '@/ui/status'
+import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 
-export default async function RatesPage() {
-  await requireSession()
+export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('rates')
-  const tQuote = await getTranslations('quote')
+  return { title: t('title') }
+}
+
+export default async function RatesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ direction?: string }>
+}) {
+  const session = await requireSession()
+  const { direction } = await searchParams
+
+  const [rows, summary, margins] = await Promise.all([
+    listRateCards(session.actor, direction === 'buy' || direction === 'sell' ? direction : undefined),
+    rateCardSummary(session.actor),
+    laneMargins(session.actor),
+  ])
+
+  const t = await getTranslations('rates')
+  const tc = await getTranslations('common')
   const tMode = await getTranslations('mode')
+  const tEnq = await getTranslations('enquiry')
   const tDash = await getTranslations('dashboard')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  /**
-   * The imported card is shown through the same priced options the comparison
-   * uses, so the screen cannot drift from what the engine actually returns.
-   */
-  const comparison = usePilotFixtures() ? pilotQuote() : undefined
-  const options = comparison?.options ?? []
+  const buyCount = rows.filter((row) => row.direction === 'buy').length
+  const sellCount = rows.filter((row) => row.direction === 'sell').length
 
   return (
     <>
-      <PageHeader
-        eyebrow={tDash('quotesEyebrow')}
-        title={t('title')}
-        description={t('subtitle')}
-        actions={
-          <Button icon="download" variant="secondary">
-            {t('imported')}
-          </Button>
-        }
-      />
-
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label={t('card')} value="1" hint="Sea FCL · Far East → Kuwait" icon="rates" />
-        <StatTile label={t('lines')} value={String(options[0]?.lines.length ?? 0)} icon="finance" />
-        <StatTile label={t('carrier')} value={String(options.length)} icon="ship" />
-        <StatTile
-          label={tDash('avgMargin')}
-          value={`${(
-            options.reduce((sum, o) => sum + o.marginPct, 0) / Math.max(options.length, 1)
-          ).toFixed(1)}%`}
-          icon="trend"
+        <Metric
+          label={t('liveCards')}
+          value={formatNumber(summary.live, locale)}
+          icon="rates"
+          tone="brand"
+          hint={t('liveCardsHint')}
+        />
+        <Metric
+          label={t('lanesCovered')}
+          value={formatNumber(summary.lanesCovered, locale)}
+          icon="locations"
+          tone="info"
+          hint={t('lanesCoveredHint')}
+        />
+        <Metric
+          label={t('uncovered')}
+          value={formatNumber(summary.uncoveredLanes, locale)}
+          icon="alert"
+          tone={summary.uncoveredLanes > 0 ? 'critical' : 'positive'}
+          hint={t('uncoveredHint')}
+          href="/jobs"
+        />
+        <Metric
+          label={t('expiring')}
+          value={formatNumber(summary.expiring, locale)}
+          icon="clock"
+          tone={summary.expiring > 0 ? 'caution' : 'neutral'}
+          hint={t('expiringHint')}
         />
       </div>
 
-      <Card padding="none">
-        <div className="p-5 pb-3">
-          <CardHeader
-            icon="rates"
-            eyebrow={t('card')}
-            title={comparison?.lane ?? t('lane')}
-            description={t('coverage')}
-            actions={
-              comparison ? (
-                <Badge tone="brand">
-                  <Icon name={modeIcon(comparison.mode)} size={13} />
-                  {tMode(comparison.mode)}
-                </Badge>
-              ) : null
-            }
-          />
-        </div>
+      {/* ---- what each lane earns ---------------------------------------- */}
+      {margins.length > 0 ? (
+        <Panel
+          className="mb-4"
+          padding="none"
+          icon="trend"
+          title={t('marginByLane')}
+          explain={t('marginByLaneExplain')}
+        >
+          <TableShell>
+            <THead>
+              <TR>
+                <TH>{t('lane')}</TH>
+                <TH>{tEnq('mode')}</TH>
+                <TH align="end">{t('buyTotal')}</TH>
+                <TH align="end">{t('sellTotal')}</TH>
+                <TH align="end">{tEnq('margin')}</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {margins.map((row, index) => (
+                <TR key={`${row.lane}-${row.mode}-${index}`}>
+                  <TD className="font-medium text-ink">{row.lane}</TD>
+                  <TD>
+                    <span className="inline-flex items-center gap-1.5 text-ink-muted">
+                      <Icon name={modeIcon(row.mode)} size={14} />
+                      {tMode(row.mode as 'air')}
+                    </span>
+                  </TD>
+                  {/* `numeric` arrives as a six-decimal string; rendering it
+                      raw put "USD 1690.000000" in a money column. */}
+                  <TD align="end" numeric className="text-ink-muted">
+                    {row.buyTotal
+                      ? formatMoney(
+                          { amount: Number(row.buyTotal), currency: row.currency ?? 'USD' },
+                          locale,
+                        )
+                      : '—'}
+                  </TD>
+                  <TD align="end" numeric>
+                    {row.sellTotal
+                      ? formatMoney(
+                          { amount: Number(row.sellTotal), currency: row.currency ?? 'USD' },
+                          locale,
+                        )
+                      : '—'}
+                  </TD>
+                  <TD align="end" numeric>
+                    {row.marginPct === null ? (
+                      // Unknown, not zero. A missing sell card is a gap in the
+                      // rate book, and showing it as 0% hides that.
+                      <span className="text-[0.75rem] text-ink-subtle">{t('noSellCard')}</span>
+                    ) : (
+                      <span
+                        className={
+                          row.marginPct < 8
+                            ? 'font-semibold text-critical'
+                            : row.marginPct < 15
+                              ? 'text-caution'
+                              : 'text-positive'
+                        }
+                      >
+                        {row.marginPct.toFixed(1)}%
+                      </span>
+                    )}
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </TableShell>
+        </Panel>
+      ) : null}
 
-        <TableShell className="border-t border-line">
+      {/* ---- the cards themselves ---------------------------------------- */}
+      <Register
+        eyebrow={tDash('quotesEyebrow')}
+        title={t('title')}
+        description={t('subtitle')}
+        filters={[
+          { label: tc('all'), href: '/rates', count: rows.length, active: !direction },
+          {
+            label: t('buy'),
+            href: '/rates?direction=buy',
+            count: buyCount,
+            active: direction === 'buy',
+          },
+          {
+            label: t('sell'),
+            href: '/rates?direction=sell',
+            count: sellCount,
+            active: direction === 'sell',
+          },
+        ]}
+        isEmpty={rows.length === 0}
+        empty={{
+          icon: 'rates',
+          title: direction ? t('noneMatching') : t('noneYet'),
+          description: direction ? undefined : t('noneYetHint'),
+        }}
+      >
+        <TableShell>
           <THead>
             <TR>
-              <TH>{t('carrier')}</TH>
-              <TH>{tQuote('service')}</TH>
-              <TH align="end">{tQuote('transit')}</TH>
-              <TH align="end">{tQuote('buy')}</TH>
-              <TH align="end">{tQuote('sell')}</TH>
-              <TH align="end">{tQuote('margin')}</TH>
-              <TH align="end">{t('validity')}</TH>
+              <TH>{t('direction')}</TH>
+              <TH>{t('lane')}</TH>
+              <TH>{tEnq('mode')}</TH>
+              <TH>{t('counterparty')}</TH>
+              <TH align="end">{t('lines')}</TH>
+              <TH>{t('validity')}</TH>
+              <TH>{tc('status')}</TH>
             </TR>
           </THead>
           <TBody>
-            {options.map((option) => (
-              <TR key={option.id}>
-                <TD className="font-medium">
-                  {option.carrier}
-                  {option.isRecommended ? (
-                    <Badge tone="brand" className="ms-2">
-                      {tQuote('recommended')}
-                    </Badge>
-                  ) : null}
+            {rows.map((row) => (
+              <TR key={row.id}>
+                <TD>
+                  <Badge tone={row.direction === 'buy' ? 'info' : 'brand'}>
+                    {t(row.direction)}
+                  </Badge>
                 </TD>
-                <TD className="text-ink-muted">{option.service}</TD>
-                <TD align="end" numeric>
-                  {tQuote('transitDays', { days: option.transitDays })}
+                <TD className="font-medium text-ink">
+                  {row.originName && row.destinationName ? (
+                    <Lane origin={row.originName} destination={row.destinationName} />
+                  ) : (
+                    t('anyLane')
+                  )}
                 </TD>
-                <TD align="end" numeric className="text-ink-muted">
-                  {formatMoney(option.buy, locale, { showCurrency: false })}
-                </TD>
-                <TD align="end" numeric className="font-semibold">
-                  {formatMoney(option.sell, locale, { showCurrency: false })}
-                </TD>
-                <TD align="end" numeric>
-                  <span className={option.marginPct < 12 ? 'text-caution' : 'text-positive'}>
-                    {option.marginPct.toFixed(1)}%
+                <TD>
+                  <span className="inline-flex items-center gap-1.5 text-ink-muted">
+                    <Icon name={modeIcon(row.mode)} size={14} />
+                    {tMode(row.mode as 'air')}
                   </span>
                 </TD>
-                <TD align="end" numeric className="text-ink-muted">
-                  {formatDate(option.validUntil, locale)}
+                <TD className="text-ink-muted">
+                  {row.partnerName ?? row.customerName ?? t('anyone')}
+                </TD>
+                <TD align="end" numeric>
+                  {row.lineCount === 0 ? (
+                    // A card with no lines prices nothing. It is the most
+                    // common half-finished state and worth flagging.
+                    <span className="font-medium text-caution">{row.lineCount}</span>
+                  ) : (
+                    row.lineCount
+                  )}
+                </TD>
+                <TD className="whitespace-nowrap text-ink-muted">
+                  {formatDate(new Date(row.validFrom), locale)}
+                  {row.validTo ? ` — ${formatDate(new Date(row.validTo), locale)}` : ` — ${t('openEnded')}`}
+                </TD>
+                <TD>
+                  {row.isLive ? (
+                    row.isExpiring ? (
+                      <Badge tone="caution" dot>
+                        {t('expiringSoon')}
+                      </Badge>
+                    ) : (
+                      <Badge tone="positive" dot>
+                        {t('live')}
+                      </Badge>
+                    )
+                  ) : (
+                    <Badge tone="muted">{t('notLive')}</Badge>
+                  )}
                 </TD>
               </TR>
             ))}
           </TBody>
         </TableShell>
-      </Card>
+      </Register>
     </>
   )
 }

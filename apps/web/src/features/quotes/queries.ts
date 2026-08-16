@@ -48,6 +48,8 @@ export async function getQuoteComparison(
         enquiryReference: enquiries.reference,
         mode: enquiries.mode,
         incoterm: enquiries.incoterm,
+        firstRespondedAt: enquiries.firstRespondedAt,
+        status: enquiries.status,
         customerName: customers.legalNameEn,
         preparedBy: principals.nameEn,
       })
@@ -131,6 +133,8 @@ export async function getQuoteComparison(
       pricedAt: new Date(),
       manualTurnaroundHours: 0,
       pricingMs: 0,
+      hasResponded: header.firstRespondedAt !== null,
+      isClosed: ['won', 'lost', 'cancelled', 'expired'].includes(header.status),
       options,
     }
   })

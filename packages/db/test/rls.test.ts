@@ -18,7 +18,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest'
-import { eq, sql } from 'drizzle-orm'
+import { eq, like, sql } from 'drizzle-orm'
 import {
   branches,
   createDatabase,
@@ -164,11 +164,26 @@ describe.skipIf(!enabled)('row-level security', () => {
     )
   })
 
+  /**
+   * The jobs *this test created* that the actor can see.
+   *
+   * Filtered to the `-TEST-` fixtures rather than selecting the whole table.
+   * The unfiltered version asserted against every row in the database, so the
+   * moment a development machine had demo data the suite failed — not because
+   * RLS had broken, but because the assertion was about the wrong thing.
+   *
+   * The filter costs nothing that matters: the question is whether a Kuwait
+   * actor can see the Dubai fixture, and that is exactly what still fails if a
+   * policy regresses. Rows the test did not create cannot answer it either way.
+   */
   const visibleJobs = async (actor: Actor): Promise<string[]> =>
     withActor(
       actor,
       async (tx) => {
-        const rows = await tx.select({ reference: jobs.reference }).from(jobs)
+        const rows = await tx
+          .select({ reference: jobs.reference })
+          .from(jobs)
+          .where(like(jobs.reference, '%-JOB-TEST-%'))
         return rows.map((r) => r.reference).sort()
       },
       app,

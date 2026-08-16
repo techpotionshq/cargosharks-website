@@ -32,6 +32,8 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { CloseExceptionDialog, CustomsDialog, RaiseExceptionDialog } from '@/features/operations/ui/dialogs'
+import { JobDialog } from '@/features/jobs/ui/dialogs'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
@@ -79,6 +81,39 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {t(`customsStatuses.${job.customsStatus}` as 'customsStatuses.held')}
               </Badge>
             ) : null}
+            {/*
+              The three things somebody actually does from a job file, in the
+              order they are needed: flag a problem, move customs on, correct
+              the record. Each is permission-gated inside its own component, so
+              a coordinator sees only what they can act on.
+            */}
+            <RaiseExceptionDialog jobId={job.id} variant="secondary" />
+            <CustomsDialog
+              jobId={job.id}
+              variant="secondary"
+              defaults={{ status: job.customsStatus ?? 'not_started' }}
+            />
+            <JobDialog
+              variant="ghost"
+              defaults={{
+                id: job.id,
+                branchId: job.branchId,
+                customerId: job.customerId,
+                mode: job.mode,
+                tradeDirection: job.direction,
+                status: job.status,
+                originId: job.originId,
+                destinationId: job.destinationId,
+                incoterm: job.incoterm,
+                masterBillNumber: job.masterBillNumber,
+                houseBillNumber: job.houseBillNumber,
+                vesselName: job.vesselOrFlight,
+                customerReference: job.customerReference,
+                grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
+                volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
+                pieces: job.pieces,
+              }}
+            />
           </>
         }
       />
@@ -106,11 +141,16 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <p className="mt-1 text-[0.8125rem] text-ink-muted">{exception.description}</p>
                   ) : null}
                 </div>
-                <div className="text-end text-[0.6875rem] text-ink-subtle">
-                  <p>
-                    {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
-                  </p>
-                  {exception.owner ? <p className="mt-0.5">{exception.owner}</p> : null}
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="text-end text-[0.6875rem] text-ink-subtle">
+                    <p>
+                      {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
+                    </p>
+                    {exception.owner ? <p className="mt-0.5">{exception.owner}</p> : null}
+                  </div>
+                  {/* An exception you cannot close from the screen that shows
+                      it is a to-do list somebody keeps somewhere else. */}
+                  <CloseExceptionDialog exceptionId={exception.id} />
                 </div>
               </li>
             ))}

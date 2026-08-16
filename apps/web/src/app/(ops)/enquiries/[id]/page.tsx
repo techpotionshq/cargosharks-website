@@ -25,11 +25,13 @@ import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
-import { Button, Field, PageHeader } from '@/ui/layout'
+import { Field, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
+import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
@@ -63,10 +65,12 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         description={t('subtitle')}
         actions={
           <>
-            <Button icon="document">{t('downloadPdf')}</Button>
-            <Button variant="primary" icon="arrow-end">
-              {t('sendQuotation')}
-            </Button>
+            <EnquiryActions
+              enquiryId={id}
+              hasResponded={comparison.hasResponded}
+              isClosed={comparison.isClosed}
+            />
+            <QuoteDialog enquiryId={id} />
           </>
         }
       />

@@ -208,7 +208,7 @@ export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
         // payment is money you have but cannot close a ledger with.
         allocated: sql<string>`coalesce((
           select sum(pa.amount)::text from payment_allocations pa
-           where pa.payment_id = ${payments.id}
+           where pa.payment_id = "payments"."id"
         ), '0')`,
       })
       .from(payments)

@@ -70,9 +70,54 @@ for (const file of globSync('apps/web/src/features/**/*.{ts,tsx}')) {
   }
 }
 
+/**
+ * Rule 3 — a correlated subquery qualifies the outer table's column.
+ *
+ * The bug this exists to prevent appeared six times in this codebase and is
+ * invisible in review. Inside a raw `sql` template, Drizzle emits a bare
+ * `"id"` for `${table.id}` when the surrounding query has no joins, and a
+ * qualified `"table"."id"` when it does — so the same expression is correct in
+ * one caller and wrong in another. It then fails in two ways:
+ *
+ *   - the subquery joins two tables that both have `id`, and PostgreSQL
+ *     rejects the whole query as ambiguous; or
+ *   - it joins none, `"id"` silently binds to the *inner* table's own id, and
+ *     the count comes back zero. Every open-jobs count in the product read
+ *     zero for exactly this reason, and it looked like real data — which is
+ *     the worse of the two failures by a long way.
+ *
+ * Writing the correlation as explicit qualified SQL — `where jp.partner_id =
+ * "partners"."id"` — is correct regardless of what the outer query looks like.
+ */
+const SQL_TEMPLATE = /sql(?:<[^>]*>)?`([\s\S]*?)`/g
+const CORRELATION = /\b(?:where|and|on)\s+\w+\.\w+\s*=\s*\$\{(\w+)\.(\w+)\}/gi
+
+/** `jobMilestones` -> `job_milestones`, to name the fix in the message. */
+const snake = (name) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+
+for (const file of globSync('apps/web/src/**/*.ts')) {
+  const source = readFileSync(file, 'utf8')
+  for (const template of source.matchAll(SQL_TEMPLATE)) {
+    const body = template[1]
+    // Only a template that opens its own SELECT can correlate at all.
+    if (!/\bselect\b/i.test(body) || !/\bfrom\b/i.test(body)) continue
+
+    for (const match of body.matchAll(CORRELATION)) {
+      console.error(
+        `${file}: correlated subquery interpolates \${${match[1]}.${match[2]}}.\n` +
+          '  Drizzle emits an unqualified column here when the outer query has no\n' +
+          '  joins, which is either ambiguous or silently binds to the inner table.\n' +
+          `  Write it as "${snake(match[1])}"."${snake(match[2])}" instead.`,
+      )
+      failures++
+    }
+  }
+}
+
+
 if (failures > 0) {
-  console.error(`\n${failures} dependency-direction violation(s).`)
+  console.error(`\n${failures} boundary violation(s).`)
   process.exit(1)
 }
 
-console.log('dependency direction: core <- db <- {web, service} — ok')
+console.log('boundaries: dependency direction ok, correlated subqueries qualified')
