@@ -1,9 +1,28 @@
 /**
  * Document download.
  *
- * Every register and job file links a document to this route, and it did not
- * exist — so every one of those links was a 404, including the ones on the
- * customer's tracking page.
+ * ## Why this lives under `api/`
+ *
+ * It used to sit at `app/documents/[id]/route.ts`, on the reasoning that App
+ * Router has no `api/` requirement — that is a Pages Router habit — and that a
+ * person clicking a link to get a file is not calling an API. Both true, and
+ * both beside the point: `app/(ops)/documents/page.tsx` already serves
+ * `/documents`, and every other register here has an `[id]` detail page. The
+ * day somebody adds `app/(ops)/documents/[id]/page.tsx` — the obvious next
+ * page — it resolves to the same path as this handler and the **build fails**.
+ * A route handler has no business squatting on a register's own URL space.
+ *
+ * `api/` now means what it says: the handlers that answer to a machine or hand
+ * back a file, as opposed to the pages a person reads. Nothing else in the
+ * product posts to one — server actions are the only mutation path.
+ *
+ * ## Nothing links here yet
+ *
+ * The documents register links each row to its *job*, not to the file, so this
+ * is reachable only by typing the URL. It is not dead code to delete: it is the
+ * missing half of a screen that lists documents you cannot open. Wiring the
+ * register to it is a small change and a deliberate one, because it decides
+ * whether a draft is downloadable from a list — see the release check below.
  *
  * **Authorisation is the whole job.** A document id is a UUID in a URL, and a
  * route that streams a file to whoever holds one is a leak with extra steps.
