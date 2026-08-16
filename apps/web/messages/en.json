@@ -10,7 +10,6 @@
     "jobs": "Shipments",
     "rates": "Rate cards",
     "finance": "Overview",
-    "admin": "Administration",
     "tracking": "Customer tracking",
     "portal": "My shipments",
     "documents": "Documents",
@@ -18,8 +17,7 @@
       "commercial": "Commercial",
       "operations": "Operations",
       "network": "Network",
-      "finance": "Finance",
-      "settings": "Administration"
+      "finance": "Finance"
     },
     "customers": "Customers",
     "quotes": "Quotations",
@@ -43,7 +41,8 @@
       "sales": "Sales",
       "customs_broker": "Customs Broker",
       "read_only": "Read Only"
-    }
+    },
+    "settings": "Settings"
   },
   "common": {
     "search": "Search",
@@ -91,7 +90,8 @@
     "delete": "Delete",
     "actions": "Actions",
     "add": "Add",
-    "choose": "— choose —"
+    "choose": "— choose —",
+    "operations": "Operations"
   },
   "dashboard": {
     "title": "Operations dashboard",
@@ -1510,5 +1510,34 @@
       "haulier": "Haulier",
       "terminal": "Terminal"
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Who may sign in, what each branch invoices as, what was changed and by whom, and how the product is branded. Nothing here moves a shipment.",
+    "backToOperations": "Back to operations",
+    "signedInAs": "Signed in",
+    "sections": {
+      "administration": "Administration"
+    },
+    "areas": {
+      "users": {
+        "title": "Users & roles",
+        "description": "Who holds which role, in which branch. A role is granted per branch, so the same person can be a coordinator in Kuwait and read-only in Dubai."
+      },
+      "branches": {
+        "title": "Branches",
+        "description": "Each branch carries its own base currency, invoice series and working calendar. The calendar is what SLA clocks are counted against."
+      },
+      "audit": {
+        "title": "Audit log",
+        "description": "Every write, recorded by the database itself rather than by the application. Read this when a figure is disputed or a change needs attributing."
+      },
+      "brand": {
+        "title": "Brand",
+        "description": "The colours, name and mark the product resolves at runtime, and the environment variable behind each one."
+      }
+    },
+    "referenceMoved": "Ports, charge types and other reference data are operational and stayed in",
+    "referenceLink": "Reference data"
   }
 }

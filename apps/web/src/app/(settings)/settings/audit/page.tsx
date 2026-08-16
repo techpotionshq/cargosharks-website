@@ -62,10 +62,10 @@ export default async function AuditPage({
       title={t('title')}
       description={t('subtitle')}
       filters={[
-        { label: tc('all'), href: '/admin/audit', active: !table },
+        { label: tc('all'), href: '/settings/audit', active: !table },
         ...tables.map((row) => ({
           label: row.tableName,
-          href: `/admin/audit?table=${row.tableName}`,
+          href: `/settings/audit?table=${row.tableName}`,
           count: row.count,
           active: table === row.tableName,
         })),

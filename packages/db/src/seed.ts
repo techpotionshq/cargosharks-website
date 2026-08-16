@@ -209,6 +209,24 @@ const EXTRA_PERMISSIONS = [
   'admin.audit.read',
   'admin.users.write',
   'admin.api_keys.write',
+  /*
+    Branches and brand are administration in the strict sense — they configure
+    the operator, not the work.
+
+    `admin.branches.write` exists because branch editing was previously gated
+    on `admin.reference.write`, which an operations manager holds. A branch
+    carries its base currency, its **invoice series** and its working calendar,
+    so that grant let anyone who could add a port also renumber the statutory
+    invoice sequence and shift every SLA in the branch onto a different
+    weekend. Reference data is operational; a branch is not.
+
+    `admin.brand.read` gates the whitelabel console, which lists the `BRAND_*`
+    environment variables that configure the deployment. Nothing there is a
+    secret, but it is deployment surface, and a read-only account had no reason
+    to see it.
+  */
+  'admin.branches.write',
+  'admin.brand.read',
   'rate.card.write',
   'report.read',
   'job.read',

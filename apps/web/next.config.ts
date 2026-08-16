@@ -34,6 +34,28 @@ const config: NextConfig = {
   },
   typedRoutes: true,
   serverExternalPackages: ['pg', 'pg-boss'],
+
+  /**
+   * Administration moved out of the operations shell into `/settings`, and
+   * reference data stayed behind in operations at `/reference`.
+   *
+   * These are permanent (308) because the old paths are not coming back and a
+   * browser that caches the redirect is the desired outcome — an administrator
+   * who bookmarked `/admin/audit` during the pilot should land on the audit log
+   * rather than on a 404, once, and then stop asking.
+   *
+   * `/admin/reference` is the odd one out: it redirects *out* of the settings
+   * tree rather than into it, because adding a port is operational work.
+   */
+  async redirects() {
+    return [
+      { source: '/admin', destination: '/settings', permanent: true },
+      { source: '/admin/users', destination: '/settings/users', permanent: true },
+      { source: '/admin/branches', destination: '/settings/branches', permanent: true },
+      { source: '/admin/audit', destination: '/settings/audit', permanent: true },
+      { source: '/admin/reference', destination: '/reference', permanent: true },
+    ]
+  },
 }
 
 export default withNextIntl(config)

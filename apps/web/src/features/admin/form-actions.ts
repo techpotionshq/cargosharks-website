@@ -173,7 +173,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
     throw error
   }
 
-  revalidatePath('/admin/users')
+  revalidatePath('/settings/users')
   return succeed(data.email)
 }
 
@@ -206,7 +206,7 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
       .where(eq(principals.id, principalId))
   })
 
-  revalidatePath('/admin/users')
+  revalidatePath('/settings/users')
   return succeed(principalId)
 }
 
@@ -256,7 +256,16 @@ const branchSchema = z.object({
 
 export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
-  assertCan(session, 'admin.reference.write')
+  /*
+    Not `admin.reference.write`, which is what this used to be.
+
+    An operations manager holds that key — deliberately, so adding a port does
+    not need an administrator — and a branch record carries the base currency,
+    the invoice series and the working calendar. Sharing one permission between
+    "add a port" and "renumber the invoice sequence" is the kind of thing an
+    auditor finds rather than the kind a developer notices.
+  */
+  assertCan(session, 'admin.branches.write')
 
   const parsed = branchSchema.safeParse({
     branchId: read(form, 'branchId'),
@@ -322,7 +331,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     throw error
   }
 
-  revalidatePath('/admin/branches')
+  revalidatePath('/settings/branches')
   return succeed(data.code)
 }
 
@@ -432,7 +441,7 @@ export async function saveReferenceRecord(
     throw error
   }
 
-  revalidatePath('/admin/reference')
+  revalidatePath('/reference')
   return succeed(data.code)
 }
 

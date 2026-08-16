@@ -14,6 +14,7 @@
  */
 
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
@@ -35,6 +36,14 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function UsersPage() {
   const session = await requireSession()
+  /*
+    The layout already decides who reaches this shell, but a page that trusts
+    its layout is a page that breaks the day someone links to it directly.
+    `notFound` rather than a forbidden page: an account that cannot administer
+    users has no business learning that the screen exists.
+  */
+  if (!can(session, 'admin.users.write')) notFound()
+
   const t = await getTranslations('users')
   const tc = await getTranslations('common')
   const tNav = await getTranslations('nav')

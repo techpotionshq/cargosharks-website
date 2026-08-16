@@ -10,8 +10,10 @@
  */
 
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { listCalendarOptions, listBranches } from '@/features/admin/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Register } from '@/ui/register'
@@ -27,6 +29,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function BranchesPage() {
   const session = await requireSession()
+  /*
+    A branch row carries the invoice series and the base currency, so this is
+    not a directory — it is the configuration behind every number the company
+    issues. Guarded on its own key rather than on the layout's admission.
+  */
+  if (!can(session, 'admin.branches.write')) notFound()
+
   const t = await getTranslations('branches')
   const tc = await getTranslations('common')
   const resolved = await getLocale()

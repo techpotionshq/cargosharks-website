@@ -22,7 +22,7 @@ import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { THEME_COOKIE, isThemeChoice } from '@/lib/theme'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { can } from '@/lib/permissions'
+import { canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
 import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
@@ -51,9 +51,15 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
 
   /**
    * The navigation, grouped the way the business is: what you sell, what you
-   * move, who you move it with, what you bill, and the settings behind all of
-   * it. Administration is filtered by permission rather than hidden by role,
-   * so a finance user sees the ledger and not the user table.
+   * move, who you move it with, and what you bill.
+   *
+   * Four groups, and every one of them is a shipment in some stage of its life.
+   * Administration used to be a fifth — users, branches, the audit log and the
+   * brand console sitting under Payments — and it made the sidebar a list of
+   * everything rather than a list of the work. It now lives behind one door at
+   * the foot of this nav (`app/(settings)`), which is also what let those
+   * screens get the permission gates they were missing: three of the five were
+   * offered to every signed-in account, including `read_only`.
    */
   const sections: NavSection[] = [
     {
@@ -90,6 +96,16 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       items: [
         { href: '/partners', label: t('partners'), icon: 'partners' },
         { href: '/locations', label: t('locations'), icon: 'locations' },
+        /*
+          Reference data sits in operations, not in settings.
+
+          Ports, charge types, commodities and exception codes are the tables
+          the rating and booking engines read, and an empty one fails silently
+          three screens away as "no rate found". An operations manager holds
+          `admin.reference.write` precisely so a shipment routed through a
+          depot nobody has recorded does not wait for an administrator.
+        */
+        { href: '/reference', label: t('reference'), icon: 'reference' },
       ],
     },
     {
@@ -98,20 +114,6 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         { href: '/finance', label: t('finance'), icon: 'finance' },
         { href: '/invoices', label: t('invoices'), icon: 'invoices' },
         { href: '/payments', label: t('payments'), icon: 'payments' },
-      ],
-    },
-    {
-      label: t('sections.settings'),
-      items: [
-        ...(can(session, 'admin.users.write')
-          ? [{ href: '/admin/users', label: t('users'), icon: 'users' as const }]
-          : []),
-        { href: '/admin/branches', label: t('branches'), icon: 'branches' },
-        { href: '/admin/reference', label: t('reference'), icon: 'reference' },
-        ...(can(session, 'admin.audit.read')
-          ? [{ href: '/admin/audit', label: t('audit'), icon: 'audit' as const }]
-          : []),
-        { href: '/admin', label: t('brand'), icon: 'admin' },
       ],
     },
   ]
@@ -152,10 +154,15 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           <SidebarNav sections={sections} />
 
           {/*
-            The customer-facing surface, reachable from the inside — an
-            operator checking what their customer actually sees.
+            The two ways out of the working set: what the customer sees, and
+            the settings behind the operator.
+
+            Both are deliberately below the navigation and outside its groups.
+            Neither is a place you go to move a shipment, and putting them in
+            the list would mean scanning past them every time you reach for
+            Invoices.
           */}
-          <div className="border-t border-chrome-line px-3 py-2">
+          <div className="flex flex-col gap-0.5 border-t border-chrome-line px-3 py-2">
             <Link
               href="/track"
               className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
@@ -164,6 +171,22 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
               {t('tracking')}
               <Icon name="external" size={13} className="ms-auto opacity-50" />
             </Link>
+
+            {/*
+              Rendered on the same condition the settings layout admits on, so
+              the link never leads to a redirect. An account with no
+              administration key simply does not see a door.
+            */}
+            {canOpenSettings(session) ? (
+              <Link
+                href="/settings"
+                className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+              >
+                <Icon name="settings" size={16} className="text-ink-subtle" />
+                {t('settings')}
+                <Icon name="chevron-end" size={13} className="ms-auto opacity-50" />
+              </Link>
+            ) : null}
           </div>
 
           {/* Who you are signed in as, and the way out. */}

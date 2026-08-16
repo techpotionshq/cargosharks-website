@@ -32,10 +32,10 @@ export interface SetupState {
 }
 
 const HREF: Record<SetupStepKey, string> = {
-  // Points at the administration screen rather than a dedicated user-creation
-  // page, because there is not one yet: accounts are provisioned with
-  // `pnpm db:create-user`. Linking to a route that 404s would be worse.
-  users: '/admin',
+  // The users screen shows who holds what; accounts themselves are still
+  // provisioned with `pnpm db:create-user`, so this is where an operator goes
+  // to check the result rather than to perform the step.
+  users: '/settings/users',
   customers: '/customers/new',
   rateCards: '/rates',
   enquiries: '/enquiries',

@@ -12,9 +12,11 @@
  * these variables, or add one file under `packages/brand/src/brands/`.
  */
 
+import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { markSvg } from '@qabandi/brand'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Card, CardHeader } from '@/ui/card'
@@ -56,8 +58,16 @@ function Swatch({ color, label }: { readonly color: string; readonly label: stri
   )
 }
 
-export default async function AdminPage() {
-  await requireSession()
+export default async function BrandPage() {
+  const session = await requireSession()
+  /*
+    Previously ungated, and reachable from every signed-in account's sidebar —
+    including `read_only`. Nothing on this screen is a secret, but it lists the
+    `BRAND_*` variables that configure the deployment, and deployment surface is
+    not something a coordinator needs to be shown.
+  */
+  if (!can(session, 'admin.brand.read')) notFound()
+
   const brand = getBrand()
   const t = await getTranslations('admin')
   const resolved = await getLocale()
