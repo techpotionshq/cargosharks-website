@@ -10,7 +10,8 @@
     "./chargeable": "./src/chargeable.ts",
     "./rating": "./src/rating.ts",
     "./clocks": "./src/clocks.ts",
-    "./states": "./src/states.ts"
+    "./states": "./src/states.ts",
+    "./import": "./src/import.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -199,7 +199,13 @@ export const chargeableRules = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },
-  (t) => [unique('chargeable_rules_unique').on(t.mode, t.branchId)],
+  /*
+    `nulls not distinct` — the seed writes no branch, so `branch_id` is NULL on
+    every seeded row. Under the default NULLS DISTINCT those rows never collide
+    and `on conflict do nothing` never fires, so each `pnpm db:seed` appended a
+    fresh copy (0006_seed_idempotency).
+  */
+  (t) => [unique('chargeable_rules_unique').on(t.mode, t.branchId).nullsNotDistinct()],
 )
 
 /**
@@ -228,7 +234,12 @@ export const milestoneTemplates = pgTable(
     ...timestamps,
   },
   (t) => [
-    unique('milestone_templates_unique').on(t.mode, t.direction, t.serviceType, t.code),
+    // `service_type` is NULL on every seeded template — see 0006. Without
+    // `nulls not distinct` a re-seed multiplied the milestone set, and a job
+    // was booked with five copies of every step.
+    unique('milestone_templates_unique')
+      .on(t.mode, t.direction, t.serviceType, t.code)
+      .nullsNotDistinct(),
     index('milestone_templates_lookup_idx').on(t.mode, t.direction, t.seq),
   ],
 )
@@ -284,7 +295,12 @@ export const notificationTemplates = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },
-  (t) => [unique('notification_templates_unique').on(t.eventKey, t.channel, t.locale, t.branchId)],
+  // `branch_id` is NULL for the default template of an event — see 0006.
+  (t) => [
+    unique('notification_templates_unique')
+      .on(t.eventKey, t.channel, t.locale, t.branchId)
+      .nullsNotDistinct(),
+  ],
 )
 
 /**

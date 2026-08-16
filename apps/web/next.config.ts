@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
-import { loadEnv } from '@qabandi/db'
+import { loadEnv, workspaceRoot } from '@qabandi/db'
 
 /**
  * Next reads `.env` files relative to the *app* directory, so in this monorepo
@@ -28,6 +28,39 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@qabandi/brand', '@qabandi/core', '@qabandi/db'],
+
+  /**
+   * The container ships the traced output, not the workspace.
+   *
+   * `standalone` writes `.next/standalone` with a `server.js` and only the
+   * `node_modules` the traced routes actually reach, which is what lets the
+   * runtime image drop pnpm, the lockfile and every devDependency. Without it
+   * the image would have to carry an installed workspace to run `next start`.
+   *
+   * Tracing defaults to the *app* directory, and in this monorepo that would
+   * silently omit `@qabandi/core`, `@qabandi/db` and `@qabandi/brand` — they
+   * are TypeScript source consumed through the workspace, two directories up.
+   * The root is the same one `loadEnv` walks to, so both agree on where the
+   * workspace begins rather than each hard-coding `../..`.
+   */
+  output: 'standalone',
+  outputFileTracingRoot: workspaceRoot(),
+
+  /**
+   * The tracer follows `@swc/helpers` into its CommonJS build and stops there,
+   * so the standalone output ships `helpers/cjs` without `helpers/esm` — and
+   * the server dies on its first request with `Cannot find module
+   * .../@swc/helpers/esm/_interop_require_default.js`. The helpers are reached
+   * through Next's own require hook rather than a static import, which is
+   * precisely the shape `@vercel/nft` cannot see.
+   *
+   * Taking the whole package is a few kilobytes and immune to which helper the
+   * next compiler release happens to emit.
+   */
+  outputFileTracingIncludes: {
+    '/*': ['../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/**'],
+  },
+
   experimental: {
     // Server Actions are the only mutation path; nothing posts to an API route.
     serverActions: { bodySizeLimit: '10mb' },

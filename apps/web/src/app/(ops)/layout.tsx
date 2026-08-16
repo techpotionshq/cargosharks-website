@@ -106,6 +106,15 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           depot nobody has recorded does not wait for an administrator.
         */
         { href: '/reference', label: t('reference'), icon: 'reference' },
+        /*
+          Bulk import sits with the network because that is what it fills.
+
+          It is the first screen a new deployment needs and close to the last
+          one it uses — a client arrives with thirty years of customers, agents
+          and ports in spreadsheets, and every register in this section stays
+          empty until those files are in (FR-MD-11, FR-RT-09).
+        */
+        { href: '/imports', label: t('imports'), icon: 'download' },
       ],
     },
     {

@@ -15,3 +15,14 @@ export * from './chargeable'
 export * from './rating'
 export * from './clocks'
 export * from './states'
+
+/**
+ * `./import` is deliberately *not* re-exported here.
+ *
+ * Its cell parsers are named for what they parse — `text`, `decimal`,
+ * `boolean`, `integer`, `code`, `email` — which reads correctly at the call
+ * site (`text({ max: 200 })`) and disastrously in a barrel that a file also
+ * importing Drizzle's `text` would pull from. Import it by path:
+ *
+ *     import { readImport, text } from '@qabandi/core/import'
+ */

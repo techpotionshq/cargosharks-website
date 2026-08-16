@@ -43,6 +43,13 @@
       "when": 1786841076251,
       "tag": "0005_grant_revocation",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786841077251,
+      "tag": "0006_seed_idempotency",
+      "breakpoints": true
     }
   ]
 }
