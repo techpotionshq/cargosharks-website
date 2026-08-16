@@ -108,7 +108,7 @@ export async function JobDialog({
           span: 4,
           required: true,
           options: options.customers,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.customerId,
         },
         {
@@ -118,7 +118,7 @@ export async function JobDialog({
           span: 4,
           hint: t('ownerHint'),
           options: options.people,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.ownerId,
         },
         {
@@ -179,7 +179,7 @@ export async function JobDialog({
           span: 4,
           required: true,
           options: options.locations,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.originId,
         },
         {
@@ -189,7 +189,7 @@ export async function JobDialog({
           span: 4,
           required: true,
           options: options.locations,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.destinationId,
         },
         {
@@ -198,7 +198,7 @@ export async function JobDialog({
           label: t('commodity'),
           span: 4,
           options: options.commodities,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.commodityId,
         },
         {
@@ -208,7 +208,7 @@ export async function JobDialog({
           span: 4,
           hint: t('incotermHint'),
           options: options.incoterms,
-          placeholder: tc('none'),
+          placeholder: tc('choose'),
           defaultValue: defaults?.incoterm,
         },
       ],

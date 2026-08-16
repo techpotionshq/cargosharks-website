@@ -54,7 +54,7 @@ export async function RaiseExceptionDialog({
             span: 12 as const,
             required: true,
             options: shipments,
-            placeholder: tc('none'),
+            placeholder: tc('choose'),
           },
         ]),
     {
@@ -65,7 +65,7 @@ export async function RaiseExceptionDialog({
       required: true,
       hint: t('whatHint'),
       options: options.exceptionCodes,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
     },
     {
       kind: 'select',

@@ -87,7 +87,7 @@ export async function EnquiryActions({
               required: true,
               hint: t('ownerHint'),
               options: options.people,
-              placeholder: tc('none'),
+              placeholder: tc('choose'),
             },
           ]}
           labels={{

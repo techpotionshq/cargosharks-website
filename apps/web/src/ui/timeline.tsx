@@ -68,16 +68,25 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
               <span
                 aria-hidden="true"
                 className={`absolute start-[11px] top-6 bottom-0 w-px ${
-                  done ? 'bg-brand/45' : 'bg-line'
+                  done ? 'bg-positive/45' : 'bg-line'
                 }`}
               />
             )}
 
+            {/*
+              Done is green; the step in progress is the brand colour.
+
+              A completed milestone used to be a white tick on a red disc, and
+              on a board where red means *alarm* a column of six red ticks
+              reads as six problems. Green says finished, the brand ring says
+              "this is where it is now", and the two together let someone see
+              progress without reading a word.
+            */}
             <span
               className={[
                 'relative z-10 mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border-2',
                 done
-                  ? 'border-brand bg-brand text-on-brand'
+                  ? 'border-positive bg-positive text-on-brand'
                   : current
                     ? 'border-brand bg-surface text-brand ring-4 ring-brand/15'
                     : 'border-line bg-surface text-ink-subtle',
@@ -166,7 +175,7 @@ export function MilestoneDots({
         <span
           key={index}
           className={`size-1.5 rounded-full ${
-            index < completed ? 'bg-brand' : 'bg-line-strong opacity-60'
+            index < completed ? 'bg-positive' : 'bg-line-strong opacity-60'
           }`}
         />
       ))}

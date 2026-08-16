@@ -60,7 +60,7 @@ export async function QuoteDialog({
             required: true,
             hint: t('enquiryHint'),
             options: enquiries,
-            placeholder: tc('none'),
+            placeholder: tc('choose'),
           },
         ]),
     {
@@ -175,7 +175,7 @@ export async function InvoiceDialog({
       span: 6,
       required: true,
       options: options.customers,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: customerId,
     },
     {
@@ -310,7 +310,7 @@ export async function PaymentDialog({
       span: 6,
       required: true,
       options: options.customers,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: customerId,
     },
     {

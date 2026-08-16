@@ -90,7 +90,8 @@
     "edit": "Edit",
     "delete": "Delete",
     "actions": "Actions",
-    "add": "Add"
+    "add": "Add",
+    "choose": "— choose —"
   },
   "dashboard": {
     "title": "Operations dashboard",
@@ -398,7 +399,10 @@
     "featureDocsTitle": "Documents on demand",
     "featureDocsBody": "Bills of lading, invoices and delivery orders, released to you as they are issued.",
     "servicesEyebrow": "What we move",
-    "footerRights": "All rights reserved."
+    "footerRights": "All rights reserved.",
+    "lanesEyebrow": "Where we sail",
+    "lanesTitle": "The corridors we run every week",
+    "lanesBody": "Sea, air and land out of Kuwait and Dubai. If your lane is not on the map, ask — most of what we move started as a route somebody asked us about."
   },
   "portal": {
     "title": "My shipments",

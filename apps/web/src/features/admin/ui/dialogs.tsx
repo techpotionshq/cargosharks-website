@@ -102,7 +102,7 @@ export async function UserDialog({
       required: true,
       hint: t('roleHint'),
       options: options.roles,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: defaults?.roleId,
     },
     {
@@ -224,7 +224,7 @@ export async function BranchDialog({
       span: 4,
       required: true,
       options: options.countries,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: defaults?.country,
     },
     {
@@ -235,7 +235,7 @@ export async function BranchDialog({
       required: true,
       hint: t('currencyHint'),
       options: options.currencies,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: defaults?.baseCurrency,
     },
     {
@@ -263,7 +263,7 @@ export async function BranchDialog({
       required: true,
       hint: t('calendarHint'),
       options: calendars,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: defaults?.calendarId,
     },
     {

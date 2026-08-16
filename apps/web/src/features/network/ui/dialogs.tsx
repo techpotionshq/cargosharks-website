@@ -212,7 +212,7 @@ export async function LocationDialog({
       span: 4,
       required: true,
       options: options.countries,
-      placeholder: tc('none'),
+      placeholder: tc('choose'),
       defaultValue: defaults?.countryCode,
     },
     {
