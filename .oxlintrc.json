@@ -1,26 +1,17 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript"
-  ],
+  "plugins": ["typescript"],
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": [
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/.next/**",
-    "**/migrations/**"
-  ],
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/.next/**", "**/migrations/**"],
   "rules": {
     "typescript/no-explicit-any": "off",
     "no-console": "off"
   },
   "overrides": [
     {
-      "files": [
-        "packages/core/**/*.ts"
-      ],
+      "files": ["packages/core/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",
@@ -46,22 +37,14 @@
       }
     },
     {
-      "files": [
-        "packages/db/**/*.ts"
-      ],
+      "files": ["packages/db/**/*.ts"],
       "rules": {
         "no-restricted-imports": [
           "error",
           {
             "patterns": [
               {
-                "group": [
-                  "@qabandi/web",
-                  "@qabandi/service",
-                  "next",
-                  "next/*",
-                  "fastify"
-                ],
+                "group": ["@qabandi/web", "@qabandi/service", "next", "next/*", "fastify"],
                 "message": "Dependency direction is core <- db <- {web, service} (Architecture \u00a74)."
               }
             ]

@@ -2,7 +2,7 @@
   "name": "qabandi",
   "version": "0.0.0",
   "private": true,
-  "description": "Qabandi Digital Freight Platform \u2014 Release One",
+  "description": "Qabandi Digital Freight Platform — Release One",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
@@ -22,6 +22,7 @@
     "db:migrate": "pnpm --filter @qabandi/db migrate",
     "db:studio": "pnpm --filter @qabandi/db studio",
     "db:seed": "pnpm --filter @qabandi/db seed",
+    "db:create-user": "pnpm --filter @qabandi/db create-user",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d db"

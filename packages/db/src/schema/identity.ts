@@ -178,16 +178,13 @@ export const apiKeys = pgTable(
  * Public tracking is unauthenticated by design, so it needs a second
  * identifier and a throttle: an enumeration control, not a session (§8).
  */
-export const rateLimitBuckets = systemTable('Throttle counters. Not business data; no audit value.')(
-  'rate_limit_buckets',
-  {
-    key: text('key').primaryKey(),
-    count: integer('count').notNull().default(0),
-    windowStartedAt: tsz('window_started_at')
-      .notNull()
-      .defaultNow(),
-  },
-)
+export const rateLimitBuckets = systemTable(
+  'Throttle counters. Not business data; no audit value.',
+)('rate_limit_buckets', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  windowStartedAt: tsz('window_started_at').notNull().defaultNow(),
+})
 
 export type Branch = typeof branches.$inferSelect
 export type Principal = typeof principals.$inferSelect

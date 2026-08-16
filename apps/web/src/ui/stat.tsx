@@ -12,6 +12,8 @@
  * coloured tiles in a row communicate nothing, because nothing stands out.
  */
 
+import type { Route } from 'next'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
 import { Sparkline } from './chart'
@@ -97,11 +99,7 @@ export function StatTile({
       </p>
 
       <div className="mt-2.5 flex items-end justify-between gap-3">
-        {hint ? (
-          <p className="min-w-0 truncate text-[0.75rem] text-ink-muted">{hint}</p>
-        ) : (
-          <span />
-        )}
+        {hint ? <p className="min-w-0 truncate text-[0.75rem] text-ink-muted">{hint}</p> : <span />}
         {trend && trend.length > 1 ? (
           <Sparkline values={trend} width={72} height={26} tone={SPARK_TONE[tone]} />
         ) : null}
@@ -114,9 +112,9 @@ export function StatTile({
     (href ? ' hover:border-line-strong hover:shadow-raised' : '')
 
   return href ? (
-    <a href={href} className={[shell, 'block', className].filter(Boolean).join(' ')}>
+    <Link href={href as Route} className={[shell, 'block', className].filter(Boolean).join(' ')}>
       {body}
-    </a>
+    </Link>
   ) : (
     <div className={[shell, className].filter(Boolean).join(' ')}>{body}</div>
   )

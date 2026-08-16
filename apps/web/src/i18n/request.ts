@@ -40,7 +40,13 @@ export default getRequestConfig(async () => {
     formats: {
       dateTime: {
         short: { day: '2-digit', month: 'short', year: 'numeric' },
-        withTime: { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' },
+        withTime: {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        },
       },
     },
   }

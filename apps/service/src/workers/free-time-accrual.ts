@@ -25,7 +25,9 @@ import {
   workingCalendars,
 } from '@qabandi/db'
 
-export async function runFreeTimeAccrual(asOf = new Date()): Promise<{ clocks: number; lines: number }> {
+export async function runFreeTimeAccrual(
+  asOf = new Date(),
+): Promise<{ clocks: number; lines: number }> {
   const actor = systemActor()
   let lines = 0
 
@@ -79,7 +81,10 @@ export async function runFreeTimeAccrual(asOf = new Date()): Promise<{ clocks: n
         .select({ id: chargeLines.id })
         .from(chargeLines)
         .where(
-          and(eq(chargeLines.sourceKind, 'free_time_clock'), eq(chargeLines.sourceId, row.clock.id)),
+          and(
+            eq(chargeLines.sourceKind, 'free_time_clock'),
+            eq(chargeLines.sourceId, row.clock.id),
+          ),
         )
         .limit(1)
 
@@ -107,7 +112,11 @@ export async function runFreeTimeAccrual(asOf = new Date()): Promise<{ clocks: n
       }
 
       const [line] = existing
-        ? await tx.update(chargeLines).set(values).where(eq(chargeLines.id, existing.id)).returning()
+        ? await tx
+            .update(chargeLines)
+            .set(values)
+            .where(eq(chargeLines.id, existing.id))
+            .returning()
         : await tx.insert(chargeLines).values(values).returning()
 
       await tx

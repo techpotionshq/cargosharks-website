@@ -7,6 +7,7 @@
  * customs status are columns rather than something you open a job to discover.
  */
 
+import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listJobs, listRunningClocks } from '@/features/jobs/queries'
@@ -132,12 +133,12 @@ export default async function JobsPage({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
-                    <a
+                    <Link
                       href={`/jobs/${clock.jobId}`}
                       className="ref numeric text-[0.8125rem] font-medium text-brand hover:underline"
                     >
                       {clock.jobReference}
-                    </a>
+                    </Link>
                     <span className="ref numeric text-[0.75rem] text-ink-muted">
                       {clock.containerNo}
                     </span>
@@ -183,7 +184,7 @@ export default async function JobsPage({
           {FILTERS.map((option) => {
             const active = option.key === filter
             return (
-              <a
+              <Link
                 key={option.key}
                 href={option.key === 'live' ? '/jobs' : `/jobs?filter=${option.key}`}
                 aria-current={active ? 'page' : undefined}
@@ -194,7 +195,7 @@ export default async function JobsPage({
                 }`}
               >
                 {t(option.label)}
-              </a>
+              </Link>
             )
           })}
           <span className="ms-auto text-[0.75rem] text-ink-subtle">
@@ -225,12 +226,12 @@ export default async function JobsPage({
                     flag={critical ? 'critical' : job.openExceptions > 0 ? 'caution' : undefined}
                   >
                     <TD className="whitespace-nowrap">
-                      <a
+                      <Link
                         href={`/jobs/${job.id}`}
                         className="ref numeric font-medium text-brand hover:underline"
                       >
                         {job.reference}
-                      </a>
+                      </Link>
                       <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
                         <Icon name={modeIcon(job.mode)} size={12} />
                         {tMode(job.mode)}
@@ -249,9 +250,7 @@ export default async function JobsPage({
                     <TD className="text-ink-muted">
                       <Lane
                         origin={locale === 'ar' ? job.originNameAr : job.originName}
-                        destination={
-                          locale === 'ar' ? job.destinationNameAr : job.destinationName
-                        }
+                        destination={locale === 'ar' ? job.destinationNameAr : job.destinationName}
                       />
                     </TD>
 

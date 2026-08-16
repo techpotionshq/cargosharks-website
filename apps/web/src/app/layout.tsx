@@ -52,12 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const themeAttr = isThemeChoice(theme) ? theme : undefined
 
   return (
-    <html
-      lang={locale}
-      dir={directionOf(locale)}
-      data-theme={themeAttr}
-      suppressHydrationWarning
-    >
+    <html lang={locale} dir={directionOf(locale)} data-theme={themeAttr} suppressHydrationWarning>
       <head>
         {/*
           The brand's variables, ahead of everything that reads them. Inline

@@ -8,7 +8,16 @@
  * touching `apps/web` at all.
  */
 
-import { darkTheme, lightTheme, neutralRamp, ramp, type RampSpec } from './palette'
+import {
+  chartSlots,
+  darkTheme,
+  DEFAULT_CHART_SLOTS,
+  lightTheme,
+  neutralRamp,
+  ramp,
+  type ChartSlotSpec,
+  type RampSpec,
+} from './palette'
 import type {
   Brand,
   BrandContact,
@@ -23,10 +32,27 @@ export interface BrandSpec {
   readonly identity: BrandIdentity
   readonly contact: BrandContact
   readonly documents: BrandDocuments
-  /** The corporate colour. Its hue also tints the neutrals and the shadows. */
+  /** The corporate colour — the mark, primary actions, brand moments. */
   readonly primary: RampSpec
-  /** The secondary, used for the mark, highlights and chart accents. */
+  /** The secondary, used for the chrome, highlights and chart accents. */
   readonly accent: RampSpec
+  /**
+   * Which ramp the navigation chrome is cut from. Defaults to `primary`,
+   * which is right for a brand whose corporate colour is already dark and
+   * calm, and wrong for one whose corporate colour is a saturated red.
+   */
+  readonly chromeRamp?: 'primary' | 'accent' | 'neutral'
+  /**
+   * The hue that tints every neutral and every shadow. Defaults to the primary
+   * hue. Set it when the primary is too saturated to tint greys with — a red
+   * brand hue turns the entire interface pink.
+   */
+  readonly neutralHue?: number
+  /**
+   * The categorical chart series. Defaults to `DEFAULT_CHART_SLOTS`, which is
+   * validated in both themes; overriding means re-running the validator.
+   */
+  readonly chart?: readonly ChartSlotSpec[]
   readonly logo?: Partial<BrandLogo>
   readonly typography?: Partial<BrandTypography>
   readonly shape?: Partial<BrandShape>
@@ -67,8 +93,17 @@ const DEFAULT_LOGO: BrandLogo = {
 export function defineBrand(spec: BrandSpec): Brand {
   const primary = ramp(spec.primary)
   const accent = ramp(spec.accent)
-  const neutral = neutralRamp(spec.primary.hue)
-  const themeSpec = { primary, accent, neutral, hue: spec.primary.hue }
+  const neutralHue = spec.neutralHue ?? spec.primary.hue
+  const neutral = neutralRamp(neutralHue)
+  const chrome = { primary, accent, neutral }[spec.chromeRamp ?? 'primary']
+  const themeSpec = {
+    primary,
+    accent,
+    neutral,
+    chrome,
+    hue: neutralHue,
+    primarySpec: spec.primary,
+  }
 
   return {
     identity: spec.identity,
@@ -77,7 +112,12 @@ export function defineBrand(spec: BrandSpec): Brand {
     logo: { ...DEFAULT_LOGO, ...spec.logo },
     typography: { ...DEFAULT_TYPOGRAPHY, ...spec.typography },
     shape: { ...DEFAULT_SHAPE, ...spec.shape },
-    palette: { primary, accent, neutral },
+    palette: {
+      primary,
+      accent,
+      neutral,
+      chart: chartSlots(spec.chart ?? DEFAULT_CHART_SLOTS),
+    },
     light: lightTheme(themeSpec),
     dark: darkTheme(themeSpec),
   }

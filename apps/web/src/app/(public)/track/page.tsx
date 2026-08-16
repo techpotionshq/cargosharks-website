@@ -306,7 +306,9 @@ export default async function TrackPage({
       ) : null}
 
       {!submitted ? (
-        <p className="mt-6 text-center text-[0.75rem] text-ink-subtle">{tc('search')} · {brand.contact.trackingUrl.replace('https://', '')}</p>
+        <p className="mt-6 text-center text-[0.75rem] text-ink-subtle">
+          {tc('search')} · {brand.contact.trackingUrl.replace('https://', '')}
+        </p>
       ) : null}
     </div>
   )

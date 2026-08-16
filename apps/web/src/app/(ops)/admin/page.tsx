@@ -25,7 +25,10 @@ import { Badge } from '@/ui/status'
 const SCALE_STOPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const
 
 /** The environment overrides, exactly as `resolveBrand` reads them. */
-const ENV_OVERRIDES: readonly { variable: string; describe: (b: ReturnType<typeof getBrand>) => string }[] = [
+const ENV_OVERRIDES: readonly {
+  variable: string
+  describe: (b: ReturnType<typeof getBrand>) => string
+}[] = [
   { variable: 'BRAND', describe: (b) => b.identity.key },
   { variable: 'BRAND_NAME_EN', describe: (b) => b.identity.nameEn },
   { variable: 'BRAND_NAME_AR', describe: (b) => b.identity.nameAr },
@@ -165,7 +168,11 @@ export default async function AdminPage() {
           <CardHeader icon="dashboard" eyebrow={t('surfaces')} title={t('surfaces')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {semantic.map((token) => (
-              <Swatch key={token.name} color={token.value} label={token.name.replace('--qb-', '')} />
+              <Swatch
+                key={token.name}
+                color={token.value}
+                label={token.name.replace('--qb-', '')}
+              />
             ))}
           </div>
         </Card>
@@ -174,7 +181,11 @@ export default async function AdminPage() {
           <CardHeader icon="alert" eyebrow={t('statusColours')} title={t('statusColours')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {statuses.map((token) => (
-              <Swatch key={token.name} color={token.value} label={token.name.replace('--qb-', '')} />
+              <Swatch
+                key={token.name}
+                color={token.value}
+                label={token.name.replace('--qb-', '')}
+              />
             ))}
           </div>
           <p className="mt-4 text-[0.75rem] text-ink-muted">
@@ -186,7 +197,11 @@ export default async function AdminPage() {
           <CardHeader icon="trend" eyebrow={t('chartColours')} title={t('chartColours')} />
           <div className="mt-5 grid grid-cols-4 gap-2">
             {series.map((token) => (
-              <Swatch key={token.name} color={token.value} label={token.name.replace('--qb-', '')} />
+              <Swatch
+                key={token.name}
+                color={token.value}
+                label={token.name.replace('--qb-', '')}
+              />
             ))}
           </div>
           <p className="mt-4 text-[0.75rem] text-ink-muted">

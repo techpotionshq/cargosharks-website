@@ -11,6 +11,7 @@
  * itself, and the release control on the document vault.
  */
 
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -53,9 +54,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       <PageHeader
         eyebrow={
           <span className="inline-flex items-center gap-2">
-            <a href="/jobs" className="hover:text-ink">
+            <Link href="/jobs" className="hover:text-ink">
               {t('title')}
-            </a>
+            </Link>
             <Icon name="chevron-end" size={12} />
             <span>{nameOf(job.customerName, job.customerNameAr)}</span>
           </span>
@@ -183,9 +184,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <Field label={t('incoterm')}>{job.incoterm ?? '—'}</Field>
               <Field label={t('commodity')}>{job.commodity}</Field>
               <Field label={t('weight')}>
-                {job.grossWeightKg === null
-                  ? '—'
-                  : `${formatNumber(job.grossWeightKg, locale)} kg`}
+                {job.grossWeightKg === null ? '—' : `${formatNumber(job.grossWeightKg, locale)} kg`}
               </Field>
               <Field label={t('volume')}>
                 {job.volumeCbm === null ? '—' : `${formatNumber(job.volumeCbm, locale)} cbm`}

@@ -88,10 +88,7 @@ const accruingAmount = sql<string | null>`(
    where ${freeTimeClocks.jobId} = ${jobs.id} and ${freeTimeClocks.endsOn} is null
 )`
 
-export async function listJobs(
-  actor: Actor,
-  filters: JobListFilters = {},
-): Promise<JobSummary[]> {
+export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
   if (usePilotFixtures()) {
     let rows = pilotJobs()
     if (filters.status === 'live') {
@@ -216,7 +213,9 @@ function toJobSummary(row: JobRow): JobSummary {
     destinationCode: row.destinationCode ?? '',
     vesselOrFlight:
       row.flightNumber ??
-      (row.vesselName ? `${row.vesselName}${row.voyageNumber ? ` ${row.voyageNumber}` : ''}` : null),
+      (row.vesselName
+        ? `${row.vesselName}${row.voyageNumber ? ` ${row.voyageNumber}` : ''}`
+        : null),
     etd: row.etd,
     eta: row.eta,
     ata: row.ata,
@@ -232,9 +231,7 @@ function toJobSummary(row: JobRow): JobSummary {
      * `core/money`'s job.
      */
     accruing:
-      row.accruingAmount === null
-        ? null
-        : { amount: Number(row.accruingAmount), currency: 'KWD' },
+      row.accruingAmount === null ? null : { amount: Number(row.accruingAmount), currency: 'KWD' },
     updatedAt: row.updatedAt,
   }
 }
@@ -343,8 +340,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       incoterm: row.incoterm,
       commodity: '—',
       grossWeightKg: row.grossWeightKg === null ? null : Number(row.grossWeightKg),
-      chargeableWeightKg:
-        row.chargeableWeightKg === null ? null : Number(row.chargeableWeightKg),
+      chargeableWeightKg: row.chargeableWeightKg === null ? null : Number(row.chargeableWeightKg),
       volumeCbm: row.volumeCbm === null ? null : Number(row.volumeCbm),
       pieces: row.pieces,
       customsNote: row.customsNote,
@@ -453,9 +449,9 @@ export async function listOpenExceptions(actor: Actor): Promise<ExceptionView[]>
 }
 
 /** Every clock still running, for the demurrage panel. */
-export async function listRunningClocks(actor: Actor): Promise<
-  readonly (ClockView & { jobId: string; jobReference: string })[]
-> {
+export async function listRunningClocks(
+  actor: Actor,
+): Promise<readonly (ClockView & { jobId: string; jobReference: string })[]> {
   if (usePilotFixtures()) {
     return pilotJobs()
       .filter((job) => job.accruing !== null)
@@ -471,7 +467,11 @@ export async function listRunningClocks(actor: Actor): Promise<
 
   return withActor(actor, async (tx) => {
     const rows = await tx
-      .select({ clock: freeTimeClocks, jobReference: jobs.reference, containerNo: equipment.containerNo })
+      .select({
+        clock: freeTimeClocks,
+        jobReference: jobs.reference,
+        containerNo: equipment.containerNo,
+      })
       .from(freeTimeClocks)
       .innerJoin(jobs, eq(jobs.id, freeTimeClocks.jobId))
       .leftJoin(equipment, eq(equipment.id, freeTimeClocks.equipmentId))

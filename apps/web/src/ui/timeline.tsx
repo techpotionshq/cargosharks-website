@@ -96,7 +96,11 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                 <p
                   className={`text-[0.875rem] ${
-                    current ? 'font-semibold text-ink' : done ? 'font-medium text-ink' : 'text-ink-muted'
+                    current
+                      ? 'font-semibold text-ink'
+                      : done
+                        ? 'font-medium text-ink'
+                        : 'text-ink-muted'
                   }`}
                 >
                   {milestone.name}
@@ -105,7 +109,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                   <time className="numeric shrink-0 text-[0.75rem] font-medium text-ink-muted">
                     {formatDate(milestone.actualAt)}
                   </time>
-                ) : milestone.revisedAt ?? milestone.plannedAt ? (
+                ) : (milestone.revisedAt ?? milestone.plannedAt) ? (
                   <time
                     className={`numeric shrink-0 text-[0.75rem] ${
                       slipped ? 'font-medium text-caution' : 'text-ink-subtle'

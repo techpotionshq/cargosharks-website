@@ -74,9 +74,19 @@ export function markSvg(brand: Brand, options: MarkOptions = {}): string {
   if (brand.logo.kind === 'custom' && brand.logo.customSvg) {
     // The supplied file keeps its own geometry; only sizing and the accessible
     // name are ours, because those belong to the placement, not the artwork.
+    //
+    // `size` is the height the caller asked for, and the width follows from the
+    // artwork's own aspect. Forcing a square would squash any mark that is not
+    // one — Al-Qabandi's wreath is 190x259, and letterboxing it into a square
+    // box would leave it floating with uneven margins in the sidebar.
+    const box = /viewBox="([\d.\-\s]+)"/.exec(brand.logo.customSvg)?.[1]?.trim().split(/\s+/)
+    const ratio =
+      box && box.length === 4 && Number(box[3]) > 0 ? Number(box[2]) / Number(box[3]) : 1
+    const width = Math.round(size * ratio * 100) / 100
+
     return brand.logo.customSvg
       .replace(/\s+(?:width|height|aria-hidden|role|aria-label|focusable)="[^"]*"/g, '')
-      .replace('<svg', `<svg width="${size}" height="${size}"${className}${a11y}`)
+      .replace('<svg', `<svg width="${width}" height="${size}"${className}${a11y}`)
   }
 
   const letter = escapeXml(brand.logo.monogramLetter)

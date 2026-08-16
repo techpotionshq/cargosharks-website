@@ -39,8 +39,15 @@ export function loadEnv(): void {
   // Loaded in order; dotenv never overwrites a variable that is already set,
   // so the first file to define a key wins and the real environment wins over
   // every file.
+  //
+  // The `turbopackIgnore` markers matter for the Next build. Turbopack traces
+  // dynamic filesystem access to decide what to bundle, and a `join` it cannot
+  // resolve statically makes it conservatively trace *the whole workspace* into
+  // the server output — every source file and the public folder shipped as
+  // server code. These paths are resolved at run time from the real filesystem
+  // and are never bundled, so opting out is correct rather than a silencer.
   for (const file of ['.env.local', '.env']) {
-    const path = join(root, file)
-    if (existsSync(path)) loadDotenv({ path, quiet: true })
+    const path = join(/* turbopackIgnore: true */ root, file)
+    if (existsSync(/* turbopackIgnore: true */ path)) loadDotenv({ path, quiet: true })
   }
 }

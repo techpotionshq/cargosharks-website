@@ -10,6 +10,7 @@
  * this product exists to remove (`PP-02`).
  */
 
+import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -71,20 +72,20 @@ export default async function PublicHome() {
               <p className="mt-4 max-w-lg text-[1rem] text-chrome-ink-muted">{t('heroBody')}</p>
 
               <div className="mt-7 flex flex-wrap gap-3">
-                <a
+                <Link
                   href="/track"
                   className="inline-flex h-11 items-center gap-2 rounded-sm bg-accent px-5 text-[0.9375rem] font-semibold text-brand-950 transition-opacity hover:opacity-90"
                 >
                   <Icon name="tracking" size={17} />
                   {t('trackCta')}
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/sign-in"
                   className="inline-flex h-11 items-center gap-2 rounded-sm border border-chrome-line px-5 text-[0.9375rem] font-medium text-chrome-ink transition-colors hover:bg-white/10"
                 >
                   {t('portalCta')}
                   <Icon name="arrow-end" size={16} />
-                </a>
+                </Link>
               </div>
 
               {established ? (

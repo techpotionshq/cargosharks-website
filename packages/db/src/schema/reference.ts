@@ -284,9 +284,7 @@ export const notificationTemplates = pgTable(
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },
-  (t) => [
-    unique('notification_templates_unique').on(t.eventKey, t.channel, t.locale, t.branchId),
-  ],
+  (t) => [unique('notification_templates_unique').on(t.eventKey, t.channel, t.locale, t.branchId)],
 )
 
 /**

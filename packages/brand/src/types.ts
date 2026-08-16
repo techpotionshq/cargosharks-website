@@ -204,6 +204,8 @@ export interface Brand {
     readonly primary: ColorScale
     readonly accent: ColorScale
     readonly neutral: ColorScale
+    /** The categorical series, resolved and in assignment order. */
+    readonly chart: readonly string[]
   }
   readonly light: ThemeColors
   readonly dark: ThemeColors

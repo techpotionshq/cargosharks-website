@@ -107,5 +107,8 @@ export interface CustomsFiling {
  */
 export interface EInvoiceTransmit {
   readonly key: string
-  transmit(invoiceId: string, document: Record<string, unknown>): Promise<{ accepted: boolean; reference?: string }>
+  transmit(
+    invoiceId: string,
+    document: Record<string, unknown>,
+  ): Promise<{ accepted: boolean; reference?: string }>
 }

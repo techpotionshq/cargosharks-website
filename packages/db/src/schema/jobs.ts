@@ -78,9 +78,10 @@ export const enquiries = pgTable(
     volumeCbm: quantity('volume_cbm'),
     pieces: integer('pieces'),
     /** Per-piece dimensions, where the customer supplied them. */
-    dimensions: jsonb('dimensions').$type<
-      { lengthCm: string; widthCm: string; heightCm: string; pieces?: number }[]
-    >(),
+    dimensions:
+      jsonb('dimensions').$type<
+        { lengthCm: string; widthCm: string; heightCm: string; pieces?: number }[]
+      >(),
     isDangerous: boolean('is_dangerous').notNull().default(false),
     notes: text('notes'),
     slaStartedAt: tsz('sla_started_at'),

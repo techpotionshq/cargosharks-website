@@ -39,10 +39,23 @@ export function formatMoney(
     currency: value.currency,
     notation: compact && Math.abs(value.amount) >= 10_000 ? 'compact' : 'standard',
     // Compact notation and three-decimal currencies do not mix legibly.
-    ...(compact && Math.abs(value.amount) >= 10_000
-      ? { maximumFractionDigits: 1 }
-      : {}),
+    ...(compact && Math.abs(value.amount) >= 10_000 ? { maximumFractionDigits: 1 } : {}),
   }).format(value.amount)
+}
+
+/**
+ * A `numeric(19,6)` column comes back as `"25000.000000"`.
+ *
+ * That is the right storage — money needs the scale, and §6 fixes it at six
+ * places — but it is the wrong thing to put back into an editable field: the
+ * operator typed `25000` and should see `25000`. Trims the trailing zeros
+ * without touching the digits that matter, and leaves a genuine `0.50` alone.
+ */
+export function trimDecimal(value: string | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  if (!value.includes('.')) return value
+  const trimmed = value.replace(/\.?0+$/, '')
+  return trimmed === '' || trimmed === '-' ? '0' : trimmed
 }
 
 export function formatNumber(value: number, locale: Locale): string {
@@ -88,7 +101,11 @@ export function formatDay(date: Date | null | undefined, locale: Locale): string
  * arithmetic. `Intl.RelativeTimeFormat` gets the plural rules right in Arabic,
  * which has six of them and which no hand-rolled version survives.
  */
-export function formatRelative(date: Date | null | undefined, locale: Locale, now = Date.now()): string {
+export function formatRelative(
+  date: Date | null | undefined,
+  locale: Locale,
+  now = Date.now(),
+): string {
   if (!date) return '—'
   const diffMs = date.getTime() - now
   const rtf = new Intl.RelativeTimeFormat(intlLocale(locale), { numeric: 'auto' })

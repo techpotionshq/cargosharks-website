@@ -75,10 +75,7 @@ async function main(): Promise<void> {
   const target = new pg.Client({ connectionString: withDatabase(adminUrl, app.database) })
   await target.connect()
 
-  const bootstrap = readFileSync(
-    join(workspaceRoot(), 'infra/postgres/init/01-roles.sql'),
-    'utf8',
-  )
+  const bootstrap = readFileSync(join(workspaceRoot(), 'infra/postgres/init/01-roles.sql'), 'utf8')
     // psql meta-commands mean nothing over the wire.
     .replace(/^\\.*$/gm, '')
 

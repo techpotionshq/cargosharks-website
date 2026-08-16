@@ -24,6 +24,8 @@
  * cursor does not.
  */
 
+import type { Route } from 'next'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { CHART_SERIES_VARS } from '@qabandi/brand'
 
@@ -95,13 +97,13 @@ export function BarList({
         return (
           <li key={index}>
             {datum.href ? (
-              <a
-                href={datum.href}
+              <Link
+                href={datum.href as Route}
                 title={datum.hint}
                 className="block rounded-sm outline-offset-4 hover:opacity-80"
               >
                 {row}
-              </a>
+              </Link>
             ) : (
               <span title={datum.hint} className="block">
                 {row}
@@ -282,7 +284,9 @@ export function Sparkline({
   /** 2px inset top and bottom so the stroke is never clipped by the viewBox. */
   const y = (v: number) => height - 2 - ((v - min) / span) * (height - 4)
 
-  const line = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(1)} ${y(v).toFixed(1)}`).join(' ')
+  const line = values
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(1)} ${y(v).toFixed(1)}`)
+    .join(' ')
   const area = `${line} L${width} ${height} L0 ${height} Z`
   const color = tone ?? seriesColor(0)
   const last = values[values.length - 1]!

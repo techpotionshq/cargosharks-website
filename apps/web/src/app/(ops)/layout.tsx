@@ -7,12 +7,13 @@
  * them. This redirect exists so they get a sensible page rather than an empty
  * one.
  *
- * The chrome is brand-coloured rather than neutral, and that is a deliberate
- * whitelabel decision: the operator's colour frames the product, and the
- * product's own surfaces stay neutral so their data is what carries colour.
- * Re-skinning changes the frame, not the legibility of the board.
+ * The chrome is cut from the brand's *secondary* — navy, not the corporate red
+ * — and that is a deliberate whitelabel decision (see `brands/qabandi.ts`).
+ * The operator's colour frames the product, the product's surfaces stay
+ * neutral, and red is spent only where it means something.
  */
 
+import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
@@ -21,37 +22,13 @@ import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { THEME_COOKIE, isThemeChoice } from '@/lib/theme'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { can } from '@/lib/permissions'
+import { getNavCounts } from '@/features/dashboard/nav-counts'
+import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
-import { Icon, type IconName } from '@/ui/icon'
+import { Icon } from '@/ui/icon'
+import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch } from '@/ui/preferences'
-
-interface NavItem {
-  readonly href: string
-  readonly key: 'dashboard' | 'enquiries' | 'jobs' | 'rates' | 'finance' | 'admin'
-  readonly icon: IconName
-}
-
-const SECTIONS: readonly { key: 'commercial' | 'operations' | 'settings'; items: NavItem[] }[] = [
-  {
-    key: 'commercial',
-    items: [
-      { href: '/dashboard', key: 'dashboard', icon: 'dashboard' },
-      { href: '/enquiries', key: 'enquiries', icon: 'enquiries' },
-      { href: '/rates', key: 'rates', icon: 'rates' },
-    ],
-  },
-  {
-    key: 'operations',
-    items: [{ href: '/jobs', key: 'jobs', icon: 'jobs' }],
-  },
-  {
-    key: 'settings',
-    items: [
-      { href: '/finance', key: 'finance', icon: 'finance' },
-      { href: '/admin', key: 'admin', icon: 'admin' },
-    ],
-  },
-]
 
 export default async function OpsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -68,16 +45,95 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
   const themeCookie = (await cookies()).get(THEME_COOKIE)?.value
   const theme = isThemeChoice(themeCookie) ? themeCookie : 'system'
 
+  // The two counts worth interrupting someone for. Everything else is a page
+  // you go to; these are things that are wrong right now.
+  const counts = await getNavCounts(session.actor)
+
+  /**
+   * The navigation, grouped the way the business is: what you sell, what you
+   * move, who you move it with, what you bill, and the settings behind all of
+   * it. Administration is filtered by permission rather than hidden by role,
+   * so a finance user sees the ledger and not the user table.
+   */
+  const sections: NavSection[] = [
+    {
+      label: t('sections.commercial'),
+      items: [
+        { href: '/dashboard', label: t('dashboard'), icon: 'dashboard' },
+        {
+          href: '/enquiries',
+          label: t('enquiries'),
+          icon: 'enquiries',
+          badge: counts.openEnquiries,
+        },
+        { href: '/quotes', label: t('quotes'), icon: 'quotes' },
+        { href: '/customers', label: t('customers'), icon: 'customers' },
+        { href: '/rates', label: t('rates'), icon: 'rates' },
+      ],
+    },
+    {
+      label: t('sections.operations'),
+      items: [
+        { href: '/jobs', label: t('jobs'), icon: 'jobs' },
+        {
+          href: '/exceptions',
+          label: t('exceptions'),
+          icon: 'alert',
+          badge: counts.openExceptions,
+        },
+        { href: '/customs', label: t('customs'), icon: 'customs' },
+        { href: '/documents', label: t('documents'), icon: 'document' },
+      ],
+    },
+    {
+      label: t('sections.network'),
+      items: [
+        { href: '/partners', label: t('partners'), icon: 'partners' },
+        { href: '/locations', label: t('locations'), icon: 'locations' },
+      ],
+    },
+    {
+      label: t('sections.finance'),
+      items: [
+        { href: '/finance', label: t('finance'), icon: 'finance' },
+        { href: '/invoices', label: t('invoices'), icon: 'invoices' },
+        { href: '/payments', label: t('payments'), icon: 'payments' },
+      ],
+    },
+    {
+      label: t('sections.settings'),
+      items: [
+        ...(can(session, 'admin.users.write')
+          ? [{ href: '/admin/users', label: t('users'), icon: 'users' as const }]
+          : []),
+        { href: '/admin/branches', label: t('branches'), icon: 'branches' },
+        { href: '/admin/reference', label: t('reference'), icon: 'reference' },
+        ...(can(session, 'admin.audit.read')
+          ? [{ href: '/admin/audit', label: t('audit'), icon: 'audit' as const }]
+          : []),
+        { href: '/admin', label: t('brand'), icon: 'admin' },
+      ],
+    },
+  ]
+
+  const displayName =
+    locale === 'ar' && session.principal.nameAr
+      ? session.principal.nameAr
+      : session.principal.nameEn
+
   const initials = session.principal.nameEn
     .split(' ')
     .map((part) => part[0])
     .slice(0, 2)
     .join('')
 
+  const roleKey = [...session.branchRoles.values()][0] ?? 'read_only'
+  const branchCodes = session.branchRoles.size
+
   return (
     <div className="flex min-h-dvh bg-canvas">
       {/*
-        Two elements rather than one: the outer column carries the brand
+        Two elements rather than one: the outer column carries the chrome
         colour for the *whole* page height, and the inner nav sticks to the
         viewport. A single sticky element would leave the chrome ending
         mid-scroll on a long board, with the canvas showing beneath it.
@@ -85,57 +141,66 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         `border-e` is logical: the sidebar sits at the inline start, which is
         the right-hand side in Arabic, with no conditional.
       */}
-      <div className="hidden w-64 shrink-0 border-e border-chrome-line bg-chrome md:block">
+      <div className="hidden w-62 shrink-0 border-e border-chrome-line bg-chrome md:block">
         <nav className="sticky top-0 flex h-dvh flex-col">
-        <div className="px-4 py-5">
-          <a href="/dashboard" className="block rounded-sm outline-offset-4">
-            <Logo brand={brand} locale={locale} tone="chrome" size="sm" />
-          </a>
-        </div>
+          <div className="border-b border-chrome-line/70 px-4 py-4">
+            <Link href="/dashboard" className="block rounded-sm outline-offset-4">
+              <Logo brand={brand} locale={locale} tone="chrome" size="sm" />
+            </Link>
+          </div>
 
-        <div className="flex-1 overflow-y-auto px-3 pb-4">
-          {SECTIONS.map((section) => (
-            <div key={section.key} className="mb-5">
-              <p className="eyebrow mb-1.5 px-2 text-chrome-ink-muted/70">
-                {t(`sections.${section.key}`)}
-              </p>
-              <ul className="flex flex-col gap-0.5">
-                {section.items.map((item) => (
-                  <li key={item.href}>
-                    <a
-                      href={item.href}
-                      className="group flex items-center gap-2.5 rounded-sm px-2 py-2 text-[0.875rem] font-medium text-chrome-ink-muted transition-colors hover:bg-white/10 hover:text-chrome-ink"
-                    >
-                      <Icon name={item.icon} size={17} className="shrink-0 opacity-80" />
-                      <span className="truncate">{t(item.key)}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+          <SidebarNav sections={sections} />
+
+          {/*
+            The customer-facing surface, reachable from the inside — an
+            operator checking what their customer actually sees.
+          */}
+          <div className="border-t border-chrome-line/70 px-3 py-2">
+            <Link
+              href="/track"
+              className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-white/5 hover:text-chrome-ink"
+            >
+              <Icon name="tracking" size={16} className="opacity-70" />
+              {t('tracking')}
+              <Icon name="external" size={13} className="ms-auto opacity-50" />
+            </Link>
+          </div>
+
+          {/* Who you are signed in as, and the way out. */}
+          <div className="border-t border-chrome-line/70 p-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[0.75rem] font-semibold text-on-brand">
+                {initials}
+              </span>
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate text-[0.8125rem] font-medium text-chrome-ink">
+                  {displayName}
+                </span>
+                <span className="truncate text-[0.6875rem] text-chrome-ink-muted">
+                  {t(`roles.${roleKey}`)} · {tc('branchCount', { count: branchCodes })}
+                </span>
+              </span>
+              <form action={signOut} className="ms-auto">
+                <button
+                  type="submit"
+                  title={t('signOut')}
+                  aria-label={t('signOut')}
+                  className="flex size-7 items-center justify-center rounded-md text-chrome-ink-muted transition-colors hover:bg-white/7 hover:text-chrome-ink"
+                >
+                  <Icon name="sign-out" size={15} />
+                </button>
+              </form>
             </div>
-          ))}
-        </div>
-
-        {/* The customer-facing surface, reachable from the inside. */}
-        <div className="border-t border-chrome-line px-3 py-3">
-          <a
-            href="/track"
-            className="flex items-center gap-2.5 rounded-sm px-2 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-white/10 hover:text-chrome-ink"
-          >
-            <Icon name="tracking" size={16} />
-            {t('tracking')}
-            <Icon name="external" size={13} className="ms-auto opacity-60" />
-          </a>
-        </div>
+          </div>
         </nav>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
           {/* On a phone the sidebar collapses to the mark alone. */}
-          <a href="/dashboard" className="md:hidden">
+          <Link href="/dashboard" className="md:hidden">
             <Logo brand={brand} locale={locale} size="sm" markOnly />
-          </a>
+          </Link>
 
           <form action="/jobs" className="relative hidden max-w-sm flex-1 sm:block">
             <Icon
@@ -148,7 +213,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
               name="q"
               placeholder={tc('searchPlaceholder')}
               aria-label={tc('search')}
-              className="h-9 w-full rounded-sm border border-line bg-surface-sunken ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+              className="h-9 w-full rounded-md border border-line bg-surface-sunken ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
             />
           </form>
 
@@ -158,49 +223,22 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                 className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-[0.6875rem] font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
                 title="Seeded pilot data — replaced by the client's own job files and rate card."
               >
-                <Icon name="dot" size={10} />
+                <Icon name="dot" size={9} />
                 {tApp('pilot')}
               </span>
             ) : null}
             <ThemeSwitch current={theme} />
             <LanguageSwitch />
-            <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
-            <span className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-full bg-brand-soft text-[0.75rem] font-semibold text-brand-soft-ink">
-                {initials}
-              </span>
-              <span className="hidden min-w-0 flex-col leading-tight lg:flex">
-                <span className="truncate text-[0.8125rem] font-medium text-ink">
-                  {locale === 'ar' && session.principal.nameAr
-                    ? session.principal.nameAr
-                    : session.principal.nameEn}
-                </span>
-                <span className="truncate text-[0.6875rem] text-ink-subtle">
-                  {tApp('operations')}
-                </span>
-              </span>
-            </span>
           </div>
         </header>
 
         {/*
           The sidebar is desktop-only, so a phone would otherwise have no way
-          out of the current screen. A scrolling icon strip is not a compromise
+          out of the current screen. A scrolling strip is not a compromise
           here — an operations manager checking the board from a terminal yard
           is a real use, and a hamburger would need JavaScript to open.
         */}
-        <nav className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-2 md:hidden">
-          {SECTIONS.flatMap((section) => section.items).map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="flex shrink-0 items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-            >
-              <Icon name={item.icon} size={15} />
-              {t(item.key)}
-            </a>
-          ))}
-        </nav>
+        <MobileNav sections={sections} />
 
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
       </div>

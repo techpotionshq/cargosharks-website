@@ -16,17 +16,13 @@ import { config } from '../config'
 export async function webhooks(app: FastifyInstance): Promise<void> {
   // Raw body is required for signature verification; a parsed-then-restringified
   // body will not reproduce the bytes the provider signed.
-  app.addContentTypeParser(
-    'application/json',
-    { parseAs: 'buffer' },
-    (_request, body, done) => {
-      try {
-        done(null, { raw: body as Buffer, parsed: JSON.parse((body as Buffer).toString('utf8')) })
-      } catch (error) {
-        done(error as Error, undefined)
-      }
-    },
-  )
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_request, body, done) => {
+    try {
+      done(null, { raw: body as Buffer, parsed: JSON.parse((body as Buffer).toString('utf8')) })
+    } catch (error) {
+      done(error as Error, undefined)
+    }
+  })
 
   /** Meta's verification handshake, performed once at subscription time. */
   app.get<{ Querystring: Record<string, string> }>('/whatsapp', async (request, reply) => {

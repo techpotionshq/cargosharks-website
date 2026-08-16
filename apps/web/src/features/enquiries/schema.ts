@@ -37,10 +37,13 @@ export const createEnquirySchema = insertEnquiry
     message: 'An enquiry needs either a known customer or a contact email',
     path: ['customerId'],
   })
-  .refine((value) => !value.originId || !value.destinationId || value.originId !== value.destinationId, {
-    message: 'Origin and destination must differ',
-    path: ['destinationId'],
-  })
+  .refine(
+    (value) => !value.originId || !value.destinationId || value.originId !== value.destinationId,
+    {
+      message: 'Origin and destination must differ',
+      path: ['destinationId'],
+    },
+  )
 
 export type CreateEnquiryInput = z.infer<typeof createEnquirySchema>
 

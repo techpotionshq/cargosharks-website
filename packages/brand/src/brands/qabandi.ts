@@ -1,27 +1,29 @@
 /**
  * AL-QABANDI & PARTNERS — the default brand.
  *
- * **Status: provisional.** The client's own logo files, colour references and
- * a letterhead sample are Pilot §5 item 4, due on day 2. Everything here is a
- * defensible stand-in chosen to survive that arrival cheaply: when the real
- * values land, this file changes and nothing else does. That is the entire
- * argument for the package — Pilot §3.1 item 1 calls branding "non-negotiable
- * for the illusion to hold", and an illusion that takes a sprint to correct
- * would not survive day 3.
+ * **Status: taken from the client's live identity**, not guessed. Every value
+ * below traces to qabandi.com: the laurel wreath is their own artwork, the red
+ * is the exact colour it is drawn in, and the navy, the greys and the contact
+ * block are lifted from the same stylesheet and page furniture.
  *
- * The provisional choices, and why:
+ *   - **Red `#da2726`** — `oklch(0.574 0.213 27)`, measured off the mark itself
+ *     and confirmed as the dominant value in their stylesheet (94 uses).
+ *   - **Navy `#1d2143`** — `oklch(0.264 0.063 276)`, their dark sections.
+ *   - Their muted grey sits at hue 283, so the neutral ramp follows the navy
+ *     rather than the red. Tinting a whole interface with a red brand hue
+ *     turns every card and rule faintly pink.
  *
- *   - **Marine navy** as the corporate colour. A thirty-four-year-old Kuwaiti
- *     shipping and forwarding house is not a startup, and the palette should
- *     not read as one. Navy also survives the transition to a white
- *     quotation letterhead, which a mid-tone brand colour does not.
- *   - **Brass** as the accent. Warm against the navy, legible as a small
- *     highlight on both themes, and it does not collide with any of the five
- *     status colours — an accent that reads as "success" or "overdue" makes
- *     the ops board lie.
+ * The one real design decision here, and it is worth stating plainly: **the
+ * chrome is cut from the navy, not from the red.** Hue 27 is also where
+ * `critical` lives, and a product cannot spend its alarm colour on four hundred
+ * pixels of permanent sidebar and still have a customs hold jump off the board.
+ * So red is rationed — the mark, a primary action, and things that are actually
+ * wrong — and the navy carries the furniture. The charts go further and exclude
+ * red altogether; see `DEFAULT_CHART_SLOTS`.
  */
 
 import { defineBrand } from '../define'
+import { QABANDI_MARK_SVG } from './qabandi-mark'
 
 export const qabandiBrand = defineBrand({
   identity: {
@@ -37,36 +39,46 @@ export const qabandiBrand = defineBrand({
   },
 
   contact: {
-    websiteUrl: 'https://qabandi.com',
+    websiteUrl: 'https://www.qabandi.com',
     portalUrl: 'https://portal.qabandi.com',
     /** Moment 1 is demonstrated here, and the domain is half of why it lands. */
     trackingUrl: 'https://track.qabandi.com',
-    supportEmail: 'operations@qabandi.com',
-    supportPhone: '+965 2483 0000',
-    addressEn: 'Shuwaikh Port Road, Kuwait City, State of Kuwait',
-    addressAr: 'طريق ميناء الشويخ، مدينة الكويت، دولة الكويت',
+    supportEmail: 'info@qabandi.com',
+    supportPhone: '+965 2240 6262',
+    addressEn: 'Fahed Al-Salem Street, Al-Dawlia Commercial Center, Kuwait',
+    addressAr: 'شارع فهد السالم، المركز التجاري الدولي، الكويت',
   },
 
   documents: {
-    registrationLineEn: 'Commercial Registration 00000 · Customs Licence 000/00',
-    registrationLineAr: 'السجل التجاري ٠٠٠٠٠ · رخصة جمركية ٠٠٠/٠٠',
+    // Placeholders: the CR and customs-licence numbers are the client's to
+    // supply, and inventing plausible ones would put a false registration on
+    // every quotation the pilot prints.
+    registrationLineEn: 'Commercial Registration — · Customs Licence —',
+    registrationLineAr: 'السجل التجاري — · رخصة جمركية —',
     footerEn: 'All business is transacted under our Standard Trading Conditions.',
     footerAr: 'تخضع جميع المعاملات لشروط التعامل القياسية لدينا.',
     tradingConditionsEn:
       'Subject to the Standard Trading Conditions of the Kuwait International Freight Forwarders Association.',
-    tradingConditionsAr:
-      'تخضع لشروط التعامل القياسية لجمعية وكلاء الشحن الدولي الكويتية.',
+    tradingConditionsAr: 'تخضع لشروط التعامل القياسية لجمعية وكلاء الشحن الدولي الكويتية.',
   },
 
-  /** Marine navy. The hue also tints every neutral and every shadow. */
-  primary: { hue: 251, chroma: 0.118, hueShift: -8 },
-  /** Brass, drifting redder as it darkens the way a real metallic does. */
-  accent: { hue: 79, chroma: 0.125, hueShift: -12 },
+  /**
+   * The corporate red. Peak chroma is 0.19 rather than the measured 0.213
+   * because 0.213 pushes the 700–950 stops outside sRGB, and a ramp that clips
+   * at the dark end goes flat exactly where the interface needs separation.
+   */
+  primary: { hue: 27.4, chroma: 0.19, hueShift: 6 },
+  /** The navy. Drifts cooler as it darkens, the way a real ink does. */
+  accent: { hue: 276, chroma: 0.105, hueShift: -12 },
+
+  chromeRamp: 'accent',
+  neutralHue: 276,
 
   logo: {
-    kind: 'monogram',
+    kind: 'custom',
+    customSvg: QABANDI_MARK_SVG,
     monogramLetter: 'Q',
-    showWaves: true,
-    favicon: '⚓',
+    showWaves: false,
+    favicon: '🏛',
   },
 })

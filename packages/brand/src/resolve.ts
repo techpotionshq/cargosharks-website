@@ -91,11 +91,16 @@ export function resolveBrand(env: Env = ambientEnv()): Brand {
     kind: (str(env, 'BRAND_LOGO_SVG') ? 'custom' : base.logo.kind) as Brand['logo']['kind'],
   }
 
+  const chromeRamp = str(env, 'BRAND_CHROME_RAMP') as 'primary' | 'accent' | 'neutral' | undefined
+  const neutralHue = num(env, 'BRAND_NEUTRAL_HUE')
+
   const needsRebuild =
     primaryHue !== undefined ||
     primaryChroma !== undefined ||
     accentHue !== undefined ||
-    accentChroma !== undefined
+    accentChroma !== undefined ||
+    chromeRamp !== undefined ||
+    neutralHue !== undefined
 
   if (!needsRebuild) {
     return {
@@ -119,10 +124,25 @@ export function resolveBrand(env: Env = ambientEnv()): Brand {
       hue: accentHue ?? hueOf(base.palette.accent[500]),
       chroma: accentChroma ?? chromaOf(base.palette.accent[500]),
     },
+    /**
+     * Both of these have to be carried across explicitly. They are not
+     * recoverable from the resolved ramps, and letting them fall back to their
+     * defaults would mean that overriding one hue silently returns the sidebar
+     * to the primary ramp — for this brand, a red one.
+     */
+    chromeRamp: chromeRamp ?? rampOf(base),
+    neutralHue: neutralHue ?? hueOf(base.palette.neutral[500]),
     logo,
     typography: base.typography,
     shape: radius === undefined ? base.shape : { ...base.shape, radius },
   })
+}
+
+/** Which ramp the resolved brand's chrome was cut from, by matching its value. */
+function rampOf(base: Brand): 'primary' | 'accent' | 'neutral' {
+  if (base.light.chrome === base.palette.accent[950]) return 'accent'
+  if (base.light.chrome === base.palette.neutral[950]) return 'neutral'
+  return 'primary'
 }
 
 /** `oklch(L C H)` → H. Used only to inherit half of an override. */

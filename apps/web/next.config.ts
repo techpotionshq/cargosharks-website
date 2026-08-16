@@ -1,5 +1,20 @@
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
+import { loadEnv } from '@qabandi/db'
+
+/**
+ * Next reads `.env` files relative to the *app* directory, so in this monorepo
+ * the connection strings at the workspace root are invisible to `apps/web` —
+ * which meant the application silently fell back to the pilot fixtures even
+ * with a perfectly good database configured two directories up. The scripts in
+ * `@qabandi/db` already walk up to the workspace root; the application uses the
+ * same loader so both see one environment.
+ *
+ * It runs here rather than in a module because `next.config.ts` is evaluated
+ * once, before any server code, in the Node process that serves the app.
+ * Anything already in the real environment still wins.
+ */
+loadEnv()
 
 /**
  * `next-intl` is wired without locale routing: the language is a property of

@@ -24,13 +24,7 @@ export const principalTypeEnum = pgEnum('principal_type', [
   'system',
 ])
 
-export const modeEnum = pgEnum('transport_mode', [
-  'sea_fcl',
-  'sea_lcl',
-  'air',
-  'land',
-  'courier',
-])
+export const modeEnum = pgEnum('transport_mode', ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'])
 
 export const directionEnum = pgEnum('trade_direction', ['import', 'export', 'cross_trade'])
 

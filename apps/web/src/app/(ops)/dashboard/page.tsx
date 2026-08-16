@@ -17,17 +17,14 @@
  * own: RLS applies it (§5.3).
  */
 
+import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getOpsOverview } from '@/features/dashboard/queries'
+import { getSetupState, type SetupStepKey } from '@/features/onboarding/queries'
+import { SetupChecklist } from '@/features/onboarding/ui/setup-checklist'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import {
-  formatDateTime,
-  formatDay,
-  formatMoney,
-  formatNumber,
-  formatRelative,
-} from '@/lib/format'
+import { formatDateTime, formatDay, formatMoney, formatNumber, formatRelative } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { BarList, CompositionBar, TrendColumns } from '@/ui/chart'
 import { Grid, PageHeader, EmptyState, Button, Lane } from '@/ui/layout'
@@ -39,8 +36,10 @@ import { MilestoneDots } from '@/ui/timeline'
 export default async function DashboardPage() {
   const session = await requireSession()
   const overview = await getOpsOverview(session.actor)
+  const setup = await getSetupState(session.actor)
 
   const t = await getTranslations('dashboard')
+  const tSetup = await getTranslations('setup')
   const tc = await getTranslations('common')
   const tJob = await getTranslations('job')
   const tEnq = await getTranslations('enquiry')
@@ -67,6 +66,31 @@ export default async function DashboardPage() {
             </Button>
           </>
         }
+      />
+
+      {/*
+        Shown only until the last step is done, and it sits above the board
+        rather than on a separate page: on an empty install the board is all
+        zeroes, and that is exactly the moment the operator needs telling why.
+      */}
+      <SetupChecklist
+        state={setup}
+        labels={{
+          title: tSetup('title'),
+          subtitle: tSetup('subtitle'),
+          progress: tSetup('progress', { done: setup.doneCount, total: setup.steps.length }),
+          start: tSetup('start'),
+          steps: Object.fromEntries(
+            setup.steps.map((step) => [
+              step.key,
+              {
+                title: tSetup(`steps.${step.key}.title`),
+                description: tSetup(`steps.${step.key}.description`),
+                action: tSetup(`steps.${step.key}.action`),
+              },
+            ]),
+          ) as Record<SetupStepKey, { title: string; description: string; action: string }>,
+        }}
       />
 
       {/*
@@ -121,7 +145,12 @@ export default async function DashboardPage() {
               title={t('exceptions')}
               description={t('exceptionsHint')}
               actions={
-                <Button href="/jobs?filter=exceptions" size="sm" variant="ghost" iconEnd="chevron-end">
+                <Button
+                  href="/jobs?filter=exceptions"
+                  size="sm"
+                  variant="ghost"
+                  iconEnd="chevron-end"
+                >
                   {tc('viewAll')}
                 </Button>
               }
@@ -140,7 +169,7 @@ export default async function DashboardPage() {
                 const overdue = exception.dueAt !== null && exception.dueAt.getTime() < now
                 return (
                   <li key={exception.id}>
-                    <a
+                    <Link
                       href={`/jobs/${exception.jobId}`}
                       className="flex items-start gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
@@ -172,7 +201,7 @@ export default async function DashboardPage() {
                           {formatRelative(exception.openedAt, locale, now)}
                         </span>
                       </div>
-                    </a>
+                    </Link>
                   </li>
                 )
               })}
@@ -199,7 +228,7 @@ export default async function DashboardPage() {
                 const tone = slaTone(enquiry.slaDueAt, enquiry.firstRespondedAt, now)
                 return (
                   <li key={enquiry.id}>
-                    <a
+                    <Link
                       href={`/enquiries/${enquiry.id}`}
                       className="flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-surface-sunken"
                     >
@@ -219,7 +248,7 @@ export default async function DashboardPage() {
                       >
                         {formatRelative(enquiry.slaDueAt, locale, now)}
                       </span>
-                    </a>
+                    </Link>
                   </li>
                 )
               })}
@@ -277,7 +306,9 @@ export default async function DashboardPage() {
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-[0.8125rem] text-ink-muted">{t('winRateHint', { quoted: overview.quotes.sentThisMonth })}</dt>
+              <dt className="text-[0.8125rem] text-ink-muted">
+                {t('winRateHint', { quoted: overview.quotes.sentThisMonth })}
+              </dt>
               <dd className="numeric text-[0.875rem] font-semibold text-ink">
                 {formatMoney(overview.quotes.quotedValue, locale, { compact: true })}
               </dd>
@@ -344,7 +375,7 @@ export default async function DashboardPage() {
             <ul className="divide-y divide-line border-t border-line">
               {overview.arrivals.map((job) => (
                 <li key={job.id}>
-                  <a
+                  <Link
                     href={`/jobs/${job.id}`}
                     className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                   >
@@ -383,7 +414,7 @@ export default async function DashboardPage() {
                         {tJob('eta')} {formatDay(job.eta, locale)}
                       </span>
                     </div>
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

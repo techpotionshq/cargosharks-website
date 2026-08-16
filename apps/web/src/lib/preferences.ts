@@ -34,8 +34,7 @@ export async function setLocalePreference(formData: FormData): Promise<void> {
 
 export async function setThemePreference(formData: FormData): Promise<void> {
   const requested = String(formData.get('theme') ?? 'system')
-  const theme: ThemeChoice =
-    requested === 'light' || requested === 'dark' ? requested : 'system'
+  const theme: ThemeChoice = requested === 'light' || requested === 'dark' ? requested : 'system'
   const store = await cookies()
 
   if (theme === 'system') {

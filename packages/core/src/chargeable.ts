@@ -37,7 +37,12 @@ export interface ChargeableRule {
 
 export const SEED_CHARGEABLE_RULES: readonly ChargeableRule[] = [
   // 6000 cm³/kg — the IATA divisor, 166.67 kg per cbm.
-  { mode: 'air', divisorCm3PerKg: new D('6000'), roundUpToKg: new D('0.5'), minimumKg: new D('45') },
+  {
+    mode: 'air',
+    divisorCm3PerKg: new D('6000'),
+    roundUpToKg: new D('0.5'),
+    minimumKg: new D('45'),
+  },
   // 1000 cm³/kg — the revenue ton, one cbm to one tonne.
   {
     mode: 'sea_lcl',
@@ -118,12 +123,12 @@ export function chargeableWeight(c: Consignment, rule: ChargeableRule): Chargeab
   const rounded = roundUpTo(greater, rule.roundUpToKg)
   const chargeable = rounded.lessThan(rule.minimumKg) ? rule.minimumKg : rounded
 
-  const basis: ChargeableWeight['basis'] = chargeable.equals(rule.minimumKg) &&
-    rule.minimumKg.greaterThan(rounded)
-    ? 'minimum'
-    : volumetricKg.greaterThan(grossKg)
-      ? 'volumetric'
-      : 'gross'
+  const basis: ChargeableWeight['basis'] =
+    chargeable.equals(rule.minimumKg) && rule.minimumKg.greaterThan(rounded)
+      ? 'minimum'
+      : volumetricKg.greaterThan(grossKg)
+        ? 'volumetric'
+        : 'gross'
 
   return { grossKg, volumetricKg, chargeableKg: chargeable, basis, volumeCbm: cbm }
 }

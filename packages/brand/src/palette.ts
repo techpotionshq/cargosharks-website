@@ -19,7 +19,9 @@ export function oklch(lightness: number, chroma: number, hue: number, alpha?: nu
   const l = round(lightness, 4)
   const c = round(chroma, 4)
   const h = round(hue, 2)
-  return alpha === undefined ? `oklch(${l} ${c} ${h})` : `oklch(${l} ${c} ${h} / ${round(alpha, 3)})`
+  return alpha === undefined
+    ? `oklch(${l} ${c} ${h})`
+    : `oklch(${l} ${c} ${h} / ${round(alpha, 3)})`
 }
 
 function round(value: number, places: number): number {
@@ -87,7 +89,7 @@ export interface RampSpec {
 /** Builds an eleven-stop ramp from one hue. */
 export function ramp(spec: RampSpec): ColorScale {
   const shift = spec.hueShift ?? 0
-  const stops = Object.keys(STOP_LIGHTNESS) as unknown as (keyof typeof STOP_LIGHTNESS)[];
+  const stops = Object.keys(STOP_LIGHTNESS) as unknown as (keyof typeof STOP_LIGHTNESS)[]
   const entries = stops.map((stop, index) => {
     const progress = index / (stops.length - 1)
     return [
@@ -141,50 +143,123 @@ type StatusKey = keyof typeof STATUS_HUES
 function statusAt(lightness: number, chromaFactor: number): StatusColors {
   const keys = Object.keys(STATUS_HUES) as StatusKey[]
   const entries = keys.map(
-    (key) =>
-      [key, oklch(lightness, STATUS_CHROMA[key] * chromaFactor, STATUS_HUES[key])] as const,
+    (key) => [key, oklch(lightness, STATUS_CHROMA[key] * chromaFactor, STATUS_HUES[key])] as const,
   )
   return Object.fromEntries(entries) as unknown as StatusColors
+}
+
+/** One categorical series slot, as lightness/chroma/hue rather than a hex. */
+export interface ChartSlotSpec {
+  readonly lightness: number
+  readonly chroma: number
+  readonly hue: number
 }
 
 /**
  * The categorical chart slots, in fixed order.
  *
- * Series colours are *not* free-hand. These four are the output of the palette
- * validator — lightness band, chroma floor, adjacent-pair separation under
- * simulated protanopia and deuteranopia, and contrast against both surfaces —
- * and every one passes in **both** themes, which is why the same four values
- * serve light and dark rather than needing a second set.
+ * Series colours are *not* free-hand, and they are **not** derived from the
+ * brand hue. Al-Qabandi's corporate colour is a red at hue 27, which is also
+ * where `critical` lives — so deriving slot 1 from the brand would put "alarm"
+ * on an ordinary series and make the ops board lie. Charts therefore avoid red
+ * entirely; the brand shows up in a chart through the surrounding chrome, not
+ * through the bars.
  *
- * Two properties worth keeping when a whitelabel client's hues arrive:
+ * The defaults below are the output of a search over every hue at least 30
+ * degrees clear of all four reserved status hues, scored by the weakest
+ * adjacent pair under simulated protanopia and deuteranopia and filtered to
+ * sets that pass in **both** themes — which is why one set serves light and
+ * dark rather than needing two. The worst adjacent pair clears deuteranopia at
+ * ΔE 15.6 against a target of 8, and the worst normal-vision pair at 15.9
+ * against a floor of 15.
  *
- *   - Slots 1 and 2 follow the brand's own primary and accent hues, so a chart
- *     looks like it belongs to the operator rather than to the framework.
- *   - Slots 3 and 4 are fixed support hues, spaced to survive colour blindness
- *     next to their neighbours. **Changing a hue here means re-running
- *     `validate_palette.js` for both modes.** The worst adjacent pair currently
- *     clears deuteranopia at ΔE 13.0 against a floor of 8.
+ * **Changing a value here means re-running `validate_palette.js` for both
+ * modes**, against `#ffffff` and against the dark surface.
  *
  * Assigned in order and never cycled: a fifth category folds into "other"
  * rather than reusing slot 1, because two different things in the same colour
- * is worse than one thing unnamed. Status colours never appear here — they are
- * reserved for state, and a series wearing "critical" red makes the board lie.
+ * is worse than one thing unnamed.
  */
-export function chartSlots(primaryHue: number, accentHue: number): string[] {
-  return [
-    oklch(0.625, 0.118, primaryHue),
-    oklch(0.625, 0.125, accentHue),
-    oklch(0.635, 0.108, 196),
-    oklch(0.52, 0.15, 315),
-  ]
+export const DEFAULT_CHART_SLOTS: readonly ChartSlotSpec[] = [
+  /** Indigo — the accent navy's own hue, so a chart still reads as Qabandi's. */
+  { lightness: 0.55, chroma: 0.14, hue: 276 },
+  /** Teal. */
+  { lightness: 0.65, chroma: 0.11, hue: 195 },
+  /** Green-gold, which lands on the green their own site already uses. */
+  { lightness: 0.6, chroma: 0.15, hue: 126 },
+  /** Violet. Lightened from 0.50 so it clears 3:1 on the dark surface too. */
+  { lightness: 0.54, chroma: 0.13, hue: 312 },
+]
+
+export function chartSlots(specs: readonly ChartSlotSpec[] = DEFAULT_CHART_SLOTS): string[] {
+  return specs.map((slot) => oklch(slot.lightness, slot.chroma, slot.hue))
+}
+
+/**
+ * The brand colour at an arbitrary lightness on its own ramp.
+ *
+ * Chroma is interpolated from the same falloff table the stops use, so a value
+ * placed between two stops sits *on* the ramp rather than beside it.
+ */
+function brandAt(spec: RampSpec, lightness: number): string {
+  const stops = Object.keys(STOP_LIGHTNESS).map(Number) as (keyof typeof STOP_LIGHTNESS)[]
+
+  // The ramp runs light -> dark, so find the pair this lightness falls between.
+  let lower = stops[0]!
+  let upper = stops[stops.length - 1]!
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i]!
+    const b = stops[i + 1]!
+    if (lightness <= STOP_LIGHTNESS[a] && lightness >= STOP_LIGHTNESS[b]) {
+      lower = a
+      upper = b
+      break
+    }
+  }
+
+  const span = STOP_LIGHTNESS[lower] - STOP_LIGHTNESS[upper]
+  const t = span === 0 ? 0 : (STOP_LIGHTNESS[lower] - lightness) / span
+  const chromaFactor =
+    STOP_CHROMA_FACTOR[lower] + (STOP_CHROMA_FACTOR[upper] - STOP_CHROMA_FACTOR[lower]) * t
+
+  const index = stops.indexOf(lower) + t
+  const progress = index / (stops.length - 1)
+  const hue = spec.hue + (spec.hueShift ?? 0) * progress
+
+  return oklch(lightness, spec.chroma * chromaFactor, hue)
 }
 
 export interface ThemeSpec {
   readonly primary: ColorScale
   readonly accent: ColorScale
   readonly neutral: ColorScale
-  /** Drives the neutral tint and the shadow hue. */
+  /**
+   * The ramp the navigation chrome is cut from.
+   *
+   * Separate from `primary` because the two are not the same decision. A brand
+   * whose corporate colour is a saturated red does not want a red sidebar —
+   * four hundred pixels of alarm beside a board whose whole job is to make one
+   * held container stand out. Al-Qabandi's chrome is their secondary navy, and
+   * red is spent only where it means something: the mark, a primary action, and
+   * `critical`.
+   */
+  readonly chrome: ColorScale
+  /**
+   * Drives the neutral tint and the shadow hue — **not** necessarily the brand
+   * hue. Tinting every grey in the product with a red brand hue turns the whole
+   * interface pink; Al-Qabandi's own greys lean indigo (their site's muted grey
+   * sits at hue 283), so the neutrals follow the navy instead.
+   */
   readonly hue: number
+  /**
+   * The primary ramp's generator, so a theme can place the brand at a lightness
+   * the eleven fixed stops do not offer.
+   *
+   * The dark theme needs exactly this: `600` is dark enough to look muted
+   * against a dark canvas and `500` is light enough that white button text
+   * drops to 3.7:1. The value that satisfies both sits between them.
+   */
+  readonly primarySpec: RampSpec
 }
 
 /**
@@ -201,8 +276,8 @@ export function lightTheme(spec: ThemeSpec): ThemeColors {
     surface: oklch(1, 0, 0),
     surfaceRaised: oklch(1, 0, 0),
     surfaceSunken: oklch(0.965, 0.006, spec.hue),
-    /** The sidebar is the brand's darkest stop: the frame, not the page. */
-    chrome: spec.primary[950],
+    /** The sidebar is the chrome ramp's darkest stop: the frame, not the page. */
+    chrome: spec.chrome[950],
     chromeInk: oklch(0.97, 0.008, spec.hue),
     chromeInkMuted: oklch(0.78, 0.018, spec.hue),
     chromeLine: oklch(0.34, 0.028, spec.hue),
@@ -247,15 +322,31 @@ export function darkTheme(spec: ThemeSpec): ThemeColors {
     ink: oklch(0.955, 0.006, spec.hue),
     inkMuted: oklch(0.752, 0.012, spec.hue),
     inkSubtle: oklch(0.638, 0.014, spec.hue),
-    onBrand: oklch(0.16, 0.02, spec.hue),
+    /**
+     * Text on a filled brand surface stays light in both themes.
+     *
+     * It was near-black here, which is right for a pale brand colour and wrong
+     * for a saturated one: it turned every primary button into dark-on-salmon.
+     * A red brand wants white on red in both themes, and `brand` below is dark
+     * enough at `500` to carry it.
+     */
+    onBrand: oklch(0.985, 0.006, spec.hue),
     line: oklch(0.312, 0.016, spec.hue),
     lineStrong: oklch(0.392, 0.02, spec.hue),
-    brand: spec.primary[400],
-    brandHover: spec.primary[300],
+    /**
+     * `400` washed a saturated brand out to a pastel — Al-Qabandi's red
+     * arrived as salmon. L 0.57 is the balance point: white label text clears
+     * AA on it at 4.68:1, and it still stands 3.9:1 clear of the dark canvas.
+     * For this brand it lands within a hair of their actual `#da2726`.
+     */
+    brand: brandAt(spec.primarySpec, 0.57),
+    brandHover: brandAt(spec.primarySpec, 0.635),
     brandSoft: oklch(0.29, 0.05, spec.hue),
     brandSoftInk: spec.primary[200],
     accent: spec.accent[400],
-    accentSoft: oklch(0.3, 0.045, 75),
+    // Was a literal hue 75 — a brass value left over from the provisional
+    // palette, which would have stayed brass no matter what a client supplied.
+    accentSoft: spec.accent[900],
     focus: spec.primary[400],
     shadow: oklch(0.08, 0.02, spec.hue, 0.5),
     status: statusAt(0.735, 0.92),

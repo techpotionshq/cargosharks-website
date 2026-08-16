@@ -10,6 +10,7 @@
  * Moment 1 ends with someone switching to Arabic and handing over the phone.
  */
 
+import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -33,25 +34,25 @@ export default async function PublicLayout({ children }: { children: React.React
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
-          <a href="/" className="rounded-sm outline-offset-4">
+          <Link href="/" className="rounded-sm outline-offset-4">
             <Logo brand={brand} locale={locale} size="md" />
-          </a>
+          </Link>
 
           <nav className="ms-auto flex items-center gap-1">
-            <a
+            <Link
               href="/track"
               className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="tracking" size={16} />
               <span className="hidden sm:inline">{t('tracking')}</span>
-            </a>
+            </Link>
             <LanguageSwitch />
-            <a
+            <Link
               href="/sign-in"
               className="ms-1 inline-flex h-9 items-center rounded-sm bg-brand px-3.5 text-[0.875rem] font-medium text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('signIn')}
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
@@ -87,9 +88,9 @@ export default async function PublicLayout({ children }: { children: React.React
             </div>
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="tracking" size={15} className="text-ink-subtle" />
-              <a href="/track" className="hover:text-brand">
+              <Link href="/track" className="hover:text-brand">
                 {t('tracking')}
-              </a>
+              </Link>
             </div>
           </dl>
         </div>

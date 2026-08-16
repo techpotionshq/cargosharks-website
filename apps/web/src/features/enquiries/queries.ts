@@ -92,10 +92,7 @@ export async function listEnquiries(
       .leftJoin(origin, eq(origin.id, enquiries.originId))
       .leftJoin(destination, eq(destination.id, enquiries.destinationId))
       // The current quote only: a superseded revision is not this enquiry's price.
-      .leftJoin(
-        quotes,
-        and(eq(quotes.enquiryId, enquiries.id), isNull(quotes.supersededById)),
-      )
+      .leftJoin(quotes, and(eq(quotes.enquiryId, enquiries.id), isNull(quotes.supersededById)))
       .where(
         and(
           filters.status === 'open'

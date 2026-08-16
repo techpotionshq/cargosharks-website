@@ -1,0 +1,208 @@
+/**
+ * Customer reads.
+ *
+ * Every query runs under the caller's actor, so RLS decides what a coordinator
+ * in Kuwait sees without this file mentioning branches at all.
+ */
+
+import { cache } from 'react'
+import { and, asc, eq, ilike, or, sql } from 'drizzle-orm'
+import {
+  branches,
+  countries,
+  customerBranchTerms,
+  customers,
+  withActor,
+  type Actor,
+} from '@qabandi/db'
+
+export interface CustomerRow {
+  readonly id: string
+  readonly code: string
+  readonly legalNameEn: string
+  readonly legalNameAr: string | null
+  readonly countryCode: string | null
+  readonly isActive: boolean
+  readonly branchCode: string | null
+  readonly openJobs: number
+}
+
+export interface CustomerDetail extends CustomerRow {
+  readonly registration: string | null
+  readonly taxRegistration: string | null
+  readonly primaryBranchId: string | null
+  readonly terms: {
+    readonly branchId: string
+    readonly branchCode: string
+    readonly paymentTermsDays: number
+    readonly creditLimit: string | null
+    readonly creditCurrency: string | null
+    readonly freeTimeDays: number | null
+    readonly defaultIncoterm: string | null
+    readonly isOnHold: boolean
+  }[]
+}
+
+export async function listCustomers(actor: Actor, search?: string): Promise<CustomerRow[]> {
+  return withActor(actor, async (tx) => {
+    const term = search?.trim()
+    const filter = term
+      ? or(
+          ilike(customers.legalNameEn, `%${term}%`),
+          ilike(customers.code, `%${term}%`),
+          ilike(customers.legalNameAr, `%${term}%`),
+        )
+      : undefined
+
+    return tx
+      .select({
+        id: customers.id,
+        code: customers.code,
+        legalNameEn: customers.legalNameEn,
+        legalNameAr: customers.legalNameAr,
+        countryCode: customers.countryCode,
+        isActive: customers.isActive,
+        branchCode: branches.code,
+        // Counted in the same statement rather than an N+1 per row: at a
+        // 300ms round trip, one query per customer is a visibly slow page.
+        openJobs: sql<number>`(
+          select count(*)::int from jobs j
+           where j.customer_id = ${customers.id}
+             and j.status not in ('closed', 'cancelled')
+        )`,
+      })
+      .from(customers)
+      .leftJoin(branches, eq(branches.id, customers.primaryBranchId))
+      .where(filter)
+      .orderBy(asc(customers.legalNameEn))
+      .limit(200)
+  })
+}
+
+export const getCustomer = cache(
+  async (actor: Actor, customerId: string): Promise<CustomerDetail | null> =>
+    withActor(actor, async (tx) => {
+      const [row] = await tx
+        .select({
+          id: customers.id,
+          code: customers.code,
+          legalNameEn: customers.legalNameEn,
+          legalNameAr: customers.legalNameAr,
+          countryCode: customers.countryCode,
+          isActive: customers.isActive,
+          registration: customers.registration,
+          taxRegistration: customers.taxRegistration,
+          primaryBranchId: customers.primaryBranchId,
+          branchCode: branches.code,
+          openJobs: sql<number>`(
+          select count(*)::int from jobs j
+           where j.customer_id = ${customers.id}
+             and j.status not in ('closed', 'cancelled')
+        )`,
+        })
+        .from(customers)
+        .leftJoin(branches, eq(branches.id, customers.primaryBranchId))
+        .where(eq(customers.id, customerId))
+        .limit(1)
+
+      // Invisible under RLS is the same answer as absent — no enumeration
+      // signal for another branch's customer (FR-ID-04).
+      if (!row) return null
+
+      const terms = await tx
+        .select({
+          branchId: customerBranchTerms.branchId,
+          branchCode: branches.code,
+          paymentTermsDays: customerBranchTerms.paymentTermsDays,
+          creditLimit: customerBranchTerms.creditLimit,
+          creditCurrency: customerBranchTerms.creditCurrency,
+          freeTimeDays: customerBranchTerms.freeTimeDays,
+          defaultIncoterm: customerBranchTerms.defaultIncoterm,
+          isOnHold: customerBranchTerms.isOnHold,
+        })
+        .from(customerBranchTerms)
+        .innerJoin(branches, eq(branches.id, customerBranchTerms.branchId))
+        .where(eq(customerBranchTerms.customerId, customerId))
+        .orderBy(asc(branches.code))
+
+      return { ...row, terms }
+    }),
+)
+
+export interface BranchOption {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly currency: string
+}
+
+export interface FormReference {
+  readonly branches: BranchOption[]
+  readonly countries: { code: string; name: string }[]
+}
+
+/**
+ * The reference lists a customer form needs — branches (FR-ID-02) and
+ * countries — in **one** transaction, memoised for the request.
+ *
+ * Both parts matter. Each `withActor` is its own `BEGIN`, `set_config` and
+ * `COMMIT`, so two lookups is not two round trips but roughly eight; against a
+ * database 300ms away that alone was two and a half seconds. And `cache`
+ * collapses the repeat call that `generateMetadata` would otherwise make on
+ * the same request. React's `cache` is a per-request memo, not a shared one:
+ * two requests never see each other's data, so this is safe under RLS.
+ */
+export const loadFormReference = cache(async (actor: Actor): Promise<FormReference> =>
+  withActor(actor, async (tx) => {
+    const branchRows = await tx
+      .select({
+        id: branches.id,
+        code: branches.code,
+        name: branches.legalNameEn,
+        currency: branches.baseCurrency,
+      })
+      .from(branches)
+      .where(eq(branches.isActive, true))
+      .orderBy(asc(branches.code))
+
+    const countryRows = await tx
+      .select({ code: countries.code, name: countries.nameEn })
+      .from(countries)
+      .orderBy(asc(countries.nameEn))
+
+    return { branches: branchRows, countries: countryRows }
+  }),
+)
+
+/**
+ * Whether the operator has any customers yet.
+ *
+ * Drives the onboarding checklist. A `limit 1` existence check rather than a
+ * count: the answer is a boolean and the table could be long.
+ */
+export async function hasAnyCustomer(actor: Actor): Promise<boolean> {
+  return withActor(actor, async (tx) => {
+    const [row] = await tx.select({ id: customers.id }).from(customers).limit(1)
+    return Boolean(row)
+  })
+}
+
+/** Used by the code field to tell the operator a code is taken before submit. */
+export async function customerCodeExists(
+  actor: Actor,
+  code: string,
+  exceptId?: string,
+): Promise<boolean> {
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({ id: customers.id })
+      .from(customers)
+      .where(
+        exceptId
+          ? and(eq(customers.code, code), sql`${customers.id} <> ${exceptId}`)
+          : eq(customers.code, code),
+      )
+      .limit(1)
+    return Boolean(row)
+  })
+}

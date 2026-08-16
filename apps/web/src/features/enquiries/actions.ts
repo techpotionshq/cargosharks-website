@@ -122,7 +122,11 @@ export async function closeEnquiry(input: unknown) {
 
     const [row] = await tx
       .update(enquiries)
-      .set({ status: outcome, closedAt: new Date(), lostReason: outcome === 'lost' ? reason : null })
+      .set({
+        status: outcome,
+        closedAt: new Date(),
+        lostReason: outcome === 'lost' ? reason : null,
+      })
       .where(eq(enquiries.id, enquiryId))
       .returning()
 

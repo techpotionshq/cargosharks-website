@@ -29,7 +29,9 @@ describe('rounding is per currency, at the line (NFR-02)', () => {
   it('does not lose the third decimal when a KWD total is summed', () => {
     // Three lines at 0.335 KWD: rounding each line then summing must equal
     // 1.005, not the 1.01 a two-decimal system would produce.
-    const lines = ['0.335', '0.335', '0.335'].map((a) => roundWith(money(a, 'KWD'), seedCurrencyLookup))
+    const lines = ['0.335', '0.335', '0.335'].map((a) =>
+      roundWith(money(a, 'KWD'), seedCurrencyLookup),
+    )
     expect(toDb(sum(lines, 'KWD'))).toBe('1.005')
   })
 })

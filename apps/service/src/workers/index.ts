@@ -28,7 +28,9 @@ const PENDING: { name: string; trigger: string; requirement: string }[] = [
   { name: JOBS.scheduledReport, trigger: 'daily/weekly', requirement: 'FR-RP-07' },
 ]
 
-export async function registerWorkers(log: { info: (o: unknown, m: string) => void }): Promise<void> {
+export async function registerWorkers(log: {
+  info: (o: unknown, m: string) => void
+}): Promise<void> {
   const boss = await getBoss()
 
   const work = async (name: string, handler: Handler): Promise<void> => {

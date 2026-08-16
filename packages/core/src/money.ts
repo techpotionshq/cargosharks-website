@@ -251,11 +251,7 @@ export function identityRate(currency: CurrencyCode, takenAt: Date): FxRate {
  * Presentation only. The web layer formats through `next-intl`; this exists
  * for logs, PDFs generated outside a request, and test assertions.
  */
-export function formatMoney(
-  m: Money,
-  spec: CurrencySpec,
-  locale: 'en' | 'ar' = 'en',
-): string {
+export function formatMoney(m: Money, spec: CurrencySpec, locale: 'en' | 'ar' = 'en'): string {
   return new Intl.NumberFormat(locale === 'ar' ? 'ar-KW' : 'en-KW', {
     style: 'currency',
     currency: m.currency,

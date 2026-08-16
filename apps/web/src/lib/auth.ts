@@ -24,7 +24,14 @@ import 'server-only'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { twoFactor } from 'better-auth/plugins'
-import { db, authAccount, authSession, authTwoFactor, authUser, authVerification } from '@qabandi/db'
+import {
+  db,
+  authAccount,
+  authSession,
+  authTwoFactor,
+  authUser,
+  authVerification,
+} from '@qabandi/db'
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,

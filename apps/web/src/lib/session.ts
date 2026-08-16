@@ -10,7 +10,7 @@
  */
 
 import { cache } from 'react'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { and, eq, gt } from 'drizzle-orm'
 import { permissionKeys } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
@@ -20,7 +20,8 @@ import {
   principals,
   rolePermissions,
   roles,
-  withoutActor,
+  systemActor,
+  withActor,
   type Actor,
 } from '@qabandi/db'
 
@@ -61,10 +62,7 @@ const PILOT_SESSION: Session = {
   actor: {
     principalId: '00000000-0000-7000-8000-0000000000a1',
     type: 'internal',
-    branchIds: [
-      '00000000-0000-7000-8000-0000000000b1',
-      '00000000-0000-7000-8000-0000000000b2',
-    ],
+    branchIds: ['00000000-0000-7000-8000-0000000000b1', '00000000-0000-7000-8000-0000000000b2'],
     customerId: null,
     partnerId: null,
     ip: null,
@@ -91,12 +89,25 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!token) return null
 
   /**
-   * Deliberately un-actored: this *is* the query that establishes the actor.
-   * It reads only `auth_session` and `principals`, both outside the branch
-   * scoping shapes, and it is the single sanctioned use of `withoutActor` in
-   * the web application.
+   * Run as the **system** principal — this *is* the query that establishes the
+   * actor, so there is no principal to run it as yet.
+   *
+   * It used to be `withoutActor`, on the reasoning that `principals` sits
+   * outside the branch-scoping shapes. That reasoning was wrong, and provably
+   * so: `principals` is `FORCE ROW LEVEL SECURITY` and its policy opens with
+   * `id = app.principal_id() OR app.is_system()`. With no settings stamped,
+   * both are false, the join returned zero rows for every token, and **no user
+   * could ever sign in** — a valid credential produced a session row and then
+   * bounced straight back to the login form.
+   *
+   * The system actor satisfies `app.is_system()`. That is a real widening, so
+   * it is worth being precise about why it is safe here: the query is keyed by
+   * the session token, which is a bearer secret the caller must already hold,
+   * and it selects a fixed projection of one principal. It does not accept a
+   * caller-supplied principal id, so it cannot be steered into reading someone
+   * else's row.
    */
-  return withoutActor(async (tx) => {
+  return withActor(systemActor(), async (tx) => {
     const [row] = await tx
       .select({
         principalId: principals.id,
@@ -173,12 +184,30 @@ export async function requireSession(): Promise<Session> {
   return session
 }
 
+/**
+ * The Better Auth session cookie.
+ *
+ * `advanced.cookiePrefix` is `qabandi`, and Better Auth appends its own
+ * `session_token` — so the cookie is `qabandi.session_token`, not
+ * `qabandi.session`. Reading the wrong name meant a perfectly valid sign-in
+ * produced no session at all, and every authenticated route bounced straight
+ * back to the login form.
+ *
+ * The value is `<token>.<signature>`. Only the token half is stored in
+ * `auth_session.token`, so the signature has to come off before the lookup.
+ * Better Auth has already verified that signature in its own middleware; the
+ * check that matters here is that the token still resolves to an unexpired row,
+ * which is the query below.
+ */
+const SESSION_COOKIE = 'qabandi.session_token'
+
 async function sessionToken(): Promise<string | null> {
-  const store = await headers()
-  const cookie = store.get('cookie')
-  if (!cookie) return null
-  const match = /(?:^|;\s*)qabandi\.session=([^;]+)/.exec(cookie)
-  return match?.[1] ? decodeURIComponent(match[1]) : null
+  const store = await cookies()
+  const raw = store.get(SESSION_COOKIE)?.value
+  if (!raw) return null
+
+  const token = raw.split('.')[0]
+  return token ? token : null
 }
 
 async function clientIp(): Promise<string | null> {

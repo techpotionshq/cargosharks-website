@@ -8,6 +8,7 @@
  * permission-filtered copy of the internal one.
  */
 
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getSession } from '@/lib/session'
@@ -31,34 +32,34 @@ export default async function PortalLayout({ children }: { children: React.React
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-4 sm:px-6">
-          <a href="/portal" className="rounded-sm outline-offset-4">
+          <Link href="/portal" className="rounded-sm outline-offset-4">
             <Logo brand={brand} locale={locale} size="md" />
-          </a>
+          </Link>
 
           <nav className="ms-auto flex items-center gap-1">
-            <a
+            <Link
               href="/portal"
               className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="jobs" size={16} />
               <span className="hidden sm:inline">{t('portal')}</span>
-            </a>
-            <a
+            </Link>
+            <Link
               href="/track"
               className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="tracking" size={16} />
               <span className="hidden sm:inline">{t('tracking')}</span>
-            </a>
+            </Link>
             <LanguageSwitch />
             <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
-            <a
+            <Link
               href="/sign-in"
               className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="sign-out" size={16} />
               <span className="hidden sm:inline">{tc('signOut')}</span>
-            </a>
+            </Link>
           </nav>
         </div>
       </header>

@@ -18,7 +18,6 @@
  * "system" state without overriding an explicit light selection.
  */
 
-import { chartSlots } from './palette'
 import type { Brand, ColorScale, ThemeColors } from './types'
 
 const SCALE_STOPS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const
@@ -65,21 +64,11 @@ function themeVars(theme: ThemeColors): string[] {
   ]
 }
 
-/** `oklch(L C H)` → H, so the chart slots can follow the brand's own hues. */
-function hueOf(color: string, fallback: number): number {
-  const parsed = Number(/oklch\(\s*[\d.]+\s+[\d.]+\s+([\d.]+)/.exec(color)?.[1])
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
 /** Values that do not change with the theme. */
 function staticVars(brand: Brand): string[] {
-  const slots = chartSlots(
-    hueOf(brand.palette.primary[500], 251),
-    hueOf(brand.palette.accent[500], 79),
-  )
   return [
     // Validated in both themes, so one set serves both — see `chartSlots`.
-    ...slots.map((color, index) => `--qb-chart-${index + 1}: ${color};`),
+    ...brand.palette.chart.map((color, index) => `--qb-chart-${index + 1}: ${color};`),
     ...scaleVars('primary', brand.palette.primary),
     ...scaleVars('accent', brand.palette.accent),
     ...scaleVars('neutral', brand.palette.neutral),

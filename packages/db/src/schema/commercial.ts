@@ -9,15 +9,7 @@
  *     overlapping versions for a lane. "The valid rate" cannot be ambiguous.
  */
 
-import {
-  boolean,
-  date,
-  index,
-  integer,
-  jsonb,
-  text,
-  unique,
-} from 'drizzle-orm/pg-core'
+import { boolean, date, index, integer, jsonb, text, unique } from 'drizzle-orm/pg-core'
 import { amount, pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable } from './table'
 import {
@@ -281,9 +273,10 @@ export const rateCardLines = pgTable(
     /** Container type or commodity the line is restricted to, where it is. */
     containerType: text('container_type'),
     /** `[{ fromKg, ratePerKg, minimumCharge }]` — read by `selectBreak`. */
-    weightBreaks: jsonb('weight_breaks').$type<
-      { fromKg: string; ratePerKg: string; minimumCharge?: string }[]
-    >(),
+    weightBreaks:
+      jsonb('weight_breaks').$type<
+        { fromKg: string; ratePerKg: string; minimumCharge?: string }[]
+      >(),
     sortOrder: integer('sort_order').notNull().default(0),
     ...timestamps,
   },

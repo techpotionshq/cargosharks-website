@@ -10,6 +10,7 @@
  * second screen — none of which a `useState` filter can do.
  */
 
+import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listEnquiries } from '@/features/enquiries/queries'
@@ -22,7 +23,10 @@ import { formatNumber } from '@/lib/format'
 
 type Filter = 'all' | 'unassigned' | 'overdue' | 'quoted'
 
-const FILTERS: readonly { key: Filter; label: 'filterAll' | 'filterUnassigned' | 'filterOverdue' | 'filterQuoted' }[] = [
+const FILTERS: readonly {
+  key: Filter
+  label: 'filterAll' | 'filterUnassigned' | 'filterOverdue' | 'filterQuoted'
+}[] = [
   { key: 'all', label: 'filterAll' },
   { key: 'unassigned', label: 'filterUnassigned' },
   { key: 'overdue', label: 'filterOverdue' },
@@ -107,7 +111,7 @@ export default async function EnquiriesPage({
           {FILTERS.map((option) => {
             const active = option.key === filter
             return (
-              <a
+              <Link
                 key={option.key}
                 href={option.key === 'all' ? '/enquiries' : `/enquiries?filter=${option.key}`}
                 aria-current={active ? 'page' : undefined}
@@ -118,7 +122,7 @@ export default async function EnquiriesPage({
                 }`}
               >
                 {t(option.label)}
-              </a>
+              </Link>
             )
           })}
         </div>

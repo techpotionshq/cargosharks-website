@@ -14,6 +14,7 @@
  * down the inline-start edge where the eye lands first.
  */
 
+import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import type { EnquirySummary } from '@/lib/pilot/types'
 import { formatDateTime, formatMoney, formatRelative } from '@/lib/format'
@@ -68,12 +69,12 @@ export async function EnquiryTable({
               {/* A reference and an owner name are identifiers: wrapping them
                   across two lines costs a row of height on every row. */}
               <TD className="whitespace-nowrap">
-                <a
+                <Link
                   href={`/enquiries/${row.id}`}
                   className="ref numeric font-medium text-brand hover:underline"
                 >
                   {row.reference}
-                </a>
+                </Link>
                 <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
                   {t(`channels.${row.channel}` as 'channels.email')}
                 </span>
@@ -103,9 +104,7 @@ export async function EnquiryTable({
               </TD>
 
               <TD
-                className={`whitespace-nowrap ${
-                  row.owner ? 'text-ink' : 'text-ink-subtle italic'
-                }`}
+                className={`whitespace-nowrap ${row.owner ? 'text-ink' : 'text-ink-subtle italic'}`}
               >
                 {row.owner ?? tc('unassigned')}
               </TD>

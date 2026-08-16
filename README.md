@@ -17,8 +17,36 @@ cp .env.example .env
 pnpm db:up          # PostgreSQL 18, MinIO and a mail sink
 pnpm db:migrate     # forward-only, applied as app_migrator
 pnpm db:seed        # currencies, charge types, milestones, calendars, roles
+
+# Nobody can sign in until an account exists: the product is invitation-only
+# (FR-ID-07), so there is no registration form to bootstrap from.
+pnpm db:create-user --email you@example.com --name "Your Name" \
+                    --role administrator
+
 pnpm dev            # web on :3000, service on :3001
 ```
+
+### Accounts
+
+`pnpm db:create-user` writes the four rows an account needs — the Better Auth
+user, its hashed credential, the domain principal, and a role **per branch**
+(FR-ID-02) — in one transaction. Re-running it for an existing email resets the
+password, which is the password-reset path until a mail transport is
+configured.
+
+```bash
+# every active branch, generated password printed once
+pnpm db:create-user --email ops@qabandi.com --name "Operations" --role operations_manager
+
+# one branch, explicit password
+pnpm db:create-user --email kwi@qabandi.com --name "Kuwait Desk" \
+                    --role coordinator --branch KWI --password '…'
+```
+
+Roles: `administrator`, `finance`, `operations_manager`, `coordinator`,
+`sales`, `customs_broker`, `read_only`. The first two require TOTP enrolment
+(FR-ID-06). The permission matrix behind them is seeded by `pnpm db:seed` and
+is editable without a release.
 
 **Or with no database at all.** The interface runs on the seeded pilot dataset
 — twenty jobs at varied stages, a live customs hold, a demurrage clock that has
@@ -85,7 +113,8 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 | `pnpm db:generate` | regenerate the table migration from the schema |
 | `pnpm db:provision` | create the database and roles on an existing server |
 | `pnpm db:migrate` | apply migrations as `app_migrator` |
-| `pnpm db:seed` | reference rows the engines need |
+| `pnpm db:seed` | reference rows the engines need, and the role/permission matrix |
+| `pnpm db:create-user` | provision an account that can actually sign in |
 | `pnpm db:reset` | drop the volume and start clean |
 
 ## The parts worth reading first

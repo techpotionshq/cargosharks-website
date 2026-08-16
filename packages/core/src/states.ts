@@ -35,14 +35,7 @@ function machine<S extends string>(m: Machine<S>): Machine<S> {
 // --- enquiry (FR-EQ) -------------------------------------------------------
 
 export type EnquiryStatus =
-  | 'new'
-  | 'assigned'
-  | 'rating'
-  | 'quoted'
-  | 'won'
-  | 'lost'
-  | 'cancelled'
-  | 'expired'
+  'new' | 'assigned' | 'rating' | 'quoted' | 'won' | 'lost' | 'cancelled' | 'expired'
 
 export const enquiryMachine = machine<EnquiryStatus>({
   name: 'enquiry',
@@ -130,7 +123,12 @@ export const jobMachine = machine<JobStatus>({
     { from: 'customs', to: 'delivered', requires: 'job.update', label: 'Delivered' },
     { from: 'customs', to: 'on_hold', requires: 'job.hold', label: 'Placed on hold' },
     // Completion is operational; closure is financial and needs the P&L settled.
-    { from: 'delivered', to: 'completed', requires: 'job.complete', label: 'Operationally complete' },
+    {
+      from: 'delivered',
+      to: 'completed',
+      requires: 'job.complete',
+      label: 'Operationally complete',
+    },
     { from: 'completed', to: 'closed', requires: 'job.close', label: 'Financially closed' },
     { from: 'on_hold', to: 'booked', requires: 'job.hold', label: 'Hold released' },
     { from: 'on_hold', to: 'in_transit', requires: 'job.hold', label: 'Hold released' },
@@ -166,32 +164,66 @@ export const customsMachine = machine<CustomsStatus>({
   ],
   terminal: ['released'],
   transitions: [
-    { from: 'not_started', to: 'documents_pending', requires: 'customs.update', label: 'Documents requested' },
-    { from: 'documents_pending', to: 'declaration_filed', requires: 'customs.file', label: 'Declaration filed' },
-    { from: 'declaration_filed', to: 'assessed', requires: 'customs.update', label: 'Duty assessed' },
-    { from: 'declaration_filed', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
+    {
+      from: 'not_started',
+      to: 'documents_pending',
+      requires: 'customs.update',
+      label: 'Documents requested',
+    },
+    {
+      from: 'documents_pending',
+      to: 'declaration_filed',
+      requires: 'customs.file',
+      label: 'Declaration filed',
+    },
+    {
+      from: 'declaration_filed',
+      to: 'assessed',
+      requires: 'customs.update',
+      label: 'Duty assessed',
+    },
+    {
+      from: 'declaration_filed',
+      to: 'inspection',
+      requires: 'customs.update',
+      label: 'Selected for inspection',
+    },
     { from: 'assessed', to: 'duty_paid', requires: 'customs.pay', label: 'Duty paid' },
-    { from: 'assessed', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
-    { from: 'duty_paid', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
+    {
+      from: 'assessed',
+      to: 'inspection',
+      requires: 'customs.update',
+      label: 'Selected for inspection',
+    },
+    {
+      from: 'duty_paid',
+      to: 'inspection',
+      requires: 'customs.update',
+      label: 'Selected for inspection',
+    },
     { from: 'duty_paid', to: 'released', requires: 'customs.update', label: 'Released' },
-    { from: 'inspection', to: 'released', requires: 'customs.update', label: 'Released after inspection' },
+    {
+      from: 'inspection',
+      to: 'released',
+      requires: 'customs.update',
+      label: 'Released after inspection',
+    },
     { from: 'inspection', to: 'held', requires: 'customs.update', label: 'Held by authority' },
     { from: 'held', to: 'inspection', requires: 'customs.update', label: 'Re-inspection' },
     { from: 'held', to: 'released', requires: 'customs.update', label: 'Released' },
-    { from: 'documents_pending', to: 'held', requires: 'customs.update', label: 'Held by authority' },
+    {
+      from: 'documents_pending',
+      to: 'held',
+      requires: 'customs.update',
+      label: 'Held by authority',
+    },
   ],
 })
 
 // --- invoice (FR-FN) -------------------------------------------------------
 
 export type InvoiceStatus =
-  | 'draft'
-  | 'approved'
-  | 'issued'
-  | 'part_paid'
-  | 'paid'
-  | 'credited'
-  | 'void'
+  'draft' | 'approved' | 'issued' | 'part_paid' | 'paid' | 'credited' | 'void'
 
 export const invoiceMachine = machine<InvoiceStatus>({
   name: 'invoice',

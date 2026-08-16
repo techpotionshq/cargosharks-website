@@ -106,9 +106,9 @@ describe('margin rules', () => {
   })
 
   it('absolute', () => {
-    expect(
-      toDb(applyMargin(cost, { kind: 'absolute', value: new D('80'), currency: 'KWD' })),
-    ).toBe('1080')
+    expect(toDb(applyMargin(cost, { kind: 'absolute', value: new D('80'), currency: 'KWD' }))).toBe(
+      '1080',
+    )
   })
 
   it('target sell', () => {

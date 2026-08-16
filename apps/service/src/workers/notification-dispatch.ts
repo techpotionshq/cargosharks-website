@@ -47,9 +47,7 @@ export async function runNotificationDispatch(
       .select()
       .from(notificationOutbox)
       .where(
-        outboxId
-          ? eq(notificationOutbox.id, outboxId)
-          : isNull(notificationOutbox.dispatchedAt),
+        outboxId ? eq(notificationOutbox.id, outboxId) : isNull(notificationOutbox.dispatchedAt),
       )
       .limit(100)
 
@@ -151,8 +149,11 @@ export async function runNotificationDispatch(
 
 function inQuietHours(at: Date): boolean {
   const hour = Number(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuwait', hour: '2-digit', hour12: false })
-      .format(at),
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kuwait',
+      hour: '2-digit',
+      hour12: false,
+    }).format(at),
   )
   return hour >= QUIET_FROM_HOUR || hour < QUIET_TO_HOUR
 }

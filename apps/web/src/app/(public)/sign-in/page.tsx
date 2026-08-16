@@ -14,13 +14,14 @@
  * have is how a tracking page goes unused.
  */
 
+import Link from 'next/link'
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { Button } from '@/ui/layout'
 import { Icon } from '@/ui/icon'
 import { Logo } from '@/ui/logo'
+import { SignInForm } from '@/features/auth/ui/sign-in-form'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('signIn')
@@ -37,62 +38,37 @@ export default async function SignInPage() {
     <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-sm flex-col justify-center px-4 py-12">
       <div className="mb-8 flex flex-col items-center text-center">
         <Logo brand={brand} locale={locale} size="lg" markOnly className="mb-4" />
-        <h1 className="font-display text-xl font-semibold tracking-tight text-ink">
-          {t('title')}
-        </h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight text-ink">{t('title')}</h1>
         <p className="mt-1 text-[0.875rem] text-ink-muted">{t('subtitle')}</p>
       </div>
 
-      <form
-        method="post"
-        action="/api/auth/sign-in/email"
-        className="flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-card"
-      >
-        <label className="flex flex-col gap-1.5">
-          <span className="eyebrow">{t('email')}</span>
-          <input
-            type="email"
-            name="email"
-            required
-            autoComplete="username"
-            dir="ltr"
-            className="h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
-          />
-        </label>
+      <div className="rounded-card border border-line bg-surface p-5 shadow-card">
+        <SignInForm
+          labels={{
+            email: t('email'),
+            password: t('password'),
+            submit: t('submit'),
+            submitting: t('submitting'),
+          }}
+        />
 
-        <label className="flex flex-col gap-1.5">
-          <span className="eyebrow">{t('password')}</span>
-          <input
-            type="password"
-            name="password"
-            required
-            autoComplete="current-password"
-            dir="ltr"
-            className="h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
-          />
-        </label>
-
-        <Button type="submit" variant="primary" size="lg" className="mt-1 w-full">
-          {t('submit')}
-        </Button>
-
-        <p className="mt-1 flex items-start gap-2 text-[0.75rem] text-ink-subtle">
+        <p className="mt-3 flex items-start gap-2 text-[0.75rem] text-ink-subtle">
           <Icon name="hold" size={14} className="mt-px shrink-0" />
           {t('twoFactor')}
         </p>
-      </form>
+      </div>
 
       <p className="mt-4 text-center text-[0.75rem] text-ink-subtle">{t('invitationOnly')}</p>
 
       <div className="mt-8 border-t border-line pt-6 text-center">
         <p className="text-[0.8125rem] text-ink-muted">{t('customerPrompt')}</p>
-        <a
+        <Link
           href="/track"
           className="mt-1.5 inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-brand hover:underline"
         >
           <Icon name="tracking" size={15} />
           {t('customerLink')}
-        </a>
+        </Link>
       </div>
     </div>
   )

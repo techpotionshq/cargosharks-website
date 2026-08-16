@@ -14,12 +14,7 @@
 import { boolean, index, integer, jsonb, text, unique } from 'drizzle-orm/pg-core'
 import { pk, ref, timestamps, tsz } from './columns'
 import { pgTable, systemTable } from './table'
-import {
-  channelEnum,
-  deliveryStatusEnum,
-  localeEnum,
-  messageDirectionEnum,
-} from './enums'
+import { channelEnum, deliveryStatusEnum, localeEnum, messageDirectionEnum } from './enums'
 import { branches, principals } from './identity'
 import { assets } from './files'
 import { customers } from './commercial'

@@ -5,6 +5,8 @@
  * Every one of them is a server component and none carries a colour literal.
  */
 
+import type { Route } from 'next'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
 
@@ -69,7 +71,7 @@ export interface ButtonProps {
 }
 
 /**
- * Renders an `<a>` when given an `href` and a `<button>` otherwise.
+ * Renders a `<Link>` when given an `href` and a `<button>` otherwise.
  *
  * One component rather than two because the *only* difference that should
  * survive to the reader is whether it navigates — a link styled as a button
@@ -105,9 +107,9 @@ export function Button({
   )
 
   return href ? (
-    <a href={href} className={classes} {...rest}>
+    <Link href={href as Route} className={classes} {...rest}>
       {inner}
-    </a>
+    </Link>
   ) : (
     <button type={type} className={classes} {...rest}>
       {inner}
@@ -217,7 +219,9 @@ export function Grid({
   readonly className?: string
 }) {
   return (
-    <div className={['grid grid-cols-1 gap-4 lg:grid-cols-12', className].filter(Boolean).join(' ')}>
+    <div
+      className={['grid grid-cols-1 gap-4 lg:grid-cols-12', className].filter(Boolean).join(' ')}
+    >
       {children}
     </div>
   )

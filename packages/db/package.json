@@ -18,7 +18,8 @@
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts",
     "test": "vitest run",
-    "provision": "tsx src/provision.ts"
+    "provision": "tsx src/provision.ts",
+    "create-user": "tsx src/create-user.ts"
   },
   "dependencies": {
     "@qabandi/core": "workspace:*",
@@ -27,7 +28,8 @@
     "drizzle-zod": "^0.8.3",
     "pg": "^8.23.0",
     "pg-boss": "^12.27.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "better-auth": "^1.6.29"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

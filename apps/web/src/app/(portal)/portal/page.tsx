@@ -34,9 +34,7 @@ export default async function PortalHome() {
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  const active = shipments.filter(
-    (s) => !['completed', 'closed', 'cancelled'].includes(s.status),
-  )
+  const active = shipments.filter((s) => !['completed', 'closed', 'cancelled'].includes(s.status))
   const arriving = shipments.filter(
     (s) => s.eta !== null && s.eta.getTime() > now && s.eta.getTime() < now + 7 * 86_400_000,
   )
@@ -53,11 +51,7 @@ export default async function PortalHome() {
           value={formatNumber(arriving.length, locale)}
           icon="calendar"
         />
-        <StatTile
-          label={t('documents')}
-          value={formatNumber(documents, locale)}
-          icon="document"
-        />
+        <StatTile label={t('documents')} value={formatNumber(documents, locale)} icon="document" />
       </div>
 
       {shipments.length === 0 ? (

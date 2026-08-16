@@ -9,8 +9,7 @@ import {
   type ChargeableRule,
 } from '../src/index'
 
-const rule = (mode: string): ChargeableRule =>
-  SEED_CHARGEABLE_RULES.find((r) => r.mode === mode)!
+const rule = (mode: string): ChargeableRule => SEED_CHARGEABLE_RULES.find((r) => r.mode === mode)!
 
 describe('volumetric weight', () => {
   it('bills air on volume when the cargo is light and bulky', () => {

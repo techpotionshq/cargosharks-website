@@ -17,6 +17,7 @@
  * filtered out downstream, but by living only in this slice.
  */
 
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -30,11 +31,7 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 
-export default async function EnquiryDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
   const { id } = await params
   const comparison = await getQuoteComparison(session.actor, id)
@@ -55,9 +52,9 @@ export default async function EnquiryDetailPage({
       <PageHeader
         eyebrow={
           <span className="inline-flex items-center gap-2">
-            <a href="/enquiries" className="hover:text-ink">
+            <Link href="/enquiries" className="hover:text-ink">
               {tEnq('title')}
-            </a>
+            </Link>
             <Icon name="chevron-end" size={12} />
             <span className="ref">{comparison.enquiryReference}</span>
           </span>
@@ -219,12 +216,8 @@ export default async function EnquiryDetailPage({
                 line.sellRate === 0 ? 0 : ((line.sellRate - line.buyRate) / line.sellRate) * 100
               return (
                 <TR key={line.chargeCode}>
-                  <TD className="font-medium">
-                    {locale === 'ar' ? line.nameAr : line.nameEn}
-                  </TD>
-                  <TD className="text-ink-muted">
-                    {t(`bases.${line.basis}` as 'bases.flat')}
-                  </TD>
+                  <TD className="font-medium">{locale === 'ar' ? line.nameAr : line.nameEn}</TD>
+                  <TD className="text-ink-muted">{t(`bases.${line.basis}` as 'bases.flat')}</TD>
                   <TD align="end" numeric>
                     {line.quantity}
                   </TD>
