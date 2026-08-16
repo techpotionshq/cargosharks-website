@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": true,
+    /**
+     * Types only. The package has no runtime dependency on Node — every
+     * ambient global it touches is reached through a guarded `globalThis`
+     * cast, because these tokens are also evaluated inside the PDF renderer.
+     */
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

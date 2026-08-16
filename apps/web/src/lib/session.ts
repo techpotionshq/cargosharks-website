@@ -12,6 +12,8 @@
 import { cache } from 'react'
 import { headers } from 'next/headers'
 import { and, eq, gt } from 'drizzle-orm'
+import { permissionKeys } from '@qabandi/core'
+import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   authSession,
   principalBranchRoles,
@@ -42,7 +44,49 @@ export interface Session {
  * Resolved once per request. `cache` is React's per-request memo, not a shared
  * cache: two requests never see each other's session.
  */
+/**
+ * The pilot principal.
+ *
+ * The pilot environment runs before Better Auth has a user table to read
+ * (Pilot §4 stands the environment up on day 1; identity lands on days 3–5),
+ * and the day-15 rehearsal has to survive a room with no network. So when the
+ * fixtures are in use, session resolution short-circuits to one internal
+ * principal in both branches, holding every permission.
+ *
+ * It is gated by exactly the same predicate as the data, and that predicate
+ * refuses to engage in production against a real database. There is no path
+ * where this stands in for a real session on a deployment that has one.
+ */
+const PILOT_SESSION: Session = {
+  actor: {
+    principalId: '00000000-0000-7000-8000-0000000000a1',
+    type: 'internal',
+    branchIds: [
+      '00000000-0000-7000-8000-0000000000b1',
+      '00000000-0000-7000-8000-0000000000b2',
+    ],
+    customerId: null,
+    partnerId: null,
+    ip: null,
+  },
+  principal: {
+    id: '00000000-0000-7000-8000-0000000000a1',
+    nameEn: 'Fahad Al-Rashid',
+    nameAr: 'فهد الرشيد',
+    email: 'operations@qabandi.local',
+    locale: 'en',
+  },
+  permissions: new Set(permissionKeys()),
+  branchRoles: new Map([
+    ['00000000-0000-7000-8000-0000000000b1', 'operations_manager'],
+    ['00000000-0000-7000-8000-0000000000b2', 'operations_manager'],
+  ]),
+  requiresTwoFactor: false,
+}
+
 export const getSession = cache(async (): Promise<Session | null> => {
+  if (usePilotFixtures()) return PILOT_SESSION
+
   const token = await sessionToken()
   if (!token) return null
 

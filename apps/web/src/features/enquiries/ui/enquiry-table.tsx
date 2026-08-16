@@ -1,91 +1,176 @@
 /**
- * The enquiry list.
+ * The enquiry queue — Moment 3a, "five mailboxes become one board".
  *
  * A server component: it renders from data the page already has and ships no
  * JavaScript for the table itself. There is no client-side state manager in
  * this application and none is planned (§1) — the server holds the state, and
  * a Server Action mutation revalidates the path.
+ *
+ * The column that carries the whole point is the last one. Their own company
+ * profile publishes five separate operational mailboxes, and nothing today
+ * gives an enquiry an owner, a clock, or a trace if it is never answered
+ * (`PP-03`, `PP-06`, `PP-07`). So the clock is not a timestamp — it is
+ * "in 3 hours" or "18 hours ago", coloured, with the breached rows flagged
+ * down the inline-start edge where the eye lands first.
  */
 
-import { getFormatter, getTranslations } from 'next-intl/server'
+import { getTranslations } from 'next-intl/server'
+import type { EnquirySummary } from '@/lib/pilot/types'
+import { formatDateTime, formatMoney, formatRelative } from '@/lib/format'
+import { Badge, enquiryTone, slaTone } from '@/ui/status'
+import { Icon, modeIcon } from '@/ui/icon'
+import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { EmptyState, Lane } from '@/ui/layout'
 
-export interface EnquiryRow {
-  id: string
-  reference: string
-  status: string
-  mode: string | null
-  createdAt: Date
-  slaDueAt: Date | null
-  firstRespondedAt: Date | null
-  customerName: string | null
-  customerNameAr: string | null
-  ownerName: string | null
-  originName: string | null
-  destinationName: string | null
-}
-
-export async function EnquiryTable({ rows, locale }: { rows: EnquiryRow[]; locale: 'en' | 'ar' }) {
+export async function EnquiryTable({
+  rows,
+  locale,
+  showMargin = true,
+}: {
+  readonly rows: readonly EnquirySummary[]
+  readonly locale: 'en' | 'ar'
+  /**
+   * Buy-side numbers are internal (`FR-EQ-07`). The flag exists so the same
+   * table can serve a screen that must not show them, rather than a second
+   * table being written that forgets a column later.
+   */
+  readonly showMargin?: boolean
+}) {
   const t = await getTranslations('enquiry')
+  const tc = await getTranslations('common')
   const tMode = await getTranslations('mode')
-  const format = await getFormatter()
   const now = Date.now()
 
   if (rows.length === 0) {
-    return <p className="text-sm text-[var(--ink-muted)]">{t('empty')}</p>
+    return <EmptyState icon="enquiries" title={t('empty')} description={t('emptyHint')} />
   }
 
   return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        {/* `text-start`, never `text-left`: the header aligns to the inline
-            start, which is the right-hand side in Arabic. */}
-        <tr className="border-b border-[var(--line)] text-start text-[var(--ink-muted)]">
-          <th className="py-2 text-start font-medium">{t('reference')}</th>
-          <th className="py-2 text-start font-medium">{t('customer')}</th>
-          <th className="py-2 text-start font-medium">{t('lane')}</th>
-          <th className="py-2 text-start font-medium">{t('mode')}</th>
-          <th className="py-2 text-start font-medium">{t('owner')}</th>
-          <th className="py-2 text-start font-medium">{t('status')}</th>
-          <th className="py-2 text-start font-medium">{t('slaDue')}</th>
-        </tr>
-      </thead>
-      <tbody>
+    <TableShell>
+      <THead>
+        <TH>{t('reference')}</TH>
+        <TH>{t('customer')}</TH>
+        <TH>{t('lane')}</TH>
+        <TH>{t('mode')}</TH>
+        <TH>{t('owner')}</TH>
+        <TH>{t('status')}</TH>
+        {showMargin ? <TH align="end">{t('value')}</TH> : null}
+        {showMargin ? <TH align="end">{t('margin')}</TH> : null}
+        <TH align="end">{t('slaDue')}</TH>
+      </THead>
+      <TBody>
         {rows.map((row) => {
-          const breached =
-            row.firstRespondedAt === null && row.slaDueAt !== null && row.slaDueAt.getTime() < now
+          const tone = slaTone(row.slaDueAt, row.firstRespondedAt, now)
+          const breached = tone === 'critical'
 
           return (
-            <tr key={row.id} className="border-b border-[var(--line)]">
-              <td className="numeric py-2">
-                <a className="text-[var(--color-brand-500)] hover:underline" href={`/enquiries/${row.id}`}>
+            <TR key={row.id} flag={breached ? 'critical' : undefined}>
+              {/* A reference and an owner name are identifiers: wrapping them
+                  across two lines costs a row of height on every row. */}
+              <TD className="whitespace-nowrap">
+                <a
+                  href={`/enquiries/${row.id}`}
+                  className="ref numeric font-medium text-brand hover:underline"
+                >
                   {row.reference}
                 </a>
-              </td>
-              {/* Both name columns exist on every entity a document renders
-                  (§11); the Arabic one is preferred when the user reads Arabic. */}
-              <td className="py-2">
-                {(locale === 'ar' ? row.customerNameAr : null) ?? row.customerName ?? '—'}
-              </td>
-              <td className="py-2">
-                {row.originName ?? '—'} → {row.destinationName ?? '—'}
-              </td>
-              <td className="py-2">{row.mode ? tMode(row.mode as 'air') : '—'}</td>
-              <td className="py-2">{row.ownerName ?? '—'}</td>
-              <td className="py-2">{t(`statuses.${row.status}` as 'statuses.new')}</td>
-              <td className="numeric py-2">
-                {row.slaDueAt ? (
-                  <span className={breached ? 'text-[var(--color-status-breached)]' : undefined}>
-                    {format.dateTime(row.slaDueAt, 'withTime')}
-                    {breached ? ` · ${t('overdue')}` : ''}
+                <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                  {t(`channels.${row.channel}` as 'channels.email')}
+                </span>
+              </TD>
+
+              {/*
+                Both name columns exist on every entity a document renders
+                (§11); the Arabic one is preferred when the user reads Arabic.
+              */}
+              <TD className="max-w-56 truncate">
+                {locale === 'ar' ? row.customerNameAr : row.customerName}
+              </TD>
+
+              <TD className="text-ink-muted">
+                <Lane origin={row.originName} destination={row.destinationName} />
+              </TD>
+
+              <TD>
+                {row.mode ? (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-muted">
+                    <Icon name={modeIcon(row.mode)} size={15} />
+                    <span className="hidden lg:inline">{tMode(row.mode)}</span>
                   </span>
                 ) : (
                   '—'
                 )}
-              </td>
-            </tr>
+              </TD>
+
+              <TD
+                className={`whitespace-nowrap ${
+                  row.owner ? 'text-ink' : 'text-ink-subtle italic'
+                }`}
+              >
+                {row.owner ?? tc('unassigned')}
+              </TD>
+
+              <TD>
+                <Badge tone={enquiryTone(row.status)} dot>
+                  {t(`statuses.${row.status}` as 'statuses.new')}
+                </Badge>
+              </TD>
+
+              {showMargin ? (
+                <TD align="end" numeric className="text-ink-muted">
+                  {formatMoney(row.quotedSell, locale, { showCurrency: false })}
+                </TD>
+              ) : null}
+
+              {showMargin ? (
+                <TD align="end" numeric>
+                  {row.quotedMargin === null ? (
+                    <span className="text-ink-subtle">—</span>
+                  ) : (
+                    <span
+                      className={
+                        // A thin margin is a commercial exception, and the ops
+                        // board is where it should first be visible.
+                        row.quotedMargin < 12 ? 'font-medium text-caution' : 'text-ink'
+                      }
+                    >
+                      {row.quotedMargin.toFixed(1)}%
+                    </span>
+                  )}
+                </TD>
+              ) : null}
+
+              <TD align="end" numeric className="whitespace-nowrap">
+                {row.firstRespondedAt ? (
+                  <span
+                    className="text-positive"
+                    title={formatDateTime(row.firstRespondedAt, locale)}
+                  >
+                    <Icon name="check" size={13} className="inline align-[-2px]" />{' '}
+                    {formatRelative(row.firstRespondedAt, locale, now)}
+                  </span>
+                ) : row.slaDueAt ? (
+                  <span
+                    className={
+                      breached
+                        ? 'font-semibold text-critical'
+                        : tone === 'caution'
+                          ? 'font-medium text-caution'
+                          : 'text-ink-muted'
+                    }
+                    title={formatDateTime(row.slaDueAt, locale)}
+                  >
+                    {formatRelative(row.slaDueAt, locale, now)}
+                    {breached ? ` · ${t('overdue')}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-ink-subtle">—</span>
+                )}
+              </TD>
+            </TR>
           )
         })}
-      </tbody>
-    </table>
+      </TBody>
+    </TableShell>
   )
 }

@@ -12,7 +12,7 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  transpilePackages: ['@qabandi/core', '@qabandi/db'],
+  transpilePackages: ['@qabandi/brand', '@qabandi/core', '@qabandi/db'],
   experimental: {
     // Server Actions are the only mutation path; nothing posts to an API route.
     serverActions: { bodySizeLimit: '10mb' },

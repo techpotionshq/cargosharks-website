@@ -20,6 +20,20 @@ pnpm db:seed        # currencies, charge types, milestones, calendars, roles
 pnpm dev            # web on :3000, service on :3001
 ```
 
+**Or with no database at all.** The interface runs on the seeded pilot dataset
+— twenty jobs at varied stages, a live customs hold, a demurrage clock that has
+already written its own charge line:
+
+```bash
+QABANDI_PILOT_FIXTURES=1 pnpm --filter @qabandi/web dev
+```
+
+That is the default whenever `DATABASE_URL` is unset, so a laptop with nothing
+provisioned still renders every screen — including the day-15 rehearsal in a
+room with no network. It refuses to engage in production against a configured
+database. Everything behind it is the real query path, chosen one branch
+earlier in `apps/web/src/lib/pilot/source.ts`.
+
 `pnpm db:up` needs Docker, and the container provisions its own roles from
 `infra/postgres/init/01-roles.sql`.
 
@@ -47,6 +61,7 @@ Both would have to be hand-rolled on 16 or 17. See Architecture §6.4.
 ```
 packages/
   core/      pure domain. imports nothing. no I/O, no DB, no framework.
+  brand/     the whitelabel contract — palette, logo, typography, letterhead
   db/        the only place a field is defined — schema, RLS, triggers, actor
 apps/
   web/       Next.js: ops · portal · agent · public, as route groups
@@ -121,6 +136,43 @@ exception codes, document types, notification templates, working calendars and
 volumetric divisors are all seed rows. FR-AD-03 requires an administrator to
 change them without a release, and honouring that properly deletes most of the
 code we would otherwise write.
+
+## Whitelabel
+
+`FR-CP-01` and `NFR-16` require the operator's logo, colours and domain
+everywhere a customer or partner can see, and no supplier branding anywhere.
+The cheapest way to keep that true a year from now is to make the operator a
+parameter, so **no component in `apps/web` contains a colour literal, a company
+name or a logo path.**
+
+`packages/brand` holds one object — identity, two hue specifications, logo
+geometry, typography, letterhead. Both themes, all three tonal ramps, every
+semantic colour and the chart series are derived from it, emitted as CSS custom
+properties in the root layout, and consumed through ordinary Tailwind utilities
+(`bg-surface`, `text-brand`, `border-line`) whose *values* resolve at run time.
+A re-skin therefore needs no rebuild:
+
+```bash
+BRAND_NAME_EN="Meridian Logistics" BRAND_MONOGRAM=M \
+BRAND_PRIMARY_HUE=155 BRAND_ACCENT_HUE=25 BRAND_RADIUS=4 pnpm dev
+```
+
+A second operator properly is one file under `packages/brand/src/brands/`,
+registered in `resolve.ts`, then `BRAND=<key>`. `/admin` renders the resolved
+tokens and the variable that overrides each one, so the claim is inspectable
+rather than asserted.
+
+Two things deliberately do *not* follow the brand:
+
+- **Status colours.** Positive, caution, critical, info and muted are reserved
+  for state. A board where "held" is calm because it matched a corporate palette
+  is worse than useless. A brand hue within ~15° of one of them will read as
+  that status — move the brand hue, not the status.
+- **Chart series.** Four slots, assigned in order and never cycled. Slots 1 and
+  2 follow the brand's own hues; 3 and 4 are fixed support hues. All four are
+  validated for lightness band, chroma floor, adjacent-pair separation under
+  simulated protanopia and deuteranopia, and contrast against both surfaces —
+  in both themes. Changing a support hue means re-running that validation.
 
 ## Deliberately absent
 

@@ -1,63 +1,233 @@
 @import 'tailwindcss';
 
 /**
- * Bilingual layout — Architecture §11, NFR-01.
+ * The stylesheet — Architecture §11, NFR-01, NFR-16.
  *
- * CSS logical properties throughout: `margin-inline-start`, never
- * `margin-left`. Tailwind's logical utilities (ms-, me-, ps-, pe-, start-,
- * end-, text-start, text-end) are the only ones permitted for directional
- * spacing and alignment; `ml-`, `pr-`, `text-left` and `text-right` are
- * physical and will be wrong in Arabic.
+ * Two rules govern everything below.
  *
- * The same stylesheet renders the PDF templates, so RTL is solved once for
+ * **1. No colour literals, anywhere.** Every value here resolves to a `--qb-*`
+ * custom property emitted by `@qabandi/brand` at run time. That is what makes
+ * the product whitelabelable without a rebuild: Tailwind compiles
+ * `bg-surface` to `background-color: var(--qb-surface)`, and swapping the
+ * brand swaps the variable. A hex value in a component is a bug — it is the
+ * one thing that would survive a re-skin and expose the wrong operator.
+ *
+ * **2. Logical properties only.** `ms-`, `me-`, `ps-`, `pe-`, `start-`,
+ * `end-`, `text-start`, `text-end`. Never `ml-`, `pr-`, `text-left`. Arabic is
+ * a first-class direction here, not a late translation pass (SRS §10.2), and
+ * the same stylesheet renders the quotation PDF — so RTL is solved once for
  * screen and document rather than twice.
  */
 
-@theme {
-  --font-sans: 'Inter', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+/**
+ * `inline` matters: it makes utilities emit `var(--qb-surface)` directly
+ * rather than routing through a second variable resolved at `:root`. Without
+ * it, a token redefined under `[data-theme='dark']` would be read at the wrong
+ * level and the theme would only half-apply.
+ */
+@theme inline {
+  /* --- surfaces and ink ------------------------------------------------- */
+  --color-canvas: var(--qb-canvas);
+  --color-surface: var(--qb-surface);
+  --color-surface-raised: var(--qb-surface-raised);
+  --color-surface-sunken: var(--qb-surface-sunken);
+  --color-chrome: var(--qb-chrome);
+  --color-chrome-ink: var(--qb-chrome-ink);
+  --color-chrome-ink-muted: var(--qb-chrome-ink-muted);
+  --color-chrome-line: var(--qb-chrome-line);
+  --color-ink: var(--qb-ink);
+  --color-ink-muted: var(--qb-ink-muted);
+  --color-ink-subtle: var(--qb-ink-subtle);
+  --color-on-brand: var(--qb-on-brand);
+  --color-line: var(--qb-line);
+  --color-line-strong: var(--qb-line-strong);
 
-  --color-brand-50: oklch(0.97 0.02 240);
-  --color-brand-500: oklch(0.55 0.14 240);
-  --color-brand-700: oklch(0.42 0.13 240);
+  /* --- brand ------------------------------------------------------------ */
+  --color-brand: var(--qb-brand);
+  --color-brand-hover: var(--qb-brand-hover);
+  --color-brand-soft: var(--qb-brand-soft);
+  --color-brand-soft-ink: var(--qb-brand-soft-ink);
+  --color-accent: var(--qb-accent);
+  --color-accent-soft: var(--qb-accent-soft);
 
-  /* Status colours carry meaning, so they are named for the meaning. */
-  --color-status-ontrack: oklch(0.65 0.15 155);
-  --color-status-attention: oklch(0.75 0.15 80);
-  --color-status-breached: oklch(0.58 0.19 25);
+  --color-brand-50: var(--qb-primary-50);
+  --color-brand-100: var(--qb-primary-100);
+  --color-brand-200: var(--qb-primary-200);
+  --color-brand-300: var(--qb-primary-300);
+  --color-brand-400: var(--qb-primary-400);
+  --color-brand-500: var(--qb-primary-500);
+  --color-brand-600: var(--qb-primary-600);
+  --color-brand-700: var(--qb-primary-700);
+  --color-brand-800: var(--qb-primary-800);
+  --color-brand-900: var(--qb-primary-900);
+  --color-brand-950: var(--qb-primary-950);
+
+  --color-accent-100: var(--qb-accent-100);
+  --color-accent-300: var(--qb-accent-300);
+  --color-accent-400: var(--qb-accent-400);
+  --color-accent-500: var(--qb-accent-500);
+  --color-accent-700: var(--qb-accent-700);
+
+  /* --- status: named for meaning, never for hue ------------------------- */
+  --color-positive: var(--qb-positive);
+  --color-caution: var(--qb-caution);
+  --color-critical: var(--qb-critical);
+  --color-info: var(--qb-info);
+  --color-muted: var(--qb-muted);
+  --color-positive-soft: var(--qb-positive-soft);
+  --color-caution-soft: var(--qb-caution-soft);
+  --color-critical-soft: var(--qb-critical-soft);
+  --color-info-soft: var(--qb-info-soft);
+  --color-muted-soft: var(--qb-muted-soft);
+
+  /*
+   * Categorical series, assigned in order and never cycled. Validated for
+   * lightness band, chroma floor, colour-blind separation and surface
+   * contrast in both themes — see `chartSlots` in @qabandi/brand.
+   */
+  --color-chart-1: var(--qb-chart-1);
+  --color-chart-2: var(--qb-chart-2);
+  --color-chart-3: var(--qb-chart-3);
+  --color-chart-4: var(--qb-chart-4);
+
+  /* --- type, shape, depth ---------------------------------------------- */
+  --font-sans: var(--qb-font-sans);
+  --font-arabic: var(--qb-font-arabic);
+  --font-mono: var(--qb-font-mono);
+  --font-display: var(--qb-font-display);
+
+  --radius-card: var(--qb-radius);
+  --radius-sm: var(--qb-radius-sm);
+  --radius-lg: var(--qb-radius-lg);
+
+  --shadow-card: 0 1px 2px -1px var(--qb-shadow-color), 0 1px 3px var(--qb-shadow-color);
+  --shadow-raised: 0 4px 6px -2px var(--qb-shadow-color), 0 12px 24px -8px var(--qb-shadow-color);
+  --shadow-pop: 0 8px 12px -4px var(--qb-shadow-color), 0 24px 48px -12px var(--qb-shadow-color);
 }
 
-:root {
-  --surface: oklch(1 0 0);
-  --surface-muted: oklch(0.97 0.003 250);
-  --ink: oklch(0.22 0.01 250);
-  --ink-muted: oklch(0.52 0.01 250);
-  --line: oklch(0.9 0.005 250);
-}
+/**
+ * The dark variant is keyed to the attribute the theme toggle writes, so
+ * `dark:` still works for the handful of cases a semantic token cannot express
+ * — an image treatment, a gradient stop. Colour should almost never need it:
+ * `bg-surface` is already correct in both themes.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: oklch(0.19 0.01 250);
-    --surface-muted: oklch(0.24 0.01 250);
-    --ink: oklch(0.95 0.005 250);
-    --ink-muted: oklch(0.7 0.01 250);
-    --line: oklch(0.32 0.01 250);
+@layer base {
+  * {
+    border-color: var(--qb-line);
+  }
+
+  html {
+    /* The tracking page is opened on a phone and handed across a table. */
+    -webkit-text-size-adjust: 100%;
+    scrollbar-color: var(--qb-line-strong) transparent;
+  }
+
+  body {
+    background-color: var(--qb-canvas);
+    color: var(--qb-ink);
+    font-family: var(--qb-font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /**
+   * Arabic swaps the whole family rather than appending a fallback: the two
+   * faces need different optical sizes, and a Latin-first stack renders
+   * Arabic in whatever the system happens to have.
+   */
+  [lang='ar'] body,
+  [lang='ar'] input,
+  [lang='ar'] button,
+  [lang='ar'] select,
+  [lang='ar'] textarea {
+    font-family: var(--qb-font-arabic);
+  }
+
+  /** One visible focus treatment, brand-coloured, on every interactive thing. */
+  :focus-visible {
+    outline: 2px solid var(--qb-focus);
+    outline-offset: 2px;
+    border-radius: var(--qb-radius-sm);
+  }
+
+  ::selection {
+    background-color: var(--qb-brand-soft);
+    color: var(--qb-brand-soft-ink);
   }
 }
 
-body {
-  background: var(--surface);
-  color: var(--ink);
-  font-family: var(--font-sans);
-}
+@layer components {
+  /**
+   * Numerals in operational screens stay Western and tabular even in Arabic.
+   *
+   * A container number and a bill of lading reference are read against printed
+   * documents, and mixing numeral systems between screen and paper is how
+   * transcription errors happen. Tabular figures also make a column of money
+   * or of dates align on the decimal, which is the only way a demurrage
+   * counter is scannable.
+   */
+  .numeric {
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: 'tnum' 1, 'lnum' 1;
+  }
 
-/* Arabic numerals stay Western in operational screens: a container number and
-   a bill of lading reference are read against printed documents, and mixing
-   numeral systems between screen and paper causes transcription errors. */
-[dir='rtl'] .numeric,
-[dir='rtl'] table {
-  font-variant-numeric: lining-nums tabular-nums;
-}
+  [dir='rtl'] .numeric,
+  [dir='rtl'] table td,
+  [dir='rtl'] table th {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
 
-.numeric {
-  font-variant-numeric: tabular-nums;
+  /** A reference is a machine identifier: monospace, slightly tightened. */
+  .ref {
+    font-family: var(--qb-font-mono);
+    font-variant-ligatures: none;
+    letter-spacing: -0.01em;
+  }
+
+  /**
+   * The section eyebrow: small, tracked, muted. Used above every card title so
+   * the dashboard reads as one system rather than a pile of panels.
+   */
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--qb-ink-subtle);
+  }
+
+  [lang='ar'] .eyebrow {
+    /* Arabic has no case, and letter-spacing breaks its joins. */
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  /**
+   * The demurrage counter, and only it (Pilot §3.1 item 12).
+   *
+   * The single most persuasive detail in the demo is a number that is visibly
+   * still moving. The pulse is slow and low-contrast on purpose: it must read
+   * as "accruing", not as an alarm.
+   */
+  .accruing {
+    animation: qb-accrue 2.4s ease-in-out infinite;
+  }
+
+  @keyframes qb-accrue {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.62;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .accruing {
+      animation: none;
+    }
+  }
 }
