@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+/**
+ * Bilingual layout — Architecture §11, NFR-01.
+ *
+ * CSS logical properties throughout: `margin-inline-start`, never
+ * `margin-left`. Tailwind's logical utilities (ms-, me-, ps-, pe-, start-,
+ * end-, text-start, text-end) are the only ones permitted for directional
+ * spacing and alignment; `ml-`, `pr-`, `text-left` and `text-right` are
+ * physical and will be wrong in Arabic.
+ *
+ * The same stylesheet renders the PDF templates, so RTL is solved once for
+ * screen and document rather than twice.
+ */
+
+@theme {
+  --font-sans: 'Inter', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+
+  --color-brand-50: oklch(0.97 0.02 240);
+  --color-brand-500: oklch(0.55 0.14 240);
+  --color-brand-700: oklch(0.42 0.13 240);
+
+  /* Status colours carry meaning, so they are named for the meaning. */
+  --color-status-ontrack: oklch(0.65 0.15 155);
+  --color-status-attention: oklch(0.75 0.15 80);
+  --color-status-breached: oklch(0.58 0.19 25);
+}
+
+:root {
+  --surface: oklch(1 0 0);
+  --surface-muted: oklch(0.97 0.003 250);
+  --ink: oklch(0.22 0.01 250);
+  --ink-muted: oklch(0.52 0.01 250);
+  --line: oklch(0.9 0.005 250);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: oklch(0.19 0.01 250);
+    --surface-muted: oklch(0.24 0.01 250);
+    --ink: oklch(0.95 0.005 250);
+    --ink-muted: oklch(0.7 0.01 250);
+    --line: oklch(0.32 0.01 250);
+  }
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* Arabic numerals stay Western in operational screens: a container number and
+   a bill of lading reference are read against printed documents, and mixing
+   numeral systems between screen and paper causes transcription errors. */
+[dir='rtl'] .numeric,
+[dir='rtl'] table {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+}

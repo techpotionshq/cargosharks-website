@@ -1,0 +1,35 @@
+{
+  "name": "qabandi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Qabandi Digital Freight Platform \u2014 Release One",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint && node scripts/check-boundaries.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test",
+    "test:core": "pnpm --filter @qabandi/core test",
+    "db:generate": "pnpm --filter @qabandi/db generate",
+    "db:provision": "pnpm --filter @qabandi/db provision",
+    "db:migrate": "pnpm --filter @qabandi/db migrate",
+    "db:studio": "pnpm --filter @qabandi/db studio",
+    "db:seed": "pnpm --filter @qabandi/db seed",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d db"
+  },
+  "devDependencies": {
+    "oxlint": "^1.78.0",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

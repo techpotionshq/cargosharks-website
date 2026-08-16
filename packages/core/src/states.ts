@@ -1,0 +1,272 @@
+/**
+ * Allowed transitions for enquiry, quote, job, customs and invoice.
+ *
+ * Illegal transitions are rejected here, in `core`, not in the UI (§7.3). A
+ * button that is hidden is not a control; a server action that calls
+ * `assertTransition` is.
+ *
+ * Nothing is deleted (§5.5) — every machine below ends in a terminal status,
+ * never in a removed row.
+ */
+
+import { IllegalTransitionError } from './errors'
+
+export interface Transition<S extends string> {
+  readonly from: S
+  readonly to: S
+  /** Permission key checked against `role_permissions` — FR-ID-03. */
+  readonly requires?: string
+  /** Shown on the audit trail and the activity feed. */
+  readonly label: string
+}
+
+export interface Machine<S extends string> {
+  readonly name: string
+  readonly initial: S
+  readonly states: readonly S[]
+  readonly terminal: readonly S[]
+  readonly transitions: readonly Transition<S>[]
+}
+
+function machine<S extends string>(m: Machine<S>): Machine<S> {
+  return m
+}
+
+// --- enquiry (FR-EQ) -------------------------------------------------------
+
+export type EnquiryStatus =
+  | 'new'
+  | 'assigned'
+  | 'rating'
+  | 'quoted'
+  | 'won'
+  | 'lost'
+  | 'cancelled'
+  | 'expired'
+
+export const enquiryMachine = machine<EnquiryStatus>({
+  name: 'enquiry',
+  initial: 'new',
+  states: ['new', 'assigned', 'rating', 'quoted', 'won', 'lost', 'cancelled', 'expired'],
+  terminal: ['won', 'lost', 'cancelled', 'expired'],
+  transitions: [
+    { from: 'new', to: 'assigned', requires: 'enquiry.assign', label: 'Assigned to owner' },
+    { from: 'new', to: 'cancelled', requires: 'enquiry.cancel', label: 'Cancelled' },
+    { from: 'assigned', to: 'rating', requires: 'enquiry.rate', label: 'Rating started' },
+    { from: 'assigned', to: 'assigned', requires: 'enquiry.assign', label: 'Reassigned' },
+    { from: 'assigned', to: 'lost', requires: 'enquiry.close', label: 'Lost' },
+    { from: 'assigned', to: 'cancelled', requires: 'enquiry.cancel', label: 'Cancelled' },
+    { from: 'rating', to: 'quoted', requires: 'quote.send', label: 'Quoted' },
+    { from: 'rating', to: 'lost', requires: 'enquiry.close', label: 'Lost' },
+    { from: 'rating', to: 'cancelled', requires: 'enquiry.cancel', label: 'Cancelled' },
+    // A revised quote returns the enquiry to rating rather than forking it.
+    { from: 'quoted', to: 'rating', requires: 'quote.revise', label: 'Revision requested' },
+    { from: 'quoted', to: 'won', requires: 'enquiry.close', label: 'Won' },
+    { from: 'quoted', to: 'lost', requires: 'enquiry.close', label: 'Lost' },
+    { from: 'quoted', to: 'expired', label: 'Quote validity expired' },
+  ],
+})
+
+// --- quote (FR-RT-08) ------------------------------------------------------
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'superseded'
+
+export const quoteMachine = machine<QuoteStatus>({
+  name: 'quote',
+  initial: 'draft',
+  states: ['draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded'],
+  terminal: ['accepted', 'rejected', 'expired', 'superseded'],
+  transitions: [
+    { from: 'draft', to: 'sent', requires: 'quote.send', label: 'Sent to customer' },
+    { from: 'draft', to: 'superseded', requires: 'quote.revise', label: 'Superseded by revision' },
+    { from: 'sent', to: 'accepted', requires: 'quote.accept', label: 'Accepted' },
+    { from: 'sent', to: 'rejected', requires: 'quote.reject', label: 'Rejected' },
+    { from: 'sent', to: 'expired', label: 'Validity elapsed' },
+    // Editing a quote never mutates it — a new version supersedes the old one.
+    { from: 'sent', to: 'superseded', requires: 'quote.revise', label: 'Superseded by revision' },
+  ],
+})
+
+// --- job (FR-JB) -----------------------------------------------------------
+
+export type JobStatus =
+  | 'draft'
+  | 'booked'
+  | 'in_transit'
+  | 'arrived'
+  | 'customs'
+  | 'delivered'
+  | 'completed'
+  | 'closed'
+  | 'on_hold'
+  | 'cancelled'
+
+export const jobMachine = machine<JobStatus>({
+  name: 'job',
+  initial: 'draft',
+  states: [
+    'draft',
+    'booked',
+    'in_transit',
+    'arrived',
+    'customs',
+    'delivered',
+    'completed',
+    'closed',
+    'on_hold',
+    'cancelled',
+  ],
+  terminal: ['closed', 'cancelled'],
+  transitions: [
+    { from: 'draft', to: 'booked', requires: 'job.book', label: 'Booked' },
+    { from: 'draft', to: 'cancelled', requires: 'job.cancel', label: 'Cancelled' },
+    { from: 'booked', to: 'in_transit', requires: 'job.update', label: 'Departed' },
+    { from: 'booked', to: 'on_hold', requires: 'job.hold', label: 'Placed on hold' },
+    { from: 'booked', to: 'cancelled', requires: 'job.cancel', label: 'Cancelled' },
+    { from: 'in_transit', to: 'arrived', requires: 'job.update', label: 'Arrived' },
+    { from: 'in_transit', to: 'on_hold', requires: 'job.hold', label: 'Placed on hold' },
+    { from: 'arrived', to: 'customs', requires: 'job.update', label: 'Entered clearance' },
+    { from: 'arrived', to: 'delivered', requires: 'job.update', label: 'Delivered' },
+    { from: 'customs', to: 'delivered', requires: 'job.update', label: 'Delivered' },
+    { from: 'customs', to: 'on_hold', requires: 'job.hold', label: 'Placed on hold' },
+    // Completion is operational; closure is financial and needs the P&L settled.
+    { from: 'delivered', to: 'completed', requires: 'job.complete', label: 'Operationally complete' },
+    { from: 'completed', to: 'closed', requires: 'job.close', label: 'Financially closed' },
+    { from: 'on_hold', to: 'booked', requires: 'job.hold', label: 'Hold released' },
+    { from: 'on_hold', to: 'in_transit', requires: 'job.hold', label: 'Hold released' },
+    { from: 'on_hold', to: 'customs', requires: 'job.hold', label: 'Hold released' },
+    { from: 'on_hold', to: 'cancelled', requires: 'job.cancel', label: 'Cancelled' },
+  ],
+})
+
+// --- customs (FR-CS) -------------------------------------------------------
+
+export type CustomsStatus =
+  | 'not_started'
+  | 'documents_pending'
+  | 'declaration_filed'
+  | 'assessed'
+  | 'duty_paid'
+  | 'inspection'
+  | 'released'
+  | 'held'
+
+export const customsMachine = machine<CustomsStatus>({
+  name: 'customs',
+  initial: 'not_started',
+  states: [
+    'not_started',
+    'documents_pending',
+    'declaration_filed',
+    'assessed',
+    'duty_paid',
+    'inspection',
+    'released',
+    'held',
+  ],
+  terminal: ['released'],
+  transitions: [
+    { from: 'not_started', to: 'documents_pending', requires: 'customs.update', label: 'Documents requested' },
+    { from: 'documents_pending', to: 'declaration_filed', requires: 'customs.file', label: 'Declaration filed' },
+    { from: 'declaration_filed', to: 'assessed', requires: 'customs.update', label: 'Duty assessed' },
+    { from: 'declaration_filed', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
+    { from: 'assessed', to: 'duty_paid', requires: 'customs.pay', label: 'Duty paid' },
+    { from: 'assessed', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
+    { from: 'duty_paid', to: 'inspection', requires: 'customs.update', label: 'Selected for inspection' },
+    { from: 'duty_paid', to: 'released', requires: 'customs.update', label: 'Released' },
+    { from: 'inspection', to: 'released', requires: 'customs.update', label: 'Released after inspection' },
+    { from: 'inspection', to: 'held', requires: 'customs.update', label: 'Held by authority' },
+    { from: 'held', to: 'inspection', requires: 'customs.update', label: 'Re-inspection' },
+    { from: 'held', to: 'released', requires: 'customs.update', label: 'Released' },
+    { from: 'documents_pending', to: 'held', requires: 'customs.update', label: 'Held by authority' },
+  ],
+})
+
+// --- invoice (FR-FN) -------------------------------------------------------
+
+export type InvoiceStatus =
+  | 'draft'
+  | 'approved'
+  | 'issued'
+  | 'part_paid'
+  | 'paid'
+  | 'credited'
+  | 'void'
+
+export const invoiceMachine = machine<InvoiceStatus>({
+  name: 'invoice',
+  initial: 'draft',
+  states: ['draft', 'approved', 'issued', 'part_paid', 'paid', 'credited', 'void'],
+  terminal: ['paid', 'credited', 'void'],
+  transitions: [
+    { from: 'draft', to: 'approved', requires: 'invoice.approve', label: 'Approved' },
+    { from: 'draft', to: 'void', requires: 'invoice.void', label: 'Voided' },
+    { from: 'approved', to: 'issued', requires: 'invoice.issue', label: 'Issued' },
+    { from: 'approved', to: 'draft', requires: 'invoice.approve', label: 'Returned to draft' },
+    { from: 'approved', to: 'void', requires: 'invoice.void', label: 'Voided' },
+    { from: 'issued', to: 'part_paid', requires: 'payment.record', label: 'Part paid' },
+    { from: 'issued', to: 'paid', requires: 'payment.record', label: 'Paid' },
+    // An issued invoice is never edited or voided — it is credited (§5.5).
+    { from: 'issued', to: 'credited', requires: 'invoice.credit', label: 'Credit note raised' },
+    { from: 'part_paid', to: 'paid', requires: 'payment.record', label: 'Paid' },
+    { from: 'part_paid', to: 'credited', requires: 'invoice.credit', label: 'Credit note raised' },
+  ],
+})
+
+// --- the machinery ---------------------------------------------------------
+
+export function transitionsFrom<S extends string>(m: Machine<S>, from: S): Transition<S>[] {
+  return m.transitions.filter((t) => t.from === from)
+}
+
+export function nextStates<S extends string>(m: Machine<S>, from: S): S[] {
+  return [...new Set(transitionsFrom(m, from).map((t) => t.to))]
+}
+
+export function findTransition<S extends string>(
+  m: Machine<S>,
+  from: S,
+  to: S,
+): Transition<S> | undefined {
+  return m.transitions.find((t) => t.from === from && t.to === to)
+}
+
+export function canTransition<S extends string>(m: Machine<S>, from: S, to: S): boolean {
+  return findTransition(m, from, to) !== undefined
+}
+
+export function isTerminal<S extends string>(m: Machine<S>, state: S): boolean {
+  return m.terminal.includes(state)
+}
+
+/**
+ * Throws unless the transition is allowed. Server actions call this before the
+ * write; the database's status check constraint is the second line of defence.
+ */
+export function assertTransition<S extends string>(m: Machine<S>, from: S, to: S): Transition<S> {
+  const transition = findTransition(m, from, to)
+  if (!transition) throw new IllegalTransitionError(m.name, from, to)
+  return transition
+}
+
+/**
+ * The transitions a principal holding `permissions` may take from `from` —
+ * what the UI renders as available actions, derived rather than duplicated.
+ */
+export function permittedTransitions<S extends string>(
+  m: Machine<S>,
+  from: S,
+  permissions: ReadonlySet<string>,
+): Transition<S>[] {
+  return transitionsFrom(m, from).filter((t) => !t.requires || permissions.has(t.requires))
+}
+
+/** Every permission key the machines reference — seeds `role_permissions`. */
+export function permissionKeys(): string[] {
+  const machines = [enquiryMachine, quoteMachine, jobMachine, customsMachine, invoiceMachine]
+  const keys = new Set<string>()
+  for (const m of machines) {
+    for (const t of m.transitions) if (t.requires) keys.add(t.requires)
+  }
+  return [...keys].sort()
+}

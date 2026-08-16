@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: qabandi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: qabandi
+      # Deterministic collation — see NFR-02/§11; never rely on the host locale.
+      POSTGRES_INITDB_ARGS: '--locale-provider=icu --icu-locale=und-x-icu --encoding=UTF8'
+    ports:
+      - '5432:5432'
+    volumes:
+      - qabandi-pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d qabandi']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Local S3-compatible object storage, standing in for the FileStore port (§10).
+  storage:
+    image: minio/minio:latest
+    container_name: qabandi-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: qabandi
+      MINIO_ROOT_PASSWORD: qabandi-dev-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - qabandi-storage:/data
+
+  # Local SMTP sink so the notification dispatcher (§7.4) has somewhere to deliver.
+  mail:
+    image: axllent/mailpit:latest
+    container_name: qabandi-mail
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  qabandi-pgdata:
+  qabandi-storage:

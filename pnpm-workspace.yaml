@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# Build scripts are opt-in under pnpm 10+. Only what genuinely needs one.
+allowBuilds:
+  esbuild: true
+  '@swc/core': true
+  '@parcel/watcher': true

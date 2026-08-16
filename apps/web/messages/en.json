@@ -1,0 +1,51 @@
+{
+  "app": {
+    "name": "Al-Qabandi & Partners",
+    "tagline": "Shipping & Forwarding"
+  },
+  "nav": {
+    "enquiries": "Enquiries",
+    "jobs": "Jobs",
+    "rates": "Rates",
+    "finance": "Finance",
+    "admin": "Administration",
+    "tracking": "Tracking"
+  },
+  "enquiry": {
+    "title": "Enquiries",
+    "reference": "Reference",
+    "customer": "Customer",
+    "lane": "Lane",
+    "mode": "Mode",
+    "owner": "Owner",
+    "status": "Status",
+    "slaDue": "SLA due",
+    "overdue": "Overdue",
+    "empty": "No enquiries match this view.",
+    "statuses": {
+      "new": "New",
+      "assigned": "Assigned",
+      "rating": "Rating",
+      "quoted": "Quoted",
+      "won": "Won",
+      "lost": "Lost",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    }
+  },
+  "mode": {
+    "sea_fcl": "Sea FCL",
+    "sea_lcl": "Sea LCL",
+    "air": "Air",
+    "land": "Land",
+    "courier": "Courier"
+  },
+  "common": {
+    "search": "Search",
+    "save": "Save",
+    "cancel": "Cancel",
+    "language": "العربية",
+    "signOut": "Sign out",
+    "notFound": "Not found"
+  }
+}

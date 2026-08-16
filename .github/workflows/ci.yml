@@ -1,0 +1,116 @@
+name: CI
+
+# The pipeline from Architecture §13, in order:
+#   typecheck -> lint -> core unit tests -> RLS policy tests
+#   -> Playwright flows -> migration dry-run -> deploy
+#
+# RLS policy tests are non-negotiable: they are the enforcement mechanism for
+# FR-ID-04 and NFR-09, and an untested policy is an untested access control.
+# They run against a real PostgreSQL 18 as `app_user` — a role with no
+# BYPASSRLS and no ownership — because running them as the owner would pass
+# while proving nothing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  static:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+
+  core:
+    name: Core unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No database, no fixtures, no container — that is the point of §4's
+      # dependency direction.
+      - run: pnpm test:core
+
+  database:
+    name: Migrations and RLS policy tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qabandi
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGPASSWORD: postgres
+      MIGRATION_DATABASE_URL: postgres://app_migrator:app_migrator@localhost:5432/qabandi
+      DATABASE_URL: postgres://app_user:app_user@localhost:5432/qabandi
+      TEST_DATABASE_URL: postgres://app_user:app_user@localhost:5432/qabandi
+      TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:app_migrator@localhost:5432/qabandi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The two roles from §5.1. The service container starts with only the
+      # superuser, so the init script is applied by hand here.
+      - name: Create app roles
+        run: psql -h localhost -U postgres -d qabandi -v ON_ERROR_STOP=1 -f infra/postgres/init/01-roles.sql
+
+      # Migrations run as app_migrator, forward-only, from the repository.
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+
+      # Applying twice must be a no-op — the dry-run §13 asks for.
+      - name: Migration re-run is idempotent
+        run: pnpm db:migrate
+
+      - run: pnpm --filter @qabandi/db test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [static, core]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+        env:
+          DATABASE_URL: postgres://app_user:app_user@localhost:5432/qabandi
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'ci-placeholder-secret-32-bytes-min' }}
