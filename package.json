@@ -2,7 +2,7 @@
   "name": "qabandi",
   "version": "0.0.0",
   "private": true,
-  "description": "Qabandi Digital Freight Platform \u2014 Release One",
+  "description": "Qabandi Digital Freight Platform — Release One",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
@@ -32,9 +32,7 @@
   "devDependencies": {
     "oxlint": "^1.78.0",
     "prettier": "^3.9.6",
-    "topojson-client": "^3.1.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10",
-    "world-atlas": "^2.0.2"
+    "vitest": "^4.1.10"
   }
 }

@@ -313,4 +313,86 @@
     height: 1px;
     background-color: var(--qb-line);
   }
+
+}
+
+/*
+  MapLibre's own chrome lives OUTSIDE the layer above, and that is load-bearing.
+
+  `maplibre-gl.css` is imported as a plain stylesheet, so its rules are
+  unlayered — and in the cascade **unlayered CSS beats layered CSS outright**,
+  whatever the specificity. Written inside `@layer components`, the overrides
+  below lost to MapLibre's own `.maplibregl-ctrl-group { background: #fff }`
+  and the zoom control stayed a white box on a dark board. Out here the normal
+  rules apply and the two-class selectors win.
+*/
+/**
+ * MapLibre's own chrome, brought into the product.
+ *
+ * The library ships a blue-and-white control set and a white tooltip with a
+ * hard shadow, which is fine on a demo page and obviously foreign inside a
+ * board where everything else is drawn from tokens. These are the four
+ * elements it actually renders: the zoom buttons, the attribution, the popup
+ * and the popup's arrow.
+ *
+ * The attribution stays visible and legible by design — OpenStreetMap's
+ * licence requires the credit, so it is toned down rather than hidden.
+ */
+.qb-map .maplibregl-ctrl-group {
+  background-color: var(--qb-surface);
+  border: 1px solid var(--qb-line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+}
+
+.qb-map .maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--qb-line);
+}
+
+.qb-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  /* The icons are inline SVG data URIs in a fixed near-black; a filter is
+     the only way to make them follow a theme. */
+  filter: var(--qb-map-icon-filter, none);
+}
+
+.qb-map .maplibregl-ctrl-attrib {
+  background-color: color-mix(in oklab, var(--qb-surface) 82%, transparent);
+  color: var(--qb-ink-subtle);
+  font-size: 0.6875rem;
+}
+
+.qb-map .maplibregl-ctrl-attrib a {
+  color: var(--qb-ink-muted);
+}
+
+.qb-map-popup .maplibregl-popup-content {
+  background-color: var(--qb-ink);
+  color: var(--qb-surface);
+  border-radius: var(--radius-sm);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-pop);
+}
+
+.qb-map-popup .maplibregl-popup-tip {
+  border-top-color: var(--qb-ink);
+  border-bottom-color: var(--qb-ink);
+}
+
+/*
+  Dark mode inverts MapLibre's baked-in control icons.
+
+  Declared outside the theme blocks above because it is a filter rather than a
+  colour, and it has to answer both ways of being dark: an explicit choice
+  stamps `data-theme`, and the default "system" setting stamps nothing.
+*/
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --qb-map-icon-filter: invert(1) brightness(1.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  --qb-map-icon-filter: invert(1) brightness(1.6);
 }
