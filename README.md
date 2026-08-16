@@ -20,10 +20,23 @@ pnpm db:seed        # currencies, charge types, milestones, calendars, roles
 pnpm dev            # web on :3000, service on :3001
 ```
 
-`pnpm db:up` needs Docker. Without it, point `DATABASE_URL` and
-`MIGRATION_DATABASE_URL` at any PostgreSQL 18 instance and apply
-`infra/postgres/init/01-roles.sql` first — it creates the two roles the design
-depends on.
+`pnpm db:up` needs Docker, and the container provisions its own roles from
+`infra/postgres/init/01-roles.sql`.
+
+**Against an existing server** — a shared development box, a managed instance,
+the client's own cloud — put a superuser connection in `ADMIN_DATABASE_URL` and
+the two application connection strings in `.env.local`, then:
+
+```bash
+pnpm db:provision   # creates the database and both roles, sets their passwords
+pnpm db:migrate
+pnpm db:seed
+```
+
+`db:provision` applies the same `01-roles.sql` the container uses, so the two
+paths cannot drift, and it takes the role passwords from the environment so no
+real credential is ever committed. `.env.local` overrides `.env` and is
+gitignored.
 
 **PostgreSQL 18 is required, not preferred.** `uuidv7()` is the default for
 every primary key and temporal `WITHOUT OVERLAPS` carries rate-card validity.
@@ -55,6 +68,7 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 | `pnpm test` | every package |
 | `pnpm test:core` | domain engines only — no database, ~130ms |
 | `pnpm db:generate` | regenerate the table migration from the schema |
+| `pnpm db:provision` | create the database and roles on an existing server |
 | `pnpm db:migrate` | apply migrations as `app_migrator` |
 | `pnpm db:seed` | reference rows the engines need |
 | `pnpm db:reset` | drop the volume and start clean |
@@ -132,14 +146,22 @@ and a second one the SRS itself names.
 
 ## Status
 
-Scaffolded to the architecture. Standing up and verified:
+Scaffolded to the architecture and verified against a live PostgreSQL 18.6:
 
-- the full schema (53 tables), migrations, RLS policies and audit triggers
-- `core`: money, chargeable, rating, clocks, states — 43 passing tests
-- `db`: actor transaction, client, generated Zod validation, seed
-- `web`: four route groups, bilingual shell, session resolution, the enquiries
-  slice end to end
-- `service`: queue, three workers, webhooks, public read API, the seven ports
+- **64 tables, 57 with RLS enabled *and* forced, 75 policies, 56 audit
+  triggers, 53 `uuidv7()` primary keys.** The seven tables without RLS are the
+  auth library's own plus the throttle and webhook-receipt tables, each opted
+  out in code with a stated reason.
+- **The temporal constraint holds.** `UNIQUE NULLS NOT DISTINCT (direction,
+  partner_id, customer_id, mode, origin_id, destination_id, validity WITHOUT
+  OVERLAPS)` is live, so two overlapping rate cards for one lane are
+  unrepresentable rather than merely unlikely.
+- **11 RLS policy tests pass against real fixtures** — two branches, two
+  customers, an agent partner and two jobs. Confirmed non-vacuous: weakening
+  `jobs_scope` to `using (true)` fails four of them.
+- **43 core tests, no database, 130ms.**
+- `web` builds, `service` bundles, and the schema shows no drift from the
+  migrations.
 
 Not yet built, and marked as such in the code: the PDF renderer (the Chromium
 layer is in `infra/Dockerfile.service`), inbound email and WhatsApp workers,
