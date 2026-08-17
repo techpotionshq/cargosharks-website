@@ -18,6 +18,12 @@ pnpm db:up          # PostgreSQL 18, MinIO and a mail sink
 pnpm db:migrate     # forward-only, applied as app_migrator
 pnpm db:seed        # currencies, charge types, milestones, calendars, roles
 
+# The operating entity comes before the people in it. A role is granted *per
+# branch* (FR-ID-02), so an account created before any branch exists would hold
+# no permissions at all — `db:create-user` refuses rather than making one.
+pnpm db:create-branch --code KWI --name "Your Company Co." \
+                      --country KW --currency KWD
+
 # Nobody can sign in until an account exists: the product is invitation-only
 # (FR-ID-07), so there is no registration form to bootstrap from.
 pnpm db:create-user --email you@example.com --name "Your Name" \
@@ -57,10 +63,33 @@ QABANDI_PILOT_FIXTURES=1 pnpm --filter @qabandi/web dev
 ```
 
 That is the default whenever `DATABASE_URL` is unset, so a laptop with nothing
-provisioned still renders every screen — including the day-15 rehearsal in a
-room with no network. It refuses to engage in production against a configured
+provisioned runs the pilot screens — including the day-15 rehearsal in a room
+with no network. It refuses to engage in production against a configured
 database. Everything behind it is the real query path, chosen one branch
 earlier in `apps/web/src/lib/pilot/source.ts`.
+
+**It is a subset, and the subset is enforced.** The fixtures were written for
+the screens the pilot needed. The register queries behind finance, network,
+operations and reference still go straight to `withActor`, so those routes want
+a database and error without one rather than degrading. The list lives in
+`apps/web/e2e/support/harness.ts` as `NEEDS_DATABASE`, one entry per route
+naming the query responsible, and the end-to-end run reports each of them as
+skipped-with-a-reason — so the gap is visible in the pipeline rather than
+implied by an absence. Each entry is retired by giving its query the
+`usePilotFixtures()` branch every other feature already has.
+
+**For a full instance — a demo a prospect can be given a URL to — load the
+demo dataset**, which populates every table an evaluation touches:
+
+```bash
+pnpm db:up && pnpm db:migrate && pnpm db:seed
+pnpm db:seed-demo   # enquiries at every stage, invoices partly paid,
+                    # containers past free time. Idempotent; --reset removes it
+```
+
+`db:seed-demo` creates the two branches it references, so it stands a demo
+instance up from a migrated database and nothing else. A real deployment names
+its own entities with `db:create-branch` instead.
 
 `pnpm db:up` needs Docker, and the container provisions its own roles from
 `infra/postgres/init/01-roles.sql`.
@@ -114,8 +143,60 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 | `pnpm db:provision` | create the database and roles on an existing server |
 | `pnpm db:migrate` | apply migrations as `app_migrator` |
 | `pnpm db:seed` | reference rows the engines need, and the role/permission matrix |
+| `pnpm db:create-branch` | create an operating entity — the first thing a deployment needs |
 | `pnpm db:create-user` | provision an account that can actually sign in |
 | `pnpm db:reset` | drop the volume and start clean |
+| `pnpm test:db` | migrations, policies and the RLS negative matrix |
+| `pnpm test:e2e` | every screen, both languages, desktop and mobile |
+| `pnpm tenant:new` | provision a deployment end to end — database, roles, schema, seed, first administrator |
+| `pnpm fleet:status` | what schema version is every deployment on, and is each reachable |
+| `pnpm fleet:migrate` | apply migrations across the fleet, sequentially, with a report |
+| `pnpm fleet:backup` | dump every deployment |
+| `pnpm fleet:restore-drill` | dump, restore into a scratch database, verify, drop |
+
+## Running more than one deployment
+
+The product is sold deployment-per-customer — one database, one schema, no
+`tenant_id` above `branch_id`. That is the right shape for this market and it
+is a data-sovereignty answer as well as an architecture, but it moves a cost
+onto whoever operates it, and the cost is linear in customers unless the
+operations are scripted.
+
+`fleet.example.json` is the manifest. Copy it to `fleet.json` — gitignored,
+because it names customers — and add a record per deployment. **Connection
+strings are not in it.** They are read from the environment by convention from
+each tenant's key, so no customer credential is ever committed:
+
+```
+QABANDI_<KEY>_DATABASE_URL             app_user
+QABANDI_<KEY>_MIGRATION_DATABASE_URL   app_migrator
+QABANDI_<KEY>_ADMIN_DATABASE_URL       superuser, provisioning and dumps only
+```
+
+```bash
+pnpm tenant:new --key acme --name "Acme Logistics" \
+                --admin-email ops@acme.com --brand acme --region ae
+```
+
+`--dry-run` prints the sequence without touching anything. `--seed-demo` loads
+the evaluation dataset, for a demo instance rather than a customer's own.
+
+**`fleet:migrate` runs sequentially and does not stop on a failure.** Parallel
+migration is a way to take every customer down at once instead of one at a
+time; stopping halfway leaves the fleet split with no report of which half is
+which. It continues, names every tenant and its outcome, reports version drift
+across the fleet, and exits non-zero.
+
+**`fleet:restore-drill` is the one to schedule.** A backup nobody has restored
+is a hypothesis. The drill restores into a scratch database and checks the
+content rather than the exit status — including that the RLS policies survived,
+because a restore that drops them produces a database that looks perfect and
+enforces nothing.
+
+Dumps are taken through the **admin** connection. `app_user` holds
+`nobypassrls` and cannot read outside its own branches, so a dump taken as the
+application role is silently partial — which is the most dangerous artefact in
+this area.
 
 ## The parts worth reading first
 

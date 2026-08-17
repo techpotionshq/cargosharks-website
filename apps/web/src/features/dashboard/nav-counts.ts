@@ -14,14 +14,44 @@
 import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { withActor, type Actor } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotEnquiries, pilotExceptions } from '@/lib/pilot/fixtures'
 
 export interface NavCounts {
   readonly openEnquiries: number
   readonly openExceptions: number
 }
 
-export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> =>
-  withActor(actor, async (tx) => {
+/** Mirrors the `not in` of the statement below, so the two paths agree. */
+const CLOSED_ENQUIRY_STATUSES = new Set(['won', 'lost', 'cancelled'])
+
+export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> => {
+  /*
+    This guard was missing, and it took the whole ops group down with it.
+
+    Every other query in `features/` chooses its source through this predicate.
+    These two did not — they went straight to `withActor` — and because they
+    are called from the `(ops)` **layout** rather than a page, the failure was
+    not one broken panel. `DATABASE_URL is not set` was thrown before any
+    internal screen rendered at all, which made the README's headline claim
+    ("a laptop with nothing provisioned still renders every screen — including
+    the day-15 rehearsal in a room with no network") false for every screen an
+    operator uses.
+
+    A layout-level query is the one place a missing fixture branch is fatal
+    rather than cosmetic, which is why the sweep in `e2e/routes.spec.ts` found
+    it on its first run.
+  */
+  if (usePilotFixtures()) {
+    return {
+      openEnquiries: pilotEnquiries().filter(
+        (e) => !CLOSED_ENQUIRY_STATUSES.has(e.status) && e.firstRespondedAt === null,
+      ).length,
+      openExceptions: pilotExceptions().length,
+    }
+  }
+
+  return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
         (
@@ -39,5 +69,5 @@ export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> =>
       openEnquiries: row?.open_enquiries ?? 0,
       openExceptions: row?.open_exceptions ?? 0,
     }
-  }),
-)
+  })
+})

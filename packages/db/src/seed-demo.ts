@@ -60,6 +60,7 @@ import {
   quotes,
   rateCardLines,
   rateCards,
+  workingCalendars,
 } from './schema/index'
 
 loadEnv()
@@ -726,6 +727,54 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
   }
 
   // --- branches, and the people who work in them --------------------------
+
+  /*
+    The demo dataset creates the two branches it references.
+
+    Every seed below writes `branch_id` resolved from `KWI` or `DXB` by code.
+    On a fresh deployment `branches` is empty — `db:seed` loads reference data
+    and a branch is not reference data — so the lookup returned undefined and
+    the first insert died on a `not null` violation, which read as a bug in the
+    demo data rather than a missing prerequisite.
+    
+    Created here rather than demanded of the operator because this file is a
+    self-contained evaluation dataset: `pnpm db:seed-demo` should produce a
+    working instance from a migrated database and nothing else. A real
+    deployment names its own entities with `pnpm db:create-branch`.
+  */
+  const [calendarRow] = await tx
+    .select({ id: workingCalendars.id })
+    .from(workingCalendars)
+    .where(eq(workingCalendars.key, 'kuwait'))
+    .limit(1)
+
+  if (calendarRow) {
+    await tx
+      .insert(branches)
+      .values([
+        {
+          code: 'KWI',
+          legalNameEn: 'Al-Qabandi & Partners Co.',
+          legalNameAr: 'شركة القبندي وشركاه',
+          country: 'KW',
+          baseCurrency: 'KWD',
+          invoiceSeries: 'KWI',
+          calendarId: calendarRow.id,
+          timeZone: 'Asia/Kuwait',
+        },
+        {
+          code: 'DXB',
+          legalNameEn: 'Al-Qabandi Logistics FZE',
+          legalNameAr: 'القبندي للخدمات اللوجستية',
+          country: 'AE',
+          baseCurrency: 'AED',
+          invoiceSeries: 'DXB',
+          calendarId: calendarRow.id,
+          timeZone: 'Asia/Dubai',
+        },
+      ])
+      .onConflictDoNothing()
+  }
 
   const branchRows = await tx.select({ id: branches.id, code: branches.code }).from(branches)
   const branchBy = new Map<string, string>(

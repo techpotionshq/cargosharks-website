@@ -12,7 +12,7 @@
 import { cache } from 'react'
 import { cookies, headers } from 'next/headers'
 import { and, eq, gt } from 'drizzle-orm'
-import { permissionKeys } from '@qabandi/core'
+import { allPermissionKeys } from '@qabandi/core'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   authSession,
@@ -74,7 +74,12 @@ const PILOT_SESSION: Session = {
     email: 'operations@qabandi.local',
     locale: 'en',
   },
-  permissions: new Set(permissionKeys()),
+  // `allPermissionKeys()`, not `permissionKeys()`. The latter returns only the
+  // keys the state machines reference, so this principal held every
+  // operational permission and no administrative one — and `/settings/*`,
+  // whose layout redirects when a principal can open no area at all, bounced
+  // straight back to the dashboard in every fixture-backed deployment.
+  permissions: new Set(allPermissionKeys()),
   branchRoles: new Map([
     ['00000000-0000-7000-8000-0000000000b1', 'operations_manager'],
     ['00000000-0000-7000-8000-0000000000b2', 'operations_manager'],

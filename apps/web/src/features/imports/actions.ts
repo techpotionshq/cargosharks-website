@@ -35,6 +35,8 @@ import {
   customerBranchTerms,
   customerContacts,
   customers,
+  invoices,
+  jobs,
   locations,
   partners,
   rateCardLines,
@@ -45,16 +47,24 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import {
   importKind,
+  importNeedsBranch,
   isImportKind,
   type ChargeBasis,
   type CustomerContactRowValues,
   type CustomerRowValues,
   type ImportKind,
   type LocationRowValues,
+  type OpenJobRowValues,
+  type OpenReceivableRowValues,
   type PartnerRowValues,
   type TransportMode,
 } from './descriptors'
-import { loadReference, resolveCustomerCodes, resolveRateReferences } from './queries'
+import {
+  loadReference,
+  resolveCustomerCodes,
+  resolveJobReferences,
+  resolveRateReferences,
+} from './queries'
 import { CONFLICT_STATES, REFERENCE_STATES, sqlState } from './sql-state'
 
 /**
@@ -104,7 +114,7 @@ export async function runImport(_previous: ImportState, form: FormData): Promise
   }
 
   const branchId = String(form.get('branchId') ?? '')
-  const needsBranch = kindKey === 'customers' || kindKey === 'rate-cards'
+  const needsBranch = importNeedsBranch(kindKey)
   if (needsBranch) {
     if (!branchId) return { kind: kindKey, fileName: file.name, error: 'no_branch' }
     assertInBranch(session, branchId)
@@ -185,7 +195,167 @@ async function write(
       return writeLocations(session, report)
     case 'rate-cards':
       return writeRateCards(session, report, context)
+    case 'open-jobs':
+      return writeOpenJobs(session, report, context.branchId)
+    case 'open-receivables':
+      return writeOpenReceivables(session, report, context.branchId)
   }
+}
+
+/**
+ * Shipments in flight at cutover.
+ *
+ * Two decisions worth stating, because both look like omissions:
+ *
+ * **The reference is kept, not renumbered.** Operations, the customer and the
+ * carrier all have the old file number written down, and a migration that
+ * renumbers every open shipment guarantees a fortnight of "which job is
+ * that?". The new series starts at the next job raised in this system.
+ *
+ * **No milestones are generated.** A job imported mid-passage has already
+ * passed most of a template's steps, and writing them all as incomplete would
+ * put forty shipments on the exceptions board on the morning of go-live —
+ * exactly the impression a cutover cannot afford. The status carries where the
+ * shipment is; the milestone trail begins here.
+ */
+async function writeOpenJobs(
+  session: Session,
+  report: ImportReport,
+  branchId: string,
+): Promise<{ records: number }> {
+  const rows = report.rows.map((row) => ({
+    line: row.line,
+    values: row.values as unknown as OpenJobRowValues,
+  }))
+
+  const byCode = await resolveCustomerCodes(
+    session.actor,
+    rows.map((row) => row.values.customerCode),
+  )
+
+  const { locationIds, incoterms } = await resolveJobReferences(
+    session.actor,
+    rows.flatMap((row) =>
+      [row.values.originCode, row.values.destinationCode].filter((value): value is string =>
+        Boolean(value),
+      ),
+    ),
+    rows.map((row) => row.values.incoterm).filter((value): value is string => Boolean(value)),
+  )
+
+  // Reported as row issues rather than thrown, so an operator gets every bad
+  // line at once instead of fixing them one import at a time.
+  const missing: RowIssue[] = rows
+    .filter((row) => !byCode.has(row.values.customerCode.toUpperCase()))
+    .map((row) => ({
+      line: row.line,
+      column: 'Customer code',
+      value: row.values.customerCode,
+      message: 'No such customer — import customers first',
+    }))
+  if (missing.length > 0) throw new UnknownReferenceError(missing)
+
+  await withActor(session.actor, async (tx) => {
+    for (const { values } of rows) {
+      await tx.insert(jobs).values({
+        reference: values.reference,
+        branchId,
+        customerId: byCode.get(values.customerCode.toUpperCase())!,
+        status: values.status,
+        mode: values.mode,
+        tradeDirection: values.tradeDirection,
+        originId: values.originCode ? (locationIds.get(values.originCode) ?? null) : null,
+        destinationId: values.destinationCode
+          ? (locationIds.get(values.destinationCode) ?? null)
+          : null,
+        incoterm: values.incoterm ? (incoterms.get(values.incoterm) ?? null) : null,
+        masterBillNumber: values.masterBillNumber,
+        houseBillNumber: values.houseBillNumber,
+        bookingNumber: values.bookingNumber,
+        vesselName: values.vesselName,
+        voyageNumber: values.voyageNumber,
+        flightNumber: values.flightNumber,
+        etd: values.etd ? new Date(values.etd) : null,
+        eta: values.eta ? new Date(values.eta) : null,
+        customerReference: values.customerReference,
+      })
+    }
+  })
+
+  return { records: rows.length }
+}
+
+/**
+ * Unpaid invoices at cutover, as opening balances.
+ *
+ * Written `issued` or `part_paid` according to what has been received, so the
+ * ageing report and the customer statement are both correct on day one
+ * without anyone reconstructing a payment history.
+ *
+ * **No invoice lines and no charge lines.** The line detail of an old invoice
+ * cannot be reproduced faithfully — the charge types will not map, and the FX
+ * rate each line was struck at is gone, which `numeric(19,6)` and the stored
+ * per-line rate exist precisely to preserve. Inventing them would put figures
+ * in the margin report that never happened. The total is what is chased, the
+ * total is what is imported, and a balance with no lines reads as what it is:
+ * an opening position carried over.
+ *
+ * The series counter is deliberately **not** advanced. These numbers were
+ * issued by the system being retired; the branch's own sequence belongs to the
+ * invoices this platform will issue, and merging the two would leave gaps that
+ * look like deleted documents to an auditor.
+ */
+async function writeOpenReceivables(
+  session: Session,
+  report: ImportReport,
+  branchId: string,
+): Promise<{ records: number }> {
+  const rows = report.rows.map((row) => ({
+    line: row.line,
+    values: row.values as unknown as OpenReceivableRowValues,
+  }))
+
+  const byCode = await resolveCustomerCodes(
+    session.actor,
+    rows.map((row) => row.values.customerCode),
+  )
+
+  const missing: RowIssue[] = rows
+    .filter((row) => !byCode.has(row.values.customerCode.toUpperCase()))
+    .map((row) => ({
+      line: row.line,
+      column: 'Customer code',
+      value: row.values.customerCode,
+      message: 'No such customer — import customers first',
+    }))
+  if (missing.length > 0) throw new UnknownReferenceError(missing)
+
+  await withActor(session.actor, async (tx) => {
+    for (const { values } of rows) {
+      const paid = Number(values.amountPaid)
+
+      await tx.insert(invoices).values({
+        branchId,
+        customerId: byCode.get(values.customerCode.toUpperCase())!,
+        seriesNo: values.seriesNo,
+        // `part_paid` where something has been received. The descriptor's own
+        // check already refused a fully settled row, so these are the only two
+        // states an open receivable can legitimately be in.
+        status: paid > 0 ? 'part_paid' : 'issued',
+        currency: values.currency,
+        subtotal: values.subtotal,
+        taxAmount: values.taxAmount,
+        total: values.total,
+        amountPaid: values.amountPaid,
+        taxTreatment: values.taxTreatment,
+        issuedAt: new Date(values.issuedOn),
+        dueOn: values.dueOn ?? null,
+        notes: 'Opening balance imported at cutover',
+      })
+    }
+  })
+
+  return { records: rows.length }
 }
 
 async function writeCustomers(
@@ -430,6 +600,8 @@ function revalidateFor(kind: ImportKind): void {
     partners: ['/partners'],
     locations: ['/locations'],
     'rate-cards': ['/rates'],
+    'open-jobs': ['/jobs', '/dashboard'],
+    'open-receivables': ['/invoices', '/finance'],
   }
   for (const path of paths[kind]) revalidatePath(path)
 }

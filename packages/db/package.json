@@ -21,17 +21,22 @@
     "seed-demo": "tsx src/seed-demo.ts",
     "test": "vitest run",
     "provision": "tsx src/provision.ts",
-    "create-user": "tsx src/create-user.ts"
+    "create-user": "tsx src/create-user.ts",
+    "tenant-new": "tsx src/tenant-new.ts",
+    "fleet-migrate": "tsx src/fleet-migrate.ts",
+    "fleet-backup": "tsx src/fleet-backup.ts",
+    "create-branch": "tsx src/create-branch.ts"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "@qabandi/core": "workspace:*",
+    "better-auth": "^1.6.29",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.23.0",
     "pg-boss": "^12.27.0",
-    "zod": "^4.4.3",
-    "better-auth": "^1.6.29"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

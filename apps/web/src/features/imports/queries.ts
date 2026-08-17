@@ -7,13 +7,16 @@
  * takes the codes as sets rather than reaching for a database it cannot see.
  */
 
-import { eq, inArray, sql } from 'drizzle-orm'
+import { eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import {
   branches,
   chargeTypes,
   countries,
   currencies,
   customers,
+  incoterms,
+  invoices,
+  jobs,
   locations,
   partners,
   withActor,
@@ -37,8 +40,13 @@ export async function loadReference(actor: Actor, kind: ImportKind): Promise<Imp
     const lookups: Record<string, ReadonlySet<string>> = {}
     const existing: Record<string, ReadonlySet<string>> = {}
 
-    const needsCountries = kind !== 'rate-cards' && kind !== 'customer-contacts'
-    const needsCurrencies = kind === 'customers' || kind === 'partners' || kind === 'rate-cards'
+    const isCutover = kind === 'open-jobs' || kind === 'open-receivables'
+    const needsCountries = kind !== 'rate-cards' && kind !== 'customer-contacts' && !isCutover
+    const needsCurrencies =
+      kind === 'customers' ||
+      kind === 'partners' ||
+      kind === 'rate-cards' ||
+      kind === 'open-receivables'
 
     if (needsCountries) {
       const rows = await tx.select({ code: countries.code }).from(countries)
@@ -79,6 +87,53 @@ export async function loadReference(actor: Actor, kind: ImportKind): Promise<Imp
       existing.unlocode = new Set(
         rows
           .map((row) => row.unlocode?.toUpperCase())
+          .filter((value): value is string => Boolean(value)),
+      )
+    }
+
+    /*
+      The cutover sheets.
+
+      Ports and Incoterms are optional on a job but must exist where given —
+      a handover sheet with `JEBEL ALI` in the POL column should be corrected
+      before go-live, not silently imported as a job with no origin.
+
+      The collision set is the one that matters most here: a migration is
+      almost never run once. It is run against a dry copy, corrected, and run
+      again, and the second run must refuse the references the first one
+      created rather than producing a duplicate board.
+    */
+    if (kind === 'open-jobs') {
+      const [places, terms, references] = await Promise.all([
+        tx.select({ unlocode: locations.unlocode }).from(locations),
+        tx.select({ code: incoterms.code }).from(incoterms),
+        tx.select({ reference: jobs.reference }).from(jobs),
+      ])
+      lookups.locations = new Set(
+        places
+          .map((row) => row.unlocode?.toUpperCase())
+          .filter((value): value is string => Boolean(value)),
+      )
+      lookups.incoterms = new Set(terms.map((row) => row.code.toUpperCase()))
+      existing.reference = new Set(references.map((row) => row.reference.toUpperCase()))
+    }
+
+    if (kind === 'open-receivables') {
+      /*
+        Invoice numbers are unique *per branch series*, not globally — five
+        legal entities each number their own (FR-ID-01). The collision set is
+        therefore branch-agnostic here and deliberately loose: it catches the
+        same file imported twice, which is the failure worth catching, and
+        leaves genuine cross-entity duplicates to the branch the import runs
+        against.
+      */
+      const rows = await tx
+        .select({ seriesNo: invoices.seriesNo })
+        .from(invoices)
+        .where(isNotNull(invoices.seriesNo))
+      existing.seriesNo = new Set(
+        rows
+          .map((row) => row.seriesNo?.toUpperCase())
           .filter((value): value is string => Boolean(value)),
       )
     }
@@ -178,4 +233,73 @@ export async function ratePartners(
       .from(partners)
       .where(eq(partners.isActive, true)),
   )
+}
+
+/**
+ * Locations, Incoterms and job references back to ids, for the open-jobs
+ * writer.
+ *
+ * Upper-cased on both sides for the reason recorded above `resolveRateReferences`:
+ * `lookup()` upper-cases what the operator typed, so a join against the stored
+ * value has to do the same or it silently matches nothing and fails at the
+ * write rather than at validation.
+ */
+export async function resolveJobReferences(
+  actor: Actor,
+  unlocodes: readonly string[],
+  incotermCodes: readonly string[],
+): Promise<{ locationIds: Map<string, string>; incoterms: Map<string, string> }> {
+  return withActor(actor, async (tx) => {
+    const locationIds = new Map<string, string>()
+    const terms = new Map<string, string>()
+
+    if (unlocodes.length > 0) {
+      const wanted = [...new Set(unlocodes.map((value) => value.toUpperCase()))]
+      const rows = await tx
+        .select({ id: locations.id, unlocode: locations.unlocode })
+        .from(locations)
+        .where(inArray(sql`upper(${locations.unlocode})`, wanted))
+      for (const row of rows) {
+        if (row.unlocode) locationIds.set(row.unlocode.toUpperCase(), row.id)
+      }
+    }
+
+    if (incotermCodes.length > 0) {
+      const wanted = [...new Set(incotermCodes.map((value) => value.toUpperCase()))]
+      const rows = await tx
+        .select({ code: incoterms.code })
+        .from(incoterms)
+        .where(inArray(sql`upper(${incoterms.code})`, wanted))
+      // Stored as written rather than as typed: the column holds the canonical
+      // three-letter term and the sheet may have carried any casing.
+      for (const row of rows) terms.set(row.code.toUpperCase(), row.code)
+    }
+
+    return { locationIds, incoterms: terms }
+  })
+}
+
+/**
+ * Job references back to ids, for linking an opening receivable to a shipment.
+ *
+ * Returns only what it finds. An unmatched reference on a receivable is not an
+ * error — plenty of open invoices at cutover relate to jobs already closed in
+ * the old system, and refusing them would mean refusing the balance.
+ */
+export async function resolveJobsByReference(
+  actor: Actor,
+  references: readonly string[],
+): Promise<Map<string, { id: string; branchId: string }>> {
+  if (references.length === 0) return new Map()
+
+  return withActor(actor, async (tx) => {
+    const wanted = [...new Set(references.map((value) => value.toUpperCase()))]
+    const rows = await tx
+      .select({ id: jobs.id, reference: jobs.reference, branchId: jobs.branchId })
+      .from(jobs)
+      .where(inArray(sql`upper(${jobs.reference})`, wanted))
+    return new Map(
+      rows.map((row) => [row.reference.toUpperCase(), { id: row.id, branchId: row.branchId }]),
+    )
+  })
 }

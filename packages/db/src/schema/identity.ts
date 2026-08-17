@@ -7,10 +7,20 @@
  * Keeping it ours also keeps Better Auth replaceable in days (§8).
  */
 
-import { boolean, index, integer, jsonb, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  text,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
 import { pk, ref, timestamps, tsz } from './columns'
 import { pgTable, systemTable } from './table'
-import { localeEnum, principalTypeEnum } from './enums'
+import { localeEnum, principalTypeEnum, supportScopeEnum } from './enums'
 import { assets } from './files'
 
 /**
@@ -196,8 +206,107 @@ export const rateLimitBuckets = systemTable(
   windowStartedAt: tsz('window_started_at').notNull().defaultNow(),
 })
 
+/**
+ * A customer's grant of support access — the vendor side of a support
+ * contract, made explicit in the customer's own database.
+ *
+ * Four properties, and each is there because the alternative is what people
+ * actually do under pressure at 2am:
+ *
+ * - **Granted, not assumed.** The row is written by one of the *operator's*
+ *   administrators, not by us. Without one, a support principal sees nothing —
+ *   the policies in `0008` are conditioned on an active grant, and their
+ *   absence is the same `else false` every other policy falls through to.
+ * - **Time-boxed.** `expires_at` is required, and enforced in the policy
+ *   rather than by a job that has to run. An expired grant stops working at
+ *   the moment it expires, whatever else is broken.
+ * - **Revocable.** `revoked_at` takes effect on the next statement, and the
+ *   row stays — §5.5 applies to us as much as to anyone.
+ * - **Attributable.** `reason` is not optional. A grant with no ticket behind
+ *   it is the thing an auditor asks about, so there is nowhere to put "misc".
+ *
+ * `scope` is `read` unless someone deliberately made it `write`. Read access
+ * needs no policy exception to stay read-only: `0008` creates support policies
+ * `for select` only, so a write simply finds no policy that admits it.
+ */
+export const supportGrants = pgTable(
+  'support_grants',
+  {
+    id: pk(),
+    /** The support principal this grant admits — one engineer, not a role. */
+    principalId: ref('principal_id')
+      .notNull()
+      .references(() => principals.id),
+    /** The operator's administrator who granted it. Never a support principal. */
+    grantedById: ref('granted_by_id')
+      .notNull()
+      .references(() => principals.id),
+    /**
+     * The branches opened. Empty means every branch, which is why the
+     * interface should make choosing one the easy path.
+     */
+    branchIds: uuid('branch_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    scope: supportScopeEnum('scope').notNull().default('read'),
+    /** The ticket, incident or request. Required — see above. */
+    reason: text('reason').notNull(),
+    expiresAt: tsz('expires_at').notNull(),
+    revokedAt: tsz('revoked_at'),
+    revokedById: ref('revoked_by_id').references(() => principals.id),
+    ...timestamps,
+  },
+  (t) => [
+    index('support_grants_active_idx').on(t.principalId, t.expiresAt),
+    index('support_grants_granted_by_idx').on(t.grantedById),
+  ],
+)
+
+/**
+ * What was looked at, and when — the read half of the audit trail.
+ *
+ * `0003`'s trigger records writes, which is the right design for a system
+ * whose risk is unauthorised *change*. Support inverts that: the engineer is
+ * read-only, so a trail of writes records nothing at all, and "we never
+ * touched anything" is precisely the claim that needs evidence rather than
+ * assertion.
+ *
+ * One row per transaction opened under a grant, written by `withActor`. That
+ * is a coarser record than per-row read logging — which needs `pgaudit` and is
+ * unavailable on several managed instances — but it answers the question the
+ * customer actually asks: *who from your side opened our data, when, and under
+ * which ticket.*
+ *
+ * Insert-only, on the same terms as `audit_log`: `0008` revokes UPDATE and
+ * DELETE from `app_user`.
+ */
+export const supportAccessLog = systemTable(
+  'Insert-only access trail. A trigger on it would recurse, as with audit_log.',
+)(
+  'support_access_log',
+  {
+    id: pk(),
+    grantId: ref('grant_id')
+      .notNull()
+      .references(() => supportGrants.id),
+    principalId: ref('principal_id')
+      .notNull()
+      .references(() => principals.id),
+    /** What the engineer was doing — the route or job that opened the actor. */
+    action: text('action'),
+    ip: text('ip'),
+    at: tsz('at')
+      .notNull()
+      .default(sql`now()`),
+  },
+  (t) => [index('support_access_log_grant_idx').on(t.grantId, t.at)],
+)
+
 export type Branch = typeof branches.$inferSelect
 export type Principal = typeof principals.$inferSelect
+export type SupportGrant = typeof supportGrants.$inferSelect
+export type SupportAccessEntry = typeof supportAccessLog.$inferSelect
 export type Role = typeof roles.$inferSelect
 export type RolePermission = typeof rolePermissions.$inferSelect
 export type PrincipalBranchRole = typeof principalBranchRoles.$inferSelect

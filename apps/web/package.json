@@ -12,6 +12,7 @@
     "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
@@ -22,10 +23,12 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
     "@phosphor-icons/react": "^2.1.10",
     "@qabandi/brand": "workspace:*",
     "@qabandi/core": "workspace:*",
     "@qabandi/db": "workspace:*",
+    "@vercel/otel": "^2.1.3",
     "better-auth": "^1.6.29",
     "drizzle-orm": "^0.45.2",
     "maplibre-gl": "^5.24.0",

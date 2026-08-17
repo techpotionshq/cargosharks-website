@@ -35,13 +35,34 @@ alter role app_user     nobypassrls nosuperuser nocreatedb nocreaterole;
 -- Nobody creates objects ad hoc in public.
 revoke create on schema public from public;
 
-grant connect on database qabandi to app_migrator, app_user;
+/*
+  `current_database()`, not the literal name.
+
+  These two grants named `qabandi` outright, which is correct for exactly one
+  deployment and silently wrong for every other. Provisioning a tenant database
+  called anything else — which is what `pnpm tenant:new` does — applied the
+  grants to a database this server may not even have, and the failure surfaced
+  three steps later as `CREATE SCHEMA "drizzle"` being refused for app_migrator:
+  a permission error naming a schema, for a missing grant on a database.
+
+  Both paths that apply this file already connect *to the target database* —
+  the container through `POSTGRES_DB`, `db:provision` by connecting to it
+  explicitly — so `current_database()` is the name in both cases and neither
+  needs substitution.
+*/
+do $$
+begin
+  execute format('grant connect on database %I to app_migrator, app_user', current_database());
+end $$;
 
 -- CREATE on the database, not merely on `public`: the migration runner keeps
 -- its bookkeeping in a `drizzle` schema of its own, and `btree_gist` (§6.2) is
 -- installed by the same role. app_user is deliberately not granted this — it
 -- can create nothing, anywhere.
-grant create on database qabandi to app_migrator;
+do $$
+begin
+  execute format('grant create on database %I to app_migrator', current_database());
+end $$;
 grant create, usage on schema public to app_migrator;
 grant usage on schema public to app_user;
 

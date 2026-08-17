@@ -12,18 +12,47 @@
  */
 import { globSync, readFileSync } from 'node:fs'
 
+/**
+ * `globSync` yields the platform's separator, and every path operation below
+ * is written in terms of `/`. Without this the whole check silently matched
+ * nothing on Windows — and then crashed, because an unstripped `(ops)` reached
+ * the `RegExp` constructor below as an unbalanced group.
+ */
+const posix = (f) => f.replaceAll('\\', '/')
+
 const routes = new Set(
-  globSync('apps/web/src/app/**/page.tsx').map((f) =>
-    f.replace('apps/web/src/app', '').replace('/page.tsx', '').replace(/\/\([a-z]+\)/g, '') || '/',
+  globSync('apps/web/src/app/**/page.tsx').map(
+    (f) =>
+      posix(f)
+        .replace('apps/web/src/app', '')
+        .replace('/page.tsx', '')
+        .replace(/\/\([a-z]+\)/g, '') || '/',
   ),
 )
 const dynamic = [...routes].filter((r) => r.includes('['))
-const matches = (href) =>
-  routes.has(href) ||
-  dynamic.some((r) => new RegExp('^' + r.replace(/\[[^\]]+\]/g, '[^/]+') + '$').test(href))
+
+/**
+ * A route segment is a path, not a pattern. `[id]` becomes `[^/]+`; everything
+ * else — dots in a filename, parentheses in a name we did not strip — has to
+ * be escaped, or it is interpreted as syntax and matches the wrong thing.
+ */
+const toPattern = (route) =>
+  new RegExp(
+    '^' +
+      route
+        .split(/(\[[^\]]+\])/)
+        .map((part) =>
+          /^\[[^\]]+\]$/.test(part) ? '[^/]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        )
+        .join('') +
+      '$',
+  )
+
+const patterns = dynamic.map(toPattern)
+const matches = (href) => routes.has(href) || patterns.some((p) => p.test(href))
 
 const seen = new Map()
-for (const file of globSync('apps/web/src/**/*.tsx')) {
+for (const file of globSync('apps/web/src/**/*.tsx').map(posix)) {
   const src = readFileSync(file, 'utf8')
   for (const m of src.matchAll(/href=\{?["'`](\/[^"'`?{}\s]*)/g)) {
     const href = m[1].replace(/\/$/, '') || '/'
@@ -43,3 +72,7 @@ for (const [href, file] of [...seen].sort()) {
   }
 }
 console.log(bad ? `\n${bad} dead internal link(s).` : `\nall ${seen.size} internal links resolve.`)
+
+// The check reported and then exited 0, so `pnpm lint` stayed green with dead
+// links in it. A check nothing fails on is a report, not a check.
+if (bad) process.exitCode = 1

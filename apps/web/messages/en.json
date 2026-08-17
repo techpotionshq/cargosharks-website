@@ -92,7 +92,8 @@
     "actions": "Actions",
     "add": "Add",
     "choose": "— choose —",
-    "operations": "Operations"
+    "operations": "Operations",
+    "auditImmutable": "This record is written by the database and cannot be edited or deleted by anyone, including the supplier."
   },
   "dashboard": {
     "title": "Operations dashboard",
@@ -1520,6 +1521,10 @@
       "brand": {
         "title": "Brand",
         "description": "The colours, name and mark the product resolves at runtime, and the environment variable behind each one."
+      },
+      "support": {
+        "title": "Vendor access",
+        "description": "Who from techpotions can see this deployment, for how long, and what they opened. Access is granted here, expires on its own, and can be withdrawn at any moment."
       }
     },
     "referenceMoved": "Ports, charge types and other reference data are operational and stayed in",
@@ -1584,6 +1589,55 @@
     "errorUnknownReference": "A row refers to a record that does not exist.",
     "errorConflict": "This overlaps a rate card that already covers the lane.",
     "errorUnknownKind": "Unknown import.",
-    "errorUnknown": "The import could not be completed."
+    "errorUnknown": "The import could not be completed.",
+    "kindOpenJobs": "Open jobs",
+    "kindOpenReceivables": "Open receivables"
+  },
+  "support": {
+    "bannerRead": "Support has read access to your data",
+    "bannerWrite": "Support has write access to your data",
+    "scopeAllBranches": "every branch",
+    "scopeBranches": "{branches}",
+    "expires": "until {time}",
+    "revoke": "Revoke access",
+    "pageTitle": "Vendor access",
+    "eyebrow": "Administration",
+    "pageDescription": "Support access is granted by you, scoped to branches, expires on its own and is recorded. Nothing below can be edited afterwards — including by us.",
+    "openHeading": "Open right now",
+    "emptyTitle": "No support access has ever been granted",
+    "emptyHint": "When support needs to look at your data, you grant it here — for a fixed period, to named branches, against a ticket.",
+    "colEngineer": "Engineer",
+    "colReason": "Reason",
+    "colScope": "Access",
+    "colGrantedBy": "Granted by",
+    "colGranted": "Granted",
+    "colState": "State",
+    "colOpened": "Sessions opened",
+    "state_live": "Live",
+    "state_revoked": "Revoked",
+    "state_expired": "Expired",
+    "scopeRead": "Read only",
+    "scopeWrite": "Read and write"
+  },
+  "supportGrant": {
+    "open": "Grant access",
+    "title": "Grant support access",
+    "description": "Opens this deployment to one named engineer, for a fixed period. It expires on its own and you can withdraw it at any time.",
+    "submit": "Grant access",
+    "engineer": "Engineer",
+    "engineerPlaceholder": "Choose who is being granted access",
+    "reason": "Ticket or reason",
+    "reasonPlaceholder": "SUP-1042 — invoice total disputed on KWI-2026-01041",
+    "reasonHint": "Recorded against every session opened under this grant.",
+    "duration": "Expires after",
+    "hours": "{count, plural, one {# hour} other {# hours}}",
+    "scope": "Access",
+    "scopeRead": "Read only",
+    "scopeWrite": "Read and write",
+    "branches": "Branches",
+    "branchesHint": "Leave blank for the branches you hold. Choosing fewer is always safer.",
+    "escalate": "Confirm write access",
+    "escalateHint": "Only needed for read and write. Type GRANT WRITE to confirm.",
+    "note": "Every session opened under this grant is recorded, and the record cannot be edited or deleted by anyone — including us."
   }
 }

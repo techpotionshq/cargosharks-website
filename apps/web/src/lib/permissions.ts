@@ -55,6 +55,17 @@ export const SETTINGS_AREAS = [
     icon: 'branches',
   },
   { key: 'audit', href: '/settings/audit', permission: 'admin.audit.read', icon: 'audit' },
+  /*
+    Vendor access — who from the supplier's side can see this deployment's
+    data, for how long, and what they opened.
+
+    Gated on `admin.users.write` rather than a key of its own: granting an
+    outsider access to the whole deployment is the same authority as granting a
+    colleague access to a branch, and inventing a separate permission would let
+    an operator hold one without the other — which is a distinction with no
+    meaning and a matrix with an extra row nobody can explain.
+  */
+  { key: 'support', href: '/settings/support', permission: 'admin.users.write', icon: 'audit' },
   { key: 'brand', href: '/settings/brand', permission: 'admin.brand.read', icon: 'admin' },
 ] as const
 

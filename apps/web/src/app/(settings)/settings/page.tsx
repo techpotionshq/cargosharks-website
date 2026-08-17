@@ -41,7 +41,18 @@ export default async function SettingsIndexPage() {
           return (
             <Link
               key={area.href}
-              href={area.href}
+              /*
+                `{ pathname }` rather than the bare string.
+
+                `SETTINGS_AREAS` is `as const`, so `area.href` is a union of
+                route literals, and Next's typed-routes `RouteImpl<T>` infers
+                `T` from a single member and then rejects the others — the
+                error names whichever one it picked. Every member is a real
+                route; the generic simply cannot express "any of these". A
+                `UrlObject` is accepted as-is and needs no cast, so nothing is
+                silenced.
+              */
+              href={{ pathname: area.href }}
               className="group flex items-start gap-3.5 rounded-lg border border-line bg-surface p-5 transition-colors hover:border-brand"
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-surface-sunken text-ink-subtle transition-colors group-hover:bg-brand-soft group-hover:text-brand">

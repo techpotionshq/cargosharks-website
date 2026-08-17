@@ -33,8 +33,56 @@ import {
   authVerification,
 } from '@qabandi/db'
 
+/**
+ * The signing secret, refused rather than defaulted.
+ *
+ * Better Auth *warns* when `secret` is undefined and carries on with a
+ * built-in default. In a fleet of per-customer deployments that is the
+ * worst-shaped failure available: every deployment that shipped without the
+ * variable set would share one publicly-known signing key, so a session cookie
+ * minted anywhere would be accepted everywhere, and the only trace of it is a
+ * log line in the middle of a build.
+ *
+ * The placeholder is refused too. `.env.example` ships
+ * `replace-me-with-32-bytes-of-base64`, and a value copied verbatim out of a
+ * committed file is not a secret — it is the default with extra steps.
+ *
+ * Development is exempt so a fresh clone still runs; production is not, and
+ * refusing to boot is the correct outcome. A deployment that will not start is
+ * an incident someone fixes in ten minutes. One that starts with forgeable
+ * sessions is an incident nobody notices.
+ */
+function signingSecret(): string | undefined {
+  const secret = process.env.BETTER_AUTH_SECRET
+
+  /*
+    Runtime, not build time.
+
+    `next build` runs with `NODE_ENV=production` and evaluates this module
+    while collecting routes, long before any secret is needed — so checking
+    `NODE_ENV` alone makes the build itself require production credentials,
+    which is both wrong and the sort of thing that gets the check deleted
+    rather than fixed. `NEXT_PHASE` is what distinguishes the two.
+  */
+  const building = process.env.NEXT_PHASE === 'phase-production-build'
+
+  if (process.env.NODE_ENV === 'production' && !building) {
+    if (!secret || secret.includes('replace-me')) {
+      throw new Error(
+        'BETTER_AUTH_SECRET is unset or still the .env.example placeholder. ' +
+          'Refusing to start: Better Auth would fall back to a shared default ' +
+          'signing key, and a session minted against one deployment would be ' +
+          'accepted by every other. Generate one per tenant: ' +
+          '`openssl rand -base64 32`.',
+      )
+    }
+  }
+
+  return secret
+}
+
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET,
+  secret: signingSecret(),
   baseURL: process.env.BETTER_AUTH_URL,
 
   database: drizzleAdapter(db, {

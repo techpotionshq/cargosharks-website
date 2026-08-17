@@ -1,0 +1,18 @@
+{
+  "//": "Copy to fleet.json (gitignored) and add a record per deployment. Connection strings are NOT held here — see packages/db/src/fleet.ts. Each tenant reads QABANDI_<KEY>_DATABASE_URL, QABANDI_<KEY>_MIGRATION_DATABASE_URL and QABANDI_<KEY>_ADMIN_DATABASE_URL from the environment, where <KEY> is the key upper-cased with hyphens as underscores.",
+  "tenants": [
+    {
+      "key": "al-qabandi",
+      "name": "AL-QABANDI & PARTNERS Co.",
+      "brand": "qabandi",
+      "region": "kw",
+      "liveAt": "2026-09-01"
+    },
+    {
+      "key": "acme-logistics",
+      "name": "Acme Logistics LLC",
+      "brand": "acme",
+      "region": "ae"
+    }
+  ]
+}

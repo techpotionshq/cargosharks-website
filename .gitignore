@@ -29,3 +29,13 @@ Thumbs.db
 # local data
 tmp/
 *.log
+
+# Database dumps and the fleet manifest — neither belongs in the repository.
+# `fleet.json` names customers; `.backups/` holds their data.
+.backups/
+fleet.json
+
+# Playwright session state — a real cookie, never committed.
+apps/web/e2e/.auth/
+apps/web/test-results/
+apps/web/playwright-report/

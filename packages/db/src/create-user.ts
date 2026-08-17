@@ -145,7 +145,28 @@ async function main(): Promise<void> {
             .where(inArray(branches.code, options.branches))
         : await tx.select({ id: branches.id, code: branches.code }).from(branches)
 
-      if (!branchRows.length) throw new Error('no matching branches')
+      if (!branchRows.length) {
+        /*
+          The bootstrap deadlock, named.
+
+          Every permission in this system comes from `principal_branch_roles`
+          (FR-ID-02), so an account with no branch role holds nothing — which
+          is why this refuses rather than creating an inert user. On a fresh
+          deployment there are no branches at all, and the only other way to
+          make one is a screen that cannot be reached without an account.
+        */
+        throw new Error(
+          options.branches.length
+            ? `unknown branch: ${options.branches.join(', ')}`
+            : [
+                'This deployment has no branches, and a role is granted per branch —',
+                'an account without one would hold no permissions at all.',
+                '',
+                '  Create the operating entity first:',
+                '    pnpm db:create-branch --code KWI --name "<legal name>" --country KW --currency KWD',
+              ].join('\n'),
+        )
+      }
       if (options.branches.length && branchRows.length !== options.branches.length) {
         const found = new Set(branchRows.map((b) => b.code))
         throw new Error(

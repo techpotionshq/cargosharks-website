@@ -1,0 +1,325 @@
+# The pipeline — Architecture §13.
+#
+# Nothing in this repository ran on a commit before this file existed. That is
+# the first thing a second customer's technical reviewer asks about, and the
+# reason the answer matters more than any feature gap: a platform sold with
+# support is a platform someone else has to trust you to change safely.
+#
+# Five jobs, ordered by how fast they fail:
+#
+#   quality   formatting, lint, the dependency-direction check, types
+#   unit      the domain engines — no database, no network, ~130ms
+#   database  migrations, seed, and the RLS policy matrix on real Postgres 18
+#   e2e       every screen, in both languages, on the pilot fixtures
+#   build     the production build both apps ship as
+#
+# `database` and `e2e` are the two that could not exist before: the first needs
+# Postgres 18 specifically (§6.4 — `uuidv7()` and temporal `WITHOUT OVERLAPS`),
+# and the second needs an interface that renders without a database, which
+# `QABANDI_PILOT_FIXTURES` provides.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.5.2'
+
+jobs:
+  quality:
+    name: Format, lint, types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Formatting
+        run: pnpm format:check
+
+      # oxlint, plus the three checks that encode decisions rather than style:
+      # dependency direction (core <- db <- apps), message-catalogue parity
+      # between en and ar, and internal documentation links.
+      - name: Lint and repository invariants
+        run: pnpm lint
+
+      - name: Types
+        run: pnpm typecheck
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The engines: six charge calculations, one clock, one working-calendar
+      # duration function. No database is configured here deliberately — if
+      # these ever need one, that is the finding.
+      - name: Domain engines
+        run: pnpm test:core
+
+      - name: Web unit tests
+        run: pnpm --filter @qabandi/web test
+
+  database:
+    name: Migrations, seed and RLS policies
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # 18, not 16 or 17. `uuidv7()` is the default for every primary key and
+        # temporal `WITHOUT OVERLAPS` carries rate-card validity (§6.4).
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qabandi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qabandi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Provisioning runs as the superuser; everything after it does not.
+      # `db:provision` takes each role's password from its own connection
+      # string, so these three are the whole configuration.
+      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/qabandi
+      MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+      DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The same `01-roles.sql` the local container mounts, applied the way a
+      # managed instance needs it. The two paths cannot drift, which is the
+      # point of `db:provision` existing at all.
+      - name: Provision roles
+        run: pnpm db:provision
+
+      - name: Migrate
+        run: pnpm db:migrate
+
+      - name: Seed reference data and the permission matrix
+        run: pnpm db:seed
+
+      # The suite connects as `app_user` — no BYPASSRLS, no ownership. Running
+      # it as the owner would pass while proving nothing, so the two URLs below
+      # are deliberately different roles.
+      - name: RLS policies and the negative matrix
+        env:
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+        run: pnpm test:db
+
+  # The interface is tested twice, because it can be stood up two ways and both
+  # are things we promise.
+  #
+  #   offline  no database at all. Proves the claim the pilot rests on — a
+  #            laptop with nothing provisioned renders the product — and runs
+  #            in about a minute with no services.
+  #   full     Postgres 18 with `db:seed-demo` loaded. Every screen, and the
+  #            configuration a demo instance for a prospect actually runs.
+  #
+  # The offline job covers a subset today: the register queries behind finance,
+  # network, operations and reference have no `usePilotFixtures()` branch, so
+  # those routes need a database. `e2e/support/harness.ts` lists them by name
+  # and the run reports them as skipped-with-a-reason rather than passing over
+  # them silently.
+
+  e2e-offline:
+    name: End-to-end (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      QABANDI_PILOT_FIXTURES: '1'
+      E2E_PORT: '3100'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install browsers
+        run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
+
+      # Built and served as production, not `next dev`: RTL, brand tokens and
+      # server components all behave differently under the dev server, and it
+      # is the production build these tests are supposed to protect.
+      - name: Build
+        run: pnpm --filter @qabandi/web build
+
+      - name: Run
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-offline
+          path: apps/web/playwright-report/
+          retention-days: 14
+
+  e2e-full:
+    name: End-to-end (seeded database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qabandi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qabandi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/qabandi
+      MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+      DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
+      E2E_MODE: full
+      E2E_PORT: '3100'
+      E2E_EMAIL: e2e@qabandi.test
+      # A throwaway credential for a throwaway database. Written plainly rather
+      # than as a secret: dressing it up as one invites somebody to reuse a
+      # real password here.
+      E2E_PASSWORD: e2eTestPassword123
+      # Better Auth derives its origin from the request without this and warns
+      # on every boot; the suite signs nobody in, but the warning is noise.
+      BETTER_AUTH_URL: http://127.0.0.1:3100
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install browsers
+        run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
+
+      - name: Provision, migrate and seed
+        run: |
+          pnpm db:provision
+          pnpm db:migrate
+          pnpm db:seed
+
+      # The operational dataset: enquiries at every stage, shipments mid-
+      # journey, invoices partly paid, containers accruing demurrage right now.
+      # Without it every register renders its empty state and the assertions
+      # about held shipments and three-decimal money have nothing to read.
+      - name: Load the demo dataset
+        run: pnpm db:seed-demo
+
+      # Full mode signs in for real — there is no pilot short-circuit — so the
+      # suite needs an account that exists. `administrator` because the sweep
+      # covers `/settings/*`, which an operations manager cannot open.
+      #
+      # `db:seed-demo` creates the branches it references, and a role is
+      # granted per branch (FR-ID-02), so this must run after it.
+      - name: Create the end-to-end account
+        run: >-
+          pnpm db:create-user --email e2e@qabandi.test --name "E2E Operator"
+          --role administrator --password "$E2E_PASSWORD"
+
+      - name: Build
+        run: pnpm --filter @qabandi/web build
+
+      - name: Run
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-full
+          path: apps/web/playwright-report/
+          retention-days: 14
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build every package
+        run: pnpm build

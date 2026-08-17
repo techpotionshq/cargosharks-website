@@ -10,6 +10,13 @@
  * implementation rather than a per-caller concern.
  */
 
+// First, and it has to stay first. OpenTelemetry patches modules as they are
+// required, so anything imported above this line is never instrumented — and
+// the symptom is a trace with no database spans under it, which reads like a
+// sampling problem rather than an import-order one. Starting the SDK is a side
+// effect of this import for exactly that reason; see `observability.ts`.
+import { stopTelemetry } from './observability'
+
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -51,6 +58,9 @@ const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down')
   await app.close()
   await stopBoss()
+  // Last, so the spans from whatever was still in flight are flushed rather
+  // than discarded with the buffer — and those are the ones worth having.
+  await stopTelemetry()
   process.exit(0)
 }
 

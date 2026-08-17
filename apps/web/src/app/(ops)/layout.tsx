@@ -24,6 +24,7 @@ import { THEME_COOKIE, isThemeChoice } from '@/lib/theme'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
+import { SupportAccessBanner } from '@/features/support/ui/banner'
 import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
@@ -271,6 +272,16 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           is a real use, and a hamburger would need JavaScript to open.
         */}
         <MobileNav sections={sections} />
+
+        {/*
+          Above the content, on every internal screen, and outside `main`.
+
+          Vendor access to a customer's commercial data is only acceptable if
+          the customer can see it happening without going to look — so this
+          sits in the layout rather than on a settings page, and renders
+          nothing at all when no session is open (`features/support/ui/banner`).
+        */}
+        <SupportAccessBanner session={session} />
 
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
       </div>

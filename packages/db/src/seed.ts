@@ -12,7 +12,7 @@
  */
 
 import { loadEnv } from './env'
-import { permissionKeys } from '@qabandi/core'
+import { ADMIN_PERMISSIONS, permissionKeys } from '@qabandi/core'
 import { createDatabase } from './client'
 import { SYSTEM_PRINCIPAL_ID, systemActor, withActor } from './actor'
 import {
@@ -203,37 +203,19 @@ const ROLES = [
   ['read_only', 'Read Only', 'اطلاع فقط', false],
 ] as const
 
-/** Permissions beyond the state-machine keys `core` already enumerates. */
-const EXTRA_PERMISSIONS = [
-  'admin.reference.write',
-  'admin.audit.read',
-  'admin.users.write',
-  'admin.api_keys.write',
-  /*
-    Branches and brand are administration in the strict sense — they configure
-    the operator, not the work.
-
-    `admin.branches.write` exists because branch editing was previously gated
-    on `admin.reference.write`, which an operations manager holds. A branch
-    carries its base currency, its **invoice series** and its working calendar,
-    so that grant let anyone who could add a port also renumber the statutory
-    invoice sequence and shift every SLA in the branch onto a different
-    weekend. Reference data is operational; a branch is not.
-
-    `admin.brand.read` gates the whitelabel console, which lists the `BRAND_*`
-    environment variables that configure the deployment. Nothing there is a
-    secret, but it is deployment surface, and a read-only account had no reason
-    to see it.
-  */
-  'admin.branches.write',
-  'admin.brand.read',
-  'rate.card.write',
-  'report.read',
-  'job.read',
-  'finance.export',
-  'customer.write',
-  'partner.write',
-]
+/**
+ * Permissions beyond the state-machine keys, now declared in `core` as
+ * `ADMIN_PERMISSIONS` alongside the reasoning for each.
+ *
+ * They lived here, which made this file the only place in the system that knew
+ * the full set — so `permissionKeys()` returned half the permissions and every
+ * other caller that meant "everything" quietly got the operational half. The
+ * pilot session was one such caller, and the visible symptom was that
+ * `/settings/*` redirected to the dashboard in every fixture-backed
+ * deployment: the console the README points at as inspectable proof of the
+ * whitelabel system could not be opened.
+ */
+const EXTRA_PERMISSIONS = ADMIN_PERMISSIONS
 
 /**
  * The permission matrix — FR-ID-03.

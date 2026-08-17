@@ -19,7 +19,12 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
-import { IMPORT_KINDS, importKind, isImportKind } from '@/features/imports/descriptors'
+import {
+  IMPORT_KINDS,
+  importKind,
+  importNeedsBranch,
+  isImportKind,
+} from '@/features/imports/descriptors'
 import { importableBranches, ratePartners } from '@/features/imports/queries'
 import { ImportConsole, type Choice } from '@/features/imports/ui/import-console'
 import { usePilotFixtures } from '@/lib/pilot/source'
@@ -59,7 +64,7 @@ export default async function ImportsPage({
       : permitted[0]!.key
 
   const entry = importKind(active)!
-  const needsBranch = active === 'customers' || active === 'rate-cards'
+  const needsBranch = importNeedsBranch(active)
   const needsPartner = active === 'rate-cards'
 
   /**
@@ -96,6 +101,10 @@ export default async function ImportsPage({
         return t('kindPartners')
       case 'locations':
         return t('kindLocations')
+      case 'open-jobs':
+        return t('kindOpenJobs')
+      case 'open-receivables':
+        return t('kindOpenReceivables')
       default:
         return t('kindRates')
     }

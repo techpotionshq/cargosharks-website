@@ -302,3 +302,48 @@ export function permissionKeys(): string[] {
   }
   return [...keys].sort()
 }
+
+/**
+ * The permissions that gate a *screen* rather than a state transition.
+ *
+ * These have no machine to derive them from — nothing transitions when an
+ * administrator edits a branch — so they are declared. They lived as a private
+ * list in `db/seed.ts`, which meant `permissionKeys()` was, despite its name,
+ * only ever half the permissions in the system. Anything that reasoned about
+ * "every permission" from `core` silently got the operational half and none of
+ * the administrative one.
+ *
+ * The comments are the separation of duties, and each is load-bearing:
+ *
+ * - `admin.branches.write` is its own key rather than folded into
+ *   `admin.reference.write`, because a branch carries its base currency, its
+ *   working calendar and its **statutory invoice series** — anyone who can add
+ *   a port must not thereby be able to renumber the invoice sequence.
+ * - `admin.brand.read` gates the whitelabel console, which lists the `BRAND_*`
+ *   variables configuring the deployment. Nothing there is secret, but it is
+ *   deployment surface.
+ */
+export const ADMIN_PERMISSIONS = [
+  'admin.reference.write',
+  'admin.audit.read',
+  'admin.users.write',
+  'admin.api_keys.write',
+  'admin.branches.write',
+  'admin.brand.read',
+  'rate.card.write',
+  'report.read',
+  'job.read',
+  'finance.export',
+  'customer.write',
+  'partner.write',
+] as const
+
+/**
+ * Every permission key in the system — machine-derived plus declared.
+ *
+ * This is what "an account holding everything" means, and the only correct
+ * input to a seed of the full matrix or to a session that stands in for one.
+ */
+export function allPermissionKeys(): string[] {
+  return [...new Set([...permissionKeys(), ...ADMIN_PERMISSIONS])].sort()
+}

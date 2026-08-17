@@ -29,6 +29,8 @@ import {
   customerContactDescriptor,
   customerDescriptor,
   locationDescriptor,
+  openJobDescriptor,
+  openReceivableDescriptor,
   partnerDescriptor,
   rateCardDescriptor,
 } from './descriptors'
@@ -46,6 +48,8 @@ const ALL = [
   partnerDescriptor,
   locationDescriptor,
   rateCardDescriptor,
+  openJobDescriptor,
+  openReceivableDescriptor,
 ]
 
 /* ------------------------------------------------------------- the templates */
@@ -414,5 +418,155 @@ describe('the rate card sheet', () => {
     it('allows a non-container basis with no container type', () => {
       expect(check(row({ basis: 'Per Kg', container: '' })).ok).toBe(true)
     })
+  })
+})
+
+/* --------------------------------------------------------------- the cutover */
+
+/**
+ * The two sheets that decide whether go-live is a date or a gradual migration.
+ *
+ * Their cross-field checks are the point. Every per-cell rule here is ordinary
+ * — a date is a date, an amount is an amount — and the defects that actually
+ * arrive in a handover sheet are all relationships between cells: dates in the
+ * wrong two columns, a total that does not foot, an invoice that is already
+ * paid sitting in a file of unpaid ones.
+ */
+
+const cutoverLookups = {
+  ...lookups,
+  incoterms: new Set(['CIF', 'FOB', 'EXW', 'DAP', 'CFR']),
+}
+
+const jobSheet = (rows: string): string =>
+  ['Job reference,Customer code,Status,Mode,Direction,ETD,ETA', rows].join('\n')
+
+describe('open jobs', () => {
+  it('accepts a shipment on the water', () => {
+    const report = readImport(
+      jobSheet('KWI-2024-0912,AGL,on water,FCL,import,2026-08-01,2026-08-21'),
+      openJobDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.issues).toEqual([])
+    expect(report.ok).toBe(true)
+    // "on water" is not a status anyone stores; it is what an operations team
+    // writes, and the synonym table is what makes the file import on line 2.
+    expect(report.rows[0]!.values.status).toBe('in_transit')
+  })
+
+  /**
+   * The most common defect in a hand-assembled handover sheet: the ETD and ETA
+   * columns sit next to each other and half the rows get filled by dragging.
+   * Neither date is wrong on its own, so only a row-level check sees it.
+   */
+  it('rejects an arrival before its departure', () => {
+    const report = readImport(
+      jobSheet('KWI-2024-0913,AGL,in transit,FCL,import,2026-08-21,2026-08-01'),
+      openJobDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(false)
+    expect(report.issues[0]!.message).toMatch(/before ETD/i)
+  })
+
+  /**
+   * A migration is never run once — it is run against a copy, corrected, and
+   * run again. The second run must refuse what the first one created rather
+   * than producing a duplicate board.
+   */
+  it('refuses a reference already in the system', () => {
+    const report = readImport(
+      jobSheet('KWI-2024-0912,AGL,in transit,FCL,import,2026-08-01,2026-08-21'),
+      openJobDescriptor,
+      { lookups: cutoverLookups, existing: { reference: new Set(['KWI-2024-0912']) } },
+    )
+    expect(report.ok).toBe(false)
+  })
+
+  /** Closed and cancelled shipments belong in the retired system's archive. */
+  it('refuses a status that is not an open one', () => {
+    for (const status of ['completed', 'closed', 'cancelled', 'draft']) {
+      const report = readImport(
+        jobSheet(`KWI-2024-1000,AGL,${status},FCL,import,2026-08-01,2026-08-21`),
+        openJobDescriptor,
+        { lookups: cutoverLookups, existing: {} },
+      )
+      expect(report.ok, `${status} was accepted as an open job`).toBe(false)
+    }
+  })
+})
+
+const arSheet = (rows: string): string =>
+  [
+    'Invoice number,Customer code,Currency,Issue date,Net amount,Tax amount,Gross total,Amount received',
+    rows,
+  ].join('\n')
+
+describe('open receivables', () => {
+  it('accepts a wholly unpaid invoice', () => {
+    const report = readImport(
+      arSheet('INV-10231,AGL,KWD,2026-06-30,1284.500,0,1284.500,0'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.issues).toEqual([])
+    expect(report.rows[0]!.values.total).toBe('1284.500')
+  })
+
+  it('accepts a part payment', () => {
+    const report = readImport(
+      arSheet('INV-10232,AGL,KWD,2026-06-30,1000.000,0,1000.000,400.000'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(true)
+  })
+
+  /** A sheet exported with tax in a column nobody added into the total. */
+  it('rejects a total that does not foot', () => {
+    const report = readImport(
+      arSheet('INV-10233,AGL,AED,2026-06-30,1000.00,50.00,1000.00,0'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(false)
+    expect(report.issues[0]!.message).toMatch(/does not equal total/i)
+  })
+
+  /** A settled invoice is not an open receivable, and imports as noise. */
+  it('rejects an invoice with nothing outstanding', () => {
+    const report = readImport(
+      arSheet('INV-10234,AGL,KWD,2026-06-30,500.000,0,500.000,500.000'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(false)
+    expect(report.issues[0]!.message).toMatch(/nothing outstanding/i)
+  })
+
+  /** An overpayment is a credit note nobody raised, not a negative balance. */
+  it('rejects a receipt larger than the invoice', () => {
+    const report = readImport(
+      arSheet('INV-10235,AGL,KWD,2026-06-30,500.000,0,500.000,600.000'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(report.ok).toBe(false)
+    expect(report.issues[0]!.message).toMatch(/credit note/i)
+  })
+
+  /**
+   * KWD carries three decimals. The tolerance in the footing check is half a
+   * fils, so a sheet rounded per line still foots — but a genuine discrepancy
+   * of one fils does not pass.
+   */
+  it('holds the footing check to KWD precision', () => {
+    const oneFilsOut = readImport(
+      arSheet('INV-10236,AGL,KWD,2026-06-30,1000.000,0,1000.001,0'),
+      openReceivableDescriptor,
+      { lookups: cutoverLookups, existing: {} },
+    )
+    expect(oneFilsOut.ok, 'a one-fils discrepancy was accepted').toBe(false)
   })
 })

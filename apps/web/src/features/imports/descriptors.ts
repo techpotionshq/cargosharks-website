@@ -590,6 +590,410 @@ export interface LocationRowValues {
 export type TransportMode = (typeof MODES)[number]
 export type ChargeBasis = (typeof BASES)[number]
 
+/* ------------------------------------------------------------------- cutover */
+
+/*
+  The two sheets a real cutover cannot happen without.
+
+  Everything above this line migrates a customer's *reference* data — who they
+  trade with, where, at what rate. That is the easy half, and it is the half a
+  demonstration covers. The hard half is that nobody switches forwarding
+  systems on a clean slate: on the Monday morning of go-live there are forty
+  shipments on the water and three hundred thousand dinar of unpaid invoices,
+  and a platform that cannot accept those is a platform that runs in parallel
+  with the old one for a quarter.
+
+  Both sheets are deliberately narrow. A job mid-passage does not need its
+  quote history, and an open receivable does not need its line detail — it
+  needs to age correctly and to accept a payment. Asking for more than that
+  turns a two-day migration into a two-month reconciliation, and the extra
+  fields are the ones nobody can source anyway.
+*/
+
+const JOB_STATUSES = ['booked', 'in_transit', 'arrived', 'customs', 'delivered', 'on_hold'] as const
+
+/** What an operations team writes in a status column of a handover sheet. */
+const JOB_STATUS_SYNONYMS = {
+  open: 'in_transit',
+  active: 'in_transit',
+  onwater: 'in_transit',
+  sailed: 'in_transit',
+  intransit: 'in_transit',
+  departed: 'in_transit',
+  shipped: 'in_transit',
+  confirmed: 'booked',
+  booking: 'booked',
+  atdestination: 'arrived',
+  discharged: 'arrived',
+  clearance: 'customs',
+  customsclearance: 'customs',
+  underclearance: 'customs',
+  cleared: 'delivered',
+  held: 'on_hold',
+  hold: 'on_hold',
+} as const
+
+/**
+ * Shipments in flight at cutover — the sheet that decides whether go-live is a
+ * date or a gradual migration.
+ *
+ * `status` is constrained to the *open* states on purpose. `completed`,
+ * `closed` and `cancelled` are excluded because a finished shipment has no
+ * operational value in the new system and every one imported is a row someone
+ * has to look past on the board for the next year. History belongs in the
+ * archive of the system being retired, not in the register of the one
+ * replacing it.
+ *
+ * `draft` is excluded for the opposite reason: a draft is work in progress in
+ * a system nobody will open again, and it should be entered properly or not at
+ * all.
+ */
+export const openJobDescriptor: ImportDescriptor = {
+  key: 'open-jobs',
+  label: 'Open jobs',
+  fields: [
+    {
+      key: 'reference',
+      label: 'Job reference',
+      required: true,
+      // `unique` is what puts the collision set to work — a migration run
+      // twice must refuse the references the first pass created rather than
+      // producing a duplicate board.
+      unique: true,
+      aliases: ['job no', 'job number', 'file', 'file no', 'shipment', 'shipment no', 'our ref'],
+      parse: code({ max: 40 }),
+      hint: 'The reference from the system being replaced — kept, not renumbered',
+    },
+    {
+      key: 'customerCode',
+      label: 'Customer code',
+      required: true,
+      aliases: ['customer', 'client', 'account', 'shipper'],
+      parse: code({ max: 40 }),
+      hint: 'Must already exist — import customers first',
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      required: true,
+      aliases: ['stage', 'state', 'job status'],
+      parse: oneOf(JOB_STATUSES, JOB_STATUS_SYNONYMS),
+      hint: JOB_STATUSES.join(', '),
+    },
+    {
+      key: 'mode',
+      label: 'Mode',
+      required: true,
+      aliases: ['transport mode', 'service'],
+      parse: oneOf(MODES, MODE_SYNONYMS),
+      hint: 'FCL, LCL, air, land',
+    },
+    {
+      key: 'tradeDirection',
+      label: 'Direction',
+      required: true,
+      aliases: ['trade', 'import/export', 'type'],
+      parse: oneOf(['import', 'export', 'cross_trade'] as const, {
+        imp: 'import',
+        exp: 'export',
+        crosstrade: 'cross_trade',
+        triangle: 'cross_trade',
+      }),
+    },
+    {
+      key: 'originCode',
+      label: 'Origin',
+      required: false,
+      aliases: ['pol', 'port of loading', 'from', 'load port'],
+      parse: optional(lookup('locations', { label: 'location' })),
+      hint: 'UN/LOCODE',
+    },
+    {
+      key: 'destinationCode',
+      label: 'Destination',
+      required: false,
+      aliases: ['pod', 'port of discharge', 'to', 'disport'],
+      parse: optional(lookup('locations', { label: 'location' })),
+    },
+    {
+      key: 'masterBillNumber',
+      label: 'Master bill',
+      required: false,
+      aliases: ['mbl', 'mawb', 'master awb', 'master b/l', 'obl'],
+      parse: optional(text({ max: 60 })),
+    },
+    {
+      key: 'houseBillNumber',
+      label: 'House bill',
+      required: false,
+      aliases: ['hbl', 'hawb', 'house awb', 'house b/l'],
+      parse: optional(text({ max: 60 })),
+    },
+    {
+      key: 'bookingNumber',
+      label: 'Booking',
+      required: false,
+      aliases: ['booking no', 'carrier booking'],
+      parse: optional(text({ max: 60 })),
+    },
+    {
+      key: 'vesselName',
+      label: 'Vessel',
+      required: false,
+      aliases: ['ship', 'vessel name', 'carrier vessel'],
+      parse: optional(text({ max: 120 })),
+    },
+    {
+      key: 'voyageNumber',
+      label: 'Voyage',
+      required: false,
+      aliases: ['voy', 'voyage no'],
+      parse: optional(text({ max: 40 })),
+    },
+    {
+      key: 'flightNumber',
+      label: 'Flight',
+      required: false,
+      aliases: ['flt', 'flight no'],
+      parse: optional(text({ max: 40 })),
+    },
+    {
+      key: 'etd',
+      label: 'ETD',
+      required: false,
+      aliases: ['departure', 'sailing', 'etd date', 'sailed on'],
+      parse: optional(isoDate),
+      hint: 'YYYY-MM-DD or DD/MM/YYYY',
+    },
+    {
+      key: 'eta',
+      label: 'ETA',
+      required: false,
+      aliases: ['arrival', 'eta date', 'due'],
+      parse: optional(isoDate),
+    },
+    {
+      key: 'customerReference',
+      label: 'Customer reference',
+      required: false,
+      aliases: ['their ref', 'client ref', 'po', 'po number', 'order no'],
+      parse: optional(text({ max: 80 })),
+    },
+    {
+      key: 'incoterm',
+      label: 'Incoterm',
+      required: false,
+      aliases: ['terms', 'delivery terms'],
+      parse: optional(lookup('incoterms', { label: 'incoterm', length: 3 })),
+    },
+  ],
+  /**
+   * A shipment that arrived before it departed is a transposed pair of
+   * columns, not a fact — and it is the single most common defect in a
+   * hand-assembled handover sheet, because the two columns sit next to each
+   * other and half the rows get filled by dragging.
+   *
+   * Caught here rather than per cell, because neither date is wrong alone.
+   */
+  check: (row) => {
+    const etd = row.etd as string | null
+    const eta = row.eta as string | null
+    if (etd && eta && eta < etd) return 'ETA is before ETD — check the two columns are not swapped'
+    return null
+  },
+}
+
+const AR_TAX_TREATMENTS = [
+  'out_of_scope',
+  'zero_rated',
+  'exempt',
+  'standard',
+  'reverse_charge',
+] as const
+
+/**
+ * Unpaid invoices at cutover — the sheet that decides whether finance can
+ * stop opening the old system.
+ *
+ * Modelled as an **opening balance**, not as a reconstructed invoice. Each row
+ * carries what was billed and what has been received, and the difference is
+ * what ages. Rebuilding the line detail of a two-year-old invoice is
+ * archaeology: the charge types will not map, the FX rates are gone, and the
+ * total — which is the only figure anyone will ever chase — is already known.
+ *
+ * `amountPaid` rather than an outstanding figure, because part-payment is
+ * normal and the platform has to know both halves: `total` drives the customer
+ * statement, the difference drives the ageing bucket, and an outstanding-only
+ * sheet cannot produce the first.
+ */
+export const openReceivableDescriptor: ImportDescriptor = {
+  key: 'open-receivables',
+  label: 'Open receivables',
+  fields: [
+    {
+      key: 'seriesNo',
+      label: 'Invoice number',
+      required: true,
+      // Same reason as the job reference: the second run of a migration must
+      // not re-import the balances the first one carried over.
+      unique: true,
+      aliases: ['invoice no', 'invoice', 'inv no', 'document no', 'number'],
+      parse: code({ max: 40 }),
+      hint: 'As issued by the system being replaced',
+    },
+    {
+      key: 'customerCode',
+      label: 'Customer code',
+      required: true,
+      aliases: ['customer', 'client', 'account', 'debtor'],
+      parse: code({ max: 40 }),
+    },
+    {
+      key: 'currency',
+      label: 'Currency',
+      required: true,
+      aliases: ['ccy', 'cur'],
+      parse: currency,
+    },
+    {
+      key: 'issuedOn',
+      label: 'Issue date',
+      required: true,
+      aliases: ['invoice date', 'date', 'issued'],
+      parse: isoDate,
+      hint: 'Drives the ageing bucket',
+    },
+    {
+      key: 'dueOn',
+      label: 'Due date',
+      required: false,
+      aliases: ['due', 'payment due', 'maturity'],
+      parse: optional(isoDate),
+      hint: 'Blank uses the customer payment terms',
+    },
+    {
+      key: 'subtotal',
+      label: 'Net amount',
+      required: true,
+      aliases: ['net', 'subtotal', 'amount before tax', 'goods value'],
+      parse: decimal({ min: 0 }),
+    },
+    {
+      key: 'taxAmount',
+      label: 'Tax amount',
+      required: false,
+      aliases: ['vat', 'tax', 'vat amount'],
+      parse: withDefault(decimal({ min: 0 }), '0'),
+      hint: 'Zero in Kuwait — no VAT is in force',
+    },
+    {
+      key: 'total',
+      label: 'Gross total',
+      required: true,
+      aliases: ['total', 'gross', 'invoice total', 'amount'],
+      parse: decimal({ min: 0 }),
+    },
+    {
+      key: 'amountPaid',
+      label: 'Amount received',
+      required: false,
+      aliases: ['paid', 'received', 'settled', 'payments'],
+      parse: withDefault(decimal({ min: 0 }), '0'),
+      hint: 'Blank or zero for a wholly unpaid invoice',
+    },
+    {
+      key: 'taxTreatment',
+      label: 'Tax treatment',
+      required: false,
+      aliases: ['vat treatment', 'tax code'],
+      parse: withDefault(
+        oneOf(AR_TAX_TREATMENTS, {
+          none: 'out_of_scope',
+          na: 'out_of_scope',
+          outofscope: 'out_of_scope',
+          zero: 'zero_rated',
+          zerorated: 'zero_rated',
+          std: 'standard',
+          vat: 'standard',
+          rc: 'reverse_charge',
+        }),
+        'out_of_scope',
+      ),
+      hint: AR_TAX_TREATMENTS.join(', '),
+    },
+    {
+      key: 'jobReference',
+      label: 'Job reference',
+      required: false,
+      aliases: ['job', 'file', 'shipment', 'job no'],
+      parse: optional(code({ max: 40 })),
+      hint: 'Optional — links the balance to an imported job',
+    },
+  ],
+  /**
+   * Three arithmetic checks, and each catches a different real defect.
+   *
+   * The first is a sheet exported with tax in a column nobody added in. The
+   * second is an invoice that is already settled and does not belong in an
+   * *open* receivables file at all. The third is an overpayment, which is a
+   * credit note in the old system that was never issued in this one — real,
+   * but not something to import silently as a negative balance.
+   */
+  check: (row) => {
+    const subtotal = Number(row.subtotal as string)
+    const tax = Number((row.taxAmount as string) ?? '0')
+    const total = Number(row.total as string)
+    const paid = Number((row.amountPaid as string) ?? '0')
+
+    // A tolerance of half a fils: KWD carries three decimals, and a sheet
+    // rounded per line will not foot to the last place.
+    if (Math.abs(subtotal + tax - total) > 0.0005) {
+      return `Net ${subtotal} plus tax ${tax} does not equal total ${total}`
+    }
+    if (paid > total + 0.0005) {
+      return `Received ${paid} exceeds the total ${total} — raise a credit note instead`
+    }
+    if (Math.abs(total - paid) <= 0.0005) {
+      return 'Nothing outstanding — a settled invoice does not belong in an open receivables file'
+    }
+    return null
+  },
+}
+
+export interface OpenJobRowValues {
+  readonly reference: string
+  readonly customerCode: string
+  readonly status: (typeof JOB_STATUSES)[number]
+  readonly mode: TransportMode
+  readonly tradeDirection: 'import' | 'export' | 'cross_trade'
+  readonly originCode: string | null
+  readonly destinationCode: string | null
+  readonly masterBillNumber: string | null
+  readonly houseBillNumber: string | null
+  readonly bookingNumber: string | null
+  readonly vesselName: string | null
+  readonly voyageNumber: string | null
+  readonly flightNumber: string | null
+  readonly etd: string | null
+  readonly eta: string | null
+  readonly customerReference: string | null
+  readonly incoterm: string | null
+}
+
+export interface OpenReceivableRowValues {
+  readonly seriesNo: string
+  readonly customerCode: string
+  readonly currency: string
+  readonly issuedOn: string
+  readonly dueOn: string | null
+  readonly subtotal: string
+  readonly taxAmount: string
+  readonly total: string
+  readonly amountPaid: string
+  readonly taxTreatment: (typeof AR_TAX_TREATMENTS)[number]
+  readonly jobReference: string | null
+}
+
 /* ------------------------------------------------------------------ registry */
 
 export const IMPORT_KINDS = [
@@ -598,6 +1002,13 @@ export const IMPORT_KINDS = [
   { key: 'partners', descriptor: partnerDescriptor, permission: 'partner.write' },
   { key: 'locations', descriptor: locationDescriptor, permission: 'admin.reference.write' },
   { key: 'rate-cards', descriptor: rateCardDescriptor, permission: 'rate.card.write' },
+  /*
+    The cutover pair, last because they are imported last: a job needs its
+    customer, and a receivable may reference its job. The order of this list is
+    the order of a migration.
+  */
+  { key: 'open-jobs', descriptor: openJobDescriptor, permission: 'job.read' },
+  { key: 'open-receivables', descriptor: openReceivableDescriptor, permission: 'finance.export' },
 ] as const
 
 export type ImportKind = (typeof IMPORT_KINDS)[number]['key']
@@ -608,4 +1019,24 @@ export function importKind(key: string): (typeof IMPORT_KINDS)[number] | undefin
 
 export function isImportKind(value: string): value is ImportKind {
   return IMPORT_KINDS.some((kind) => kind.key === value)
+}
+
+/**
+ * Which sheets write a branch-scoped row, and therefore need a destination
+ * chosen before the file means anything.
+ *
+ * Stated once because it was stated twice: the server action decided whether
+ * to demand a branch, and the page decided whether to *offer* the selector,
+ * from two independent expressions. Adding a sheet to one and not the other
+ * gives a form with no branch field whose submit fails on a `not null`
+ * violation at the end of a two-thousand-row transaction — a bug that only
+ * appears on the largest file someone tries.
+ */
+export function importNeedsBranch(kind: ImportKind): boolean {
+  return (
+    kind === 'customers' ||
+    kind === 'rate-cards' ||
+    kind === 'open-jobs' ||
+    kind === 'open-receivables'
+  )
 }

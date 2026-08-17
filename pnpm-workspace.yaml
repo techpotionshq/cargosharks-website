@@ -7,3 +7,8 @@ allowBuilds:
   esbuild: true
   '@swc/core': true
   '@parcel/watcher': true
+  # Arrived with the OTLP trace exporter. Its install script only regenerates
+  # the bundled protobuf wrappers, which ship prebuilt in the tarball — nothing
+  # in the exporter's runtime path needs it, and leaving it undeclared makes
+  # `pnpm install` exit non-zero and take CI with it.
+  protobufjs: false

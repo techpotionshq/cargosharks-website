@@ -22,7 +22,33 @@ export const principalTypeEnum = pgEnum('principal_type', [
   'customer_contact',
   'agent_contact',
   'system',
+  /**
+   * The vendor's support engineer — a *fifth* population, deliberately not the
+   * fourth wearing a different hat.
+   *
+   * When the platform is sold with support, someone outside the operator's
+   * staff has to be able to answer "the invoice total is wrong on KWI-1042",
+   * and `app_user` holds `nobypassrls` (§5.1) so there is no back door to
+   * improvise with. Modelling that access as an `internal` principal would
+   * have made it indistinguishable from the operator's own staff in the audit
+   * trail, which is the one property that makes hosting someone's commercial
+   * data defensible: we can prove exactly what we looked at, and when, and
+   * under whose authority.
+   *
+   * Access is read-only by construction (`0008` grants support `for select`
+   * and nothing else), time-boxed, and granted by the customer rather than
+   * assumed by us.
+   */
+  'support',
 ])
+
+/**
+ * What a support grant admits. Read unless someone deliberately chose
+ * otherwise, and `write` is a separate escalation rather than a wider default:
+ * the overwhelming majority of support work is answering "why does this say
+ * that", which needs no write at all.
+ */
+export const supportScopeEnum = pgEnum('support_scope', ['read', 'write'])
 
 export const modeEnum = pgEnum('transport_mode', ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'])
 

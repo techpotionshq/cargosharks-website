@@ -17,6 +17,8 @@
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
     "test:core": "pnpm --filter @qabandi/core test",
+    "test:db": "pnpm --filter @qabandi/db test",
+    "test:e2e": "pnpm --filter @qabandi/web test:e2e",
     "db:generate": "pnpm --filter @qabandi/db generate",
     "db:provision": "pnpm --filter @qabandi/db provision",
     "db:migrate": "pnpm --filter @qabandi/db migrate",
@@ -27,7 +29,13 @@
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d db",
-    "check:messages": "node scripts/check-messages.mjs"
+    "check:messages": "node scripts/check-messages.mjs",
+    "tenant:new": "pnpm --filter @qabandi/db tenant-new",
+    "fleet:migrate": "pnpm --filter @qabandi/db fleet-migrate",
+    "fleet:status": "pnpm --filter @qabandi/db fleet-migrate --status",
+    "fleet:backup": "pnpm --filter @qabandi/db fleet-backup",
+    "fleet:restore-drill": "pnpm --filter @qabandi/db fleet-backup --drill",
+    "db:create-branch": "pnpm --filter @qabandi/db create-branch"
   },
   "devDependencies": {
     "oxlint": "^1.78.0",
