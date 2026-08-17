@@ -13,6 +13,7 @@ import { runFreeTimeAccrual } from './free-time-accrual'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch } from './notification-dispatch'
 import { runFxRefresh } from './fx-refresh'
+import { runCarrierEventIngest } from './carrier-event'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
@@ -56,6 +57,22 @@ export async function registerWorkers(log: {
   await work(JOBS.fxIngest, async () => {
     const result = await runFxRefresh()
     log.info(result, 'fx refresh complete')
+  })
+
+  /*
+    One carrier event per job, because attribution can refuse.
+
+    A batch would have to decide what to do when three of ten events cannot be
+    tied to a shipment — retry the batch and reprocess the seven that
+    succeeded, or swallow them. One at a time makes each outcome its own record
+    and its own retry.
+  */
+  await work(JOBS.carrierEvent, async (queued) => {
+    for (const job of queued) {
+      const { eventId } = job.data as { eventId: string }
+      const result = await runCarrierEventIngest(eventId)
+      log.info(result, 'carrier event ingested')
+    }
   })
 
   await work(JOBS.notificationDispatch, async (jobs) => {

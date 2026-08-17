@@ -60,6 +60,44 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
     await enqueueOnce('email', externalId(body.parsed), body.parsed, JOBS.inboundEmail)
     return reply.code(202).send({ accepted: true })
   })
+
+  /**
+   * Container events from Terminal49 — the ingestion half of `CarrierTracking`.
+   *
+   * The provider has no polling endpoint: a shipment is submitted once and its
+   * events arrive here from then on. So this route is not a convenience, it is
+   * the only way carrier milestones reach a job automatically.
+   *
+   * Answers 202 for anything it has recorded, including payloads it cannot
+   * use. A webhook that returns 4xx or 5xx for an event it simply does not map
+   * teaches the provider to redeliver forever — and Terminal49 sends lifecycle
+   * events (`tracking_request.succeeded`) that are not milestones by design.
+   * Recorded, acknowledged, and dropped by the worker with a reason.
+   */
+  app.post('/terminal49', async (request, reply) => {
+    const body = request.body as { raw: Buffer; parsed: Record<string, unknown> }
+
+    /*
+      The signature is required, not optional-if-unconfigured.
+
+      This endpoint writes to shipment history. An unauthenticated caller who
+      could reach it could move a discharge date, and a demurrage figure moves
+      with it. A deployment that has not set the secret has not finished
+      configuring the integration, and should refuse rather than accept.
+    */
+    if (
+      !verifyHmac(
+        body.raw,
+        request.headers['x-t49-webhook-signature'],
+        config.CARRIER_WEBHOOK_SECRET,
+      )
+    ) {
+      return reply.code(401).send({ error: 'bad_signature' })
+    }
+
+    await enqueueOnce('terminal49', externalId(body.parsed), body.parsed, JOBS.carrierEvent)
+    return reply.code(202).send({ accepted: true })
+  })
 }
 
 /**

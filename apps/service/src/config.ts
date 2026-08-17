@@ -65,6 +65,8 @@ const schema = z.object({
   CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49']).default('manual'),
   CARRIER_TRACKING_API_KEY: z.string().optional(),
   CARRIER_TRACKING_BASE_URL: z.string().default('https://api.terminal49.com'),
+  /** Required before the webhook will accept anything — see webhooks/index.ts. */
+  CARRIER_WEBHOOK_SECRET: z.string().optional(),
 
   EINVOICE_DRIVER: z.enum(['none', 'asp']).default('none'),
   EINVOICE_ASP_URL: z.string().optional(),

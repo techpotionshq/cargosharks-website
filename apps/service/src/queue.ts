@@ -23,6 +23,7 @@ export const JOBS = {
   complianceExpiry: 'compliance-expiry-warning',
   rateCardExpiry: 'rate-card-expiry-digest',
   fxIngest: 'fx-rate-ingest',
+  carrierEvent: 'carrier-event-ingest',
   bulkImport: 'bulk-import-validate',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',

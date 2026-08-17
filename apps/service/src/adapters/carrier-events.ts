@@ -25,7 +25,23 @@ import type { CarrierMilestone } from '../ports/index'
  * our codes it happened to resemble, and the first sign would be an SLA that
  * stopped for the wrong reason.
  *
- * Both spellings of every event are here on purpose.
+ * ## The right-hand side is the seeded vocabulary, not one of our own
+ *
+ * These map onto `milestone_templates.code` — `discharged`, `vessel_departed`,
+ * `gate_out` — which `db:seed` writes in lower snake case. The first version
+ * of this table invented `DISCHARGED`, `DEPARTED`, `GATE_OUT_DESTINATION`,
+ * which exist nowhere in the system: every event would have found no template
+ * and been dropped with a reason, so the integration would have looked wired
+ * up and delivered nothing. Running it against a seeded database is what
+ * caught it.
+ *
+ * Two provider events have no seeded counterpart — transhipment loading, and
+ * "available for pickup". They are deliberately absent rather than mapped to
+ * something adjacent: a milestone the templates do not define has no sequence,
+ * no owner and no visibility rule, and would sit on the board belonging to
+ * nobody. Adding them means adding a template first.
+ *
+ * ## Both spellings of every event are here on purpose.
  *
  * Terminal49 pushes dotted, namespaced names —
  * `container.transport.vessel_departed`. Polling providers like Vizion answer
@@ -39,41 +55,36 @@ import type { CarrierMilestone } from '../ports/index'
  */
 const EVENT_MAP: Readonly<Record<string, string>> = {
   // --- origin ---
-  empty_out: 'EMPTY_DISPATCHED',
-  container_empty_out: 'EMPTY_DISPATCHED',
-  'container.transport.empty_out': 'EMPTY_DISPATCHED',
-  gate_in: 'GATE_IN_ORIGIN',
-  full_in: 'GATE_IN_ORIGIN',
-  container_gate_in: 'GATE_IN_ORIGIN',
-  'container.transport.full_in': 'GATE_IN_ORIGIN',
-  loaded_on_vessel: 'LOADED',
-  vessel_loaded: 'LOADED',
-  'container.transport.vessel_loaded': 'LOADED',
+  empty_out: 'empty_picked_up',
+  container_empty_out: 'empty_picked_up',
+  'container.transport.empty_out': 'empty_picked_up',
+  gate_in: 'gate_in',
+  full_in: 'gate_in',
+  container_gate_in: 'gate_in',
+  'container.transport.full_in': 'gate_in',
+  loaded_on_vessel: 'loaded',
+  vessel_loaded: 'loaded',
+  'container.transport.vessel_loaded': 'loaded',
 
   // --- main carriage ---
-  vessel_departed: 'DEPARTED',
-  departure: 'DEPARTED',
-  'container.transport.vessel_departed': 'DEPARTED',
-  transhipment_loaded: 'TRANSHIPPED',
-  transshipment_loaded: 'TRANSHIPPED',
-  'container.transport.transshipment_loaded': 'TRANSHIPPED',
-  vessel_arrived: 'ARRIVED',
-  arrival: 'ARRIVED',
-  'container.transport.vessel_arrived': 'ARRIVED',
+  vessel_departed: 'vessel_departed',
+  departure: 'vessel_departed',
+  'container.transport.vessel_departed': 'vessel_departed',
+  vessel_arrived: 'vessel_arrived',
+  arrival: 'vessel_arrived',
+  'container.transport.vessel_arrived': 'vessel_arrived',
 
   // --- destination ---
-  vessel_discharged: 'DISCHARGED',
-  discharged: 'DISCHARGED',
-  container_discharged: 'DISCHARGED',
-  'container.transport.vessel_discharged': 'DISCHARGED',
-  available_for_pickup: 'AVAILABLE',
-  'container.pickup_lfd.changed': 'AVAILABLE',
-  gate_out: 'GATE_OUT_DESTINATION',
-  container_gate_out: 'GATE_OUT_DESTINATION',
-  'container.transport.full_out': 'GATE_OUT_DESTINATION',
-  empty_returned: 'EMPTY_RETURNED',
-  container_empty_return: 'EMPTY_RETURNED',
-  'container.transport.empty_in': 'EMPTY_RETURNED',
+  vessel_discharged: 'discharged',
+  discharged: 'discharged',
+  container_discharged: 'discharged',
+  'container.transport.vessel_discharged': 'discharged',
+  gate_out: 'gate_out',
+  container_gate_out: 'gate_out',
+  'container.transport.full_out': 'gate_out',
+  empty_returned: 'empty_returned',
+  container_empty_return: 'empty_returned',
+  'container.transport.empty_in': 'empty_returned',
 }
 
 export interface ProviderEvent {

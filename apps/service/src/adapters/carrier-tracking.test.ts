@@ -25,7 +25,7 @@ describe('carrier event mapping', () => {
     ])
 
     expect(unmapped).toEqual([])
-    expect(milestones.map((m) => m.code)).toEqual(['DEPARTED', 'DISCHARGED'])
+    expect(milestones.map((m) => m.code)).toEqual(['vessel_departed', 'discharged'])
     expect(milestones[0]!.location).toBe('AEJEA')
   })
 
@@ -39,7 +39,7 @@ describe('carrier event mapping', () => {
       const { milestones } = mapProviderEvents([
         { event: spelling, timestamp: at('2026-08-14T11:00:00Z') },
       ])
-      expect(milestones[0]?.code, spelling).toBe('DISCHARGED')
+      expect(milestones[0]?.code, spelling).toBe('discharged')
     }
   })
 
@@ -47,7 +47,7 @@ describe('carrier event mapping', () => {
     const { milestones } = mapProviderEvents([
       { event: '  Vessel_Departed ', timestamp: at('2026-08-01T06:00:00Z') },
     ])
-    expect(milestones[0]?.code).toBe('DEPARTED')
+    expect(milestones[0]?.code).toBe('vessel_departed')
   })
 
   /**
@@ -64,7 +64,7 @@ describe('carrier event mapping', () => {
       { event: 'vessel_departed', timestamp: at('2026-08-01T06:00:00Z') },
     ])
 
-    expect(milestones.map((m) => m.code)).toEqual(['DEPARTED'])
+    expect(milestones.map((m) => m.code)).toEqual(['vessel_departed'])
     expect(unmapped).toEqual(['vessel_berthed_awaiting_pilot'])
   })
 
@@ -97,11 +97,7 @@ describe('carrier event mapping', () => {
 
     const { milestones } = mapProviderEvents(newestFirst)
 
-    expect(milestones.map((m) => m.code)).toEqual([
-      'DEPARTED',
-      'GATE_OUT_DESTINATION',
-      'EMPTY_RETURNED',
-    ])
+    expect(milestones.map((m) => m.code)).toEqual(['vessel_departed', 'gate_out', 'empty_returned'])
   })
 
   it('returns nothing for an empty feed rather than failing', () => {
@@ -132,10 +128,10 @@ describe('Terminal49 webhook event names', () => {
 
     expect(unmapped).toEqual([])
     expect(milestones.map((m) => m.code)).toEqual([
-      'DEPARTED',
-      'DISCHARGED',
-      'GATE_OUT_DESTINATION',
-      'EMPTY_RETURNED',
+      'vessel_departed',
+      'discharged',
+      'gate_out',
+      'empty_returned',
     ])
   })
 
