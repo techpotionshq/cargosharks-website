@@ -92,6 +92,12 @@ jobs:
       - name: Web unit tests
         run: pnpm --filter @qabandi/web test
 
+      # The adapter mapping — carrier event vocabulary to our milestone codes.
+      # No provider account, deliberately: the translation is the half that
+      # fails quietly, and it has to be checkable on every commit.
+      - name: Service unit tests
+        run: pnpm --filter @qabandi/service test
+
   database:
     name: Migrations, seed and RLS policies
     runs-on: ubuntu-latest

@@ -23,6 +23,7 @@ import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import { config } from './config'
 import { registerSchedules, stopBoss } from './queue'
+import { describeAdapters } from './adapters/index'
 import { registerWorkers } from './workers/index'
 import { publicApi } from './api/public'
 import { webhooks } from './webhooks/index'
@@ -66,5 +67,16 @@ const shutdown = async (signal: string): Promise<void> => {
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 process.on('SIGINT', () => void shutdown('SIGINT'))
+
+/*
+  Which integrations this deployment is actually wired to.
+
+  "Which of these is live here?" is the first question of any support
+  conversation about a fleet, and reading it off the environment by hand gets
+  it wrong. Resolving here also means a half-configured driver — a key with no
+  URL — stops the service at boot with a clear message rather than surfacing
+  as a feed that quietly returns nothing.
+*/
+app.log.info(describeAdapters(), 'external adapters resolved')
 
 await app.listen({ port: config.SERVICE_PORT, host: '0.0.0.0' })

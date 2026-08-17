@@ -12,6 +12,7 @@ import { JOBS, getBoss } from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch } from './notification-dispatch'
+import { runFxRefresh } from './fx-refresh'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
@@ -22,7 +23,6 @@ const PENDING: { name: string; trigger: string; requirement: string }[] = [
   { name: JOBS.pdfRender, trigger: 'on demand', requirement: '§8, bilingual' },
   { name: JOBS.complianceExpiry, trigger: 'nightly', requirement: 'FR-MD-05' },
   { name: JOBS.rateCardExpiry, trigger: 'nightly', requirement: 'FR-RT-11' },
-  { name: JOBS.fxIngest, trigger: 'daily', requirement: '§8' },
   { name: JOBS.bulkImport, trigger: 'on upload', requirement: 'FR-MD-11, FR-RT-09' },
   { name: JOBS.webhookDelivery, trigger: 'event', requirement: 'FR-AD-06' },
   { name: JOBS.scheduledReport, trigger: 'daily/weekly', requirement: 'FR-RP-07' },
@@ -45,6 +45,17 @@ export async function registerWorkers(log: {
   await work(JOBS.slaEscalation, async () => {
     const result = await runSlaEscalation()
     log.info(result, 'SLA escalation complete')
+  })
+
+  /*
+    The schedule for this has existed since Release One (`0 5 * * *` in
+    `queue.ts`) with no handler behind it, so the job was enqueued daily and
+    discarded. The rate feed itself is off unless `FX_SOURCE=api`, and the
+    worker answers "nothing to do" in that case rather than branching.
+  */
+  await work(JOBS.fxIngest, async () => {
+    const result = await runFxRefresh()
+    log.info(result, 'fx refresh complete')
   })
 
   await work(JOBS.notificationDispatch, async (jobs) => {

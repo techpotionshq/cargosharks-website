@@ -45,10 +45,30 @@ const schema = z.object({
 
   INBOUND_EMAIL_WEBHOOK_SECRET: z.string().optional(),
 
+  /*
+    The external-service ports (§10), each defaulting to the Release One
+    behaviour.
+
+    Every one of these is `manual`/`none` unless a deployment has deliberately
+    bought the thing behind it. A tracking feed is a per-container recurring
+    cost and a transmission provider is a contract, so neither should switch on
+    because a variable was left in an example file.
+  */
   FX_SOURCE: z.enum(['manual', 'api']).default('manual'),
+  /** A URL template. `{base}` and `{key}` are substituted per request. */
   FX_API_URL: z.string().optional(),
   FX_API_KEY: z.string().optional(),
   FX_BASE_CURRENCY: z.string().default('KWD'),
+  /** Which currencies to keep a rate for, against the base above. */
+  FX_QUOTE_CURRENCIES: z.string().default('USD,AED,EUR,GBP,SAR,QAR,BHD,OMR,INR,CNY'),
+
+  CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49']).default('manual'),
+  CARRIER_TRACKING_API_KEY: z.string().optional(),
+  CARRIER_TRACKING_BASE_URL: z.string().default('https://api.terminal49.com'),
+
+  EINVOICE_DRIVER: z.enum(['none', 'asp']).default('none'),
+  EINVOICE_ASP_URL: z.string().optional(),
+  EINVOICE_ASP_API_KEY: z.string().optional(),
 
   CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
 })
