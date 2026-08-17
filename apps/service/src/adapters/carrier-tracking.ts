@@ -3,127 +3,186 @@
  *
  * The port every hour of operations time is hiding behind. Milestones are
  * typed by hand today: a coordinator reads a carrier portal and retypes
- * "vessel departed", "discharged", "gate out" onto the job. It is the single
- * most repetitive act in a forwarding business and the one a provider removes
- * outright.
+ * "vessel departed", "discharged", "gate out" onto the job.
  *
- * ## Why this is a mapping problem, not an integration problem
+ * ## The port's shape is wrong for this provider, and that is worth saying
  *
- * Every provider answers with its own event vocabulary, and `job_milestones`
- * is keyed on *our* codes — the ones `milestone_templates` seeds and the SLA
- * clocks are counted against. So the adapter's real work is the translation
- * table below, not the HTTP.
+ * `CarrierTracking.poll(reference)` assumes a provider will answer "what has
+ * happened to this container" whenever asked. Terminal49 does not work that
+ * way, and running the first request against a real key is what established
+ * it:
  *
- * Getting it wrong is quiet: an unmapped event is a milestone that never
- * completes, an SLA that never stops, and an exception board that grows for
- * reasons nobody can trace back to a vendor's spelling. So unknown codes are
- * **dropped and counted**, never guessed at.
+ *   1. you **submit** a bill of lading or booking number and a carrier SCAC
+ *   2. Terminal49 resolves it against the carrier asynchronously —
+ *      `status: "pending"` at creation, minutes to hours to settle
+ *   3. it **pushes** container events at you by webhook from then on
  *
- * ## What this costs
+ * The path this file originally called — `/v2/containers/{ref}/transport_events`
+ * — does not exist. It was inferred from the shape of the port rather than
+ * from the provider, and the provider is the one that decides.
+ *
+ * So the integration is two halves that meet in the database:
+ *
+ *   `submitTracking`  once per job, when the bill of lading is known
+ *   the webhook       `webhooks/index.ts` → `mapProviderEvents` → milestones
+ *
+ * `poll` stays on the port because polling providers do exist — Vizion answers
+ * that shape — and a second adapter beside this one is exactly what a port is
+ * for. This one refuses it rather than pretending.
+ *
+ * ## What is verified, and what is not
+ *
+ * Submission is verified against the live API with a real key: `201 Created`,
+ * JSON:API envelope, `status: "pending"`. Reading anything back returns `401`
+ * on a free plan — *"You do not have permissions for using the API, except for
+ * creating tracking requests"* — so the webhook ingestion is tested against
+ * recorded payload shapes rather than a live push.
+ *
+ * ## What it costs
  *
  * Per-container, recurring, and it scales with the customer's volume rather
- * than ours — which is a pricing decision before it is an engineering one.
- * Nothing here is enabled by default for that reason.
+ * than ours. A pricing decision before an engineering one, which is why
+ * nothing here is enabled by default.
  */
 
 import type { CarrierMilestone, CarrierTracking } from '../ports/index'
 import { config } from '../config'
-import { mapProviderEvents, type ProviderEvent } from './carrier-events'
 
 /**
  * Release One, kept as an implementation rather than an absence.
  *
- * Operations enters the milestone. Returning an empty list means "this feed
- * has nothing to add", which is the truth, and lets the caller treat every
- * source the same way.
+ * Operations enters the milestone. An empty list means "this feed has nothing
+ * to add", which is the truth, and lets a caller treat every source alike.
  */
 export const manualCarrierTracking: CarrierTracking = {
   key: 'manual',
   poll: () => Promise.resolve([]),
 }
 
-interface Terminal49Response {
-  readonly data?: readonly {
+/** What Terminal49 will accept as the thing to track. */
+export type TrackingRequestType = 'bill_of_lading' | 'booking_number' | 'container'
+
+export interface TrackingSubmission {
+  readonly reference: string
+  readonly type: TrackingRequestType
+  /** The carrier's SCAC — `MSCU`, `MAEU`. Omit to let Terminal49 detect it. */
+  readonly scac?: string
+  /** Our job reference, echoed back on every webhook for this shipment. */
+  readonly jobReference?: string
+}
+
+export interface TrackingSubmissionResult {
+  readonly id: string
+  readonly status: string
+  readonly failedReason?: string
+}
+
+interface TrackingRequestResponse {
+  readonly data?: {
+    readonly id?: string
     readonly attributes?: {
-      readonly event?: string
-      readonly timestamp?: string
-      readonly location_locode?: string
+      readonly status?: string
+      readonly failed_reason?: string | null
     }
-  }[]
+  }
+  readonly errors?: readonly { readonly detail?: string; readonly title?: string }[]
 }
 
 /**
- * Terminal49's container-events API.
+ * Ask Terminal49 to start tracking a shipment.
  *
- * Named rather than generic because "a tracking provider" is not a thing you
- * can write an adapter for — the auth, the pagination and the event vocabulary
- * differ, and a shape that pretends otherwise ends up mapping the wrong field.
- * A second provider is a second file next to this one, which is the point of
- * the port.
+ * Verified against the live API. The response is JSON:API, and the useful part
+ * is `status` — `pending` at creation, because the carrier lookup happens
+ * afterwards. A `201` means "accepted for resolution", not "found", and a
+ * caller that treats it as confirmation will tell an operator a shipment is
+ * tracked when it may yet fail.
  *
- * **Untested against the live API.** The request and response shape follow the
- * published documentation; nothing here has been run against a real account,
- * because the credential is a commercial decision that has not been made. The
- * mapping it delegates to *is* tested, which is the half that would be wrong
- * in a way nobody notices.
+ * `ref_numbers` carries our job reference so every webhook that follows can be
+ * attributed without a mapping table of our own — the difference between an
+ * integration that survives a redeploy and one that depends on a cache.
  */
-export function terminal49Tracking(apiKey: string, baseUrl: string): CarrierTracking {
+export async function submitTracking(
+  submission: TrackingSubmission,
+  apiKey: string,
+  baseUrl: string,
+): Promise<TrackingSubmissionResult> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/v2/tracking_requests`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(20_000),
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      data: {
+        type: 'tracking_request',
+        attributes: {
+          request_type: submission.type,
+          request_number: submission.reference,
+          ...(submission.scac
+            ? { scac: submission.scac }
+            : /*
+                Without a SCAC, let Terminal49 work the carrier out.
+
+                A house bill frequently arrives without one, and refusing the
+                submission would push the guess onto a coordinator who has
+                strictly less information than the provider does.
+              */
+              { auto_detect_vocc_scac: true }),
+          ...(submission.jobReference ? { ref_numbers: [submission.jobReference] } : {}),
+        },
+      },
+    }),
+  })
+
+  const body = (await response.json().catch(() => ({}))) as TrackingRequestResponse
+
+  if (!response.ok) {
+    const detail = body.errors
+      ?.map((e) => e.detail ?? e.title)
+      .filter(Boolean)
+      .join('; ')
+    throw new Error(
+      `Terminal49 refused the tracking request (${response.status}): ${detail ?? 'no detail'}`,
+    )
+  }
+
+  return {
+    id: body.data?.id ?? '',
+    status: body.data?.attributes?.status ?? 'unknown',
+    failedReason: body.data?.attributes?.failed_reason ?? undefined,
+  }
+}
+
+export interface Terminal49Tracking extends CarrierTracking {
+  submit(submission: TrackingSubmission): Promise<TrackingSubmissionResult>
+}
+
+/**
+ * The provider as the port sees it.
+ *
+ * `poll` refuses rather than returning an empty list. Empty would mean
+ * "nothing has happened to this container" — a claim this adapter cannot make,
+ * because Terminal49 has no endpoint that answers the question. On a quiet
+ * shipment that lie is indistinguishable from a working feed, which is the
+ * worst failure available here.
+ */
+export function terminal49Tracking(apiKey: string, baseUrl: string): Terminal49Tracking {
   return {
     key: 'terminal49',
 
-    async poll(reference: string): Promise<CarrierMilestone[]> {
-      const url = `${baseUrl.replace(/\/$/, '')}/v2/containers/${encodeURIComponent(reference)}/transport_events`
-
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(20_000),
-        headers: {
-          Authorization: `Token ${apiKey}`,
-          Accept: 'application/json',
-        },
-      })
-
-      /*
-        A container the provider has never heard of is not an error.
-
-        References are typed by people and a mistyped one is ordinary. Throwing
-        would put a retry in the queue for a container that will never resolve,
-        and the operator would see a failing job instead of a job with no
-        automatic milestones.
-      */
-      if (response.status === 404) return []
-
-      if (!response.ok) {
-        throw new Error(`Terminal49 answered ${response.status} for ${reference}`)
-      }
-
-      const body = (await response.json()) as Terminal49Response
-
-      const events: ProviderEvent[] = (body.data ?? [])
-        .map((row) => ({
-          event: row.attributes?.event ?? '',
-          timestamp: row.attributes?.timestamp ?? '',
-          location: row.attributes?.location_locode,
-        }))
-        .filter((event) => event.event !== '' && event.timestamp !== '')
-
-      const { milestones, unmapped } = mapProviderEvents(events)
-
-      if (unmapped.length > 0) {
-        // Logged rather than thrown: an unrecognised event means our table has
-        // fallen behind the provider's, which is a thing to fix in a release
-        // and not a reason to discard the milestones that did map.
-        console.warn(
-          JSON.stringify({
-            level: 'warn',
-            message: 'carrier events not in the milestone map',
-            reference,
-            codes: [...new Set(unmapped)],
-          }),
-        )
-      }
-
-      return milestones
+    poll(): Promise<CarrierMilestone[]> {
+      return Promise.reject(
+        new Error(
+          'Terminal49 does not answer polls: a shipment is submitted once and its ' +
+            'events arrive by webhook. Use submit(), and see webhooks/index.ts ' +
+            'for the ingestion side.',
+        ),
+      )
     },
+
+    submit: (submission) => submitTracking(submission, apiKey, baseUrl),
   }
 }
 

@@ -108,3 +108,62 @@ describe('carrier event mapping', () => {
     expect(mapProviderEvents([])).toEqual({ milestones: [], unmapped: [] })
   })
 })
+
+/**
+ * Terminal49's own event names, which are namespaced.
+ *
+ * Recorded from the provider's documented webhook payloads rather than
+ * invented — the first version of this adapter mapped `vessel_departed` and
+ * called an endpoint that does not exist, both inferred from the shape of our
+ * own port. The provider decides its vocabulary; we only decide the mapping.
+ */
+describe('Terminal49 webhook event names', () => {
+  it('maps the namespaced form the webhook actually sends', () => {
+    const { milestones, unmapped } = mapProviderEvents([
+      {
+        event: 'container.transport.vessel_departed',
+        timestamp: '2026-08-01T06:00:00Z',
+        location: 'AEJEA',
+      },
+      { event: 'container.transport.vessel_discharged', timestamp: '2026-08-14T11:00:00Z' },
+      { event: 'container.transport.full_out', timestamp: '2026-08-16T08:00:00Z' },
+      { event: 'container.transport.empty_in', timestamp: '2026-08-20T10:00:00Z' },
+    ])
+
+    expect(unmapped).toEqual([])
+    expect(milestones.map((m) => m.code)).toEqual([
+      'DEPARTED',
+      'DISCHARGED',
+      'GATE_OUT_DESTINATION',
+      'EMPTY_RETURNED',
+    ])
+  })
+
+  /** A polling provider's bare verb still maps to the same milestone. */
+  it('agrees with the bare form a polling provider sends', () => {
+    const dotted = mapProviderEvents([
+      { event: 'container.transport.vessel_departed', timestamp: '2026-08-01T06:00:00Z' },
+    ])
+    const bare = mapProviderEvents([
+      { event: 'vessel_departed', timestamp: '2026-08-01T06:00:00Z' },
+    ])
+
+    expect(dotted.milestones[0]?.code).toBe(bare.milestones[0]?.code)
+  })
+
+  /**
+   * Terminal49 sends lifecycle events that are not shipment milestones —
+   * `tracking_request.succeeded` says our submission resolved, not that
+   * anything happened to the cargo. Writing it onto the job would put a
+   * milestone on the board that no operator could explain.
+   */
+  it('ignores tracking-request lifecycle events', () => {
+    const { milestones, unmapped } = mapProviderEvents([
+      { event: 'tracking_request.succeeded', timestamp: '2026-08-01T06:00:00Z' },
+      { event: 'tracking_request.failed', timestamp: '2026-08-01T06:00:00Z' },
+    ])
+
+    expect(milestones).toEqual([])
+    expect(unmapped).toEqual(['tracking_request.succeeded', 'tracking_request.failed'])
+  })
+})

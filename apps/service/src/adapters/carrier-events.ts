@@ -25,36 +25,55 @@ import type { CarrierMilestone } from '../ports/index'
  * our codes it happened to resemble, and the first sign would be an SLA that
  * stopped for the wrong reason.
  *
- * The keys are the union used by the container-visibility providers a mid
- * market forwarder would actually buy — Terminal49, Vizion, Portcast. They
- * agree on more than they differ on because they are all reading the same
- * carrier EDI underneath.
+ * Both spellings of every event are here on purpose.
+ *
+ * Terminal49 pushes dotted, namespaced names —
+ * `container.transport.vessel_departed`. Polling providers like Vizion answer
+ * with the bare verb, `vessel_departed`. Rather than strip the namespace and
+ * hope the tail is unique, both forms are listed: a namespace tells you *what
+ * kind of thing* moved, and `shipment.*` versus `container.*` will not always
+ * mean the same milestone as this system grows.
+ *
+ * Listing them costs a line each and removes a transformation that would have
+ * to be right forever.
  */
 const EVENT_MAP: Readonly<Record<string, string>> = {
-  // Origin
+  // --- origin ---
   empty_out: 'EMPTY_DISPATCHED',
   container_empty_out: 'EMPTY_DISPATCHED',
+  'container.transport.empty_out': 'EMPTY_DISPATCHED',
   gate_in: 'GATE_IN_ORIGIN',
   full_in: 'GATE_IN_ORIGIN',
   container_gate_in: 'GATE_IN_ORIGIN',
+  'container.transport.full_in': 'GATE_IN_ORIGIN',
   loaded_on_vessel: 'LOADED',
   vessel_loaded: 'LOADED',
-  // Main carriage
+  'container.transport.vessel_loaded': 'LOADED',
+
+  // --- main carriage ---
   vessel_departed: 'DEPARTED',
   departure: 'DEPARTED',
+  'container.transport.vessel_departed': 'DEPARTED',
   transhipment_loaded: 'TRANSHIPPED',
   transshipment_loaded: 'TRANSHIPPED',
+  'container.transport.transshipment_loaded': 'TRANSHIPPED',
   vessel_arrived: 'ARRIVED',
   arrival: 'ARRIVED',
-  // Destination
+  'container.transport.vessel_arrived': 'ARRIVED',
+
+  // --- destination ---
   vessel_discharged: 'DISCHARGED',
   discharged: 'DISCHARGED',
   container_discharged: 'DISCHARGED',
+  'container.transport.vessel_discharged': 'DISCHARGED',
   available_for_pickup: 'AVAILABLE',
+  'container.pickup_lfd.changed': 'AVAILABLE',
   gate_out: 'GATE_OUT_DESTINATION',
   container_gate_out: 'GATE_OUT_DESTINATION',
+  'container.transport.full_out': 'GATE_OUT_DESTINATION',
   empty_returned: 'EMPTY_RETURNED',
   container_empty_return: 'EMPTY_RETURNED',
+  'container.transport.empty_in': 'EMPTY_RETURNED',
 }
 
 export interface ProviderEvent {
