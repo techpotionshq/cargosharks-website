@@ -220,6 +220,20 @@ export function homeFor(session: Session): '/dashboard' | '/portal' | '/agent' {
  * produced no session at all, and every authenticated route bounced straight
  * back to the login form.
  *
+ * There are *two* names, not one. `advanced.useSecureCookies` is on in
+ * production, and Better Auth does not merely add the `Secure` attribute when
+ * it is — it renames the cookie to `__Secure-qabandi.session_token`, because
+ * the `__Secure-` prefix is what makes a browser refuse the cookie over plain
+ * HTTP (`createCookieGetter` in `better-auth/cookies`). So the name differs
+ * between a developer's laptop and every deployed environment, and reading only
+ * the unprefixed one meant sign-in worked locally and produced an endless
+ * bounce back to the login form on the container — the session cookie was set,
+ * correctly, under a name nothing here looked at.
+ *
+ * Both are checked, prefixed first, which is exactly what Better Auth's own
+ * `getSessionCookie` does. Deriving the name from the auth instance instead
+ * would be tighter still, but `$context` is not in the public typings.
+ *
  * The value is `<token>.<signature>`. Only the token half is stored in
  * `auth_session.token`, so the signature has to come off before the lookup.
  * Better Auth has already verified that signature in its own middleware; the
@@ -227,14 +241,20 @@ export function homeFor(session: Session): '/dashboard' | '/portal' | '/agent' {
  * which is the query below.
  */
 const SESSION_COOKIE = 'qabandi.session_token'
+const SESSION_COOKIE_NAMES = [`__Secure-${SESSION_COOKIE}`, SESSION_COOKIE] as const
 
 async function sessionToken(): Promise<string | null> {
   const store = await cookies()
-  const raw = store.get(SESSION_COOKIE)?.value
-  if (!raw) return null
 
-  const token = raw.split('.')[0]
-  return token ? token : null
+  for (const name of SESSION_COOKIE_NAMES) {
+    const raw = store.get(name)?.value
+    if (!raw) continue
+
+    const token = raw.split('.')[0]
+    if (token) return token
+  }
+
+  return null
 }
 
 async function clientIp(): Promise<string | null> {

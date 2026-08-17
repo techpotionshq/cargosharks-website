@@ -43,6 +43,7 @@ export interface Choice {
 export interface ImportConsoleProps {
   readonly kind: string
   readonly fields: readonly FieldSummary[]
+  /** The generated CSV for this kind — a route handler under `api/`, not a page. */
   readonly templateHref: string
   readonly branches?: readonly Choice[]
   readonly partners?: readonly Choice[]
@@ -121,7 +122,7 @@ export function ImportConsole({
               {fileName || state.fileName || labels.noFile}
             </span>
 
-            <Button href={templateHref} icon="download" variant="ghost" size="sm">
+            <Button href={templateHref} download icon="download" variant="ghost" size="sm">
               {labels.downloadTemplate}
             </Button>
           </div>

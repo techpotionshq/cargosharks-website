@@ -59,11 +59,34 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   redirect('/dashboard')
 }
 
+/**
+ * `useSecureCookies` renames the cookies rather than only adding an attribute:
+ * in production every one of them is `__Secure-qabandi.…`. Matching on the bare
+ * prefix cleared nothing on a deployed environment, so signing out left a live
+ * session cookie in the browser and the next request signed the operator
+ * straight back in. Both spellings are stripped; see `SESSION_COOKIE_NAMES` in
+ * `lib/session.ts`, which reads the same pair.
+ */
+const SECURE_PREFIX = '__Secure-'
+const COOKIE_PREFIXES = ['qabandi.', `${SECURE_PREFIX}qabandi.`] as const
+
 export async function signOut(): Promise<void> {
   const store = await cookies()
-  const prefix = 'qabandi.'
   for (const cookie of store.getAll()) {
-    if (cookie.name.startsWith(prefix)) store.delete(cookie.name)
+    if (!COOKIE_PREFIXES.some((prefix) => cookie.name.startsWith(prefix))) continue
+
+    /**
+     * `delete(name)` expires the cookie with no attributes, and a browser
+     * *rejects* a `__Secure-`-prefixed cookie that arrives without `Secure` —
+     * so the bare form would leave the very cookies this is meant to clear.
+     * `path` has to be stated for the same reason: deletion matches on
+     * name/domain/path, and Better Auth sets these at the root.
+     */
+    store.delete({
+      name: cookie.name,
+      path: '/',
+      secure: cookie.name.startsWith(SECURE_PREFIX),
+    })
   }
   redirect('/sign-in')
 }

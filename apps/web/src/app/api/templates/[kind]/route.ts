@@ -6,6 +6,11 @@
  * template people download, and they would find out one validation report at a
  * time.
  *
+ * Under `api/` with the other handlers: it hands back a file rather than
+ * rendering a screen, which is the line drawn in `api/documents/[id]` — a route
+ * handler sitting in the page namespace is a path collision waiting for the
+ * page that would own it.
+ *
  * Behind the session for the same reason every other route is: the column set
  * describes the operator's data model, and there is no reason for it to be
  * public. The permission checked is the one that would let the caller perform

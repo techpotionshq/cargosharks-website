@@ -192,7 +192,7 @@ export default async function ImportsPage({
           required: field.required,
           ...(field.hint === undefined ? {} : { hint: field.hint }),
         }))}
-        templateHref={`/templates/${active}`}
+        templateHref={`/api/templates/${active}`}
         branches={branches}
         partners={partners}
         needsBranch={needsBranch}

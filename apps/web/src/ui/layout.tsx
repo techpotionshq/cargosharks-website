@@ -64,6 +64,23 @@ export interface ButtonProps {
   /** Places the glyph after the label — for "next", "open". */
   readonly iconEnd?: IconName
   readonly href?: string
+  /**
+   * The `href` hands back a file rather than a page — renders a plain `<a>`.
+   *
+   * A route handler is not a destination the client router can render, so a
+   * `<Link>` at one is all cost and no benefit: the prefetcher spends a real
+   * request on the response (a session lookup and a generated file, on a
+   * handler that has no idea it is being speculated about) and then discards
+   * it, and the click resolves through the fallback to a full navigation
+   * anyway.
+   *
+   * The HTML `download` attribute is deliberately *not* set. It forces a save
+   * on whatever comes back, including a `401` or a `404` body, which turns an
+   * expired session into a file named after the route containing a line of
+   * JSON. Left off, `Content-Disposition` still downloads what should be
+   * downloaded, and an error stays a page the reader can see.
+   */
+  readonly download?: boolean
   readonly type?: 'button' | 'submit'
   readonly className?: string
   readonly title?: string
@@ -71,7 +88,8 @@ export interface ButtonProps {
 }
 
 /**
- * Renders a `<Link>` when given an `href` and a `<button>` otherwise.
+ * Renders a `<Link>` when given an `href` and a `<button>` otherwise — or a
+ * plain `<a>` when that href is a file rather than a page, see `download`.
  *
  * One component rather than two because the *only* difference that should
  * survive to the reader is whether it navigates — a link styled as a button
@@ -85,6 +103,7 @@ export function Button({
   icon,
   iconEnd,
   href,
+  download = false,
   type = 'button',
   className,
   ...rest
@@ -105,6 +124,14 @@ export function Button({
       {iconEnd ? <Icon name={iconEnd} size={16} strokeWidth={2} /> : null}
     </>
   )
+
+  if (href && download) {
+    return (
+      <a href={href} className={classes} {...rest}>
+        {inner}
+      </a>
+    )
+  }
 
   return href ? (
     <Link href={href as Route} className={classes} {...rest}>
