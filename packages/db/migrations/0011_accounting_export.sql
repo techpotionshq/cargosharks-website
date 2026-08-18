@@ -117,11 +117,21 @@ alter table accounting_exports
 -- The rule
 -- --------------------------------------------------------------------------
 
-alter table invoices add column accounting_export_id uuid references accounting_exports (id);
-alter table payments add column accounting_export_id uuid references accounting_exports (id);
+alter table invoices     add column accounting_export_id uuid references accounting_exports (id);
+alter table payments     add column accounting_export_id uuid references accounting_exports (id);
+/*
+  Costs carry the mark too.
 
-create index invoices_export_idx on invoices (accounting_export_id);
-create index payments_export_idx on payments (accounting_export_id);
+  A journal that posts sales and cash and not purchases gives a finance manager
+  a revenue figure and no gross margin, which is the number they actually
+  manage the business on. And a cost line has exactly the same double-posting
+  risk as an invoice — more, because nothing else about it is numbered.
+*/
+alter table charge_lines add column accounting_export_id uuid references accounting_exports (id);
+
+create index invoices_export_idx     on invoices (accounting_export_id);
+create index payments_export_idx     on payments (accounting_export_id);
+create index charge_lines_export_idx on charge_lines (accounting_export_id);
 
 comment on column invoices.accounting_export_id is
   'The posted export that carried this invoice. Set once; cleared only by voiding that export. A second export skips anything already marked.';

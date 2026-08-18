@@ -69,6 +69,8 @@ export const chargeLines = pgTable(
     sourceKind: text('source_kind'),
     sourceId: ref('source_id'),
     isAccrual: boolean('is_accrual').notNull().default(false),
+    /** The posted export that carried this cost into the ledger (0011). */
+    accountingExportId: ref('accounting_export_id'),
     approvedById: ref('approved_by_id').references(() => principals.id),
     approvedAt: tsz('approved_at'),
     ...timestamps,

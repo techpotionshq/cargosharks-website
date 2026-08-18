@@ -33,10 +33,43 @@ import { adapters, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf } from '../pdf/documents'
+import {
+  JOB_DOCUMENT_KINDS,
+  renderJobDocumentPdf,
+  renderManifestPdf,
+  type JobDocumentKind,
+} from '../pdf/job-documents'
+import { storeJobDocument } from '../pdf/store'
+import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 
 interface DocumentRequest {
   readonly actor: Actor
   readonly locale?: 'en' | 'ar'
+}
+
+interface JobDocumentRequest extends DocumentRequest {
+  readonly kind?: string
+  /**
+   * Keep a copy, version it, and record it against the job.
+   *
+   * False previews. True is issue: see `pdf/store.ts` for why those are
+   * different operations rather than the same one with a flag.
+   */
+  readonly store?: boolean
+}
+
+interface AccountingExportRequest {
+  readonly actor?: Actor
+  readonly branchId?: string
+  readonly from?: string
+  readonly to?: string
+  readonly format?: string
+  readonly post?: boolean
+}
+
+interface VoidExportRequest {
+  readonly actor?: Actor
+  readonly reason?: string
 }
 
 interface PasswordResetRequest {
@@ -113,6 +146,169 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     },
   )
 
+
+  /**
+   * Render a job document — the bill of lading, delivery order, packing list
+   * or customs pack.
+   *
+   * One route rather than four, because they differ in template and in nothing
+   * else: same actor, same authorisation, same locale handling, same failure.
+   * `kind` is validated against the list rather than trusted, so an unknown
+   * value is a 400 and never a path into `renderJobHtml` with a bad key.
+   *
+   * `store: true` is issue rather than preview. It writes the bytes, versions
+   * the previous copy and records the document, and it returns JSON — the
+   * caller wanted a record, not a download.
+   */
+  app.post<{ Params: { id: string }; Body: JobDocumentRequest }>(
+    '/documents/job/:id',
+    async (request, reply) => {
+      const { actor, locale, kind, store } = request.body ?? {}
+
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+      if (!kind || !JOB_DOCUMENT_KINDS.includes(kind as JobDocumentKind)) {
+        return reply
+          .code(400)
+          .send({ error: 'unknown_kind', allowed: JOB_DOCUMENT_KINDS })
+      }
+
+      const documentLocale = locale === 'ar' ? 'ar' : 'en'
+
+      try {
+        const { pdf, filename } = await renderJobDocumentPdf(
+          actor,
+          request.params.id,
+          kind as JobDocumentKind,
+          documentLocale,
+        )
+
+        if (store === true) {
+          const stored = await storeJobDocument(
+            actor,
+            request.params.id,
+            kind as JobDocumentKind,
+            documentLocale,
+            pdf,
+            filename,
+          )
+          return reply.header('cache-control', 'private, no-store').send(stored)
+        }
+
+        return reply
+          .header('content-type', 'application/pdf')
+          .header('content-disposition', `inline; filename="${filename}"`)
+          .header('cache-control', 'private, no-store')
+          .send(pdf)
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: 'not_found' })
+        }
+        throw error
+      }
+    },
+  )
+
+  /**
+   * The cargo manifest — a consolidation's document, not a job's.
+   *
+   * Streamed only. A manifest is regenerated from the house list every time it
+   * is asked for, because the house list is exactly what changes up to the
+   * cut-off; a stored copy would be authoritative and stale at once.
+   */
+  app.post<{ Params: { id: string }; Body: DocumentRequest }>(
+    '/documents/manifest/:id',
+    async (request, reply) => {
+      const { actor, locale } = request.body ?? {}
+
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+
+      try {
+        const { pdf, filename } = await renderManifestPdf(
+          actor,
+          request.params.id,
+          locale === 'ar' ? 'ar' : 'en',
+        )
+
+        return reply
+          .header('content-type', 'application/pdf')
+          .header('content-disposition', `inline; filename="${filename}"`)
+          .header('cache-control', 'private, no-store')
+          .send(pdf)
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: 'not_found' })
+        }
+        throw error
+      }
+    },
+  )
+
+  /**
+   * Build a period's journal, and optionally post it.
+   *
+   * Here rather than in the web app for one reason: the file has to be stored,
+   * and storage credentials live in this process (§3). The arithmetic itself
+   * is `@qabandi/core` and would run anywhere.
+   *
+   * A refusal — an unmapped charge type, a missing control account, a journal
+   * that does not balance — comes back as 422 with the message, because every
+   * one of them is a row the finance manager can go and fix. A 500 would tell
+   * them to call support about their own chart of accounts.
+   */
+  app.post<{ Body: AccountingExportRequest }>('/accounting/export', async (request, reply) => {
+    const { actor, branchId, from, to, format, post } = request.body ?? {}
+
+    if (!actor?.principalId || !actor.type) {
+      return reply.code(400).send({ error: 'no_actor' })
+    }
+    if (!branchId || !from || !to) {
+      return reply.code(400).send({ error: 'period_required' })
+    }
+
+    try {
+      const result = await buildAccountingExport(actor, { branchId, from, to, format, post })
+      return reply.header('cache-control', 'private, no-store').send(result)
+    } catch (error) {
+      if (error instanceof ExportError) {
+        return reply.code(422).send({ error: error.code, message: error.message })
+      }
+      /*
+        The engine's own refusals arrive as DomainError with a `code`. They are
+        the same class of thing — something in the period is not what it claims
+        to be — and the operator needs the sentence, not a stack trace.
+      */
+      if (error instanceof Error && 'code' in error && typeof error.code === 'string') {
+        return reply.code(422).send({ error: error.code, message: error.message })
+      }
+      throw error
+    }
+  })
+
+  /** Void a posted export, releasing everything it consumed. */
+  app.post<{ Params: { id: string }; Body: VoidExportRequest }>(
+    '/accounting/export/:id/void',
+    async (request, reply) => {
+      const { actor, reason } = request.body ?? {}
+
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+
+      try {
+        const result = await voidAccountingExport(actor, request.params.id, reason ?? '')
+        return reply.send(result)
+      } catch (error) {
+        if (error instanceof ExportError) {
+          return reply.code(422).send({ error: error.code, message: error.message })
+        }
+        throw error
+      }
+    },
+  )
 
   /**
    * The password-reset email — the one message that is not a notification.

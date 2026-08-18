@@ -1,0 +1,326 @@
+/**
+ * What every job document shares — the view, the formatters, the stylesheet.
+ *
+ * `invoice.ts` was the first document and carried its own copies of all three,
+ * which was right when there was one. There are now six, and six copies of a
+ * currency formatter is six places for KWD's third decimal to go missing.
+ *
+ * The view below is deliberately *one* shape for all of them. A bill of
+ * lading, a delivery order, a manifest and a packing list are four
+ * arrangements of the same shipment — the same parties, the same cargo, the
+ * same containers — and giving each its own loader would mean four queries
+ * that can disagree about what is on the shipment. They differ in what they
+ * show and what they mean, not in what they read.
+ */
+
+export type DocumentLocale = 'en' | 'ar'
+
+/** `ar-KW-u-nu-latn` — Arabic conventions, Latin digits. See `lib/format.ts`. */
+export const intlLocale = (locale: DocumentLocale): string =>
+  locale === 'ar' ? 'ar-KW-u-nu-latn' : 'en-GB'
+
+/**
+ * Escapes text before it reaches the document.
+ *
+ * Everything on these pages is operator-entered or shipper-supplied and
+ * arrives as markup. Without this an ampersand in a legal name breaks the
+ * document and a `<script>` in a goods description runs inside the renderer,
+ * which is a browser process in our own container.
+ */
+export function esc(value: string | null | undefined): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Preserves the layout of a block that was typed as a block.
+ *
+ * Marks and numbers and addresses are *laid out* by whoever entered them —
+ * line breaks carry meaning on a bill of lading, where the marks have to match
+ * what is stencilled on the carton. Collapsing them into a paragraph is a
+ * discrepancy at the port.
+ */
+export function escBlock(value: string | null | undefined): string {
+  return esc(value).replace(/\r?\n/g, '<br>')
+}
+
+export function formatMoney(value: string, currency: string, locale: DocumentLocale): string {
+  return new Intl.NumberFormat(intlLocale(locale), { style: 'currency', currency }).format(
+    Number(value),
+  )
+}
+
+/** Weights and volumes. Not money — no currency, and a fixed scale per unit. */
+export function formatQuantity(
+  value: string | number | null | undefined,
+  locale: DocumentLocale,
+  fractionDigits = 3,
+): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = Number(value)
+  if (Number.isNaN(n)) return '—'
+  return new Intl.NumberFormat(intlLocale(locale), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: fractionDigits,
+  }).format(n)
+}
+
+export function formatDate(
+  value: Date | string | null | undefined,
+  locale: DocumentLocale,
+): string {
+  if (!value) return '—'
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return '—'
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Kuwait',
+  }).format(date)
+}
+
+/** Picks the Arabic column where there is one and we are rendering Arabic. */
+export function localised(
+  en: string | null | undefined,
+  ar: string | null | undefined,
+  locale: DocumentLocale,
+): string {
+  return locale === 'ar' ? (ar ?? en ?? '') : (en ?? '')
+}
+
+export interface PartyView {
+  readonly role:
+    | 'shipper'
+    | 'consignee'
+    | 'notify'
+    | 'second_notify'
+    | 'delivery_agent'
+    | 'forwarding_agent'
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly address: string | null
+  readonly city: string | null
+  readonly country: string | null
+  readonly contactName: string | null
+  readonly phone: string | null
+  readonly email: string | null
+  readonly taxId: string | null
+}
+
+export interface CargoView {
+  readonly lineNo: number
+  readonly marksAndNumbers: string | null
+  readonly packageCount: number | null
+  readonly packageType: string | null
+  readonly descriptionEn: string
+  readonly descriptionAr: string | null
+  readonly hsCode: string | null
+  readonly grossWeightKg: string | null
+  readonly netWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly containerNo: string | null
+}
+
+export interface EquipmentView {
+  readonly containerNo: string | null
+  readonly containerType: string | null
+  readonly sealNo: string | null
+  readonly grossWeightKg: string | null
+}
+
+export interface PlaceView {
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly unlocode: string | null
+}
+
+/**
+ * One shipment, as every document on it needs to see it.
+ *
+ * `houseBillNumber` may be null: a document can be produced before the number
+ * is allocated, and each template decides for itself whether that is a draft
+ * watermark or simply a blank field. A delivery order does not need one; a
+ * bill of lading is not a bill of lading without it.
+ */
+export interface JobDocumentView {
+  readonly reference: string
+  readonly houseBillNumber: string | null
+  readonly masterBillNumber: string | null
+  readonly bookingNumber: string | null
+  readonly customerReference: string | null
+  readonly mode: string
+  readonly tradeDirection: string
+  readonly incoterm: string | null
+  readonly vesselName: string | null
+  readonly voyageNumber: string | null
+  readonly flightNumber: string | null
+  readonly etd: Date | null
+  readonly eta: Date | null
+  readonly origin: PlaceView | null
+  readonly destination: PlaceView | null
+  readonly branch: {
+    readonly legalNameEn: string
+    readonly legalNameAr: string
+    readonly taxRegistration: string | null
+    readonly country: string
+  }
+  readonly customer: { readonly nameEn: string; readonly nameAr: string | null }
+  readonly parties: readonly PartyView[]
+  readonly cargo: readonly CargoView[]
+  readonly equipment: readonly EquipmentView[]
+  readonly issuedAt: Date
+  readonly placeOfIssue: string
+  /** Whose account the freight is on. Printed on the bill; it is the contract. */
+  readonly freightTerm: 'prepaid' | 'collect'
+}
+
+export function partyOf(view: JobDocumentView, role: PartyView['role']): PartyView | undefined {
+  return view.parties.find((p) => p.role === role)
+}
+
+export function partiesOf(view: JobDocumentView, role: PartyView['role']): PartyView[] {
+  return view.parties.filter((p) => p.role === role)
+}
+
+/** Totals, computed here so four templates cannot disagree about them. */
+export function cargoTotals(cargo: readonly CargoView[]): {
+  packages: number
+  grossWeightKg: string
+  netWeightKg: string
+  volumeCbm: string
+} {
+  const sum = (pick: (c: CargoView) => string | null): string =>
+    cargo
+      .reduce((acc, c) => acc + Number(pick(c) ?? 0), 0)
+      .toFixed(3)
+      .replace(/\.?0+$/, '')
+
+  return {
+    packages: cargo.reduce((acc, c) => acc + (c.packageCount ?? 0), 0),
+    grossWeightKg: sum((c) => c.grossWeightKg) || '0',
+    netWeightKg: sum((c) => c.netWeightKg) || '0',
+    volumeCbm: sum((c) => c.volumeCbm) || '0',
+  }
+}
+
+/**
+ * The shared stylesheet.
+ *
+ * Logical properties throughout (`margin-inline-start`, never `margin-left`)
+ * so one set of rules mirrors under `dir="rtl"` — the same reason `apps/web`
+ * is written that way. Millimetres rather than pixels because these are
+ * printed and then filed in a folder somebody has to close.
+ */
+export const DOCUMENT_CSS = `
+  :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --brand:#8c1d18; --wash:#f9fafb; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans', 'Noto Sans Arabic', 'KacstOne', 'Liberation Sans', sans-serif;
+    color: var(--ink); font-size: 9.5pt; margin: 0; line-height: 1.45;
+  }
+  h1 { font-size: 16pt; margin: 0 0 1mm; letter-spacing: .01em; }
+  h2 { font-size: 10pt; margin: 0 0 1.5mm; text-transform: uppercase; letter-spacing: .05em;
+       color: var(--muted); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .head { display: flex; justify-content: space-between; gap: 8mm; margin-bottom: 5mm;
+          padding-bottom: 3mm; border-bottom: 1.5px solid var(--ink); }
+  .entity { text-align: end; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); }
+  .grid > .cell { padding: 2.5mm 3mm; border-inline-end: 1px solid var(--line);
+                  border-block-end: 1px solid var(--line); }
+  .grid > .cell:nth-child(2n) { border-inline-end: none; }
+  .cell strong { display: block; font-size: 10pt; }
+  .cell .addr { white-space: normal; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+  th, td { padding: 2mm; border-bottom: 1px solid var(--line); text-align: start;
+           vertical-align: top; }
+  th { font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+       border-bottom: 1.5px solid var(--ink); }
+  .n { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tfoot td { font-weight: 600; border-top: 1.5px solid var(--ink); border-bottom: none; }
+  .row { display: flex; gap: 6mm; flex-wrap: wrap; margin-bottom: 3mm; }
+  .field { min-width: 32mm; }
+  .field .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em;
+                  color: var(--muted); display: block; }
+  .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center;
+           font-size: 34pt; color: rgba(140,29,24,.12); font-weight: 700;
+           transform: rotate(-18deg); }
+  .terms { margin-top: 6mm; padding-top: 3mm; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 7.5pt; line-height: 1.4; }
+  .sign { margin-top: 10mm; display: flex; gap: 12mm; }
+  .sign div { flex: 1; border-top: 1px solid var(--ink); padding-top: 1.5mm; font-size: 8pt;
+              color: var(--muted); }
+  .stamp { display: inline-block; padding: 1mm 2.5mm; border: 1px solid var(--brand);
+           color: var(--brand); font-size: 8pt; text-transform: uppercase;
+           letter-spacing: .06em; border-radius: 1mm; }
+`
+
+/**
+ * The page shell.
+ *
+ * Every document is a complete HTML document because the renderer prints
+ * whatever it is handed and nothing wraps it. `lang` and `dir` are set from
+ * the locale here rather than in six templates.
+ */
+export function page(locale: DocumentLocale, body: string, extraCss = ''): string {
+  return `<!doctype html>
+<html lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}">
+<meta charset="utf-8">
+<style>${DOCUMENT_CSS}${extraCss}</style>
+${body}
+</html>`
+}
+
+/** The letterhead block every document opens with. */
+export function letterhead(
+  view: JobDocumentView,
+  title: string,
+  subtitle: string,
+  locale: DocumentLocale,
+): string {
+  const entity = locale === 'ar' ? view.branch.legalNameAr : view.branch.legalNameEn
+  return `<div class="head">
+  <div>
+    <h1>${esc(title)}</h1>
+    <div class="muted">${esc(subtitle)}</div>
+  </div>
+  <div class="entity">
+    <strong>${esc(entity)}</strong>
+    ${view.branch.taxRegistration ? `<div class="muted">${esc(view.branch.taxRegistration)}</div>` : ''}
+  </div>
+</div>`
+}
+
+/** A party, as it prints in a box on a bill. */
+export function partyBlock(
+  party: PartyView | undefined,
+  heading: string,
+  locale: DocumentLocale,
+  fallback = '—',
+): string {
+  if (!party) return `<div class="cell"><h2>${esc(heading)}</h2><div>${esc(fallback)}</div></div>`
+
+  const name = localised(party.nameEn, party.nameAr, locale)
+  const lines = [
+    party.address ? escBlock(party.address) : '',
+    [party.city, party.country].filter(Boolean).map(esc).join(', '),
+    party.contactName ? esc(party.contactName) : '',
+    [party.phone, party.email].filter(Boolean).map(esc).join(' · '),
+    party.taxId ? esc(party.taxId) : '',
+  ].filter((l) => l !== '')
+
+  return `<div class="cell">
+  <h2>${esc(heading)}</h2>
+  <strong>${esc(name)}</strong>
+  <div class="addr muted">${lines.join('<br>')}</div>
+</div>`
+}
+
+/** A labelled value in a row of them. */
+export function field(label: string, value: string): string {
+  return `<div class="field"><span class="label">${esc(label)}</span>${value}</div>`
+}
