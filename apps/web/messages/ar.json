@@ -903,7 +903,22 @@
     "total": "الفروع",
     "noCalendar": "بدون تقويم",
     "noneYet": "لا توجد فروع بعد",
-    "noneYetHint": "تُنشأ الفروع مع تهيئة قاعدة البيانات."
+    "noneYetHint": "تُنشأ الفروع مع تهيئة قاعدة البيانات.",
+    "accounts": "الدفتر",
+    "accountsSet": "مرتبطة",
+    "accountsMissing": "غير مرتبطة",
+    "houseBillSeries": "سلسلة البوليصة الفرعية",
+    "houseBillSeriesHint": "اتركه فارغاً لترقيم البوالص الفرعية يدوياً",
+    "accountsSection": "دليل الحسابات",
+    "accountsSectionHint": "حيث يرحّل هذا الكيان. اتركه فارغاً حتى تتوفر الأكواد — فالتصدير المحاسبي يسمّي الناقص.",
+    "arAccount": "الذمم المدينة",
+    "arAccountHint": "حساب المراقبة الذي تُرحّل إليه الفواتير",
+    "apAccount": "الذمم الدائنة",
+    "bankAccount": "البنك",
+    "taxAccount": "ضريبة المخرجات",
+    "fxAccount": "فروق الصرف",
+    "fxAccountHint": "حيث يُقيّد تغيّر السعر بين الفاتورة والتحصيل",
+    "roundingAccount": "التقريب"
   },
   "reference": {
     "eyebrow": "الإدارة",
@@ -935,7 +950,9 @@
       "working_calendars": "التقاويم",
       "commodities": "السلع",
       "chargeable_rules": "قواعد الاحتساب"
-    }
+    },
+    "accounts": "الإيراد / التكلفة",
+    "unmapped": "غير مرتبط"
   },
   "audit": {
     "eyebrow": "الإدارة",
@@ -1345,7 +1362,10 @@
       "medium": "متوسطة",
       "high": "عالية",
       "critical": "حرجة"
-    }
+    },
+    "revenueAccount": "حساب الإيراد",
+    "revenueAccountHint": "من دليل حسابات العميل",
+    "costAccount": "حساب التكلفة"
   },
   "enquiryActions": {
     "respond": "تعليم كمُجاب",

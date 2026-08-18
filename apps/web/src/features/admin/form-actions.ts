@@ -251,6 +251,28 @@ const branchSchema = z.object({
     .optional()
     .transform((v) => (v ? v.toUpperCase() : null)),
   taxRegistration: optional(60),
+  /**
+   * The house-bill series, and the chart of accounts this entity posts to.
+   *
+   * All optional, and checked at the point of use rather than here: a branch
+   * that issues no house bills should not be made to invent a prefix, and a
+   * branch that has not been mapped to a chart of accounts should be able to
+   * exist. The accounting export names what is missing when somebody tries to
+   * close a period, which is a better error than a required field on a form
+   * they filled in six months earlier.
+   */
+  houseBillSeries: z
+    .string()
+    .trim()
+    .max(12)
+    .optional()
+    .transform((v) => (v ? v.toUpperCase() : null)),
+  arAccountCode: optional(30),
+  apAccountCode: optional(30),
+  taxAccountCode: optional(30),
+  bankAccountCode: optional(30),
+  fxVarianceAccountCode: optional(30),
+  roundingAccountCode: optional(30),
   isActive: z.coerce.boolean(),
 })
 
@@ -278,6 +300,13 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     timeZone: read(form, 'timeZone') ?? 'Asia/Kuwait',
     invoiceSeries: read(form, 'invoiceSeries'),
     taxRegistration: read(form, 'taxRegistration'),
+    houseBillSeries: read(form, 'houseBillSeries'),
+    arAccountCode: read(form, 'arAccountCode'),
+    apAccountCode: read(form, 'apAccountCode'),
+    taxAccountCode: read(form, 'taxAccountCode'),
+    bankAccountCode: read(form, 'bankAccountCode'),
+    fxVarianceAccountCode: read(form, 'fxVarianceAccountCode'),
+    roundingAccountCode: read(form, 'roundingAccountCode'),
     isActive: form.get('isActive') !== null,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
@@ -305,6 +334,13 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
             calendarId: data.calendarId,
             timeZone: data.timeZone,
             taxRegistration: data.taxRegistration,
+            houseBillSeries: data.houseBillSeries,
+            arAccountCode: data.arAccountCode,
+            apAccountCode: data.apAccountCode,
+            taxAccountCode: data.taxAccountCode,
+            bankAccountCode: data.bankAccountCode,
+            fxVarianceAccountCode: data.fxVarianceAccountCode,
+            roundingAccountCode: data.roundingAccountCode,
             isActive: data.isActive,
             updatedAt: new Date(),
           })
@@ -320,6 +356,13 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
           timeZone: data.timeZone,
           invoiceSeries: data.invoiceSeries ?? data.code,
           taxRegistration: data.taxRegistration,
+          houseBillSeries: data.houseBillSeries,
+          arAccountCode: data.arAccountCode,
+          apAccountCode: data.apAccountCode,
+          taxAccountCode: data.taxAccountCode,
+          bankAccountCode: data.bankAccountCode,
+          fxVarianceAccountCode: data.fxVarianceAccountCode,
+          roundingAccountCode: data.roundingAccountCode,
           isActive: data.isActive,
         })
       }
@@ -372,6 +415,8 @@ const referenceSchema = z.object({
     .optional(),
   defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
   hsCode: optional(20),
+  revenueAccountCode: optional(30),
+  costAccountCode: optional(30),
   isActive: z.coerce.boolean(),
 })
 
@@ -392,6 +437,8 @@ export async function saveReferenceRecord(
     defaultBasis: read(form, 'defaultBasis'),
     defaultSeverity: read(form, 'defaultSeverity'),
     hsCode: read(form, 'hsCode'),
+    revenueAccountCode: read(form, 'revenueAccountCode'),
+    costAccountCode: read(form, 'costAccountCode'),
     isActive: form.get('isActive') !== null,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
@@ -412,6 +459,16 @@ export async function saveReferenceRecord(
     values.key = data.code
     values.category = data.category ?? 'other'
     values.defaultBasis = data.defaultBasis ?? 'flat'
+    /*
+      Where this charge posts in the customer's ledger (0011).
+
+      Reference data rather than code because every accounting package in the
+      Gulf numbers its accounts differently, and an unmapped charge type is
+      what the accounting export refuses on — by name, so the operator knows
+      which row to open.
+    */
+    values.revenueAccountCode = data.revenueAccountCode
+    values.costAccountCode = data.costAccountCode
   } else {
     values.code = data.code
   }

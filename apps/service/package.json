@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "verify:storage": "tsx src/adapters/verify-file-store.ts",
-    "verify:notifications": "tsx src/workers/verify-notifications.ts"
+    "verify:notifications": "tsx src/workers/verify-notifications.ts",
+    "verify:last-mile": "tsx src/verify-last-mile.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

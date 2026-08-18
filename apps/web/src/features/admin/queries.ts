@@ -130,6 +130,14 @@ export interface BranchRow {
   readonly timeZone: string
   readonly invoiceSeries: string | null
   readonly invoiceSeriesNext: number
+  readonly taxRegistration: string | null
+  readonly houseBillSeries: string | null
+  readonly arAccountCode: string | null
+  readonly apAccountCode: string | null
+  readonly taxAccountCode: string | null
+  readonly bankAccountCode: string | null
+  readonly fxVarianceAccountCode: string | null
+  readonly roundingAccountCode: string | null
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
@@ -150,6 +158,14 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         timeZone: branches.timeZone,
         invoiceSeries: branches.invoiceSeries,
         invoiceSeriesNext: branches.invoiceSeriesNext,
+        taxRegistration: branches.taxRegistration,
+        houseBillSeries: branches.houseBillSeries,
+        arAccountCode: branches.arAccountCode,
+        apAccountCode: branches.apAccountCode,
+        taxAccountCode: branches.taxAccountCode,
+        bankAccountCode: branches.bankAccountCode,
+        fxVarianceAccountCode: branches.fxVarianceAccountCode,
+        roundingAccountCode: branches.roundingAccountCode,
         isActive: branches.isActive,
         calendarId: branches.calendarId,
         calendarName: workingCalendars.nameEn,
@@ -204,17 +220,35 @@ export async function referenceCounts(actor: Actor): Promise<ReferenceTable[]> {
   })
 }
 
-export async function listChargeTypes(
-  actor: Actor,
-): Promise<{ key: string; nameEn: string; nameAr: string; category: string; basis: string }[]> {
+export async function listChargeTypes(actor: Actor): Promise<
+  {
+    id: string
+    key: string
+    nameEn: string
+    nameAr: string
+    category: string
+    basis: string
+    revenueAccountCode: string | null
+    costAccountCode: string | null
+  }[]
+> {
   return withActor(actor, async (tx) =>
     tx
       .select({
+        id: chargeTypes.id,
         key: chargeTypes.key,
         nameEn: chargeTypes.nameEn,
         nameAr: chargeTypes.nameAr,
         category: chargeTypes.category,
         basis: chargeTypes.defaultBasis,
+        /*
+          Carried so the reference screen can show which charges are still
+          unmapped — that list is the difference between an accounting export
+          that runs and one that refuses, and burying it inside the export's
+          error message means finding it twelve times instead of once.
+        */
+        revenueAccountCode: chargeTypes.revenueAccountCode,
+        costAccountCode: chargeTypes.costAccountCode,
       })
       .from(chargeTypes)
       .orderBy(asc(chargeTypes.sortOrder)),

@@ -903,7 +903,22 @@
     "total": "Branches",
     "noCalendar": "No calendar",
     "noneYet": "No branches yet",
-    "noneYetHint": "Branches are created with the database seed."
+    "noneYetHint": "Branches are created with the database seed.",
+    "accounts": "Ledger",
+    "accountsSet": "Mapped",
+    "accountsMissing": "Unmapped",
+    "houseBillSeries": "House B/L series",
+    "houseBillSeriesHint": "Leave blank to number house bills by hand",
+    "accountsSection": "Chart of accounts",
+    "accountsSectionHint": "Where this entity posts. Leave blank until you have the codes — the accounting export names what is missing.",
+    "arAccount": "Receivables",
+    "arAccountHint": "The control account invoices post to",
+    "apAccount": "Payables",
+    "bankAccount": "Bank",
+    "taxAccount": "Output tax",
+    "fxAccount": "FX variance",
+    "fxAccountHint": "Where a rate that moved between invoice and receipt lands",
+    "roundingAccount": "Rounding"
   },
   "reference": {
     "eyebrow": "Administration",
@@ -935,7 +950,9 @@
       "working_calendars": "Calendars",
       "commodities": "Commodities",
       "chargeable_rules": "Chargeable rules"
-    }
+    },
+    "accounts": "Revenue / cost",
+    "unmapped": "Unmapped"
   },
   "audit": {
     "eyebrow": "Administration",
@@ -1345,7 +1362,10 @@
       "medium": "Medium",
       "high": "High",
       "critical": "Critical"
-    }
+    },
+    "revenueAccount": "Revenue account",
+    "revenueAccountHint": "From the customer’s chart of accounts",
+    "costAccount": "Cost account"
   },
   "enquiryActions": {
     "respond": "Mark replied",

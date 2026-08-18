@@ -104,6 +104,7 @@ export default async function ReferencePage() {
                 <TH>{t('name')}</TH>
                 <TH>{t('category')}</TH>
                 <TH>{t('basis')}</TH>
+                <TH>{t('accounts')}</TH>
               </TR>
             </THead>
             <TBody>
@@ -115,6 +116,20 @@ export default async function ReferencePage() {
                     <Badge tone="muted">{row.category}</Badge>
                   </TD>
                   <TD className="ref text-ink-muted">{row.basis}</TD>
+                  {/*
+                    Unmapped is the state that stops a period closing, and this
+                    is the screen where it gets fixed — so it is shown here
+                    rather than only inside the export's refusal.
+                  */}
+                  <TD className="ref whitespace-nowrap">
+                    {row.revenueAccountCode || row.costAccountCode ? (
+                      <span className="text-ink-muted">
+                        {row.revenueAccountCode ?? '—'} / {row.costAccountCode ?? '—'}
+                      </span>
+                    ) : (
+                      <Badge tone="caution">{t('unmapped')}</Badge>
+                    )}
+                  </TD>
                 </TR>
               ))}
             </TBody>

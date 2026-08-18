@@ -312,13 +312,27 @@ export async function issueDocument(form: FormData): Promise<void> {
 
   if (kind === 'house_bill') await allocateHouseBillNumber(session, jobId)
 
-  const serviceUrl = process.env.SERVICE_URL ?? 'http://localhost:3001'
+  /*
+    Named rather than defaulted.
+
+    This used to fall back to `http://localhost:3001`, which is right on one
+    developer's machine and silently wrong everywhere else: a deployment
+    missing the variable would report a connection refused against localhost,
+    which reads as "the service is down" rather than "nobody set SERVICE_URL".
+    Every other caller of the service — the document routes, the export —
+    refuses by name, and this now matches them.
+  */
+  const serviceUrl = process.env.SERVICE_URL
+  const secret = process.env.INTERNAL_API_SECRET
+  if (!serviceUrl || !secret) {
+    throw new Error(
+      'Documents are rendered by the service. Set SERVICE_URL and INTERNAL_API_SECRET.',
+    )
+  }
+
   const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/documents/job/${jobId}`, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '',
-    },
+    headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
     body: JSON.stringify({ actor: session.actor, locale, kind, store: true }),
     cache: 'no-store',
   })

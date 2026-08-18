@@ -179,6 +179,13 @@ export interface BranchDefaults {
   readonly timeZone?: string
   readonly invoiceSeries?: string
   readonly taxRegistration?: string | null
+  readonly houseBillSeries?: string | null
+  readonly arAccountCode?: string | null
+  readonly apAccountCode?: string | null
+  readonly taxAccountCode?: string | null
+  readonly bankAccountCode?: string | null
+  readonly fxVarianceAccountCode?: string | null
+  readonly roundingAccountCode?: string | null
   readonly isActive?: boolean
 }
 
@@ -296,6 +303,81 @@ export async function BranchDialog({
           },
         ]),
     {
+      kind: 'text',
+      name: 'houseBillSeries',
+      label: t('houseBillSeries'),
+      span: 6,
+      mono: true,
+      hint: t('houseBillSeriesHint'),
+      defaultValue: defaults?.houseBillSeries,
+    },
+    /*
+      The chart of accounts, in its own section.
+
+      Unlike the invoice series it *is* editable after creation: an operator
+      re-maps their ledger, and the mapping is a pointer at somebody else's
+      system rather than a statutory sequence whose continuity we guarantee.
+      Empty is the ordinary state of a new deployment — the export names what
+      is missing rather than a form insisting on it up front.
+    */
+    {
+      kind: 'section',
+      title: t('accountsSection'),
+      hint: t('accountsSectionHint'),
+      fields: [
+        {
+          kind: 'text',
+          name: 'arAccountCode',
+          label: t('arAccount'),
+          span: 4,
+          mono: true,
+          hint: t('arAccountHint'),
+          defaultValue: defaults?.arAccountCode,
+        },
+        {
+          kind: 'text',
+          name: 'apAccountCode',
+          label: t('apAccount'),
+          span: 4,
+          mono: true,
+          defaultValue: defaults?.apAccountCode,
+        },
+        {
+          kind: 'text',
+          name: 'bankAccountCode',
+          label: t('bankAccount'),
+          span: 4,
+          mono: true,
+          defaultValue: defaults?.bankAccountCode,
+        },
+        {
+          kind: 'text',
+          name: 'taxAccountCode',
+          label: t('taxAccount'),
+          span: 4,
+          mono: true,
+          defaultValue: defaults?.taxAccountCode,
+        },
+        {
+          kind: 'text',
+          name: 'fxVarianceAccountCode',
+          label: t('fxAccount'),
+          span: 4,
+          mono: true,
+          hint: t('fxAccountHint'),
+          defaultValue: defaults?.fxVarianceAccountCode,
+        },
+        {
+          kind: 'text',
+          name: 'roundingAccountCode',
+          label: t('roundingAccount'),
+          span: 4,
+          mono: true,
+          defaultValue: defaults?.roundingAccountCode,
+        },
+      ],
+    },
+    {
       kind: 'switch',
       name: 'isActive',
       label: t('active'),
@@ -334,6 +416,8 @@ export interface ReferenceDefaults {
   readonly defaultBasis?: string
   readonly defaultSeverity?: string
   readonly hsCode?: string | null
+  readonly revenueAccountCode?: string | null
+  readonly costAccountCode?: string | null
   readonly isActive?: boolean
 }
 
@@ -430,6 +514,31 @@ export async function ReferenceDialog({
             hint: t('basisHint'),
             options: BASES.map((key) => ({ value: key, label: t(`bases.${key}`) })),
             defaultValue: defaults?.defaultBasis ?? 'flat',
+          },
+          /*
+            Where this charge lands in the customer's ledger.
+
+            Two free-text codes rather than a picker, because the chart of
+            accounts belongs to the customer's accounting package and we do
+            not hold it. Blank is legitimate until somebody closes a period —
+            at which point the export names this row.
+          */
+          {
+            kind: 'text' as const,
+            name: 'revenueAccountCode',
+            label: t('revenueAccount'),
+            span: 6 as const,
+            mono: true,
+            hint: t('revenueAccountHint'),
+            defaultValue: defaults?.revenueAccountCode,
+          },
+          {
+            kind: 'text' as const,
+            name: 'costAccountCode',
+            label: t('costAccount'),
+            span: 6 as const,
+            mono: true,
+            defaultValue: defaults?.costAccountCode,
           },
         ]
       : []),

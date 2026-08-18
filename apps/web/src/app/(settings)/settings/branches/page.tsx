@@ -71,7 +71,9 @@ export default async function BranchesPage() {
             <TH>{t('invoiceSeries')}</TH>
             <TH align="end">{t('people')}</TH>
             <TH align="end">{t('openJobs')}</TH>
+            <TH>{t('accounts')}</TH>
             <TH>{tc('status')}</TH>
+            <TH align="end">{tc('actions')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -106,10 +108,51 @@ export default async function BranchesPage() {
               <TD align="end" numeric>
                 {row.openJobs}
               </TD>
+              {/*
+                Whether this entity can post a period at all.
+
+                An unmapped branch is not broken — it simply cannot close a
+                month, and the difference is worth showing here rather than
+                only in the export's refusal, because this is the screen where
+                somebody fixes it.
+              */}
+              <TD className="whitespace-nowrap">
+                {row.arAccountCode && row.apAccountCode && row.bankAccountCode ? (
+                  <Badge tone="positive">{t('accountsSet')}</Badge>
+                ) : (
+                  <Badge tone="caution">{t('accountsMissing')}</Badge>
+                )}
+              </TD>
               <TD>
                 <Badge tone={row.isActive ? 'positive' : 'muted'}>
                   {row.isActive ? tc('active') : tc('inactive')}
                 </Badge>
+              </TD>
+              <TD align="end">
+                <BranchDialog
+                  calendars={calendars}
+                  variant="ghost"
+                  iconOnly
+                  defaults={{
+                    id: row.id,
+                    code: row.code,
+                    legalNameEn: row.legalNameEn,
+                    legalNameAr: row.legalNameAr ?? '',
+                    country: row.country,
+                    baseCurrency: row.baseCurrency,
+                    calendarId: row.calendarId,
+                    timeZone: row.timeZone,
+                    taxRegistration: row.taxRegistration,
+                    houseBillSeries: row.houseBillSeries,
+                    arAccountCode: row.arAccountCode,
+                    apAccountCode: row.apAccountCode,
+                    taxAccountCode: row.taxAccountCode,
+                    bankAccountCode: row.bankAccountCode,
+                    fxVarianceAccountCode: row.fxVarianceAccountCode,
+                    roundingAccountCode: row.roundingAccountCode,
+                    isActive: row.isActive,
+                  }}
+                />
               </TD>
             </TR>
           ))}
