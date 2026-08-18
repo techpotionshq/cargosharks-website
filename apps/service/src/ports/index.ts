@@ -55,10 +55,23 @@ export interface StoredFile {
 
 /** Supabase Storage for the pilot, S3 for Release One, one interface (§3.1). */
 export interface FileStore {
+  /** Which driver answered, for the boot log — as on the other six ports. */
+  readonly key: string
   put(key: string, body: Buffer, contentType: string): Promise<StoredFile>
   get(key: string): Promise<Buffer>
-  /** Time-limited URL, so document bytes never pass through the application. */
-  signedUrl(key: string, expiresInSeconds: number): Promise<string>
+  /**
+   * Time-limited URL, so document bytes never pass through the application.
+   *
+   * `downloadFilename` is a request, not a guarantee: it rides on the storage
+   * provider's own `Content-Disposition` override, because the browser follows
+   * the redirect and reads the headers of whatever answers it — anything this
+   * application sets on the way past is discarded.
+   */
+  signedUrl(
+    key: string,
+    expiresInSeconds: number,
+    options?: { readonly downloadFilename?: string },
+  ): Promise<string>
   retire(key: string): Promise<void>
 }
 

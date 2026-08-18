@@ -30,11 +30,18 @@
  * The same reasoning covers a tracking feed that silently returns nothing.
  */
 
-import type { CarrierTracking, CustomsFiling, EInvoiceTransmit, FxRateSource } from '../ports/index'
+import type {
+  CarrierTracking,
+  CustomsFiling,
+  EInvoiceTransmit,
+  FileStore,
+  FxRateSource,
+} from '../ports/index'
 
 import { resolveCarrierTracking } from './carrier-tracking'
 import { resolveCustomsFiling } from './customs'
 import { resolveEInvoiceTransmit } from './einvoice'
+import { resolveFileStore } from './file-store'
 import { resolveFxSource } from './fx'
 
 export { manualFxSource, httpFxSource } from './fx'
@@ -42,9 +49,18 @@ export { manualCarrierTracking, terminal49Tracking } from './carrier-tracking'
 export { mapProviderEvents, type ProviderEvent } from './carrier-events'
 export { noTransmit, aspTransmit } from './einvoice'
 export { manualCustomsFiling } from './customs'
+export {
+  s3FileStore,
+  memoryFileStore,
+  parseStorageKey,
+  qualifyKey,
+  FileStoreError,
+  MAX_EXPIRY_SECONDS,
+} from './file-store'
 
 export interface Adapters {
   readonly fx: FxRateSource
+  readonly fileStore: FileStore
   readonly carrierTracking: CarrierTracking
   readonly customsFiling: CustomsFiling
   readonly eInvoice: EInvoiceTransmit
@@ -61,6 +77,7 @@ let resolved: Adapters | undefined
 export function adapters(): Adapters {
   resolved ??= {
     fx: resolveFxSource(),
+    fileStore: resolveFileStore(),
     carrierTracking: resolveCarrierTracking(),
     customsFiling: resolveCustomsFiling(),
     eInvoice: resolveEInvoiceTransmit(),
@@ -79,6 +96,7 @@ export function describeAdapters(): Record<string, string> {
   const a = adapters()
   return {
     fx: a.fx.key,
+    fileStore: a.fileStore.key,
     carrierTracking: a.carrierTracking.key,
     customsFiling: a.customsFiling.key,
     eInvoice: a.eInvoice.key,

@@ -28,6 +28,8 @@
 import type { FastifyInstance } from 'fastify'
 import { timingSafeEqual } from 'node:crypto'
 import type { Actor } from '@qabandi/db'
+import { adapters } from '../adapters/index'
+import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf } from '../pdf/documents'
 
@@ -35,6 +37,18 @@ interface DocumentRequest {
   readonly actor: Actor
   readonly locale?: 'en' | 'ar'
 }
+
+interface SignedUrlRequest {
+  readonly storageKey: string
+  readonly fileName?: string
+  readonly expiresInSeconds?: number
+}
+
+/**
+ * Short enough that a link pasted into a chat is dead by the time anyone reads
+ * it, long enough to survive a slow connection on a large document.
+ */
+const DEFAULT_DOWNLOAD_EXPIRY_SECONDS = 300
 
 /** Constant-time compare, so a wrong secret leaks nothing about the right one. */
 function secretMatches(header: unknown): boolean {
@@ -92,4 +106,50 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       }
     },
   )
+
+  /**
+   * Sign a download link for a stored file.
+   *
+   * ## Why the web app does not sign these itself
+   *
+   * It could — SigV4 is a pure function and `apps/web` has `node:crypto`. But
+   * signing needs the secret access key, and the moment that key is in the web
+   * app's environment it is in the environment of every server component, every
+   * server action and every dependency any of them import. The service already
+   * holds the credentials for storage; keeping them to one process is the whole
+   * reason the boundary is here.
+   *
+   * ## Why authorisation is *not* done here
+   *
+   * Unlike the invoice route above, this takes a storage key rather than an
+   * actor: the caller has already decided the principal may have this file, by
+   * running the lookup under their own actor and letting row-level security
+   * answer. That is a real delegation and worth stating plainly — anyone
+   * holding `INTERNAL_API_SECRET` can sign a link to any object in the bucket.
+   * It is no weaker than the invoice route, which lets the same holder name any
+   * principal, and it rests on the same premise: this port is never exposed
+   * publicly.
+   */
+  app.post<{ Body: SignedUrlRequest }>('/files/signed-url', async (request, reply) => {
+    const { storageKey, fileName, expiresInSeconds } = request.body ?? {}
+
+    if (typeof storageKey !== 'string' || storageKey.length === 0) {
+      return reply.code(400).send({ error: 'no_storage_key' })
+    }
+
+    try {
+      const url = await adapters().fileStore.signedUrl(
+        storageKey,
+        expiresInSeconds ?? DEFAULT_DOWNLOAD_EXPIRY_SECONDS,
+        { downloadFilename: fileName },
+      )
+      return reply.header('cache-control', 'private, no-store').send({ url })
+    } catch (error) {
+      if (error instanceof FileStoreError) {
+        // A bad key or a refused expiry is the caller's mistake, not an outage.
+        return reply.code(400).send({ error: 'invalid_request', message: error.message })
+      }
+      throw error
+    }
+  })
 }

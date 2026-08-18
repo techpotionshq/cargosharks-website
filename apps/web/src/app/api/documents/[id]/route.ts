@@ -89,11 +89,11 @@ export async function GET(
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
 
-  const bucket = process.env.S3_BUCKET
-  const endpoint = process.env.S3_ENDPOINT
-  if (!bucket || !endpoint) {
+  const serviceUrl = process.env.SERVICE_URL
+  const secret = process.env.INTERNAL_API_SECRET
+  if (!serviceUrl || !secret) {
     /**
-     * Storage is not configured in this environment.
+     * Storage is not reachable from this environment.
      *
      * 503 with a plain explanation rather than a 500 or a broken stream: the
      * record is real and the caller is allowed it, and the only missing piece
@@ -104,8 +104,8 @@ export async function GET(
       {
         error: 'storage_not_configured',
         message:
-          'The file store is not connected in this environment. Set S3_BUCKET and ' +
-          'S3_ENDPOINT to enable downloads; the document record itself is intact.',
+          'The file store is reached through the service. Set SERVICE_URL and ' +
+          'INTERNAL_API_SECRET to enable downloads; the document record itself is intact.',
         fileName: record.fileName,
       },
       { status: 503 },
@@ -113,19 +113,40 @@ export async function GET(
   }
 
   /**
+   * The service signs the link; this route never sees the storage credentials.
+   *
+   * It used to build `${endpoint}/${bucket}/${storageKey}` by hand, which was
+   * wrong twice over: unsigned, so it only worked against a public bucket, and
+   * it put the object's address in the browser's history whether or not the
+   * bytes ever arrived. Signing lives with the credentials, in `apps/service`.
+   */
+  const signed = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+    body: JSON.stringify({ storageKey: record.storageKey, fileName: record.fileName }),
+    cache: 'no-store',
+  })
+
+  if (!signed.ok) {
+    return NextResponse.json(
+      { error: 'storage_unavailable', fileName: record.fileName },
+      { status: 502 },
+    )
+  }
+
+  const { url } = (await signed.json()) as { url: string }
+
+  /**
    * Redirect to the object rather than proxying it through the application.
    *
-   * A Node process streaming a 40MB bill of lading holds a request open for
-   * the duration and gains nothing — the storage layer does this better. The
-   * redirect is `307` so the method is preserved and nothing caches it, since
-   * the URL is only valid for this caller.
+   * A Node process streaming a 40MB bill of lading holds a request open for the
+   * duration and gains nothing — the storage layer does this better. `307`
+   * preserves the method, and the caching headers matter more than usual here:
+   * the URL carries a signature that is valid for anyone who has it, for as
+   * long as it lasts.
    */
-  const object = `${endpoint.replace(/\/$/, '')}/${bucket}/${record.storageKey}`
-  return NextResponse.redirect(object, {
+  return NextResponse.redirect(url, {
     status: 307,
-    headers: {
-      'Cache-Control': 'private, no-store',
-      'Content-Disposition': `attachment; filename="${record.fileName.replace(/"/g, '')}"`,
-    },
+    headers: { 'Cache-Control': 'private, no-store' },
   })
 }
