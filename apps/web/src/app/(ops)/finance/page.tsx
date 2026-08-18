@@ -27,6 +27,7 @@ import {
   type AgeingBucket,
 } from '@/features/ledger/queries'
 import { InvoiceDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
+import { AccountingExportDialog } from '@/features/ledger/ui/export-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { BarList } from '@/ui/chart'
@@ -88,6 +89,9 @@ export default async function FinancePage() {
         description={t('subtitle')}
         actions={
           <>
+            {/* Preview first, post second — the order they are used in. */}
+            <AccountingExportDialog variant="ghost" />
+            <AccountingExportDialog post variant="secondary" />
             <PaymentDialog variant="secondary" />
             <InvoiceDialog variant="primary" />
           </>

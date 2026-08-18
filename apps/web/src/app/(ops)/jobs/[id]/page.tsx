@@ -38,6 +38,16 @@ import {
   RaiseExceptionDialog,
 } from '@/features/operations/ui/dialogs'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
+import {
+  listJobCargo,
+  listJobContainers,
+  listJobParties,
+} from '@/features/documents/queries'
+import {
+  CargoCard,
+  DocumentActionsCard,
+  PartiesCard,
+} from '@/features/documents/ui/panels'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 
@@ -50,6 +60,20 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   // Resolved once rather than per row — the document list can be long and the
   // answer cannot change halfway down it.
   const canRelease = can(session, 'document.release')
+
+  /*
+    Three reads, in parallel, and separate from `getJobDetail`.
+
+    Kept out of that query because it returns `JobDetail`, a type the pilot
+    fixtures also satisfy — widening it would mean inventing fixture parties
+    for twenty demo shipments. These return empty under fixtures and the
+    panels say so.
+  */
+  const [parties, cargo, containerOptions] = await Promise.all([
+    listJobParties(session.actor, id),
+    listJobCargo(session.actor, id),
+    listJobContainers(session.actor, id),
+  ])
 
   const t = await getTranslations('job')
   const tc = await getTranslations('common')
@@ -425,6 +449,22 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </TableShell>
           )}
         </Card>
+
+        {/* --- parties, cargo, and what they produce ------------------- */}
+        <PartiesCard jobId={id} parties={parties} className="lg:col-span-7" />
+
+        <DocumentActionsCard
+          jobId={id}
+          hasCargo={cargo.length > 0}
+          className="lg:col-span-5"
+        />
+
+        <CargoCard
+          jobId={id}
+          cargo={cargo}
+          containers={containerOptions}
+          className="lg:col-span-12"
+        />
       </Grid>
     </>
   )

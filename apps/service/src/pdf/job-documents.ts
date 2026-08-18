@@ -80,7 +80,7 @@ export type JobDocumentKind = (typeof JOB_DOCUMENT_KINDS)[number]
 /** The document-type keys these map to in `document_types`. */
 export const DOCUMENT_TYPE_KEYS: Record<JobDocumentKind, string> = {
   house_bill: 'hbl',
-  delivery_order: 'do',
+  delivery_order: 'delivery_order',
   packing_list: 'packing_list',
   customs_pack: 'customs_pack',
 }

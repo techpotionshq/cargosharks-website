@@ -1,0 +1,368 @@
+/**
+ * Consolidation reads — the master list and one master's file.
+ *
+ * As everywhere else, no query here carries a branch filter: `withActor` sets
+ * the principal and RLS applies the scope (§5.3). A consolidation is
+ * internal-only by policy, because the house list names which other customers
+ * shipped on the same vessel.
+ *
+ * No pilot-fixture branch. The fixtures were written for the screens the pilot
+ * needed and consolidation was not one of them, so these routes want a
+ * database and say so rather than degrading — the same treatment finance,
+ * network and reference already get, and recorded in `e2e/support/harness.ts`
+ * as `NEEDS_DATABASE` so the gap shows in the pipeline.
+ */
+
+import 'server-only'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
+import {
+  chargeTypes,
+  consolAllocationShares,
+  consolChargeLines,
+  consolidations,
+  customers,
+  jobs,
+  locations,
+  partners,
+  withActor,
+  type Actor,
+} from '@qabandi/db'
+
+const origin = alias(locations, 'consol_origin')
+const destination = alias(locations, 'consol_destination')
+
+export interface ConsolidationSummary {
+  readonly id: string
+  readonly reference: string
+  readonly status: 'open' | 'closed' | 'cancelled'
+  readonly mode: string
+  readonly tradeDirection: string
+  readonly masterBillNumber: string | null
+  readonly vesselName: string | null
+  readonly voyageNumber: string | null
+  readonly flightNumber: string | null
+  readonly originName: string | null
+  readonly destinationName: string | null
+  readonly etd: Date | null
+  readonly eta: Date | null
+  readonly houseCount: number
+  readonly volumeCbm: string
+  readonly grossWeightKg: string
+  /** Master costs raised but not yet split across the houses. */
+  readonly unallocatedCount: number
+}
+
+export async function listConsolidations(
+  actor: Actor,
+  filters: { readonly status?: string } = {},
+): Promise<ConsolidationSummary[]> {
+  return withActor(actor, async (tx) => {
+    const rows = await tx
+      .select({
+        id: consolidations.id,
+        reference: consolidations.reference,
+        status: consolidations.status,
+        mode: consolidations.mode,
+        tradeDirection: consolidations.tradeDirection,
+        masterBillNumber: consolidations.masterBillNumber,
+        vesselName: consolidations.vesselName,
+        voyageNumber: consolidations.voyageNumber,
+        flightNumber: consolidations.flightNumber,
+        originName: origin.nameEn,
+        destinationName: destination.nameEn,
+        etd: consolidations.etd,
+        eta: consolidations.eta,
+        /*
+          Counted in SQL rather than by loading the houses.
+
+          A list of thirty consolidations would otherwise be thirty-one
+          queries, and the count is the only thing the row needs.
+        */
+        houseCount: sql<number>`(
+          select count(*)::int from jobs j where j.consolidation_id = ${consolidations.id}
+        )`,
+        volumeCbm: sql<string>`(
+          select coalesce(sum(c.volume_cbm), 0)::text
+            from job_cargo c
+            join jobs j on j.id = c.job_id
+           where j.consolidation_id = ${consolidations.id}
+        )`,
+        grossWeightKg: sql<string>`(
+          select coalesce(sum(c.gross_weight_kg), 0)::text
+            from job_cargo c
+            join jobs j on j.id = c.job_id
+           where j.consolidation_id = ${consolidations.id}
+        )`,
+        unallocatedCount: sql<number>`(
+          select count(*)::int from consol_charge_lines l
+           where l.consolidation_id = ${consolidations.id} and l.allocated_at is null
+        )`,
+      })
+      .from(consolidations)
+      .leftJoin(origin, eq(origin.id, consolidations.originId))
+      .leftJoin(destination, eq(destination.id, consolidations.destinationId))
+      .where(
+        filters.status
+          ? eq(consolidations.status, filters.status as 'open')
+          : sql`${consolidations.status} <> 'cancelled'`,
+      )
+      .orderBy(desc(consolidations.etd), desc(consolidations.createdAt))
+      .limit(200)
+
+    return rows as ConsolidationSummary[]
+  })
+}
+
+export interface ConsolidationHouse {
+  readonly jobId: string
+  readonly reference: string
+  readonly houseBillNumber: string | null
+  readonly customerName: string
+  readonly status: string
+  readonly packages: number
+  readonly grossWeightKg: string
+  readonly volumeCbm: string
+  readonly chargeableWeightKg: string | null
+}
+
+export interface ConsolidationCharge {
+  readonly id: string
+  readonly direction: 'cost' | 'revenue'
+  readonly chargeTypeName: string
+  readonly description: string | null
+  readonly amount: string
+  readonly currency: string
+  readonly amountBase: string
+  readonly baseCurrency: string
+  readonly allocationBasis: string
+  readonly allocatedAt: Date | null
+  readonly counterpartyName: string | null
+  readonly shareCount: number
+}
+
+export interface ConsolidationDetail extends ConsolidationSummary {
+  readonly branchId: string
+  readonly carrierName: string | null
+  readonly coloadPartnerName: string | null
+  readonly bookingNumber: string | null
+  readonly notes: string | null
+  readonly closedAt: Date | null
+  readonly houses: readonly ConsolidationHouse[]
+  readonly charges: readonly ConsolidationCharge[]
+}
+
+export async function getConsolidation(
+  actor: Actor,
+  id: string,
+): Promise<ConsolidationDetail | undefined> {
+  return withActor(actor, async (tx) => {
+    const carrier = alias(partners, 'carrier')
+    const coload = alias(partners, 'coload')
+
+    const [row] = await tx
+      .select({
+        id: consolidations.id,
+        branchId: consolidations.branchId,
+        reference: consolidations.reference,
+        status: consolidations.status,
+        mode: consolidations.mode,
+        tradeDirection: consolidations.tradeDirection,
+        masterBillNumber: consolidations.masterBillNumber,
+        bookingNumber: consolidations.bookingNumber,
+        vesselName: consolidations.vesselName,
+        voyageNumber: consolidations.voyageNumber,
+        flightNumber: consolidations.flightNumber,
+        originName: origin.nameEn,
+        destinationName: destination.nameEn,
+        etd: consolidations.etd,
+        eta: consolidations.eta,
+        closedAt: consolidations.closedAt,
+        notes: consolidations.notes,
+        carrierName: carrier.legalNameEn,
+        coloadPartnerName: coload.legalNameEn,
+      })
+      .from(consolidations)
+      .leftJoin(origin, eq(origin.id, consolidations.originId))
+      .leftJoin(destination, eq(destination.id, consolidations.destinationId))
+      .leftJoin(carrier, eq(carrier.id, consolidations.carrierPartnerId))
+      .leftJoin(coload, eq(coload.id, consolidations.coloadPartnerId))
+      .where(eq(consolidations.id, id))
+      .limit(1)
+
+    if (!row) return undefined
+
+    const houses = await tx
+      .select({
+        jobId: jobs.id,
+        reference: jobs.reference,
+        houseBillNumber: jobs.houseBillNumber,
+        customerName: customers.legalNameEn,
+        status: jobs.status,
+        chargeableWeightKg: jobs.chargeableWeightKg,
+        packages: sql<number>`(
+          select coalesce(sum(c.package_count), 0)::int
+            from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+        grossWeightKg: sql<string>`(
+          select coalesce(sum(c.gross_weight_kg), 0)::text
+            from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+        volumeCbm: sql<string>`(
+          select coalesce(sum(c.volume_cbm), 0)::text
+            from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+      })
+      .from(jobs)
+      .innerJoin(customers, eq(customers.id, jobs.customerId))
+      .where(eq(jobs.consolidationId, id))
+      .orderBy(asc(jobs.reference))
+
+    const charges = await tx
+      .select({
+        id: consolChargeLines.id,
+        direction: consolChargeLines.direction,
+        chargeTypeName: chargeTypes.nameEn,
+        description: consolChargeLines.description,
+        amount: consolChargeLines.amount,
+        currency: consolChargeLines.currency,
+        amountBase: consolChargeLines.amountBase,
+        baseCurrency: consolChargeLines.baseCurrency,
+        allocationBasis: consolChargeLines.allocationBasis,
+        allocatedAt: consolChargeLines.allocatedAt,
+        counterpartyName: partners.legalNameEn,
+        shareCount: sql<number>`(
+          select count(*)::int from consol_allocation_shares s
+           where s.consol_charge_line_id = ${consolChargeLines.id}
+        )`,
+      })
+      .from(consolChargeLines)
+      .innerJoin(chargeTypes, eq(chargeTypes.id, consolChargeLines.chargeTypeId))
+      .leftJoin(partners, eq(partners.id, consolChargeLines.counterpartyPartnerId))
+      .where(eq(consolChargeLines.consolidationId, id))
+      .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
+
+    const totals = houses.reduce(
+      (acc, h) => ({
+        volume: acc.volume + Number(h.volumeCbm ?? 0),
+        gross: acc.gross + Number(h.grossWeightKg ?? 0),
+      }),
+      { volume: 0, gross: 0 },
+    )
+
+    return {
+      ...(row as unknown as ConsolidationSummary),
+      branchId: row.branchId,
+      carrierName: row.carrierName,
+      coloadPartnerName: row.coloadPartnerName,
+      bookingNumber: row.bookingNumber,
+      notes: row.notes,
+      closedAt: row.closedAt,
+      houseCount: houses.length,
+      volumeCbm: totals.volume.toFixed(3),
+      grossWeightKg: totals.gross.toFixed(3),
+      unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
+      houses: houses as ConsolidationHouse[],
+      charges: charges as ConsolidationCharge[],
+    }
+  })
+}
+
+/**
+ * Jobs that could join this consolidation.
+ *
+ * Same branch, same mode, no master of their own yet. The branch match is not
+ * a nicety — a trigger refuses a cross-branch house, because a Dubai house
+ * allocated a share of a Kuwait master cost lands in the wrong entity's P&L
+ * and the wrong entity's accounting export.
+ */
+export async function listAttachableJobs(
+  actor: Actor,
+  consolidationId: string,
+): Promise<{ readonly id: string; readonly label: string }[]> {
+  return withActor(actor, async (tx) => {
+    const [consol] = await tx
+      .select({ branchId: consolidations.branchId, mode: consolidations.mode })
+      .from(consolidations)
+      .where(eq(consolidations.id, consolidationId))
+      .limit(1)
+
+    if (!consol) return []
+
+    const rows = await tx
+      .select({
+        id: jobs.id,
+        reference: jobs.reference,
+        customerName: customers.legalNameEn,
+      })
+      .from(jobs)
+      .innerJoin(customers, eq(customers.id, jobs.customerId))
+      .where(
+        and(
+          eq(jobs.branchId, consol.branchId),
+          eq(jobs.mode, consol.mode),
+          isNull(jobs.consolidationId),
+          isNull(jobs.closedAt),
+          isNull(jobs.cancelledAt),
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(100)
+
+    return rows.map((r) => ({ id: r.id, label: `${r.reference} — ${r.customerName}` }))
+  })
+}
+
+/** The cargo figures every allocation basis reads from. */
+export async function loadAllocationTargets(
+  actor: Actor,
+  consolidationId: string,
+): Promise<
+  {
+    readonly jobId: string
+    readonly reference: string
+    readonly chargeableWeightKg: string | null
+    readonly volumeCbm: string | null
+    readonly grossWeightKg: string | null
+    readonly packages: number | null
+  }[]
+> {
+  return withActor(actor, async (tx) => {
+    const rows = await tx
+      .select({
+        jobId: jobs.id,
+        reference: jobs.reference,
+        chargeableWeightKg: jobs.chargeableWeightKg,
+        volumeCbm: sql<string>`(
+          select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+        grossWeightKg: sql<string>`(
+          select coalesce(sum(c.gross_weight_kg), 0)::text
+            from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+        packages: sql<number>`(
+          select coalesce(sum(c.package_count), 0)::int from job_cargo c where c.job_id = ${jobs.id}
+        )`,
+      })
+      .from(jobs)
+      .where(eq(jobs.consolidationId, consolidationId))
+      .orderBy(asc(jobs.reference))
+
+    return rows
+  })
+}
+
+/** Where an allocated cost landed — the answer to "why is this on my job?". */
+export async function listAllocationShares(
+  actor: Actor,
+  consolChargeLineId: string,
+): Promise<{ readonly jobReference: string; readonly shareAmount: string }[]> {
+  return withActor(actor, async (tx) =>
+    tx
+      .select({ jobReference: jobs.reference, shareAmount: consolAllocationShares.shareAmount })
+      .from(consolAllocationShares)
+      .innerJoin(jobs, eq(jobs.id, consolAllocationShares.jobId))
+      .where(eq(consolAllocationShares.consolChargeLineId, consolChargeLineId))
+      .orderBy(asc(jobs.reference)),
+  )
+}

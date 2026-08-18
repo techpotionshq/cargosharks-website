@@ -13,7 +13,7 @@
 
 import { sql } from 'drizzle-orm'
 import { loadEnv } from './env'
-import { ADMIN_PERMISSIONS, permissionKeys } from '@qabandi/core'
+import { ADMIN_PERMISSIONS, SEED_KW_TARIFF, permissionKeys } from '@qabandi/core'
 import { createDatabase } from './client'
 import { NOTIFICATION_TEMPLATES } from './notification-templates'
 import { SYSTEM_PRINCIPAL_ID, systemActor, withActor } from './actor'
@@ -23,6 +23,7 @@ import {
   containerTypes,
   countries,
   currencies,
+  dutyRates,
   exceptionCodes,
   documentTypes,
   incoterms,
@@ -247,6 +248,15 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'payment.record',
     'customs.pay',
     'finance.export',
+    /*
+      Finance may split a master cost but not build the master.
+
+      The allocation decides what twenty jobs cost and therefore what twenty
+      margins are; the vessel it sailed on is operations' business. Splitting
+      the two keys this way is the same segregation as invoice.issue sitting
+      with finance and job.book sitting with operations.
+    */
+    'consol.allocate',
     'report.read',
     'job.read',
   ],
@@ -280,6 +290,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'customs.update',
     'customs.pay',
     'document.release',
+    'document.generate',
+    'consol.write',
+    'consol.allocate',
     'rate.card.write',
     'customer.write',
     'partner.write',
@@ -308,6 +321,19 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       the record, not that it is rationed.
     */
     'document.release',
+    /*
+      Issuing a document is the coordinator's job for the same reason
+      releasing one is: they are holding the file when the carrier confirms,
+      and routing it through a manager means either a bottleneck at the moment
+      a shipment is waiting or a manager who approves without looking.
+
+      `consol.write` on the same reasoning — building the master is the work,
+      not an approval of it. Splitting the cost is not here: that is
+      `consol.allocate`, and it belongs with the people who answer for the
+      margin.
+    */
+    'document.generate',
+    'consol.write',
     'customer.write',
   ],
   sales: [
@@ -564,6 +590,22 @@ async function main(): Promise<void> {
             nameAr: 'شهادة التأمين',
             category: 'partner_compliance',
           },
+          /*
+            The declaration pack is ours, not the authority's.
+
+            `customs_declaration` above is the filed document that comes back
+            with a number on it. This is the working sheet we hand the broker
+            beforehand — the fields they would otherwise retype out of three
+            other documents. Two rows because they are two artefacts with two
+            authors, and conflating them would make "has the declaration been
+            filed?" unanswerable.
+          */
+          {
+            code: 'customs_pack',
+            nameEn: 'Customs Declaration Pack',
+            nameAr: 'ملف البيان الجمركي',
+            category: 'compliance',
+          },
         ])
         .onConflictDoNothing()
 
@@ -610,6 +652,32 @@ async function main(): Promise<void> {
             updatedAt: new Date(),
           },
         })
+
+      /*
+        The tariff, as far as a generic seed can honestly go.
+
+        Three rows and no more, because the fourth would be a guess. The GCC
+        common external tariff is 5% ad valorem across most of the schedule and
+        that rate is *not* seeded as a row — it is opted into per estimate, so
+        an operator quoting 5% on a code nobody has classified has chosen to.
+        The exemptions that matter to most importers here are published at
+        chapter level and are facts; those are seeded.
+
+        A deployment that needs the full national schedule loads it as
+        reference data, which is the whole point of it being a table.
+      */
+      await db
+        .insert(dutyRates)
+        .values(
+          SEED_KW_TARIFF.map((line) => ({
+            country: line.country,
+            hsPrefix: line.hsPrefix,
+            ratePercent: String(line.ratePercent),
+            descriptionEn: line.descriptionEn,
+            effectiveFrom: line.effectiveFrom,
+          })),
+        )
+        .onConflictDoNothing()
 
       // Kuwait, Qatar and the UAE share neither a weekend nor a holiday list — NFR-03.
       await db

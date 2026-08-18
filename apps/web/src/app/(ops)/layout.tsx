@@ -88,6 +88,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           icon: 'alert',
           badge: counts.openExceptions,
         },
+        { href: '/consolidations', label: t('consolidations'), icon: 'ship' },
         { href: '/customs', label: t('customs'), icon: 'customs' },
         { href: '/documents', label: t('documents'), icon: 'document' },
       ],
