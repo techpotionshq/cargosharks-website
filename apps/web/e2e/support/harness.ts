@@ -45,6 +45,7 @@ const ALL_OPS_ROUTES = [
   '/enquiries',
   '/quotes',
   '/jobs',
+  '/consolidations',
   '/customs',
   '/exceptions',
   '/documents',
