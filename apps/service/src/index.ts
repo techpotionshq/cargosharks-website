@@ -26,6 +26,7 @@ import { registerSchedules, stopBoss } from './queue'
 import { describeAdapters } from './adapters/index'
 import { registerWorkers } from './workers/index'
 import { publicApi } from './api/public'
+import { internalApi } from './api/internal'
 import { webhooks } from './webhooks/index'
 
 const app = Fastify({
@@ -50,6 +51,14 @@ await app.register(rateLimit, { max: 120, timeWindow: '1 minute' })
 app.get('/health', async () => ({ ok: true, at: new Date().toISOString() }))
 
 await app.register(publicApi, { prefix: '/api/v1' })
+
+/*
+  Service-to-service only. Never expose this prefix publicly: it authenticates
+  with a shared secret and takes the acting principal from the request body, so
+  anyone who can reach it with the secret can render any document the named
+  principal could see.
+*/
+await app.register(internalApi, { prefix: '/internal' })
 await app.register(webhooks, { prefix: '/webhooks' })
 
 await registerWorkers(app.log)

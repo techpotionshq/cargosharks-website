@@ -21,7 +21,14 @@ type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 const PENDING: { name: string; trigger: string; requirement: string }[] = [
   { name: JOBS.inboundEmail, trigger: 'webhook', requirement: 'FR-EQ-02' },
   { name: JOBS.inboundWhatsApp, trigger: 'webhook', requirement: 'FR-NT-05' },
-  { name: JOBS.pdfRender, trigger: 'on demand', requirement: '§8, bilingual' },
+  /*
+    The renderer and the invoice template now exist and are wired to
+    `/internal/documents/invoice/:id`, which renders on demand and streams.
+    This queued job is what *stores* a document at issue — the moment an
+    invoice stops being a view of editable rows and becomes a record — and it
+    waits on `FileStore`, which has no implementation yet.
+  */
+  { name: JOBS.pdfRender, trigger: 'on issue', requirement: '§8 — needs FileStore' },
   { name: JOBS.complianceExpiry, trigger: 'nightly', requirement: 'FR-MD-05' },
   { name: JOBS.rateCardExpiry, trigger: 'nightly', requirement: 'FR-RT-11' },
   { name: JOBS.bulkImport, trigger: 'on upload', requirement: 'FR-MD-11, FR-RT-09' },
