@@ -1,4 +1,4 @@
-import { createPool } from '@qabandi/db'
+import { createPool, EXPECTED_MIGRATIONS } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
 
 /**
@@ -26,6 +26,17 @@ interface Health {
   /** Applied migration count — how a fleet answers "who is behind?". */
   schemaVersion: number | null
   database: 'ok' | 'unreachable' | 'not-configured'
+  /**
+   * What this build expects, against what the database has.
+   *
+   * Added after a redeploy answered `relation "support_grants" does not exist`:
+   * the code was new, the database was a migration behind, and nothing running
+   * could say so. The symptom was a `42P01` buried in a stack trace; the cause
+   * was one number being lower than another, which is exactly the kind of thing
+   * a health endpoint should state outright.
+   */
+  expectedSchemaVersion: number
+  migrationsPending: number | null
   /**
    * Whether the session signing key is set to something real.
    *
@@ -61,6 +72,8 @@ export async function GET(): Promise<Response> {
     status: authConfigured ? 'ok' : 'degraded',
     tenant,
     schemaVersion: null,
+    expectedSchemaVersion: EXPECTED_MIGRATIONS,
+    migrationsPending: null,
     database: 'not-configured',
     auth: authConfigured ? 'ok' : 'not-configured',
     fixtures,
@@ -78,9 +91,54 @@ export async function GET(): Promise<Response> {
     */
     const pool = createPool({ connectionString: process.env.DATABASE_URL, max: 1 })
     try {
-      const result = await pool.query(`select count(*)::int as n from drizzle.__drizzle_migrations`)
+      /*
+        Reachability and schema version are two questions, asked separately.
+
+        They used to be one: the probe read `drizzle.__drizzle_migrations`, and
+        when `app_user` had no grant on that schema the permission error was
+        reported as `database: unreachable`. A real outage was chased as a
+        networking fault for an hour on the strength of that one word.
+
+        `select 1` is a question every role can answer, so it isolates
+        connectivity. The version is asked afterwards and allowed to fail on
+        its own terms.
+      */
+      await pool.query('select 1')
       body.database = 'ok'
-      body.schemaVersion = (result.rows[0] as { n: number } | undefined)?.n ?? null
+
+      try {
+        const result = await pool.query(
+          `select count(*)::int as n from drizzle.__drizzle_migrations`,
+        )
+        body.schemaVersion = (result.rows[0] as { n: number } | undefined)?.n ?? null
+      } catch {
+        /*
+          An unreadable version is itself the answer.
+
+          `0009_schema_version_read` grants `app_user` select on the migration
+          table, so on any current schema this query succeeds. Reaching the
+          database and *not* being able to read it therefore means the schema
+          predates that grant — which is to say it is behind, and saying "ok"
+          here would be confidently wrong about the exact fault this endpoint
+          was extended to catch.
+        */
+        body.schemaVersion = null
+        body.status = 'degraded'
+      }
+
+      /*
+        A database behind the code is degraded, not healthy.
+
+        Reported rather than merely observed: a deployment in this state serves
+        most pages perfectly and fails on whichever feature the newest
+        migration added, which is the hardest kind of fault to attribute. The
+        answer is `pnpm db:migrate`, and it should not take a stack trace to
+        work that out.
+      */
+      if (body.schemaVersion !== null) {
+        body.migrationsPending = Math.max(0, EXPECTED_MIGRATIONS - body.schemaVersion)
+        if (body.migrationsPending > 0) body.status = 'degraded'
+      }
     } catch (error) {
       /*
         Reported as a class publicly, logged in full privately.

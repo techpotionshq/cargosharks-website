@@ -33,11 +33,28 @@
 -- --------------------------------------------------------------------------
 -- The principal type and the scope
 -- --------------------------------------------------------------------------
---
--- `add value` is safe inside a transaction on PostgreSQL 12+ provided the new
--- label is not *used* before commit. Nothing below uses it as an enum: the
--- policies compare `app.principal_type()`, which is text.
 
+/*
+  The label is added here and compared as **text** everywhere below, and that
+  is not a stylistic choice.
+
+  PostgreSQL refuses to *use* an enum label that was added in the current
+  transaction unless the type itself was created in that transaction
+  (`check_safe_enum_use`, SQLSTATE 55P04). Drizzle runs a migration run as one
+  transaction, so this file behaves differently depending on the database it
+  meets:
+
+    fresh install   0000 creates the type and 0008 extends it, same
+                    transaction — using the label is allowed
+    existing deployment
+                    the type was created months ago, so using the label here
+                    raises 55P04 and the whole migration run rolls back
+
+  Which means the version of this file that passed every clean-room test would
+  have failed on the one database that matters. Casting to text sidesteps the
+  check entirely: `type::text = 'support'` compares strings and never resolves
+  the label, so it is safe in both cases.
+*/
 alter type principal_type add value if not exists 'support';
 
 do $$
@@ -399,7 +416,7 @@ create policy support_grants_write on support_grants for all
   changes. Permissive policies are OR-ed, so 0004's rule is untouched.
 */
 create policy principals_support_visible on principals for select using (
-  app.principal_type() in ('internal', 'system') and type = 'support'
+  app.principal_type() in ('internal', 'system') and type::text = 'support'
 );
 
 alter table support_access_log enable row level security;

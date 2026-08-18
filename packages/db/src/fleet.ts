@@ -31,6 +31,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadEnv, workspaceRoot } from './env'
+export { EXPECTED_MIGRATIONS } from './schema-version'
 
 export interface TenantRecord {
   /** Stable identifier. Appears in telemetry as `qabandi.tenant`. */

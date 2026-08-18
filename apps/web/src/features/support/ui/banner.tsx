@@ -20,7 +20,38 @@ import { revokeSupportAccess } from '../actions'
  * the session nobody remembers authorising.
  */
 export async function SupportAccessBanner({ session }: { session: Session }) {
-  const open = await getOpenSupportSessions(session.actor)
+  /*
+    This banner degrades; it never takes the application down with it.
+
+    It renders from the **operations layout**, which is the highest blast
+    radius in the product: anything that throws here denies access to every
+    internal screen at once. That is exactly what happened on a deployment
+    where the code was updated and `pnpm db:migrate` was not — `support_grants`
+    did not exist yet, the query raised `42P01`, and an entire freight
+    operation could not open a single page because a *notice* could not render.
+
+    So the failure is swallowed and logged rather than propagated. The
+    judgement is about proportion, not about hiding errors: a notice is not
+    worth an outage, and a schema this old has larger problems that
+    `/api/health` now reports directly.
+
+    Note what is deliberately *not* softened — `/settings/support` still fails
+    loudly if this query breaks. That page exists to show who has access, and a
+    page about access that quietly renders "nobody" would be a lie rather than
+    a degradation.
+  */
+  const open = await getOpenSupportSessions(session.actor).catch((error: unknown) => {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        source: 'support-banner',
+        message: error instanceof Error ? error.message : String(error),
+        hint: 'vendor-access notice suppressed; the board is unaffected',
+      }),
+    )
+    return []
+  })
+
   if (open.length === 0) return null
 
   const t = await getTranslations('support')
