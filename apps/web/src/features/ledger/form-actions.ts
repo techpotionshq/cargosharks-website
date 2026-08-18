@@ -22,10 +22,12 @@
 import { revalidatePath } from 'next/cache'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assertTransition, invoiceMachine, quoteMachine } from '@qabandi/core'
+import { assertTransition, fromDb, invoiceMachine, quoteMachine, toScale } from '@qabandi/core'
 import {
+  enquiries,
   invoiceLines,
   invoices,
+  notificationOutbox,
   paymentAllocations,
   payments,
   quoteLines,
@@ -260,9 +262,29 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
 
   try {
     await withActor(session.actor, async (tx) => {
+      /*
+        The customer comes from the enquiry, because a quote does not carry one.
+
+        `quotes` references an enquiry and a branch; the customer is the
+        enquiry's. That join is here rather than in the notification dispatcher
+        for a reason worth stating once: the outbox row records *who the event
+        was about at the time it happened*, so a customer later reassigned on
+        the enquiry does not silently redirect a notification about a quotation
+        that was already sent.
+      */
       const [current] = await tx
-        .select({ status: quotes.status })
+        .select({
+          status: quotes.status,
+          reference: quotes.reference,
+          branchId: quotes.branchId,
+          enquiryId: quotes.enquiryId,
+          totalSell: quotes.totalSell,
+          currency: quotes.currency,
+          validUntil: quotes.validUntil,
+          customerId: enquiries.customerId,
+        })
         .from(quotes)
+        .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
         .where(eq(quotes.id, quoteId))
         .limit(1)
       if (!current) throw new Error('not_found')
@@ -278,6 +300,31 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
           updatedAt: new Date(),
         })
         .where(eq(quotes.id, quoteId))
+
+      // FR-NT-01. In this transaction, so a quote that fails to move never
+      // announces itself to the customer (§7.4).
+      if (status === 'sent') {
+        await tx.insert(notificationOutbox).values({
+          branchId: current.branchId,
+          eventKey: 'quote.sent',
+          enquiryId: current.enquiryId,
+          customerId: current.customerId,
+          payload: {
+            reference: current.reference,
+            /*
+              At the currency's own precision, not the column's.
+
+              `numeric(19,6)` comes back as `1250.000000`, and a quotation that
+              quotes a KWD figure to six decimal places reads as a machine
+              rather than as a price. `toScale` puts it at the three decimals
+              KWD actually has.
+            */
+            total: toScale(fromDb(current.totalSell, current.currency)),
+            currency: current.currency,
+            validUntil: current.validUntil ?? '',
+          },
+        })
+      }
     })
   } catch (error) {
     if (error instanceof Error && error.message.includes('transition')) {
@@ -460,6 +507,10 @@ export async function setInvoiceStatus(
           status: invoices.status,
           branchId: invoices.branchId,
           seriesNo: invoices.seriesNo,
+          customerId: invoices.customerId,
+          total: invoices.total,
+          currency: invoices.currency,
+          dueOn: invoices.dueOn,
         })
         .from(invoices)
         .where(eq(invoices.id, invoiceId))
@@ -511,6 +562,34 @@ export async function setInvoiceStatus(
           updatedAt: new Date(),
         })
         .where(eq(invoices.id, invoiceId))
+
+      /*
+        FR-NT-01, and only on issue.
+
+        Voiding and crediting are deliberately silent here. Both are corrections
+        the operator makes, often within minutes, and a customer who receives
+        "invoice raised" followed by "invoice voided" learns that the sender's
+        accounting is unstable rather than that it is careful. The credit note
+        is itself an invoice and announces itself when *it* is issued.
+
+        The number is used rather than the id, because `series_no` is what the
+        customer can quote back — and it was allocated immediately above, so it
+        is never null on this path.
+      */
+      if (status === 'issued') {
+        await tx.insert(notificationOutbox).values({
+          branchId: current.branchId,
+          eventKey: 'invoice.issued',
+          customerId: current.customerId,
+          payload: {
+            seriesNo,
+            // As above: the currency's precision, not the column's.
+            total: toScale(fromDb(current.total, current.currency)),
+            currency: current.currency,
+            dueOn: current.dueOn ?? '',
+          },
+        })
+      }
     })
   } catch (error) {
     if (error instanceof Error && error.message.includes('transition')) {

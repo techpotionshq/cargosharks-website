@@ -325,6 +325,16 @@ export function permissionKeys(): string[] {
  */
 export const ADMIN_PERMISSIONS = [
   'admin.reference.write',
+  /*
+    Releasing a document is not a state transition, so no machine declares it.
+
+    `documents.released_at` is the gate between "a draft is on the job" and
+    "the customer has it" — the single most consequential one-click act in the
+    product, because a draft bill of lading that reaches a consignee is a
+    commercial problem that cannot be recalled. It needs a key of its own
+    rather than riding on `job.update`, which every coordinator holds.
+  */
+  'document.release',
   'admin.audit.read',
   'admin.users.write',
   'admin.api_keys.write',

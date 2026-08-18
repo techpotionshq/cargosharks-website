@@ -11,9 +11,11 @@ import type { Job } from 'pg-boss'
 import { JOBS, getBoss } from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runSlaEscalation } from './sla-escalation'
-import { runNotificationDispatch } from './notification-dispatch'
+import { runNotificationDispatch, registerChannel } from './notification-dispatch'
+import { resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierEventIngest } from './carrier-event'
+import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
@@ -40,6 +42,17 @@ export async function registerWorkers(log: {
   info: (o: unknown, m: string) => void
 }): Promise<void> {
   const boss = await getBoss()
+
+  /*
+    The channel registry, filled.
+
+    It has been empty since Release One, which meant every notification the
+    product raised resolved no adapter and was written off as
+    `failed: no adapter` — recorded honestly, and read by nobody. Registering
+    here rather than inside `adapters()` keeps the logger out of the adapter
+    resolver and puts the registration next to the dispatcher that consumes it.
+  */
+  registerChannel(resolveEmailChannel(log.info.bind(log)))
 
   const work = async (name: string, handler: Handler): Promise<void> => {
     await boss.work(name, { batchSize: 1 }, handler as never)
@@ -82,8 +95,30 @@ export async function registerWorkers(log: {
     }
   })
 
+  /*
+    The two notifications that fire because time passed rather than because
+    somebody clicked (FR-NT-01). Both only raise outbox rows — the dispatcher
+    below owns everything about actually sending.
+  */
+  await work(JOBS.quoteExpiry, async () => {
+    const result = await runQuoteExpiryWarnings()
+    log.info(result, 'quote expiry warnings raised')
+  })
+
+  await work(JOBS.invoiceOverdue, async () => {
+    const result = await runInvoiceOverdueNotices()
+    log.info(result, 'invoice overdue notices raised')
+  })
+
   await work(JOBS.notificationDispatch, async (jobs) => {
-    for (const job of jobs) await runNotificationDispatch(job.data)
+    for (const job of jobs) {
+      const result = await runNotificationDispatch(job.data)
+      // Logged only when it did something. This runs every minute, and a
+      // per-minute "nothing to do" line is how a log stops being read.
+      if (result.expanded || result.sent || result.failed || result.deferred) {
+        log.info(result, 'notifications dispatched')
+      }
+    }
   })
 
   for (const pending of PENDING) {

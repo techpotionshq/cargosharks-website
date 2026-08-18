@@ -31,11 +31,27 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
 
+  /*
+    Mail. `smtp` sends; `log` writes the message to the service log instead.
+
+    `log` exists for a demonstration on a laptop and for the first hour of a
+    deployment whose relay credentials have not arrived. It is not a silent
+    failure mode: `describeAdapters` prints `email: log` at boot, so nobody has
+    to work it out from an empty inbox.
+  */
+  MAIL_DRIVER: z.enum(['smtp', 'log']).default('smtp'),
+  /** Defaults to a local MailHog/Mailpit, which is what `docker compose` runs. */
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().default(1025),
+  /** Implicit TLS from the first byte — port 465. Otherwise STARTTLS is used. */
   SMTP_SECURE: z.coerce.boolean().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
+  /**
+   * Certificate verification. Set false only for a relay behind a private CA,
+   * and understand that it disables the check that the server is who it says.
+   */
+  SMTP_TLS_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
   MAIL_FROM: z.string().default('no-reply@qabandi.local'),
 
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),

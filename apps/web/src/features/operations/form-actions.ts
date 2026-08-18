@@ -19,7 +19,18 @@ import { revalidatePath } from 'next/cache'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { assertTransition, customsMachine } from '@qabandi/core'
-import { customsStages, equipment, exceptions, jobMilestones, jobs, withActor } from '@qabandi/db'
+import {
+  customsStages,
+  documentTypes,
+  documents,
+  equipment,
+  exceptionCodes,
+  exceptions,
+  jobMilestones,
+  jobs,
+  notificationOutbox,
+  withActor,
+} from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
@@ -100,6 +111,47 @@ export async function raiseException(_previous: ActionState, form: FormData): Pr
       costImpact: data.costImpact,
       costCurrency: data.costCurrency,
     })
+
+    /*
+      FR-NT-01, to the branch's own staff.
+
+      `exception.opened` is an *internal* event in the catalogue, and that is
+      not the same question as `customerVisible` on the row above. That flag
+      decides whether the customer sees the exception on the portal when they
+      look; this decides who gets written to without looking. A customs hold
+      the customer can see on their tracking page is still not a thing to email
+      them about at the moment it is raised, before anyone has worked out what
+      it means.
+
+      The code's own name is used rather than the free-text description alone,
+      because the description is optional and an alert reading "high severity
+      exception on KWI-JOB-2026-00031" with no noun in it is an alert that gets
+      opened last.
+    */
+    const [job] = await tx
+      .select({ reference: jobs.reference, branchId: jobs.branchId })
+      .from(jobs)
+      .where(eq(jobs.id, data.jobId))
+      .limit(1)
+
+    const [code] = await tx
+      .select({ nameEn: exceptionCodes.nameEn })
+      .from(exceptionCodes)
+      .where(eq(exceptionCodes.id, data.exceptionCodeId))
+      .limit(1)
+
+    if (job) {
+      await tx.insert(notificationOutbox).values({
+        branchId: job.branchId,
+        eventKey: 'exception.opened',
+        jobId: data.jobId,
+        payload: {
+          reference: job.reference,
+          severity: data.severity,
+          description: data.description ?? code?.nameEn ?? '',
+        },
+      })
+    }
   })
 
   revalidatePath('/exceptions')
@@ -313,14 +365,69 @@ export async function completeMilestone(
   const actualAt = read(form, 'actualAt')
 
   await withActor(session.actor, async (tx) => {
-    await tx
+    const reachedAt = undo ? null : actualAt ? new Date(actualAt) : new Date()
+
+    const [milestone] = await tx
       .update(jobMilestones)
       .set({
-        actualAt: undo ? null : actualAt ? new Date(actualAt) : new Date(),
+        actualAt: reachedAt,
         completedById: undo ? null : session.principal.id,
         updatedAt: new Date(),
       })
       .where(eq(jobMilestones.id, milestoneId))
+      .returning({
+        nameEn: jobMilestones.nameEn,
+        nameAr: jobMilestones.nameAr,
+        customerVisible: jobMilestones.customerVisible,
+      })
+
+    /*
+      FR-NT-01 — the notification the whole feature is for.
+
+      Three conditions, and each one is a message somebody would otherwise
+      receive wrongly:
+
+      - **Not on undo.** Un-ticking is a correction of an operator's own
+        mis-click, and "your shipment has been discharged" followed by nothing
+        is worse than silence.
+      - **Only if the milestone is customer-visible.** `customer_visible` is
+        already the flag that decides what the portal shows (§7.2); a step the
+        customer is not shown is not a step to email them about.
+      - **Only with a job.** A milestone with no readable job means RLS hid the
+        row, and the update above affected nothing.
+
+      Both language forms of the name travel in the payload, because the
+      dispatcher resolves the recipient's language *after* this — one event can
+      become an English message to one contact and an Arabic one to another,
+      and going back to the database at send time for a name that was already
+      in hand would be a query per recipient.
+    */
+    if (!undo && milestone?.customerVisible) {
+      const [job] = await tx
+        .select({
+          reference: jobs.reference,
+          branchId: jobs.branchId,
+          customerId: jobs.customerId,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, jobId))
+        .limit(1)
+
+      if (job) {
+        await tx.insert(notificationOutbox).values({
+          branchId: job.branchId,
+          eventKey: 'job.milestone_reached',
+          jobId,
+          customerId: job.customerId,
+          payload: {
+            reference: job.reference,
+            milestone: milestone.nameEn,
+            milestoneAr: milestone.nameAr,
+            reachedAt: (reachedAt ?? new Date()).toISOString().slice(0, 10),
+          },
+        })
+      }
+    }
   })
 
   revalidatePath(`/jobs/${jobId}`)
@@ -442,4 +549,87 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/dashboard')
   return succeed(status)
+}
+
+// --- documents ---------------------------------------------------------------
+
+/**
+ * Release a document to the customer — FR-DC-05, FR-NT-01.
+ *
+ * `documents.released_at` has been in the schema since Release One, read by
+ * the portal, the register, the job page and the download route, and **set by
+ * nothing**. Every document in the system was permanently a draft: the
+ * customer-facing download route refused anything unreleased, so the document
+ * vault was a place files went into and never came out of.
+ *
+ * ## Why this is one-way
+ *
+ * There is no un-release. Once a document has been made available and the
+ * customer notified, withdrawing the flag changes what the system says
+ * happened without changing what did happen — the customer has the file. A
+ * document that should not have gone out is corrected the way every other
+ * mistake in this product is corrected (§5.5): a new version supersedes it,
+ * and the record keeps both.
+ */
+export async function releaseDocument(form: FormData): Promise<void> {
+  const session = await requireSession()
+  assertCan(session, 'document.release')
+
+  const documentId = read(form, 'documentId')
+  if (!documentId) throw new Error('No document given')
+
+  await withActor(session.actor, async (tx) => {
+    /*
+      `is null` in the WHERE, not a read-then-write.
+
+      Two coordinators clicking release on the same document within the same
+      second would otherwise both see it unreleased and both raise the event,
+      and the customer receives the same notice twice. Making the update itself
+      conditional means the second one matches no rows, and the guard below
+      sees that and stays silent.
+    */
+    const [released] = await tx
+      .update(documents)
+      .set({
+        releasedAt: new Date(),
+        releasedById: session.principal.id,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(documents.id, documentId), isNull(documents.releasedAt)))
+      .returning({ jobId: documents.jobId, documentTypeId: documents.documentTypeId })
+
+    // Already released, or invisible under RLS — which is the same answer to
+    // the caller either way (FR-ID-04).
+    if (!released) return
+
+    const [context] = await tx
+      .select({
+        reference: jobs.reference,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+        typeNameEn: documentTypes.nameEn,
+        typeNameAr: documentTypes.nameAr,
+      })
+      .from(jobs)
+      .innerJoin(documentTypes, eq(documentTypes.id, released.documentTypeId))
+      .where(eq(jobs.id, released.jobId))
+      .limit(1)
+
+    if (context) {
+      await tx.insert(notificationOutbox).values({
+        branchId: context.branchId,
+        eventKey: 'document.released',
+        jobId: released.jobId,
+        customerId: context.customerId,
+        payload: {
+          reference: context.reference,
+          documentType: context.typeNameEn,
+          documentTypeAr: context.typeNameAr ?? context.typeNameEn,
+        },
+      })
+    }
+  })
+
+  revalidatePath('/documents')
+  revalidatePath('/jobs')
 }

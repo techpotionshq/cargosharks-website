@@ -38,12 +38,18 @@ import {
   RaiseExceptionDialog,
 } from '@/features/operations/ui/dialogs'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
+import { releaseDocument } from '@/features/operations/form-actions'
+import { can } from '@/lib/permissions'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
   const { id } = await params
   const job = await getJobDetail(session.actor, id)
   if (!job) notFound()
+
+  // Resolved once rather than per row — the document list can be long and the
+  // answer cannot change halfway down it.
+  const canRelease = can(session, 'document.release')
 
   const t = await getTranslations('job')
   const tc = await getTranslations('common')
@@ -341,10 +347,36 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <Badge tone="positive" icon="check">
                       {t('released')}
                     </Badge>
+                  ) : canRelease ? (
+                    /*
+                      The control the card's own comment has promised since
+                      Release One. `released_at` was read by the portal, the
+                      register, this page and the download route, and written
+                      by nothing — so every document in the system was a
+                      permanent draft and the customer could never fetch one.
+
+                      No confirmation step. The button is only rendered for a
+                      principal holding `document.release`, the act is audited,
+                      and a dialog that asks "are you sure" twenty times a day
+                      trains the answer rather than prompting the thought.
+                    */
+                    <form action={releaseDocument}>
+                      <input type="hidden" name="documentId" value={document.id} />
+                      <Button size="sm" variant="secondary" icon="check" type="submit">
+                        {t('release')}
+                      </Button>
+                    </form>
                   ) : (
                     <Badge tone="muted">{t('draft')}</Badge>
                   )}
-                  <Button size="sm" variant="ghost" icon="download" aria-label={tc('download')} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon="download"
+                    href={`/api/documents/${document.id}`}
+                    download
+                    aria-label={tc('download')}
+                  />
                 </li>
               ))}
             </ul>

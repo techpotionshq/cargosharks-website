@@ -15,6 +15,7 @@ export * from './chargeable'
 export * from './rating'
 export * from './clocks'
 export * from './states'
+export * from './notifications'
 
 /**
  * `./import` is deliberately *not* re-exported here.

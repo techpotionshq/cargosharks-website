@@ -48,7 +48,11 @@ const ASSURANCES: readonly { icon: IconName; key: 'live' | 'scoped' | 'bilingual
   { icon: 'globe', key: 'bilingual' },
 ]
 
-export default async function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reset?: string }>
+}) {
   /*
     Somebody already signed in has no business on this form.
 
@@ -60,6 +64,7 @@ export default async function SignInPage() {
   const existing = await getSession()
   if (existing) redirect(homeFor(existing))
 
+  const { reset } = await searchParams
   const t = await getTranslations('signIn')
   const brand = getBrand()
   const resolved = await getLocale()
@@ -142,6 +147,15 @@ export default async function SignInPage() {
           </h1>
           <p className="mt-1.5 text-[0.9375rem] text-ink-muted">{t('subtitle')}</p>
 
+          {reset ? (
+            <p
+              role="status"
+              className="mt-5 rounded-sm bg-positive-soft px-3 py-2.5 text-[0.8125rem] leading-snug font-medium text-positive ring-1 ring-positive/25 ring-inset"
+            >
+              {t('resetDone')}
+            </p>
+          ) : null}
+
           <div className="mt-7">
             <SignInForm
               labels={{
@@ -152,6 +166,23 @@ export default async function SignInPage() {
               }}
             />
           </div>
+
+          {/*
+            Under the form rather than beside the password label.
+
+            Beside the field it competes with the label for the same glance and
+            gets clicked by people who have not yet tried their password. Below
+            the submit button it is where somebody looks *after* failing, which
+            is when they want it.
+          */}
+          <p className="mt-3 text-end">
+            <Link
+              href="/forgot-password"
+              className="text-[0.8125rem] font-medium text-brand hover:underline"
+            >
+              {t('forgotPassword')}
+            </Link>
+          </p>
 
           <p className="mt-4 flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2.5 text-[0.75rem] leading-snug text-ink-muted">
             <Icon name="hold" size={14} className="mt-px shrink-0 text-ink-subtle" />

@@ -11,9 +11,11 @@
  * there is no administrator yet.
  */
 
+import { sql } from 'drizzle-orm'
 import { loadEnv } from './env'
 import { ADMIN_PERMISSIONS, permissionKeys } from '@qabandi/core'
 import { createDatabase } from './client'
+import { NOTIFICATION_TEMPLATES } from './notification-templates'
 import { SYSTEM_PRINCIPAL_ID, systemActor, withActor } from './actor'
 import {
   chargeTypes,
@@ -25,6 +27,7 @@ import {
   documentTypes,
   incoterms,
   milestoneTemplates,
+  notificationTemplates,
   principals,
   rolePermissions,
   roles,
@@ -276,6 +279,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'customs.file',
     'customs.update',
     'customs.pay',
+    'document.release',
     'rate.card.write',
     'customer.write',
     'partner.write',
@@ -292,6 +296,18 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'job.update',
     'customs.file',
     'customs.update',
+    /*
+      A coordinator releases documents, and this is a deliberate call rather
+      than a default.
+
+      They are the person holding the file when the carrier confirms, and
+      routing every release through a manager would mean either a bottleneck
+      at the exact moment a shipment is waiting, or a manager who approves
+      without looking — which is worse than not requiring approval. The control
+      that makes this safe is that the release is audited and irreversible in
+      the record, not that it is rationed.
+    */
+    'document.release',
     'customer.write',
   ],
   sales: [
@@ -551,6 +567,50 @@ async function main(): Promise<void> {
         ])
         .onConflictDoNothing()
 
+      /*
+        The default notification templates — the rows without which the whole
+        of FR-NT is inert.
+
+        Upserted rather than left alone, and that is the one place this seed
+        deviates from `onConflictDoNothing`. These rows are *vendor* copy: a
+        typo in the Arabic, or a wrong merge field, has to be able to reach a
+        deployment that was seeded months ago. Everything else in this file is
+        a code or a rate that an operator may legitimately have adjusted, so
+        leaving those alone is right; overwriting a sentence we wrote is not
+        the same act.
+
+        The administrator's own wording is safe because it lives on a *branch*
+        row (`branch_id` not null), which wins over the default at resolution
+        time and is never matched by the conflict target below. When a template
+        editor is built, it must write branch rows for exactly this reason.
+      */
+      await db
+        .insert(notificationTemplates)
+        .values(
+          NOTIFICATION_TEMPLATES.map((template) => ({
+            eventKey: template.eventKey,
+            channel: template.channel,
+            locale: template.locale,
+            branchId: null,
+            subject: template.subject,
+            body: template.body,
+            isActive: true,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            notificationTemplates.eventKey,
+            notificationTemplates.channel,
+            notificationTemplates.locale,
+            notificationTemplates.branchId,
+          ],
+          set: {
+            subject: sql`excluded.subject`,
+            body: sql`excluded.body`,
+            updatedAt: new Date(),
+          },
+        })
+
       // Kuwait, Qatar and the UAE share neither a weekend nor a holiday list — NFR-03.
       await db
         .insert(workingCalendars)
@@ -638,7 +698,8 @@ async function main(): Promise<void> {
 
       console.log(
         `seeded: ${allKeys.length} permission keys across ${everyRole.length} roles ` +
-          `(${grants.length} grants), ${CHARGE_TYPES.length} charge types`,
+          `(${grants.length} grants), ${CHARGE_TYPES.length} charge types, ` +
+          `${NOTIFICATION_TEMPLATES.length} notification templates`,
       )
     },
     database,

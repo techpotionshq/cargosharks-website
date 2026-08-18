@@ -22,6 +22,8 @@ export const JOBS = {
   slaEscalation: 'sla-escalation',
   complianceExpiry: 'compliance-expiry-warning',
   rateCardExpiry: 'rate-card-expiry-digest',
+  quoteExpiry: 'quote-expiry-warning',
+  invoiceOverdue: 'invoice-overdue-notice',
   fxIngest: 'fx-rate-ingest',
   carrierEvent: 'carrier-event-ingest',
   bulkImport: 'bulk-import-validate',
@@ -95,4 +97,32 @@ export async function registerSchedules(): Promise<void> {
   await b.schedule(JOBS.complianceExpiry, '30 21 * * *')
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
+
+  /*
+    The two time-driven notifications (FR-NT-01).
+
+    Early morning Kuwait rather than at midnight with the accruals: both send
+    mail to customers, and a message timestamped 00:15 reads as machinery. The
+    dispatcher's quiet hours would hold them until 07:00 anyway, so raising
+    them at 05:00 UTC — 08:00 local — means the event time and the send time
+    agree, and a delivery log that has to be read during an incident says what
+    it looks like it says.
+  */
+  await b.schedule(JOBS.quoteExpiry, '0 5 * * *')
+  await b.schedule(JOBS.invoiceOverdue, '10 5 * * *')
+
+  /*
+    The dispatcher itself, which nothing had ever enqueued.
+
+    `notification-dispatch` was declared as a queue and registered as a worker,
+    and no code anywhere called `send` for it — so the handler was mounted and
+    never once invoked. Every outbox row written since Release One is still
+    sitting there undispatched.
+
+    Polling every minute rather than enqueuing per event, because `apps/web`
+    writes the outbox row and has no pg-boss connection to enqueue with (§3).
+    A minute is well inside what any of these events needs, and it is also what
+    picks up a delivery whose retry backoff has expired.
+  */
+  await b.schedule(JOBS.notificationDispatch, '* * * * *')
 }

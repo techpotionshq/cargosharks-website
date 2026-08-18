@@ -248,6 +248,29 @@ export function identityRate(currency: CurrencyCode, takenAt: Date): FxRate {
 // --- formatting ------------------------------------------------------------
 
 /**
+ * The bare amount at the currency's own precision — no symbol, no grouping.
+ *
+ * For the places that pair a figure with a currency code carried separately,
+ * which is every notification template: they read `{{total}} {{currency}}`,
+ * and `formatMoney` would put the code in twice.
+ *
+ * Neither `toDb` nor `toString` will do, and the reason is the trailing zeros.
+ * `toDb` calls `toFixed()` with no argument, so a balance of exactly 380 KWD
+ * comes out as `380` — right for a `numeric` column, wrong in a letter to a
+ * customer, who is comparing it against an invoice that reads `380.000`. A
+ * figure that has quietly dropped its fils looks like a different number.
+ *
+ * The other direction is just as wrong: `numeric(19,6)` hands back
+ * `500.000000` for a KWD invoice, which is three decimals of precision the
+ * currency does not have.
+ */
+export function toScale(m: Money, lookup: CurrencyLookup = seedCurrencyLookup): string {
+  const spec = lookup(m.currency)
+  if (!spec) throw new UnknownCurrencyError(m.currency)
+  return round(m, spec).amount.toFixed(spec.minorUnits)
+}
+
+/**
  * Presentation only. The web layer formats through `next-intl`; this exists
  * for logs, PDFs generated outside a request, and test assertions.
  */

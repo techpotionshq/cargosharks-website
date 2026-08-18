@@ -38,12 +38,16 @@ import type {
   FxRateSource,
 } from '../ports/index'
 
+import type { NotificationChannel } from '../ports/index'
+import { config } from '../config'
+import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
 import { resolveCarrierTracking } from './carrier-tracking'
 import { resolveCustomsFiling } from './customs'
 import { resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore } from './file-store'
 import { resolveFxSource } from './fx'
 
+export { smtpChannel, logChannel, sendMail, encodeHeader, SmtpError, type SmtpOptions } from './smtp'
 export { manualFxSource, httpFxSource } from './fx'
 export { manualCarrierTracking, terminal49Tracking } from './carrier-tracking'
 export { mapProviderEvents, type ProviderEvent } from './carrier-events'
@@ -57,6 +61,46 @@ export {
   FileStoreError,
   MAX_EXPIRY_SECONDS,
 } from './file-store'
+
+/**
+ * The mail options this deployment is configured with.
+ *
+ * Lives here rather than in `smtp.ts` for the same reason `resolveFileStore`
+ * lives outside `s3.ts`: the wire protocol takes options and knows nothing
+ * about where they came from, which is what lets it be tested against a socket
+ * with no environment at all.
+ */
+export function smtpOptions(): SmtpOptions {
+  return {
+    host: config.SMTP_HOST,
+    port: config.SMTP_PORT,
+    secure: config.SMTP_SECURE,
+    user: config.SMTP_USER,
+    password: config.SMTP_PASSWORD,
+    from: config.MAIL_FROM,
+    rejectUnauthorized: config.SMTP_TLS_REJECT_UNAUTHORIZED,
+  }
+}
+
+/**
+ * Which mail driver this deployment runs on.
+ *
+ * Unlike the tracking and transmission ports, the default here is *on*. Those
+ * two are a per-container cost and a contract with a tax authority, so they
+ * default to the Release One behaviour and stay off until someone buys them.
+ * Sending mail is neither: FR-NT-01 is a Must, and a deployment that quietly
+ * decided not to send anything would satisfy the letter of "no surprises" by
+ * failing at the thing it was installed to do.
+ */
+export function resolveEmailChannel(log: (o: unknown, m: string) => void): NotificationChannel {
+  if (config.MAIL_DRIVER === 'log') return logChannel(log)
+
+  if (config.SMTP_USER && !config.SMTP_PASSWORD) {
+    throw new Error('SMTP_USER is set without SMTP_PASSWORD. Set both, or neither.')
+  }
+
+  return smtpChannel(smtpOptions())
+}
 
 export interface Adapters {
   readonly fx: FxRateSource
@@ -95,6 +139,17 @@ export function adapters(): Adapters {
 export function describeAdapters(): Record<string, string> {
   const a = adapters()
   return {
+    /*
+      Read from config rather than from the channel, because the channel is
+      registered on the dispatcher rather than held here — and because
+      `email: log` is the single most important line in this log. A deployment
+      that is writing mail to a file instead of sending it looks identical from
+      the outside to one that is working.
+    */
+    email:
+      config.MAIL_DRIVER === 'log'
+        ? 'log (not sending)'
+        : `smtp ${config.SMTP_HOST}:${config.SMTP_PORT}`,
     fx: a.fx.key,
     fileStore: a.fileStore.key,
     carrierTracking: a.carrierTracking.key,

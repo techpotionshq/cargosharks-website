@@ -27,8 +27,9 @@
 
 import type { FastifyInstance } from 'fastify'
 import { timingSafeEqual } from 'node:crypto'
-import type { Actor } from '@qabandi/db'
-import { adapters } from '../adapters/index'
+import { eq } from 'drizzle-orm'
+import { db, principals, type Actor } from '@qabandi/db'
+import { adapters, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf } from '../pdf/documents'
@@ -36,6 +37,11 @@ import { DocumentNotFoundError, renderInvoicePdf } from '../pdf/documents'
 interface DocumentRequest {
   readonly actor: Actor
   readonly locale?: 'en' | 'ar'
+}
+
+interface PasswordResetRequest {
+  readonly email: string
+  readonly url: string
 }
 
 interface SignedUrlRequest {
@@ -107,6 +113,90 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     },
   )
 
+
+  /**
+   * The password-reset email — the one message that is not a notification.
+   *
+   * ## Why it does not go through the outbox
+   *
+   * Everything else the product sends is an event about a shipment, and the
+   * dispatcher is built for that: resolve the audience, pick a template, defer
+   * for quiet hours, retry on a widening backoff. Applying any of it here
+   * would be wrong.
+   *
+   * - **Audience.** There is exactly one recipient and it is not derived from
+   *   a customer or a branch. It is whoever typed the address.
+   * - **Quiet hours.** Somebody locked out at 22:30 needs the link at 22:30.
+   *   Holding it until 07:00 is a nine-hour outage for that person, which is
+   *   precisely the courtesy inverted into an obstruction.
+   * - **Retry.** The token expires. A message retried in an hour arrives after
+   *   the link is dead, which is worse than a failure the person can see and
+   *   respond to by asking again.
+   *
+   * So it is sent inline, and the caller learns whether it left.
+   *
+   * ## Why the web app posts here rather than sending it itself
+   *
+   * The same boundary as documents and signed URLs (§3): SMTP credentials live
+   * in one process. The alternative puts a mailbox password in the environment
+   * of every server component and every dependency any of them import.
+   *
+   * ## The response never says whether the address exists
+   *
+   * `202` regardless. Better Auth has already decided whether there is an
+   * account, and the reply here is about whether *this service* accepted the
+   * request — a 404 for an unknown address would rebuild the account-enumeration
+   * oracle that `signIn` is careful not to be (FR-ID-04).
+   */
+  app.post<{ Body: PasswordResetRequest }>('/mail/password-reset', async (request, reply) => {
+    const { email, url } = request.body ?? {}
+
+    if (typeof email !== 'string' || typeof url !== 'string' || !email || !url) {
+      return reply.code(400).send({ error: 'invalid_request' })
+    }
+
+    /*
+      The recipient's own language.
+
+      Read from `principals` rather than passed in, because the caller is a
+      sign-in page that has no session and therefore knows only what an
+      anonymous visitor typed — and a browser's `Accept-Language` is the
+      language of the device, not of the person's account. Someone whose
+      account is Arabic must get the Arabic mail even when they ask for the
+      link from a colleague's English laptop.
+    */
+    const [principal] = await db
+      .select({ locale: principals.locale, nameEn: principals.nameEn, nameAr: principals.nameAr })
+      .from(principals)
+      .where(eq(principals.email, email.toLowerCase()))
+      .limit(1)
+
+    const locale = principal?.locale === 'ar' ? 'ar' : 'en'
+    const name = (locale === 'ar' ? principal?.nameAr : principal?.nameEn) ?? ''
+
+    try {
+      await sendMail(smtpOptions(), {
+        to: email,
+        subject: locale === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset your password',
+        body: passwordResetBody(locale, name, url),
+        locale,
+      })
+      return reply.code(202).send({ status: 'sent' })
+    } catch (error) {
+      /*
+        Logged in full, reported as a class.
+
+        The message from a refused relay carries the host, the port and often
+        the mailbox user. This endpoint is behind the shared secret rather than
+        public, but the caller renders its reply into a page an anonymous
+        visitor is looking at — so the same rule as `/api/health` applies
+        (OP-10): the cause goes to stderr, the class goes on the wire.
+      */
+      request.log.error({ error }, 'password reset mail failed')
+      return reply.code(502).send({ error: 'mail_failed' })
+    }
+  })
+
   /**
    * Sign a download link for a stored file.
    *
@@ -152,4 +242,51 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       throw error
     }
   })
+}
+
+/**
+ * The message itself, in the recipient's language.
+ *
+ * Not a `notification_templates` row, deliberately. Those are editable by an
+ * administrator (FR-NT-03), and a password-reset email is the one message
+ * whose wording an attacker would most like to control — an administrator who
+ * could rewrite it could point the link somewhere else. It is also the message
+ * that must still work on a deployment whose seed has not been run.
+ *
+ * The link is printed on its own line rather than wrapped in prose, because
+ * plain-text mail clients guess where a URL ends and get it wrong when it is
+ * followed by a full stop.
+ */
+function passwordResetBody(locale: 'en' | 'ar', name: string, url: string): string {
+  // `\n` only. `buildMessage` base64-encodes the body, so the transport does
+  // not care, and every mail client renders a bare newline as a line break.
+  const NEWLINE = '\n'
+
+  if (locale === 'ar') {
+    return [
+      `مرحباً ${name}`.trim(),
+      '',
+      'وردنا طلب لإعادة تعيين كلمة المرور الخاصة بحسابكم. لإتمام العملية، يرجى فتح الرابط التالي:',
+      '',
+      url,
+      '',
+      'ينتهي هذا الرابط خلال ساعة واحدة ويصلح لمرة واحدة فقط.',
+      '',
+      'إذا لم تكونوا من قدّم هذا الطلب، فلا حاجة لأي إجراء — كلمة المرور الحالية تبقى كما هي.',
+    ].join(NEWLINE)
+  }
+
+  return [
+    `Hello ${name}`.trim(),
+    '',
+    'We received a request to reset the password on your account. To continue,',
+    'open the link below:',
+    '',
+    url,
+    '',
+    'The link expires in one hour and can be used once.',
+    '',
+    'If you did not ask for this, no action is needed — your current password',
+    'still works and nothing has changed.',
+  ].join(NEWLINE)
 }

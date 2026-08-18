@@ -1,6 +1,6 @@
 # Operations Findings — What Broke, and What It Taught Us
 
-**Deployment, fleet and reliability notes · v1.0 · Internal**
+**Deployment, fleet and reliability notes · v1.1 · Internal**
 
 | | |
 |---|---|
@@ -9,6 +9,7 @@
 | **Question asked** | The platform works. What stops a *second* deployment of it working, and what stopped the first one? |
 | **Relationship to the code** | Companion to `Qabandi_Architecture.md`. That describes the design; this records where the design met a real database and lost. |
 | **Status** | Every fault below is fixed unless marked **Open**. |
+| **v1.1** | Adds §10, the notification chain — four breaks in one path, and what finding them changed about how a feature is called finished. |
 
 > **The finding in one line:** eleven faults were found in one day of running the system in anger, and nine of them were in the paths that stand a deployment up rather than in the product — which is exactly the half a second customer exercises first.
 
@@ -208,7 +209,88 @@ and delivered nothing.
 
 ---
 
-## 9. The deploy checklist this produced
+---
+
+## 9. A feature that was never once exercised
+
+**Fixed.** Added at v1.1, when notifications were built out.
+
+`OP-16` **Four independent breaks in a single path, each invisible to the
+others.** Notifications were declared complete at Release One: an outbox table,
+a dispatcher with recipients, opt-outs and quiet hours, a delivery table with
+retry columns, and a queue name. Every part existed. The path had never carried
+one message, and it was broken in four places at once:
+
+| Break | Effect |
+|---|---|
+| `registerChannel` registry was empty | Every send recorded `failed: no adapter` |
+| `notification_templates` had **zero rows** | Every send would have recorded `failed: no template` |
+| Nothing ever called `send` for the dispatch job | The worker was mounted and never invoked, so no outbox row was ever read |
+| Recipient resolution dropped its filter | An event naming no customer resolved to *every active principal in the database* |
+
+The fourth is the serious one. `event.customerId ? eq(...) : undefined` reads
+correctly and is wrong: `undefined` vanishes inside Drizzle's `and()`, so the
+narrowing disappeared rather than failing. An SLA breach in Kuwait would have
+emailed Dubai staff, every agent contact, and every portal user of every
+unrelated customer.
+
+`OP-17` **The lesson is about how completeness is judged.** Each part had a
+plausible claim to being finished, and no part could reveal that the *chain*
+was not. `OP-01` said the bugs were in code with no test; this is narrower and
+sharper — **the bugs are in the joins between tested parts**, and only
+something that runs the whole path end to end can see them.
+
+That is now `pnpm --filter @qabandi/service verify:notifications`: it raises a
+real event, runs the real dispatcher, and speaks real SMTP to a throwaway
+server, then prints the message that came out. It belongs beside
+`verify:storage` at step 6 of the checklist.
+
+`OP-18` **Quiet hours deferred messages into a table nobody read.** A recipient
+inside quiet hours had a delivery written as `queued` — and the outbox row was
+then marked dispatched anyway, so nothing looked at it again. FR-NT-07 says
+such events are *deferred*; they were discarded, politely.
+
+Related, and from the same reading: `attempts`, `deferred_until`, `last_error`
+and `failed_at` had been on `notification_deliveries` since Release One with
+nothing writing them, so a relay down for ninety seconds lost every
+notification raised in that window, permanently. **A column that nothing writes
+is a claim the schema is making on the code's behalf.**
+
+`OP-19` **Run a scheduled job twice before believing it.** The overdue-invoice
+notice deduplicated against the outbox on `payload ->> 'reference'`, and an
+invoice's payload carries `seriesNo`. The comparison was therefore
+`null = 'KWI-2026-00042'` — null, not true — so the guard never suppressed
+anything.
+
+The symptom was not a duplicate row. It was **a dunning letter to every
+customer with an unpaid invoice, every night, for as long as it stayed
+unpaid** — the exact behaviour the file's own header promised it did not have.
+Running the worker once looked perfect. Running it twice, in a row, took four
+seconds and found it.
+
+`OP-20` **A default in an example file is a code path.** `.env.example` ships
+`MAIL_FROM="Al-Qabandi & Partners <no-reply@qabandi.local>"`, and the SMTP
+envelope takes a bare address. Using the setting verbatim in both places sends
+`MAIL FROM:<Al-Qabandi & Partners <no-reply@qabandi.local>>`, which every relay
+rejects — on every deployment that copied the example, which is all of them,
+and on none that set a bare address, which is how it survives local testing.
+
+`OP-21` **Two checks were reporting on themselves rather than on the code.**
+Found while the above was being fixed, and both had been quietly wrong:
+
+- `check-messages.mjs` kept one namespace per binding name per file. Three
+  server actions each with `const t = getTranslations(...)` collapsed to the
+  last one, so keys were reported missing when they were defined — and, in the
+  other direction, a genuinely missing key would pass if it happened to exist
+  under a sibling namespace.
+- `check-links.mjs` collected only `page.tsx`, so every `href` pointing at an
+  API route handler scored as dead. `/api/documents/[id]` is a link a person
+  clicks: it downloads their bill of lading.
+
+A check that cries wolf is a check somebody switches off, which is worse than
+not having it.
+
+## 10. The deploy checklist this produced
 
 Before calling a deployment live:
 
@@ -218,6 +300,8 @@ Before calling a deployment live:
 4. `QABANDI_TENANT` set, so telemetry can tell deployments apart
 5. One backup taken **and restored** — `pnpm fleet:restore-drill`
 6. Sign in as a real user, on the deployed instance
+7. `pnpm --filter @qabandi/service verify:notifications` — proves the whole
+   notification path, in both languages, before a customer is loaded (`OP-16`)
 
 `OP-15` Steps 2 and 3 are the ones that were skipped, and step 3 would have
 caught step 2 in seconds.

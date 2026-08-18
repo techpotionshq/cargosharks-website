@@ -25,6 +25,7 @@ import {
   jobPartners,
   jobs,
   milestoneTemplates,
+  notificationOutbox,
   quotes,
   withActor,
 } from '@qabandi/db'
@@ -187,12 +188,51 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
   try {
     reference = await withActor(session.actor, async (tx) => {
       if (data.jobId) {
+        /*
+          The arrival estimate is read before it is overwritten.
+
+          `job.eta_changed` is only worth raising when the arrival *actually
+          moved* — a save that touched the vessel name must not tell a customer
+          their dates changed — and knowing that needs the previous value. This
+          runs inside the same transaction as the update, so the pair is
+          consistent even though it is two statements.
+        */
+        const [before] = await tx
+          .select({
+            eta: jobs.eta,
+            branchId: jobs.branchId,
+            customerId: jobs.customerId,
+          })
+          .from(jobs)
+          .where(eq(jobs.id, data.jobId))
+          .limit(1)
+        if (!before) throw new Error('not_found')
+
         const [row] = await tx
           .update(jobs)
           .set({ ...values, updatedAt: new Date() })
           .where(eq(jobs.id, data.jobId))
-          .returning({ reference: jobs.reference })
+          .returning({ reference: jobs.reference, eta: jobs.eta })
         if (!row) throw new Error('not_found')
+
+        if (before.eta?.getTime() !== row.eta?.getTime()) {
+          await tx.insert(notificationOutbox).values({
+            branchId: before.branchId,
+            eventKey: 'job.eta_changed',
+            jobId: data.jobId,
+            customerId: before.customerId,
+            payload: {
+              reference: row.reference,
+              // Formatted here rather than in the template, because a template
+              // is a string with holes in it and cannot format a date. The date
+              // only, since an arrival estimate accurate to the minute is a
+              // precision the shipping line does not have.
+              previousEta: before.eta ? before.eta.toISOString().slice(0, 10) : 'not set',
+              eta: row.eta ? row.eta.toISOString().slice(0, 10) : 'not set',
+            },
+          })
+        }
+
         return row.reference
       }
 
@@ -265,6 +305,24 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
       if (data.quoteId) {
         await tx.update(quotes).set({ updatedAt: new Date() }).where(eq(quotes.id, data.quoteId))
       }
+
+      /*
+        FR-NT-01, in the same transaction as the job and its milestone plan.
+
+        The mode is sent as the stored code — `sea_fcl`, `air` — rather than a
+        display name, and that is a deliberate limit of a template engine that
+        substitutes strings. Translating it would mean either a lookup the
+        outbox has no business doing or a second copy of the mode vocabulary in
+        two languages; the customer's own booking confirmation carries the
+        prose, and this message carries the reference they need to track it.
+      */
+      await tx.insert(notificationOutbox).values({
+        branchId: data.branchId,
+        eventKey: 'job.created',
+        jobId: row!.id,
+        customerId: data.customerId,
+        payload: { reference: row!.reference, mode: data.mode },
+      })
 
       return row!.reference
     })

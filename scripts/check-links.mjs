@@ -20,12 +20,21 @@ import { globSync, readFileSync } from 'node:fs'
  */
 const posix = (f) => f.replaceAll('\\', '/')
 
+/**
+ * Route handlers count as routes.
+ *
+ * Only `page.tsx` was collected, so every `href` pointing at an API route was
+ * scored as dead — and the check's answer to that was to report a false
+ * positive rather than to miss a real one, which is the direction that gets a
+ * check switched off. `/api/documents/[id]` is a link a person clicks: it
+ * downloads their bill of lading.
+ */
 const routes = new Set(
-  globSync('apps/web/src/app/**/page.tsx').map(
+  globSync('apps/web/src/app/**/{page.tsx,route.ts}').map(
     (f) =>
       posix(f)
         .replace('apps/web/src/app', '')
-        .replace('/page.tsx', '')
+        .replace(/\/(page\.tsx|route\.ts)$/, '')
         .replace(/\/\([a-z]+\)/g, '') || '/',
   ),
 )

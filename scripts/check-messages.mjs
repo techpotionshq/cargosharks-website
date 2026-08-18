@@ -58,6 +58,22 @@ for (const [have, want] of [
  * `getTranslations('ns')` / `useTranslations('ns')` bind a namespace to a
  * local name; `t('key')` then resolves against it. Both are tracked per file,
  * because one file routinely holds six.
+ *
+ * A binding name maps to a *set* of namespaces, not to one.
+ *
+ * This is a file-level scan with no notion of function scope, and `const t =`
+ * is the conventional name — so a file with three server actions has three
+ * bindings called `t` against three different namespaces. Keeping only the
+ * last one made the check wrong in both directions: it reported keys as
+ * undefined when they were defined under the namespace actually in scope, and
+ * it would pass a genuinely missing key that happened to exist under one of
+ * the others.
+ *
+ * Resolving against any namespace the name is bound to in the file removes the
+ * false positives outright. It leaves a narrow false negative — a key defined
+ * under the wrong one of two namespaces in the same file — which is the same
+ * limit a scan without scope analysis has always had, and far cheaper than
+ * parsing TypeScript here to close it.
  */
 const BIND =
   /(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'\s*\)/g
@@ -71,15 +87,25 @@ for (const file of globSync('apps/web/src/**/*.{ts,tsx}')) {
   const source = readFileSync(file, 'utf8')
 
   const namespaces = new Map()
-  for (const match of source.matchAll(BIND)) namespaces.set(match[1], match[2])
+  for (const match of source.matchAll(BIND)) {
+    if (!namespaces.has(match[1])) namespaces.set(match[1], new Set())
+    namespaces.get(match[1]).add(match[2])
+  }
   if (!namespaces.size) continue
 
   for (const match of source.matchAll(CALL)) {
-    const namespace = namespaces.get(match[1])
-    if (namespace) used.set(`${namespace}.${match[2]}`, file)
+    const bound = namespaces.get(match[1])
+    if (!bound) continue
+
+    const candidates = [...bound].map((namespace) => `${namespace}.${match[2]}`)
+    // Defined under any of them is defined; otherwise report the first, which
+    // is the one a reader will look for.
+    const resolved = candidates.find((key) => defined.en.has(key))
+    used.set(resolved ?? candidates[0], file)
   }
   for (const match of source.matchAll(DYNAMIC)) {
-    if (namespaces.has(match[1])) dynamic.push(`${file}: ${namespaces.get(match[1])}.\`…\``)
+    const bound = namespaces.get(match[1])
+    if (bound) for (const namespace of bound) dynamic.push(`${file}: ${namespace}.\`…\``)
   }
 }
 

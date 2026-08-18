@@ -34,6 +34,16 @@ import {
 } from '@qabandi/db'
 
 /**
+ * Stated once, so the policy and the message a person reads cannot drift.
+ *
+ * Twelve rather than eight. This is a system holding a freight company's
+ * commercial rates and its customers' invoices, and the accounts are held by a
+ * small named staff who set a password rarely — the cost of four more
+ * characters falls almost entirely on an attacker.
+ */
+export const MIN_PASSWORD_LENGTH = 12
+
+/**
  * The signing secret.
  *
  * Passed straight through, and validated at **start-up** rather than here —
@@ -76,7 +86,67 @@ export const auth = betterAuth({
     // pre-account-hijacking advisory needs, and there is no reason to have one
     // for an internal freight platform.
     disableSignUp: true,
-    minPasswordLength: 12,
+    minPasswordLength: MIN_PASSWORD_LENGTH,
+
+    /**
+     * One hour.
+     *
+     * The default is a day, which is a long time for a link that grants an
+     * account, sitting in a mailbox that may itself be on a shared machine at
+     * a freight desk. An hour is comfortably longer than the gap between
+     * asking and reading, and short enough that a forwarded or archived
+     * message is not a live credential a week later.
+     */
+    resetPasswordTokenExpiresIn: 60 * 60,
+
+    /**
+     * The reset email, sent by the service.
+     *
+     * `apps/web` never sends mail (§3) — it hands the message across one
+     * process boundary to the only process holding SMTP credentials. The same
+     * division that keeps Chromium out of the request path keeps a mailbox
+     * password out of the environment of every server component.
+     *
+     * ## Failing here does not fail the request
+     *
+     * Better Auth answers the caller regardless of what this callback does,
+     * and that is correct: the reply to "reset my password" must be identical
+     * whether or not the address exists, or the form becomes an
+     * account-enumeration oracle (FR-ID-04). So a mail failure is logged and
+     * swallowed rather than surfaced — the person sees "if that address is
+     * registered, a link is on its way", which is the honest sentence in both
+     * cases.
+     *
+     * A deployment with no `SERVICE_URL` therefore cannot reset passwords, and
+     * it says so in the log rather than appearing to work.
+     */
+    sendResetPassword: async ({ user, url }) => {
+      const serviceUrl = process.env.SERVICE_URL
+      const secret = process.env.INTERNAL_API_SECRET
+
+      if (!serviceUrl || !secret) {
+        console.error(
+          'password reset requested but SERVICE_URL / INTERNAL_API_SECRET are not set — ' +
+            'no email can be sent',
+        )
+        return
+      }
+
+      try {
+        const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+          body: JSON.stringify({ email: user.email, url }),
+          signal: AbortSignal.timeout(20_000),
+        })
+
+        if (!response.ok) {
+          console.error(`password reset mail refused: ${response.status} ${response.statusText}`)
+        }
+      } catch (error) {
+        console.error({ error }, 'password reset mail could not be sent')
+      }
+    },
   },
 
   session: {

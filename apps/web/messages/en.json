@@ -280,6 +280,7 @@
     "milestonesHint": "Planned, revised and actual — all three are kept.",
     "documents": "Documents",
     "documentsHint": "Released documents are visible to the customer.",
+    "release": "Release",
     "released": "Released",
     "draft": "Draft",
     "version": "v{version}",
@@ -539,7 +540,35 @@
       "live": "Live shipment status, exceptions first, so the oldest problem is the one you see.",
       "scoped": "You see your own branches and nothing else. Enforced by the database, not by the screen.",
       "bilingual": "English and Arabic throughout, including the documents you issue."
-    }
+    },
+    "forgotPassword": "Forgotten your password?",
+    "resetDone": "Your password has been changed. Sign in with the new one."
+  },
+  "forgotPassword": {
+    "title": "Forgotten password",
+    "subtitle": "Enter the address you sign in with and we will send you a link to set a new password.",
+    "email": "Email address",
+    "submit": "Send the link",
+    "submitting": "Sending…",
+    "sent": "If that address belongs to an account, a link is on its way. It expires in one hour.",
+    "errorMissing": "Enter your email address.",
+    "backToSignIn": "Back to sign in"
+  },
+  "resetPassword": {
+    "title": "Set a new password",
+    "subtitle": "Choose a password you do not use anywhere else.",
+    "password": "New password",
+    "confirm": "Confirm the password",
+    "hint": "At least {length} characters.",
+    "submit": "Save the password",
+    "submitting": "Saving…",
+    "noTokenHint": "This link is incomplete or has already been used. Ask for a new one and it will arrive in a moment.",
+    "requestAnother": "Request a new link",
+    "errorNoToken": "This link is incomplete. Ask for a new one.",
+    "errorTooShort": "Use at least {length} characters.",
+    "errorMismatch": "The two passwords do not match.",
+    "errorBadToken": "This link has expired or has already been used. Ask for a new one.",
+    "backToSignIn": "Back to sign in"
   },
   "customers": {
     "eyebrow": "Commercial",

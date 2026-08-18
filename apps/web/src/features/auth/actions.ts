@@ -17,7 +17,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { auth } from '@/lib/auth'
+import { auth, MIN_PASSWORD_LENGTH } from '@/lib/auth'
 
 export interface SignInState {
   readonly error?: string
@@ -121,4 +121,105 @@ function applySetCookie(store: Awaited<ReturnType<typeof cookies>>, header: stri
   }
 
   store.set(name, value, options)
+}
+
+// --- password reset ----------------------------------------------------------
+
+export interface ResetRequestState {
+  readonly done?: boolean
+  readonly error?: string
+  readonly email?: string
+}
+
+/**
+ * Ask for a reset link — FR-ID-05.
+ *
+ * ## The answer is the same either way
+ *
+ * Whether the address belongs to an account or to nobody, this returns
+ * `done: true` and the page says the same sentence. Distinguishing them would
+ * turn the form into an account-enumeration oracle, which is the same reason
+ * `signIn` above has one message for "no such user" and "wrong password"
+ * (FR-ID-04). It matters more here, because this form needs no password to
+ * probe with.
+ *
+ * The email is sent by `sendResetPassword` in `lib/auth.ts`, which hands it to
+ * the service. A failure there is logged and does not reach this state, for
+ * the same reason.
+ */
+export async function requestPasswordReset(
+  _previous: ResetRequestState,
+  formData: FormData,
+): Promise<ResetRequestState> {
+  const t = await getTranslations('forgotPassword')
+  const email = String(formData.get('email') ?? '')
+    .trim()
+    .toLowerCase()
+
+  if (!email) return { error: t('errorMissing') }
+
+  try {
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: '/reset-password' },
+    })
+  } catch {
+    /*
+      Swallowed on purpose.
+
+      Better Auth throws for an unknown address on some paths and not others,
+      and the difference is exactly what must not be observable. Anything that
+      is a genuine fault — a database that is down, a mail relay that refused
+      — is already logged where it happened.
+    */
+  }
+
+  return { done: true, email }
+}
+
+export interface ResetState {
+  readonly error?: string
+}
+
+/**
+ * Set the new password against the token from the link.
+ *
+ * The length rule is checked here as well as by Better Auth so the operator
+ * gets a sentence in their own language rather than a generic API error — and
+ * the two numbers come from the same place, `minPasswordLength` in
+ * `lib/auth.ts`, so they cannot drift apart.
+ */
+export async function resetPassword(
+  _previous: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
+  const t = await getTranslations('resetPassword')
+  const token = String(formData.get('token') ?? '')
+  const password = String(formData.get('password') ?? '')
+  const confirm = String(formData.get('confirm') ?? '')
+
+  if (!token) return { error: t('errorNoToken') }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: t('errorTooShort', { length: MIN_PASSWORD_LENGTH }) }
+  }
+  if (password !== confirm) return { error: t('errorMismatch') }
+
+  try {
+    await auth.api.resetPassword({ body: { newPassword: password, token } })
+  } catch {
+    // A token that is expired, already used, or invented. One message for all
+    // three: which of them it is tells an attacker something and tells the
+    // operator nothing they can act on differently.
+    return { error: t('errorBadToken') }
+  }
+
+  /*
+    Straight to sign-in rather than signing them in here.
+
+    Resetting a password is the act that should end every other session — a
+    person resetting a password may be doing it because someone else has it.
+    Better Auth revokes the account's sessions on reset, and issuing a fresh
+    one from this handler would quietly reintroduce the thing that was just
+    revoked.
+  */
+  redirect('/sign-in?reset=1')
 }
