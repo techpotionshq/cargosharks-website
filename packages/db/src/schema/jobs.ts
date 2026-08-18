@@ -21,6 +21,7 @@ import {
 import { amount, pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable } from './table'
 import {
+  billPartyRoleEnum,
   customsStatusEnum,
   clockKindEnum,
   dayBasisEnum,
@@ -28,6 +29,7 @@ import {
   enquiryStatusEnum,
   jobStatusEnum,
   modeEnum,
+  localeEnum,
   quoteStatusEnum,
   severityEnum,
 } from './enums'
@@ -36,6 +38,7 @@ import { assets } from './files'
 import {
   commodities,
   containerTypes,
+  countries,
   currencies,
   documentTypes,
   exceptionCodes,
@@ -209,6 +212,15 @@ export const jobs = pgTable(
     volumeCbm: quantity('volume_cbm'),
     pieces: integer('pieces'),
     customerReference: text('customer_reference'),
+    /**
+     * The master this house sails under — 0012.
+     *
+     * Null for FCL and for any job that is its own master, which is why
+     * nothing about existing work has to know consolidation exists. The
+     * foreign key and the branch-match trigger are declared in the migration;
+     * stated here it would make `jobs` and `consolidations` import each other.
+     */
+    consolidationId: ref('consolidation_id'),
     closedAt: tsz('closed_at'),
     cancelledAt: tsz('cancelled_at'),
     cancelledReason: text('cancelled_reason'),
@@ -218,7 +230,83 @@ export const jobs = pgTable(
     index('jobs_board_idx').on(t.branchId, t.status, t.eta),
     index('jobs_customer_idx').on(t.customerId, t.status),
     index('jobs_owner_idx').on(t.ownerId, t.status),
+    index('jobs_consolidation_idx').on(t.consolidationId),
   ],
+)
+
+/**
+ * Who prints on the bill of lading — 0010.
+ *
+ * Linked to a customer or partner where one applies, and *copied* regardless.
+ * A bill issued in March must still print in November exactly as it was
+ * issued; a customer who moves office in June would otherwise silently rewrite
+ * the history of every document they appear on. A document records what was
+ * said, not what is currently true.
+ */
+export const jobParties = pgTable(
+  'job_parties',
+  {
+    id: pk(),
+    jobId: ref('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    role: billPartyRoleEnum('role').notNull(),
+    customerId: ref('customer_id').references(() => customers.id),
+    partnerId: ref('partner_id').references(() => partners.id),
+    nameEn: text('name_en').notNull(),
+    nameAr: text('name_ar'),
+    /**
+     * One block, newlines preserved, printed as given. Not line_1/line_2/city:
+     * a Kuwaiti plot number, an Indian PIN block and a European door number do
+     * not agree on how many parts an address has, and the structured version
+     * gets worked around by overflowing the last field.
+     */
+    address: text('address'),
+    city: text('city'),
+    country: text('country').references(() => countries.code),
+    contactName: text('contact_name'),
+    phone: text('phone'),
+    email: text('email'),
+    taxId: text('tax_id'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index('job_parties_job_idx').on(t.jobId, t.role, t.sortOrder)],
+)
+
+/**
+ * What is in the shipment, in the shipper's words — 0010.
+ *
+ * `commodities.hs_code` classifies cargo for customs; this describes it for a
+ * carrier, and the two are not the same sentence. A carrier prints what it is
+ * given — the phrase of art is "said to contain" — so nothing here is resolved
+ * through a lookup that would improve it.
+ */
+export const jobCargo = pgTable(
+  'job_cargo',
+  {
+    id: pk(),
+    jobId: ref('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    lineNo: integer('line_no').notNull().default(1),
+    /** Verbatim. Newlines preserved — marks are laid out, not written. */
+    marksAndNumbers: text('marks_and_numbers'),
+    packageCount: integer('package_count'),
+    /** "CARTONS", "PALLETS", "DRUMS" — free text, printed as given. */
+    packageType: text('package_type'),
+    descriptionEn: text('description_en').notNull(),
+    descriptionAr: text('description_ar'),
+    /** Classification, for the customs pack. Distinct from the description. */
+    hsCode: text('hs_code'),
+    grossWeightKg: quantity('gross_weight_kg'),
+    netWeightKg: quantity('net_weight_kg'),
+    volumeCbm: quantity('volume_cbm'),
+    /** Known at stuffing, not at booking, and never for an air line. */
+    equipmentId: ref('equipment_id'),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('job_cargo_line_unique').on(t.jobId, t.lineNo)],
 )
 
 /**
@@ -311,6 +399,22 @@ export const customsStages = pgTable(
     releasedAt: tsz('released_at'),
     brokerPartnerId: ref('broker_partner_id').references(() => partners.id),
     slaDueAt: tsz('sla_due_at'),
+    /**
+     * What we told the customer to expect, kept beside `duty_amount`, which is
+     * what was actually assessed (0013).
+     *
+     * Both, deliberately. The gap between them is the only honest measure of
+     * whether the estimate is worth quoting, and a single column would be
+     * overwritten by the truth so the question could never be asked again.
+     */
+    customsValue: amount('customs_value'),
+    customsValueCurrency: text('customs_value_currency').references(() => currencies.code),
+    estimatedDutyAmount: amount('estimated_duty_amount'),
+    estimatedAt: tsz('estimated_at'),
+    /** The HS lines, rates and values behind the estimate, so a disputed
+     * number can be explained without recomputing it against a tariff that
+     * has since moved. */
+    estimateBasis: jsonb('estimate_basis').$type<Record<string, unknown>>(),
     notes: text('notes'),
     ...timestamps,
   },
@@ -439,6 +543,15 @@ export const documents = pgTable(
     releasedAt: tsz('released_at'),
     releasedById: ref('released_by_id').references(() => principals.id),
     authorId: ref('author_id').references(() => principals.id),
+    /**
+     * The template key that produced this file, null for an upload (0010).
+     *
+     * `documents` could say what type a file was and who released it, but not
+     * whether the system produced it or a coordinator uploaded a scan — and
+     * that decides whether regeneration is offered at all.
+     */
+    generatedFrom: text('generated_from'),
+    locale: localeEnum('locale').notNull().default('en'),
     notes: text('notes'),
     ...timestamps,
   },
@@ -453,3 +566,7 @@ export type Quote = typeof quotes.$inferSelect
 export type Job = typeof jobs.$inferSelect
 export type JobMilestone = typeof jobMilestones.$inferSelect
 export type FreeTimeClock = typeof freeTimeClocks.$inferSelect
+
+export type JobParty = typeof jobParties.$inferSelect
+export type JobCargoLine = typeof jobCargo.$inferSelect
+export type DocumentRow = typeof documents.$inferSelect

@@ -173,9 +173,55 @@ export const chargeTypes = pgTable(
     isTaxable: boolean('is_taxable').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
+    /**
+     * Where this charge lands in the customer's chart of accounts (0011).
+     *
+     * Reference data rather than code because every accounting system in the
+     * Gulf numbers its accounts differently and not one of those differences
+     * should require a deployment. Null means unmapped, and an export names
+     * the charge type rather than guessing an account.
+     */
+    revenueAccountCode: text('revenue_account_code'),
+    costAccountCode: text('cost_account_code'),
     ...timestamps,
   },
   (t) => [index('charge_types_category_idx').on(t.category, t.sortOrder)],
+)
+
+/**
+ * Import duty by HS prefix — the rows behind `core/duty.ts` (0013).
+ *
+ * A tariff is a tree: chapter (2 digits), heading (4), subheading (6), then
+ * the national line. Rates are published at whatever depth the exception
+ * needs, so the lookup is "the longest prefix of this code that has a row",
+ * never an equality match. The GCC common external tariff is 5% on most goods
+ * with exemptions published at chapter level; the tobacco and alcohol rates
+ * are national lines. One table holds both because the prefix rule does.
+ *
+ * Dated rather than edited: an estimate produced in January must still be
+ * reproducible in June after the tariff moved in March.
+ */
+export const dutyRates = pgTable(
+  'duty_rates',
+  {
+    id: pk(),
+    country: text('country')
+      .notNull()
+      .references(() => countries.code),
+    hsPrefix: text('hs_prefix').notNull(),
+    ratePercent: amount('rate_percent').notNull(),
+    descriptionEn: text('description_en').notNull(),
+    descriptionAr: text('description_ar'),
+    effectiveFrom: date('effective_from').notNull(),
+    effectiveTo: date('effective_to'),
+    notes: text('notes'),
+    isActive: boolean('is_active').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    index('duty_rates_lookup_idx').on(t.country, t.hsPrefix, t.effectiveFrom),
+    uniqueIndex('duty_rates_unique_period').on(t.country, t.hsPrefix, t.effectiveFrom),
+  ],
 )
 
 /**
@@ -374,3 +420,5 @@ export type ChargeType = typeof chargeTypes.$inferSelect
 export type MilestoneTemplate = typeof milestoneTemplates.$inferSelect
 export type WorkingCalendarRow = typeof workingCalendars.$inferSelect
 export type FreeTimeRule = typeof freeTimeRules.$inferSelect
+
+export type DutyRate = typeof dutyRates.$inferSelect

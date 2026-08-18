@@ -163,3 +163,53 @@ export const taxTreatmentEnum = pgEnum('tax_treatment', [
   'standard',
   'reverse_charge',
 ])
+
+/**
+ * Who prints where on a bill of lading — 0010.
+ *
+ * Not the same list as `job_partners.role`, and deliberately so. That role
+ * says who is *working* the shipment: the origin agent, the haulier, the
+ * broker. This says who is *named on the document*, which is a different
+ * question with a different answer — the shipper on the bill is frequently not
+ * our customer, and the consignee is frequently the words "TO ORDER".
+ */
+export const billPartyRoleEnum = pgEnum('bill_party_role', [
+  'shipper',
+  'consignee',
+  'notify',
+  'second_notify',
+  'delivery_agent',
+  'forwarding_agent',
+])
+
+export const consolidationStatusEnum = pgEnum('consolidation_status', [
+  'open',
+  'closed',
+  'cancelled',
+])
+
+/**
+ * How a master cost divides across the houses under it — 0012.
+ *
+ * Every value except `manual` is a number the system already holds per house,
+ * which is what makes an allocation auditable rather than negotiable.
+ */
+export const allocationBasisEnum = pgEnum('allocation_basis', [
+  'chargeable_weight',
+  'volume',
+  'gross_weight',
+  'packages',
+  'equal',
+  'manual',
+])
+
+/**
+ * `draft` previews, `posted` marks its invoices, `void` releases them again.
+ * The three-state life cycle is what makes re-exporting a period a deliberate
+ * act rather than an accident — 0011.
+ */
+export const accountingExportStatusEnum = pgEnum('accounting_export_status', [
+  'draft',
+  'posted',
+  'void',
+])

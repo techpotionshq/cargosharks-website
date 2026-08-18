@@ -71,6 +71,34 @@
       "when": 1786841080251,
       "tag": "0009_schema_version_read",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786841081251,
+      "tag": "0010_bill_parties_and_cargo",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786841082251,
+      "tag": "0011_accounting_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786841083251,
+      "tag": "0012_consolidation",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786841084251,
+      "tag": "0013_customs_duty_and_broker",
+      "breakpoints": true
     }
   ]
 }

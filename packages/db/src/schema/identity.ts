@@ -43,6 +43,25 @@ export const branches = pgTable(
     /** Prefix and counter for FR-FN numbering; each entity numbers its own. */
     invoiceSeries: text('invoice_series').notNull(),
     invoiceSeriesNext: integer('invoice_series_next').notNull().default(1),
+    /**
+     * The same shape for house bills, and nullable where the invoice series is
+     * not: a branch that issues no house bills should not have to invent a
+     * prefix, and where this is null the number is typed by hand (0010).
+     */
+    houseBillSeries: text('house_bill_series'),
+    houseBillSeriesNext: integer('house_bill_series_next').notNull().default(1),
+    /**
+     * Control accounts, per legal entity — the counter-accounts every journal
+     * line needs and no charge type can supply (0011). All nullable and all
+     * checked at export time, so a branch that never exports is not blocked
+     * from existing by a chart of accounts nobody has supplied yet.
+     */
+    arAccountCode: text('ar_account_code'),
+    apAccountCode: text('ap_account_code'),
+    taxAccountCode: text('tax_account_code'),
+    bankAccountCode: text('bank_account_code'),
+    fxVarianceAccountCode: text('fx_variance_account_code'),
+    roundingAccountCode: text('rounding_account_code'),
     letterheadAssetId: ref('letterhead_asset_id').references(() => assets.id),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),
