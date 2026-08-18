@@ -1,6 +1,6 @@
 # Gulf Market Analysis — Productising Beyond Al-Qabandi
 
-**Competitive and regulatory research for a second customer · v1.0 · Internal**
+**Competitive and regulatory research for a second customer · v1.1 · Internal**
 
 | | |
 |---|---|
@@ -9,6 +9,7 @@
 | **Question asked** | Can the Qabandi platform be sold to other shipping and forwarding companies in Kuwait and the Gulf? |
 | **Relationship to the SRS** | Tests `Qabandi_Release_One_SRS.md` §11 (out of scope) against what the market actually pays for. Every R2 deferral in the SRS reappears here as a competitor's headline feature. |
 | **Status** | Research complete. Recommendations not yet approved. Sources at §10. |
+| **Revisions** | v1.1 (18 Aug 2026) adds Shipmnts to §2 — a direct competitor the first pass missed. External-service research has moved to `Integration_Landscape.md`; deployment findings to `Operations_Findings.md`. |
 
 > **The finding in one line:** the incumbent has just raised prices 20–50% and the region has three dated compliance mandates in the next six months — but none of them are in Kuwait.
 
@@ -52,6 +53,47 @@ Their headline selling point — one platform where a shipment invoiced out of a
 DP World markets CARGOES Runner explicitly as *"an ERP solution for small and medium-sized freight forwarders to overcome technology barriers."* That is our exact stated segment, from a vendor that owns the ports, the terminal operating system, the customs relationships and the Digital Freight Alliance distribution channel.
 
 `MK-02` **We cannot out-distribute DP World and should not try.** A forwarder choosing CARGOES Runner is choosing their landlord's software. The counter-position is independence and data ownership, not features.
+
+### Shipmnts — the one this analysis missed
+
+**Added 18 August 2026.** India-first freight ERP (Logistixian Technologies),
+**6,000+ users across 180 companies**, fixed per-user pricing — and a dedicated
+UAE/Gulf landing page naming *"Jebel Ali, DXB, and beyond"*, free-zone
+operations and multi-currency, *"trusted by forwarders across the Middle East"*.
+
+Module coverage is **wider than ours**: sales and pricing, forwarding, customs,
+warehouse, transport, finance, insights. Warehouse and transport are both
+`SRS §11` R3 deferrals for us and are shipping for them.
+
+`MK-06` **They are a more direct competitor than CargoWise, and they compete on
+the wedge we chose.** Their claims of a 2–3 week deployment and fixed per-user
+pricing are precisely the implementation-cost argument §1 recommends we use
+against the incumbent. An Indian cost base can price under us and still make
+margin, and the India–Gulf corridor — which a Kuwaiti forwarder runs heavily —
+is where their deep India compliance compounds with Gulf presence.
+
+`MK-07` **Their Gulf page is thin exactly where we are strong.** It makes
+regional claims and evidences almost none of them:
+
+| | Shipmnts UAE page | Us |
+|---|---|---|
+| Arabic / RTL | not mentioned anywhere | from the first commit, logical properties throughout |
+| VAT / e-invoicing | not mentioned | port declared, ASP hand-off built, PINT AE document pending |
+| Multi-entity, per-branch invoice series | not addressed | `FR-ID-01`, five entities |
+| Kuwait | absent — Jebel Ali and DXB only | home market |
+| Data sovereignty | shared multi-tenant, presumed | deployment-per-customer by architecture |
+
+Worth verifying rather than assuming: **whether they handle three-decimal
+currencies correctly.** An INR-first product built around two decimal places
+may well not, and KWD, BHD and OMR at three is a correctness fault rather than
+a preference — a demonstrable difference if it holds.
+
+The strategic reading: against CargoWise we compete on price and speed, where
+Shipmnts also competes and can win. Against Shipmnts we compete on being
+*actually* Arabic, *actually* multi-entity, *actually* Kuwaiti and ready for the
+UAE mandate. That is a narrower claim and a far harder one to copy — and it
+raises the priority of Wedge 2, because a well-funded competitor selling into
+the UAE without an e-invoicing story is a window, and windows close.
 
 ### The second tier
 
@@ -186,12 +228,16 @@ Sell deployment-per-customer, whitelabelled, to mid-size UAE and Saudi forwarder
 | Q3 | Which accredited ASPs will white-label or resell? | commercial | Wedge 2 |
 | Q4 | Does deployment-per-customer or true multi-tenancy fit the sales motion? | architecture | Schema — `branch` is currently the top scoping unit, with no tenant above it |
 | Q5 | Would Al-Qabandi act as a named reference for UAE prospects? | account | Sales credibility |
+| Q6 | Does Shipmnts render three-decimal currencies (KWD/BHD/OMR) correctly? | product | Whether `MK-07` is a demonstrable difference or only a claim |
 
 ---
 
 ## 10. Sources
 
 Accessed 17 August 2026.
+
+**Competitors**
+- [Shipmnts](https://shipmnts.com/) · [Shipmnts UAE & Gulf](https://shipmnts.com/uae/)
 
 **Market and incumbent pricing**
 - [Forwarders trapped in CargoWise 'monopoly' as new pricing hikes costs — The Loadstar](https://theloadstar.com/forwarders-trapped-in-cargowise-monopoly-as-new-pricing-hikes-costs/)

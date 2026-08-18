@@ -193,10 +193,28 @@ content rather than the exit status — including that the RLS policies survived
 because a restore that drops them produces a database that looks perfect and
 enforces nothing.
 
+**Before customer number two, read `Operations_Findings.md` §7.** `app_user` and
+`app_migrator` are PostgreSQL roles, which are cluster-wide rather than
+per-database — so `db:provision` for a second tenant on the same cluster
+rewrites the first tenant's passwords. One instance per tenant avoids it; a
+shared cluster needs per-tenant role names first.
+
 Dumps are taken through the **admin** connection. `app_user` holds
 `nobypassrls` and cannot read outside its own branches, so a dump taken as the
 application role is silently partial — which is the most dangerous artefact in
 this area.
+
+## The documents
+
+| | |
+|---|---|
+| [`Qabandi_Release_One_SRS.md`](docs/Qabandi_Release_One_SRS.md) | What Release One is, requirement by requirement, and what it is not (§11) |
+| [`Qabandi_Architecture.md`](docs/Qabandi_Architecture.md) | How it is built and why each choice was made |
+| [`Freight_Domain_Primer.md`](docs/Freight_Domain_Primer.md) | The business, for an engineer who has not worked in it |
+| [`Qabandi_Pilot_15_Day.md`](docs/Qabandi_Pilot_15_Day.md) | The pilot plan |
+| [`Gulf_Market_Analysis.md`](docs/Gulf_Market_Analysis.md) | Can this be sold to a second customer — competitors, mandates, wedges |
+| [`Integration_Landscape.md`](docs/Integration_Landscape.md) | What the external services actually offer: tracking, e-invoicing, customs, FX. Every claim tagged verified, documented or reported |
+| [`Operations_Findings.md`](docs/Operations_Findings.md) | What broke in the first real deployment and what it taught us. Read before standing up customer number two |
 
 ## The parts worth reading first
 
