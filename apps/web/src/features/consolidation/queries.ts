@@ -80,23 +80,23 @@ export async function listConsolidations(
           queries, and the count is the only thing the row needs.
         */
         houseCount: sql<number>`(
-          select count(*)::int from jobs j where j.consolidation_id = ${consolidations.id}
+          select count(*)::int from jobs j where j.consolidation_id = "consolidations"."id"
         )`,
         volumeCbm: sql<string>`(
           select coalesce(sum(c.volume_cbm), 0)::text
             from job_cargo c
             join jobs j on j.id = c.job_id
-           where j.consolidation_id = ${consolidations.id}
+           where j.consolidation_id = "consolidations"."id"
         )`,
         grossWeightKg: sql<string>`(
           select coalesce(sum(c.gross_weight_kg), 0)::text
             from job_cargo c
             join jobs j on j.id = c.job_id
-           where j.consolidation_id = ${consolidations.id}
+           where j.consolidation_id = "consolidations"."id"
         )`,
         unallocatedCount: sql<number>`(
           select count(*)::int from consol_charge_lines l
-           where l.consolidation_id = ${consolidations.id} and l.allocated_at is null
+           where l.consolidation_id = "consolidations"."id" and l.allocated_at is null
         )`,
       })
       .from(consolidations)
@@ -202,15 +202,15 @@ export async function getConsolidation(
         chargeableWeightKg: jobs.chargeableWeightKg,
         packages: sql<number>`(
           select coalesce(sum(c.package_count), 0)::int
-            from job_cargo c where c.job_id = ${jobs.id}
+            from job_cargo c where c.job_id = "jobs"."id"
         )`,
         grossWeightKg: sql<string>`(
           select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = ${jobs.id}
+            from job_cargo c where c.job_id = "jobs"."id"
         )`,
         volumeCbm: sql<string>`(
           select coalesce(sum(c.volume_cbm), 0)::text
-            from job_cargo c where c.job_id = ${jobs.id}
+            from job_cargo c where c.job_id = "jobs"."id"
         )`,
       })
       .from(jobs)
@@ -233,7 +233,7 @@ export async function getConsolidation(
         counterpartyName: partners.legalNameEn,
         shareCount: sql<number>`(
           select count(*)::int from consol_allocation_shares s
-           where s.consol_charge_line_id = ${consolChargeLines.id}
+           where s.consol_charge_line_id = "consol_charge_lines"."id"
         )`,
       })
       .from(consolChargeLines)
@@ -334,14 +334,14 @@ export async function loadAllocationTargets(
         reference: jobs.reference,
         chargeableWeightKg: jobs.chargeableWeightKg,
         volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = ${jobs.id}
+          select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = "jobs"."id"
         )`,
         grossWeightKg: sql<string>`(
           select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = ${jobs.id}
+            from job_cargo c where c.job_id = "jobs"."id"
         )`,
         packages: sql<number>`(
-          select coalesce(sum(c.package_count), 0)::int from job_cargo c where c.job_id = ${jobs.id}
+          select coalesce(sum(c.package_count), 0)::int from job_cargo c where c.job_id = "jobs"."id"
         )`,
       })
       .from(jobs)

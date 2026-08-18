@@ -89,6 +89,7 @@ export const NEEDS_DATABASE: Record<string, string> = {
   '/enquiries': 'enquiries — secondary register query',
   '/quotes': 'ledger/queries.ts listQuotes',
   '/jobs': 'jobs — secondary register query',
+  '/consolidations': 'consolidation/queries.ts listConsolidations',
   '/customs': 'operations/queries.ts listCustoms',
   '/exceptions': 'operations/queries.ts listExceptions',
   '/documents': 'operations/queries.ts listDocuments',

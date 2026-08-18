@@ -58,6 +58,9 @@ export default async function ConsolidationDetailPage({
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  // As in the document panel: the link checker cannot see past the first
+  // interpolation in an href, so the URL is built before it is used.
+  const manifestUrl = `/api/consolidations/${id}/manifest`
   const mayWrite = can(session, 'consol.write')
   const mayAllocate = can(session, 'consol.allocate')
 
@@ -76,15 +79,10 @@ export default async function ConsolidationDetailPage({
         title={consol.reference}
         actions={
           <span className="flex flex-wrap items-center gap-2">
-            <Button
-              href={`/api/consolidations/${id}/manifest`}
-              download
-              icon="document"
-              variant="secondary"
-            >
+            <Button href={manifestUrl} download icon="document" variant="secondary">
               {t('manifest')}
             </Button>
-            <Button href={`/api/consolidations/${id}/manifest?locale=ar`} download variant="ghost">
+            <Button href={`${manifestUrl}?locale=ar`} download variant="ghost">
               AR
             </Button>
             {mayWrite ? (

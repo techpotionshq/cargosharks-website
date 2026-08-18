@@ -424,15 +424,15 @@ export async function allocateConsolCharge(
           jobId: jobs.id,
           chargeableWeightKg: jobs.chargeableWeightKg,
           volumeCbm: sql<string>`(
-            select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = ${jobs.id}
+            select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = "jobs"."id"
           )`,
           grossWeightKg: sql<string>`(
             select coalesce(sum(c.gross_weight_kg), 0)::text
-              from job_cargo c where c.job_id = ${jobs.id}
+              from job_cargo c where c.job_id = "jobs"."id"
           )`,
           packages: sql<number>`(
             select coalesce(sum(c.package_count), 0)::int
-              from job_cargo c where c.job_id = ${jobs.id}
+              from job_cargo c where c.job_id = "jobs"."id"
           )`,
         })
         .from(jobs)

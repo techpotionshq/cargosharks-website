@@ -13,13 +13,13 @@
  * link preview in somebody's chat client issuing a bill of lading.
  */
 
+import type { ReactNode } from 'react'
 import { getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { Card, CardHeader } from '@/ui/card'
 import { Button, EmptyState } from '@/ui/layout'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
-import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { CargoDialog, PartyDialog } from './dialogs'
 import { issueDocument } from '../form-actions'
 import type { CargoRow, PartyRow } from '../queries'
@@ -208,10 +208,20 @@ const KINDS = ['house_bill', 'delivery_order', 'packing_list', 'customs_pack'] a
 export async function DocumentActionsCard({
   jobId,
   hasCargo,
+  dutyAction,
   className,
 }: {
   readonly jobId: string
   readonly hasCargo: boolean
+  /**
+   * The duty estimate, passed in rather than imported.
+   *
+   * It belongs to the operations slice and slices do not import each other
+   * (§4) — the page composes them. It sits on this card because it is what
+   * makes the customs pack above worth printing: a declaration pack with an
+   * empty duty column is a form, not an answer.
+   */
+  readonly dutyAction?: ReactNode
   readonly className?: string
 }) {
   const session = await requireSession()
@@ -227,7 +237,15 @@ export async function DocumentActionsCard({
       ) : null}
 
       <ul className="mt-4 space-y-2.5">
-        {KINDS.map((kind) => (
+        {KINDS.map((kind) => {
+          /*
+            Built here rather than inline in `href`, because `check-links.mjs`
+            probes an interpolated href by its literal prefix and cannot see
+            past the first `${` — `/api/jobs/$` is not a route, and the route
+            it stands for is two segments further on.
+          */
+          const preview = `/api/jobs/${jobId}/documents/${kind}`
+          return (
           <li
             key={kind}
             className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5 last:border-0"
@@ -247,21 +265,10 @@ export async function DocumentActionsCard({
                 stores nothing, so opening one in a tab is safe and sharing
                 the URL costs nothing but a render.
               */}
-              <Button
-                size="sm"
-                variant="ghost"
-                href={`/api/jobs/${jobId}/documents/${kind}`}
-                download
-                icon="download"
-              >
+              <Button size="sm" variant="ghost" href={preview} download icon="download">
                 EN
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                href={`/api/jobs/${jobId}/documents/${kind}?locale=ar`}
-                download
-              >
+              <Button size="sm" variant="ghost" href={`${preview}?locale=ar`} download>
                 AR
               </Button>
 
@@ -276,19 +283,17 @@ export async function DocumentActionsCard({
                 </form>
               ) : null}
             </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ul>
 
-      {/*
-        The estimate sits here rather than on the customs card, because it is
-        what makes the customs pack above worth printing: a declaration pack
-        with an empty duty column is a form, not an answer.
-      */}
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-4">
-        <span className="text-[0.75rem] text-ink-muted">{t('dutyPrompt')}</span>
-        <DutyEstimateDialog jobId={jobId} variant="ghost" />
-      </div>
+      {dutyAction ? (
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-4">
+          <span className="text-[0.75rem] text-ink-muted">{t('dutyPrompt')}</span>
+          {dutyAction}
+        </div>
+      ) : null}
 
       <p className="mt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">{t('issueNote')}</p>
     </Card>

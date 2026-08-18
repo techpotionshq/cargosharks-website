@@ -48,6 +48,7 @@ import {
   DocumentActionsCard,
   PartiesCard,
 } from '@/features/documents/ui/panels'
+import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 
@@ -456,6 +457,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <DocumentActionsCard
           jobId={id}
           hasCargo={cargo.length > 0}
+          dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
           className="lg:col-span-5"
         />
 
