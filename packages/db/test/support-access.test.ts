@@ -245,7 +245,28 @@ describe.skipIf(!enabled)('support access', () => {
               expiresAt: new Date(now + 4 * hour),
             },
           ])
-          .onConflictDoNothing()
+          /*
+            Upsert, not insert-once, and the difference is time.
+
+            These fixtures carry an expiry four hours out. With
+            `onConflictDoNothing` a second run against the same database left
+            the *first* run's rows in place — so the suite passed on a fresh
+            database and failed a few hours later with every grant reporting
+            itself expired, which reads exactly like a policy regression.
+
+            A fixture whose correctness depends on how long ago the database
+            was created is not a fixture. Re-running restores the window.
+          */
+          .onConflictDoUpdate({
+            target: supportGrants.id,
+            set: {
+              expiresAt: sql`excluded.expires_at`,
+              createdAt: sql`excluded.created_at`,
+              revokedAt: sql`excluded.revoked_at`,
+              scope: sql`excluded.scope`,
+              branchIds: sql`excluded.branch_ids`,
+            },
+          })
       },
       app,
     )
