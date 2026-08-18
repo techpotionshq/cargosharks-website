@@ -1639,5 +1639,21 @@
     "escalate": "Confirm write access",
     "escalateHint": "Only needed for read and write. Type GRANT WRITE to confirm.",
     "note": "Every session opened under this grant is recorded, and the record cannot be edited or deleted by anyone — including us."
+  },
+  "notFound": {
+    "eyebrow": "Not found",
+    "title": "That page does not exist",
+    "description": "The link may be out of date, or the record may have been closed. If you reached this from inside the system, the reference may belong to a branch you do not have access to.",
+    "backToBoard": "Back to the board",
+    "backToTracking": "Track a shipment"
+  },
+  "errorPage": {
+    "eyebrow": "Something went wrong",
+    "title": "We could not finish that",
+    "description": "The problem has been recorded. Nothing you were working on has been lost — a page that fails does not write anything.",
+    "retry": "Try again",
+    "backToBoard": "Back to the board",
+    "reference": "Reference",
+    "referenceHint": "Quote this when you contact support. It matches the entry in our logs."
   }
 }

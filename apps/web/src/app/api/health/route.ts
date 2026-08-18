@@ -26,6 +26,19 @@ interface Health {
   /** Applied migration count — how a fleet answers "who is behind?". */
   schemaVersion: number | null
   database: 'ok' | 'unreachable' | 'not-configured'
+  /**
+   * Whether the session signing key is set to something real.
+   *
+   * Added after a deployment answered 500 on sign-in and nothing else could
+   * say why: `auth.ts` refuses to start without `BETTER_AUTH_SECRET`, and it
+   * throws at module evaluation — so the failure surfaced as an opaque stack
+   * in a chunk file. A health endpoint that reports "reachable" while the
+   * application cannot authenticate anybody is reporting the wrong thing.
+   *
+   * Deliberately a boolean. Whether a secret is configured is not sensitive;
+   * its value obviously is, and even its length is a hint worth withholding.
+   */
+  auth: 'ok' | 'not-configured'
   fixtures: boolean
   checkedAt: string
 }
@@ -34,11 +47,22 @@ export async function GET(): Promise<Response> {
   const tenant = process.env.QABANDI_TENANT ?? 'unknown'
   const fixtures = usePilotFixtures()
 
+  /*
+    The same check `auth.ts` makes, without importing it.
+
+    Importing `auth.ts` here would run its module-level guard and take the
+    health endpoint down with the thing it is trying to report — the one
+    endpoint that must answer when everything else cannot.
+  */
+  const secret = process.env.BETTER_AUTH_SECRET
+  const authConfigured = Boolean(secret) && !secret!.includes('replace-me')
+
   const body: Health = {
-    status: 'ok',
+    status: authConfigured ? 'ok' : 'degraded',
     tenant,
     schemaVersion: null,
     database: 'not-configured',
+    auth: authConfigured ? 'ok' : 'not-configured',
     fixtures,
     checkedAt: new Date().toISOString(),
   }
@@ -57,9 +81,25 @@ export async function GET(): Promise<Response> {
       const result = await pool.query(`select count(*)::int as n from drizzle.__drizzle_migrations`)
       body.database = 'ok'
       body.schemaVersion = (result.rows[0] as { n: number } | undefined)?.n ?? null
-    } catch {
-      // The message is not reported. A connection error carries the host, the
-      // role and sometimes the database name, and this endpoint is public.
+    } catch (error) {
+      /*
+        Reported as a class publicly, logged in full privately.
+
+        A connection error carries the host, the role and often the database
+        name, so it cannot go in the response — this endpoint is unauthenticated
+        by design. But discarding it entirely is what made the last outage take
+        an hour: "unreachable" is a symptom with a dozen causes, and the cause
+        was in the exception nobody kept. It goes to stderr, where the platform
+        log has it and the public does not.
+      */
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          source: 'health',
+          message: error instanceof Error ? error.message : String(error),
+          tenant,
+        }),
+      )
       body.database = 'unreachable'
       body.status = 'degraded'
     } finally {
