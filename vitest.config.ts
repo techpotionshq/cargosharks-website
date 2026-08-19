@@ -92,10 +92,10 @@ export default defineConfig({
         stops meaning anything.
       */
       thresholds: {
-        lines: 78,
-        functions: 73,
+        lines: 79,
+        functions: 75,
         branches: 65,
-        statements: 76,
+        statements: 77,
       },
     },
   },
