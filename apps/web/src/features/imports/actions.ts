@@ -162,7 +162,11 @@ function readMapping(raw: FormDataEntryValue | null): Mapping | undefined {
   if (typeof raw !== 'string' || raw.trim() === '') return undefined
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object') return undefined
+    // `Array.isArray` because `typeof [] === 'object'`: a JSON array would
+    // otherwise become a mapping keyed `0`, `1`, `2`, which names no column and
+    // so silently unmaps every field — the sheet then reports its required
+    // columns as missing rather than falling back to its own headings.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
     const mapping: Record<string, number | null> = {}
     for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
       mapping[key] =

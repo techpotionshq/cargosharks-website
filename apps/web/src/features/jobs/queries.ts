@@ -195,8 +195,7 @@ type JobRow = {
     A job without a branch cannot exist — `jobs.branch_id` is `not null` — so
     this can only ever be null in theory, and typing it `string` was the
     natural reading. It is still wrong: the type has to describe the query, and
-    the moment somebody uses this field directly instead of deriving it from
-    the reference below, the difference is a blank cell rather than a crash.
+    the difference between the two shows up as a blank cell rather than a crash.
   */
   branchCode: string | null
   customerName: string | null
@@ -220,7 +219,17 @@ function toJobSummary(row: JobRow): JobSummary {
   return {
     id: row.id,
     reference: row.reference,
-    branchCode: row.reference.split('-')[0] ?? '',
+    /*
+      The joined branch, not the reference prefix.
+
+      Deriving it from `FXH-JOB-2026-00001` is right for every job this system
+      raises and wrong for the ones it inherits: a cutover import keeps the old
+      file number deliberately (`writeOpenJobs`), so `AGL-2024-118` rendered a
+      branch called `AGL`. Worse, the filter and the column then disagreed —
+      `listJobs({ branchCode: 'FXH' })` filters on `branches.code` and would
+      return rows the register labels something else entirely.
+    */
+    branchCode: row.branchCode ?? '',
     status: row.status,
     mode: row.mode as Mode,
     direction: row.direction as Direction,

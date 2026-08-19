@@ -15,7 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, like } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -77,7 +77,14 @@ const booking = (extra: Record<string, string> = {}) =>
     ...extra,
   })
 
-/** The most recently created shipment for the fixture customer. */
+/**
+ * The most recently *booked* shipment for the fixture customer.
+ *
+ * Narrowed to the generated reference format rather than to the customer,
+ * because the importer suite books against the same customer and keeps the old
+ * file number — so "the newest row" was sometimes a cutover import from
+ * another file running beside this one.
+ */
 async function latestJob() {
   const [row] = await withActor(bothBranchesActor, (tx) =>
     tx
@@ -89,7 +96,7 @@ async function latestJob() {
         vesselName: jobs.vesselName,
       })
       .from(jobs)
-      .where(eq(jobs.customerId, CUSTOMER))
+      .where(and(eq(jobs.customerId, CUSTOMER), like(jobs.reference, 'FXH-JOB-2%')))
       .orderBy(desc(jobs.createdAt))
       .limit(1),
   )

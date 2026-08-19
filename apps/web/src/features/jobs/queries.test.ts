@@ -28,7 +28,7 @@ describe.skipIf(!enabled)('job register', () => {
 
   describe('scoping — FR-ID-04', () => {
     /*
-      Asserted by *branch prefix* rather than by naming one fixture row.
+      Asserted by *branch* rather than by naming one fixture row.
 
       The register pages at fifty, and the suites that write jobs cannot clean
       up after themselves — `DELETE` is revoked from `app_user` (§5.5), so
@@ -36,17 +36,26 @@ describe.skipIf(!enabled)('job register', () => {
       falls off the end of the page. What must hold regardless of how much
       history has accumulated is the scoping itself: nothing from the away
       branch appears, however many rows there are.
+
+      The branch is read from `branchCode`, not from the reference prefix — a
+      cutover import keeps the old file number, so the prefix names the branch
+      only for shipments this system raised itself.
     */
     it('lists the actor’s own branch and not another', async () => {
-      const references = (await listJobs(homeActor, { limit: 200 })).map((j) => j.reference)
-      expect(references.length).toBeGreaterThan(0)
-      expect(references.some((r) => r.startsWith('FXA-'))).toBe(false)
+      const rows = await listJobs(homeActor, { limit: 200 })
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.every((job) => job.branchCode === 'FXH')).toBe(true)
     })
 
     it('lists both for a principal holding a role in both', async () => {
-      const references = (await listJobs(bothBranchesActor, { limit: 200 })).map((j) => j.reference)
-      expect(references.some((r) => r.startsWith('FXA-'))).toBe(true)
-      expect(references.some((r) => r.startsWith('FXH-'))).toBe(true)
+      // Asked one branch at a time: the away branch holds a single shipment,
+      // which fell off the end of an unfiltered page long before the scoping
+      // it is here to prove stopped holding.
+      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
+      const away = await listJobs(bothBranchesActor, { branchCode: 'FXA', limit: 200 })
+
+      expect(home.length).toBeGreaterThan(0)
+      expect(away.map((job) => job.reference)).toContain('FXA-JOB-FIXTURE-1')
     })
 
     /** Another branch's shipment is *not found*, not forbidden. */
@@ -63,10 +72,31 @@ describe.skipIf(!enabled)('job register', () => {
      * should be excluded is present to be excluded.
      */
     it('filters by mode, excluding the others', async () => {
-      const sea = await listJobs(bothBranchesActor, { mode: 'sea_fcl' })
-      expect(sea.map((j) => j.reference)).toContain('FXH-JOB-FIXTURE-1')
-      expect(sea.map((j) => j.reference)).not.toContain('FXA-JOB-FIXTURE-1')
+      const sea = await listJobs(bothBranchesActor, { mode: 'sea_fcl', limit: 200 })
+      expect(sea.length).toBeGreaterThan(0)
       expect(sea.every((j) => j.mode === 'sea_fcl')).toBe(true)
+      expect(sea.map((j) => j.reference)).not.toContain('FXA-JOB-FIXTURE-1')
+
+      // Asserted from the thin side too: the air list holds the air fixture,
+      // which a predicate matching everything could not produce and exclude
+      // at the same time.
+      const air = await listJobs(bothBranchesActor, { mode: 'air', limit: 200 })
+      expect(air.map((j) => j.reference)).toContain('FXA-JOB-FIXTURE-1')
+    })
+
+    /**
+     * The register's branch column and its branch filter must be the same
+     * fact. They were not: the filter read the joined `branches.code` and the
+     * column was derived from the reference prefix, which is only the branch
+     * code for jobs this system raised — never for the cutover imports that
+     * keep their old file number on purpose.
+     */
+    it('labels a branch from the branch, not from the reference', async () => {
+      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
+      const imported = home.find((job) => !job.reference.startsWith('FXH-'))
+
+      expect(home.length).toBeGreaterThan(0)
+      if (imported) expect(imported.branchCode).toBe('FXH')
     })
 
     it('filters by branch code', async () => {
@@ -80,16 +110,18 @@ describe.skipIf(!enabled)('job register', () => {
     })
 
     it('filters by explicit status', async () => {
-      const inTransit = await listJobs(bothBranchesActor, { status: 'in_transit' })
+      const inTransit = await listJobs(bothBranchesActor, { status: 'in_transit', limit: 200 })
+      expect(inTransit.length).toBeGreaterThan(0)
       expect(inTransit.every((j) => j.status === 'in_transit')).toBe(true)
-      expect(inTransit.map((j) => j.reference)).toContain('FXH-JOB-FIXTURE-1')
     })
 
     /** `live` is a set of statuses rather than one — the board's default. */
     it('treats live as the working set, not a single status', async () => {
-      const live = await listJobs(bothBranchesActor, { status: 'live' })
-      expect(live.map((j) => j.reference)).toContain('FXH-JOB-FIXTURE-1')
+      const live = await listJobs(bothBranchesActor, { status: 'live', limit: 200 })
+      expect(live.length).toBeGreaterThan(0)
       expect(live.every((j) => j.status !== 'cancelled' && j.status !== 'closed')).toBe(true)
+      // More than one status, or `live` is a spelling of `in_transit`.
+      expect(new Set(live.map((j) => j.status)).size).toBeGreaterThan(1)
     })
 
     it('returns nothing for a filter nothing matches', async () => {
