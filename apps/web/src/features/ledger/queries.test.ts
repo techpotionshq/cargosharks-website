@@ -147,9 +147,17 @@ describe.skipIf(!enabled)('ledger registers', () => {
       expect(mine.some((p) => p.id === HOME_PAYMENT)).toBe(true)
     })
 
+    /*
+      Asserted by branch rather than by naming the fixture quotation.
+
+      The register pages at two hundred and nothing is ever deleted, so any one
+      reference eventually falls off the end. What must hold however much
+      history has accumulated is the scoping itself.
+    */
     it('scopes quotations the same way', async () => {
       const mine = await listQuotes(homeActor)
-      expect(mine.map((q) => q.reference)).toContain('FXH-QUO-FIXTURE-1')
+      expect(mine.length).toBeGreaterThan(0)
+      expect(mine.every((q) => q.branchCode === 'FXH')).toBe(true)
     })
   })
 
@@ -176,11 +184,22 @@ describe.skipIf(!enabled)('ledger registers', () => {
       expect(summary.count).toBe(rows.length)
     })
 
+    /**
+     * Compared against the visible row *count*, not against a page of the
+     * register: the aggregate has no limit and the list stops at two hundred,
+     * so once the table outgrew a page the two stopped being comparable. The
+     * property under test was never about the page — it is that the aggregate
+     * counts what this actor can see and nothing else.
+     */
     it('counts quotations by status without losing any', async () => {
       const counts = await quoteStatusCounts(homeActor)
-      const rows = await listQuotes(homeActor)
       const summed = counts.reduce((total, row) => total + Number(row.count), 0)
-      expect(summed).toBe(rows.length)
+
+      const visible = await withActor(homeActor, (tx) =>
+        tx.execute(`select count(*)::int as n from quotes`),
+      )
+      expect(summed).toBe((visible.rows[0] as { n: number }).n)
+      expect(summed).toBeGreaterThan(0)
     })
 
     it('knows whether any quotation exists at all', async () => {
