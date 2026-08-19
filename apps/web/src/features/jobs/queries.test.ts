@@ -27,16 +27,26 @@ describe.skipIf(!enabled)('job register', () => {
   })
 
   describe('scoping — FR-ID-04', () => {
+    /*
+      Asserted by *branch prefix* rather than by naming one fixture row.
+
+      The register pages at fifty, and the suites that write jobs cannot clean
+      up after themselves — `DELETE` is revoked from `app_user` (§5.5), so
+      every run leaves its shipments behind and any single reference eventually
+      falls off the end of the page. What must hold regardless of how much
+      history has accumulated is the scoping itself: nothing from the away
+      branch appears, however many rows there are.
+    */
     it('lists the actor’s own branch and not another', async () => {
-      const references = (await listJobs(homeActor)).map((j) => j.reference)
-      expect(references).toContain('FXH-JOB-FIXTURE-1')
-      expect(references).not.toContain('FXA-JOB-FIXTURE-1')
+      const references = (await listJobs(homeActor, { limit: 200 })).map((j) => j.reference)
+      expect(references.length).toBeGreaterThan(0)
+      expect(references.some((r) => r.startsWith('FXA-'))).toBe(false)
     })
 
     it('lists both for a principal holding a role in both', async () => {
-      const references = (await listJobs(bothBranchesActor)).map((j) => j.reference)
-      expect(references).toContain('FXH-JOB-FIXTURE-1')
-      expect(references).toContain('FXA-JOB-FIXTURE-1')
+      const references = (await listJobs(bothBranchesActor, { limit: 200 })).map((j) => j.reference)
+      expect(references.some((r) => r.startsWith('FXA-'))).toBe(true)
+      expect(references.some((r) => r.startsWith('FXH-'))).toBe(true)
     })
 
     /** Another branch's shipment is *not found*, not forbidden. */
@@ -60,9 +70,13 @@ describe.skipIf(!enabled)('job register', () => {
     })
 
     it('filters by branch code', async () => {
-      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH' })
-      expect(home.map((j) => j.reference)).toContain('FXH-JOB-FIXTURE-1')
-      expect(home.map((j) => j.reference)).not.toContain('FXA-JOB-FIXTURE-1')
+      const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
+      expect(home.length).toBeGreaterThan(0)
+      expect(home.every((j) => j.branchCode === 'FXH')).toBe(true)
+
+      const away = await listJobs(bothBranchesActor, { branchCode: 'FXA', limit: 200 })
+      expect(away.length).toBeGreaterThan(0)
+      expect(away.every((j) => j.branchCode === 'FXA')).toBe(true)
     })
 
     it('filters by explicit status', async () => {
