@@ -25,14 +25,7 @@
  */
 
 import { and, desc, eq } from 'drizzle-orm'
-import {
-  assets,
-  documentTypes,
-  documents,
-  jobs,
-  withActor,
-  type Actor,
-} from '@qabandi/db'
+import { assets, documentTypes, documents, jobs, withActor, type Actor } from '@qabandi/db'
 import { adapters } from '../adapters/index'
 import { DocumentNotFoundError } from './documents'
 import type { DocumentLocale } from './document-kit'
@@ -92,7 +85,7 @@ export async function storeJobDocument(
       .where(eq(jobs.id, jobId))
       .limit(1)
 
-    if (!job) throw new DocumentNotFoundError(jobId)
+    if (!job) throw new DocumentNotFoundError(jobId, 'job')
 
     const [type] = await tx
       .select({ id: documentTypes.id })
@@ -100,9 +93,17 @@ export async function storeJobDocument(
       .where(eq(documentTypes.code, DOCUMENT_TYPE_KEYS[kind]))
       .limit(1)
 
+    /*
+      A missing type is a deployment that was never seeded, not a shipment
+      nobody may see — but it is raised as the same error because the route
+      turns it into the same 404 either way, and a second class would only
+      change which line of the log says so. The message is what makes the
+      difference legible, so it names the fix.
+    */
     if (!type) {
       throw new DocumentNotFoundError(
-        `document type ${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`,
+        `${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`,
+        'seeded document type',
       )
     }
 

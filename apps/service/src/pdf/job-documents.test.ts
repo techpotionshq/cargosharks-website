@@ -18,6 +18,7 @@ import { renderBillOfLadingHtml } from './bill-of-lading'
 import { renderDeliveryOrderHtml } from './delivery-order'
 import { renderPackingListHtml } from './packing-list'
 import { renderManifestHtml, type ConsolidationDocumentView } from './manifest'
+import { renderCustomsPackHtml, type CustomsPackView } from './customs-pack'
 import { cargoTotals, type CargoView, type JobDocumentView } from './document-kit'
 
 const base: JobDocumentView = {
@@ -163,7 +164,9 @@ describe('house bill of lading', () => {
     // void. A bill that does not say how many exist cannot be safely
     // surrendered.
     expect(renderBillOfLadingHtml(base, 'en')).toContain('Number of original B/L')
-    expect(renderBillOfLadingHtml(base, 'en', { originals: 1 })).toMatch(/Number of original[\s\S]*?1/)
+    expect(renderBillOfLadingHtml(base, 'en', { originals: 1 })).toMatch(
+      /Number of original[\s\S]*?1/,
+    )
   })
 
   it('carries the "said to contain" disclaimer', () => {
@@ -326,7 +329,6 @@ describe('house air waybill', () => {
   })
 })
 
-
 describe('delivery order', () => {
   it('states the release conditions every time', () => {
     const html = renderDeliveryOrderHtml(base, 'en')
@@ -470,6 +472,182 @@ describe('cargo manifest', () => {
   it('says so plainly when no house has been attached yet', () => {
     const html = renderManifestHtml({ ...consol, houses: [] }, 'en')
     expect(html).toContain('No house bills are attached')
+  })
+})
+
+/**
+ * The pack is a working document, not a filing. We do not file — Kuwait
+ * customs runs on a concession held by a competitor — so what this removes is
+ * the hour of retyping, not the thirty seconds of clicking.
+ *
+ * That makes the estimate's *provenance* the thing to protect. A broker who
+ * disagrees with 7% can see it came from prefix 870323 and say so, which is a
+ * conversation; a bare figure is an argument. So the tests here are mostly
+ * about what the sheet admits to: which tariff line answered, which codes it
+ * could not price, and that none of it carries any authority.
+ */
+describe('customs declaration pack', () => {
+  const pack: CustomsPackView = {
+    job: base,
+    declarationType: 'Import — consumption',
+    declarationNo: 'KWD-2026-77123',
+    brokerName: 'Bayan Clearing Co.',
+    currency: 'KWD',
+    goodsValue: '12500.000',
+    freightValue: '840.000',
+    insuranceValue: null,
+    customsValue: '13340.000',
+    estimatedDuty: '667.000',
+    estimatedAt: new Date('2026-06-02T07:30:00Z'),
+    lines: [
+      {
+        lineNo: 1,
+        description: 'Ceramic floor tiles',
+        hsCode: '6907.21.00',
+        matchedPrefix: '690721',
+        ratePercent: '5',
+        packageCount: 120,
+        grossWeightKg: '4820.500',
+        netWeightKg: '4610.000',
+        value: '10000.000',
+        duty: '500.000',
+        countryOfOrigin: 'CN',
+      },
+      {
+        lineNo: 2,
+        description: 'Sanitary ware',
+        hsCode: null,
+        matchedPrefix: null,
+        ratePercent: null,
+        packageCount: 30,
+        grossWeightKg: '1180.000',
+        netWeightKg: '1090.000',
+        value: null,
+        duty: null,
+        countryOfOrigin: null,
+      },
+    ],
+    unmatched: ['(no code)'],
+  }
+
+  const packed = (patch: Partial<CustomsPackView>): CustomsPackView => ({ ...pack, ...patch })
+
+  it('names the broker it was prepared for, and the declaration it belongs to', () => {
+    const html = renderCustomsPackHtml(pack, 'en')
+
+    expect(html).toContain('Bayan Clearing Co.')
+    expect(html).toContain('KWD-2026-77123')
+    expect(html).toContain('Import — consumption')
+  })
+
+  /** The consignee is the importer of record; the customer is the fallback. */
+  it('puts the consignee in the importer box and the shipper in the supplier box', () => {
+    const html = renderCustomsPackHtml(pack, 'en')
+
+    expect(html).toContain('Importer of record')
+    expect(html).toContain('Shanghai Everbright Ltd.')
+  })
+
+  /**
+   * The audit trail of the lookup, printed under the code that produced it.
+   * Without it the rate is a number the broker can only accept or reject.
+   */
+  it('shows which tariff prefix answered, beneath the code it matched', () => {
+    const html = renderCustomsPackHtml(pack, 'en')
+
+    expect(html).toContain('6907.21.00')
+    expect(html).toContain('690721')
+    expect(html).toContain('5%')
+  })
+
+  /**
+   * A dash, not a zero. A zero in the duty column reads as "exempt", which is
+   * a statement about the goods; a dash reads as "not priced", which is a
+   * statement about us and is the true one.
+   */
+  it('leaves an unpriced line blank rather than printing it as free', () => {
+    const html = renderCustomsPackHtml(
+      packed({ lines: [pack.lines[1]!], unmatched: ['(no code)'] }),
+      'en',
+    )
+
+    expect(html).not.toContain('>0%<')
+    expect(html).not.toContain('KWD 0.000')
+    expect(html).toContain('<td class="n">—</td>')
+  })
+
+  it('lists the codes it could not price, because they are the work', () => {
+    const html = renderCustomsPackHtml(packed({ unmatched: ['8703.23', '9999.99'] }), 'en')
+
+    expect(html).toContain('No tariff line was found')
+    expect(html).toContain('8703.23')
+    expect(html).toContain('9999.99')
+  })
+
+  it('says nothing at all about unmatched codes when every line priced', () => {
+    const html = renderCustomsPackHtml(packed({ unmatched: [] }), 'en')
+
+    expect(html).not.toContain('No tariff line was found')
+  })
+
+  /**
+   * The disclaimer is on every copy. An estimate that travels without it is an
+   * estimate somebody will eventually treat as an assessment.
+   */
+  it('states on its face that the figure carries no authority', () => {
+    const html = renderCustomsPackHtml(pack, 'en')
+
+    expect(html).toContain('is not an assessment')
+  })
+
+  it('prints the valuation stack, with a dash for the part nobody knows', () => {
+    const html = renderCustomsPackHtml(pack, 'en')
+
+    expect(html).toContain('Customs valuation (CIF)')
+    expect(html).toContain('Insurance')
+    // KWD is three decimals — a global `toFixed(2)` here loses a fils a line.
+    expect(html).toContain('13,340.000')
+    expect(html).toContain('667.000')
+  })
+
+  it('names the flight on an air shipment and the vessel on a sea one', () => {
+    const sea = renderCustomsPackHtml(pack, 'en')
+    const air = renderCustomsPackHtml(
+      packed({ job: view({ mode: 'air', flightNumber: 'KU 618', vesselName: null }) }),
+      'en',
+    )
+
+    expect(sea).toContain('MSC ISTANBUL / 214W')
+    expect(air).toContain('KU 618')
+    expect(air).toContain('Flight')
+  })
+
+  /** Nine columns do not fit portrait, as on the manifest. */
+  it('prints landscape', () => {
+    expect(renderCustomsPackHtml(pack, 'en')).toContain('size: A4 landscape')
+  })
+
+  it('renders Arabic right to left', () => {
+    const html = renderCustomsPackHtml(pack, 'ar')
+
+    expect(html).toContain('dir="rtl"')
+    expect(html).toContain('ملف البيان الجمركي')
+  })
+
+  /**
+   * The description comes off a shipper's booking and is never trusted. It is
+   * the one field on this sheet an outside party writes.
+   */
+  it('escapes markup in a shipper-supplied description', () => {
+    const html = renderCustomsPackHtml(
+      packed({
+        lines: [{ ...pack.lines[0]!, description: '<script>alert(1)</script>' }],
+      }),
+      'en',
+    )
+
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
   })
 })
 

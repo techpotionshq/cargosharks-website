@@ -61,7 +61,11 @@ import { renderAirWaybillHtml } from './air-waybill'
 import { renderBillOfLadingHtml } from './bill-of-lading'
 import { renderDeliveryOrderHtml } from './delivery-order'
 import { renderPackingListHtml } from './packing-list'
-import { renderCustomsPackHtml, type CustomsPackLineView, type CustomsPackView } from './customs-pack'
+import {
+  renderCustomsPackHtml,
+  type CustomsPackLineView,
+  type CustomsPackView,
+} from './customs-pack'
 import { renderManifestHtml, type ConsolidationDocumentView } from './manifest'
 
 /**
@@ -96,10 +100,7 @@ export const DOCUMENT_TYPE_KEYS: Record<JobDocumentKind, string> = {
 const currencySpec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
 
-export async function loadJobDocumentView(
-  actor: Actor,
-  jobId: string,
-): Promise<JobDocumentView> {
+export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<JobDocumentView> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .select({
@@ -139,7 +140,7 @@ export async function loadJobDocumentView(
       makes a job outside the principal's scope invisible rather than refused,
       so this is genuinely "no such row" from where the query stands.
     */
-    if (!row) throw new DocumentNotFoundError(jobId)
+    if (!row) throw new DocumentNotFoundError(jobId, 'job')
 
     const [parties, cargo, containers, places] = await Promise.all([
       tx
@@ -168,9 +169,7 @@ export async function loadJobDocumentView(
     const place = (id: string | null) => {
       if (!id) return null
       const found = places.find((p) => p.id === id)
-      return found
-        ? { nameEn: found.nameEn, nameAr: found.nameAr, unlocode: found.unlocode }
-        : null
+      return found ? { nameEn: found.nameEn, nameAr: found.nameAr, unlocode: found.unlocode } : null
     }
 
     const equipmentById = new Map(containers.map((c) => [c.id, c]))
@@ -241,45 +240,37 @@ export async function loadJobDocumentView(
         country: row.branchCountry,
       },
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
-      parties: parties.map(
-        (p): PartyView => ({
-          role: p.role,
-          nameEn: p.nameEn,
-          nameAr: p.nameAr,
-          address: p.address,
-          city: p.city,
-          country: p.country,
-          contactName: p.contactName,
-          phone: p.phone,
-          email: p.email,
-          taxId: p.taxId,
-        }),
-      ),
-      cargo: cargo.map(
-        (c): CargoView => ({
-          lineNo: c.lineNo,
-          marksAndNumbers: c.marksAndNumbers,
-          packageCount: c.packageCount,
-          packageType: c.packageType,
-          descriptionEn: c.descriptionEn,
-          descriptionAr: c.descriptionAr,
-          hsCode: c.hsCode,
-          grossWeightKg: c.grossWeightKg,
-          netWeightKg: c.netWeightKg,
-          volumeCbm: c.volumeCbm,
-          containerNo: c.equipmentId
-            ? (equipmentById.get(c.equipmentId)?.containerNo ?? null)
-            : null,
-        }),
-      ),
-      equipment: containers.map(
-        (e): EquipmentView => ({
-          containerNo: e.containerNo,
-          containerType: e.containerType,
-          sealNo: e.sealNo,
-          grossWeightKg: e.grossWeightKg,
-        }),
-      ),
+      parties: parties.map((p): PartyView => ({
+        role: p.role,
+        nameEn: p.nameEn,
+        nameAr: p.nameAr,
+        address: p.address,
+        city: p.city,
+        country: p.country,
+        contactName: p.contactName,
+        phone: p.phone,
+        email: p.email,
+        taxId: p.taxId,
+      })),
+      cargo: cargo.map((c): CargoView => ({
+        lineNo: c.lineNo,
+        marksAndNumbers: c.marksAndNumbers,
+        packageCount: c.packageCount,
+        packageType: c.packageType,
+        descriptionEn: c.descriptionEn,
+        descriptionAr: c.descriptionAr,
+        hsCode: c.hsCode,
+        grossWeightKg: c.grossWeightKg,
+        netWeightKg: c.netWeightKg,
+        volumeCbm: c.volumeCbm,
+        containerNo: c.equipmentId ? (equipmentById.get(c.equipmentId)?.containerNo ?? null) : null,
+      })),
+      equipment: containers.map((e): EquipmentView => ({
+        containerNo: e.containerNo,
+        containerType: e.containerType,
+        sealNo: e.sealNo,
+        grossWeightKg: e.grossWeightKg,
+      })),
       issuedAt: new Date(),
       placeOfIssue: row.branchCode,
       freightTerm: freightRevenue.length > 0 ? 'prepaid' : 'collect',
@@ -351,7 +342,21 @@ export async function loadCustomsPackView(
     const totalGross = job.cargo.reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0)
     const dutiable: DutiableLine[] = job.cargo.map((line) => ({
       hsCode: line.hsCode,
-      description: line.descriptionEn,
+      /*
+        The line number, not the description — this is a join key, not a label.
+
+        `estimateDuty` drops the lines it could not classify, so the estimate
+        cannot be zipped back onto the cargo by position, and it has to be
+        matched by something the line carries. The description is not it: two
+        lines of the same goods in different containers is routine, and keying
+        on it gave the second line the first one's value and duty. The *total*
+        stayed right, which is what made it invisible — a broker checking the
+        footer of the pack would have found nothing wrong.
+
+        Nothing prints this field. `CustomsPackLineView.description` is taken
+        from the cargo row below, and `unmatched` reports HS codes.
+      */
+      description: String(line.lineNo),
       value:
         goods === null
           ? '0'
@@ -367,10 +372,10 @@ export async function loadCustomsPackView(
       spec,
     })
 
-    const byDescription = new Map(estimate.lines.map((l) => [l.description, l]))
+    const byLineNo = new Map(estimate.lines.map((l) => [l.description, l]))
 
     const lines: CustomsPackLineView[] = job.cargo.map((c) => {
-      const estimated = byDescription.get(c.descriptionEn)
+      const estimated = byLineNo.get(String(c.lineNo))
       return {
         lineNo: c.lineNo,
         description: c.descriptionEn,
@@ -387,9 +392,7 @@ export async function loadCustomsPackView(
     })
 
     const value =
-      goods === null
-        ? null
-        : computeCustomsValue({ goods }, currency, spec).amount.toString()
+      goods === null ? null : computeCustomsValue({ goods }, currency, spec).amount.toString()
 
     return {
       job,
@@ -441,7 +444,7 @@ export async function loadConsolidationDocumentView(
       .where(eq(consolidations.id, consolidationId))
       .limit(1)
 
-    if (!row) throw new DocumentNotFoundError(consolidationId)
+    if (!row) throw new DocumentNotFoundError(consolidationId, 'consolidation')
 
     const houseRows = await tx
       .select({
@@ -520,9 +523,7 @@ export async function loadConsolidationDocumentView(
         marksAndNumbers: first?.marksAndNumbers ?? null,
         packageCount: cargo.reduce((acc, c) => acc + (c.packageCount ?? 0), 0) || null,
         packageType: first?.packageType ?? null,
-        grossWeightKg: cargo
-          .reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0)
-          .toFixed(3),
+        grossWeightKg: cargo.reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0).toFixed(3),
         volumeCbm: cargo.reduce((acc, c) => acc + Number(c.volumeCbm ?? 0), 0).toFixed(3),
         containerNo: first?.equipmentId
           ? (equipmentById.get(first.equipmentId)?.containerNo ?? null)

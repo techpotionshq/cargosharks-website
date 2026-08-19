@@ -17,9 +17,17 @@ import { branches, customers, invoiceLines, invoices, withActor, type Actor } fr
 import { renderInvoiceHtml, type DocumentLocale, type InvoiceView } from './invoice'
 import { createRenderer } from './renderer'
 
+/**
+ * Nothing here to render for this principal.
+ *
+ * `subject` because this is thrown for jobs and consolidations as much as for
+ * invoices, and the message is what a support engineer reads while looking at
+ * a bare 404 in a log. "No invoice 0f3a… visible to this principal" against a
+ * request for a bill of lading sends them to the wrong table.
+ */
 export class DocumentNotFoundError extends Error {
-  constructor(id: string) {
-    super(`No invoice ${id} visible to this principal`)
+  constructor(id: string, subject = 'document') {
+    super(`No ${subject} ${id} visible to this principal`)
     this.name = 'DocumentNotFoundError'
   }
 }
@@ -57,7 +65,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       stands. Reporting it as a permission error would leak that the invoice
       exists, which is the enumeration signal the policy design avoids.
     */
-    if (!row) throw new DocumentNotFoundError(invoiceId)
+    if (!row) throw new DocumentNotFoundError(invoiceId, 'invoice')
 
     const lines = await tx
       .select({

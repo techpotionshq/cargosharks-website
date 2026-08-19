@@ -111,7 +111,20 @@ describe.skipIf(!enabled)('administration reads', () => {
      * Both halves are needed: zero rows on its own cannot distinguish a policy
      * that is working from an audit trigger that never fired.
      */
-    it('shows nothing to a principal without admin.audit.read', async () => {
+    /*
+      Slower than the default five seconds, and for a reason worth recording
+      rather than hiding: proving the register is empty means scanning it. The
+      denied case cannot stop early — `limit 150` never fills — so every row is
+      tested, and each test calls `app.has_permission` and
+      `app.support_sees_branch` afresh because Postgres re-evaluates a STABLE
+      function per row inside an `OR`. At the ~69k rows this database has
+      accumulated that is about 0.6s of function calls, and it grows with the
+      table. Wrapping the row-independent halves of those policies in
+      `(select …)` makes them InitPlans evaluated once, which measures 5.8×
+      faster here — a change to every policy in `0004`/`0008` and so its own
+      piece of work, not a line in a test.
+    */
+    it('shows nothing to a principal without admin.audit.read', { timeout: 30_000 }, async () => {
       expect(await listAudit(bothBranchesActor)).toEqual([])
     })
 
