@@ -26,6 +26,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      /*
+        `server-only` throws on import outside a server bundle, which is the
+        whole point of it — but Vitest is neither server nor client bundle, so
+        the real package fails every suite that touches a query module. The
+        stub keeps the marker inert here without weakening it in the build.
+      */
+      'server-only': fileURLToPath(new URL('./src/lib/testing/server-only.ts', import.meta.url)),
     },
   },
   test: {

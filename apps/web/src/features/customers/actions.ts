@@ -21,6 +21,7 @@ import { eq } from 'drizzle-orm'
 import { customerBranchTerms, customers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
+import { isUniqueViolation } from '@/lib/form-state'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
 
 export interface CustomerFormState {
@@ -211,13 +212,4 @@ export async function setCustomerActive(customerId: string, isActive: boolean): 
 
   revalidatePath('/customers')
   revalidatePath(`/customers/${customerId}`)
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: string }).code === '23505'
-  )
 }

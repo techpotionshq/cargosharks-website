@@ -68,6 +68,55 @@ export function succeed(token = 'ok'): ActionState {
 }
 
 /**
+ * The SQLSTATE of a database error, wherever it is buried.
+ *
+ * Drizzle does not rethrow the driver's error — it wraps it in a
+ * `DrizzleQueryError` whose own message is `Failed query: insert into …` and
+ * which carries **no `code` of its own**. The pg error, with the SQLSTATE on
+ * it, is at `.cause`.
+ *
+ * That detail quietly disabled every friendly constraint message in the
+ * application. `isUniqueViolation` read `code` off the top-level object, found
+ * nothing, returned false, and the action rethrew — so "Someone already has
+ * that email address" became an unhandled 500 with a Postgres constraint name
+ * in the log. The check looked right, the constraint worked, and the only
+ * symptom was the interface breaking on the one path a user is most likely to
+ * take twice.
+ *
+ * Walking the chain rather than reaching for `.cause` once: the wrapper is
+ * Drizzle's today and nothing guarantees it stays one layer deep.
+ */
+function sqlState(error: unknown): string | undefined {
+  for (let current = error, depth = 0; current && depth < 5; depth++) {
+    if (typeof current === 'object' && 'code' in current) {
+      const code = (current as { code?: unknown }).code
+      // SQLSTATE is five characters. Node's own errors use names like ENOENT.
+      if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return undefined
+}
+
+/**
+ * Every message in the chain, for the checks that match on what the database
+ * *said* rather than on a code — a named constraint, or a trigger that raises
+ * its own sentence. The wrapper's message is the query text, so matching on it
+ * alone never sees the trigger's words.
+ */
+export function databaseMessage(error: unknown): string {
+  const parts: string[] = []
+  for (let current = error, depth = 0; current && depth < 5; depth++) {
+    if (typeof current === 'object' && 'message' in current) {
+      const message = (current as { message?: unknown }).message
+      if (typeof message === 'string') parts.push(message)
+    }
+    current = (current as { cause?: unknown }).cause
+  }
+  return parts.join('\n')
+}
+
+/**
  * PostgreSQL's unique-violation code.
  *
  * Caught rather than pre-checked: a `select` before an `insert` is a race, and
@@ -75,20 +124,10 @@ export function succeed(token = 'ok'): ActionState {
  * left to do is turn `23505` into a sentence next to the field.
  */
 export function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: string }).code === '23505'
-  )
+  return sqlState(error) === '23505'
 }
 
 /** A foreign key that does not resolve — usually a stale option in a select. */
 export function isForeignKeyViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: string }).code === '23503'
-  )
+  return sqlState(error) === '23503'
 }

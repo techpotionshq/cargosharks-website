@@ -56,6 +56,7 @@ import {
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import {
+  databaseMessage,
   echo,
   fail,
   failWith,
@@ -392,10 +393,7 @@ export async function matchSupplierLine(
       )
     }
     if (outcome.error === 'over_billed') {
-      return fail(
-        { amount: 'That is more than is left unmatched on this line.' },
-        echo(form),
-      )
+      return fail({ amount: 'That is more than is left unmatched on this line.' }, echo(form))
     }
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -407,11 +405,8 @@ export async function matchSupplierLine(
       variance in the wrong entity's P&L, and the operator needs to know that
       is what they tried to do.
     */
-    if (error instanceof Error && error.message.includes('different branches')) {
-      return fail(
-        { chargeLineId: 'That cost line belongs to another branch.' },
-        echo(form),
-      )
+    if (databaseMessage(error).includes('different branches')) {
+      return fail({ chargeLineId: 'That cost line belongs to another branch.' }, echo(form))
     }
     throw error
   }
@@ -531,9 +526,7 @@ export async function setSupplierInvoiceStatus(
         where l.supplier_invoice_id = ${billId}
       `)
 
-      const verdict = check.rows[0] as
-        | { out_of_tolerance: number; unmatched: number }
-        | undefined
+      const verdict = check.rows[0] as { out_of_tolerance: number; unmatched: number } | undefined
       const dirty = Number(verdict?.out_of_tolerance ?? 0) + Number(verdict?.unmatched ?? 0)
 
       if (dirty > 0 && !acceptVariance) return { error: 'needs_review' as const }
@@ -771,9 +764,10 @@ export async function allocateSupplierPayment(
     over_invoiced: 'That is more than is still outstanding on that bill.',
   }
   if (outcome.error) {
-    const key = outcome.error === 'over_invoiced' || outcome.error === 'over_allocated'
-      ? 'amount'
-      : 'supplierInvoiceId'
+    const key =
+      outcome.error === 'over_invoiced' || outcome.error === 'over_allocated'
+        ? 'amount'
+        : 'supplierInvoiceId'
     return fail({ [key]: messages[outcome.error]! }, echo(form))
   }
 

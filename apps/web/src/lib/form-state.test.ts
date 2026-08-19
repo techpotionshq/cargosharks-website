@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  databaseMessage,
   echo,
   fail,
   failWith,
@@ -175,6 +176,74 @@ describe('PostgreSQL error classification', () => {
   it('recognises a foreign-key violation', () => {
     expect(isForeignKeyViolation({ code: '23503' })).toBe(true)
     expect(isForeignKeyViolation({ code: '23505' })).toBe(false)
+  })
+
+  /**
+   * The shape these actually arrive in, and the reason this file changed.
+   *
+   * Drizzle wraps the driver's error in a `DrizzleQueryError` that carries no
+   * `code` of its own and whose message is the query text. Reading `code` off
+   * the top-level object found nothing, so every friendly constraint message
+   * in the application was dead and the user got a 500 on the one path they
+   * are most likely to take twice — submitting a form with a value somebody
+   * already used.
+   */
+  it('sees through the wrapper Drizzle actually throws', () => {
+    const wrapped = Object.assign(new Error('Failed query: insert into "customers" …'), {
+      cause: Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+      }),
+    })
+    expect(isUniqueViolation(wrapped)).toBe(true)
+    expect(isForeignKeyViolation(wrapped)).toBe(false)
+  })
+
+  it('finds a code nested more than one layer down', () => {
+    const deep = { cause: { cause: { code: '23503' } } }
+    expect(isForeignKeyViolation(deep)).toBe(true)
+  })
+
+  /** A Node error code is not a SQLSTATE, however much it looks like one. */
+  it('does not mistake a Node error code for a SQLSTATE', () => {
+    expect(isUniqueViolation({ code: 'ENOENT' })).toBe(false)
+    expect(isForeignKeyViolation({ code: 'ECONNREFUSED' })).toBe(false)
+  })
+
+  it('terminates on a cause cycle rather than hanging', () => {
+    const a: { cause?: unknown } = {}
+    a.cause = a
+    expect(isUniqueViolation(a)).toBe(false)
+    expect(databaseMessage(a)).toBe('')
+  })
+
+  describe('databaseMessage', () => {
+    /**
+     * Some checks match on what the database *said* — a named constraint, or a
+     * trigger raising its own sentence. The wrapper's message is the query
+     * text, so matching on it alone never sees those words.
+     */
+    it('reaches the message the database actually produced', () => {
+      const wrapped = Object.assign(new Error('Failed query: insert into "job_parties" …'), {
+        cause: new Error(
+          'duplicate key value violates unique constraint "job_parties_single_principal"',
+        ),
+      })
+      expect(databaseMessage(wrapped)).toContain('job_parties_single_principal')
+    })
+
+    it('keeps the outer message too', () => {
+      const wrapped = Object.assign(new Error('Failed query: outer'), {
+        cause: new Error('inner detail'),
+      })
+      expect(databaseMessage(wrapped)).toContain('Failed query: outer')
+      expect(databaseMessage(wrapped)).toContain('inner detail')
+    })
+
+    it('is empty for a value that carries no message', () => {
+      expect(databaseMessage(null)).toBe('')
+      expect(databaseMessage(undefined)).toBe('')
+      expect(databaseMessage(42)).toBe('')
+    })
   })
 
   /** Anything that is not a pg error must not be mistaken for one. */

@@ -18,7 +18,7 @@
 import { revalidatePath } from 'next/cache'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assertTransition, customsMachine } from '@qabandi/core'
+import { assertTransition, customsMachine, isTerminal, jobMachine } from '@qabandi/core'
 import {
   customsStages,
   documentTypes,
@@ -33,7 +33,7 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -508,12 +508,17 @@ export async function addContainer(_previous: ActionState, form: FormData): Prom
 /**
  * Move the shipment itself.
  *
- * Not routed through `jobMachine` yet by design: the status list a coordinator
+ * Not routed through `jobMachine` by design: the status list a coordinator
  * sees is generated from the enum, and several legal real-world moves (a
  * shipment going back on hold, then off it) are ones the machine does not
  * currently enumerate. Rather than silently allow an illegal move, the two
  * genuinely irreversible ones — cancel and close — are gated on their own
- * permissions, which is where the real protection sits.
+ * permissions.
+ *
+ * Those permissions gate *entering* the two terminal states and nothing gated
+ * *leaving* them, so the one rule that is not negotiable is enforced below:
+ * a closed or cancelled shipment does not reopen (§5.5). Everything else stays
+ * as free as the enum, which is what the coordinator's screen needs.
  */
 export async function setJobStatus(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
@@ -532,7 +537,35 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
     return fail({ reason: 'Say why it was cancelled — it stays on the record.' }, echo(form))
   }
 
-  await withActor(session.actor, async (tx) => {
+  const left = await withActor(session.actor, async (tx) => {
+    /*
+      Terminal means terminal, even though the rest of the machine does not
+      apply here.
+
+      The note above is right that `jobMachine` does not enumerate every legal
+      real-world move, and asserting the whole machine would refuse a shipment
+      coming back off hold. But it leaves a hole the permissions it relies on
+      do not cover: `job.cancel` and `job.close` gate *entering* those states,
+      and nothing gated *leaving* them. Anyone holding plain `job.update` could
+      move a cancelled shipment to `in_transit` — and the blanking below then
+      erased `cancelled_at` and `cancelled_reason` on the way past, so the job
+      returned to the live board with no trace it had ever been cancelled.
+      That is the §5.5 failure rather than the state-machine one, and it is the
+      half worth closing.
+
+      Read and decide inside the transaction: two people moving the same job at
+      once must not both pass a check against the state they read.
+    */
+    const [current] = await tx
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1)
+    if (!current) return false
+
+    // Re-saving the state it is already in is a no-op, not a reopening.
+    if (current.status !== status && isTerminal(jobMachine, current.status)) return true
+
     await tx
       .update(jobs)
       .set({
@@ -543,7 +576,16 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
         updatedAt: new Date(),
       })
       .where(eq(jobs.id, jobId))
+
+    return false
   })
+
+  if (left) {
+    return failWith(
+      'That shipment has been closed or cancelled. Its record does not reopen — raise a new one.',
+      echo(form),
+    )
+  }
 
   revalidatePath('/jobs')
   revalidatePath(`/jobs/${jobId}`)

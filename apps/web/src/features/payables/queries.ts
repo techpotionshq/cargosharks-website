@@ -111,17 +111,31 @@ export async function listSupplierInvoices(
           `${supplierInvoices.id}` emits a bare `"id"` here and binds to the
           inner table instead of the outer one.
         */
+        /*
+          The subtraction happens *inside* the sum, and it has to.
+
+          Written the other way round — `sum(billed) - (select … where
+          m2.supplier_invoice_line_id = l.id)` — the correlated subquery
+          references `l.id` outside any aggregate in a query that has no
+          `group by`, and PostgreSQL rejects the whole statement with 42803.
+          Not for some rows: for every one, so the payables register raised on
+          each load rather than rendering a wrong number.
+
+          Per line, billed minus matched, then summed is also the figure that
+          is wanted: the variance on a bill is the sum of the variances on its
+          lines.
+        */
         varianceBase: sql<string>`(
-          select coalesce(
-            sum(l.amount * "supplier_invoices"."fx_rate")
+          select coalesce(sum(
+            l.amount * "supplier_invoices"."fx_rate"
             - coalesce((
                 select sum(cl.amount_base)
                   from supplier_invoice_matches m2
                   join charge_lines cl on cl.id = m2.charge_line_id
                  where m2.supplier_invoice_line_id = l.id
                    and m2.retracted_at is null
-              ), 0),
-            0)::text
+              ), 0)
+          ), 0)::text
             from supplier_invoice_lines l
            where l.supplier_invoice_id = "supplier_invoices"."id"
         )`,
@@ -223,7 +237,10 @@ export async function payablesAgeing(
   asOf = new Date(),
 ): Promise<{ readonly currency: string; readonly ageing: Ageing }> {
   return withActor(actor, async (tx) => {
-    const [branch] = await tx.select({ baseCurrency: branches.baseCurrency }).from(branches).limit(1)
+    const [branch] = await tx
+      .select({ baseCurrency: branches.baseCurrency })
+      .from(branches)
+      .limit(1)
     const base = branch?.baseCurrency ?? 'KWD'
 
     const rows = await tx
@@ -240,7 +257,10 @@ export async function payablesAgeing(
     return {
       currency: base,
       ageing: ageItems(
-        rows.map((r) => ({ outstanding: r.outstanding, dueOn: r.dueOn ? new Date(r.dueOn) : null })),
+        rows.map((r) => ({
+          outstanding: r.outstanding,
+          dueOn: r.dueOn ? new Date(r.dueOn) : null,
+        })),
         base,
         asOf,
       ),
@@ -404,19 +424,17 @@ export async function getSupplierInvoice(
     const lines: SupplierLineRow[] = lineRows.map((line) => {
       const matches = matchRows
         .filter((m) => m.lineId === line.id)
-        .map(
-          (m): SupplierMatchRow => ({
-            id: m.id,
-            chargeLineId: m.chargeLineId,
-            jobId: m.jobId,
-            jobReference: m.jobReference,
-            chargeTypeName: m.chargeTypeName,
-            claimed: m.claimed,
-            accruedBase: m.accruedBase,
-            accruedAmount: m.accruedAmount,
-            accruedCurrency: m.accruedCurrency,
-          }),
-        )
+        .map((m): SupplierMatchRow => ({
+          id: m.id,
+          chargeLineId: m.chargeLineId,
+          jobId: m.jobId,
+          jobReference: m.jobReference,
+          chargeTypeName: m.chargeTypeName,
+          claimed: m.claimed,
+          accruedBase: m.accruedBase,
+          accruedAmount: m.accruedAmount,
+          accruedCurrency: m.accruedCurrency,
+        }))
 
       /*
         Both sides in base currency — see the header. `numeric` strings are
@@ -649,30 +667,26 @@ export async function getPartnerAccount(
       : []
 
     const entries: StatementEntry[] = [
-      ...ours.map(
-        (i): StatementEntry => ({
-          id: i.id,
-          kind: i.isCreditNote ? 'credit_note' : 'invoice',
-          date: i.date ?? new Date(),
-          reference: i.reference ?? i.id.slice(0, 8),
-          description: i.isCreditNote ? 'Credit note' : 'Invoice',
-          amount: i.total,
-          outstanding: subtractStrings(i.total, i.amountPaid),
-          dueOn: i.dueOn ? new Date(i.dueOn) : null,
-        }),
-      ),
-      ...bills.map(
-        (b): StatementEntry => ({
-          id: b.id,
-          kind: 'bill',
-          date: new Date(b.date),
-          reference: b.reference,
-          description: 'Supplier invoice',
-          amount: b.total,
-          outstanding: subtractStrings(b.total, b.amountPaid),
-          dueOn: b.dueOn ? new Date(b.dueOn) : null,
-        }),
-      ),
+      ...ours.map((i): StatementEntry => ({
+        id: i.id,
+        kind: i.isCreditNote ? 'credit_note' : 'invoice',
+        date: i.date ?? new Date(),
+        reference: i.reference ?? i.id.slice(0, 8),
+        description: i.isCreditNote ? 'Credit note' : 'Invoice',
+        amount: i.total,
+        outstanding: subtractStrings(i.total, i.amountPaid),
+        dueOn: i.dueOn ? new Date(i.dueOn) : null,
+      })),
+      ...bills.map((b): StatementEntry => ({
+        id: b.id,
+        kind: 'bill',
+        date: new Date(b.date),
+        reference: b.reference,
+        description: 'Supplier invoice',
+        amount: b.total,
+        outstanding: subtractStrings(b.total, b.amountPaid),
+        dueOn: b.dueOn ? new Date(b.dueOn) : null,
+      })),
     ]
 
     const statement = buildStatement(entries, currency)
@@ -822,25 +836,20 @@ export async function getSettlement(
       })
       .from(partnerSettlementLines)
       .leftJoin(invoices, eq(invoices.id, partnerSettlementLines.invoiceId))
-      .leftJoin(
-        supplierInvoices,
-        eq(supplierInvoices.id, partnerSettlementLines.supplierInvoiceId),
-      )
+      .leftJoin(supplierInvoices, eq(supplierInvoices.id, partnerSettlementLines.supplierInvoiceId))
       .where(eq(partnerSettlementLines.settlementId, id))
       .orderBy(asc(partnerSettlementLines.kind))
 
     return {
       ...row,
-      lines: lines.map(
-        (l): SettlementLineRow => ({
-          id: l.id,
-          kind: l.kind,
-          reference: (l.kind === 'invoice' ? l.invoiceReference : l.billReference) ?? '—',
-          amount: l.amount,
-          isFull: l.isFull,
-          documentId: (l.kind === 'invoice' ? l.invoiceId : l.supplierInvoiceId) ?? '',
-        }),
-      ),
+      lines: lines.map((l): SettlementLineRow => ({
+        id: l.id,
+        kind: l.kind,
+        reference: (l.kind === 'invoice' ? l.invoiceReference : l.billReference) ?? '—',
+        amount: l.amount,
+        isFull: l.isFull,
+        documentId: (l.kind === 'invoice' ? l.invoiceId : l.supplierInvoiceId) ?? '',
+      })),
     }
   })
 }

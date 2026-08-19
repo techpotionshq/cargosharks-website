@@ -60,14 +60,27 @@ export default defineConfig({
         'packages/db/src/schema/**',
         'apps/web/src/lib/pilot/fixtures.ts',
         'apps/web/src/features/imports/descriptors.ts',
-        // Operator tooling: verified by running it, not by unit tests.
-        'packages/db/src/fleet-*.ts',
+        /*
+          Operator tooling and process wiring: verified by running it.
+
+          The `verify-*` scripts are themselves verification — they stand up a
+          real chain and print what came out, which is why they exist alongside
+          the unit tests rather than instead of them. Counting them as
+          production code to be covered would mean writing tests for the test
+          harness.
+
+          `workers/index.ts` and `service/src/index.ts` are registration and
+          boot: a list of job names bound to handlers, and the handlers are
+          where the behaviour is.
+        */
+        'packages/db/src/fleet*.ts',
         'packages/db/src/provision.ts',
         'packages/db/src/create-*.ts',
         'packages/db/src/tenant-new.ts',
         'packages/db/src/migrate.ts',
-        'apps/service/src/verify-*.ts',
-        'apps/service/src/adapters/verify-*.ts',
+        '**/verify-*.ts',
+        'apps/service/src/index.ts',
+        'apps/service/src/workers/index.ts',
       ],
 
       /*
@@ -79,10 +92,10 @@ export default defineConfig({
         stops meaning anything.
       */
       thresholds: {
-        lines: 33,
-        functions: 32,
-        branches: 27,
-        statements: 33,
+        lines: 44,
+        functions: 45,
+        branches: 35,
+        statements: 43,
       },
     },
   },

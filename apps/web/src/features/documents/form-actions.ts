@@ -28,7 +28,15 @@ import { z } from 'zod'
 import { jobCargo, jobParties, jobs, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+} from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -144,7 +152,7 @@ export async function saveJobParty(_previous: ActionState, form: FormData): Prom
       forgotten. Two consignees is not a variation to tolerate; it is a bill
       that cannot be issued.
     */
-    if (error instanceof Error && error.message.includes('job_parties_single_principal')) {
+    if (databaseMessage(error).includes('job_parties_single_principal')) {
       return failWith('That shipment already has one of those. Edit the existing party instead.')
     }
     throw error

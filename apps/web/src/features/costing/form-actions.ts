@@ -29,7 +29,15 @@ import { SEED_CURRENCIES, dec, type CurrencySpec } from '@qabandi/core'
 import { chargeLines, branches, jobs, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+} from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -200,7 +208,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
       )
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('not-null')) {
+    if (databaseMessage(error).includes('not-null')) {
       return failWith('Something on that line is missing.', echo(form))
     }
     throw error

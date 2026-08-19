@@ -1,0 +1,131 @@
+/**
+ * The administration reads — users, roles, branches, reference data, audit.
+ *
+ * Two of these carry more weight than their size suggests. `listUsers` and
+ * `listBranches` describe *who may act where*, so a scoping mistake here shows
+ * one operator another operator's staff list. And `listAudit` reads the one
+ * table the product promises nobody can edit (FR-AD-01) — a register that
+ * silently returns nothing would make that promise unfalsifiable.
+ */
+
+import { beforeAll, describe, expect, it } from 'vitest'
+
+const APP_URL = process.env.TEST_DATABASE_URL
+const enabled = Boolean(APP_URL)
+if (APP_URL) process.env.DATABASE_URL = APP_URL
+
+const { adminActor, bothBranchesActor, homeActor, world } = await import('@/lib/testing/fixtures')
+const {
+  listUsers,
+  listRoles,
+  listBranches,
+  referenceCounts,
+  listChargeTypes,
+  listReferenceSample,
+  listAudit,
+  auditTableCounts,
+  listCalendarOptions,
+} = await import('./queries')
+
+describe.skipIf(!enabled)('administration reads', () => {
+  beforeAll(async () => {
+    await world()
+  })
+
+  describe('people and places', () => {
+    it('lists the fixture principal among the users', async () => {
+      const emails = (await listUsers(bothBranchesActor)).map((u) => u.email)
+      expect(emails).toContain('fixtures@qabandi.test')
+    })
+
+    /** The seeded matrix: seven roles, and the permission counts behind them. */
+    it('lists the seeded roles', async () => {
+      const rows = await listRoles(bothBranchesActor)
+      const keys = rows.map((r) => r.key)
+      expect(keys).toContain('administrator')
+      expect(keys).toContain('finance')
+      expect(rows.length).toBeGreaterThanOrEqual(7)
+    })
+
+    /**
+     * Branches are configuration, not tenant data, and `branches_read` says so
+     * with `using (true)`. Every internal principal can read the whole list —
+     * which is what makes the branch picker work for someone being granted a
+     * role in a branch they do not yet hold.
+     *
+     * Writing is the gated half (`admin.branches.write`), and 0016's trigger
+     * narrows even that to the series counters for anyone else.
+     */
+    it('lists every branch, because branches are configuration', async () => {
+      const codes = (await listBranches(homeActor)).map((b) => b.code)
+      expect(codes).toContain('FXH')
+      expect(codes).toContain('FXA')
+    })
+
+    it('offers a calendar to attach a branch to', async () => {
+      const options = await listCalendarOptions(bothBranchesActor)
+      expect(options.length).toBeGreaterThan(0)
+      expect(options.every((o) => o.value && o.label)).toBe(true)
+    })
+  })
+
+  describe('reference data — FR-AD-03', () => {
+    /**
+     * Configuration is rows, not code, and these screens are how an
+     * administrator edits it without a release. A count that reads zero makes
+     * the screen look empty rather than broken.
+     */
+    it('counts reference tables and finds them populated', async () => {
+      const counts = await referenceCounts(bothBranchesActor)
+      expect(counts.length).toBeGreaterThan(0)
+      expect(counts.some((c) => Number(c.count) > 0)).toBe(true)
+    })
+
+    it('lists the seeded charge types', async () => {
+      const types = await listChargeTypes(bothBranchesActor)
+      expect(types.length).toBeGreaterThan(0)
+    })
+
+    it('samples reference rows for the screen', async () => {
+      const sample = await listReferenceSample(bothBranchesActor)
+      expect(sample).toBeDefined()
+    })
+  })
+
+  describe('audit — FR-AD-01', () => {
+    /**
+     * Everything the fixtures did was audited by a trigger, so this must not
+     * be empty: an audit register that reads zero is indistinguishable from an
+     * audit trigger that never fired.
+     */
+    it('returns audit entries to an administrator', async () => {
+      const rows = await listAudit(adminActor)
+      expect(rows.length).toBeGreaterThan(0)
+    })
+
+    /**
+     * The gate, from the other side. `audit_log_read` requires
+     * `admin.audit.read` and only `administrator` holds it, so an operations
+     * manager sees an empty register rather than a forbidden one.
+     *
+     * Both halves are needed: zero rows on its own cannot distinguish a policy
+     * that is working from an audit trigger that never fired.
+     */
+    it('shows nothing to a principal without admin.audit.read', async () => {
+      expect(await listAudit(bothBranchesActor)).toEqual([])
+    })
+
+    it('filters the audit register by table', async () => {
+      const counts = await auditTableCounts(adminActor)
+      expect(counts.length).toBeGreaterThan(0)
+
+      const table = counts[0]!.tableName
+      const rows = await listAudit(adminActor, table)
+      expect(rows.every((r) => r.tableName === table)).toBe(true)
+    })
+
+    it('returns nothing for a table nobody has touched', async () => {
+      expect(await listAudit(adminActor, 'no_such_table')).toEqual([])
+    })
+  })
+})

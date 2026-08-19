@@ -17,6 +17,7 @@ import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   assets,
+  branches,
   customers,
   customsStages,
   documentTypes,
@@ -123,7 +124,16 @@ export async function listJobs(actor: Actor, filters: JobListFilters = {}): Prom
         voyageNumber: jobs.voyageNumber,
         flightNumber: jobs.flightNumber,
         updatedAt: jobs.updatedAt,
-        branchCode: sql<string>`''`,
+        /*
+          The branch's own code, joined rather than stubbed.
+
+          This was a literal empty string, and the `where` below carried no
+          branch condition — so on a real database the register's branch column
+          rendered blank and `filters.branchCode` silently matched everything.
+          Both halves work in `usePilotFixtures()` mode above, which is why the
+          demo and the offline end-to-end run never showed it.
+        */
+        branchCode: branches.code,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
         originName: origin.nameEn,
@@ -141,6 +151,7 @@ export async function listJobs(actor: Actor, filters: JobListFilters = {}): Prom
         accruingAmount,
       })
       .from(jobs)
+      .leftJoin(branches, eq(branches.id, jobs.branchId))
       .leftJoin(customers, eq(customers.id, jobs.customerId))
       .leftJoin(principals, eq(principals.id, jobs.ownerId))
       .leftJoin(origin, eq(origin.id, jobs.originId))
@@ -154,6 +165,7 @@ export async function listJobs(actor: Actor, filters: JobListFilters = {}): Prom
               ? sql`${jobs.status} = ${filters.status}`
               : undefined,
           filters.mode ? sql`${jobs.mode} = ${filters.mode}` : undefined,
+          filters.branchCode ? eq(branches.code, filters.branchCode) : undefined,
           filters.exceptionsOnly ? sql`${openExceptions} > 0` : undefined,
         ),
       )
@@ -177,7 +189,16 @@ type JobRow = {
   voyageNumber: string | null
   flightNumber: string | null
   updatedAt: Date
-  branchCode: string
+  /*
+    Nullable because the join is a `leftJoin`.
+
+    A job without a branch cannot exist — `jobs.branch_id` is `not null` — so
+    this can only ever be null in theory, and typing it `string` was the
+    natural reading. It is still wrong: the type has to describe the query, and
+    the moment somebody uses this field directly instead of deriving it from
+    the reference below, the difference is a blank cell rather than a crash.
+  */
+  branchCode: string | null
   customerName: string | null
   customerNameAr: string | null
   originName: string | null
