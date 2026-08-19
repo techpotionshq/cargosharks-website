@@ -207,11 +207,27 @@ export async function attachHouse(form: FormData): Promise<void> {
       A job already under another master must not be moved by a second click
       on a stale screen — the update simply matches nothing, and the house
       stays where its costs were allocated.
+
+      The master's own status rides in the same condition, and for the same
+      reason it is a condition rather than a check: closing draws a line under
+      a consolidation, and a house attached afterwards was not in the split
+      that has already run. Nothing would recompute it, so that house carries
+      no share of the master's costs and its margin reads better than it is.
+      Attaching to a closed master matches nothing instead.
     */
     await tx
       .update(jobs)
       .set({ consolidationId, updatedAt: new Date() })
-      .where(and(eq(jobs.id, jobId), isNull(jobs.consolidationId)))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          isNull(jobs.consolidationId),
+          sql`exists (
+            select 1 from consolidations
+             where id = ${consolidationId}::uuid and status = 'open'
+          )`,
+        ),
+      )
   })
 
   revalidatePath(`/consolidations/${consolidationId}`)
@@ -346,9 +362,7 @@ export async function addConsolCharge(
       (FR-RT-06): the rate and the moment it was taken live on the row, so a
       rate change tomorrow cannot rewrite what this cost.
     */
-    const amountBase = toDb(
-      money(dec(data.amount).times(dec(data.fxRate)), baseCurrency),
-    )
+    const amountBase = toDb(money(dec(data.amount).times(dec(data.fxRate)), baseCurrency))
 
     await tx.insert(consolChargeLines).values({
       consolidationId: data.consolidationId,
@@ -537,7 +551,11 @@ export async function allocateConsolCharge(
         Capture the cargo figures, or allocate equally." Passing them through
         beats replacing them with "allocation failed".
       */
-      if ('code' in error && typeof error.code === 'string' && error.code.startsWith('allocation')) {
+      if (
+        'code' in error &&
+        typeof error.code === 'string' &&
+        error.code.startsWith('allocation')
+      ) {
         return failWith(error.message)
       }
     }
