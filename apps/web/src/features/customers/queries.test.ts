@@ -21,9 +21,21 @@ describe.skipIf(!enabled)('customer reads', () => {
     await world()
   })
 
-  it('lists customers and finds the fixtures', async () => {
-    const codes = (await listCustomers(homeActor)).map((c) => c.code)
-    expect(codes).toContain('CUST-FIXTURE-HOME')
+  /*
+    Asserted as a register rather than by naming one row.
+
+    The list stops at two hundred, ordered by name, and nothing is ever
+    deleted — so every run of the customer suites pushes the boundary along
+    and any single code eventually falls off the end. That a particular
+    customer is *findable* is the next test's job, through the search the
+    screen actually uses.
+  */
+  it('lists customers', async () => {
+    const rows = await listCustomers(homeActor)
+
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThanOrEqual(200)
+    expect(rows.every((c) => c.code.length > 0)).toBe(true)
   })
 
   it('narrows by search rather than matching everything', async () => {

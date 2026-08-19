@@ -29,7 +29,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -127,11 +127,23 @@ const customerSheet = (code: string) =>
 
 /* ------------------------------------------------------------------ counting */
 
-const countCustomers = async (): Promise<number> => {
+/**
+ * How many of *these* codes exist — not how many customers there are.
+ *
+ * A count of the whole table was the obvious spelling and it measured the
+ * scheduler: the customers suite writes customers too, the runner executes the
+ * files in parallel, and anything it inserted between the before and the after
+ * read as an import that had written something. Counting the codes this file
+ * put in the sheet is exact and cannot be moved by anyone else.
+ */
+const countCodes = async (...codes: string[]): Promise<number> => {
   const result = await withActor(bothBranchesActor, (tx) =>
-    tx.execute(sql`select count(*)::int as n from customers`),
+    tx
+      .select({ code: customers.code })
+      .from(customers)
+      .where(inArray(customers.code, codes)),
   )
-  return (result.rows[0] as { n: number }).n
+  return result.length
 }
 
 describe.skipIf(!enabled)('bulk import', () => {
@@ -213,11 +225,11 @@ describe.skipIf(!enabled)('bulk import', () => {
 
   describe('checking, which writes nothing', () => {
     it('reports a clean sheet as clean and leaves the table alone', async () => {
-      const before = await countCustomers()
+      const code = unique('CK')
 
       const state = await runImport(
         {},
-        upload('customers', customerSheet(unique('CK')), { branchId: HOME_BRANCH }),
+        upload('customers', customerSheet(code), { branchId: HOME_BRANCH }),
       )
 
       expect(state.ok).toBe(true)
@@ -225,7 +237,8 @@ describe.skipIf(!enabled)('bulk import', () => {
       expect(state.acceptedRows).toBe(1)
       expect(state.issueCount).toBe(0)
       expect(state.committed).toBeUndefined()
-      expect(await countCustomers()).toBe(before)
+      // The preview parsed it and wrote nothing.
+      expect(await countCodes(code)).toBe(0)
     })
 
     it('hands back the headings it found and the mapping it inferred', async () => {
@@ -262,15 +275,16 @@ describe.skipIf(!enabled)('bulk import', () => {
      * imports **nothing**, including the rows that were fine.
      */
     it('writes nothing at all when a commit carries one bad row', async () => {
-      const before = await countCustomers()
+      const good = unique('G1')
+      const bad = unique('B1')
 
       const state = await runImport(
         {},
         upload(
           'customers',
           sheet(CUSTOMER_HEADER, [
-            [unique('G1'), 'Good One', 'جيد', 'KW', '30'],
-            [unique('B1'), 'Bad One', 'سيئ', 'ZZ', '30'],
+            [good, 'Good One', 'جيد', 'KW', '30'],
+            [bad, 'Bad One', 'سيئ', 'ZZ', '30'],
           ]),
           { branchId: HOME_BRANCH, intent: 'commit' },
         ),
@@ -278,7 +292,8 @@ describe.skipIf(!enabled)('bulk import', () => {
 
       expect(state.ok).toBe(false)
       expect(state.committed).toBeUndefined()
-      expect(await countCustomers()).toBe(before)
+      // Including the row that was perfectly good — that is the criterion.
+      expect(await countCodes(good, bad)).toBe(0)
     })
   })
 

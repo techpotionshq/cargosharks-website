@@ -43,6 +43,18 @@ const AWAY_INVOICE = '00000000-0000-7000-8000-00000000c102'
 const HOME_PAYMENT = '00000000-0000-7000-8000-00000000c103'
 const HOME_ENQUIRY = '00000000-0000-7000-8000-00000000c104'
 const HOME_QUOTE = '00000000-0000-7000-8000-00000000c105'
+const AWAY_ENQUIRY = '00000000-0000-7000-8000-00000000c106'
+/*
+  A rejected quotation in each branch.
+
+  `rejected` is the marker status for the aggregate test below, and it is safe
+  to use as one because nothing else in the suite reaches it: the only
+  transition to it is from `sent`, and the one test that tries it does so from
+  `accepted`, which is terminal and refused. So exactly these two rows carry
+  the status, one on each side of the branch boundary.
+*/
+const HOME_REJECTED = '00000000-0000-7000-8000-00000000c107'
+const AWAY_REJECTED = '00000000-0000-7000-8000-00000000c108'
 
 describe.skipIf(!enabled)('ledger registers', () => {
   beforeAll(async () => {
@@ -105,19 +117,55 @@ describe.skipIf(!enabled)('ledger registers', () => {
         .onConflictDoNothing()
 
       await tx
-        .insert(quotes)
+        .insert(enquiries)
         .values({
-          id: HOME_QUOTE,
-          reference: 'FXH-QUO-FIXTURE-1',
-          enquiryId: HOME_ENQUIRY,
-          branchId: HOME_BRANCH,
-          version: 1,
-          status: 'draft',
-          currency: 'KWD',
-          totalSell: '600.000',
-          totalCost: '400.000',
-          validUntil: '2026-12-31',
+          id: AWAY_ENQUIRY,
+          reference: 'FXA-ENQ-FIXTURE-1',
+          branchId: AWAY_BRANCH,
+          customerId: AWAY_CUSTOMER,
+          mode: 'air',
+          tradeDirection: 'export',
         })
+        .onConflictDoNothing()
+
+      await tx
+        .insert(quotes)
+        .values([
+          {
+            id: HOME_QUOTE,
+            reference: 'FXH-QUO-FIXTURE-1',
+            enquiryId: HOME_ENQUIRY,
+            branchId: HOME_BRANCH,
+            version: 1,
+            status: 'draft',
+            currency: 'KWD',
+            totalSell: '600.000',
+            totalCost: '400.000',
+            validUntil: '2026-12-31',
+          },
+          {
+            id: HOME_REJECTED,
+            reference: 'FXH-QUO-FIXTURE-2',
+            enquiryId: HOME_ENQUIRY,
+            branchId: HOME_BRANCH,
+            version: 2,
+            status: 'rejected',
+            currency: 'KWD',
+            totalSell: '650.000',
+            totalCost: '400.000',
+          },
+          {
+            id: AWAY_REJECTED,
+            reference: 'FXA-QUO-FIXTURE-1',
+            enquiryId: AWAY_ENQUIRY,
+            branchId: AWAY_BRANCH,
+            version: 1,
+            status: 'rejected',
+            currency: 'KWD',
+            totalSell: '900.000',
+            totalCost: '700.000',
+          },
+        ])
         .onConflictDoNothing()
     })
   })
@@ -185,21 +233,27 @@ describe.skipIf(!enabled)('ledger registers', () => {
     })
 
     /**
-     * Compared against the visible row *count*, not against a page of the
-     * register: the aggregate has no limit and the list stops at two hundred,
-     * so once the table outgrew a page the two stopped being comparable. The
-     * property under test was never about the page — it is that the aggregate
-     * counts what this actor can see and nothing else.
+     * Measured on one status this file owns both rows of, rather than on a
+     * total.
+     *
+     * Two earlier spellings were both measuring the wrong thing. Comparing the
+     * aggregate to a page of the register broke once the table outgrew two
+     * hundred rows; comparing it to a separate `count(*)` broke because three
+     * suites write quotations in parallel and whatever landed between the two
+     * reads showed up as a discrepancy — the test was measuring the scheduler.
+     *
+     * The property was never about the total. It is that the aggregate counts
+     * the rows the actor can *see*, which is exactly what a count over the
+     * whole table would get wrong — and that is visible in one status: the
+     * away branch's rejection is in the wider actor's tally and not in the
+     * narrow one's.
      */
-    it('counts quotations by status without losing any', async () => {
-      const counts = await quoteStatusCounts(homeActor)
-      const summed = counts.reduce((total, row) => total + Number(row.count), 0)
+    it('counts quotations by status against what the actor can see', async () => {
+      const rejected = (rows: { status: string; count: number }[]) =>
+        Number(rows.find((row) => row.status === 'rejected')?.count ?? 0)
 
-      const visible = await withActor(homeActor, (tx) =>
-        tx.execute(`select count(*)::int as n from quotes`),
-      )
-      expect(summed).toBe((visible.rows[0] as { n: number }).n)
-      expect(summed).toBeGreaterThan(0)
+      expect(rejected(await quoteStatusCounts(homeActor))).toBe(1)
+      expect(rejected(await quoteStatusCounts(bothBranchesActor))).toBe(2)
     })
 
     it('knows whether any quotation exists at all', async () => {
