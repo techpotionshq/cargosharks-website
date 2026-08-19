@@ -86,7 +86,17 @@ export async function grantSupportAccess(
       .filter((v): v is string => typeof v === 'string' && v !== ''),
     hours: form.get('hours') ?? DEFAULT_HOURS,
     reason: form.get('reason') ?? '',
-    escalate: form.get('escalate'),
+    /*
+      `?? undefined`, like the three fields above it.
+
+      `FormData.get` answers `null` for a field that is not there, and
+      `z.string().optional()` accepts `undefined` but not `null` — so a grant
+      posted without the confirmation input failed validation on the
+      confirmation field, which is nonsense for a read grant that never needed
+      one. The dialog always renders the input, so the browser sends `''` and
+      this never showed; anything else posting the form hit it.
+    */
+    escalate: form.get('escalate') ?? undefined,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
