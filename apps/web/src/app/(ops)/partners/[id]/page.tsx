@@ -20,6 +20,12 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getPartnerDetail } from '@/features/network/queries'
 import { PartnerDialog } from '@/features/network/ui/dialogs'
+import { getPartnerAccount } from '@/features/payables/queries'
+import { PartnerAccountCard } from '@/features/payables/ui/panels'
+import {
+  PartnerAccountDialog,
+  PartnerToleranceDialog,
+} from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatNumber } from '@/lib/format'
 import { Icon } from '@/ui/icon'
@@ -45,6 +51,8 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   const { id } = await params
   const partner = await getPartnerDetail(session.actor, id)
   if (!partner) notFound()
+
+  const account = await getPartnerAccount(session.actor, id)
 
   const t = await getTranslations('partnerDetail')
   const tc = await getTranslations('common')
@@ -88,6 +96,26 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 currency: partner.currency,
                 paymentTermsDays: partner.paymentTermsDays,
                 isActive: partner.isActive,
+              }}
+            />
+            {/*
+              Two pieces of configuration that live on the partner and change
+              what the payables screens do (0014): how far their bills may
+              drift before somebody has to look, and which customer record
+              they invoice us as — without which no set-off can be run.
+            */}
+            <PartnerToleranceDialog
+              partnerId={partner.id}
+              defaults={{
+                percent: partner.varianceTolerancePercent,
+                absolute: partner.varianceToleranceAbsolute,
+              }}
+            />
+            <PartnerAccountDialog
+              partnerId={partner.id}
+              defaults={{
+                settlementCustomerId: partner.settlementCustomerId,
+                settlementCurrency: partner.settlementCurrency,
               }}
             />
           </>
@@ -226,6 +254,16 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
             )}
           </Panel>
         </div>
+
+        {/*
+          The current account, both directions (0014).
+
+          Its own card at full width rather than a figure in the header,
+          because it is a ledger rather than a statistic: the balance means
+          nothing without the documents that make it up, and a partner nobody
+          runs an account with says so instead of showing a zero.
+        */}
+        {account ? <PartnerAccountCard account={account} className="lg:col-span-12" /> : null}
       </Grid>
     </>
   )

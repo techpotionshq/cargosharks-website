@@ -10,6 +10,9 @@ import {
   type CurrencySpec,
   type InvoiceInput,
   type JournalInput,
+  type SettlementInput,
+  type SupplierInvoiceInput,
+  type SupplierPaymentInput,
 } from '../src/index'
 
 const KWD: CurrencySpec = SEED_CURRENCIES.find((c) => c.code === 'KWD')!
@@ -306,6 +309,344 @@ describe('refusals', () => {
     })
 
     expect(missing.map((m) => m.key)).toEqual(['legalisation'])
+  })
+})
+
+/**
+ * The payables side — FR-FN-09 in the ledger.
+ *
+ * The claim being tested is the one in the module header and it is the one a
+ * reviewer will doubt: a supplier invoice that agrees with the accrual posts
+ * *nothing*. Every other case here exists to show that the claim is a design
+ * decision rather than a missing feature.
+ */
+describe('supplier invoices', () => {
+  const bill = (over: Partial<SupplierInvoiceInput> = {}): SupplierInvoiceInput => ({
+    id: 'sup-1',
+    reference: 'JEA/2026/8841',
+    invoiceDate: new Date('2026-03-20T00:00:00Z'),
+    partnerName: 'Star Shipping LLC',
+    currency: 'KWD',
+    fxRate: 1,
+    lines: [
+      {
+        chargeTypeId: 'ct-freight',
+        description: 'Ocean freight KWI/JEA',
+        billed: '320',
+        accrued: '320',
+        taxAmount: '0',
+      },
+    ],
+    ...over,
+  })
+
+  it('posts nothing at all when the bill agrees with what was accrued', () => {
+    const journal = buildJournal(base({ supplierInvoices: [bill()] }), KWD)
+    expect(journal.lines).toHaveLength(0)
+    expect(journal.supplierInvoiceIds).toEqual(['sup-1'])
+  })
+
+  it('posts the difference, and only the difference, when the agent bills over', () => {
+    // Accrued 320, billed 380. The 60 is the argument, and it is the whole
+    // entry — the 320 was already a liability the day the cost was recorded.
+    const journal = buildJournal(
+      base({
+        supplierInvoices: [
+          bill({
+            lines: [
+              {
+                chargeTypeId: 'ct-freight',
+                description: 'Ocean freight KWI/JEA',
+                billed: '380',
+                accrued: '320',
+                taxAmount: '0',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines).toHaveLength(2)
+    expect(journal.lines[0]).toMatchObject({ account: '5010' })
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('60')
+    expect(journal.lines[1]).toMatchObject({ account: '2100' })
+    expect(journal.lines[1]!.credit.amount.toString()).toBe('60')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('reverses the entry when they bill under, releasing the over-accrual', () => {
+    const journal = buildJournal(
+      base({
+        supplierInvoices: [
+          bill({
+            lines: [
+              {
+                chargeTypeId: 'ct-freight',
+                description: 'Ocean freight KWI/JEA',
+                billed: '290',
+                accrued: '320',
+                taxAmount: '0',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines[0]!.credit.amount.toString()).toBe('30')
+    expect(journal.lines[1]!.debit.amount.toString()).toBe('30')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('posts a charge nobody accrued in full, because none of it was expected', () => {
+    const journal = buildJournal(
+      base({
+        supplierInvoices: [
+          bill({
+            lines: [
+              {
+                chargeTypeId: 'ct-thc',
+                description: 'Terminal handling — not quoted',
+                billed: '45',
+                accrued: '0',
+                taxAmount: '0',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines[0]).toMatchObject({ account: '5020' })
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('45')
+  })
+
+  it('takes input tax to its own account, not to the output tax account', () => {
+    const journal = buildJournal(
+      base({
+        controls: { ...controls, inputTax: '1250' },
+        supplierInvoices: [
+          bill({
+            currency: 'AED',
+            fxRate: '0.0836',
+            lines: [
+              {
+                chargeTypeId: 'ct-freight',
+                description: 'Ocean freight',
+                billed: '1000',
+                accrued: '1000',
+                taxAmount: '50',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines).toHaveLength(2)
+    expect(journal.lines[0]).toMatchObject({ account: '1250' })
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('4.18')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('refuses a taxed bill where the branch has no input tax account', () => {
+    expect(() =>
+      buildJournal(
+        base({
+          supplierInvoices: [
+            bill({
+              lines: [
+                {
+                  chargeTypeId: 'ct-freight',
+                  description: 'Ocean freight',
+                  billed: '320',
+                  accrued: '320',
+                  taxAmount: '16',
+                },
+              ],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    ).toThrow(/No input tax configured/)
+  })
+
+  it('refuses a variance on a line with no charge type, and names the line', () => {
+    expect(() =>
+      buildJournal(
+        base({
+          supplierInvoices: [
+            bill({
+              lines: [
+                {
+                  chargeTypeId: null,
+                  description: 'Sundry charges',
+                  billed: '40',
+                  accrued: '0',
+                  taxAmount: '0',
+                },
+              ],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    ).toThrow(/Sundry charges/)
+  })
+
+  it('does not refuse an unmapped free-text line that agrees with the accrual', () => {
+    const journal = buildJournal(
+      base({
+        supplierInvoices: [
+          bill({
+            lines: [
+              {
+                chargeTypeId: null,
+                description: 'Sundry charges',
+                billed: '40',
+                accrued: '40',
+                taxAmount: '0',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+    expect(journal.lines).toHaveLength(0)
+  })
+
+  it('lists only the charge types a variance will actually try to post', () => {
+    const missing = unmappedChargeTypes({
+      mappings,
+      invoices: [],
+      costs: [],
+      supplierInvoices: [
+        bill({
+          lines: [
+            // Disagrees and is unmapped — this one blocks the export.
+            {
+              chargeTypeId: 'ct-unmapped',
+              description: 'Legalisation',
+              billed: '30',
+              accrued: '20',
+              taxAmount: '0',
+            },
+            // Also unmapped, but agrees, so it never posts and never blocks.
+            {
+              chargeTypeId: 'ct-unmapped',
+              description: 'Legalisation',
+              billed: '20',
+              accrued: '20',
+              taxAmount: '0',
+            },
+          ],
+        }),
+      ],
+    })
+
+    expect(missing.map((m) => m.key)).toEqual(['legalisation'])
+  })
+})
+
+describe('paying a supplier', () => {
+  const payment = (over: Partial<SupplierPaymentInput> = {}): SupplierPaymentInput => ({
+    id: 'sp-1',
+    paidOn: new Date('2026-04-05T00:00:00Z'),
+    partnerName: 'Star Shipping LLC',
+    currency: 'KWD',
+    amount: '320',
+    fxRate: 1,
+    method: 'transfer',
+    reference: 'TT-99120',
+    allocations: [{ supplierReference: 'JEA/2026/8841', baseAmount: '320' }],
+    ...over,
+  })
+
+  it('clears the payable and takes the cash out of the bank', () => {
+    const journal = buildJournal(base({ supplierPayments: [payment()] }), KWD)
+
+    expect(journal.lines[0]).toMatchObject({ account: '2100' })
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('320')
+    expect(journal.lines[1]).toMatchObject({ account: '1010' })
+    expect(journal.lines[1]!.credit.amount.toString()).toBe('320')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('clears the payable at the rate the bill posted at, and realises the difference', () => {
+    // USD 1,000 accrued at 0.307 (307.000 KWD payable), paid when the rate is
+    // 0.309 (309.000 KWD out of the bank). The 2.000 KWD is a realised loss.
+    const journal = buildJournal(
+      base({
+        supplierPayments: [
+          payment({
+            currency: 'USD',
+            amount: '1000',
+            fxRate: '0.309',
+            allocations: [{ supplierReference: 'JEA/2026/8841', baseAmount: '307' }],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('307')
+    expect(journal.lines[1]!.credit.amount.toString()).toBe('309')
+    expect(journal.lines[2]).toMatchObject({ account: '7800', sourceKind: 'fx' })
+    expect(journal.lines[2]!.debit.amount.toString()).toBe('2')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('posts a payment on account against payables in full', () => {
+    const journal = buildJournal(base({ supplierPayments: [payment({ allocations: [] })] }), KWD)
+    expect(journal.lines).toHaveLength(2)
+    expect(journal.lines[0]!.description).toBe('On account')
+  })
+})
+
+describe('setting off an agent current account', () => {
+  const settlement = (over: Partial<SettlementInput> = {}): SettlementInput => ({
+    id: 'set-1',
+    reference: 'SET-JEA-2026-03',
+    settledOn: new Date('2026-03-31T00:00:00Z'),
+    partnerName: 'Star Shipping LLC',
+    currency: 'KWD',
+    fxRate: 1,
+    offset: '3600',
+    ...over,
+  })
+
+  it('clears both sides and moves no cash', () => {
+    const journal = buildJournal(base({ settlements: [settlement()] }), KWD)
+
+    expect(journal.lines).toHaveLength(2)
+    expect(journal.lines[0]).toMatchObject({ account: '2100' })
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('3600')
+    expect(journal.lines[1]).toMatchObject({ account: '1200' })
+    expect(journal.lines[1]!.credit.amount.toString()).toBe('3600')
+    expect(journal.lines.every((l) => l.account !== '1010')).toBe(true)
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('posts nothing where the two sides had nothing in common', () => {
+    const journal = buildJournal(base({ settlements: [settlement({ offset: '0' })] }), KWD)
+    expect(journal.lines).toHaveLength(0)
+  })
+
+  it('carries the agreed rate onto both legs, so the set-off cannot realise FX', () => {
+    const journal = buildJournal(
+      base({ settlements: [settlement({ currency: 'USD', fxRate: '0.307', offset: '1000' })] }),
+      KWD,
+    )
+    expect(journal.lines[0]!.debit.amount.toString()).toBe('307')
+    expect(journal.lines[1]!.credit.amount.toString()).toBe('307')
+    expect(journal.lines).toHaveLength(2)
   })
 })
 

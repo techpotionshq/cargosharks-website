@@ -32,6 +32,7 @@ import { and, asc, between, eq, inArray, isNull, sql } from 'drizzle-orm'
 import {
   SEED_CURRENCIES,
   buildJournal,
+  dec,
   toJournalCsv,
   unmappedChargeTypes,
   type AccountMapping,
@@ -40,6 +41,9 @@ import {
   type InvoiceInput,
   type Journal,
   type PaymentInput,
+  type SettlementInput,
+  type SupplierInvoiceInput,
+  type SupplierPaymentInput,
 } from '@qabandi/core'
 import {
   accountingExports,
@@ -51,9 +55,14 @@ import {
   invoiceLines,
   invoices,
   jobs,
+  partnerSettlements,
   partners,
   paymentAllocations,
   payments,
+  supplierInvoiceLines,
+  supplierInvoices,
+  supplierPaymentAllocations,
+  supplierPayments,
   withActor,
   type Actor,
 } from '@qabandi/db'
@@ -87,6 +96,9 @@ export interface ExportResult {
   readonly invoiceCount: number
   readonly costCount: number
   readonly paymentCount: number
+  readonly supplierInvoiceCount: number
+  readonly supplierPaymentCount: number
+  readonly settlementCount: number
   readonly csv: string
   readonly filename: string
   readonly assetId: string | null
@@ -114,6 +126,7 @@ async function collect(actor: Actor, request: ExportRequest) {
         ar: branches.arAccountCode,
         ap: branches.apAccountCode,
         tax: branches.taxAccountCode,
+        inputTax: branches.inputTaxAccountCode,
         bank: branches.bankAccountCode,
         fx: branches.fxVarianceAccountCode,
         rounding: branches.roundingAccountCode,
@@ -314,14 +327,234 @@ async function collect(actor: Actor, request: ExportRequest) {
             to base at the *invoice's* rate is what makes the FX variance fall
             out of the journal — see the receipt entry in core.
           */
+          /*
+            Decimal, not `Number` — this string lands in the customer's ledger.
+            Multiplying two floats and stringifying the result is how an
+            allocation of 123.45 at a rate of 1.0 posts as
+            `123.45000000000002`, which an accounting package either rejects on
+            import or accepts and never reconciles.
+          */
           baseAmount:
             a.invoiceCurrency === branch.baseCurrency
               ? a.amount
-              : String(Number(a.amount) * Number(rateByInvoice.get(row.id) ?? 1)),
+              : dec(a.amount)
+                  .times(dec(rateByInvoice.get(row.id) ?? 1))
+                  .toFixed(),
         })),
     }))
 
-    return { branch, mappings, invoiceInputs, costInputs, paymentInputs }
+
+    /*
+      Approved supplier bills in the window, by *their* invoice date.
+
+      Their date rather than our capture date, for the same reason an invoice
+      posts by its issue date: the accounting event happened when they raised
+      it, and a bill entered three weeks late belongs to the month it was
+      dated, not the month somebody opened the email.
+
+      Only approved ones. A bill nobody has looked at is not a liability the
+      period should carry — the accrual behind it already is, and posting the
+      unreviewed variance on top would put an argument into the ledger before
+      it has been had.
+    */
+    const supplierRows = await tx
+      .select({
+        id: supplierInvoices.id,
+        reference: supplierInvoices.reference,
+        invoiceDate: supplierInvoices.invoiceDate,
+        currency: supplierInvoices.currency,
+        fxRate: supplierInvoices.fxRate,
+        partnerName: partners.legalNameEn,
+      })
+      .from(supplierInvoices)
+      .innerJoin(partners, eq(partners.id, supplierInvoices.partnerId))
+      .where(
+        and(
+          eq(supplierInvoices.branchId, request.branchId),
+          isNull(supplierInvoices.accountingExportId),
+          inArray(supplierInvoices.status, ['approved', 'part_paid', 'paid']),
+          between(supplierInvoices.invoiceDate, request.from, request.to),
+        ),
+      )
+      .orderBy(asc(supplierInvoices.invoiceDate))
+
+    const supplierIds = supplierRows.map((s) => s.id)
+    const supplierLineRows =
+      supplierIds.length > 0
+        ? await tx
+            .select({
+              supplierInvoiceId: supplierInvoiceLines.supplierInvoiceId,
+              chargeTypeId: supplierInvoiceLines.chargeTypeId,
+              description: supplierInvoiceLines.description,
+              amount: supplierInvoiceLines.amount,
+              taxAmount: supplierInvoiceLines.taxAmount,
+              /*
+                The accrual behind the line, in *base* currency.
+
+                Summed here rather than joined, because a line can carry
+                several matches and joining would multiply the row. The
+                conversion back into the bill's currency happens below and is
+                the interesting step — see the comment there.
+              */
+              accruedBase: sql<string>`coalesce((
+                select sum(cl.amount_base)
+                  from supplier_invoice_matches m
+                  join charge_lines cl on cl.id = m.charge_line_id
+                 where m.supplier_invoice_line_id = "supplier_invoice_lines"."id"
+                   and m.retracted_at is null
+              ), 0)::text`,
+            })
+            .from(supplierInvoiceLines)
+            .where(inArray(supplierInvoiceLines.supplierInvoiceId, supplierIds))
+            .orderBy(asc(supplierInvoiceLines.sortOrder))
+        : []
+
+    const supplierInvoiceInputs: SupplierInvoiceInput[] = supplierRows.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      invoiceDate: new Date(row.invoiceDate),
+      partnerName: row.partnerName,
+      currency: row.currency,
+      fxRate: row.fxRate,
+      lines: supplierLineRows
+        .filter((l) => l.supplierInvoiceId === row.id)
+        .map((l) => ({
+          chargeTypeId: l.chargeTypeId,
+          description: l.description,
+          amount: l.amount,
+          billed: l.amount,
+          taxAmount: l.taxAmount,
+          /*
+            The accrual, divided back through the bill's own rate.
+
+            `core/accounting.ts` multiplies both figures by that rate, so
+            handing it `accrued_base / rate` makes the posted variance come out
+            as `billed_base − accrued_base` exactly — the difference between
+            what the accrual put in the ledger and what the bill is worth.
+
+            Converting the other way round — accrual at its own rate, bill at
+            its own — would leave the two legs of the entry disagreeing by the
+            FX movement between the two dates, and the journal would not
+            balance.
+          */
+          accrued: dec(l.accruedBase).div(dec(row.fxRate)).toFixed(),
+        })),
+    }))
+
+    const supplierPaymentRows = await tx
+      .select({
+        id: supplierPayments.id,
+        paidOn: supplierPayments.paidOn,
+        currency: supplierPayments.currency,
+        amount: supplierPayments.amount,
+        fxRate: supplierPayments.fxRate,
+        method: supplierPayments.method,
+        reference: supplierPayments.reference,
+        partnerName: partners.legalNameEn,
+      })
+      .from(supplierPayments)
+      .innerJoin(partners, eq(partners.id, supplierPayments.partnerId))
+      .where(
+        and(
+          eq(supplierPayments.branchId, request.branchId),
+          isNull(supplierPayments.accountingExportId),
+          between(supplierPayments.paidOn, request.from, request.to),
+        ),
+      )
+      .orderBy(asc(supplierPayments.paidOn))
+
+    const supplierPaymentIds = supplierPaymentRows.map((p) => p.id)
+    const supplierAllocationRows =
+      supplierPaymentIds.length > 0
+        ? await tx
+            .select({
+              supplierPaymentId: supplierPaymentAllocations.supplierPaymentId,
+              amount: supplierPaymentAllocations.amount,
+              reference: supplierInvoices.reference,
+              billCurrency: supplierInvoices.currency,
+              billRate: supplierInvoices.fxRate,
+            })
+            .from(supplierPaymentAllocations)
+            .innerJoin(
+              supplierInvoices,
+              eq(supplierInvoices.id, supplierPaymentAllocations.supplierInvoiceId),
+            )
+            .where(inArray(supplierPaymentAllocations.supplierPaymentId, supplierPaymentIds))
+        : []
+
+    const supplierPaymentInputs: SupplierPaymentInput[] = supplierPaymentRows.map((row) => ({
+      id: row.id,
+      paidOn: new Date(row.paidOn),
+      partnerName: row.partnerName,
+      currency: row.currency,
+      amount: row.amount,
+      fxRate: row.fxRate,
+      method: row.method,
+      reference: row.reference,
+      allocations: supplierAllocationRows
+        .filter((a) => a.supplierPaymentId === row.id)
+        .map((a) => ({
+          supplierReference: a.reference,
+          /*
+            At the rate the *bill* posted at, not the payment's — this is what
+            makes realised FX fall out of the entry. `Decimal`, never
+            `Number`: multiplying two floats and stringifying is how an
+            allocation of 123.45 posts as 123.45000000000002.
+          */
+          baseAmount:
+            a.billCurrency === branch.baseCurrency
+              ? a.amount
+              : dec(a.amount).times(dec(a.billRate)).toFixed(),
+        })),
+    }))
+
+    /*
+      Agreed set-offs. `agreed` and not merely drafted: up to that point the
+      figures still move as documents land in the period, and posting a draft
+      would put a number in the ledger that the agent has not seen.
+    */
+    const settlementRows = await tx
+      .select({
+        id: partnerSettlements.id,
+        reference: partnerSettlements.reference,
+        agreedAt: partnerSettlements.agreedAt,
+        currency: partnerSettlements.currency,
+        fxRate: partnerSettlements.fxRate,
+        offsetAmount: partnerSettlements.offsetAmount,
+        partnerName: partners.legalNameEn,
+      })
+      .from(partnerSettlements)
+      .innerJoin(partners, eq(partners.id, partnerSettlements.partnerId))
+      .where(
+        and(
+          eq(partnerSettlements.branchId, request.branchId),
+          isNull(partnerSettlements.accountingExportId),
+          inArray(partnerSettlements.status, ['agreed', 'settled']),
+          sql`${partnerSettlements.agreedAt}::date between ${request.from}::date and ${request.to}::date`,
+        ),
+      )
+      .orderBy(asc(partnerSettlements.agreedAt))
+
+    const settlementInputs: SettlementInput[] = settlementRows.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      settledOn: row.agreedAt ?? new Date(request.from),
+      partnerName: row.partnerName,
+      currency: row.currency,
+      fxRate: row.fxRate,
+      offset: row.offsetAmount,
+    }))
+
+    return {
+      branch,
+      mappings,
+      invoiceInputs,
+      costInputs,
+      paymentInputs,
+      supplierInvoiceInputs,
+      supplierPaymentInputs,
+      settlementInputs,
+    }
   })
 }
 
@@ -333,10 +566,16 @@ export async function buildAccountingExport(
     throw new ExportError('period_reversed', 'The period ends before it starts')
   }
 
-  const { branch, mappings, invoiceInputs, costInputs, paymentInputs } = await collect(
-    actor,
-    request,
-  )
+  const {
+    branch,
+    mappings,
+    invoiceInputs,
+    costInputs,
+    paymentInputs,
+    supplierInvoiceInputs,
+    supplierPaymentInputs,
+    settlementInputs,
+  } = await collect(actor, request)
 
   /*
     The pre-flight, run before the engine throws on the first bad row.
@@ -350,6 +589,7 @@ export async function buildAccountingExport(
     mappings,
     invoices: invoiceInputs,
     costs: costInputs,
+    supplierInvoices: supplierInvoiceInputs,
   })
 
   if (unmapped.length > 0) {
@@ -369,6 +609,7 @@ export async function buildAccountingExport(
         receivables: branch.ar,
         payables: branch.ap,
         tax: branch.tax,
+        inputTax: branch.inputTax,
         bank: branch.bank,
         fxVariance: branch.fx,
         rounding: branch.rounding,
@@ -377,6 +618,9 @@ export async function buildAccountingExport(
       invoices: invoiceInputs,
       costs: costInputs,
       payments: paymentInputs,
+      supplierInvoices: supplierInvoiceInputs,
+      supplierPayments: supplierPaymentInputs,
+      settlements: settlementInputs,
     },
     spec(branch.baseCurrency),
   )
@@ -476,6 +720,48 @@ export async function buildAccountingExport(
             ),
           )
       }
+      /*
+        The payables side is marked even where it posted nothing.
+
+        A supplier bill that agrees with its accrual to the fils produces an
+        empty entry — see `core/accounting.ts` — and it still belongs to this
+        period. Leaving it unmarked would mean every subsequent export
+        re-examines it for ever, and the day somebody unmatches a line the
+        variance would post into whichever month happened to be open.
+      */
+      if (journal.supplierInvoiceIds.length > 0) {
+        await tx
+          .update(supplierInvoices)
+          .set({ accountingExportId: exportId, updatedAt: new Date() })
+          .where(
+            and(
+              inArray(supplierInvoices.id, journal.supplierInvoiceIds as string[]),
+              isNull(supplierInvoices.accountingExportId),
+            ),
+          )
+      }
+      if (journal.supplierPaymentIds.length > 0) {
+        await tx
+          .update(supplierPayments)
+          .set({ accountingExportId: exportId, updatedAt: new Date() })
+          .where(
+            and(
+              inArray(supplierPayments.id, journal.supplierPaymentIds as string[]),
+              isNull(supplierPayments.accountingExportId),
+            ),
+          )
+      }
+      if (journal.settlementIds.length > 0) {
+        await tx
+          .update(partnerSettlements)
+          .set({ accountingExportId: exportId, updatedAt: new Date() })
+          .where(
+            and(
+              inArray(partnerSettlements.id, journal.settlementIds as string[]),
+              isNull(partnerSettlements.accountingExportId),
+            ),
+          )
+      }
     }
 
     return {
@@ -487,6 +773,9 @@ export async function buildAccountingExport(
       invoiceCount: invoiceInputs.length,
       costCount: costInputs.length,
       paymentCount: paymentInputs.length,
+      supplierInvoiceCount: supplierInvoiceInputs.length,
+      supplierPaymentCount: supplierPaymentInputs.length,
+      settlementCount: settlementInputs.length,
       csv,
       filename,
       assetId: asset!.id,
@@ -541,6 +830,24 @@ export async function voidAccountingExport(
       .where(eq(payments.accountingExportId, exportId))
       .returning({ id: payments.id })
 
+    const releasedBills = await tx
+      .update(supplierInvoices)
+      .set({ accountingExportId: null, updatedAt: new Date() })
+      .where(eq(supplierInvoices.accountingExportId, exportId))
+      .returning({ id: supplierInvoices.id })
+
+    const releasedSupplierPayments = await tx
+      .update(supplierPayments)
+      .set({ accountingExportId: null, updatedAt: new Date() })
+      .where(eq(supplierPayments.accountingExportId, exportId))
+      .returning({ id: supplierPayments.id })
+
+    const releasedSettlements = await tx
+      .update(partnerSettlements)
+      .set({ accountingExportId: null, updatedAt: new Date() })
+      .where(eq(partnerSettlements.accountingExportId, exportId))
+      .returning({ id: partnerSettlements.id })
+
     await tx
       .update(accountingExports)
       .set({
@@ -554,7 +861,13 @@ export async function voidAccountingExport(
       .where(eq(accountingExports.id, exportId))
 
     return {
-      released: releasedInvoices.length + releasedCosts.length + releasedPayments.length,
+      released:
+        releasedInvoices.length +
+        releasedCosts.length +
+        releasedPayments.length +
+        releasedBills.length +
+        releasedSupplierPayments.length +
+        releasedSettlements.length,
     }
   })
 }

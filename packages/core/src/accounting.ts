@@ -17,9 +17,33 @@
  *   credit note      the same entry, reversed
  *   supplier cost    Dr expense, per charge type
  *                    Cr payables, per counterparty
+ *   supplier invoice Dr/Cr expense — the *variance* against what was accrued
+ *                    Dr input tax
+ *                    Dr/Cr payables, trueing the liability up to the bill
+ *   supplier payment Dr payables
+ *                    Cr bank
+ *                    Dr/Cr FX variance where the rate moved between the two
  *   receipt          Dr bank
  *                    Cr receivables
  *                    Dr/Cr FX variance where the rate moved between the two
+ *   set-off          Dr payables
+ *                    Cr receivables
+ *
+ * ## Why a supplier invoice posts only its variance
+ *
+ * The obvious design posts the bill in full and reverses the accrual, and it
+ * needs a second control account, a reversal for every matched line, and a
+ * period boundary where the two halves can land either side of a close.
+ *
+ * But the accrual *is* the liability. FR-FN-03 writes a cost line the moment a
+ * cost-bearing event is recorded, and that line has already credited payables
+ * for the counterparty. When the agent's invoice arrives and agrees with it,
+ * nothing about the company's position has changed and the correct journal is
+ * an empty one. When it disagrees, the difference is the only new fact, and it
+ * is exactly the fact FR-FN-09 exists to surface.
+ *
+ * So a clean invoice posts nothing, a queried one posts the argument, and
+ * there is no window in which the same cost sits in the books twice.
  *
  * ## Why every amount is in base currency
  *
@@ -53,6 +77,18 @@ export interface ControlAccounts {
   readonly receivables?: string | null
   readonly payables?: string | null
   readonly tax?: string | null
+  /**
+   * Tax we were charged, as against tax we charged.
+   *
+   * A separate account from `tax` because the two are separate lines on a
+   * return: output tax is a liability, input tax is a receivable from the
+   * authority, and a chart that nets them into one balance cannot produce the
+   * return. Optional, and only demanded of a branch whose suppliers actually
+   * charge tax — a Kuwait entity buying from a Kuwait agent never sees any,
+   * and requiring the account would block every existing deployment for a
+   * column it will never use.
+   */
+  readonly inputTax?: string | null
   readonly bank?: string | null
   readonly fxVariance?: string | null
   readonly rounding?: string | null
@@ -119,6 +155,72 @@ export interface PaymentInput {
   readonly allocations: readonly { readonly invoiceSeriesNo: string; readonly baseAmount: Numeric }[]
 }
 
+/**
+ * One line of a supplier's invoice, with what the job accrued against it.
+ *
+ * Both figures in the invoice's currency: the matching screen converts the
+ * accrual at the rate the charge line carries (FR-RT-06) before it gets here,
+ * because the alternative is this module choosing a rate and quietly turning a
+ * commercial variance into an exchange movement.
+ */
+export interface SupplierInvoiceLineInput {
+  readonly chargeTypeId: string | null
+  readonly description: string
+  /** What they asked for. */
+  readonly billed: Numeric
+  /** What we had already accrued for it, summed over its matches. Zero if none. */
+  readonly accrued: Numeric
+  readonly taxAmount: Numeric
+}
+
+export interface SupplierInvoiceInput {
+  readonly id: string
+  /** Their number, not ours — this document was raised in another building. */
+  readonly reference: string
+  readonly invoiceDate: Date
+  readonly partnerName: string
+  readonly currency: CurrencyCode
+  readonly fxRate: Numeric
+  readonly lines: readonly SupplierInvoiceLineInput[]
+}
+
+export interface SupplierPaymentInput {
+  readonly id: string
+  readonly paidOn: Date
+  readonly partnerName: string
+  readonly currency: CurrencyCode
+  readonly amount: Numeric
+  /** The rate on the day the money left. */
+  readonly fxRate: Numeric
+  readonly method: string
+  readonly reference?: string | null
+  /**
+   * What the payment settles, at the rate the bill posted at.
+   *
+   * The mirror of the receipt's allocations, and realised FX falls out of the
+   * difference in exactly the same way — see `receiptEntry`.
+   */
+  readonly allocations: readonly { readonly supplierReference: string; readonly baseAmount: Numeric }[]
+}
+
+/**
+ * A monthly set-off with an agent — the netting entry.
+ *
+ * Only the offset travels. The residual is a payment or a receipt in its own
+ * right and posts through those paths, which is what keeps a set-off from
+ * being a second, parallel way to record cash.
+ */
+export interface SettlementInput {
+  readonly id: string
+  readonly reference: string
+  readonly settledOn: Date
+  readonly partnerName: string
+  readonly currency: CurrencyCode
+  readonly fxRate: Numeric
+  /** What was extinguished on both sides, in the settlement's currency. */
+  readonly offset: Numeric
+}
+
 export interface JournalLine {
   readonly date: Date
   readonly account: string
@@ -133,7 +235,16 @@ export interface JournalLine {
   readonly fxRate: string
   readonly reference: string
   readonly counterparty: string
-  readonly sourceKind: 'invoice' | 'credit_note' | 'cost' | 'receipt' | 'fx' | 'rounding'
+  readonly sourceKind:
+    | 'invoice'
+    | 'credit_note'
+    | 'cost'
+    | 'receipt'
+    | 'supplier_invoice'
+    | 'supplier_payment'
+    | 'settlement'
+    | 'fx'
+    | 'rounding'
   readonly sourceId: string
 }
 
@@ -145,6 +256,14 @@ export interface JournalInput {
   readonly invoices: readonly InvoiceInput[]
   readonly costs: readonly CostInput[]
   readonly payments: readonly PaymentInput[]
+  /**
+   * Optional, all three, and that is a compatibility guarantee rather than
+   * laziness: a deployment that has not started capturing supplier invoices
+   * builds exactly the journal it built before.
+   */
+  readonly supplierInvoices?: readonly SupplierInvoiceInput[]
+  readonly supplierPayments?: readonly SupplierPaymentInput[]
+  readonly settlements?: readonly SettlementInput[]
 }
 
 export interface Journal {
@@ -153,6 +272,9 @@ export interface Journal {
   readonly totalCredit: Money
   readonly invoiceIds: readonly string[]
   readonly paymentIds: readonly string[]
+  readonly supplierInvoiceIds: readonly string[]
+  readonly supplierPaymentIds: readonly string[]
+  readonly settlementIds: readonly string[]
 }
 
 /**
@@ -173,8 +295,22 @@ export function buildJournal(input: JournalInput, spec: CurrencySpec): Journal {
   for (const cost of input.costs) {
     lines.push(...costEntry(cost, input, mapping, spec))
   }
+  /*
+    Supplier invoices sit between the accrual and the cash, which is where an
+    accountant reading the period expects to find the argument about what a
+    thing actually cost.
+  */
+  for (const bill of input.supplierInvoices ?? []) {
+    lines.push(...supplierInvoiceEntry(bill, input, mapping, spec))
+  }
   for (const payment of input.payments) {
     lines.push(...receiptEntry(payment, input, spec))
+  }
+  for (const payment of input.supplierPayments ?? []) {
+    lines.push(...supplierPaymentEntry(payment, input, spec))
+  }
+  for (const settlement of input.settlements ?? []) {
+    lines.push(...settlementEntry(settlement, input, spec))
   }
 
   const totalDebit = totalOf(lines, 'debit', base)
@@ -193,7 +329,17 @@ export function buildJournal(input: JournalInput, spec: CurrencySpec): Journal {
   if (!dec(difference.amount).isZero()) {
     const tolerance = dec(1)
       .div(D(10).pow(spec.minorUnits))
-      .times(Math.max(1, input.invoices.length + input.costs.length + input.payments.length))
+      .times(
+        Math.max(
+          1,
+          input.invoices.length +
+            input.costs.length +
+            input.payments.length +
+            (input.supplierInvoices?.length ?? 0) +
+            (input.supplierPayments?.length ?? 0) +
+            (input.settlements?.length ?? 0),
+        ),
+      )
 
     if (dec(difference.amount).abs().greaterThan(tolerance)) {
       throw new AccountingError(
@@ -232,6 +378,9 @@ export function buildJournal(input: JournalInput, spec: CurrencySpec): Journal {
     totalCredit: totalOf(lines, 'credit', base),
     invoiceIds: input.invoices.map((i) => i.id),
     paymentIds: input.payments.map((p) => p.id),
+    supplierInvoiceIds: (input.supplierInvoices ?? []).map((i) => i.id),
+    supplierPaymentIds: (input.supplierPayments ?? []).map((p) => p.id),
+    settlementIds: (input.settlements ?? []).map((s) => s.id),
   }
 }
 
@@ -382,6 +531,289 @@ function costEntry(
       description: `${cost.counterpartyName} — ${cost.jobReference}`,
       debit: positiveSide(negate(amount), 'debit', base),
       credit: positiveSide(negate(amount), 'credit', base),
+    },
+  ]
+}
+
+/**
+ * A supplier's invoice — the variance, and nothing that was already true.
+ *
+ * See the header for why this posts a difference rather than a document. The
+ * shape follows the sales invoice deliberately: expense lines per charge type,
+ * one payables line for the whole bill. A supplier statement is reconciled
+ * document by document, and twelve payable lines against one invoice is a
+ * statement nobody can tick off against a remittance advice.
+ */
+function supplierInvoiceEntry(
+  bill: SupplierInvoiceInput,
+  input: JournalInput,
+  mapping: ReadonlyMap<string, AccountMapping>,
+  spec: CurrencySpec,
+): JournalLine[] {
+  const base = input.baseCurrency
+  const rate = dec(bill.fxRate)
+  const toBase = (amount: Numeric): Money => round(money(dec(amount).times(rate), base), spec)
+
+  const common = {
+    date: bill.invoiceDate,
+    costCentre: input.branchCode,
+    transactionCurrency: bill.currency,
+    fxRate: rate.toString(),
+    reference: bill.reference,
+    counterparty: bill.partnerName,
+    sourceKind: 'supplier_invoice' as const,
+    sourceId: bill.id,
+  }
+
+  const lines: JournalLine[] = []
+  let liability = zero(base)
+  // The same running total in the currency the agent actually billed, so the
+  // payable line can show both figures without dividing back through the rate.
+  let liabilityTxn = D(0)
+
+  for (const line of bill.lines) {
+    const variance = dec(line.billed).minus(dec(line.accrued))
+    if (variance.isZero()) continue
+
+    /*
+      A variance needs an account, and a line with no charge type has none.
+
+      The same refusal `revenueAccountFor` makes, for the same reason: the
+      alternative is a suspense account, which imports cleanly and is wrong.
+      What differs here is that it only bites on lines that *disagree* with the
+      accrual — a free-text line billed exactly as expected posts nothing and
+      therefore needs nothing.
+    */
+    if (!line.chargeTypeId) {
+      throw new AccountingError(
+        'journal_unmapped_line',
+        `Line "${line.description}" on supplier invoice ${bill.reference} differs from what ` +
+          'was accrued and has no charge type, so the difference cannot be posted. ' +
+          'Give it a charge type, or match it to a cost line.',
+      )
+    }
+
+    const mapped = mapping.get(line.chargeTypeId)
+    const expense = required(
+      mapped?.costAccountCode,
+      'cost account',
+      `charge type ${mapped?.nameEn ?? line.chargeTypeId} is not mapped to a cost account, ` +
+        `so supplier invoice ${bill.reference} cannot post its variance`,
+    )
+
+    const amount = toBase(variance)
+    if (dec(amount.amount).isZero()) continue
+
+    liability = { amount: liability.amount.plus(amount.amount), currency: base }
+    liabilityTxn = liabilityTxn.plus(variance)
+
+    lines.push({
+      ...common,
+      account: expense,
+      description: `${line.description} — billed against accrual`,
+      debit: positiveSide(amount, 'debit', base),
+      credit: positiveSide(amount, 'credit', base),
+      transactionAmount: variance.toString(),
+    })
+  }
+
+  const tax = bill.lines.reduce((acc, l) => acc.plus(dec(l.taxAmount)), D(0))
+  if (!tax.isZero()) {
+    const account = required(
+      input.controls.inputTax,
+      'input tax',
+      `supplier invoice ${bill.reference} carries tax and the branch has no input tax account`,
+    )
+    const amount = toBase(tax)
+    liability = { amount: liability.amount.plus(amount.amount), currency: base }
+    liabilityTxn = liabilityTxn.plus(tax)
+
+    lines.push({
+      ...common,
+      account,
+      description: 'Input tax',
+      debit: positiveSide(amount, 'debit', base),
+      credit: positiveSide(amount, 'credit', base),
+      transactionAmount: tax.toString(),
+    })
+  }
+
+  /*
+    Nothing to say.
+
+    A bill that agrees with the accrual to the fils and carries no tax posts an
+    empty entry, and that is the correct answer rather than a missing one — the
+    liability was recorded when the cost was. Returning early also keeps the
+    journal free of zero-value rows, which an importer either rejects or,
+    worse, accepts.
+  */
+  if (lines.length === 0) return []
+
+  lines.push({
+    ...common,
+    account: required(
+      input.controls.payables,
+      'payables',
+      `supplier invoice ${bill.reference} has nowhere to post its payable`,
+    ),
+    description: `${bill.partnerName} — ${bill.reference}`,
+    debit: positiveSide(negate(liability), 'debit', base),
+    credit: positiveSide(negate(liability), 'credit', base),
+    transactionAmount: liabilityTxn.negated().toString(),
+  })
+
+  return lines
+}
+
+/**
+ * Paying a supplier — the mirror of `receiptEntry`, including its FX.
+ *
+ * The payable is cleared at the rate the *bill* posted at, not the rate on the
+ * day the transfer went out, for the reason spelled out at length in the
+ * receipt entry: clearing at the payment's own rate leaves the payables
+ * balance permanently wrong by exactly the amount nobody can explain.
+ */
+function supplierPaymentEntry(
+  payment: SupplierPaymentInput,
+  input: JournalInput,
+  spec: CurrencySpec,
+): JournalLine[] {
+  const base = input.baseCurrency
+  const rate = dec(payment.fxRate)
+  const paid = round(money(dec(payment.amount).times(rate), base), spec)
+
+  const bank = required(
+    input.controls.bank,
+    'bank',
+    `payment ${payment.reference ?? payment.id} has nowhere to take the cash from`,
+  )
+  const payables = required(
+    input.controls.payables,
+    'payables',
+    `payment ${payment.reference ?? payment.id} has no payable to clear`,
+  )
+
+  const common = {
+    date: payment.paidOn,
+    costCentre: input.branchCode,
+    transactionCurrency: payment.currency,
+    transactionAmount: dec(payment.amount).toString(),
+    fxRate: rate.toString(),
+    reference: payment.reference ?? '',
+    counterparty: payment.partnerName,
+    sourceKind: 'supplier_payment' as const,
+    sourceId: payment.id,
+  }
+
+  const cleared =
+    payment.allocations.length === 0
+      ? paid
+      : round(
+          money(
+            payment.allocations.reduce((acc, a) => acc.plus(dec(a.baseAmount)), D(0)),
+            base,
+          ),
+          spec,
+        )
+
+  const lines: JournalLine[] = [
+    {
+      ...common,
+      account: payables,
+      description:
+        payment.allocations.length === 0
+          ? 'On account'
+          : `Settles ${payment.allocations.map((a) => a.supplierReference).join(', ')}`,
+      debit: cleared,
+      credit: zero(base),
+    },
+    {
+      ...common,
+      account: bank,
+      description: `Payment — ${payment.method}`,
+      debit: zero(base),
+      credit: paid,
+    },
+  ]
+
+  const variance = subtract(cleared, paid)
+  if (!dec(variance.amount).isZero()) {
+    const account = required(
+      input.controls.fxVariance,
+      'FX variance',
+      `payment ${payment.reference ?? payment.id} realised an exchange difference and ` +
+        'the branch has no FX variance account',
+    )
+    lines.push({
+      ...common,
+      account,
+      description: 'Exchange difference',
+      debit: positiveSide(negate(variance), 'debit', base),
+      credit: positiveSide(negate(variance), 'credit', base),
+      sourceKind: 'fx',
+    })
+  }
+
+  return lines
+}
+
+/**
+ * The monthly set-off with an agent — two lines and no cash.
+ *
+ * This is the entry that makes a current account a current account. Without it
+ * the two balances sit gross on the balance sheet for ever, and the only
+ * record that they were settled against each other is an email.
+ *
+ * Deliberately no FX line. A set-off is denominated in one currency by
+ * agreement — `netting.ts` refuses a mixed one — so both sides clear at the
+ * same rate and there is no difference to realise. Where the two sides were
+ * raised at different rates, that difference is a translation matter on the
+ * residual, not a gain on the offset.
+ */
+function settlementEntry(
+  settlement: SettlementInput,
+  input: JournalInput,
+  spec: CurrencySpec,
+): JournalLine[] {
+  const base = input.baseCurrency
+  const rate = dec(settlement.fxRate)
+  const offset = round(money(dec(settlement.offset).times(rate), base), spec)
+  if (dec(offset.amount).isZero()) return []
+
+  const common = {
+    date: settlement.settledOn,
+    costCentre: input.branchCode,
+    transactionCurrency: settlement.currency,
+    transactionAmount: dec(settlement.offset).toString(),
+    fxRate: rate.toString(),
+    reference: settlement.reference,
+    counterparty: settlement.partnerName,
+    sourceKind: 'settlement' as const,
+    sourceId: settlement.id,
+  }
+
+  return [
+    {
+      ...common,
+      account: required(
+        input.controls.payables,
+        'payables',
+        `set-off ${settlement.reference} has no payable to clear`,
+      ),
+      description: `Set-off against ${settlement.partnerName}`,
+      debit: offset,
+      credit: zero(base),
+    },
+    {
+      ...common,
+      account: required(
+        input.controls.receivables,
+        'receivables',
+        `set-off ${settlement.reference} has no receivable to clear`,
+      ),
+      description: `Set-off against ${settlement.partnerName}`,
+      debit: zero(base),
+      credit: offset,
     },
   ]
 }
@@ -596,7 +1028,8 @@ export function isBalanced(journal: Journal): boolean {
 
 /** Every charge type in use that has no account against it — the pre-flight. */
 export function unmappedChargeTypes(
-  input: Pick<JournalInput, 'mappings' | 'invoices' | 'costs'>,
+  input: Pick<JournalInput, 'mappings' | 'invoices' | 'costs'> &
+    Partial<Pick<JournalInput, 'supplierInvoices'>>,
 ): AccountMapping[] {
   const mapping = new Map(input.mappings.map((m) => [m.chargeTypeId, m]))
   const missing = new Map<string, AccountMapping>()
@@ -611,6 +1044,21 @@ export function unmappedChargeTypes(
   for (const cost of input.costs) {
     const mapped = mapping.get(cost.chargeTypeId)
     if (mapped && !mapped.costAccountCode) missing.set(mapped.chargeTypeId, mapped)
+  }
+  /*
+    Only the supplier lines that will actually post.
+
+    A bill that agrees with its accrual posts nothing, so an unmapped charge
+    type on it is not going to stop the period — and listing it would send a
+    finance manager off to map an account that the export never asks for.
+  */
+  for (const bill of input.supplierInvoices ?? []) {
+    for (const line of bill.lines) {
+      if (!line.chargeTypeId) continue
+      if (dec(line.billed).minus(dec(line.accrued)).isZero()) continue
+      const mapped = mapping.get(line.chargeTypeId)
+      if (mapped && !mapped.costAccountCode) missing.set(mapped.chargeTypeId, mapped)
+    }
   }
 
   return [...missing.values()]

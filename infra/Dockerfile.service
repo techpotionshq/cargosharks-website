@@ -33,7 +33,15 @@ ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/service/package.json apps/service/
-RUN pnpm install --frozen-lockfile --prod --filter @qabandi/service
+# `@qabandi/service...` — the package *and its dependencies*.
+#
+# Without the ellipsis pnpm installs only what `apps/service/package.json`
+# names, and the bundle needs more: `build.mjs` inlines the workspace source
+# but leaves npm packages external, so `pg` and `drizzle-zod` (from
+# `@qabandi/db`) and `decimal.js` (from `@qabandi/core`) are imported at
+# runtime by code that no longer sits in a package declaring them. The
+# container started, then died on `Cannot find package 'pg'`.
+RUN pnpm install --frozen-lockfile --prod --filter @qabandi/service...
 
 COPY --from=build /app/apps/service/dist apps/service/dist
 

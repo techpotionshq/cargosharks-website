@@ -125,6 +125,18 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         { href: '/finance', label: t('finance'), icon: 'finance' },
         { href: '/invoices', label: t('invoices'), icon: 'invoices' },
         { href: '/payments', label: t('payments'), icon: 'payments' },
+        /*
+          Payables sits under Payments rather than beside Invoices, and the
+          order is what the finance day actually looks like: money in, money
+          out, and then the agents where both directions meet.
+        */
+        {
+          href: '/payables',
+          label: t('payables'),
+          icon: 'payments',
+          badge: counts.payablesToReview,
+        },
+        { href: '/settlements', label: t('settlements'), icon: 'finance' },
       ],
     },
   ]

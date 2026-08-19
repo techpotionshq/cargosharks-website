@@ -197,6 +197,41 @@ const MILESTONE_NAMES: Record<string, [string, string]> = {
   empty_returned: ['Empty returned', 'إعادة الحاوية الفارغة'],
 }
 
+/**
+ * How far a supplier's bill may drift from the accrual before somebody looks
+ * — FR-FN-09, 0014.
+ *
+ * Seeded rather than left at zero, and that is a judgement rather than a
+ * default. Zero tolerance flags every rounding difference on a 2 KWD
+ * documentation fee, and a variance report that fires on everything is
+ * switched off within a week — which is the failure mode of every variance
+ * report that has ever been written.
+ *
+ * These are starting figures a forwarder recognises: freight moves with the
+ * market between booking and bill and gets a percentage; origin and
+ * destination accessorials are quoted flat and get a small cash allowance;
+ * duty and government charges are billed to the fils and get nothing at all.
+ * An administrator changes any of them without a release (FR-AD-03), which is
+ * the point of them being rows.
+ *
+ * `core/matching.ts` takes whichever of the two limits is the more generous.
+ */
+const VARIANCE_TOLERANCE: Record<
+  string,
+  { varianceTolerancePercent: string; varianceToleranceAbsolute: string }
+> = {
+  freight: { varianceTolerancePercent: '1', varianceToleranceAbsolute: '2' },
+  origin: { varianceTolerancePercent: '0', varianceToleranceAbsolute: '2' },
+  destination: { varianceTolerancePercent: '0', varianceToleranceAbsolute: '2' },
+  /*
+    Dangerous goods, out-of-gauge and reefer monitoring are quoted per event
+    and billed per event: a difference here is a different service, not a
+    market movement, and it is worth asking about at any size.
+  */
+  special: { varianceTolerancePercent: '0', varianceToleranceAbsolute: '0' },
+  other: { varianceTolerancePercent: '0', varianceToleranceAbsolute: '1' },
+}
+
 const ROLES = [
   ['administrator', 'Administrator', 'مسؤول النظام', true],
   ['finance', 'Finance', 'المالية', true],
@@ -257,6 +292,24 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       with finance and job.book sitting with operations.
     */
     'consol.allocate',
+    /*
+      Finance approves and pays a supplier bill; it does not capture one.
+
+      Capturing is operations' work — the coordinator holding the file knows
+      which job the agent's line belongs to. Approving it *with the variance in
+      front of them* is the act this whole feature exists to make possible, and
+      it is finance's, for the same segregation reason that keeps invoice
+      issuance here (0014).
+    */
+    'payable.approve',
+    'payable.pay',
+    'payable.record',
+    /*
+      A set-off touches receivables as well as payables and moves no cash, so
+      it belongs with the people who answer for the relationship rather than
+      with either ledger.
+    */
+    'settlement.run',
     'report.read',
     'job.read',
   ],
@@ -293,6 +346,14 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'document.generate',
     'consol.write',
     'consol.allocate',
+    /*
+      An operations manager records what an agent billed and matches it, and
+      may run a set-off — they are the person who negotiates the agent
+      relationship. They cannot approve a bill for payment: that stays with
+      finance.
+    */
+    'payable.record',
+    'settlement.run',
     'rate.card.write',
     'customer.write',
     'partner.write',
@@ -334,6 +395,13 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     */
     'document.generate',
     'consol.write',
+    /*
+      Capturing an agent's invoice is the coordinator's work for the same
+      reason releasing a document is: they are holding the file, and they are
+      the only person who can say which of the thirty shipments on a monthly
+      agent invoice each line belongs to. Nothing they do here releases money.
+    */
+    'payable.record',
     'customer.write',
   ],
   sales: [
@@ -435,6 +503,7 @@ async function main(): Promise<void> {
             defaultBasis: basis,
             category,
             sortOrder: index * 10,
+            ...(VARIANCE_TOLERANCE[category] ?? VARIANCE_TOLERANCE.other!),
           })),
         )
         .onConflictDoNothing()

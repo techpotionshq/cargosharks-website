@@ -97,8 +97,57 @@ function secretMatches(header: unknown): boolean {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
+/**
+ * Did this request come through a reverse proxy?
+ *
+ * A request from the web container over the Docker network arrives with no
+ * forwarding headers at all. One that came through Traefik, Caddy, nginx or a
+ * load balancer always carries at least one — proxies add them, and cannot
+ * usefully be configured not to.
+ *
+ * So their presence is a reliable signal that a request reached this prefix
+ * from outside the private network, which is the one thing that must never
+ * happen here: the secret below authenticates the *caller*, and the caller
+ * then names the principal to act as. A leaked secret plus a publicly routable
+ * `/internal` is every branch's data.
+ *
+ * The service needs a public domain regardless — `/webhooks` takes carrier
+ * callbacks and `/api/v1` is the public tracking API — so "just don't expose
+ * it" is not available. A proxy rule blocking this prefix is the right control
+ * and it lives in somebody's deployment config, where it is one checkbox away
+ * from being lost. This is the same control, expressed where it cannot be.
+ */
+function viaProxy(headers: Record<string, unknown>): boolean {
+  return (
+    headers['x-forwarded-for'] !== undefined ||
+    headers['x-forwarded-host'] !== undefined ||
+    headers['x-forwarded-proto'] !== undefined ||
+    headers['forwarded'] !== undefined
+  )
+}
+
 export async function internalApi(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', async (request, reply) => {
+    /*
+      Refused before the secret is even compared.
+
+      404 rather than 403, on the same reasoning as FR-ID-04 everywhere else:
+      a prefix that answers "forbidden" has confirmed it exists and is worth
+      attacking. From the public side this prefix simply is not there.
+
+      `INTERNAL_API_TRUST_PROXY` exists for the deployment that genuinely
+      fronts this port internally — a service mesh, or a sidecar that adds
+      forwarding headers on the private network. It defaults to off, so the
+      safe shape is the one nobody has to choose.
+    */
+    if (!config.INTERNAL_API_TRUST_PROXY && viaProxy(request.headers)) {
+      request.log.warn(
+        { path: request.url, ip: request.ip },
+        'internal API reached through a proxy — refused',
+      )
+      return reply.code(404).send({ error: 'not_found' })
+    }
+
     if (!secretMatches(request.headers['x-internal-secret'])) {
       return reply.code(401).send({ error: 'unauthenticated' })
     }

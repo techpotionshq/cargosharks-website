@@ -235,6 +235,35 @@ describe.skipIf(!enabled)('row-level security', () => {
   })
 
   /**
+   * Enabled is not the same as scoped.
+   *
+   * `enable row level security` with no policy attached denies every row to
+   * every principal, and the two tests above both pass in that state: RLS is
+   * on, forced, and audited. The table is simply empty from the application's
+   * point of view — every list renders zero rows, every lookup is *not found*,
+   * and nothing anywhere says why.
+   *
+   * That is the shape of the mistake a new table invites. The obligations that
+   * are mechanically checked get remembered; the policy is written by hand in
+   * SQL, in a different file, and is the step that gets missed. Fail-closed is
+   * the right default and a silent one, so it needs saying out loud here.
+   */
+  it('attaches at least one policy to every business table', async () => {
+    const result = await migrator.execute(sql`
+      select tablename, count(*)::int as policies
+        from pg_policies
+       where schemaname = 'public'
+       group by tablename
+    `)
+    const withPolicies = new Set(
+      (result.rows as { tablename: string; policies: number }[])
+        .filter((r) => r.policies > 0)
+        .map((r) => r.tablename),
+    )
+    expect(businessTableNames().filter((name) => !withPolicies.has(name))).toEqual([])
+  })
+
+  /**
    * FR-ID-04, stated as a test: another branch's job is *not found*, not
    * forbidden. The row is invisible to the query, so there is no enumeration
    * signal and no chance of an interface layer forgetting to filter.

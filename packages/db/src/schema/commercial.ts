@@ -119,10 +119,45 @@ export const partners = pgTable(
     countryCode: text('country_code'),
     currency: text('currency').references(() => currencies.code),
     paymentTermsDays: integer('payment_terms_days'),
+    /**
+     * This partner's own tolerance, overriding the charge type's — 0014.
+     *
+     * Specific beats general with no blending (`core/matching.ts`): an agent
+     * allowed 2% is allowed 2% on every charge type, because the reason they
+     * have that latitude is commercial and has nothing to do with which line
+     * it lands on. Averaging the two would produce a limit neither party
+     * agreed to.
+     *
+     * Zero in both columns is *not* an override — it is a row nobody has
+     * configured. Reading it as a zero tolerance would flag every bill from
+     * every partner the moment the partner was created.
+     */
+    varianceTolerancePercent: quantity('variance_tolerance_percent').notNull().default('0'),
+    varianceToleranceAbsolute: amount('variance_tolerance_absolute').notNull().default('0'),
+    /**
+     * The same company, on the other side of the ledger — 0014.
+     *
+     * An overseas agent is not a supplier and not a customer: they are both,
+     * on the same shipments, in the same month. We owe them destination
+     * charges on our exports and they owe us destination charges on their
+     * imports, and once a month somebody works out which way the money goes.
+     *
+     * A column rather than a merged table, for the reason stated above: they
+     * carry different data, different compliance obligations and different
+     * portal visibility. This says the two rows are the same counterparty for
+     * settlement, and nothing more. Null means no current account is run with
+     * them — a haulier we simply pay.
+     */
+    settlementCustomerId: ref('settlement_customer_id').references(() => customers.id),
+    /** The currency the netting agreement is denominated in. */
+    settlementCurrency: text('settlement_currency').references(() => currencies.code),
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },
-  (t) => [index('partners_type_idx').on(t.type, t.countryCode)],
+  (t) => [
+    index('partners_type_idx').on(t.type, t.countryCode),
+    index('partners_settlement_idx').on(t.settlementCustomerId),
+  ],
 )
 
 export const partnerContacts = pgTable(

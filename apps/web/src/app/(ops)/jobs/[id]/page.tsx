@@ -48,6 +48,8 @@ import {
   DocumentActionsCard,
   PartiesCard,
 } from '@/features/documents/ui/panels'
+import { getJobLedger } from '@/features/costing/queries'
+import { JobLedgerCard } from '@/features/costing/ui/panels'
 import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
@@ -70,10 +72,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     for twenty demo shipments. These return empty under fixtures and the
     panels say so.
   */
-  const [parties, cargo, containerOptions] = await Promise.all([
+  const [parties, cargo, containerOptions, ledger] = await Promise.all([
     listJobParties(session.actor, id),
     listJobCargo(session.actor, id),
     listJobContainers(session.actor, id),
+    /*
+      The charge ledger and the margin it produces (FR-FN-04, 0014).
+
+      Kept out of `getJobDetail` for the same reason the three above are: that
+      query returns `JobDetail`, a type the pilot fixtures also satisfy, and
+      widening it would mean inventing a P&L for twenty demo shipments. Returns
+      an empty ledger under fixtures and the card says so.
+    */
+    getJobLedger(session.actor, id),
   ])
 
   const t = await getTranslations('job')
@@ -467,6 +478,16 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           containers={containerOptions}
           className="lg:col-span-12"
         />
+
+        {/*
+          The P&L last, and deliberately so.
+
+          It is the number the commercial conversation turns on, and putting it
+          at the top would make the job file a finance screen. A coordinator
+          opens this page to move a shipment; the margin is what they scroll to
+          when somebody asks.
+        */}
+        {ledger ? <JobLedgerCard ledger={ledger} className="lg:col-span-12" /> : null}
       </Grid>
     </>
   )

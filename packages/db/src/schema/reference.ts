@@ -183,6 +183,24 @@ export const chargeTypes = pgTable(
      */
     revenueAccountCode: text('revenue_account_code'),
     costAccountCode: text('cost_account_code'),
+    /**
+     * How far a supplier's bill may drift from the accrual before somebody
+     * has to look — FR-FN-09, 0014.
+     *
+     * Two limits, and either one satisfied is enough: `core/matching.ts` takes
+     * whichever is the more generous. A percentage alone flags every rounding
+     * difference on a 2 KWD documentation fee; an absolute alone waves through
+     * a 400 KWD drift on an ocean freight because it happens to fall under the
+     * same cash figure.
+     *
+     * Rows rather than code (FR-AD-03) and *per charge type* because the
+     * latitude genuinely differs by charge: a demurrage day is billed to the
+     * fils and an ocean freight moves with the market between booking and
+     * bill. One global tolerance would be set to the loosest of them, which is
+     * the same as having none.
+     */
+    varianceTolerancePercent: quantity('variance_tolerance_percent').notNull().default('0'),
+    varianceToleranceAbsolute: amount('variance_tolerance_absolute').notNull().default('0'),
     ...timestamps,
   },
   (t) => [index('charge_types_category_idx').on(t.category, t.sortOrder)],

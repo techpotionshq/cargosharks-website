@@ -21,6 +21,16 @@ const schema = z.object({
   PGBOSS_SCHEMA: z.string().default('pgboss'),
 
   INTERNAL_API_SECRET: z.string().min(1),
+  /**
+   * Accept `/internal` calls that arrive with forwarding headers.
+   *
+   * Off by default, which is what makes a misconfigured proxy fail closed
+   * rather than exposing principal impersonation to the internet. Turn it on
+   * only where something on the *private* network legitimately adds those
+   * headers — a service mesh or a sidecar — and never to work around a public
+   * route reaching this prefix.
+   */
+  INTERNAL_API_TRUST_PROXY: z.coerce.boolean().default(false),
 
   // FileStore port (§10) — Supabase Storage for the pilot, S3 for R1.
   FILE_STORE_DRIVER: z.enum(['s3', 'memory']).default('s3'),

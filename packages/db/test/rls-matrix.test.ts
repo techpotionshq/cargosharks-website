@@ -385,8 +385,24 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
     expect(open).toEqual([])
   })
 
-  /** §5.5, swept: no business table exposes a delete path to the application. */
-  it('grants DELETE on no business table', async () => {
+  /**
+   * §5.5, swept: no business table exposes a delete path to the application.
+   *
+   * `supplier_invoice_matches` is the one exception, granted deliberately in
+   * 0018 and argued there: a match is not a record of something that happened,
+   * it is an *assertion* that two rows correspond, and retracting a wrong
+   * assertion is not the same act as deleting a document. The audit trigger
+   * records the retraction either way.
+   *
+   * Listed here by name rather than by relaxing the query, on the same
+   * principle as the unconditional-write test above: an exception that has
+   * been argued for is a line in this array, and anything else is a finding.
+   * A new table appearing here means somebody granted DELETE without saying
+   * why, which is exactly what this test exists to catch.
+   */
+  const DELETE_GRANTED = ['supplier_invoice_matches']
+
+  it('grants DELETE on no business table but the argued exception', async () => {
     const result = await migrator.execute(sql`
       select table_name
         from information_schema.role_table_grants
@@ -394,7 +410,11 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
          and table_schema = 'public'
          and privilege_type in ('DELETE', 'TRUNCATE')
     `)
-    expect((result.rows as { table_name: string }[]).map((r) => r.table_name)).toEqual([])
+    const granted = (result.rows as { table_name: string }[])
+      .map((r) => r.table_name)
+      .filter((name) => !DELETE_GRANTED.includes(name))
+
+    expect(granted).toEqual([])
   })
 
   // ------------------------------------------------------------------------

@@ -270,19 +270,22 @@ async function allocateHouseBillNumber(
 
     if (!job || job.houseBillNumber) return
 
-    const allocated = await tx.execute(sql`
-      update branches
-         set house_bill_series_next = house_bill_series_next + 1,
-             updated_at = now()
-       where id = ${job.branchId}
-         and house_bill_series is not null
-      returning house_bill_series
-                || '-' || extract(year from now())::int
-                || '-' || lpad(house_bill_series_next::text, 5, '0') as next
-    `)
+    /*
+      Through `app.allocate_series_number`, not an inline update.
 
-    const numbered = allocated.rows[0] as { next: string } | undefined
-    if (!numbered) return
+      `branches` is configuration and its write policy requires
+      `admin.branches.write`, which no coordinator holds. Written inline, this
+      update matched no rows for exactly the people who release house bills —
+      and because the miss is indistinguishable from "no series configured",
+      the bill went out with no number and nothing said so. Migration 0016 has
+      the whole account.
+    */
+    const allocated = await tx.execute(
+      sql`select app.allocate_series_number(${job.branchId}::uuid, 'house_bill') as next`,
+    )
+
+    const numbered = allocated.rows[0] as { next: string | null } | undefined
+    if (!numbered?.next) return
 
     await tx
       .update(jobs)

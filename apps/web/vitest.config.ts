@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 /**
@@ -13,6 +14,20 @@ import { defineConfig } from 'vitest/config'
  * under `e2e/` and belong to `pnpm test:e2e`.
  */
 export default defineConfig({
+  /**
+   * `@/` is the application's own import prefix, declared in `tsconfig.json`.
+   *
+   * Vitest does not read `compilerOptions.paths` — TypeScript resolves it for
+   * the editor and the build, and the test runner needs telling separately.
+   * Without this, any test of a module that imports `@/lib/…` fails to resolve
+   * rather than fails to pass, which reads as a missing file and is really a
+   * missing alias.
+   */
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],

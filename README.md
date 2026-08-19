@@ -134,12 +134,14 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 
 | | |
 |---|---|
+| `pnpm doctor` | what is configured, what is missing, and what each missing thing disables |
 | `pnpm dev` | web and service together |
 | `pnpm typecheck` | every package |
-| `pnpm lint` | oxlint plus the dependency-direction check |
+| `pnpm lint` | oxlint plus the dependency-direction, migration, message and link checks |
 | `pnpm test` | every package |
 | `pnpm test:core` | domain engines only — no database, ~130ms |
 | `pnpm db:generate` | regenerate the table migration from the schema |
+| `pnpm db:generate:custom` | an empty migration for hand-written SQL — policies, triggers, backfills |
 | `pnpm db:provision` | create the database and roles on an existing server |
 | `pnpm db:migrate` | apply migrations as `app_migrator` |
 | `pnpm db:seed` | reference rows the engines need, and the role/permission matrix |
@@ -217,6 +219,12 @@ this area.
 | [`Operations_Findings.md`](docs/Operations_Findings.md) | What broke in the first real deployment and what it taught us. Read before standing up customer number two |
 
 ## The parts worth reading first
+
+If you are picking this up for the first time, [`CONTRIBUTING.md`](CONTRIBUTING.md)
+is the working guide — the loop to run, what will stop you and why, and a
+walkthrough of adding a table with its policy, which is the change most likely
+to be first and the one with the sharpest edges.
+
 
 **`packages/db/src/actor.ts`** — every request opens one transaction and stamps
 the acting principal into transaction-local settings. The third argument to

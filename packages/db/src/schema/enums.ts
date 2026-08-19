@@ -204,6 +204,52 @@ export const allocationBasisEnum = pgEnum('allocation_basis', [
 ])
 
 /**
+ * A supplier's invoice through its life — 0014.
+ *
+ * `received` is the honest default: the bill exists and has been captured, and
+ * nothing has been decided about it. Approval is a separate act by finance,
+ * which is what makes the variance report worth reading — a bill approved
+ * while a line sits outside tolerance records who judged that acceptable.
+ *
+ * `disputed` is a state and not a flag because the answer to "why has this not
+ * been paid" is different from "this has not been paid yet", and an ageing
+ * report that cannot tell them apart chases the wrong agent.
+ */
+export const supplierInvoiceStatusEnum = pgEnum('supplier_invoice_status', [
+  'received',
+  'approved',
+  'part_paid',
+  'paid',
+  'disputed',
+  'void',
+])
+
+/**
+ * A monthly set-off — 0014.
+ *
+ * `agreed` is the state the whole thing turns on. Up to it the figures move as
+ * documents land in the period; past it they are frozen, because both sides
+ * have signed the same statement and a settlement that changes afterwards is
+ * one nobody can rely on. `settled` means the residual has actually moved.
+ */
+export const settlementStatusEnum = pgEnum('settlement_status', [
+  'draft',
+  'agreed',
+  'settled',
+  'void',
+])
+
+/** Which way the residual goes after the offset. `square` means nothing moves. */
+export const settlementDirectionEnum = pgEnum('settlement_direction', [
+  'they_owe_us',
+  'we_owe_them',
+  'square',
+])
+
+/** What a settlement line claimed: one we raised on them, or one they raised on us. */
+export const settlementLineKindEnum = pgEnum('settlement_line_kind', ['invoice', 'bill'])
+
+/**
  * `draft` previews, `posted` marks its invoices, `void` releases them again.
  * The three-state life cycle is what makes re-exporting a period a deliberate
  * act rather than an accident — 0011.

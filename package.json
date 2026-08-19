@@ -10,16 +10,19 @@
   "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "doctor": "node scripts/doctor.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs",
+    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-migrations.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
     "test:core": "pnpm --filter @qabandi/core test",
     "test:db": "pnpm --filter @qabandi/db test",
     "test:e2e": "pnpm --filter @qabandi/web test:e2e",
+    "coverage": "vitest run --coverage",
     "db:generate": "pnpm --filter @qabandi/db generate",
+    "db:generate:custom": "pnpm --filter @qabandi/db generate:custom",
     "db:provision": "pnpm --filter @qabandi/db provision",
     "db:migrate": "pnpm --filter @qabandi/db migrate",
     "db:studio": "pnpm --filter @qabandi/db studio",
@@ -38,6 +41,7 @@
     "db:create-branch": "pnpm --filter @qabandi/db create-branch"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.10",
     "oxlint": "^1.78.0",
     "prettier": "^3.9.6",
     "typescript": "^7.0.2",

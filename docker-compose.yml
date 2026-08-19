@@ -1,3 +1,10 @@
+# Local development dependencies — Postgres, object storage, a mail sink.
+#
+# Not a deployment. Every credential here is a known constant and every port is
+# published to the host, which is right on a laptop and catastrophic anywhere
+# else. Production is `compose.deploy.yml`: the two application containers,
+# nothing else, built from the root `Dockerfile`.
+
 services:
   db:
     image: postgres:18-alpine

@@ -22,7 +22,15 @@
 import { revalidatePath } from 'next/cache'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assertTransition, fromDb, invoiceMachine, quoteMachine, toScale } from '@qabandi/core'
+import {
+  assertTransition,
+  checkSettlement,
+  fromDb,
+  invoiceMachine,
+  positionFromDb,
+  quoteMachine,
+  toScale,
+} from '@qabandi/core'
 import {
   enquiries,
   invoiceLines,
@@ -531,24 +539,26 @@ export async function setInvoiceStatus(
        * and one global sequence would hand KWI 1, 3, 4 and DXB 2, 5, leaving
        * both with gaps they cannot explain.
        *
-       * `update … returning` is atomic, so the read and the increment cannot
-       * be interleaved by a second transaction. Two people issuing in the same
-       * branch at the same instant queue on that row's lock; two in different
-       * branches never contend at all.
+       * The increment is atomic, so the read and the bump cannot be interleaved
+       * by a second transaction. Two people issuing in the same branch at the
+       * same instant queue on that row's lock; two in different branches never
+       * contend at all.
+       *
+       * It goes through `app.allocate_series_number` rather than updating
+       * `branches` here, because `branches` is configuration and its write
+       * policy requires `admin.branches.write` — which `finance` does not hold.
+       * Written inline, the update matched no rows for the very role that
+       * issues invoices and this threw `not_found`. The function is
+       * `security definer` and re-checks branch membership and `invoice.issue`
+       * itself; migration 0016 has the whole account.
        */
       let seriesNo = current.seriesNo
       if (status === 'issued' && !seriesNo) {
-        const allocated = await tx.execute(sql`
-          update branches
-             set invoice_series_next = invoice_series_next + 1,
-                 updated_at = now()
-           where id = ${current.branchId}
-          returning invoice_series
-                    || '-' || extract(year from now())::int
-                    || '-' || lpad(invoice_series_next::text, 5, '0') as next
-        `)
-        const numbered = allocated.rows[0] as { next: string } | undefined
-        if (!numbered) throw new Error('not_found')
+        const allocated = await tx.execute(
+          sql`select app.allocate_series_number(${current.branchId}::uuid, 'invoice') as next`,
+        )
+        const numbered = allocated.rows[0] as { next: string | null } | undefined
+        if (!numbered?.next) throw new Error('not_found')
         seriesNo = numbered.next
       }
 
@@ -737,16 +747,34 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
                  where payment_id = ${paymentId}), 0)::numeric       as allocated,
       (select total from invoices where id = ${invoiceId})::numeric  as invoiced,
       coalesce((select sum(amount) from payment_allocations
-                 where invoice_id = ${invoiceId}), 0)::numeric       as settled
+                 where invoice_id = ${invoiceId}), 0)::numeric       as settled,
+      (select currency from invoices where id = ${invoiceId})        as currency
   `)
 
   const row = result.rows[0] as
-    { received: string; allocated: string; invoiced: string; settled: string } | undefined
-  if (!row) throw new Error('not_found')
+    | {
+        received: string | null
+        allocated: string | null
+        invoiced: string | null
+        settled: string | null
+        currency: string | null
+      }
+    | undefined
+  if (!row || row.received === null || row.invoiced === null) throw new Error('not_found')
 
-  const value = Number(amount)
-  if (value > Number(row.received) - Number(row.allocated)) throw new Error('over_allocated')
-  if (value > Number(row.invoiced) - Number(row.settled)) throw new Error('over_invoiced')
+  /*
+    The ceilings are decided in `core` — see `settlement.ts` for why they are
+    not decided here. The read and the insert stay in this one transaction,
+    which is the half that cannot move: two people allocating the same receipt
+    at the same moment must not both pass a check that was true when they read
+    it.
+  */
+  const verdict = checkSettlement(
+    amount,
+    positionFromDb(row, row.currency ?? 'KWD'),
+    row.currency ?? 'KWD',
+  )
+  if (!verdict.ok) throw new Error(verdict.reason)
 
   await tx.insert(paymentAllocations).values({ paymentId, invoiceId, amount })
 

@@ -31,11 +31,14 @@ import {
   SEED_CURRENCIES,
   allocate,
   buildJournal,
+  checkMatch,
+  compareToAccrual,
   dec,
   estimateDuty,
   money,
   toDb,
   toJournalCsv,
+  tolerance,
   type CurrencySpec,
   type TariffLine,
 } from '@qabandi/core'
@@ -54,6 +57,10 @@ import {
   jobs,
   loadEnv,
   locations,
+  partners,
+  supplierInvoiceLines,
+  supplierInvoiceMatches,
+  supplierInvoices,
   systemActor,
   withActor,
 } from '@qabandi/db'
@@ -449,6 +456,172 @@ async function checkDuty(fixture: Fixture): Promise<void> {
  * this checks the refusal first, then proves the journal balances using the
  * accounts as they would be once mapped.
  */
+/**
+ * Cost verification, against real rows — FR-FN-09.
+ *
+ * The engine in `core/matching.ts` is tested in milliseconds against no
+ * infrastructure. What has never run is the *seam*: a supplier invoice
+ * captured into real tables, matched to a charge line the allocation engine
+ * wrote earlier in this same script, and the variance computed from what came
+ * back out of `numeric(19,6)`.
+ *
+ * That seam is where this codebase's faults have always lived, and it is worth
+ * a round trip: the accrual is a real allocated cost, the bill is deliberately
+ * 15% over it, and the assertion is that the system says so.
+ */
+async function checkPayables(fixture: Fixture): Promise<void> {
+  console.log('\ncost verification')
+
+  const accrual = await withActor(actor, async (tx) =>
+    tx
+      .select({
+        id: chargeLines.id,
+        amount: chargeLines.amount,
+        amountBase: chargeLines.amountBase,
+        currency: chargeLines.currency,
+        branchId: chargeLines.branchId,
+      })
+      .from(chargeLines)
+      .where(and(eq(chargeLines.jobId, fixture.jobA), eq(chargeLines.direction, 'cost')))
+      .limit(1),
+  )
+
+  if (accrual.length === 0) {
+    skip('match', 'no cost line on the house — the allocation step must run first')
+    return
+  }
+
+  const cost = accrual[0]!
+  const billed = dec(cost.amount).times('1.15').toFixed(3)
+
+  const partner = await withActor(actor, async (tx) =>
+    tx.select({ id: partners.id, name: partners.legalNameEn }).from(partners).limit(1),
+  )
+  if (partner.length === 0) {
+    skip('match', 'no partner seeded to raise a bill from')
+    return
+  }
+
+  const billId = await withActor(actor, async (tx) => {
+    const [bill] = await tx
+      .insert(supplierInvoices)
+      .values({
+        branchId: cost.branchId,
+        partnerId: partner[0]!.id,
+        reference: `${TAG}-BILL`,
+        currency: cost.currency,
+        fxRate: '1',
+        invoiceDate: new Date().toISOString().slice(0, 10),
+        subtotal: billed,
+        total: billed,
+      })
+      .returning({ id: supplierInvoices.id })
+
+    const [line] = await tx
+      .insert(supplierInvoiceLines)
+      .values({
+        supplierInvoiceId: bill!.id,
+        branchId: cost.branchId,
+        chargeTypeId: fixture.freightChargeTypeId,
+        description: 'OCEAN FREIGHT AS PER AGREEMENT',
+        quantity: '1',
+        unitPrice: billed,
+        amount: billed,
+      })
+      .returning({ id: supplierInvoiceLines.id })
+
+    await tx.insert(supplierInvoiceMatches).values({
+      supplierInvoiceLineId: line!.id,
+      chargeLineId: cost.id,
+      branchId: cost.branchId,
+      amount: billed,
+    })
+
+    return bill!.id
+  })
+
+  ok('capture', `${TAG}-BILL for ${billed} ${cost.currency} against an accrual of ${cost.amount}`)
+
+  /*
+    Read back through `numeric`, not held in memory.
+
+    The whole point of the round trip: the figures are compared as the database
+    returns them — strings — and the arithmetic is `Decimal`'s. A float here
+    would put 0.09999999999999964 where a fils belongs.
+  */
+  const readBack = await withActor(actor, async (tx) =>
+    tx.execute(sql`
+      select l.amount::text as billed,
+             coalesce((
+               select sum(cl.amount_base)
+                 from supplier_invoice_matches m
+                 join charge_lines cl on cl.id = m.charge_line_id
+                where m.supplier_invoice_line_id = l.id
+                  and m.retracted_at is null
+             ), 0)::text as accrued
+        from supplier_invoice_lines l
+       where l.supplier_invoice_id = ${billId}
+    `),
+  )
+
+  const row = readBack.rows[0] as { billed: string; accrued: string } | undefined
+  if (!row) throw new Error('the captured bill did not read back')
+
+  const outcome = compareToAccrual(
+    money(row.accrued, cost.currency),
+    money(row.billed, cost.currency),
+    tolerance('1', '2'),
+    spec(cost.currency),
+  )
+
+  if (outcome.verdict !== 'over') {
+    throw new Error(`a bill 15% over its accrual was judged "${outcome.verdict}"`)
+  }
+  ok(
+    'variance',
+    `${outcome.variance.amount} ${cost.currency} over, ` +
+      `${outcome.variancePercent?.toFixed(1)}% — outside a 1% / 2.000 tolerance`,
+  )
+
+  /*
+    The ceiling, exercised rather than asserted about.
+
+    Matching more of the supplier's line than they billed invents a liability.
+    The engine refuses, and this proves the position it refuses against is the
+    one the database actually holds.
+  */
+  const over = checkMatch(
+    dec(billed).plus('1').toFixed(),
+    { billed: row.billed, matched: row.billed },
+    cost.currency,
+  )
+  if (over.ok) throw new Error('the supplier-line ceiling did not hold')
+  ok('ceiling', `refuses a match beyond ${row.billed} ${cost.currency}, as it should`)
+
+  /*
+    Voided rather than deleted (§5.5). Nothing was paid against it, which is
+    the condition the product's own void path enforces.
+  */
+  await withActor(actor, async (tx) => {
+    await tx.execute(sql`
+      update supplier_invoice_matches m
+         set retracted_at = now(), updated_at = now()
+        from supplier_invoice_lines l
+       where l.id = m.supplier_invoice_line_id and l.supplier_invoice_id = ${billId}
+    `)
+    await tx
+      .update(supplierInvoices)
+      .set({
+        status: 'void',
+        disputedAt: new Date(),
+        disputeReason: `${TAG} verification fixture`,
+        updatedAt: new Date(),
+      })
+      .where(eq(supplierInvoices.id, billId))
+  })
+  ok('cleanup', 'bill voided, its match retracted — nothing deleted')
+}
+
 async function checkJournal(fixture: Fixture): Promise<void> {
   console.log('\naccounting export')
 
@@ -741,6 +914,7 @@ async function main(): Promise<void> {
     await checkStorage(fixture)
     await checkAllocation(fixture)
     await checkDuty(fixture)
+    await checkPayables(fixture)
     await checkJournal(fixture)
 
     await cleanUp(fixture)

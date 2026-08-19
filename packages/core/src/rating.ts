@@ -238,9 +238,18 @@ export interface MarginSummary {
   readonly grossPercent: Decimal | null
 }
 
-/** Totals a priced set in the branch's base currency — the job P&L. */
+/**
+ * Totals a priced set in the branch's base currency — the job P&L.
+ *
+ * Takes the two fields it reads rather than a whole `PricedLine`, so the same
+ * arithmetic serves both callers. Quoting hands it lines it has just priced;
+ * `margin.ts` hands it rows out of the charge ledger, which were priced weeks
+ * ago and carry no basis or quantity any more. One definition of gross margin
+ * is the point — two would eventually disagree, and the disagreement would be
+ * between the number on the quote and the number on the job.
+ */
 export function summariseMargin(
-  lines: readonly PricedLine[],
+  lines: readonly Pick<PricedLine, 'direction' | 'amountInBase'>[],
   baseCurrency: CurrencyCode,
 ): MarginSummary {
   const cost = sum(

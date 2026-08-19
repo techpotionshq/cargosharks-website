@@ -138,6 +138,12 @@ export interface PartnerDetail {
   readonly currency: string | null
   readonly paymentTermsDays: number | null
   readonly isActive: boolean
+  /** How far this partner's bills may drift from the accrual — 0014. */
+  readonly varianceTolerancePercent: string
+  readonly varianceToleranceAbsolute: string
+  /** The customer record they invoice us as, where a current account is run. */
+  readonly settlementCustomerId: string | null
+  readonly settlementCurrency: string | null
   readonly openJobs: number
   readonly totalJobs: number
   readonly openExceptions: number
@@ -169,6 +175,11 @@ export async function getPartnerDetail(
              p.legal_name_en as "legalNameEn", p.legal_name_ar as "legalNameAr",
              p.country_code as "countryCode", p.currency,
              p.payment_terms_days as "paymentTermsDays", p.is_active as "isActive",
+             /* Payables configuration — 0014. See core/matching.ts. */
+             p.variance_tolerance_percent::text  as "varianceTolerancePercent",
+             p.variance_tolerance_absolute::text as "varianceToleranceAbsolute",
+             p.settlement_customer_id as "settlementCustomerId",
+             p.settlement_currency    as "settlementCurrency",
              (select count(*)::int from job_partners jp
                 join jobs j on j.id = jp.job_id
                where jp.partner_id = p.id

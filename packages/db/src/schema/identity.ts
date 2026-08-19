@@ -18,7 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
-import { pk, ref, timestamps, tsz } from './columns'
+import { pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable, systemTable } from './table'
 import { localeEnum, principalTypeEnum, supportScopeEnum } from './enums'
 import { assets } from './files'
@@ -59,9 +59,29 @@ export const branches = pgTable(
     arAccountCode: text('ar_account_code'),
     apAccountCode: text('ap_account_code'),
     taxAccountCode: text('tax_account_code'),
+    /**
+     * Tax we were charged, as against tax we charged (0014).
+     *
+     * A separate account because the two are separate lines on a return:
+     * output tax is a liability, input tax is a receivable from the authority,
+     * and a chart that nets them into one balance cannot produce the return.
+     * Nullable — a Kuwait entity buying from a Kuwait agent never sees any, and
+     * the export only demands it of a bill that actually carries tax.
+     */
+    inputTaxAccountCode: text('input_tax_account_code'),
     bankAccountCode: text('bank_account_code'),
     fxVarianceAccountCode: text('fx_variance_account_code'),
     roundingAccountCode: text('rounding_account_code'),
+    /**
+     * FR-FN-05 — below this, an invoice needs a Branch Manager (0014).
+     *
+     * Per entity rather than global: a Dubai freight desk and a Kuwait customs
+     * brokerage do not run on the same margin, and one number for both means
+     * either an approval queue nobody can clear or a floor that never fires.
+     * Null means no floor is being enforced yet, which is where every
+     * deployment starts.
+     */
+    marginFloorPercent: quantity('margin_floor_percent'),
     letterheadAssetId: ref('letterhead_asset_id').references(() => assets.id),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),

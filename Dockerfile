@@ -1,12 +1,31 @@
-# The web application, built for Coolify against a remote Postgres.
+# Both halves of the product, from one file.
 #
 # Lives at the repository root because Coolify's Dockerfile build pack looks
 # for `./Dockerfile` by default and the build context has to be the workspace
-# root regardless — `apps/web` depends on three workspace packages and the
+# root regardless — each app depends on three workspace packages and the
 # lockfile, none of which are reachable from inside its own directory.
 #
-# Nothing here is Coolify-specific. The image is a Next.js standalone server on
-# port 3000 that takes its entire configuration from the environment.
+# ## Two images, one Dockerfile
+#
+# The product is two containers and it does not work as one. `apps/web` serves
+# the interface; `apps/service` renders every PDF through Chromium, signs
+# storage links, and runs the scheduled workers — free-time accrual, SLA
+# escalation, notification dispatch, the FX feed. A deployment with only the
+# web image has no documents, no accounting export, and no clock running on
+# anything.
+#
+#   target (unset)    the web image, port 3000  — the default, so an existing
+#                     deployment that names no target is unchanged
+#   --target service  the service image, port 3001
+#
+# `compose.deploy.yml` names both, and that is how they are deployed: one
+# Coolify stack, one network, so `SERVICE_URL=http://service:3001` resolves
+# with nothing to configure. See `docs/Deployment_Coolify.md` — that URL being
+# internal is the one rule, because `/internal` impersonates principals.
+#
+# The web image stays the *last* stage deliberately. Docker builds the final
+# stage when no target is given, and the service stage is not a dependency of
+# it — so a web build costs nothing extra and never installs Chromium.
 
 # --- shared base -----------------------------------------------------------
 # Node 22 to match `engines` in the root manifest. `corepack` pins pnpm to the
@@ -43,7 +62,64 @@ COPY . .
 RUN pnpm --filter @qabandi/web build \
  && pnpm --filter @qabandi/db build:migrate
 
+# --- service build ---------------------------------------------------------
+# Derived from `build` rather than repeating the install: that stage already
+# holds the full workspace and its node_modules, so this is one compile step
+# and shares every layer above it with the web image.
+FROM build AS service-build
+RUN pnpm --filter @qabandi/service build
+
+# --- service runtime -------------------------------------------------------
+# Chromium is installed here rather than pulled through npm: it is the only
+# renderer with dependable Arabic shaping and RTL (NFR-01), and it belongs in
+# the image rather than in a developer's node_modules. Without the Arabic font
+# the PDF renders boxes — the sort of failure that only shows up in production,
+# on a customer's invoice.
+FROM base AS service
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      chromium fonts-liberation fonts-noto-core fonts-noto-color-emoji \
+      fonts-kacst fonts-freefont-ttf ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Production dependencies only, resolved from the same lockfile the build used.
+#
+# `@qabandi/service...` with the ellipsis — the package *and its dependencies*.
+# Without it pnpm installs only what `apps/service/package.json` names, and the
+# bundle needs more than that: `build.mjs` inlines the workspace packages but
+# leaves everything from npm external, so `pg` and `drizzle-zod` (from
+# `@qabandi/db`) and `decimal.js` (from `@qabandi/core`) are imported at
+# runtime by code that no longer lives in a package declaring them. The
+# ellipsis is what puts them in the image.
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
+COPY apps/service/package.json apps/service/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+RUN pnpm install --frozen-lockfile --prod --filter @qabandi/service...
+
+# One file. `build.mjs` bundles the workspace source into it, so there is no
+# `packages/*/dist` to copy — only the npm packages installed above are needed
+# beside it.
+COPY --from=service-build --chown=node:node /app/apps/service/dist apps/service/dist
+
+USER node
+ENV NODE_ENV=production
+ENV SERVICE_PORT=3001
+EXPOSE 3001
+
+# `/health` answers without touching the database, so this reports whether the
+# process is up rather than whether Postgres is — taking the container down for
+# a database outage would not fix one.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.SERVICE_PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "apps/service/dist/index.js"]
+
 # --- runtime ---------------------------------------------------------------
+# The web image, and the last stage in the file — see the note at the top.
+#
 # From the plain image rather than `base`: the standalone output carries its
 # own traced `node_modules`, so pnpm, the lockfile and every devDependency stay
 # in the build stage.

@@ -346,6 +346,38 @@ export const ADMIN_PERMISSIONS = [
   'finance.export',
   'customer.write',
   'partner.write',
+  /*
+    The payables side — 0014, FR-FN-09.
+
+    Three keys rather than one, and the split is the separation of duties a
+    forwarder actually runs on:
+
+      `payable.record`  capture what arrived, and match it against the accrual.
+                        Operations work: the coordinator holding the file knows
+                        which job the agent's line belongs to.
+      `payable.approve` release it for payment, with the variance in front of
+                        you. Finance's, and the whole reason the matching
+                        screen exists — approving a bill that is 15% over its
+                        accrual is a decision somebody has to own.
+      `payable.pay`     move the money.
+
+    Collapsing the first two would mean the person who entered the bill is the
+    person who cleared it, which is the segregation failure an auditor asks
+    about immediately after invoice issuance.
+  */
+  'payable.record',
+  'payable.approve',
+  'payable.pay',
+  /*
+    Netting an agent's account is neither of the above.
+
+    A set-off changes what *both* sides owe without any money moving, so it
+    cannot ride on `payable.pay` — and it touches receivables, which nobody on
+    the payables path otherwise holds. It sits with the people who answer for
+    the relationship, the same reasoning that put `consol.allocate` with the
+    people who answer for the margin.
+  */
+  'settlement.run',
 ] as const
 
 /**

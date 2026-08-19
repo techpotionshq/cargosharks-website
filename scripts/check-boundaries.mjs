@@ -114,6 +114,41 @@ for (const file of globSync('apps/web/src/**/*.ts')) {
   }
 }
 
+/**
+ * Rule 4 — a table is declared through the registry, not Drizzle directly.
+ *
+ * `schema/table.ts` wraps `pgTable` so that every table records itself, and
+ * the RLS and audit tests walk that registry: a business table without
+ * row-level security enabled *and* forced, or without an audit trigger, fails
+ * the build. That guarantee is only as good as the import. One
+ * `import { pgTable } from 'drizzle-orm/pg-core'` and the new table is
+ * invisible to the very tests that exist to protect it — and invisible is
+ * exactly how it looks while it is working, because the table behaves
+ * perfectly normally right up until someone reads another branch's rows.
+ *
+ * A table outside the §5 obligations is declared with `systemTable('reason')`,
+ * which records it too. There is no third option.
+ */
+const PG_CORE_IMPORT = /import\s*\{([^}]*)\}\s*from\s+'drizzle-orm\/pg-core'/g
+
+for (const file of globSync('packages/db/src/schema/**/*.ts')) {
+  // table.ts is the one place that may reach for Drizzle's own pgTable.
+  if (/[\\/]table\.ts$/.test(file)) continue
+
+  const source = readFileSync(file, 'utf8')
+  for (const match of source.matchAll(PG_CORE_IMPORT)) {
+    if (/\bpgTable\b/.test(match[1])) {
+      console.error(
+        `${file}: imports pgTable from 'drizzle-orm/pg-core'.\n` +
+          '  Tables are declared through ./table, which records them for the RLS\n' +
+          "  and audit coverage tests (§5). Import { pgTable } from './table',\n" +
+          '  or systemTable(reason) for a table outside those obligations.',
+      )
+      failures++
+    }
+  }
+}
+
 if (failures > 0) {
   console.error(`\n${failures} boundary violation(s).`)
   process.exit(1)

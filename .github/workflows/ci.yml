@@ -163,6 +163,32 @@ jobs:
           TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
         run: pnpm test:db
 
+      # Coverage runs *here*, in the job that has a database, rather than
+      # alongside the unit tests.
+      #
+      # The mutation suites — the money actions especially — skip without
+      # `TEST_DATABASE_URL`, and they cover the code where an error costs money
+      # rather than a re-render. Measuring in the database-less job reports a
+      # figure several points below the truth and, worse, would let the
+      # thresholds be satisfied while the tests that matter never ran.
+      #
+      # The floor in vitest.config.ts is set just under what this achieves.
+      # Raise it when coverage rises; a threshold that is never raised stops
+      # meaning anything.
+      - name: Coverage
+        env:
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+        run: pnpm coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+
   # The interface is tested twice, because it can be stood up two ways and both
   # are things we promise.
   #
