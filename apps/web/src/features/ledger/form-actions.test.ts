@@ -20,7 +20,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq, sql } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -46,9 +46,15 @@ vi.mock('@/lib/session', () => ({
 }))
 
 const {
+  chargeTypes,
+  enquiries,
+  invoiceLines,
   invoices,
+  notificationOutbox,
   payments,
   paymentAllocations,
+  quoteLines,
+  quotes,
   branches,
   customers,
   principals,
@@ -57,7 +63,19 @@ const {
   workingCalendars,
   withActor,
 } = await import('@qabandi/db')
-const { recordPayment, allocatePayment, setInvoiceStatus } = await import('./form-actions')
+const {
+  addInvoiceLine,
+  addQuoteLine,
+  allocatePayment,
+  createInvoice,
+  createQuote,
+  recordPayment,
+  setInvoiceStatus,
+  setQuoteStatus,
+} = await import('./form-actions')
+
+/** Resolved once in `beforeAll`; a seeded charge type the quote lines hang on. */
+let freightChargeTypeId: string
 
 const BRANCH = '00000000-0000-7000-8000-00000000f001'
 const CUSTOMER = '00000000-0000-7000-8000-00000000f002'
@@ -70,6 +88,9 @@ const PERMISSIONS = [
   'invoice.void',
   'invoice.credit',
   'invoice.approve',
+  'quote.send',
+  'quote.accept',
+  'quote.reject',
 ]
 
 const actor = {
@@ -206,6 +227,14 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
         .insert(principalBranchRoles)
         .values({ principalId: PRINCIPAL, branchId: BRANCH, roleId: financeRole.id })
         .onConflictDoNothing()
+
+      const [freight] = await tx
+        .select({ id: chargeTypes.id })
+        .from(chargeTypes)
+        .where(eq(chargeTypes.key, 'ocean_freight'))
+        .limit(1)
+      if (!freight) throw new Error('Run `pnpm db:seed` before the ledger tests')
+      freightChargeTypeId = freight.id
     })
   })
 
@@ -564,6 +593,577 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
         (r) => r.payload?.seriesNo,
       )
       expect(numbers).toContain(issued!.no)
+    })
+  })
+})
+
+/**
+ * Quotations — the half of the ledger that decides a price before anybody is
+ * committed to it.
+ *
+ * Two properties carry the feature and neither is arithmetic.
+ *
+ * **The margin is frozen, not recomputed.** A quote sent in March, priced at
+ * March's buying rates, keeps March's margin forever (§6.3). Recomputing it
+ * against a later rate card would make the margin column on the register a
+ * statement about today rather than about the deal, and the register is the
+ * only place anybody looks to see whether the desk is pricing well.
+ *
+ * **Versions supersede in one transaction.** Re-quoting writes version N+1 and
+ * marks N superseded together, so there is never a moment where two versions
+ * of the same quotation are both live and a customer could be shown either.
+ */
+describe.skipIf(!enabled)('quotations', () => {
+  const RUN = Date.now().toString(36).toUpperCase().slice(-5)
+  let seq = 0
+
+  // The fixtures above are already in the database by the time this runs; what
+  // its `afterAll` cleared is the mocked session, so this puts it back.
+  beforeAll(() => {
+    harness.session = session
+  })
+
+  async function enquiry(): Promise<string> {
+    seq += 1
+    return withActor({ ...actor, type: 'system' }, async (tx) => {
+      const [row] = await tx
+        .insert(enquiries)
+        .values({
+          reference: `LGT-ENQ-${RUN}-${seq}`,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          status: 'rating',
+          channel: 'email',
+          // Answered already, so the SLA sweep has nothing to escalate here.
+          firstRespondedAt: new Date(),
+        })
+        .returning({ id: enquiries.id })
+      return row!.id
+    })
+  }
+
+  const quotesFor = (enquiryId: string) =>
+    withActor(actor, (tx) =>
+      tx.select().from(quotes).where(eq(quotes.enquiryId, enquiryId)).orderBy(quotes.version),
+    )
+
+  const priced = (fields: Record<string, string> = {}) => ({
+    currency: 'USD',
+    totalSell: '4250.00',
+    totalCost: '3600.00',
+    validUntil: '2035-12-31',
+    ...fields,
+  })
+
+  describe('drafting one', () => {
+    it('freezes the margin it was priced at', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({
+          enquiryId: id,
+          branchId: BRANCH,
+          ...priced({ totalSell: '1000', totalCost: '750' }),
+        }),
+      )
+
+      const [row] = await quotesFor(id)
+      expect(state.ok).toBeTruthy()
+      expect(row?.version).toBe(1)
+      expect(row?.status).toBe('draft')
+      expect((row!.pricedSnapshot as { marginPct: number }).marginPct).toBe(25)
+    })
+
+    it('carries the note the salesperson attached to the price', async () => {
+      const id = await enquiry()
+
+      await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced(), notes: 'Rate held to month end' }),
+      )
+
+      const [row] = await quotesFor(id)
+      expect((row!.pricedSnapshot as { notes: string }).notes).toBe('Rate held to month end')
+    })
+
+    /**
+     * Re-quoting keeps the reference and adds a version. A customer chasing
+     * "your quotation QUO-2026-00042" must find one document with a history,
+     * not three unrelated numbers.
+     */
+    it('supersedes the previous version in the same transaction', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+
+      await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: '4400.00' }) }),
+      )
+
+      const rows = await quotesFor(id)
+      expect(rows.map((r) => r.version)).toEqual([1, 2])
+      expect(rows[0]?.status).toBe('superseded')
+      expect(rows[1]?.status).toBe('draft')
+      // Same document, second version.
+      expect(rows[1]?.reference).toBe(`${rows[0]?.reference}-v2`)
+    })
+
+    /**
+     * The desk is stopped, not warned. A quotation sent below cost is a loss
+     * the company is contractually bound to once it is accepted, and it is
+     * almost always a transposed figure rather than a decision.
+     */
+    it('refuses a price below what the job costs us', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({
+          enquiryId: id,
+          branchId: BRANCH,
+          ...priced({ totalSell: '3600.00', totalCost: '4250.00' }),
+        }),
+      )
+
+      expect(state.errors?.totalSell).toMatch(/below what it costs/)
+      expect(await quotesFor(id)).toEqual([])
+    })
+
+    it('allows a price exactly at cost, which is a decision rather than a slip', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({
+          enquiryId: id,
+          branchId: BRANCH,
+          ...priced({ totalSell: '3600.00', totalCost: '3600.00' }),
+        }),
+      )
+
+      expect(state.ok).toBeTruthy()
+      expect((await quotesFor(id))[0]?.pricedSnapshot).toMatchObject({ marginPct: 0 })
+    })
+
+    it('asks for the figures it cannot invent', async () => {
+      const state = await createQuote({}, form({ enquiryId: await enquiry(), branchId: BRANCH }))
+
+      expect(state.errors?.totalSell).toBeTruthy()
+      expect(state.errors?.totalCost).toBeTruthy()
+      expect(state.errors?.validUntil).toBeTruthy()
+    })
+
+    /** Money is decimal all the way down; a thousand-separator is not a number. */
+    it('refuses an amount that is not one', async () => {
+      const state = await createQuote(
+        {},
+        form({
+          enquiryId: await enquiry(),
+          branchId: BRANCH,
+          ...priced({ totalSell: '4,250.00' }),
+        }),
+      )
+
+      expect(state.errors?.totalSell).toBeTruthy()
+    })
+
+    it('refuses a branch the salesperson does not sit in', async () => {
+      await expect(
+        createQuote(
+          {},
+          form({
+            enquiryId: await enquiry(),
+            branchId: '00000000-0000-7000-8000-0000000000b2',
+            ...priced(),
+          }),
+        ),
+      ).rejects.toThrow()
+    })
+  })
+
+  describe('pricing its lines', () => {
+    async function draft(): Promise<string> {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [row] = await quotesFor(id)
+      return row!.id
+    }
+
+    const linesOf = (quoteId: string) =>
+      withActor(actor, (tx) => tx.select().from(quoteLines).where(eq(quoteLines.quoteId, quoteId)))
+
+    /**
+     * The multiplication happens in PostgreSQL, on `numeric`. `0.1 * 3` is not
+     * `0.3` in a float and a quotation is not the place to find that out.
+     */
+    it('multiplies the line out in the database, not in JavaScript', async () => {
+      const quoteId = await draft()
+
+      await addQuoteLine(
+        {},
+        form({
+          quoteId,
+          chargeTypeId: freightChargeTypeId,
+          basis: 'per_container',
+          quantity: '3',
+          rate: '0.1',
+          currency: 'USD',
+        }),
+      )
+
+      const [line] = await linesOf(quoteId)
+      expect(Number(line?.amount)).toBeCloseTo(0.3, 6)
+      expect(line?.basis).toBe('per_container')
+    })
+
+    it('records the description the customer will read', async () => {
+      const quoteId = await draft()
+
+      await addQuoteLine(
+        {},
+        form({
+          quoteId,
+          chargeTypeId: freightChargeTypeId,
+          quantity: '1',
+          rate: '1450',
+          currency: 'USD',
+          description: 'Ocean freight KWI/JEA, all-in',
+        }),
+      )
+
+      expect((await linesOf(quoteId))[0]?.description).toBe('Ocean freight KWI/JEA, all-in')
+    })
+
+    it('asks which charge the line is', async () => {
+      const state = await addQuoteLine({}, form({ quoteId: await draft(), rate: '100' }))
+
+      expect(state.errors?.chargeTypeId).toBeTruthy()
+    })
+
+    it('refuses a rate that is not a number', async () => {
+      const state = await addQuoteLine(
+        {},
+        form({ quoteId: await draft(), chargeTypeId: freightChargeTypeId, rate: 'about 1450' }),
+      )
+
+      expect(state.errors?.rate).toBeTruthy()
+    })
+
+    /**
+     * A sent quotation is a document the customer is holding. Editing its
+     * lines underneath them would leave the two copies disagreeing with no
+     * record that anything changed — which is what versions are for.
+     */
+    it('refuses to edit a quotation that has been sent', async () => {
+      const quoteId = await draft()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      await expect(
+        addQuoteLine(
+          {},
+          form({
+            quoteId,
+            chargeTypeId: freightChargeTypeId,
+            quantity: '1',
+            rate: '50',
+            currency: 'USD',
+          }),
+        ),
+      ).rejects.toThrow(/sent quotation cannot be edited/)
+
+      expect(await linesOf(quoteId)).toEqual([])
+    })
+  })
+
+  describe('sending and deciding', () => {
+    async function draft(): Promise<string> {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [row] = await quotesFor(id)
+      return row!.id
+    }
+
+    const quoteRow = async (quoteId: string) => {
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(quotes).where(eq(quotes.id, quoteId)),
+      )
+      return row
+    }
+
+    it('stamps when it was sent, and does not move that on a resend', async () => {
+      const quoteId = await draft()
+
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+      const first = (await quoteRow(quoteId))!.sentAt
+
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      expect(first).toBeInstanceOf(Date)
+      // `coalesce(sent_at, now())` — the date the customer was told is the
+      // date the clock on their decision started, and a resend does not reset
+      // it.
+      expect((await quoteRow(quoteId))!.sentAt).toEqual(first)
+    })
+
+    /**
+     * Raised inside the same transaction, so a quotation that fails to move
+     * never announces itself to the customer (§7.4).
+     */
+    it('raises the notification with the price at the currency’s own precision', async () => {
+      const quoteId = await draft()
+
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      const [event] = await withActor(actor, (tx) =>
+        tx
+          .select()
+          .from(notificationOutbox)
+          .where(eq(notificationOutbox.eventKey, 'quote.sent'))
+          .orderBy(desc(notificationOutbox.createdAt))
+          .limit(1),
+      )
+      const payload = event?.payload as { total: string; currency: string; reference: string }
+      // `numeric(19,6)` returns `4250.000000`; USD has two decimals, and a
+      // price quoted to six reads as a machine rather than as an offer.
+      expect(payload.total).toBe('4250.00')
+      expect(payload.currency).toBe('USD')
+      expect(event?.customerId).toBe(CUSTOMER)
+    })
+
+    it('records the decision date when the customer answers', async () => {
+      const quoteId = await draft()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))
+
+      const row = await quoteRow(quoteId)
+      expect(row?.status).toBe('accepted')
+      expect(row?.decidedAt).toBeInstanceOf(Date)
+    })
+
+    /** The state machine, not a free-text column. */
+    it('refuses a move the machine does not allow', async () => {
+      const quoteId = await draft()
+
+      const state = await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))
+
+      expect(state.message).toMatch(/cannot move to that state/)
+      expect((await quoteRow(quoteId))?.status).toBe('draft')
+    })
+
+    it('asks for something to update', async () => {
+      expect((await setQuoteStatus({}, form({}))).errors?._).toBe('Nothing to update.')
+      expect((await setQuoteStatus({}, form({ quoteId: 'x' }))).errors?._).toBeTruthy()
+    })
+
+    /**
+     * Three moves, three keys. Accepting a quotation commits the company to a
+     * price and rejecting one closes a deal, so neither is the same
+     * permission as drafting.
+     */
+    it('asks a different permission for each move', async () => {
+      const quoteId = await draft()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+      harness.session = { ...session, permissions: new Set(['quote.send']) }
+
+      await expect(setQuoteStatus({}, form({ quoteId, status: 'accepted' }))).rejects.toThrow()
+      await expect(setQuoteStatus({}, form({ quoteId, status: 'rejected' }))).rejects.toThrow()
+
+      harness.session = session
+    })
+  })
+})
+
+describe.skipIf(!enabled)('drafting an invoice', () => {
+  beforeAll(() => {
+    harness.session = session
+  })
+
+  const linesOf = (invoiceId: string) =>
+    withActor(actor, (tx) =>
+      tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoiceId)),
+    )
+
+  const newest = async () => {
+    const [row] = await withActor(actor, (tx) =>
+      tx
+        .select()
+        .from(invoices)
+        .where(eq(invoices.branchId, BRANCH))
+        .orderBy(desc(invoices.createdAt))
+        .limit(1),
+    )
+    return row!
+  }
+
+  const draft = (fields: Record<string, string> = {}) =>
+    form({
+      branchId: BRANCH,
+      customerId: CUSTOMER,
+      currency: 'KWD',
+      subtotal: '1000.000',
+      taxTreatment: 'out_of_scope',
+      dueOn: '2035-12-31',
+      language: 'en',
+      ...fields,
+    })
+
+  /**
+   * Tax and total are computed by PostgreSQL from the subtotal and the rate,
+   * so the three columns cannot disagree. A total typed by hand is a total
+   * that is eventually wrong.
+   */
+  it('computes the tax and the total rather than accepting them', async () => {
+    await createInvoice({}, draft({ taxTreatment: 'standard', taxRatePercent: '5' }))
+
+    const row = await newest()
+    expect(Number(row.taxAmount)).toBeCloseTo(50, 6)
+    expect(Number(row.total)).toBeCloseTo(1050, 6)
+  })
+
+  /**
+   * A rate is only applied under `standard`. A zero-rated or exempt supply
+   * carries a rate of nothing however the form was filled in, because the
+   * treatment is the fact and the percentage is a consequence of it.
+   */
+  it('applies no rate to a supply that is not standard-rated', async () => {
+    await createInvoice({}, draft({ taxTreatment: 'zero_rated', taxRatePercent: '5' }))
+
+    const row = await newest()
+    expect(Number(row.taxRatePercent)).toBe(0)
+    expect(Number(row.taxAmount)).toBe(0)
+    expect(Number(row.total)).toBeCloseTo(1000, 6)
+  })
+
+  /** Drafts have no number — `invoices_series_when_issued` sees to that. */
+  it('starts as a draft with no series number', async () => {
+    await createInvoice({}, draft())
+
+    const row = await newest()
+    expect(row.status).toBe('draft')
+    expect(row.seriesNo).toBeNull()
+  })
+
+  it('remembers which language the customer is invoiced in', async () => {
+    await createInvoice({}, draft({ language: 'ar' }))
+
+    expect((await newest()).language).toBe('ar')
+  })
+
+  it('asks for the amount and the date it cannot invent', async () => {
+    const state = await createInvoice(
+      {},
+      form({
+        branchId: BRANCH,
+        customerId: CUSTOMER,
+        currency: 'KWD',
+        taxTreatment: 'out_of_scope',
+        language: 'en',
+      }),
+    )
+
+    expect(state.errors?.subtotal).toBeTruthy()
+    expect(state.errors?.dueOn).toBeTruthy()
+  })
+
+  it('refuses a branch the clerk does not sit in', async () => {
+    await expect(
+      createInvoice({}, draft({ branchId: '00000000-0000-7000-8000-0000000000b2' })),
+    ).rejects.toThrow()
+  })
+
+  describe('its lines', () => {
+    async function drafted(fields: Record<string, string> = {}): Promise<string> {
+      await createInvoice({}, draft({ subtotal: '0', ...fields }))
+      return (await newest()).id
+    }
+
+    /**
+     * Recomputed from the lines rather than incremented, so a corrected line
+     * cannot leave the header permanently out by the difference.
+     */
+    it('rolls the header forward from the lines each time', async () => {
+      const invoiceId = await drafted()
+
+      await addInvoiceLine(
+        {},
+        form({ invoiceId, descriptionEn: 'Ocean freight', quantity: '2', unitPrice: '150.000' }),
+      )
+      await addInvoiceLine(
+        {},
+        form({ invoiceId, descriptionEn: 'Terminal handling', quantity: '1', unitPrice: '45.500' }),
+      )
+
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.id, invoiceId)),
+      )
+      expect(Number(row?.subtotal)).toBeCloseTo(345.5, 6)
+      expect(Number(row?.total)).toBeCloseTo(345.5, 6)
+      expect(await linesOf(invoiceId)).toHaveLength(2)
+    })
+
+    it('taxes only the lines that are taxable', async () => {
+      const invoiceId = await drafted({ taxTreatment: 'standard', taxRatePercent: '5' })
+
+      await addInvoiceLine(
+        {},
+        form({
+          invoiceId,
+          descriptionEn: 'Taxable service',
+          quantity: '1',
+          unitPrice: '100.000',
+          isTaxable: 'on',
+        }),
+      )
+      await addInvoiceLine(
+        {},
+        form({ invoiceId, descriptionEn: 'Disbursement', quantity: '1', unitPrice: '100.000' }),
+      )
+
+      const lines = await linesOf(invoiceId)
+      const taxable = lines.find((l) => l.descriptionEn === 'Taxable service')
+      const disbursement = lines.find((l) => l.descriptionEn === 'Disbursement')
+
+      expect(Number(taxable?.taxAmount)).toBeCloseTo(5, 6)
+      expect(Number(disbursement?.taxAmount)).toBe(0)
+    })
+
+    /** A free-text line is allowed; a mis-keyed charge type is not. */
+    it('takes a line with no charge type against it', async () => {
+      const invoiceId = await drafted()
+
+      const state = await addInvoiceLine(
+        {},
+        form({
+          invoiceId,
+          chargeTypeId: '',
+          descriptionEn: 'Sundry disbursement',
+          quantity: '1',
+          unitPrice: '20.000',
+        }),
+      )
+
+      expect(state.ok).toBeTruthy()
+      expect((await linesOf(invoiceId))[0]?.chargeTypeId).toBeNull()
+    })
+
+    it('insists on a description, because that is what the customer reads', async () => {
+      const state = await addInvoiceLine(
+        {},
+        form({ invoiceId: await drafted(), quantity: '1', unitPrice: '20.000' }),
+      )
+
+      expect(state.errors?.descriptionEn).toBeTruthy()
+    })
+
+    it('refuses a unit price that is not a number', async () => {
+      const state = await addInvoiceLine(
+        {},
+        form({ invoiceId: await drafted(), descriptionEn: 'Freight', unitPrice: 'TBA' }),
+      )
+
+      expect(state.errors?.unitPrice).toBeTruthy()
     })
   })
 })
