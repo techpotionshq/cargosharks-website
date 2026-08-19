@@ -34,6 +34,7 @@ import {
   chargeTypes,
   customers,
   jobs,
+  locations,
   partners,
   principalBranchRoles,
   principals,
@@ -52,6 +53,8 @@ export const PRINCIPAL = '00000000-0000-7000-8000-00000000c006'
 export const HOME_JOB = '00000000-0000-7000-8000-00000000c007'
 export const AWAY_JOB = '00000000-0000-7000-8000-00000000c008'
 export const ADMIN_PRINCIPAL = '00000000-0000-7000-8000-00000000c009'
+export const ORIGIN = '00000000-0000-7000-8000-00000000c00a'
+export const DESTINATION = '00000000-0000-7000-8000-00000000c00b'
 
 /** An actor scoped to the home branch only — the interesting case. */
 export const homeActor: Actor = {
@@ -163,6 +166,32 @@ export async function world(): Promise<World> {
     await tx
       .insert(partners)
       .values({ id: PARTNER, code: 'AGT-FIXTURE', type: 'agent', legalNameEn: 'Fixture Agent' })
+      .onConflictDoNothing()
+
+    /*
+      Two places, because a shipment needs somewhere to start and somewhere to
+      go — `saveJob` requires both and nothing seeds `locations`.
+    */
+    await tx
+      .insert(locations)
+      .values([
+        {
+          id: ORIGIN,
+          kind: 'seaport',
+          unlocode: 'KWSWK',
+          nameEn: 'Shuwaikh',
+          nameAr: 'الشويخ',
+          countryCode: 'KW',
+        },
+        {
+          id: DESTINATION,
+          kind: 'seaport',
+          unlocode: 'AEJEA',
+          nameEn: 'Jebel Ali',
+          nameAr: 'جبل علي',
+          countryCode: 'AE',
+        },
+      ])
       .onConflictDoNothing()
 
     for (const [id, code, name] of [
