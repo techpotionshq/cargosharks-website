@@ -640,7 +640,18 @@ export async function buildAccountingExport(
   const stored = await adapters().fileStore.put(storageKey, bytes, 'text/csv; charset=utf-8')
 
   return withActor(actor, async (tx) => {
-    const [asset] = await tx
+    /*
+      One asset per distinct file, and a draft may be built many times.
+
+      The storage key carries the checksum, so re-running an unchanged period
+      produces the same key — which is the point, the bytes are the same
+      object. `assets.storage_key` is unique, though, so a plain insert made
+      the second preview of an unmodified January fail on a constraint
+      violation, in the one operation this module documents as safe to run
+      twenty times. The row is reused instead, and both export rows point at
+      it.
+    */
+    const [created] = await tx
       .insert(assets)
       .values({
         branchId: request.branchId,
@@ -652,7 +663,22 @@ export async function buildAccountingExport(
         uploadedById: actor.principalId,
         meta: { kind: 'accounting_export', from: request.from, to: request.to },
       })
+      .onConflictDoNothing({ target: assets.storageKey })
       .returning({ id: assets.id })
+
+    const [asset] = created
+      ? [created]
+      : await tx
+          .select({ id: assets.id })
+          .from(assets)
+          .where(eq(assets.storageKey, stored.storageKey))
+          .limit(1)
+
+    if (!asset) {
+      // The key is taken by a row in another branch, which means two branches
+      // share a code — a configuration fault, not an export failure.
+      throw new ExportError('asset_conflict', 'That export file belongs to another branch')
+    }
 
     const posting = request.post === true
     const [row] = await tx
