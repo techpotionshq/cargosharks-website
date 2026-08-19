@@ -25,8 +25,18 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { authAccount, branches, principalBranchRoles, principals, roles, withActor } =
-  await import('@qabandi/db')
+const {
+  authAccount,
+  branches,
+  chargeTypes,
+  commodities,
+  documentTypes,
+  exceptionCodes,
+  principalBranchRoles,
+  principals,
+  roles,
+  withActor,
+} = await import('@qabandi/db')
 
 const { ADMIN_PRINCIPAL, AWAY_BRANCH, HOME_BRANCH, adminActor, world } =
   await import('@/lib/testing/fixtures')
@@ -76,6 +86,9 @@ let coordinatorRoleId: string
 let financeRoleId: string
 let calendarId: string
 let seq = 0
+
+/** Per-run, because reference rows are retired rather than removed. */
+const RUN = Date.now().toString(36).toUpperCase().slice(-5)
 
 const nextEmail = () => `invited-${(seq += 1)}-${Date.now()}@qabandi.test`
 
@@ -383,6 +396,198 @@ describe.skipIf(!enabled)('administration', () => {
     it('reports field errors rather than throwing on a bad record', async () => {
       const state = await saveReferenceRecord({}, form({ table: 'not_a_table' }))
       expect(state.errors ?? state.message).toBeTruthy()
+    })
+
+    /**
+     * Configuration is rows, not code — and this is the action that proves it.
+     * A nineteenth accessorial in 2027 is a line an administrator types, not a
+     * release, so the four tables and their per-table columns are worth
+     * pinning down individually: the target is chosen at run time, and passing
+     * a `category` to `commodities` is a runtime error rather than a type one.
+     */
+    const reference = (fields: Record<string, string>) =>
+      form({ nameEn: 'Fixture', nameAr: 'نموذج', isActive: 'on', ...fields })
+
+    const rowByCode = async (
+      table: 'commodity' | 'document_type' | 'exception_code',
+      code: string,
+    ) => {
+      const target = {
+        commodity: commodities,
+        document_type: documentTypes,
+        exception_code: exceptionCodes,
+      }[table]
+      const [row] = await withActor(adminActor, (tx) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tx
+          .select()
+          .from(target as any)
+          .where(eq((target as any).code, code))
+          .limit(1),
+      )
+      return row as Record<string, unknown> | undefined
+    }
+
+    it('adds a commodity with the classification a broker will read', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+
+      const state = await saveReferenceRecord(
+        {},
+        reference({ table: 'commodity', code, nameEn: 'Ceramic tiles', hsCode: '6907.21.00' }),
+      )
+
+      const row = await rowByCode('commodity', code)
+      expect(state.ok).toBeTruthy()
+      expect(row?.nameAr).toBe('نموذج')
+      expect(row?.hsCode).toBe('6907.21.00')
+    })
+
+    /**
+     * Where a charge posts in the customer's ledger (0011). Reference data
+     * rather than code, because every accounting package in the Gulf numbers
+     * its accounts differently — and an unmapped charge type is what the
+     * accounting export refuses on, by name.
+     */
+    it('adds a charge type with its basis and its two account codes', async () => {
+      const key = `REF-CHG-${RUN}-${(seq += 1)}`
+
+      await saveReferenceRecord(
+        {},
+        reference({
+          table: 'charge_type',
+          code: key,
+          nameEn: 'Legalisation',
+          category: 'documentation',
+          defaultBasis: 'per_container',
+          revenueAccountCode: '4090',
+          costAccountCode: '5090',
+        }),
+      )
+
+      const [row] = await withActor(adminActor, (tx) =>
+        tx.select().from(chargeTypes).where(eq(chargeTypes.key, key)).limit(1),
+      )
+      // Keyed rather than coded: `charge_types` has no `code` column, and the
+      // form's one field feeds whichever the table actually has.
+      expect(row?.key).toBe(key)
+      expect(row?.defaultBasis).toBe('per_container')
+      expect(row?.revenueAccountCode).toBe('4090')
+      expect(row?.costAccountCode).toBe('5090')
+    })
+
+    it('falls back to sensible defaults where the form left them out', async () => {
+      const key = `REF-CHG-${RUN}-${(seq += 1)}`
+
+      await saveReferenceRecord({}, reference({ table: 'charge_type', code: key }))
+
+      const [row] = await withActor(adminActor, (tx) =>
+        tx.select().from(chargeTypes).where(eq(chargeTypes.key, key)).limit(1),
+      )
+      expect(row?.category).toBe('other')
+      expect(row?.defaultBasis).toBe('flat')
+    })
+
+    it('adds a document type and an exception code with their own columns', async () => {
+      const doc = `REF-DOC-${RUN}-${(seq += 1)}`
+      const exc = `REF-EXC-${RUN}-${(seq += 1)}`
+
+      await saveReferenceRecord(
+        {},
+        reference({ table: 'document_type', code: doc, category: 'customs' }),
+      )
+      await saveReferenceRecord(
+        {},
+        reference({ table: 'exception_code', code: exc, defaultSeverity: 'critical' }),
+      )
+
+      expect((await rowByCode('document_type', doc))?.category).toBe('customs')
+      expect((await rowByCode('exception_code', exc))?.defaultSeverity).toBe('critical')
+    })
+
+    it('edits the record it was given rather than adding another', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+      await saveReferenceRecord({}, reference({ table: 'commodity', code, nameEn: 'First name' }))
+      const created = await rowByCode('commodity', code)
+
+      await saveReferenceRecord(
+        {},
+        reference({
+          table: 'commodity',
+          recordId: created!.id as string,
+          code,
+          nameEn: 'Corrected name',
+        }),
+      )
+
+      const rows = await withActor(adminActor, (tx) =>
+        tx.select().from(commodities).where(eq(commodities.code, code)),
+      )
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.nameEn).toBe('Corrected name')
+    })
+
+    /**
+     * Retired, not deleted — §5.5. A commodity that was used on four hundred
+     * shipments cannot be removed without taking their history with it, so it
+     * stops being offered instead.
+     */
+    it('retires a record by clearing its flag rather than removing it', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+      await saveReferenceRecord({}, reference({ table: 'commodity', code }))
+      const created = await rowByCode('commodity', code)
+
+      const withoutFlag = form({
+        table: 'commodity',
+        recordId: created!.id as string,
+        code,
+        nameEn: 'Fixture',
+        nameAr: 'نموذج',
+      })
+      await saveReferenceRecord({}, withoutFlag)
+
+      expect((await rowByCode('commodity', code))?.isActive).toBe(false)
+    })
+
+    /**
+     * Through `isUniqueViolation`, which until recently never fired because
+     * Drizzle wraps the driver's error — so this asserts the sentence rather
+     * than the 500 an administrator would otherwise see.
+     */
+    it('names the clash rather than raising when the code is taken', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+      await saveReferenceRecord({}, reference({ table: 'commodity', code }))
+
+      const state = await saveReferenceRecord({}, reference({ table: 'commodity', code }))
+
+      expect(state.errors?.code).toMatch(/already used/)
+    })
+
+    it('insists on the Arabic name, because it appears on Arabic documents', async () => {
+      const state = await saveReferenceRecord(
+        {},
+        form({ table: 'commodity', code: `REF-COM-${RUN}-X`, nameEn: 'Tiles', nameAr: '' }),
+      )
+
+      expect(state.errors?.nameAr).toBeTruthy()
+    })
+
+    it('refuses a code with characters a URL or an export would mangle', async () => {
+      const state = await saveReferenceRecord(
+        {},
+        reference({ table: 'commodity', code: 'tiles & fittings' }),
+      )
+
+      expect(state.errors?.code).toMatch(/Letters, numbers/)
+    })
+
+    it('refuses a caller without the reference key', async () => {
+      harness.session = { ...session, permissions: new Set(['admin.users.write']) }
+
+      await expect(
+        saveReferenceRecord({}, reference({ table: 'commodity', code: `REF-COM-${RUN}-Y` })),
+      ).rejects.toThrow()
+
+      harness.session = session
     })
   })
 })

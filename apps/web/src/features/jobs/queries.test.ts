@@ -48,14 +48,26 @@ describe.skipIf(!enabled)('job register', () => {
     })
 
     it('lists both for a principal holding a role in both', async () => {
-      // Asked one branch at a time: the away branch holds a single shipment,
-      // which fell off the end of an unfiltered page long before the scoping
-      // it is here to prove stopped holding.
+      /*
+        Asked one branch at a time, and neither assertion names a row.
+
+        Filtering to the away branch was not enough on its own: other suites
+        write shipments there too, nothing is ever deleted, and the one fixture
+        reference eventually falls off the end of any page. So the register
+        proves the *scope* — rows come back for each branch and each row
+        belongs to the branch it was asked for — and the fixture's visibility
+        is proved by reading it directly, which no amount of accumulated
+        history can push out of reach.
+      */
       const home = await listJobs(bothBranchesActor, { branchCode: 'FXH', limit: 200 })
       const away = await listJobs(bothBranchesActor, { branchCode: 'FXA', limit: 200 })
 
       expect(home.length).toBeGreaterThan(0)
-      expect(away.map((job) => job.reference)).toContain('FXA-JOB-FIXTURE-1')
+      expect(away.length).toBeGreaterThan(0)
+      expect(away.every((job) => job.branchCode === 'FXA')).toBe(true)
+      expect((await getJobDetail(bothBranchesActor, AWAY_JOB))?.reference).toBe(
+        'FXA-JOB-FIXTURE-1',
+      )
     })
 
     /** Another branch's shipment is *not found*, not forbidden. */
