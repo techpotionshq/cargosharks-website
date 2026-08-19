@@ -128,6 +128,23 @@ const EXTENSIONS: Record<string, string> = {
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 /**
+ * The body Fastify will accept for an upload, derived rather than chosen.
+ *
+ * Fastify's default `bodyLimit` is one megabyte, and it refuses past it before
+ * any handler runs — so the ten megabytes above was unreachable and every
+ * photograph over about 786KB came back as a bare `Payload Too Large`. A
+ * proof-of-delivery photo from a phone is two to five megabytes, which meant
+ * *every* real one failed, and the capture reported it as an upload the driver
+ * should retry from a desk, where it failed again.
+ *
+ * The bytes arrive base64-encoded, which is four characters per three bytes,
+ * and the JSON envelope carries the actor, the file name and the metadata
+ * around them. Derived from `MAX_UPLOAD_BYTES` so the two cannot drift: the
+ * handler stays the thing that decides, and answers with a sentence.
+ */
+const MAX_UPLOAD_BODY_BYTES = Math.ceil(MAX_UPLOAD_BYTES * (4 / 3)) + 64 * 1024
+
+/**
  * Short enough that a link pasted into a chat is dead by the time anyone reads
  * it, long enough to survive a slow connection on a large document.
  */
@@ -239,7 +256,6 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     },
   )
 
-
   /**
    * Render a job document — the bill of lading, delivery order, packing list
    * or customs pack.
@@ -262,9 +278,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'no_actor' })
       }
       if (!kind || !JOB_DOCUMENT_KINDS.includes(kind as JobDocumentKind)) {
-        return reply
-          .code(400)
-          .send({ error: 'unknown_kind', allowed: JOB_DOCUMENT_KINDS })
+        return reply.code(400).send({ error: 'unknown_kind', allowed: JOB_DOCUMENT_KINDS })
       }
 
       const documentLocale = locale === 'ar' ? 'ar' : 'en'
@@ -530,14 +544,17 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
    * whether that principal may write to that branch. This route authenticates
    * with the shared secret and authorises with the actor, like every other one.
    */
-  app.post<{ Body: UploadRequest }>('/files/upload', async (request, reply) => {
-    const { actor, branchId, fileName, contentType, data, meta } = request.body ?? {}
+  app.post<{ Body: UploadRequest }>(
+    '/files/upload',
+    { bodyLimit: MAX_UPLOAD_BODY_BYTES },
+    async (request, reply) => {
+      const { actor, branchId, fileName, contentType, data, meta } = request.body ?? {}
 
-    if (!actor || !branchId || !fileName || !contentType || !data) {
-      return reply.code(400).send({ error: 'incomplete_request' })
-    }
+      if (!actor || !branchId || !fileName || !contentType || !data) {
+        return reply.code(400).send({ error: 'incomplete_request' })
+      }
 
-    /*
+      /*
       The allow-list is on the server, not the form.
 
       A file input's `accept` attribute is a hint to a file picker and nothing
@@ -545,19 +562,19 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       signature bitmap, so that is what this takes — an HTML or SVG upload
       would be a stored, signed-URL-served document with script in it.
     */
-    if (!ALLOWED_UPLOAD_TYPES.includes(contentType)) {
-      return reply.code(415).send({ error: 'unsupported_type', allowed: ALLOWED_UPLOAD_TYPES })
-    }
+      if (!ALLOWED_UPLOAD_TYPES.includes(contentType)) {
+        return reply.code(415).send({ error: 'unsupported_type', allowed: ALLOWED_UPLOAD_TYPES })
+      }
 
-    const bytes = Buffer.from(data, 'base64')
-    if (bytes.byteLength === 0) return reply.code(400).send({ error: 'empty_file' })
-    if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-      return reply.code(413).send({ error: 'too_large', maxBytes: MAX_UPLOAD_BYTES })
-    }
+      const bytes = Buffer.from(data, 'base64')
+      if (bytes.byteLength === 0) return reply.code(400).send({ error: 'empty_file' })
+      if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+        return reply.code(413).send({ error: 'too_large', maxBytes: MAX_UPLOAD_BYTES })
+      }
 
-    const checksum = createHash('sha256').update(bytes).digest('hex')
-    const extension = EXTENSIONS[contentType] ?? 'bin'
-    /*
+      const checksum = createHash('sha256').update(bytes).digest('hex')
+      const extension = EXTENSIONS[contentType] ?? 'bin'
+      /*
       Keyed by checksum, not by name.
 
       Two drivers photographing the same delivery note produce the same object
@@ -566,54 +583,55 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       an operator typed, so a filename with a slash in it cannot escape the
       prefix.
     */
-    const storageKey = `pod/${branchId}/${checksum}.${extension}`
+      const storageKey = `pod/${branchId}/${checksum}.${extension}`
 
-    try {
-      const stored = await adapters().fileStore.put(storageKey, bytes, contentType)
+      try {
+        const stored = await adapters().fileStore.put(storageKey, bytes, contentType)
 
-      const [asset] = await withActor(actor, (tx) =>
-        tx
-          .insert(assets)
-          .values({
-            branchId,
-            storageKey: stored.storageKey,
-            fileName,
-            contentType,
-            byteSize: bytes.byteLength,
-            checksum,
-            uploadedById: actor.principalId,
-            meta: meta ?? {},
-          })
-          .onConflictDoNothing({ target: assets.storageKey })
-          .returning({ id: assets.id }),
-      )
+        const [asset] = await withActor(actor, (tx) =>
+          tx
+            .insert(assets)
+            .values({
+              branchId,
+              storageKey: stored.storageKey,
+              fileName,
+              contentType,
+              byteSize: bytes.byteLength,
+              checksum,
+              uploadedById: actor.principalId,
+              meta: meta ?? {},
+            })
+            .onConflictDoNothing({ target: assets.storageKey })
+            .returning({ id: assets.id }),
+        )
 
-      /*
+        /*
         No row returned means the object was already recorded — the same bytes,
         already uploaded. Read the existing asset rather than failing: to the
         caller this is the same successful outcome, and to storage it is the
         same object.
       */
-      if (!asset) {
-        const [existing] = await withActor(actor, (tx) =>
-          tx
-            .select({ id: assets.id })
-            .from(assets)
-            .where(eq(assets.storageKey, stored.storageKey))
-            .limit(1),
-        )
-        if (!existing) return reply.code(500).send({ error: 'asset_not_recorded' })
-        return reply.send({ assetId: existing.id, storageKey: stored.storageKey })
-      }
+        if (!asset) {
+          const [existing] = await withActor(actor, (tx) =>
+            tx
+              .select({ id: assets.id })
+              .from(assets)
+              .where(eq(assets.storageKey, stored.storageKey))
+              .limit(1),
+          )
+          if (!existing) return reply.code(500).send({ error: 'asset_not_recorded' })
+          return reply.send({ assetId: existing.id, storageKey: stored.storageKey })
+        }
 
-      return reply.send({ assetId: asset.id, storageKey: stored.storageKey })
-    } catch (error) {
-      if (error instanceof FileStoreError) {
-        return reply.code(502).send({ error: 'storage_failed', message: error.message })
+        return reply.send({ assetId: asset.id, storageKey: stored.storageKey })
+      } catch (error) {
+        if (error instanceof FileStoreError) {
+          return reply.code(502).send({ error: 'storage_failed', message: error.message })
+        }
+        throw error
       }
-      throw error
-    }
-  })
+    },
+  )
 
   app.post<{ Body: SignedUrlRequest }>('/files/signed-url', async (request, reply) => {
     const { storageKey, fileName, expiresInSeconds } = request.body ?? {}

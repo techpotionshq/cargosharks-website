@@ -178,16 +178,22 @@ describe.skipIf(!enabled)('ledger registers', () => {
      */
     it('shows an invoice from the actor’s branch and hides the other', async () => {
       const mine = await listInvoices(homeActor)
-      const numbers = mine.map((r) => r.seriesNo)
 
-      expect(numbers).toContain('FXH-2026-90001')
-      expect(numbers).not.toContain('FXA-2026-90001')
+      expect(mine.length).toBeGreaterThan(0)
+      expect(mine.every((row) => row.branchCode === 'FXH')).toBe(true)
     })
 
+    /**
+     * Asked per branch, because the register pages at two hundred newest-first
+     * and the away branch holds a handful of rows against the home branch's
+     * thousands — so the away fixture is simply not on the first page long
+     * before the scoping it is here to prove stops holding.
+     */
     it('shows both to a principal holding a role in both branches', async () => {
-      const numbers = (await listInvoices(bothBranchesActor)).map((r) => r.seriesNo)
-      expect(numbers).toContain('FXH-2026-90001')
-      expect(numbers).toContain('FXA-2026-90001')
+      const away = await listInvoices(bothBranchesActor, 'issued')
+
+      expect(away.some((row) => row.branchCode === 'FXA')).toBe(true)
+      expect(away.some((row) => row.branchCode === 'FXH')).toBe(true)
     })
 
     it('scopes receipts the same way', async () => {
@@ -337,8 +343,9 @@ describe.skipIf(!enabled)('ledger registers', () => {
       )
       expect(typeof invoice!.total).toBe('string')
 
-      const rows = await listInvoices(homeActor)
-      const row = rows.find((r) => r.seriesNo === 'FXH-2026-90001')
+      // And through the register, where the row is whichever the page holds:
+      // what matters is that `numeric` never arrives as a float.
+      const [row] = await listInvoices(homeActor)
       expect(typeof row!.total).toBe('string')
     })
   })
