@@ -12,7 +12,7 @@
  * database rather than by a check here that somebody could forget.
  */
 
-import { eq } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { branches, customers, invoiceLines, invoices, withActor, type Actor } from '@qabandi/db'
 import { renderInvoiceHtml, type DocumentLocale, type InvoiceView } from './invoice'
 import { createRenderer } from './renderer'
@@ -78,6 +78,17 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       })
       .from(invoiceLines)
       .where(eq(invoiceLines.invoiceId, invoiceId))
+      /*
+        The order the operator put them in, not the order the heap returns.
+
+        Without this the lines come back in whatever order the scan produced,
+        which is stable enough to look deliberate and changes the moment a row
+        is updated. An invoice reprinted for a query then has its lines in a
+        different order from the copy the customer is holding, and the call
+        that follows is about which one is real. `sort_order` exists for this
+        and `invoice_lines_invoice_idx` already leads with it.
+      */
+      .orderBy(asc(invoiceLines.sortOrder))
 
     return {
       seriesNo: row.seriesNo,

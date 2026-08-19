@@ -11,7 +11,7 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import { and, eq, isNull, or, gt } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, or } from 'drizzle-orm'
 import { apiKeys, jobs, jobMilestones, withActor, type Actor } from '@qabandi/db'
 import { createHash, timingSafeEqual } from 'node:crypto'
 
@@ -47,6 +47,18 @@ export async function publicApi(app: FastifyInstance): Promise<void> {
           customerReference: jobs.customerReference,
         })
         .from(jobs)
+        /*
+          Newest first, and that is what makes the cap answerable.
+
+          The limit has always been here; the ordering was not, so a customer
+          with more than a hundred shipments got an arbitrary hundred — a
+          different arbitrary hundred on each call, because an unordered scan
+          is only stable until a row is updated. Ordering does not add paging,
+          but it turns "some of your jobs" into "your hundred most recent",
+          which a client can reason about and which does not change underneath
+          them between two requests.
+        */
+        .orderBy(desc(jobs.createdAt))
         .limit(100),
     )
   })
