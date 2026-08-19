@@ -64,7 +64,12 @@ export async function runCarrierEventIngest(eventId: string): Promise<CarrierEve
     */
     const candidates = envelope.jobReference
       ? await tx
-          .select({ id: jobs.id, reference: jobs.reference, mode: jobs.mode })
+          .select({
+              id: jobs.id,
+              reference: jobs.reference,
+              mode: jobs.mode,
+              tradeDirection: jobs.tradeDirection,
+            })
           .from(jobs)
           .where(eq(jobs.reference, envelope.jobReference))
           .limit(2)
@@ -82,7 +87,12 @@ export async function runCarrierEventIngest(eventId: string): Promise<CarrierEve
         ? candidates
         : envelope.billOfLading
           ? await tx
-              .select({ id: jobs.id, reference: jobs.reference, mode: jobs.mode })
+              .select({
+              id: jobs.id,
+              reference: jobs.reference,
+              mode: jobs.mode,
+              tradeDirection: jobs.tradeDirection,
+            })
               .from(jobs)
               .where(
                 and(

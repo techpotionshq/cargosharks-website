@@ -105,6 +105,8 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
         id: jobs.id,
         reference: jobs.reference,
         mode: jobs.mode,
+        // Half of the milestone template lookup — see `MilestoneTarget`.
+        tradeDirection: jobs.tradeDirection,
         eta: jobs.eta,
         scac: partners.scac,
         bookingNumber: jobs.bookingNumber,

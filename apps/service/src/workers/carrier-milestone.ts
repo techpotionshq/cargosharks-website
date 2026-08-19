@@ -32,6 +32,16 @@ export interface MilestoneTarget {
     truthful message about an impossible situation, and a day to work out why.
   */
   readonly mode: (typeof jobs.$inferSelect)['mode']
+  /*
+    And its direction, for the same reason.
+
+    A milestone set is per mode *and* per direction: `vessel_departed` sits at
+    thirty on the way in and seventy on the way out. Selecting on mode alone
+    returned whichever row the planner produced first, so a carrier's departure
+    on an export shipment could be written at the import position — rendering it
+    before the gate-in that precedes it, on a board whose whole job is order.
+  */
+  readonly tradeDirection: (typeof jobs.$inferSelect)['tradeDirection']
 }
 
 export interface MilestoneWrite {
@@ -65,13 +75,14 @@ export async function writeCarrierMilestone(
     automatically-created milestone indistinguishable from a hand-entered one,
     which is the point.
   */
-  const [template] = await tx
+  const candidates = await tx
     .select({
       nameEn: milestoneTemplates.nameEn,
       nameAr: milestoneTemplates.nameAr,
       seq: milestoneTemplates.seq,
       ownerRole: milestoneTemplates.ownerRole,
       customerVisible: milestoneTemplates.customerVisible,
+      direction: milestoneTemplates.direction,
     })
     .from(milestoneTemplates)
     .where(
@@ -81,7 +92,18 @@ export async function writeCarrierMilestone(
         eq(milestoneTemplates.isActive, true),
       ),
     )
-    .limit(1)
+
+  /*
+    The job's own direction first, any direction for the mode second.
+
+    Both candidates are read and the choice made here rather than narrowed in
+    the `where`, because narrowing would silently stop writing milestones for a
+    cross-trade shipment — nothing seeds a `cross_trade` set, and a template
+    from the neighbouring direction is a better answer than none. Same shape as
+    the notification dispatcher's branch override, for the same reason.
+  */
+  const template =
+    candidates.find((row) => row.direction === job.tradeDirection) ?? candidates[0]
 
   if (!template) {
     /*
