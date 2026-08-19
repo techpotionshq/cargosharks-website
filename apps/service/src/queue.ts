@@ -112,19 +112,19 @@ export async function registerSchedules(): Promise<void> {
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
 
   /*
-    The carrier poll, hourly and on the half hour.
+    The carrier poll — `CARRIER_POLL_CRON`, hourly on the half hour by default.
 
-    Hourly because that is the resolution the events themselves have — a
-    carrier publishes a discharge minutes to an hour after the crane, and
-    asking more often buys nothing but rate limit. On the half hour so it does
-    not land with the nightly accruals or the FX refresh, which would make a
-    slow carrier look like a slow database.
+    Hourly because that is the resolution the events themselves have: a carrier
+    publishes a discharge minutes to an hour after the crane, so asking more
+    often buys nothing but rate limit. Configurable because a trial tier's
+    budget and a commercial tier's are different problems, and because a demo
+    wants to see the thing work inside ten minutes rather than inside an hour.
 
     Off unless `CARRIER_TRACKING_DRIVER=dcsa`: the worker answers "nothing to
     do" for the other drivers rather than branching, exactly as `fxIngest`
     does when no feed is bought.
   */
-  await b.schedule(JOBS.carrierPoll, '30 * * * *')
+  await b.schedule(JOBS.carrierPoll, config.CARRIER_POLL_CRON)
 
   /*
     The two time-driven notifications (FR-NT-01).

@@ -144,6 +144,30 @@ describe('DCSA event translation', () => {
   })
 
   /**
+   * The one interpretation guaranteed to be wrong.
+   *
+   * DCSA documents `eventDateTime` as a *local* time and requires an offset.
+   * Without one, JavaScript reads it as the server's local time — so the same
+   * payload would mean different instants on a laptop in Kuwait and a
+   * container running UTC. Free time is counted in whole days from these
+   * (FR-JB-07), and three hours is enough to move a discharge across midnight.
+   */
+  it('reads a timestamp with no offset as UTC, not as the server clock', () => {
+    const { milestones } = readDcsaEvents([equipment('DISC', '2026-08-14T23:30:00', 'KWSWK')])
+
+    expect(milestones[0]?.occurredAt.toISOString()).toBe('2026-08-14T23:30:00.000Z')
+  })
+
+  it('honours the offset a carrier did send', () => {
+    const { milestones } = readDcsaEvents([
+      // Maersk's own documented example shape: local time, explicit offset.
+      equipment('DISC', '2026-08-14T07:41:00+08:00', 'SGSIN'),
+    ])
+
+    expect(milestones[0]?.occurredAt.toISOString()).toBe('2026-08-13T23:41:00.000Z')
+  })
+
+  /**
    * A milestone dated "now" because its timestamp was malformed is worse than
    * a missing one: free time is counted from these dates (FR-JB-07), so a
    * wrong date bills the customer wrongly and looks entirely plausible.

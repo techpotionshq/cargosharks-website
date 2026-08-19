@@ -38,16 +38,36 @@ function credentials(): Record<string, { key?: string; secret?: string }> {
   }
 }
 
+/**
+ * Both halves of the URL, matching `carrier-tracking.ts`.
+ *
+ * The path as well as the host, because this script exists to reproduce what
+ * the service does — a verifier that reads a different configuration from the
+ * thing it is verifying will happily bless a setup that then fails at boot.
+ */
 function profiles(): DcsaCarrierProfile[] {
-  const overrides: Record<string, string | undefined> = {
+  const baseUrls: Record<string, string | undefined> = {
     maersk: process.env.DCSA_MAERSK_BASE_URL,
     hapag: process.env.DCSA_HAPAG_BASE_URL,
     cmacgm: process.env.DCSA_CMACGM_BASE_URL,
   }
 
-  return DCSA_CARRIERS.map((profile) =>
-    overrides[profile.key] ? { ...profile, baseUrl: overrides[profile.key]! } : profile,
-  )
+  const paths: Record<string, string | undefined> = {
+    maersk: process.env.DCSA_MAERSK_EVENTS_PATH,
+    hapag: process.env.DCSA_HAPAG_EVENTS_PATH,
+    cmacgm: process.env.DCSA_CMACGM_EVENTS_PATH,
+  }
+
+  /*
+    `||` and not `??`, because this reads `process.env` raw rather than through
+    `config.ts`. A blank `DCSA_MAERSK_BASE_URL=` line is the empty string, not
+    undefined, and `??` would let it win over the profile's own host.
+  */
+  return DCSA_CARRIERS.map((profile) => ({
+    ...profile,
+    baseUrl: baseUrls[profile.key] || profile.baseUrl,
+    eventsPath: paths[profile.key] || profile.eventsPath,
+  }))
 }
 
 async function main(): Promise<void> {
@@ -88,6 +108,19 @@ async function main(): Promise<void> {
 
   try {
     const reading = await adapter.read(query)
+
+    if (reading.malformedReference) {
+      /*
+        Refused before the request, or by the carrier's own validation. Either
+        way nothing is wrong with the key — the reference cannot match, and the
+        fix is on the job rather than in the configuration.
+      */
+      console.log('')
+      console.log(`  ${reading.malformedReference}`)
+      console.log('')
+      console.log('  The reference cannot match this carrier. Nothing was spent asking.')
+      return
+    }
 
     if (reading.unknownReference) {
       /*

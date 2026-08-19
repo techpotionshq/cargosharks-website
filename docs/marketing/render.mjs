@@ -47,6 +47,12 @@ const DOCS = [
     note: 'DRAFT — every figure is a placeholder',
   },
   { src: 'sales/website-copy.md', out: 'sales/05-Website-Copy.pdf', title: 'Website Copy' },
+  {
+    src: 'sales/pilot-term-sheet.md',
+    out: 'sales/06-Pilot-Term-Sheet.pdf',
+    title: 'Pilot Term Sheet',
+    note: 'DRAFT — confirm every figure before this is signed',
+  },
 
   { src: 'manual/README.md', out: 'manual/00-Manual-Contents.pdf', title: 'User Manual — Contents' },
   { src: 'manual/00-orientation.md', out: 'manual/01-Getting-Started.pdf', title: 'Getting Started' },
@@ -333,14 +339,24 @@ async function main() {
     })
   }
 
+  /*
+    An optional substring filter. Rendering the whole set costs a browser launch
+    plus twenty paginations; while iterating on one document that is the whole
+    wait. `node render.mjs term-sheet` matches against src and out.
+  */
+  const only = process.argv[2]
+  const wanted = only ? DOCS.filter((d) => d.src.includes(only) || d.out.includes(only)) : DOCS
+
   try {
-    for (const doc of DOCS) {
+    for (const doc of wanted) {
       const body = dropLeadingH1(toHtml(join(SRC, doc.src)))
       const html = join(tmp, doc.out.replace(/[\\/]/g, '_') + '.html')
       writeFileSync(html, shell(doc.title, eyebrowFor(doc.src), body), 'utf8')
       await render(html, join(OUT, doc.out), doc.title, doc.note)
       console.log('  ' + doc.out)
     }
+
+    if (only) return
 
     const parts = BUNDLE.parts
       .map((p, i) => {

@@ -214,17 +214,32 @@ export function dcsaCredentials(): Record<string, DcsaCredential> {
   }
 }
 
-/** The stock profiles, with any base URL this deployment has overridden. */
+/**
+ * The stock profiles, with whatever this deployment has overridden.
+ *
+ * Both halves of the URL, because a carrier's product tiers can differ by path
+ * on the same host — Maersk's public Track & Trace and its private one are the
+ * same gateway and a different proxy, and a key issued for one is refused by
+ * the other. Overriding the host alone would have made that a code change.
+ */
 function dcsaProfiles(): DcsaCarrierProfile[] {
-  const overrides: Record<string, string | undefined> = {
+  const baseUrls: Record<string, string | undefined> = {
     maersk: config.DCSA_MAERSK_BASE_URL,
     hapag: config.DCSA_HAPAG_BASE_URL,
     cmacgm: config.DCSA_CMACGM_BASE_URL,
   }
 
-  return DCSA_CARRIERS.map((profile) =>
-    overrides[profile.key] ? { ...profile, baseUrl: overrides[profile.key]! } : profile,
-  )
+  const paths: Record<string, string | undefined> = {
+    maersk: config.DCSA_MAERSK_EVENTS_PATH,
+    hapag: config.DCSA_HAPAG_EVENTS_PATH,
+    cmacgm: config.DCSA_CMACGM_EVENTS_PATH,
+  }
+
+  return DCSA_CARRIERS.map((profile) => ({
+    ...profile,
+    baseUrl: baseUrls[profile.key] ?? profile.baseUrl,
+    eventsPath: paths[profile.key] ?? profile.eventsPath,
+  }))
 }
 
 /** Which tracking source this deployment runs on. Manual unless configured. */

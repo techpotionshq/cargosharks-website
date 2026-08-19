@@ -169,12 +169,26 @@ carrier and prints what came back — the check to run when a key is first
 issued, and the one that distinguishes a wrong key from a wrong reference.
 
 **Verification status:** the event model and the translation are tested
-(`dcsa-events.test.ts`, 13 assertions) and the request construction is tested
-against a stubbed transport (`dcsa-tracking.test.ts`, 12). The **hosts and
-paths are Documented, not Verified** — no live carrier key has been run from
-this repository. Each carrier's base URL is therefore overridable by
-environment, so a sandbox host or a moved path is configuration rather than a
-release.
+(`dcsa-events.test.ts`) and the request construction against a stubbed
+transport (`dcsa-tracking.test.ts`).
+
+**Maersk is Verified.** Host, path, header and envelope are read off the *Track
+& Trace Events (Maersk Exchange)* OpenAPI document v1.5.0, and a live trial key
+authenticates against `api.maersk.com/track-and-trace/public-events`.
+**Hapag-Lloyd and CMA CGM remain Documented** — no key held for either.
+
+`IN-07` **A carrier's products differ by path on one gateway, and a wrong path
+is indistinguishable from a wrong key.** The first live Maersk key was for the
+open product; the adapter pointed at the private one. Both answer `401
+ERR_GW_001`. What separated them was sending a deliberately invalid key and
+finding the response *byte-identical* — the diagnostic worth remembering,
+because "invalid key" is what a gateway says about a key it was never asked to
+look up.
+
+`IN-08` **"Public access" is about the authentication ceremony, not the
+audience.** Maersk's open product skips OAuth and is still gated by a signed
+agreement and a per-key quota. Configuring a client secret against it makes the
+adapter attempt a token exchange the product does not implement.
 
 ### 2.5 The licence question — answered, and it fits our model
 

@@ -140,6 +140,39 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+/** A trailing `Z`, `+03:00` or `+0300` — the part that places a time on Earth. */
+const ZONE_DESIGNATOR = /(?:Z|[+-]\d{2}:?\d{2})$/i
+
+/**
+ * Read a carrier's timestamp as an instant, or `undefined` if it is not one.
+ *
+ * The subtle case, and the reason this is not just `new Date(value)`. DCSA
+ * documents `eventDateTime` as *"the local date and time, where the event took
+ * place"* — Maersk's own example is `2019-11-12T07:41:00+08:00`, an offset
+ * that says which local. The schema requires one.
+ *
+ * When one is missing, JavaScript reads a bare `2019-11-12T07:41:00` as the
+ * *server's* local time. That is the one interpretation guaranteed to be
+ * wrong: the server's offset has nothing to do with the port's, and the same
+ * payload would then mean different instants on a laptop in Kuwait and a
+ * container running UTC. Free time is counted in whole days from these
+ * timestamps (FR-JB-07), so a three-hour shift moves a discharge across
+ * midnight and bills a day that was never owed.
+ *
+ * So a bare timestamp is read as UTC. Not because it is right — nothing here
+ * can know the port's offset — but because it is *deterministic*, and a
+ * discrepancy every deployment shares is one somebody can find. A discrepancy
+ * that depends on which machine ran the poll is not.
+ */
+function instantFrom(value: string | undefined): Date | undefined {
+  if (!value) return undefined
+
+  const stamped = ZONE_DESIGNATOR.test(value) ? value : `${value}Z`
+  const instant = new Date(stamped)
+
+  return Number.isNaN(instant.getTime()) ? undefined : instant
+}
+
 /**
  * Where the event happened, in whichever field this carrier used.
  *
@@ -195,7 +228,7 @@ export function readDcsaEvents(events: readonly DcsaEvent[]): DcsaReading {
       continue
     }
 
-    const occurredAt = new Date(text(event.eventDateTime) ?? '')
+    const occurredAt = instantFrom(text(event.eventDateTime))
 
     /*
       An unparseable timestamp is dropped, not defaulted to now.
@@ -205,7 +238,7 @@ export function readDcsaEvents(events: readonly DcsaEvent[]): DcsaReading {
       dated "now" because its timestamp was malformed bills the customer
       wrongly and looks entirely plausible on the screen.
     */
-    if (Number.isNaN(occurredAt.getTime())) {
+    if (!occurredAt) {
       unmapped.push(`${key} (bad timestamp: ${event.eventDateTime ?? 'absent'})`)
       continue
     }

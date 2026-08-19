@@ -34,8 +34,16 @@
  * counted.
  */
 
-import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
-import { jobMilestones, jobPartners, jobs, partners, systemActor, withActor } from '@qabandi/db'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import {
+  authSession,
+  jobMilestones,
+  jobPartners,
+  jobs,
+  partners,
+  systemActor,
+  withActor,
+} from '@qabandi/db'
 import { adapters } from '../adapters/index'
 import { config } from '../config'
 import type { DcsaPollResult, DcsaTracking } from '../adapters/dcsa-tracking'
@@ -61,15 +69,55 @@ export interface CarrierPollResult {
    * because it is the one outcome an operator can actually fix.
    */
   readonly unrecognised: string[]
+  /**
+   * Jobs whose reference cannot match the carrier's rules, and why.
+   *
+   * The one outcome on this list that is fixed by editing a job rather than by
+   * waiting: a bill of lading with a digit missing, or a booking number typed
+   * into the wrong field. Reported separately because it is also the one that
+   * costs nothing to detect and would otherwise repeat every hour.
+   */
+  readonly malformed: string[]
   /** Carrier codes this build does not understand, deduplicated. */
   readonly unmapped: string[]
   /** Shipments the batch cap left for the next run. */
   readonly deferred: number
+  /** Gateways that told us to slow down, and were left alone afterwards. */
+  readonly rateLimited: string[]
+  /** Set when the run did not ask anybody anything, and why. */
+  readonly skipped?: string
 }
 
 /** A tracking adapter that can answer a carrier-direct poll. */
 function asDcsa(source: { key: string }): DcsaTracking | undefined {
   return 'scacs' in source && 'read' in source ? (source as DcsaTracking) : undefined
+}
+
+/**
+ * Has anybody been signed in recently enough to be worth spending quota on?
+ *
+ * `auth_session.updated_at` rather than `expires_at`, and the difference
+ * matters: a session lasts twelve hours and is refreshed hourly while it is
+ * being used (`apps/web/src/lib/auth.ts`), so `expires_at` stays in the future
+ * for half a day after somebody closed the laptop. `updated_at` moves only
+ * when the session is actually used.
+ *
+ * The window therefore wants to be at least the session refresh age — an hour
+ * — or a person working steadily through the afternoon looks idle between
+ * refreshes and the feed switches itself off underneath them.
+ */
+async function someoneIsAround(withinMinutes: number): Promise<boolean> {
+  const since = new Date(Date.now() - withinMinutes * 60_000)
+
+  return withActor(systemActor(), async (tx) => {
+    const [seen] = await tx
+      .select({ id: authSession.id })
+      .from(authSession)
+      .where(and(gt(authSession.updatedAt, since), gt(authSession.expiresAt, new Date())))
+      .limit(1)
+
+    return Boolean(seen)
+  })
 }
 
 export async function runCarrierPoll(): Promise<CarrierPollResult> {
@@ -80,7 +128,9 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
     revised: 0,
     failed: [],
     unrecognised: [],
+    malformed: [],
     unmapped: [],
+    rateLimited: [],
   }
   const source = adapters().carrierTracking
   const dcsa = asDcsa(source)
@@ -98,6 +148,25 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
   const scacs = dcsa.scacs
 
   if (scacs.length === 0) return { source: source.key, ...empty, deferred: 0 }
+
+  /*
+    Spend the carrier's budget on hours somebody is looking.
+
+    A trial tier allows twenty calls an hour, and a poll that runs all night
+    against an empty office arrives at nine with the quota already gone. Off by
+    default — see `CARRIER_POLL_ACTIVE_WITHIN_MINUTES`, which explains why
+    production wants the opposite.
+  */
+  if (config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES > 0) {
+    if (!(await someoneIsAround(config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES))) {
+      return {
+        source: source.key,
+        ...empty,
+        deferred: 0,
+        skipped: `nobody signed in within ${config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES}m`,
+      }
+    }
+  }
 
   const candidates = await withActor(systemActor(), (tx) =>
     tx
@@ -145,9 +214,29 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
   let revised = 0
   const failed: { reference: string; reason: string }[] = []
   const unrecognised: string[] = []
+  const malformed: string[] = []
   const unmapped = new Set<string>()
+  /*
+    Gateways that have told us to slow down, for the rest of this run.
+
+    Keyed on the gateway rather than the SCAC, because the budget is charged
+    there: Maersk answers for Sealand too, and backing off on `MAEU` while
+    carrying on with `SEAU` is not backing off at all.
+  */
+  const rateLimited = new Set<string>()
 
   for (const job of batch) {
+    /*
+      Asked before calling, so a 429 costs one request and not the rest of
+      the fleet.
+
+      Being told to slow down and then sending another hundred is how a trial
+      key gets withdrawn — and every one of those calls is a failure line in a
+      log that somebody has to read past to find the real problem.
+    */
+    const gateway = dcsa.carrierFor(job.scac!)
+    if (gateway && rateLimited.has(gateway)) continue
+
     /*
       The booking number first.
 
@@ -176,10 +265,26 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
       */
       if (error instanceof DcsaError && !error.retryable) throw error
 
+      /*
+        429 stops this gateway for the run rather than being retried per
+        shipment. The next scheduled run is the retry, and it starts with a
+        fresh hour's budget — which is exactly the backoff the carrier asked
+        for, and cheaper than pg-boss retrying a whole batch to rediscover the
+        same limit.
+      */
+      if (error instanceof DcsaError && error.status === 429) {
+        rateLimited.add(error.carrier)
+      }
+
       failed.push({
         reference: job.reference,
         reason: error instanceof Error ? error.message : String(error),
       })
+      continue
+    }
+
+    if (reading.malformedReference) {
+      malformed.push(`${job.reference}: ${reading.malformedReference}`)
       continue
     }
 
@@ -258,7 +363,9 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
     revised,
     failed,
     unrecognised,
+    malformed,
     unmapped: [...unmapped],
     deferred,
+    rateLimited: [...rateLimited],
   }
 }

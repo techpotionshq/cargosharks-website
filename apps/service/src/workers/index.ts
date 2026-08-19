@@ -116,11 +116,16 @@ export async function registerWorkers(log: {
   await work(JOBS.carrierPoll, async () => {
     const result = await runCarrierPoll()
     /*
-      Logged only when it asked somebody something. This runs hourly on every
-      deployment including the ones with no carrier registered, and a
-      per-hour "nothing to do" line is how a log stops being read.
+      Logged when it asked somebody something, or when a carrier told it to
+      stop. This runs on every deployment including the ones with no carrier
+      registered, and a per-run "nothing to do" line is how a log stops being
+      read — but a rate limit is the one silent outcome worth breaking that
+      rule for, because it is the difference between a quiet feed and a
+      throttled one.
     */
-    if (result.polled > 0) log.info(result, 'carrier poll complete')
+    if (result.polled > 0 || result.rateLimited.length > 0 || result.malformed.length > 0) {
+      log.info(result, 'carrier poll complete')
+    }
   })
 
   /*

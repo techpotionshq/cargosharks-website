@@ -23,11 +23,18 @@
  * ## What is verified here, and what is not
  *
  * The event *shape* is the published DCSA 2.2 model and the mapping is tested
- * against it in `dcsa-events.test.ts`. The hosts and paths below are each
- * carrier's documented gateway and have **not** been run against a live key —
- * this deployment holds none. That is why every profile's base URL is
- * overridable by environment: a sandbox host, a gateway migration or a carrier
- * that moves a path is a configuration change, not a release.
+ * against it in `dcsa-events.test.ts`.
+ *
+ * **Maersk is verified** — host, path, header and response envelope all read
+ * off the *Track & Trace Events (Maersk Exchange)* OpenAPI document, v1.5.0,
+ * and the auth confirmed against the live gateway. **Hapag-Lloyd and CMA CGM
+ * are not**: those two are documented gateways nobody here has held a key for.
+ *
+ * Getting Maersk wrong the first time is why both halves of the URL are
+ * overridable and not just the host. The first real key was for the open
+ * product and the profile pointed at the private one — same gateway, different
+ * proxy — and a 401 from the wrong path is indistinguishable from a bad key
+ * until you compare it against a deliberately invalid one.
  *
  * Registration is self-serve for all three, with sandboxes, and per-deployment
  * credentials are exactly what the carriers' licences contemplate (IN-06) —
@@ -78,6 +85,30 @@ export interface DcsaCarrierProfile {
    * Absent for the two gateways that authenticate on headers alone.
    */
   readonly tokenUrl?: string
+  /**
+   * How long a reference this gateway will accept, per kind.
+   *
+   * The first draft of this made it a *minimum*, reasoning that JSON Schema
+   * `pattern` is unanchored — `[a-zA-Z0-9]{9}` matches any string
+   * *containing* nine alphanumerics — so only the too-short could be certain
+   * to fail. The live gateway disproved it: a nine-character bill of lading
+   * answers `404` (looked up, not found) and a ten-character one answers `400
+   * Validation errors`. Maersk anchors it.
+   *
+   * So these are real bounds, and they come from evidence where there is any:
+   *
+   *   booking_number  9..9   404 at nine, 400 at ten — verified
+   *   bill_of_lading  9..9   the same, and the same request
+   *   container      11..15  `pattern {11}` with a separate `maxLength: 15`,
+   *                          which is schema only — no live reference yet
+   *
+   * Omit for a carrier whose rules are not known. No rule means ask anyway:
+   * refusing to look up a reference that would have worked is a worse failure
+   * than spending one call to find out.
+   */
+  readonly referenceLengths?: Partial<
+    Record<TrackingQuery['type'], { readonly min: number; readonly max: number }>
+  >
   readonly headers: (credential: DcsaCredential) => Record<string, string>
 }
 
@@ -93,20 +124,47 @@ export const DCSA_CARRIERS: readonly DcsaCarrierProfile[] = [
   {
     key: 'maersk',
     scacs: ['MAEU', 'MAEI', 'MCPU', 'SEAU', 'SEJJ'],
-    baseUrl: 'https://api.maersk.com',
-    eventsPath: '/track-and-trace-private/events',
     /*
-      The secret is optional here, unlike Hapag's.
+      *Track & Trace Events (Maersk Exchange)*, v1.5.0 — verified against the
+      published OpenAPI document, which is the only one of the three profiles
+      that can say so.
 
-      Maersk issues a Consumer-Key to the application and, separately, an
-      OAuth client secret to the customer. Which of the two the endpoint
-      insists on depends on the product tier the deployment was granted, and
-      that is not knowable from here — so the secret is taken when it is given
-      and the bearer step is skipped when it is not. A tier that wants both
-      then works; a tier that wants only the key is unaffected.
+      `public-events`, and the word does not mean what it looks like. This is
+      the *open* product — "classified as an open API, meaning it does not use
+      OAuth 2.0" — not a public dataset. It answers for shipments booked with
+      Maersk and is gated by a signed agreement and a per-key quota, so the
+      distinction from the private product is the authentication ceremony
+      rather than whose cargo you may ask about.
+
+      The sibling `/track-and-trace-private/events` is the OAuth-bearing
+      product. Reaching it means overriding **both** halves — the `/track-and-
+      trace` prefix belongs to this product and lives in the base URL, so a
+      path override alone would send the request to
+      `/track-and-trace/track-and-trace-private/events`:
+
+        DCSA_MAERSK_BASE_URL=https://api.maersk.com
+        DCSA_MAERSK_EVENTS_PATH=/track-and-trace-private/events
+        DCSA_MAERSK_CLIENT_SECRET=...
+
+      `tokenUrl` below is dormant until a secret exists, which is what lets one
+      profile serve both.
     */
+    baseUrl: 'https://api.maersk.com/track-and-trace',
+    eventsPath: '/public-events',
+    /* v1.5.0 schema, corrected by the gateway — see `referenceLengths`. */
+    referenceLengths: {
+      booking_number: { min: 9, max: 9 },
+      bill_of_lading: { min: 9, max: 9 },
+      container: { min: 11, max: 15 },
+    },
     needsSecret: false,
     tokenUrl: 'https://api.maersk.com/customer-identity/oauth/v2/access_token',
+    /*
+      `Consumer-Key` exactly, from the document's `securitySchemes`. Confirmed
+      live as well: the gateway answers `ERR_GW_001` — "Invalid or expired
+      Key" — when it is wrong, and an Akamai block when the header is missing
+      entirely, so it is provably being read rather than ignored.
+    */
     headers: (credential) => ({ 'Consumer-Key': credential.key ?? '' }),
   },
   {
@@ -152,6 +210,24 @@ const QUERY_PARAM: Readonly<Record<TrackingQuery['type'], string>> = {
 }
 
 /**
+ * A reference as the carrier spells it, not as an operator typed it.
+ *
+ * `MRKU 123456-7` and `mrku1234567` are the same container, and a gateway
+ * whose pattern is `[a-zA-Z0-9]{11}` accepts neither. Separators and case are
+ * presentation — a bill of lading is printed with spaces because that is how
+ * people read twelve digits — so normalising them away costs nothing and
+ * rescues the most common way a reference fails.
+ *
+ * Applied to the *request only*. `jobs.master_bill_number` keeps whatever was
+ * entered, because a document records what was said: a bill issued in March
+ * must still print in November exactly as it was issued, and silently
+ * rewriting it to suit an API would be the integration editing history.
+ */
+export function normaliseReference(reference: string): string {
+  return reference.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+/**
  * A carrier said no in a way the caller has to distinguish.
  *
  * `retryable` separates "this deployment's key is wrong" — which no amount of
@@ -164,6 +240,15 @@ export class DcsaError extends Error {
     message: string,
     readonly status: number,
     readonly retryable: boolean,
+    /**
+     * Which carrier refused — the profile key, not the SCAC.
+     *
+     * A rate limit is charged against the *gateway*, and one gateway answers
+     * for several SCACs: Maersk covers Sealand, CMA CGM covers ANL and APL.
+     * A caller backing off on the SCAC it happened to ask with would keep
+     * hammering the same gateway through its sibling brands.
+     */
+    readonly carrier = 'dcsa',
   ) {
     super(message)
     this.name = 'DcsaError'
@@ -181,11 +266,28 @@ export class DcsaError extends Error {
  */
 export interface DcsaPollResult extends DcsaReading {
   readonly unknownReference?: boolean
+  /**
+   * The reference cannot match this carrier's rules, so nothing was asked.
+   *
+   * Distinct from `unknownReference` — that one means the carrier looked and
+   * said no. This one means we never spent the call, which on a tier capped at
+   * twenty an hour is the difference between one wasted request and a leak
+   * that repeats every run for as long as the data stays wrong.
+   */
+  readonly malformedReference?: string
 }
 
 export interface DcsaTracking extends CarrierTracking {
   /** Every SCAC this deployment holds credentials for. */
   readonly scacs: readonly string[]
+  /**
+   * Which gateway answers for a SCAC, for a caller that has to back off.
+   *
+   * The rate limit belongs to the gateway rather than to the brand, so a
+   * caller that has just been told to slow down needs to know which *other*
+   * SCACs to stop asking about.
+   */
+  carrierFor(scac: string): string | undefined
   /** `poll`, plus the estimates and the codes this build did not understand. */
   read(query: TrackingQuery): Promise<DcsaPollResult>
 }
@@ -222,8 +324,35 @@ export async function fetchDcsaEvents(
   query: TrackingQuery,
   bearer?: string,
 ): Promise<DcsaPollResult> {
+  const reference = normaliseReference(query.reference)
+  const bounds = profile.referenceLengths?.[query.type]
+
+  /*
+    Refused before the request, not after.
+
+    A reference the carrier's validator will reject earns a 400 every time it
+    is tried — and the poll runs hourly, so one bill of lading with a digit too
+    many spends a call an hour, forever, to be told the same thing. Saying so
+    without asking costs nothing and names the job whose data needs fixing.
+  */
+  if (bounds && (reference.length < bounds.min || reference.length > bounds.max)) {
+    const wanted =
+      bounds.min === bounds.max
+        ? `exactly ${bounds.min}`
+        : `between ${bounds.min} and ${bounds.max}`
+
+    return {
+      milestones: [],
+      estimates: {},
+      unmapped: [],
+      malformedReference:
+        `${query.reference} normalises to ${reference.length} characters; ${profile.key} ` +
+        `wants ${wanted} for a ${query.type.replace(/_/g, ' ')}`,
+    }
+  }
+
   const url = new URL(`${profile.baseUrl.replace(/\/+$/, '')}${profile.eventsPath}`)
-  url.searchParams.set(QUERY_PARAM[query.type], query.reference)
+  url.searchParams.set(QUERY_PARAM[query.type], reference)
   /*
     A cap rather than pagination. A shipment's whole life is tens of events,
     not thousands, and a cursor loop against three gateways with three
@@ -250,12 +379,30 @@ export async function fetchDcsaEvents(
     over, and none of them should look like "nothing has happened yet", so it
     comes back as a stated reason the worker logs.
   */
+  /*
+    404 and 400 are both "this reference is wrong", and neither is worth
+    failing a run over. 400 is the carrier rejecting the *format* under a rule
+    we did not model — the pre-flight above only catches the certainly
+    impossible — so it lands with the malformed ones, where the operator
+    action is the same: fix the reference on the job.
+  */
   if (response.status === 404) {
+    return { milestones: [], estimates: {}, unmapped: [], unknownReference: true }
+  }
+
+  if (response.status === 400) {
+    const detail = await response.text().catch(() => '')
     return {
       milestones: [],
       estimates: {},
       unmapped: [],
-      unknownReference: true,
+      /*
+        A longer slice than the other error paths get. A validation error
+        carries `subErrors` naming the offending field and value, and that is
+        the whole content — truncating at 200 characters cut it off just before
+        the part worth reading.
+      */
+      malformedReference: `${profile.key} rejected ${query.reference}: ${detail.slice(0, 600)}`,
     }
   }
 
@@ -275,6 +422,7 @@ export async function fetchDcsaEvents(
         (detail ? `: ${detail.slice(0, 300)}` : ''),
       response.status,
       !fatal,
+      profile.key,
     )
   }
 
@@ -327,13 +475,19 @@ export async function fetchDcsaToken(
         (detail ? `: ${detail.slice(0, 300)}` : ''),
       response.status,
       false,
+      profile.key,
     )
   }
 
   const body = (await response.json().catch(() => ({}))) as TokenResponse
 
   if (!body.access_token) {
-    throw new DcsaError(`${profile.key} returned no access_token`, response.status, false)
+    throw new DcsaError(
+      `${profile.key} returned no access_token`,
+      response.status,
+      false,
+      profile.key,
+    )
   }
 
   return { token: body.access_token, expiresInSeconds: body.expires_in ?? 3600 }
@@ -430,6 +584,7 @@ export function dcsaTracking(
     key:
       configured.length > 0 ? `dcsa (${configured.map((c) => c.key).join(', ')})` : 'dcsa (none)',
     scacs: [...byScac.keys()],
+    carrierFor: (scac) => byScac.get(scac.trim().toUpperCase())?.key,
     read,
     poll: (query): Promise<CarrierMilestone[]> => read(query).then((reading) => reading.milestones),
   }
