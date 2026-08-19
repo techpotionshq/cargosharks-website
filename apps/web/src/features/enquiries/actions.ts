@@ -178,9 +178,13 @@ async function loadCalendar(
 /**
  * The branch's next enquiry reference.
  *
- * Allocated inside the transaction against the branch row, so two concurrent
- * enquiries cannot take the same number — the row lock does the work that an
- * application-level counter would get wrong under load.
+ * Numbered from one sequence shared by every branch, so the numbers within a
+ * branch have gaps. That is deliberate and it is the difference between an
+ * enquiry and an invoice: an invoice series must be gapless because an auditor
+ * reads a gap as a deleted document (FR-ID-01), and an enquiry number is a
+ * handle people say on the phone. A sequence never blocks and never collides,
+ * which an application-level counter gets wrong the first time two people
+ * submit at once.
  */
 async function nextReference(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

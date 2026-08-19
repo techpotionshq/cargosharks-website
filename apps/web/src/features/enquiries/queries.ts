@@ -12,6 +12,7 @@ import 'server-only'
 import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   customers,
   enquiries,
   locations,
@@ -78,6 +79,7 @@ export async function listEnquiries(
         createdAt: enquiries.createdAt,
         slaDueAt: enquiries.slaDueAt,
         firstRespondedAt: enquiries.firstRespondedAt,
+        branchCode: branches.code,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
         contactName: enquiries.contactName,
@@ -89,6 +91,7 @@ export async function listEnquiries(
         quotedCost: quotes.totalCost,
       })
       .from(enquiries)
+      .leftJoin(branches, eq(branches.id, enquiries.branchId))
       .leftJoin(customers, eq(customers.id, enquiries.customerId))
       .leftJoin(principals, eq(principals.id, enquiries.ownerId))
       .leftJoin(origin, eq(origin.id, enquiries.originId))
@@ -127,7 +130,17 @@ export async function listEnquiries(
       return {
         id: row.id,
         reference: row.reference,
-        branchCode: row.reference.split('-')[1] ?? '',
+        /*
+          The joined branch, not a slice of the reference.
+
+          This read `reference.split('-')[1]`, which is the branch in the pilot
+          fixtures — they number enquiries `ENQ-KWI-2026-0001` — and is the
+          literal string `ENQ` on a real database, where the action writes
+          `KWI-ENQ-2026-00001`. Two reference formats, one derivation written
+          against the wrong one, and nothing to notice it because the demo path
+          agreed with itself.
+        */
+        branchCode: row.branchCode ?? '',
         status: row.status,
         channel: row.channel,
         mode: row.mode as Mode | null,
