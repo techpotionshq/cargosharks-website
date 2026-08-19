@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   SEED_CURRENCIES,
+  allocatedBase,
   buildJournal,
   isBalanced,
+  journalTotals,
   toJournalCsv,
   unmappedChargeTypes,
   type AccountMapping,
@@ -70,7 +72,12 @@ const invoice = (over: Partial<InvoiceInput> = {}): InvoiceInput => ({
   fxRate: 1,
   isCreditNote: false,
   lines: [
-    { chargeTypeId: 'ct-freight', description: 'Ocean freight KWI/JEA', amount: '400', taxAmount: '0' },
+    {
+      chargeTypeId: 'ct-freight',
+      description: 'Ocean freight KWI/JEA',
+      amount: '400',
+      taxAmount: '0',
+    },
     { chargeTypeId: 'ct-thc', description: 'Terminal handling', amount: '100', taxAmount: '0' },
   ],
   ...over,
@@ -120,7 +127,7 @@ describe('sales', () => {
     expect(isBalanced(journal)).toBe(true)
   })
 
-  it('posts a foreign-currency invoice at its own rate, not at today\'s', () => {
+  it("posts a foreign-currency invoice at its own rate, not at today's", () => {
     // USD 1,000 raised when the rate was 0.307. It posts as 307.000 KWD for
     // ever, whatever the rate does afterwards.
     const journal = buildJournal(
@@ -130,7 +137,12 @@ describe('sales', () => {
             currency: 'USD',
             fxRate: '0.307',
             lines: [
-              { chargeTypeId: 'ct-freight', description: 'Freight', amount: '1000', taxAmount: '0' },
+              {
+                chargeTypeId: 'ct-freight',
+                description: 'Freight',
+                amount: '1000',
+                taxAmount: '0',
+              },
             ],
           }),
         ],
@@ -264,7 +276,12 @@ describe('refusals', () => {
           invoices: [
             invoice({
               lines: [
-                { chargeTypeId: 'ct-unmapped', description: 'Legalisation', amount: '30', taxAmount: '0' },
+                {
+                  chargeTypeId: 'ct-unmapped',
+                  description: 'Legalisation',
+                  amount: '30',
+                  taxAmount: '0',
+                },
               ],
             }),
           ],
@@ -291,7 +308,10 @@ describe('refusals', () => {
 
   it('refuses when the branch has no receivables account', () => {
     expect(() =>
-      buildJournal(base({ controls: { ...controls, receivables: null }, invoices: [invoice()] }), KWD),
+      buildJournal(
+        base({ controls: { ...controls, receivables: null }, invoices: [invoice()] }),
+        KWD,
+      ),
     ).toThrow(/No receivables configured/)
   })
 
@@ -301,7 +321,12 @@ describe('refusals', () => {
       invoices: [
         invoice({
           lines: [
-            { chargeTypeId: 'ct-unmapped', description: 'Legalisation', amount: '30', taxAmount: '0' },
+            {
+              chargeTypeId: 'ct-unmapped',
+              description: 'Legalisation',
+              amount: '30',
+              taxAmount: '0',
+            },
           ],
         }),
       ],
@@ -653,7 +678,10 @@ describe('setting off an agent current account', () => {
 describe('the file', () => {
   it('quotes a legal name containing a comma', () => {
     const csv = toJournalCsv(
-      buildJournal(base({ invoices: [invoice({ customerName: 'Al-Sayer Trading, W.L.L.' })] }), KWD),
+      buildJournal(
+        base({ invoices: [invoice({ customerName: 'Al-Sayer Trading, W.L.L.' })] }),
+        KWD,
+      ),
       'KWD',
     )
 
@@ -674,5 +702,268 @@ describe('the file', () => {
     const revenue = csv.split('\r\n')[2]!.split(',')
     expect(revenue[4]).toBe('')
     expect(revenue[5]).toBe('400')
+  })
+})
+
+/**
+ * The rounding line — the one place a plug is legitimate, and the one place
+ * it could hide a real defect.
+ *
+ * Every line is converted and rounded to the currency's minor units on its
+ * own, and the receivable is the rounded *total* rather than the total of the
+ * rounded lines. Those two can differ by a fils, which is arithmetic and not a
+ * mistake; every accounting package has an account for it. Anything larger is
+ * something in the period not being what it claims to be, and posting that to
+ * rounding would bury exactly the thing somebody needs to see.
+ */
+describe('rounding, and the line that is not rounding', () => {
+  /** Two USD lines that each round away to nothing while the total does not. */
+  const fractional = (lines: number) =>
+    base({
+      controls,
+      invoices: [
+        invoice({
+          currency: 'USD',
+          fxRate: '0.30650',
+          lines: Array.from({ length: lines }, (_, i) => ({
+            chargeTypeId: 'ct-freight',
+            description: `Fraction ${i + 1}`,
+            amount: '0.0015',
+            taxAmount: '0',
+          })),
+        }),
+      ],
+    })
+
+  it('posts the fils the per-line rounding left behind', () => {
+    const journal = buildJournal(fractional(2), KWD)
+    const rounding = journal.lines.find((l) => l.description === 'Rounding')
+
+    expect(rounding).toBeDefined()
+    expect(rounding!.account).toBe('7900')
+    expect(rounding!.sourceKind).toBe('rounding')
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  /**
+   * The refusal that matters. Four fractions out of one document is no longer
+   * rounding, and a journal that plugged it would balance while stating
+   * something untrue about the period.
+   */
+  it('refuses a difference too large to be rounding, and says so', () => {
+    expect(() => buildJournal(fractional(4), KWD)).toThrow(/too much to be rounding/)
+  })
+
+  it('refuses to plug a difference with no rounding account configured', () => {
+    expect(() =>
+      buildJournal({ ...fractional(2), controls: { ...controls, rounding: null } }, KWD),
+    ).toThrow(/rounding account is needed/)
+  })
+
+  /** Nothing to plug on a period whose lines happen to land exactly. */
+  it('posts no rounding line where nothing needed rounding', () => {
+    const journal = buildJournal(base({ invoices: [invoice()] }), KWD)
+
+    expect(journal.lines.some((l) => l.description === 'Rounding')).toBe(false)
+    expect(isBalanced(journal)).toBe(true)
+  })
+})
+
+describe('lines worth nothing', () => {
+  /**
+   * A zero line is dropped rather than posted. A journal carrying a row of
+   * zeros is a journal an accountant has to read past, and each one is a
+   * question — "what was this and why is it nil" — with no answer.
+   */
+  it('drops an invoice line that converts to nothing', () => {
+    const journal = buildJournal(
+      base({
+        invoices: [
+          invoice({
+            lines: [
+              {
+                chargeTypeId: 'ct-freight',
+                description: 'Ocean freight',
+                amount: '400',
+                taxAmount: '0',
+              },
+              {
+                chargeTypeId: 'ct-thc',
+                description: 'Waived handling',
+                amount: '0',
+                taxAmount: '0',
+              },
+            ],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines.some((l) => l.description === 'Waived handling')).toBe(false)
+    expect(journal.lines).toHaveLength(2)
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('drops a cost that converts to nothing', () => {
+    const journal = buildJournal(
+      base({
+        costs: [
+          {
+            id: 'cl-0',
+            jobReference: 'KWI-JOB-2026-00042',
+            chargeTypeId: 'ct-freight',
+            incurredOn: new Date('2026-03-10T00:00:00Z'),
+            description: 'Nil cost',
+            currency: 'KWD',
+            amount: '0',
+            fxRate: 1,
+            counterpartyName: 'MSC Kuwait',
+          },
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines).toHaveLength(0)
+    expect(isBalanced(journal)).toBe(true)
+  })
+})
+
+describe('the pre-flight, on every side of the period', () => {
+  const unmappedLine = {
+    chargeTypeId: 'ct-unmapped',
+    description: 'Legalisation',
+    amount: '30',
+    taxAmount: '0',
+  }
+
+  it('lists a cost charge type with no cost account', () => {
+    const missing = unmappedChargeTypes({
+      mappings,
+      invoices: [],
+      costs: [
+        {
+          id: 'cl-2',
+          jobReference: 'KWI-JOB-2026-00043',
+          chargeTypeId: 'ct-unmapped',
+          incurredOn: new Date('2026-03-10T00:00:00Z'),
+          description: 'Legalisation',
+          currency: 'KWD',
+          amount: '30',
+          fxRate: 1,
+          counterpartyName: 'Chamber of Commerce',
+        },
+      ],
+    })
+
+    expect(missing.map((m) => m.key)).toEqual(['legalisation'])
+  })
+
+  /**
+   * Only the supplier lines that will actually post. A bill that agrees with
+   * its accrual posts nothing, so an unmapped charge type on it is not going
+   * to stop the period — and listing it would send a finance manager off to
+   * map an account the export never asks for.
+   */
+  it('lists a supplier line only where the bill disagrees with the accrual', () => {
+    const agreeing = unmappedChargeTypes({
+      mappings,
+      invoices: [],
+      costs: [],
+      supplierInvoices: [
+        {
+          id: 'sup-2',
+          reference: 'JEA/2026/8842',
+          invoiceDate: new Date('2026-03-20T00:00:00Z'),
+          partnerName: 'Star Shipping LLC',
+          currency: 'KWD',
+          fxRate: 1,
+          lines: [
+            {
+              chargeTypeId: 'ct-unmapped',
+              description: 'Legalisation',
+              billed: '30',
+              accrued: '30',
+              taxAmount: '0',
+            },
+          ],
+        },
+      ],
+    })
+
+    const disagreeing = unmappedChargeTypes({
+      mappings,
+      invoices: [],
+      costs: [],
+      supplierInvoices: [
+        {
+          id: 'sup-3',
+          reference: 'JEA/2026/8843',
+          invoiceDate: new Date('2026-03-20T00:00:00Z'),
+          partnerName: 'Star Shipping LLC',
+          currency: 'KWD',
+          fxRate: 1,
+          lines: [
+            {
+              chargeTypeId: 'ct-unmapped',
+              description: 'Legalisation',
+              billed: '45',
+              accrued: '30',
+              taxAmount: '0',
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(agreeing).toEqual([])
+    expect(disagreeing.map((m) => m.key)).toEqual(['legalisation'])
+  })
+
+  /** A free-text line has no charge type to map; it is refused at build time. */
+  it('says nothing about a free-text line, which is a different refusal', () => {
+    const missing = unmappedChargeTypes({
+      mappings,
+      invoices: [invoice({ lines: [{ ...unmappedLine, chargeTypeId: null }] })],
+      costs: [],
+    })
+
+    expect(missing).toEqual([])
+  })
+
+  it('names each charge type once however many documents used it', () => {
+    const missing = unmappedChargeTypes({
+      mappings,
+      invoices: [
+        invoice({ id: 'inv-a', lines: [unmappedLine] }),
+        invoice({ id: 'inv-b', lines: [unmappedLine] }),
+      ],
+      costs: [],
+    })
+
+    expect(missing).toHaveLength(1)
+  })
+})
+
+describe('what the caller adds up before it posts', () => {
+  it('sums an allocation in the base currency', () => {
+    const total = allocatedBase([{ baseAmount: '120.500' }, { baseAmount: '80.250' }], 'KWD')
+
+    expect(total.amount.toString()).toBe('200.75')
+    expect(total.currency).toBe('KWD')
+  })
+
+  /** A currency-bearing zero, because a zero with no currency is the seed of
+   *  every mixed-currency bug. */
+  it('sums an empty allocation into a zero that still knows its currency', () => {
+    expect(allocatedBase([], 'KWD')).toEqual({ amount: expect.anything(), currency: 'KWD' })
+    expect(allocatedBase([], 'KWD').amount.isZero()).toBe(true)
+  })
+
+  it('states the two sides of a period as strings', () => {
+    const journal = buildJournal(base({ invoices: [invoice()] }), KWD)
+
+    expect(journalTotals(journal)).toEqual({ debit: '500', credit: '500' })
   })
 })

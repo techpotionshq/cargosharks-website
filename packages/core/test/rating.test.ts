@@ -2,15 +2,20 @@ import { describe, expect, it } from 'vitest'
 import {
   D,
   MissingChargeContextError,
+  UnknownCurrencyError,
   applyMargin,
   calcCharge,
+  emptyMargin,
   fxRate,
   money,
+  priceLine,
   priceLines,
   seedCurrencyLookup,
   summariseMargin,
   toDb,
+  type Basis,
   type PriceInput,
+  type RateLine,
 } from '../src/index'
 
 describe('the six bases (FR-RT-05)', () => {
@@ -115,5 +120,175 @@ describe('margin rules', () => {
     expect(
       toDb(applyMargin(cost, { kind: 'target_sell', value: new D('1200'), currency: 'KWD' })),
     ).toBe('1200')
+  })
+})
+
+describe('the floor and the cap', () => {
+  const line = (over: Partial<RateLine> = {}): RateLine => ({
+    basis: 'per_kg',
+    rate: new D('0.850'),
+    currency: 'KWD',
+    ...over,
+  })
+
+  /**
+   * Both are optional on the row, and the arms where they are absent matter as
+   * much as the arms where they fire: a charge type with no cap configured
+   * must not be capped at anything, and one with no floor must not be raised.
+   */
+  it('leaves a charge alone where neither is configured', () => {
+    expect(toDb(calcCharge(line(), { kg: 1000 }))).toBe('850')
+  })
+
+  it('caps a charge that ran over the maximum', () => {
+    expect(toDb(calcCharge(line({ maximum: new D('500') }), { kg: 1000 }))).toBe('500')
+  })
+
+  it('leaves a charge that came in under the maximum', () => {
+    expect(toDb(calcCharge(line({ maximum: new D('5000') }), { kg: 1000 }))).toBe('850')
+  })
+
+  /** Floor first, then cap — a floor above the cap is a configuration fault. */
+  it('applies the floor before the cap', () => {
+    const capped = calcCharge(line({ minimum: new D('900'), maximum: new D('700') }), { kg: 1 })
+
+    expect(toDb(capped)).toBe('700')
+  })
+})
+
+describe('a basis without the figure it needs', () => {
+  /**
+   * Refused rather than defaulted, on every basis. Treating a missing weight
+   * as zero prices the shipment at nothing and it goes out of the door — the
+   * only failure here that costs money rather than time.
+   */
+  it('names the basis and the field it wanted', () => {
+    expect(() => calcCharge({ basis: 'per_unit', rate: new D('1'), currency: 'KWD' })).toThrow(
+      MissingChargeContextError,
+    )
+    expect(() => calcCharge({ basis: 'per_container', rate: new D('1'), currency: 'KWD' })).toThrow(
+      MissingChargeContextError,
+    )
+    expect(() => calcCharge({ basis: 'per_day', rate: new D('1'), currency: 'KWD' })).toThrow(
+      MissingChargeContextError,
+    )
+    expect(() => calcCharge({ basis: 'percent', rate: new D('5'), currency: 'KWD' })).toThrow(
+      MissingChargeContextError,
+    )
+  })
+
+  /** `null` is what a form hands back for an empty field, and it is not zero. */
+  it('treats a null figure the same as a missing one', () => {
+    expect(() =>
+      calcCharge({ basis: 'per_kg', rate: new D('1'), currency: 'KWD' }, { kg: null as never }),
+    ).toThrow(MissingChargeContextError)
+  })
+})
+
+describe('the quantity written onto the line', () => {
+  const opts = {
+    baseCurrency: 'KWD',
+    fxRates: [fxRate('USD', 'KWD', '0.30650', new Date('2026-03-04T09:00:00Z'))],
+    currencies: seedCurrencyLookup,
+    pricedAt: new Date('2026-03-04T09:00:00Z'),
+  }
+
+  const priced = (basis: Basis, ctx?: Record<string, unknown>) =>
+    priceLine(
+      {
+        chargeTypeKey: 'test',
+        direction: 'cost',
+        line: { basis, rate: new D('10'), currency: 'KWD' },
+        ...(ctx ? { ctx: ctx as never } : {}),
+      },
+      opts,
+    )
+
+  it('is the figure the basis consumed', () => {
+    expect(priced('per_unit', { units: 7 }).quantity.toFixed()).toBe('7')
+    expect(priced('per_kg', { kg: '1250.500' }).quantity.toFixed()).toBe('1250.5')
+    expect(priced('per_container', { containers: 3 }).quantity.toFixed()).toBe('3')
+    expect(priced('per_day', { days: 12 }).quantity.toFixed()).toBe('12')
+  })
+
+  /**
+   * One for a flat line, because the charge column reads `quantity × rate` and
+   * a blank quantity beside a figure looks like a missing number rather than
+   * an inapplicable one.
+   */
+  it('is one for a flat line and for a percentage', () => {
+    expect(priced('flat').quantity.toFixed()).toBe('1')
+    expect(priced('percent', { of: money('100.000', 'KWD') }).quantity.toFixed()).toBe('1')
+  })
+})
+
+describe('the rate stamped on a priced line', () => {
+  const at = new Date('2026-03-04T09:00:00Z')
+  const opts = {
+    baseCurrency: 'KWD',
+    fxRates: [fxRate('USD', 'KWD', '0.30650', at)],
+    currencies: seedCurrencyLookup,
+    pricedAt: at,
+  }
+
+  const input: PriceInput = {
+    chargeTypeKey: 'documentation',
+    direction: 'revenue',
+    line: { basis: 'flat', rate: new D('15.000'), currency: 'KWD' },
+  }
+
+  /** So a base-currency line carries a rate like every other line. */
+  it('is the identity rate for a line already in the base currency', () => {
+    const line = priceLine(input, opts)
+
+    expect(line.fx.rate.toFixed()).toBe('1')
+    expect(line.fx.takenAt).toBe(at)
+    expect(toDb(line.amountInBase)).toBe('15')
+  })
+
+  /**
+   * Refused, not assumed to be one. A missing rate silently treated as parity
+   * prices a USD line as though a dollar were a dinar — about three times the
+   * real figure, on a document nobody would question.
+   */
+  it('refuses a foreign line with no rate supplied for it', () => {
+    expect(() =>
+      priceLine({ ...input, line: { basis: 'flat', rate: new D('100'), currency: 'EUR' } }, opts),
+    ).toThrow(UnknownCurrencyError)
+  })
+
+  it('refuses a currency the deployment never described', () => {
+    expect(() =>
+      priceLine({ ...input, line: { basis: 'flat', rate: new D('100'), currency: 'XYZ' } }, opts),
+    ).toThrow(UnknownCurrencyError)
+  })
+
+  it('refuses a base currency the deployment never described', () => {
+    expect(() => priceLine(input, { ...opts, baseCurrency: 'XYZ' })).toThrow(UnknownCurrencyError)
+  })
+})
+
+describe('the job P&L', () => {
+  /**
+   * Null rather than zero or infinity. A job with cost and no revenue yet has
+   * no margin percentage — it is not a hundred per cent loss, it is a figure
+   * that does not exist until something is billed, and the screen says so.
+   */
+  it('has no margin percentage until something is billed', () => {
+    const summary = summariseMargin(
+      [{ direction: 'cost', amountInBase: money('500.000', 'KWD') }],
+      'KWD',
+    )
+
+    expect(toDb(summary.revenue)).toBe('0')
+    expect(toDb(summary.gross)).toBe('-500')
+    expect(summary.grossPercent).toBeNull()
+  })
+
+  it('is zero in the branch’s currency for a job with nothing on it', () => {
+    const summary = summariseMargin([], 'KWD')
+
+    expect(summary).toEqual(emptyMargin('KWD'))
+    expect(emptyMargin('KWD').cost.currency).toBe('KWD')
   })
 })
