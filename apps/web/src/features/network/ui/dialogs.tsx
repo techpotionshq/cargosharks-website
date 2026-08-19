@@ -30,6 +30,7 @@ export interface PartnerDefaults {
   readonly countryCode?: string | null
   readonly currency?: string | null
   readonly paymentTermsDays?: number | null
+  readonly scac?: string | null
   readonly isActive?: boolean
 }
 
@@ -105,7 +106,7 @@ export async function PartnerDialog({
       kind: 'select',
       name: 'currency',
       label: t('currency'),
-      span: 6,
+      span: 4,
       hint: t('currencyHint'),
       options: options.currencies,
       placeholder: tc('none'),
@@ -115,12 +116,30 @@ export async function PartnerDialog({
       kind: 'number',
       name: 'paymentTermsDays',
       label: t('paymentTerms'),
-      span: 6,
+      span: 4,
       min: 0,
       max: 365,
       suffix: t('days'),
       hint: t('paymentTermsHint'),
       defaultValue: defaults?.paymentTermsDays,
+    },
+    /*
+      Shown for every partner type rather than only for carriers.
+
+      A form field that appears and disappears as the type select changes is a
+      field an operator learns not to trust, and a freight forwarder that is
+      also an NVOCC holds its own SCAC. Blank is the honest default and costs
+      nothing.
+    */
+    {
+      kind: 'text',
+      name: 'scac',
+      label: t('scac'),
+      span: 4,
+      mono: true,
+      maxLength: 4,
+      hint: t('scacHint'),
+      defaultValue: defaults?.scac,
     },
     {
       kind: 'switch',

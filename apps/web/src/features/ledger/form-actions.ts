@@ -32,6 +32,7 @@ import {
   toScale,
 } from '@qabandi/core'
 import {
+  checkCredit,
   enquiries,
   invoiceLines,
   invoices,
@@ -508,6 +509,25 @@ export async function setInvoiceStatus(
           : 'invoice.approve'
   assertCan(session, permission)
 
+  /*
+    Credit is checked before the number is allocated, not inside the mutation.
+
+    Two reasons, and the second is the one that matters. An abandoned issue
+    must not consume a series number — a gap in a statutory series is exactly
+    what an auditor asks about — so the check has to come first. And
+    `checkCredit` opens its own actor transaction; calling it inside the one
+    below would hold two pooled connections for a single unit of work, which is
+    how a busy month-end deadlocks.
+
+    Only on issue. Voiding or crediting an invoice *reduces* exposure, and
+    blocking the correction that would bring a customer back under their limit
+    is precisely backwards.
+  */
+  if (status === 'issued') {
+    const blocked = await creditBlockOnIssue(session, invoiceId)
+    if (blocked) return blocked
+  }
+
   try {
     await withActor(session.actor, async (tx) => {
       const [current] = await tx
@@ -612,6 +632,59 @@ export async function setInvoiceStatus(
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath('/finance')
   return succeed(status)
+}
+
+/**
+ * The credit gate on invoice issuance.
+ *
+ * Returns the failure to hand back, or null to proceed. Separated from
+ * `setInvoiceStatus` because that function is already long and this is a
+ * complete thought: read the invoice, ask the shared rule, translate the
+ * answer into a sentence a finance clerk can act on.
+ *
+ * The sentence names the number and the excess. "Credit limit exceeded" tells
+ * the clerk to go and find out by how much, and they will do it in a
+ * spreadsheet.
+ */
+async function creditBlockOnIssue(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  invoiceId: string,
+): Promise<ActionState | null> {
+  const [invoice] = await withActor(session.actor, (tx) =>
+    tx
+      .select({
+        customerId: invoices.customerId,
+        branchId: invoices.branchId,
+        total: invoices.total,
+        currency: invoices.currency,
+        isCreditNote: invoices.isCreditNote,
+      })
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1),
+  )
+  if (!invoice) return null
+
+  // A credit note reduces what is owed. Refusing to issue one because the
+  // customer is over their limit would be refusing to lower the balance.
+  if (invoice.isCreditNote) return null
+
+  const { assessment, allowed, standing } = await checkCredit(session.actor, {
+    customerId: invoice.customerId,
+    branchId: invoice.branchId,
+    proposed: fromDb(invoice.total, invoice.currency),
+    invoiceId,
+  })
+
+  if (allowed) return null
+
+  const excess = `${toScale(assessment.excess)} ${standing.currency}`
+  return failWith(
+    assessment.outcome === 'on_hold'
+      ? 'This customer is on credit hold. Release the hold on their account before issuing.'
+      : `Issuing this invoice puts the customer ${excess} past their credit limit. ` +
+          'A branch manager can record an override on the customer account.',
+  )
 }
 
 // --- receipts --------------------------------------------------------------

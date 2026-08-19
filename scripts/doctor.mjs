@@ -98,7 +98,22 @@ const capabilities = [
   },
   {
     name: 'Container tracking',
-    keys: ['CARRIER_TRACKING_API_KEY'],
+    keys: [
+      'DCSA_MAERSK_CONSUMER_KEY',
+      'DCSA_HAPAG_CLIENT_ID',
+      'DCSA_CMACGM_API_KEY',
+      'CARRIER_TRACKING_API_KEY',
+    ],
+    /*
+      One key is enough here, unlike everywhere else on this list.
+
+      Carrier-direct tracking is per carrier: a deployment registered with
+      Maersk alone has a working feed for Maersk shipments and nothing for
+      Hapag-Lloyd, which is a real and useful state rather than a half-built
+      one. Reporting it as missing until all four were set would tell an
+      operator to go and buy something they already have.
+    */
+    any: true,
     without: 'carrier milestones are entered by an operator rather than ingested',
   },
   {
@@ -161,8 +176,8 @@ if (required.length > 0) {
 
 console.log('Optional — each one disables a named capability, nothing more')
 for (const cap of capabilities) {
-  const ok = allSet(cap.keys)
-  const partial = !ok && anySet(cap.keys)
+  const ok = cap.any ? anySet(cap.keys) : allSet(cap.keys)
+  const partial = !ok && !cap.any && anySet(cap.keys)
   console.log(`${ok ? tick : dash} ${cap.name}${partial ? '  (partially configured)' : ''}`)
   if (!ok) console.log(`       without it: ${cap.without}`)
 }

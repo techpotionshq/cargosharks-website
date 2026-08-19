@@ -26,9 +26,9 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { db, principals, type Actor } from '@qabandi/db'
+import { assets, db, principals, withActor, type Actor } from '@qabandi/db'
 import { adapters, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
@@ -77,11 +77,55 @@ interface PasswordResetRequest {
   readonly url: string
 }
 
+/**
+ * A file the operator captured, on its way into storage.
+ *
+ * Base64 rather than multipart, and that is a deliberate trade. The payloads
+ * are a signature bitmap and a handful of phone photographs — hundreds of
+ * kilobytes, not gigabytes — and base64 costs a third more bytes on a hop that
+ * never leaves the deployment's own network. What it buys is that this route
+ * looks like every other route here: one JSON body carrying the actor, checked
+ * by the same secret, with no second content-type path to get authentication
+ * wrong on.
+ */
+interface UploadRequest {
+  readonly actor: Actor
+  readonly branchId: string
+  readonly fileName: string
+  readonly contentType: string
+  /** Base64, no data-URI prefix. The caller strips it. */
+  readonly data: string
+  /** Recorded on the asset, so a photograph can say what it was taken for. */
+  readonly meta?: Record<string, unknown>
+}
+
 interface SignedUrlRequest {
   readonly storageKey: string
   readonly fileName?: string
   readonly expiresInSeconds?: number
 }
+
+/**
+ * What a capture form may store.
+ *
+ * Images only, and not every image: `image/svg+xml` is markup, and an SVG
+ * served from a signed storage URL executes script in the viewer's origin.
+ * HEIC is absent because nothing here converts it and a photograph nobody can
+ * open is worse than one that was refused at capture.
+ */
+const ALLOWED_UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+const EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+/**
+ * Ten megabytes — a generous phone photograph, and a refusal well before
+ * anything that would trouble the process holding it in memory.
+ */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 /**
  * Short enough that a link pasted into a chat is dead by the time anyone reads
@@ -465,6 +509,112 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
    * principal, and it rests on the same premise: this port is never exposed
    * publicly.
    */
+  /**
+   * Store a captured file and record it as an asset.
+   *
+   * The counterpart to `/files/signed-url` above: that one hands a link out,
+   * this one takes bytes in. It exists because the storage credentials live in
+   * this process and nowhere else, for exactly the reason the signing route
+   * gives — the moment the secret key is in the web app's environment it is in
+   * the environment of every server component that app imports.
+   *
+   * ## Why the asset row is written here rather than by the caller
+   *
+   * Two writes that must not come apart. A row with no object is a broken
+   * download; an object with no row is a file nobody can find and nobody will
+   * ever delete. Writing both here means the failure mode is one the caller
+   * can see — the request failed and there is no asset id — rather than a
+   * half-state it has to reconcile.
+   *
+   * The insert runs under the *caller's* actor, so row-level security decides
+   * whether that principal may write to that branch. This route authenticates
+   * with the shared secret and authorises with the actor, like every other one.
+   */
+  app.post<{ Body: UploadRequest }>('/files/upload', async (request, reply) => {
+    const { actor, branchId, fileName, contentType, data, meta } = request.body ?? {}
+
+    if (!actor || !branchId || !fileName || !contentType || !data) {
+      return reply.code(400).send({ error: 'incomplete_request' })
+    }
+
+    /*
+      The allow-list is on the server, not the form.
+
+      A file input's `accept` attribute is a hint to a file picker and nothing
+      more; anything can be posted here. Proof of delivery is photographs and a
+      signature bitmap, so that is what this takes — an HTML or SVG upload
+      would be a stored, signed-URL-served document with script in it.
+    */
+    if (!ALLOWED_UPLOAD_TYPES.includes(contentType)) {
+      return reply.code(415).send({ error: 'unsupported_type', allowed: ALLOWED_UPLOAD_TYPES })
+    }
+
+    const bytes = Buffer.from(data, 'base64')
+    if (bytes.byteLength === 0) return reply.code(400).send({ error: 'empty_file' })
+    if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+      return reply.code(413).send({ error: 'too_large', maxBytes: MAX_UPLOAD_BYTES })
+    }
+
+    const checksum = createHash('sha256').update(bytes).digest('hex')
+    const extension = EXTENSIONS[contentType] ?? 'bin'
+    /*
+      Keyed by checksum, not by name.
+
+      Two drivers photographing the same delivery note produce the same object
+      once. It also means a re-submitted form — the classic double tap on a
+      phone — overwrites rather than accumulating, and the key carries nothing
+      an operator typed, so a filename with a slash in it cannot escape the
+      prefix.
+    */
+    const storageKey = `pod/${branchId}/${checksum}.${extension}`
+
+    try {
+      const stored = await adapters().fileStore.put(storageKey, bytes, contentType)
+
+      const [asset] = await withActor(actor, (tx) =>
+        tx
+          .insert(assets)
+          .values({
+            branchId,
+            storageKey: stored.storageKey,
+            fileName,
+            contentType,
+            byteSize: bytes.byteLength,
+            checksum,
+            uploadedById: actor.principalId,
+            meta: meta ?? {},
+          })
+          .onConflictDoNothing({ target: assets.storageKey })
+          .returning({ id: assets.id }),
+      )
+
+      /*
+        No row returned means the object was already recorded — the same bytes,
+        already uploaded. Read the existing asset rather than failing: to the
+        caller this is the same successful outcome, and to storage it is the
+        same object.
+      */
+      if (!asset) {
+        const [existing] = await withActor(actor, (tx) =>
+          tx
+            .select({ id: assets.id })
+            .from(assets)
+            .where(eq(assets.storageKey, stored.storageKey))
+            .limit(1),
+        )
+        if (!existing) return reply.code(500).send({ error: 'asset_not_recorded' })
+        return reply.send({ assetId: existing.id, storageKey: stored.storageKey })
+      }
+
+      return reply.send({ assetId: asset.id, storageKey: stored.storageKey })
+    } catch (error) {
+      if (error instanceof FileStoreError) {
+        return reply.code(502).send({ error: 'storage_failed', message: error.message })
+      }
+      throw error
+    }
+  })
+
   app.post<{ Body: SignedUrlRequest }>('/files/signed-url', async (request, reply) => {
     const { storageKey, fileName, expiresInSeconds } = request.body ?? {}
 

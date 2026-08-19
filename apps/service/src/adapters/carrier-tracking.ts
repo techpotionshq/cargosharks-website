@@ -38,15 +38,27 @@
  * creating tracking requests"* — so the webhook ingestion is tested against
  * recorded payload shapes rather than a live push.
  *
- * ## What it costs
+ * ## What it costs, and what replaced it
  *
  * Per-container, recurring, and it scales with the customer's volume rather
  * than ours. A pricing decision before an engineering one, which is why
  * nothing here is enabled by default.
+ *
+ * `dcsa-tracking.ts` is the answer to that cost and is the driver to reach for
+ * first: the carriers publish the same events themselves, free, and DCSA
+ * members are about three-quarters of container trade. This adapter stays
+ * because an aggregator still covers the quarter that does not publish, and
+ * because `resolveCarrierTracking` below is what a deployment picks between.
  */
 
 import type { CarrierMilestone, CarrierTracking } from '../ports/index'
 import { config } from '../config'
+import {
+  DCSA_CARRIERS,
+  dcsaTracking,
+  type DcsaCarrierProfile,
+  type DcsaCredential,
+} from './dcsa-tracking'
 
 /**
  * Release One, kept as an implementation rather than an absence.
@@ -186,8 +198,69 @@ export function terminal49Tracking(apiKey: string, baseUrl: string): Terminal49T
   }
 }
 
+/**
+ * The DCSA profiles this deployment can authenticate to.
+ *
+ * Lives here rather than in `dcsa-tracking.ts` for the same reason
+ * `smtpOptions()` lives outside `smtp.ts`: the adapter takes credentials and
+ * knows nothing about where they came from, which is what lets it be tested
+ * against a stubbed `fetch` with no environment at all.
+ */
+export function dcsaCredentials(): Record<string, DcsaCredential> {
+  return {
+    maersk: { key: config.DCSA_MAERSK_CONSUMER_KEY, secret: config.DCSA_MAERSK_CLIENT_SECRET },
+    hapag: { key: config.DCSA_HAPAG_CLIENT_ID, secret: config.DCSA_HAPAG_CLIENT_SECRET },
+    cmacgm: { key: config.DCSA_CMACGM_API_KEY },
+  }
+}
+
+/** The stock profiles, with any base URL this deployment has overridden. */
+function dcsaProfiles(): DcsaCarrierProfile[] {
+  const overrides: Record<string, string | undefined> = {
+    maersk: config.DCSA_MAERSK_BASE_URL,
+    hapag: config.DCSA_HAPAG_BASE_URL,
+    cmacgm: config.DCSA_CMACGM_BASE_URL,
+  }
+
+  return DCSA_CARRIERS.map((profile) =>
+    overrides[profile.key] ? { ...profile, baseUrl: overrides[profile.key]! } : profile,
+  )
+}
+
 /** Which tracking source this deployment runs on. Manual unless configured. */
 export function resolveCarrierTracking(): CarrierTracking {
+  if (config.CARRIER_TRACKING_DRIVER === 'dcsa') {
+    const credentials = dcsaCredentials()
+    const profiles = dcsaProfiles()
+
+    /*
+      A half-configured carrier is refused at boot, not at 2am.
+
+      Hapag's gateway takes an id and a secret. Setting one of the two would
+      produce 401s from a carrier that reads as configured in the boot log,
+      against shipments that have already sailed — which is the failure this
+      whole file's `config.ts` sibling exists to prevent.
+    */
+    for (const profile of profiles) {
+      const credential = credentials[profile.key]
+      if (profile.needsSecret && credential?.key && !credential.secret) {
+        throw new Error(
+          `DCSA carrier ${profile.key} needs both an id and a secret. Set both, or neither.`,
+        )
+      }
+    }
+
+    if (!profiles.some((profile) => credentials[profile.key]?.key)) {
+      throw new Error(
+        'CARRIER_TRACKING_DRIVER=dcsa but no carrier credentials are set. Register with ' +
+          'at least one of Maersk, Hapag-Lloyd or CMA CGM — all self-serve, all free — ' +
+          'and set its key, or leave the driver on manual.',
+      )
+    }
+
+    return dcsaTracking(credentials, profiles)
+  }
+
   if (config.CARRIER_TRACKING_DRIVER !== 'terminal49') return manualCarrierTracking
 
   if (!config.CARRIER_TRACKING_API_KEY) {

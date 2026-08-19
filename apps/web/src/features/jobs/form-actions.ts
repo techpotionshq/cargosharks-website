@@ -19,8 +19,10 @@
 import { revalidatePath } from 'next/cache'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { fromDb, toScale } from '@qabandi/core'
 import {
   branches,
+  checkCredit,
   jobMilestones,
   jobPartners,
   jobs,
@@ -34,6 +36,7 @@ import { assertCan, assertInBranch } from '@/lib/permissions'
 import {
   echo,
   fail,
+  failWith,
   fieldErrors,
   isUniqueViolation,
   succeed,
@@ -157,6 +160,24 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
 
   const data = parsed.data
   assertInBranch(session, data.branchId)
+
+  /*
+    Credit is checked on booking, not on update.
+
+    Booking is the moment we take on the exposure; an update is a coordinator
+    correcting a vessel name on work already accepted, and blocking that would
+    strand the shipment rather than prevent it. The commitment being weighed is
+    the quotation where the job came from one — that is the only figure anybody
+    has agreed at this point, since charge lines are added afterwards.
+
+    Before the transaction below for the reason `ledger/form-actions.ts` gives:
+    `checkCredit` opens its own actor transaction and nesting would hold two
+    pooled connections for one unit of work.
+  */
+  if (!data.jobId) {
+    const blocked = await creditBlockOnBooking(session, data)
+    if (blocked) return { ...blocked, values: echo(form) }
+  }
 
   const values = {
     branchId: data.branchId,
@@ -342,6 +363,52 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
 }
 
 /** Name a carrier, agent, broker or haulier on the shipment. */
+/**
+ * The credit gate on booking.
+ *
+ * Returns the failure to hand back, or null to proceed.
+ *
+ * There is no job id yet, so a one-shot override cannot name this shipment —
+ * only a standing override on the customer releases a booking. That is the
+ * conversation that actually happens: a manager decides the customer may trade
+ * over their limit for a period, and the coordinator then books freely. The
+ * alternative — book first, authorise afterwards — is a check that has already
+ * failed by the time anybody reads it.
+ */
+async function creditBlockOnBooking(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  data: { branchId: string; customerId: string; quoteId?: string | null },
+): Promise<ActionState | null> {
+  let proposed = null
+  if (data.quoteId) {
+    const [quote] = await withActor(session.actor, (tx) =>
+      tx
+        // `total_sell`, not the cost: the credit limit is about what the
+        // customer will be asked to pay, not what the shipment costs us.
+        .select({ total: quotes.totalSell, currency: quotes.currency })
+        .from(quotes)
+        .where(eq(quotes.id, data.quoteId!))
+        .limit(1),
+    )
+    if (quote?.total) proposed = fromDb(quote.total, quote.currency)
+  }
+
+  const { assessment, allowed, standing } = await checkCredit(session.actor, {
+    customerId: data.customerId,
+    branchId: data.branchId,
+    proposed,
+  })
+  if (allowed) return null
+
+  const excess = `${toScale(assessment.excess)} ${standing.currency}`
+  return failWith(
+    assessment.outcome === 'on_hold'
+      ? 'This customer is on credit hold. Release the hold on their account before booking.'
+      : `Booking this shipment puts the customer ${excess} past their credit limit. ` +
+          'A branch manager can record an override on the customer account.',
+  )
+}
+
 export async function addJobPartner(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')

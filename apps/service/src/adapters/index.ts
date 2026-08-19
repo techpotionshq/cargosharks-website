@@ -47,10 +47,32 @@ import { resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore } from './file-store'
 import { resolveFxSource } from './fx'
 
-export { smtpChannel, logChannel, sendMail, encodeHeader, SmtpError, type SmtpOptions } from './smtp'
+export {
+  smtpChannel,
+  logChannel,
+  sendMail,
+  encodeHeader,
+  SmtpError,
+  type SmtpOptions,
+} from './smtp'
 export { manualFxSource, httpFxSource } from './fx'
-export { manualCarrierTracking, terminal49Tracking } from './carrier-tracking'
+export { manualCarrierTracking, terminal49Tracking, dcsaCredentials } from './carrier-tracking'
 export { mapProviderEvents, type ProviderEvent } from './carrier-events'
+export {
+  dcsaTracking,
+  fetchDcsaEvents,
+  DcsaError,
+  DCSA_CARRIERS,
+  type DcsaTracking,
+  type DcsaCarrierProfile,
+  type DcsaCredential,
+} from './dcsa-tracking'
+export {
+  readDcsaEvents,
+  type DcsaEvent,
+  type DcsaReading,
+  type CarrierEstimates,
+} from './dcsa-events'
 export { noTransmit, aspTransmit } from './einvoice'
 export { manualCustomsFiling } from './customs'
 export {

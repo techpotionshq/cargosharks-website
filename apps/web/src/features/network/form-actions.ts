@@ -74,6 +74,15 @@ const partnerSchema = z.object({
   countryCode: optionalCode(2),
   currency: optionalCode(3),
   paymentTermsDays: z.coerce.number().int().min(0).max(365).optional(),
+  /*
+    Four letters, and the reason the carrier feed can find this partner.
+
+    `optionalCode` uppercases before it measures, because an operator types
+    `maeu` and the carrier gateways answer only to `MAEU` — normalising here
+    rather than at every read is what keeps the poll worker's lookup a plain
+    equality.
+  */
+  scac: optionalCode(4),
   isActive: z.coerce.boolean(),
 })
 
@@ -90,6 +99,7 @@ export async function savePartner(_previous: ActionState, form: FormData): Promi
     countryCode: read(form, 'countryCode'),
     currency: read(form, 'currency'),
     paymentTermsDays: read(form, 'paymentTermsDays'),
+    scac: read(form, 'scac'),
     isActive: form.get('isActive') !== null,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
@@ -103,6 +113,7 @@ export async function savePartner(_previous: ActionState, form: FormData): Promi
     countryCode: data.countryCode,
     currency: data.currency,
     paymentTermsDays: data.paymentTermsDays ?? null,
+    scac: data.scac,
     isActive: data.isActive,
   }
 

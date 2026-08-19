@@ -46,7 +46,8 @@
     "imports": "Bulk import",
     "consolidations": "Consolidations",
     "payables": "Payables",
-    "settlements": "Settlements"
+    "settlements": "Settlements",
+    "reports": "Reports"
   },
   "common": {
     "search": "Search",
@@ -1037,6 +1038,8 @@
     "paymentTerms": "Payment terms",
     "paymentTermsHint": "Days you have to pay their invoices",
     "days": "days",
+    "scac": "Carrier code (SCAC)",
+    "scacHint": "Four letters, e.g. MAEU. Lets tracking pull milestones automatically.",
     "active": "In use",
     "activeHint": "Turn off to stop them appearing in new shipments. History is kept.",
     "submit": "Add partner",
@@ -1786,13 +1789,15 @@
       "house_bill": "House bill of lading",
       "delivery_order": "Delivery order",
       "packing_list": "Packing list",
-      "customs_pack": "Customs declaration pack"
+      "customs_pack": "Customs declaration pack",
+      "air_waybill": "House air waybill"
     },
     "hints": {
       "house_bill": "Contract of carriage. Watermarked until numbered.",
       "delivery_order": "Expires seven days after issue.",
       "packing_list": "Grouped by container, with net weight.",
-      "customs_pack": "What the broker would otherwise retype."
+      "customs_pack": "What the broker would otherwise retype.",
+      "air_waybill": "Not negotiable. Names the consignee — no order bills in the air."
     }
   },
   "consolidations": {
@@ -2173,5 +2178,109 @@
     "toleranceNote": "Whichever limit is the more generous applies. Leaving both at zero means the charge type's own tolerance is used instead.",
     "tolerancePercent": "Percentage",
     "toleranceAbsolute": "Absolute"
+  },
+  "credit": {
+    "eyebrow": "Credit control",
+    "title": "Standing and exceptions",
+    "outstanding": "Outstanding",
+    "limit": "Credit limit",
+    "noLimit": "None agreed",
+    "headroom": "Headroom",
+    "excess": "Over by",
+    "nearLimit": "Near the limit",
+    "unconvertible": "Not included above, for want of an exchange rate: {list}. The exposure shown is a floor, not a total.",
+    "overridesTitle": "Overrides",
+    "noOverrides": "No exception has ever been made for this customer.",
+    "approvedAt": "Approved",
+    "approvedBy": "By",
+    "scope": "Covers",
+    "exposureThen": "Exposure / limit at the time",
+    "reason": "Reason",
+    "standingUntil": "Standing until {date}",
+    "lapsedOn": "Lapsed {date}",
+    "oneShot": "One shipment",
+    "oneShotJob": "One shipment",
+    "oneShotInvoice": "One invoice",
+    "outcome": {
+      "within_limit": "Within limit",
+      "unlimited": "No limit set",
+      "over_limit": "Over limit",
+      "on_hold": "On hold"
+    }
+  },
+  "creditForm": {
+    "open": "Record an override",
+    "title": "Let this customer trade past their limit",
+    "description": "The limit stays where it is. This records the exception, who made it and why.",
+    "standing": "This customer owes {exposure} against a limit of {limit}.",
+    "expiresOn": "Standing until",
+    "expiresOnHint": "Leave blank and this covers nothing — a booking needs a date, because the shipment does not exist yet.",
+    "expiresOnHintOneShot": "Leave blank to cover only this one. A date covers everything for this customer until then.",
+    "reason": "Why",
+    "reasonHint": "A sentence somebody reviewing this in a year can act on. Not 'approved'.",
+    "submit": "Record the override"
+  },
+  "pod": {
+    "eyebrow": "Delivery",
+    "title": "Proof of delivery",
+    "none": "Nothing delivered yet",
+    "noneHint": "Capture the signature at the door and this becomes the record a claim turns on.",
+    "capture": "Capture delivery",
+    "captureTitle": "Capture a delivery",
+    "captureDescription": "Who signed, when, and what they received. The signature and photographs are optional — the record is not.",
+    "correct": "Correct this",
+    "correctTitle": "Correct a delivery record",
+    "correctDescription": "The original is kept and marked as corrected. Nothing is overwritten.",
+    "close": "Close",
+    "deliveredAt": "Delivered at",
+    "deliveredAtHint": "When the cargo changed hands, not when you are filling this in.",
+    "equipment": "Container",
+    "wholeShipment": "The whole shipment",
+    "receivedByName": "Received by",
+    "receivedByNameHint": "The person at the door, not the company on the waybill.",
+    "receivedByIdNumber": "Civil ID or stamp",
+    "signature": "Signature",
+    "signatureHint": "Sign with a finger or a stylus.",
+    "clearSignature": "Clear",
+    "photos": "Photographs",
+    "photosHint": "The cargo at the door, any damage, the signed paper.",
+    "hasException": "Something was wrong — short, damaged or refused",
+    "exceptionNotes": "What was wrong",
+    "exceptionNotesHint": "The delivery is still recorded. This is what a claim will be argued from.",
+    "notes": "Notes",
+    "capturedBy": "Captured by",
+    "clean": "Delivered",
+    "withException": "Delivered with exception",
+    "superseded": "Corrected",
+    "photoN": "Photo {n}",
+    "locationAsking": "Asking the device for its location…",
+    "locationCaptured": "Location captured, accurate to about {accuracy} m.",
+    "locationUnavailable": "No location — the delivery records without one.",
+    "saving": "Saving…",
+    "submit": "Record the delivery"
+  },
+  "reports": {
+    "eyebrow": "Management",
+    "title": "Margin report",
+    "subtitle": "Shipments departing between {from} and {to}, by the date they sailed.",
+    "cutBy": "Cut by",
+    "dimension": {
+      "branch": "Branch",
+      "customer": "Customer",
+      "lane": "Trade lane",
+      "mode": "Mode",
+      "owner": "Salesperson"
+    },
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "exportCsv": "Export CSV",
+    "jobs": "Shipments",
+    "revenue": "Revenue",
+    "cost": "Cost",
+    "grossProfit": "Gross profit",
+    "marginPercent": "Margin",
+    "empty": "Nothing in this period",
+    "emptyHint": "No shipment with charge lines departed between these dates. Widen the range, or check that costs have been entered."
   }
 }

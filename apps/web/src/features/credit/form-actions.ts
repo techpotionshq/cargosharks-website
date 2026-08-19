@@ -1,0 +1,141 @@
+'use server'
+
+/**
+ * Credit control mutations — one act, recorded properly.
+ *
+ * There is exactly one thing to do here: decide that a customer may trade past
+ * their limit, and leave a record of who decided it and why.
+ *
+ * ## Why an override rather than raising the limit
+ *
+ * Raising the limit is what happens when there is no override. A shipment is
+ * urgent, the check blocks it, somebody edits 40,000 to 60,000 to get the
+ * container moving, and nobody ever lowers it again. Six months later the
+ * limit is a number that has been ratcheted upwards by every emergency the
+ * customer has had, which is the opposite of a credit control.
+ *
+ * So the limit stays where the credit decision put it, and the exception is a
+ * dated row with a name and a reason on it. `expires_on` is what makes that
+ * bearable in practice — a manager can say "until the end of the month"
+ * without anybody editing anything.
+ *
+ * ## Why the figures are copied onto the row
+ *
+ * The exposure and the limit as they stood are stamped at approval, not
+ * recomputed when somebody reviews it. Six weeks later the customer has paid
+ * two invoices and raised three, and a recomputation would show a manager
+ * approving an amount nobody ever saw. Same reasoning as
+ * `quotes.priced_snapshot`.
+ */
+
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { toDb } from '@qabandi/core'
+import { checkCredit, creditOverrides, withActor } from '@qabandi/db'
+import { requireSession } from '@/lib/session'
+import { assertCan, assertInBranch } from '@/lib/permissions'
+import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+
+function read(form: FormData, key: string): string | undefined {
+  const value = form.get(key)
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+const overrideSchema = z.object({
+  customerId: z.uuid('Choose a customer'),
+  branchId: z.uuid('Choose a branch'),
+  jobId: z.uuid().optional(),
+  invoiceId: z.uuid().optional(),
+  /*
+    Twenty characters, and the floor is deliberate.
+
+    "ok", "approved" and "per MD" are all things that get typed into a required
+    field, and all three are useless to the person reviewing this in a year.
+    The column is `not null` and non-empty at the database; this is the layer
+    that asks for a sentence.
+  */
+  reason: z.string().trim().min(20, 'Say why, in a sentence somebody can review').max(500),
+  /**
+   * Blank is a one-shot tied to the job or invoice named above. A date makes
+   * it standing until then — which is the only thing that can release a
+   * *booking*, since a job has no id before it exists.
+   */
+  expiresOn: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+    .optional()
+    .transform((v) => v || null),
+})
+
+export async function recordCreditOverride(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'credit.override')
+
+  const parsed = overrideSchema.safeParse({
+    customerId: read(form, 'customerId'),
+    branchId: read(form, 'branchId'),
+    jobId: read(form, 'jobId'),
+    invoiceId: read(form, 'invoiceId'),
+    reason: read(form, 'reason'),
+    expiresOn: read(form, 'expiresOn'),
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  assertInBranch(session, data.branchId)
+
+  if (data.expiresOn && data.expiresOn < new Date().toISOString().slice(0, 10)) {
+    return fail({ expiresOn: 'That date has already passed' }, echo(form))
+  }
+
+  /*
+    The standing is read now, at approval, and stamped onto the row.
+
+    Deliberately the *unproposed* position — what the customer owes today,
+    without whatever is about to be booked. A manager approving an override is
+    answering "how far in is this customer", and folding in a shipment that may
+    never happen would put a number on the record that was never true.
+  */
+  const { standing } = await checkCredit(session.actor, {
+    customerId: data.customerId,
+    branchId: data.branchId,
+  })
+
+  /*
+    An override on a customer with no limit is refused rather than stored.
+
+    It would be a permanent, unreviewable row authorising an exception to a
+    rule that is not being applied — and the moment somebody later sets a
+    limit, it silently becomes an exemption from it that nobody chose.
+  */
+  if (!standing.limit) {
+    return fail(
+      { _: 'This customer has no credit limit at this branch, so there is nothing to override.' },
+      echo(form),
+    )
+  }
+
+  await withActor(session.actor, (tx) =>
+    tx.insert(creditOverrides).values({
+      branchId: data.branchId,
+      customerId: data.customerId,
+      jobId: data.jobId ?? null,
+      invoiceId: data.invoiceId ?? null,
+      exposure: toDb(standing.outstanding),
+      creditLimit: toDb(standing.limit!),
+      currency: standing.currency,
+      reason: data.reason,
+      approvedById: session.principal.id,
+      expiresOn: data.expiresOn,
+    }),
+  )
+
+  revalidatePath(`/customers/${data.customerId}`)
+  if (data.jobId) revalidatePath(`/jobs/${data.jobId}`)
+  if (data.invoiceId) revalidatePath(`/invoices/${data.invoiceId}`)
+  return succeed(data.customerId)
+}

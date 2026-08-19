@@ -366,3 +366,47 @@ export function freeTimeRemaining(
 export function perDiem(value: Numeric): Decimal {
   return dec(value)
 }
+
+/**
+ * How much notice a free-time clock gives before it starts charging.
+ *
+ * Three days, and the number is here rather than in the worker because the
+ * operations board wants the same threshold for its badge. Long enough that a
+ * haulier can be booked over a Kuwaiti weekend; short enough that the warning
+ * still means something when it arrives.
+ *
+ * Not a configuration row (FR-AD-03), deliberately. Charge types and calendars
+ * are rows because they change what the system *charges*; this changes only
+ * when it speaks, and a per-branch notice period is a setting nobody would
+ * ever have a reason to differ on.
+ */
+export const FREE_TIME_WARNING_DAYS = 3
+
+/**
+ * The date free time runs out — the last day the container can move for free.
+ *
+ * `accrue` answers "what has this cost so far", which is the wrong question
+ * before anything has. This answers the other one, and it answers it in the
+ * clock's own day basis: a port storage clock counting working days expires
+ * later than a carrier demurrage clock started the same morning, and stating
+ * a calendar date for a working-day clock is how a coordinator misses it over
+ * a weekend.
+ */
+export function freeTimeExpiresOn(
+  cfg: ClockConfig,
+  window: Pick<ClockWindow, 'startedOn'>,
+  calendar: WorkingCalendar,
+): CalendarDate {
+  const start = toCalendarDate(window.startedOn, calendar)
+  const basis = cfg.dayBasis ?? 'calendar'
+
+  /*
+    Free days are inclusive of the start day, so the last free day is
+    `freeDays - 1` after it. A clock with zero free days expired the day it
+    started, which `Math.max` keeps from walking backwards into last week.
+  */
+  const offset = Math.max(0, cfg.freeDays - 1)
+  return basis === 'working'
+    ? addWorkingDays(start, offset, calendar)
+    : addCalendarDays(start, offset)
+}

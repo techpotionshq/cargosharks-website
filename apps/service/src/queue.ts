@@ -19,6 +19,7 @@ export const JOBS = {
   notificationDispatch: 'notification-dispatch',
   pdfRender: 'pdf-render',
   freeTimeAccrual: 'free-time-accrual',
+  freeTimeWarning: 'free-time-warning',
   slaEscalation: 'sla-escalation',
   complianceExpiry: 'compliance-expiry-warning',
   rateCardExpiry: 'rate-card-expiry-digest',
@@ -26,6 +27,7 @@ export const JOBS = {
   invoiceOverdue: 'invoice-overdue-notice',
   fxIngest: 'fx-rate-ingest',
   carrierEvent: 'carrier-event-ingest',
+  carrierPoll: 'carrier-poll',
   bulkImport: 'bulk-import-validate',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
@@ -93,10 +95,36 @@ export async function stopBoss(): Promise<void> {
 export async function registerSchedules(): Promise<void> {
   const b = await getBoss()
   await b.schedule(JOBS.freeTimeAccrual, '0 21 * * *')
+
+  /*
+    The warning runs in the morning, not with the nightly batch.
+
+    Everything else on this list is bookkeeping and belongs at midnight local.
+    This one exists to be acted on: 04:00 UTC is 07:00 in Kuwait, so it is at
+    the top of the inbox when the coordinator opens it and there is a working
+    day left to book a haulier in. Sent at midnight it would be eleven mails
+    down by then, which is the same as not sending it.
+  */
+  await b.schedule(JOBS.freeTimeWarning, '0 4 * * *')
   await b.schedule(JOBS.slaEscalation, '*/15 * * * *')
   await b.schedule(JOBS.complianceExpiry, '30 21 * * *')
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
+
+  /*
+    The carrier poll, hourly and on the half hour.
+
+    Hourly because that is the resolution the events themselves have — a
+    carrier publishes a discharge minutes to an hour after the crane, and
+    asking more often buys nothing but rate limit. On the half hour so it does
+    not land with the nightly accruals or the FX refresh, which would make a
+    slow carrier look like a slow database.
+
+    Off unless `CARRIER_TRACKING_DRIVER=dcsa`: the worker answers "nothing to
+    do" for the other drivers rather than branching, exactly as `fxIngest`
+    does when no feed is bought.
+  */
+  await b.schedule(JOBS.carrierPoll, '30 * * * *')
 
   /*
     The two time-driven notifications (FR-NT-01).

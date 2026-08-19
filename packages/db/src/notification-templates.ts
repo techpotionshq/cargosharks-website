@@ -111,6 +111,50 @@ It needs a response now.
 `,
   ),
 
+  /*
+    free_time.expiring (internal)
+
+    The subject line carries the container and the day count, because this
+    arrives in a coordinator's inbox alongside forty others and the decision —
+    move it or pay — is made from the subject or not at all.
+
+    `{{daysRemaining}}` is zero on the day free time runs out, and the wording
+    has to survive that without reading like a bug. "0 day(s) remaining" is
+    ugly but honest; a template that says "expires in 0 days" is worse.
+  */
+  t(
+    'free_time.expiring',
+    'en',
+    '{{kind}} starts on {{containerNo}} in {{daysRemaining}} day(s) — {{reference}}',
+    `
+Hello {{recipientName}}
+
+Free time on container {{containerNo}} ({{reference}}) runs out on {{expiresOn}} —
+{{daysRemaining}} day(s) from today.
+
+After that the {{kind}} clock charges {{perDiem}} {{currency}} per day, and the
+charge is ours until the container moves.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'free_time.expiring',
+    'ar',
+    'بدء احتساب {{kind}} على الحاوية {{containerNo}} خلال {{daysRemaining}} يوم — {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+تنتهي الفترة المجانية للحاوية {{containerNo}} ({{reference}}) بتاريخ {{expiresOn}}،
+أي خلال {{daysRemaining}} يوم من اليوم.
+
+وبعد ذلك يبدأ احتساب {{kind}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع هذه
+التكلفة علينا إلى أن تتحرك الحاوية.
+
+{{senderName}}
+`,
+  ),
+
   // --- quote.sent (customer) ------------------------------------------------
   t(
     'quote.sent',

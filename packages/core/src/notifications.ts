@@ -135,6 +135,23 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['reference', 'previousEta', 'eta'],
   }),
 
+  /*
+    Free time, warned before it costs rather than billed after it has.
+
+    Internal, and that is the whole decision. The nightly accrual beside it
+    tells the customer nothing and bills us correctly; this one is aimed at the
+    person who can still move the container. Sending it to the customer would
+    read as an invoice threat for a cost that has not been incurred, on a
+    deadline most of them cannot act on anyway — the haulier is ours.
+  */
+  event({
+    key: 'free_time.expiring',
+    audience: 'internal',
+    requirement: 'FR-JB-08',
+    summary: 'A container is about to start accruing demurrage, detention or storage.',
+    fields: ['reference', 'kind', 'containerNo', 'daysRemaining', 'expiresOn', 'perDiem', 'currency'],
+  }),
+
   // --- exception -----------------------------------------------------------
   event({
     key: 'exception.opened',

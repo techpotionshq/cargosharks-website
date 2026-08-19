@@ -8,7 +8,7 @@
 | **Date** | 18 August 2026 |
 | **Question asked** | For each external service the SRS defers to R2 — tracking, e-invoicing, customs, FX, accounting — what exists, what does it cost, what do the terms permit, and what can we verify today? |
 | **Relationship to the code** | `apps/service/src/ports/index.ts` declares seven interfaces. This is the research behind the adapters in `apps/service/src/adapters/`. |
-| **Status** | Tracking and FX verified against live APIs. E-invoicing and customs are desk research; both are blocked on commercial decisions rather than engineering. |
+| **Status** | Tracking and FX verified against live APIs; carrier-direct built against the DCSA spec and awaiting a live carrier key. E-invoicing and customs are desk research; both are blocked on commercial decisions rather than engineering. |
 
 > **The finding in one line:** ocean carriers now publish free, standardised tracking APIs that make an aggregator optional for most of what we need — but the two events that drive detention billing are exactly the two nobody publishes reliably, and e-invoicing is a contract we have not started.
 
@@ -139,7 +139,42 @@ differently. One DCSA adapter now covers several carriers, with per-carrier
 auth as the only difference.
 
 `IN-05` **The port's original shape was right; Terminal49 was the outlier.**
-Carrier APIs are poll, which is exactly `CarrierTracking.poll(reference)`.
+Carrier APIs are poll, which is exactly `CarrierTracking.poll`.
+
+#### Built — `adapters/dcsa-tracking.ts`, `workers/carrier-poll.ts`
+
+The adapter covers Maersk, Hapag-Lloyd and CMA CGM behind one profile table;
+per-carrier auth is the only difference between them, as predicted. What the
+build changed against this section:
+
+- **The port takes a query, not a string.** DCSA has three parameters —
+  `carrierBookingReference`, `transportDocumentReference`, `equipmentReference`
+  — so `poll(reference: string)` could not say which kind of reference it held.
+  `TrackingQuery` carries the type and the SCAC.
+- **The SCAC is reference data.** `partners.scac` (0019), edited by an
+  administrator on the carrier's partner record. Without it the poll has no way
+  to know which carrier answers for a shipment; with an aggregator you pay for
+  that resolution.
+- **`eventClassifierCode` is the field that matters most.** `EST`/`PLN` are
+  estimates and must never reach `job_milestones.actual_at`; they land on
+  `jobs.eta`/`etd` instead, which turns out to deliver the *other* thing
+  operations refreshes a carrier website for.
+- **Transhipment needed a rule.** A box through Jebel Ali is discharged twice.
+  First-for-origin, last-for-destination, decided on timestamps rather than on
+  `transportCallSequenceNumber` — which is one of the fields the three
+  implementations populate differently.
+
+`pnpm --filter @qabandi/service verify:tracking <SCAC> <reference>` asks a live
+carrier and prints what came back — the check to run when a key is first
+issued, and the one that distinguishes a wrong key from a wrong reference.
+
+**Verification status:** the event model and the translation are tested
+(`dcsa-events.test.ts`, 13 assertions) and the request construction is tested
+against a stubbed transport (`dcsa-tracking.test.ts`, 12). The **hosts and
+paths are Documented, not Verified** — no live carrier key has been run from
+this repository. Each carrier's base URL is therefore overridable by
+environment, so a sandbox host or a moved path is configuration rather than a
+release.
 
 ### 2.5 The licence question — answered, and it fits our model
 
@@ -163,7 +198,8 @@ their credentials for their own cargo.**
 | Each operator registers; our software acts on their behalf | **Yes** — literally what the clause describes |
 
 This maps exactly onto deployment-per-customer, where
-`CARRIER_TRACKING_API_KEY` is already per-deployment configuration. It also
+`DCSA_MAERSK_CONSUMER_KEY` and its siblings are per-deployment configuration
+and this repository holds none of them. It also
 inverts the Terminal49 objection: with carrier-direct the customer already has
 the carrier relationship commercially, so nobody new is inserted.
 

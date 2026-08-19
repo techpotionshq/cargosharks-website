@@ -1,0 +1,165 @@
+/**
+ * Writing one carrier milestone onto one job — shared by both feeds.
+ *
+ * There are two ways a carrier milestone reaches this system and they meet
+ * here. An aggregator *pushes* (`carrier-event.ts`, a webhook); the carriers
+ * themselves *answer when asked* (`carrier-poll.ts`, a schedule). The half
+ * that differs is attribution — which job this is about — and the half that
+ * must not differ is what happens next: template lookup, upsert, and the rule
+ * about not overruling a person.
+ *
+ * They did differ, for exactly as long as this was one copy in the webhook
+ * worker. A second copy in the poll worker would have had its own answer to
+ * "does the feed overwrite a hand-entered date", and the two answers would
+ * have been indistinguishable on the board until somebody disputed a demurrage
+ * figure and found the two paths disagreed about a discharge.
+ */
+
+import { and, eq, isNull, or, sql } from 'drizzle-orm'
+import { jobMilestones, jobs, milestoneTemplates, type Tx } from '@qabandi/db'
+import type { CarrierMilestone } from '../ports/index'
+
+/** As much of a job as writing a milestone needs. */
+export interface MilestoneTarget {
+  readonly id: string
+  readonly reference: string
+  /*
+    The column's own type rather than `string`.
+
+    Milestone templates are per mode, so this value is half of the lookup
+    below. Widening it to `string` would let a caller pass a mode that does not
+    exist, find no template, and be told "no template for this mode" — a
+    truthful message about an impossible situation, and a day to work out why.
+  */
+  readonly mode: (typeof jobs.$inferSelect)['mode']
+}
+
+export interface MilestoneWrite {
+  readonly status: 'written' | 'preserved' | 'ignored'
+  readonly code: string
+  readonly reason?: string
+}
+
+/**
+ * Put a carrier's milestone on a job, or explain why it was not put there.
+ *
+ * `source` names the feed in `job_milestones.notes`, and it is load-bearing
+ * rather than decorative: the `setWhere` guard below reads it back to tell a
+ * row this system wrote from a row a person wrote, so the prefix is what stops
+ * a feed from silently correcting an operator. **It must keep starting with
+ * `Carrier feed`** — the poll worker appends the carrier's SCAC after it, so
+ * the note says who said so without breaking the guard.
+ */
+export async function writeCarrierMilestone(
+  tx: Tx,
+  job: MilestoneTarget,
+  milestone: CarrierMilestone,
+  source = 'Carrier feed',
+): Promise<MilestoneWrite> {
+  /*
+    Names come from the milestone template for this mode.
+
+    `job_milestones.name_en` and `name_ar` are `not null` because every
+    document and board renders bilingually (§11). A carrier feed supplies a
+    code and a date, never an Arabic name — so the template is what makes an
+    automatically-created milestone indistinguishable from a hand-entered one,
+    which is the point.
+  */
+  const [template] = await tx
+    .select({
+      nameEn: milestoneTemplates.nameEn,
+      nameAr: milestoneTemplates.nameAr,
+      seq: milestoneTemplates.seq,
+      ownerRole: milestoneTemplates.ownerRole,
+      customerVisible: milestoneTemplates.customerVisible,
+    })
+    .from(milestoneTemplates)
+    .where(
+      and(
+        eq(milestoneTemplates.code, milestone.code),
+        eq(milestoneTemplates.mode, job.mode),
+        eq(milestoneTemplates.isActive, true),
+      ),
+    )
+    .limit(1)
+
+  if (!template) {
+    /*
+      A code with no template for this mode is not written.
+
+      The board, the SLA clocks and the customer portal are all driven by the
+      template — sequence, ownership, visibility. A milestone without one would
+      appear out of order, belong to nobody, and be visible to a customer by
+      whichever default the column carries.
+    */
+    return {
+      status: 'ignored',
+      code: milestone.code,
+      reason: `no ${job.mode} template for ${milestone.code}`,
+    }
+  }
+
+  const notes = milestone.location ? `${source} · ${milestone.location}` : source
+
+  const written = await tx
+    .insert(jobMilestones)
+    .values({
+      jobId: job.id,
+      code: milestone.code,
+      nameEn: template.nameEn,
+      nameAr: template.nameAr,
+      seq: template.seq,
+      ownerRole: template.ownerRole,
+      customerVisible: template.customerVisible,
+      actualAt: milestone.occurredAt,
+      notes,
+    })
+    /*
+      An upsert, not an insert.
+
+      `job_milestones_unique` is `(job_id, code)`. Providers redeliver, a poll
+      re-reads the same event every hour, and carriers correct their own
+      timestamps hours later — so an event that arrives twice must update the
+      date it carries rather than fail or duplicate. Idempotency comes from the
+      schema rather than from remembering to check first, which is what makes
+      an hourly poll safe to run at all.
+    */
+    .onConflictDoUpdate({
+      target: [jobMilestones.jobId, jobMilestones.code],
+      set: { actualAt: milestone.occurredAt, notes: sql`excluded.notes` },
+      /*
+        A hand-entered completion is not overwritten by a later feed.
+
+        An operator who marked a milestone complete did so with information the
+        carrier may not have — a phone call from the terminal — and having the
+        feed silently move that date hours later would make the board argue
+        with the person reading it. The feed fills gaps and corrects its *own*
+        dates; it does not overrule a human.
+      */
+      setWhere: or(
+        isNull(jobMilestones.actualAt),
+        sql`${jobMilestones.notes} like 'Carrier feed%'`,
+      ),
+    })
+    /*
+      `returning` is how we learn whether the guard above fired.
+
+      `on conflict do update ... where` returns no row when its condition
+      fails, so an empty result means the milestone was left as a human entered
+      it. Without this the worker logged "written" for an event that changed
+      nothing — and the log is what somebody reads at 2am when a customer asks
+      why a discharge date moved. Reporting the wrong outcome is worse than
+      reporting none.
+    */
+    .returning({ id: jobMilestones.id })
+
+  if (written.length === 0) {
+    return {
+      status: 'preserved',
+      code: milestone.code,
+      reason: 'a hand-entered completion already stands here',
+    }
+  }
+
+  return { status: 'written', code: milestone.code }
+}

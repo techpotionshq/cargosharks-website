@@ -94,10 +94,31 @@ export interface CarrierMilestone {
   readonly location?: string
 }
 
+/**
+ * What to ask a carrier about.
+ *
+ * A bare string was the original shape and it is not enough to ask a carrier
+ * with. DCSA takes three *different* query parameters —
+ * `carrierBookingReference`, `transportDocumentReference`, `equipmentReference`
+ * — so a caller that hands over `MRKU1234567` has told the adapter nothing
+ * about whether that is a container or a bill, and guessing from the format is
+ * a rule that breaks on the first carrier who numbers differently.
+ *
+ * `scac` is which carrier to ask. An aggregator resolves it for you and
+ * charges for the privilege; going carrier-direct means the deployment holds
+ * that fact, which is `partners.scac` on the job's carrier.
+ */
+export interface TrackingQuery {
+  readonly reference: string
+  readonly type: 'bill_of_lading' | 'booking_number' | 'container'
+  /** The carrier's SCAC — `MAEU`, `HLCU`, `CMDU`. */
+  readonly scac?: string
+}
+
 /** R1: milestones are entered by hand. R2 plugs a provider in behind this. */
 export interface CarrierTracking {
   readonly key: string
-  poll(reference: string): Promise<CarrierMilestone[]>
+  poll(query: TrackingQuery): Promise<CarrierMilestone[]>
 }
 
 export interface CustomsDeclaration {

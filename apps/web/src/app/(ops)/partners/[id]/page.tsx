@@ -22,10 +22,7 @@ import { getPartnerDetail } from '@/features/network/queries'
 import { PartnerDialog } from '@/features/network/ui/dialogs'
 import { getPartnerAccount } from '@/features/payables/queries'
 import { PartnerAccountCard } from '@/features/payables/ui/panels'
-import {
-  PartnerAccountDialog,
-  PartnerToleranceDialog,
-} from '@/features/payables/ui/dialogs'
+import { PartnerAccountDialog, PartnerToleranceDialog } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatNumber } from '@/lib/format'
 import { Icon } from '@/ui/icon'
@@ -95,6 +92,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 countryCode: partner.countryCode,
                 currency: partner.currency,
                 paymentTermsDays: partner.paymentTermsDays,
+                scac: partner.scac,
                 isActive: partner.isActive,
               }}
             />

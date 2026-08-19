@@ -310,6 +310,15 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       with either ledger.
     */
     'settlement.run',
+    /*
+      Finance holds the credit exception because finance holds the ageing.
+
+      Shared with the operations manager below rather than owned here: the
+      person who releases the container is as often the one who answers for the
+      relationship as the one who answers for the balance, and a check only one
+      of them can clear is a check that gets routed around at 4pm.
+    */
+    'credit.override',
     'report.read',
     'job.read',
   ],
@@ -324,6 +333,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       that swallows the data it was meant to structure.
     */
     'admin.reference.write',
+    'credit.override',
     'enquiry.assign',
     'enquiry.cancel',
     'enquiry.close',

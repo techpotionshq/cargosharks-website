@@ -23,7 +23,9 @@
 
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
+  SEED_CHARGEABLE_RULES,
   SEED_CURRENCIES,
+  chargeableWeight,
   customsValue as computeCustomsValue,
   estimateDuty,
   type CurrencySpec,
@@ -55,6 +57,7 @@ import {
   type JobDocumentView,
   type PartyView,
 } from './document-kit'
+import { renderAirWaybillHtml } from './air-waybill'
 import { renderBillOfLadingHtml } from './bill-of-lading'
 import { renderDeliveryOrderHtml } from './delivery-order'
 import { renderPackingListHtml } from './packing-list'
@@ -111,6 +114,7 @@ export async function loadJobDocumentView(
         vesselName: jobs.vesselName,
         voyageNumber: jobs.voyageNumber,
         flightNumber: jobs.flightNumber,
+        chargeableWeightKg: jobs.chargeableWeightKg,
         etd: jobs.etd,
         eta: jobs.eta,
         originId: jobs.originId,
@@ -181,10 +185,38 @@ export async function loadJobDocumentView(
       truth, free to drift the moment somebody adds the line.
     */
     const freightRevenue = await tx
-      .select({ id: chargeLines.id })
+      .select({ id: chargeLines.id, currency: chargeLines.currency })
       .from(chargeLines)
       .where(and(eq(chargeLines.jobId, jobId), eq(chargeLines.direction, 'revenue')))
       .limit(1)
+
+    /*
+      Chargeable weight, from the job where it was rated and from the cargo
+      where it was not.
+
+      `jobs.chargeable_weight_kg` is the number the rate was applied against,
+      so it wins whenever it is present — an air waybill that prints a
+      different weight from the invoice beside it is a dispute waiting for
+      somebody to notice. Where it is null the cargo is the only source there
+      is, and deriving it here beats printing a blank box on a document whose
+      whole purpose is to state that number.
+
+      The divisor comes from the seeded rule rather than a literal 6000: an
+      airline that moves to a 5000 divisor is an admin edit (FR-AD-03), and a
+      waybill computing its own is a waybill that disagrees with the rating
+      engine the day after that edit.
+    */
+    const rule = SEED_CHARGEABLE_RULES.find((r) => r.mode === row.mode)
+    const derived =
+      rule && cargo.length > 0
+        ? chargeableWeight(
+            {
+              grossWeightKg: cargo.reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0),
+              volumeCbm: cargo.reduce((acc, c) => acc + Number(c.volumeCbm ?? 0), 0),
+            },
+            rule,
+          )
+        : null
 
     return {
       reference: row.reference,
@@ -251,6 +283,12 @@ export async function loadJobDocumentView(
       issuedAt: new Date(),
       placeOfIssue: row.branchCode,
       freightTerm: freightRevenue.length > 0 ? 'prepaid' : 'collect',
+      chargeableWeightKg: row.chargeableWeightKg ?? derived?.chargeableKg.toString() ?? null,
+      // The basis only describes the derived figure. A stored weight was rated
+      // by the engine and this layer does not know which side of it won, so it
+      // says nothing rather than guessing a rate class from a number.
+      chargeableBasis: row.chargeableWeightKg ? null : (derived?.basis ?? null),
+      currency: freightRevenue[0]?.currency ?? null,
     }
   })
 }
@@ -546,7 +584,17 @@ export async function renderJobDocumentPdf(
 
   const identifier =
     kind === 'house_bill' ? (view.houseBillNumber ?? view.reference) : view.reference
-  const stem = `${identifier.replace(/[^A-Za-z0-9._-]/g, '-')}-${kind}`
+
+  /*
+    The file is named for the document, not for the kind that produced it.
+
+    `house_bill` is the stable key and it stays the key — it is what
+    `documents.generated_from` records. But an operator filing an air shipment
+    is looking for an air waybill, and a folder of `-house_bill.pdf` files for
+    air jobs is a folder nobody can search.
+  */
+  const label = kind === 'house_bill' && view.mode === 'air' ? 'air_waybill' : kind
+  const stem = `${identifier.replace(/[^A-Za-z0-9._-]/g, '-')}-${label}`
 
   return { pdf, filename: `${stem}-${locale}.pdf`, html }
 }
@@ -557,8 +605,19 @@ function renderJobHtml(
   locale: DocumentLocale,
 ): string {
   switch (kind) {
+    /*
+      One kind, two documents, decided by the mode.
+
+      A job has one house bill number from one series, so offering a bill of
+      lading *and* an air waybill as separate kinds would let an operator issue
+      both against the same number — two documents each claiming to be the
+      contract of carriage for the shipment. The mode already decides which one
+      the shipment can have, so it decides here.
+    */
     case 'house_bill':
-      return renderBillOfLadingHtml(view, locale)
+      return view.mode === 'air'
+        ? renderAirWaybillHtml(view, locale)
+        : renderBillOfLadingHtml(view, locale)
     case 'delivery_order':
       return renderDeliveryOrderHtml(view, locale)
     case 'packing_list':

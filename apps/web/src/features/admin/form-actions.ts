@@ -19,7 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   branches,
@@ -128,19 +128,34 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
           })
           .where(eq(principals.id, principalId))
       } else {
-        const [row] = await tx
-          .insert(principals)
-          .values({
-            type: 'internal',
-            nameEn: data.nameEn,
-            nameAr: data.nameAr,
-            email: data.email,
-            phone: data.phone,
-            locale: data.locale,
-            isActive: data.isActive,
-          })
-          .returning({ id: principals.id })
-        principalId = row!.id
+        /*
+          The id is asked for *before* the insert, not returned by it.
+
+          `returning` makes PostgreSQL apply the SELECT policy to the new row,
+          and a principal is only visible through a `principal_branch_roles`
+          row joining them to a branch the reader works in (§5.3). That grant
+          is written three statements below and cannot be written first — it
+          references the principal. So `insert … returning` asked to read back
+          a row that is not yet visible to anybody, and every invitation failed
+          on the read rather than on the write.
+
+          `uuidv7()` from the database rather than a uuid generated here, so
+          the key keeps the time-ordering every other primary key in the schema
+          has (§6.4).
+        */
+        const generated = await tx.execute(sql`select uuidv7() as id`)
+        principalId = (generated.rows[0] as { id: string }).id
+
+        await tx.insert(principals).values({
+          id: principalId,
+          type: 'internal',
+          nameEn: data.nameEn,
+          nameAr: data.nameAr,
+          email: data.email,
+          phone: data.phone,
+          locale: data.locale,
+          isActive: data.isActive,
+        })
       }
 
       /**

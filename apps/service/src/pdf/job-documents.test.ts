@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
+import { renderAirWaybillHtml } from './air-waybill'
 import { renderBillOfLadingHtml } from './bill-of-lading'
 import { renderDeliveryOrderHtml } from './delivery-order'
 import { renderPackingListHtml } from './packing-list'
@@ -119,6 +120,9 @@ const base: JobDocumentView = {
   issuedAt: new Date('2026-06-02T07:30:00Z'),
   placeOfIssue: 'KWI',
   freightTerm: 'prepaid',
+  chargeableWeightKg: null,
+  chargeableBasis: null,
+  currency: 'USD',
 }
 
 const view = (patch: Partial<JobDocumentView>): JobDocumentView => ({ ...base, ...patch })
@@ -172,16 +176,6 @@ describe('house bill of lading', () => {
     expect(renderBillOfLadingHtml(view({ freightTerm: 'collect' }), 'en')).toContain('Collect')
   })
 
-  it('becomes an air waybill in air mode and shows the flight, not the vessel', () => {
-    const html = renderBillOfLadingHtml(
-      view({ mode: 'air', flightNumber: 'KU 172', vesselName: null, voyageNumber: null }),
-      'en',
-    )
-    expect(html).toContain('House Air Waybill')
-    expect(html).toContain('KU 172')
-    expect(html).not.toContain('MSC ISTANBUL')
-  })
-
   it('renders Arabic right to left with the Arabic party names', () => {
     const html = renderBillOfLadingHtml(base, 'ar')
     expect(html).toContain('dir="rtl"')
@@ -212,6 +206,126 @@ describe('house bill of lading', () => {
     expect(renderBillOfLadingHtml(base, 'en')).toContain('MSCU7654321 / 40HC / SL-441982')
   })
 })
+
+describe('house air waybill', () => {
+  const air = (patch: Partial<JobDocumentView> = {}): JobDocumentView =>
+    view({
+      mode: 'air',
+      vesselName: null,
+      voyageNumber: null,
+      flightNumber: 'KU 172',
+      chargeableWeightKg: '2100.000',
+      ...patch,
+    })
+
+  it('is the document a job in air mode gets, not a retitled bill of lading', () => {
+    const html = renderAirWaybillHtml(air(), 'en')
+    expect(html).toContain('House Air Waybill')
+    expect(html).toContain('KU 172')
+    expect(html).not.toContain('MSC ISTANBUL')
+    expect(html).not.toContain('said to contain')
+  })
+
+  it('states on its face that it is not negotiable', () => {
+    // The whole difference from a bill of lading. A consignee who believes an
+    // air waybill is a document of title believes something that will not hold.
+    expect(renderAirWaybillHtml(air(), 'en')).toContain('Not negotiable')
+  })
+
+  it('refuses to consign to order, and says why', () => {
+    // The ocean template defaults a missing consignee to TO ORDER. Carried onto
+    // a waybill that names a party no handling agent can release to.
+    const html = renderAirWaybillHtml(
+      air({
+        parties: base.parties.map((p) =>
+          p.role === 'consignee' ? { ...p, nameEn: 'TO ORDER' } : p,
+        ),
+      }),
+      'en',
+    )
+    expect(html).toContain('cannot be consigned to order')
+  })
+
+  it('names the consignee box rather than leaving it blank when there is none', () => {
+    const html = renderAirWaybillHtml(
+      air({ parties: base.parties.filter((p) => p.role !== 'consignee') }),
+      'en',
+    )
+    expect(html).toContain('CONSIGNEE REQUIRED')
+  })
+
+  it('prints the chargeable weight it was given, not a weight it recomputed', () => {
+    expect(renderAirWaybillHtml(air(), 'en')).toContain('2,100')
+  })
+
+  it('carries the Montreal limitation notice, because the cap depends on it', () => {
+    const html = renderAirWaybillHtml(air(), 'en')
+    expect(html).toContain('22 SDR per kilogramme')
+    expect(html).toContain('CONDITIONS OF CONTRACT')
+  })
+
+  it('declares NVD, NCV and XXX rather than leaving the value boxes empty', () => {
+    const html = renderAirWaybillHtml(air(), 'en')
+    expect(html).toContain('NVD')
+    expect(html).toContain('NCV')
+    expect(html).toContain('XXX')
+  })
+
+  it('withholds the rate, because original 2 is handed to the consignee', () => {
+    const html = renderAirWaybillHtml(air(), 'en')
+    expect(html).toContain('AS AGREED')
+  })
+
+  it('allocates the three originals rather than counting them', () => {
+    const html = renderAirWaybillHtml(air(), 'en')
+    expect(html).toContain('Original 1 — for issuing carrier')
+    expect(html).toContain('Original 2 — for consignee, travels with the goods')
+    expect(html).toContain('Original 3 — for shipper')
+  })
+
+  it('rates a minimum-weight consignment M and everything else Q', () => {
+    expect(renderAirWaybillHtml(air({ chargeableBasis: 'minimum' }), 'en')).toMatch(/>M</)
+    expect(renderAirWaybillHtml(air({ chargeableBasis: 'volumetric' }), 'en')).toMatch(/>Q</)
+  })
+
+  it('marks the charge in the column the freight term puts it in', () => {
+    expect(renderAirWaybillHtml(air(), 'en')).toContain('>PP<')
+    expect(renderAirWaybillHtml(air({ freightTerm: 'collect' }), 'en')).toContain('>CC<')
+  })
+
+  it('watermarks an unnumbered waybill', () => {
+    expect(renderAirWaybillHtml(air({ houseBillNumber: null }), 'en')).toContain(
+      'DRAFT — not a valid air waybill',
+    )
+  })
+
+  it('isolates the phone number so Arabic does not reverse it', () => {
+    // Caught by looking at a rendered Arabic waybill: +965 2222 0000 printed
+    // as 0000 2222 965+. Every character present, the number unusable.
+    const html = renderAirWaybillHtml(air(), 'ar')
+    expect(html).toContain('<span dir="ltr">+86 21 5555 0100</span>')
+    expect(html).toContain('<span dir="ltr">MSCU1234567</span>')
+  })
+
+  it('renders Arabic right to left', () => {
+    const html = renderAirWaybillHtml(air(), 'ar')
+    expect(html).toContain('dir="rtl"')
+    expect(html).toContain('بوليصة شحن جوي فرعية')
+    expect(html).toContain('غير قابلة للتداول')
+  })
+
+  it('escapes markup in a shipper-supplied description', () => {
+    const html = renderAirWaybillHtml(
+      air({
+        cargo: [{ ...base.cargo[0], descriptionEn: '<script>alert(1)</script>' } as CargoView],
+      }),
+      'en',
+    )
+    expect(html).not.toContain('<script>')
+    expect(html).toContain('&lt;script&gt;')
+  })
+})
+
 
 describe('delivery order', () => {
   it('states the release conditions every time', () => {

@@ -21,6 +21,7 @@ export * from './netting'
 export * from './settlement'
 export * from './duty'
 export * from './clocks'
+export * from './credit'
 export * from './states'
 export * from './notifications'
 

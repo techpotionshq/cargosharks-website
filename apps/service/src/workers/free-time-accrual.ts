@@ -12,18 +12,17 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm'
-import { accrue, dec, toDb, type ClockConfig, type WorkingCalendar } from '@qabandi/core'
+import { accrue, dec, toDb, type ClockConfig } from '@qabandi/core'
 import {
   branches,
-  calendarHolidays,
   chargeLines,
   chargeTypes,
   freeTimeClocks,
   jobs,
   systemActor,
   withActor,
-  workingCalendars,
 } from '@qabandi/db'
+import { loadCalendars } from './calendars'
 
 export async function runFreeTimeAccrual(
   asOf = new Date(),
@@ -134,38 +133,4 @@ export async function runFreeTimeAccrual(
 
     return { clocks: open.length, lines }
   })
-}
-
-/** Every branch's calendar, loaded once rather than per clock. */
-async function loadCalendars(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tx: any,
-): Promise<Map<string, WorkingCalendar>> {
-  const rows = await tx.select().from(workingCalendars)
-  const holidays = await tx.select().from(calendarHolidays)
-
-  const byCalendar = new Map<string, Set<string>>()
-  for (const h of holidays as { calendarId: string; onDate: string }[]) {
-    const set = byCalendar.get(h.calendarId) ?? new Set<string>()
-    set.add(h.onDate)
-    byCalendar.set(h.calendarId, set)
-  }
-
-  const map = new Map<string, WorkingCalendar>()
-  for (const row of rows as {
-    id: string
-    timeZone: string
-    weekend: number[]
-    dayStartMinute: number
-    dayEndMinute: number
-  }[]) {
-    map.set(row.id, {
-      id: row.id,
-      timeZone: row.timeZone,
-      weekend: row.weekend as WorkingCalendar['weekend'],
-      holidays: byCalendar.get(row.id) ?? new Set(),
-      hours: { startMinute: row.dayStartMinute, endMinute: row.dayEndMinute },
-    })
-  }
-  return map
 }

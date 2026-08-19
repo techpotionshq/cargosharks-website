@@ -486,11 +486,13 @@ Seven interfaces in the entire system. Each has a real first implementation toda
 | `FileStore` | Supabase Storage | S3 | pilot → R1 move |
 | `AuthProvider` | Better Auth | replaceable | `§8` |
 | `FxRateSource` | daily feed + manual override | provider change | `§8` |
-| `CarrierTracking` | manual milestone entry | tracking provider | `§8`, R2 |
+| `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) · aggregator | `§8`, R2 |
 | `CustomsFiling` | manual reference capture | Kuwait Single Window | `§8`, R2 |
 | `EInvoiceTransmit` | compliant data, no transmission | accredited provider | `§8`, R2 |
 
 The last three are not speculative: R1 has a genuine first implementation (manual capture), and `SRS §8` states the intent that R2's connection be *"a plug, not a rebuild."* Everything else in the system is concrete.
+
+`CarrierTracking` is the first of the three to have the plug fitted, and it is the argument for the rule. Three implementations now sit behind it — manual entry, an aggregator that pushes, and the carriers themselves answering a poll — and adding the third changed one signature (`poll` takes a query rather than a bare string, because DCSA has three reference parameters and a string cannot say which one it is). Nothing outside `adapters/` and the two workers knows which of the three a deployment runs.
 
 **Outbound public surfaces:** the read-only REST API (`FR-AD-05`) and webhooks (`FR-AD-06`) are served from `apps/service`, share the Zod schemas generated from the Drizzle tables, and are versioned from day one.
 

@@ -26,6 +26,15 @@
  * the carrier releases against *any one* of them and the other two become
  * void. A bill that does not say how many originals exist cannot be safely
  * surrendered.
+ *
+ * ## Ocean only
+ *
+ * This template used to serve air as well, by retitling itself and swapping
+ * the vessel box for a flight number. That was wrong in the way a document is
+ * wrong rather than the way code is: an air waybill is not a document of
+ * title, cannot be consigned to order, and limits liability by a notice this
+ * page does not carry. `air-waybill.ts` is the real one and `job-documents.ts`
+ * routes to it on mode.
  */
 
 import {
@@ -48,13 +57,11 @@ import {
 const STRINGS = {
   en: {
     title: 'House Bill of Lading',
-    airTitle: 'House Air Waybill',
     shipper: 'Shipper / Exporter',
     consignee: 'Consignee',
     notify: 'Notify party',
     agent: 'Delivery agent',
     carrier: 'Vessel / Voyage',
-    flight: 'Flight',
     portLoad: 'Port of loading',
     portDischarge: 'Port of discharge',
     booking: 'Booking',
@@ -84,13 +91,11 @@ const STRINGS = {
   },
   ar: {
     title: 'بوليصة شحن فرعية',
-    airTitle: 'بوليصة شحن جوي فرعية',
     shipper: 'الشاحن / المصدّر',
     consignee: 'المرسل إليه',
     notify: 'الطرف المُخطَر',
     agent: 'وكيل التسليم',
     carrier: 'الباخرة / الرحلة',
-    flight: 'رقم الرحلة',
     portLoad: 'ميناء الشحن',
     portDischarge: 'ميناء التفريغ',
     booking: 'رقم الحجز',
@@ -129,7 +134,6 @@ export function renderBillOfLadingHtml(
   options: BillOfLadingOptions = {},
 ): string {
   const t = STRINGS[locale]
-  const air = view.mode === 'air'
   const originals = options.originals ?? 3
   const totals = cargoTotals(view.cargo)
 
@@ -175,7 +179,7 @@ export function renderBillOfLadingHtml(
     `
 ${draft}
 
-${letterhead(view, air ? t.airTitle : t.title, view.houseBillNumber ?? view.reference, locale)}
+${letterhead(view, t.title, view.houseBillNumber ?? view.reference, locale)}
 
 <div class="grid">
   ${partyBlock(shipper, t.shipper, locale, view.customer.nameEn)}
@@ -185,7 +189,7 @@ ${letterhead(view, air ? t.airTitle : t.title, view.houseBillNumber ?? view.refe
 </div>
 
 <div class="row" style="margin-top:4mm">
-  ${field(air ? t.flight : t.carrier, esc(air ? (view.flightNumber ?? '—') : [view.vesselName, view.voyageNumber].filter(Boolean).join(' / ') || '—'))}
+  ${field(t.carrier, esc([view.vesselName, view.voyageNumber].filter(Boolean).join(' / ') || '—'))}
   ${field(t.portLoad, place(view.origin))}
   ${field(t.portDischarge, place(view.destination))}
   ${field(t.booking, esc(view.bookingNumber ?? '—'))}

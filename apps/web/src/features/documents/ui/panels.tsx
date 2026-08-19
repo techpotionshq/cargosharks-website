@@ -208,11 +208,21 @@ const KINDS = ['house_bill', 'delivery_order', 'packing_list', 'customs_pack'] a
 export async function DocumentActionsCard({
   jobId,
   hasCargo,
+  mode,
   dutyAction,
   className,
 }: {
   readonly jobId: string
   readonly hasCargo: boolean
+  /**
+   * The shipment's mode, for the label only.
+   *
+   * `house_bill` is one kind producing two documents — a bill of lading by sea
+   * and an air waybill by air, decided in the service by the same mode. The
+   * key stays `house_bill` everywhere it is stored; this only stops the button
+   * offering an air customer a bill of lading they will never receive.
+   */
+  readonly mode: string
   /**
    * The duty estimate, passed in rather than imported.
    *
@@ -245,6 +255,7 @@ export async function DocumentActionsCard({
             it stands for is two segments further on.
           */
           const preview = `/api/jobs/${jobId}/documents/${kind}`
+          const label = kind === 'house_bill' && mode === 'air' ? 'air_waybill' : kind
           return (
           <li
             key={kind}
@@ -252,10 +263,10 @@ export async function DocumentActionsCard({
           >
             <div className="min-w-0">
               <span className="block text-[0.875rem] font-medium text-ink">
-                {t(`kinds.${kind}` as 'kinds.house_bill')}
+                {t(`kinds.${label}` as 'kinds.house_bill')}
               </span>
               <span className="block text-[0.6875rem] text-ink-subtle">
-                {t(`hints.${kind}` as 'hints.house_bill')}
+                {t(`hints.${label}` as 'hints.house_bill')}
               </span>
             </div>
 

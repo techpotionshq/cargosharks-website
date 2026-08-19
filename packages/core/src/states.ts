@@ -378,6 +378,22 @@ export const ADMIN_PERMISSIONS = [
     people who answer for the margin.
   */
   'settlement.run',
+  /*
+    Letting a customer trade past their credit limit.
+
+    Its own key, and not `customer.write`, which is the one that would
+    otherwise carry it. `customer.write` is master-data maintenance — a
+    coordinator correcting an address holds it — and folding the credit
+    exception into it would mean the person who can fix a phone number can
+    release a shipment for a customer who is 40,000 down. The whole mechanism
+    exists to make that a decision somebody owns, so the key has to be one
+    somebody is deliberately given.
+
+    Not finance's either, or not only. The manager who releases the container
+    is the one who answers for the relationship, and in a five-branch forwarder
+    that is the branch and operations manager as often as the accountant.
+  */
+  'credit.override',
 ] as const
 
 /**

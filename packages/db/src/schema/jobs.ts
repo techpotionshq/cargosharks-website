@@ -481,11 +481,24 @@ export const freeTimeClocks = pgTable(
     accruedAmount: amount('accrued_amount'),
     lastAccruedAt: tsz('last_accrued_at'),
     chargeLineId: ref('charge_line_id'),
+    /**
+     * When the operator was told this clock was about to start charging.
+     *
+     * The accrual beside it bills demurrage the night *after* it is incurred,
+     * which is accounting. This column exists for the other direction: the
+     * days before expiry are the only ones anybody can act on, and a container
+     * moved on day four costs nothing. Set once — `escalated_at` on enquiries
+     * is the same idea for the same reason, that a warning which repeats every
+     * night is a warning that gets filtered out of an inbox.
+     */
+    warnedAt: tsz('warned_at'),
     ...timestamps,
   },
   (t) => [
     index('free_time_clocks_open_idx').on(t.endsOn, t.kind),
     index('free_time_clocks_job_idx').on(t.jobId),
+    // The warning worker's whole query: open, unwarned, oldest first.
+    index('free_time_clocks_unwarned_idx').on(t.warnedAt, t.endsOn),
   ],
 )
 
@@ -561,6 +574,109 @@ export const documents = pgTable(
   ],
 )
 
+/**
+ * Proof of delivery — the artefact that settles "we never received it".
+ *
+ * Everything else on a job records what *we* did. This records what the
+ * consignee did, and it is the only row in the schema whose primary audience
+ * is a dispute six months later. Three things make it evidence rather than a
+ * note, and all three are columns because a convention would be forgotten on
+ * the delivery that matters:
+ *
+ * **A name, typed by the person who signed.** Not the consignee on the
+ * waybill — the individual at the door. "Received by the consignee" settles
+ * nothing; "received by M. Haddad, civil ID ending 4471" settles it.
+ *
+ * **A signature and photographs, stored as assets.** The bytes live in object
+ * storage behind `FileStore` like every other file; what makes them evidence
+ * is that they are pinned to a delivery instant that a trigger stamps.
+ *
+ * **Where the device was.** Nullable, deliberately — a driver may refuse
+ * location permission and the delivery still happened. A null coordinate is an
+ * honest "not captured"; a zero would be the Gulf of Guinea.
+ *
+ * `superseded_by_id` rather than an update, because a corrected POD and the
+ * one that was corrected are both facts, and the second is the one somebody
+ * will ask about (§5.5).
+ */
+export const proofOfDelivery = pgTable(
+  'proof_of_delivery',
+  {
+    id: pk(),
+    jobId: ref('job_id')
+      .notNull()
+      .references(() => jobs.id),
+    /**
+     * Which part of the shipment was handed over.
+     *
+     * Null means all of it, which is the common case. A part delivery names
+     * the container so three PODs on one job do not have to be told apart by
+     * their timestamps.
+     */
+    equipmentId: ref('equipment_id').references(() => equipment.id),
+    /** When the cargo changed hands, not when the form was submitted. */
+    deliveredAt: tsz('delivered_at').notNull(),
+    receivedByName: text('received_by_name').notNull(),
+    /** Civil ID, passport or company stamp reference — free text, as given. */
+    receivedByIdNumber: text('received_by_id_number'),
+    signatureAssetId: ref('signature_asset_id').references(() => assets.id),
+    latitude: quantity('latitude'),
+    longitude: quantity('longitude'),
+    /** Metres. A 2,000 m fix on a delivery is a fix worth distrusting. */
+    accuracyMetres: quantity('accuracy_metres'),
+    /**
+     * Delivered short, damaged or refused.
+     *
+     * A POD with an exception is still a POD — the cargo moved and somebody
+     * signed. Recording the exception here rather than refusing the capture is
+     * what stops a driver abandoning the form and reporting it by WhatsApp.
+     */
+    hasException: boolean('has_exception').notNull().default(false),
+    exceptionNotes: text('exception_notes'),
+    notes: text('notes'),
+    capturedById: ref('captured_by_id').references(() => principals.id),
+    /**
+     * A POD is for the customer by default — it is the thing they ask for.
+     *
+     * The flag exists because `job_milestones` and `exceptions` carry one and
+     * the RLS shape reads it; a POD held back is the rare case where the
+     * exception notes name a third party.
+     */
+    customerVisible: boolean('customer_visible').notNull().default(true),
+    supersededById: ref('superseded_by_id'),
+    ...timestamps,
+  },
+  (t) => [
+    index('proof_of_delivery_job_idx').on(t.jobId, t.deliveredAt),
+    index('proof_of_delivery_open_idx').on(t.supersededById),
+  ],
+)
+
+/**
+ * The photographs on a delivery — cargo at the door, damage, the signed paper.
+ *
+ * Its own table rather than an array column on the POD, because each one has a
+ * caption a driver typed and an order somebody chose, and because a photograph
+ * added an hour later is an insert rather than a rewrite of the row that
+ * carries the signature.
+ */
+export const podPhotos = pgTable(
+  'pod_photos',
+  {
+    id: pk(),
+    podId: ref('pod_id')
+      .notNull()
+      .references(() => proofOfDelivery.id),
+    assetId: ref('asset_id')
+      .notNull()
+      .references(() => assets.id),
+    caption: text('caption'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index('pod_photos_pod_idx').on(t.podId, t.sortOrder)],
+)
+
 export type Enquiry = typeof enquiries.$inferSelect
 export type Quote = typeof quotes.$inferSelect
 export type Job = typeof jobs.$inferSelect
@@ -570,3 +686,5 @@ export type FreeTimeClock = typeof freeTimeClocks.$inferSelect
 export type JobParty = typeof jobParties.$inferSelect
 export type JobCargoLine = typeof jobCargo.$inferSelect
 export type DocumentRow = typeof documents.$inferSelect
+export type ProofOfDelivery = typeof proofOfDelivery.$inferSelect
+export type PodPhoto = typeof podPhotos.$inferSelect

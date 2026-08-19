@@ -50,6 +50,8 @@ import {
 } from '@/features/documents/ui/panels'
 import { getJobLedger } from '@/features/costing/queries'
 import { JobLedgerCard } from '@/features/costing/ui/panels'
+import { jobEquipmentOptions, jobProofOfDelivery } from '@/features/pod/queries'
+import { ProofOfDeliveryCard } from '@/features/pod/ui/panels'
 import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
@@ -72,7 +74,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
     for twenty demo shipments. These return empty under fixtures and the
     panels say so.
   */
-  const [parties, cargo, containerOptions, ledger] = await Promise.all([
+  const [parties, cargo, containerOptions, ledger, podRecords, podEquipment] = await Promise.all([
     listJobParties(session.actor, id),
     listJobCargo(session.actor, id),
     listJobContainers(session.actor, id),
@@ -85,6 +87,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       an empty ledger under fixtures and the card says so.
     */
     getJobLedger(session.actor, id),
+    /*
+      Proof of delivery, and the containers it can name.
+
+      Two queries rather than folding the equipment into the first: the picker
+      needs every container on the job, and the delivery records name at most
+      the ones already delivered.
+    */
+    jobProofOfDelivery(session.actor, id),
+    jobEquipmentOptions(session.actor, id),
   ])
 
   const t = await getTranslations('job')
@@ -465,9 +476,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         {/* --- parties, cargo, and what they produce ------------------- */}
         <PartiesCard jobId={id} parties={parties} className="lg:col-span-7" />
 
+        <ProofOfDeliveryCard
+          jobId={id}
+          records={podRecords}
+          equipment={podEquipment}
+          className="lg:col-span-12"
+        />
+
         <DocumentActionsCard
           jobId={id}
           hasCargo={cargo.length > 0}
+          mode={job.mode}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
           className="lg:col-span-5"
         />

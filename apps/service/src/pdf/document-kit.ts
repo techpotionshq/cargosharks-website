@@ -47,6 +47,27 @@ export function escBlock(value: string | null | undefined): string {
   return esc(value).replace(/\r?\n/g, '<br>')
 }
 
+/**
+ * Isolates a run that is left-to-right no matter which way the page runs.
+ *
+ * Found by looking at an Arabic waybill: `+965 2222 0000` printed as
+ * `0000 2222 965+`. It is not a font problem and not our markup — it is the
+ * Unicode bidirectional algorithm doing exactly what it is specified to do.
+ * A telephone number is neutral characters and European digits, and inside an
+ * RTL paragraph the neutrals between them resolve to the paragraph's direction,
+ * so the groups get laid out right to left. The digits within each group keep
+ * their order, which is what makes it so easy to miss: every character is
+ * present and the number is still wrong.
+ *
+ * Anything the reader must be able to dial, quote or type back needs this —
+ * phone numbers, a master air waybill number, a unit that trails a figure.
+ * Money and quantities do not: `Intl.NumberFormat` emits them as a single
+ * run with no neutrals to resolve.
+ */
+export function ltr(value: string): string {
+  return value === '' ? '' : `<span dir="ltr">${value}</span>`
+}
+
 export function formatMoney(value: string, currency: string, locale: DocumentLocale): string {
   return new Intl.NumberFormat(intlLocale(locale), { style: 'currency', currency }).format(
     Number(value),
@@ -158,6 +179,18 @@ export interface JobDocumentView {
   readonly vesselName: string | null
   readonly voyageNumber: string | null
   readonly flightNumber: string | null
+  /**
+   * What the consignment was rated on — the air waybill prints it in its own
+   * box, and it has to be the number that was billed rather than one this
+   * layer recomputed. The loader takes the job's stored figure where there is
+   * one and derives it from the cargo where there is not; either way the
+   * templates print what they are given.
+   */
+  readonly chargeableWeightKg: string | null
+  /** Which side of that calculation won. Decides the waybill's rate class. */
+  readonly chargeableBasis: 'gross' | 'volumetric' | 'minimum' | null
+  /** The currency the charges are in, from the job's own revenue lines. */
+  readonly currency: string | null
   readonly etd: Date | null
   readonly eta: Date | null
   readonly origin: PlaceView | null
@@ -309,8 +342,8 @@ export function partyBlock(
     party.address ? escBlock(party.address) : '',
     [party.city, party.country].filter(Boolean).map(esc).join(', '),
     party.contactName ? esc(party.contactName) : '',
-    [party.phone, party.email].filter(Boolean).map(esc).join(' · '),
-    party.taxId ? esc(party.taxId) : '',
+    [party.phone, party.email].filter(Boolean).map((v) => ltr(esc(v))).join(' · '),
+    party.taxId ? ltr(esc(party.taxId)) : '',
   ].filter((l) => l !== '')
 
   return `<div class="cell">

@@ -14,6 +14,8 @@ import { can } from '@/lib/permissions'
 import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
 import { CustomerForm } from '@/features/customers/ui/customer-form'
+import { creditView } from '@/features/credit/queries'
+import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { trimDecimal } from '@/lib/format'
@@ -53,6 +55,18 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     customerFormLabels(),
   ])
 
+  /*
+    Credit is read for the primary branch, not for all of them.
+
+    A limit is per branch (`customer_branch_terms`), so a customer trading in
+    Kuwait and Doha has two, and summing them would invent a group limit nobody
+    agreed. The card shows the branch this customer belongs to; the terms table
+    above already lists what each branch allows.
+  */
+  const credit = customer.primaryBranchId
+    ? await creditView(session.actor, id, customer.primaryBranchId)
+    : null
+
   const displayName =
     locale === 'ar' && customer.legalNameAr ? customer.legalNameAr : customer.legalNameEn
 
@@ -68,6 +82,15 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </Badge>
         }
       />
+
+      {credit && customer.primaryBranchId ? (
+        <CreditStandingCard
+          view={credit}
+          customerId={id}
+          branchId={customer.primaryBranchId}
+          className="mb-4"
+        />
+      ) : null}
 
       {customer.terms.length > 1 ? (
         <Card className="mb-4" padding="none">

@@ -120,6 +120,24 @@ export const partners = pgTable(
     currency: text('currency').references(() => currencies.code),
     paymentTermsDays: integer('payment_terms_days'),
     /**
+     * The carrier's SCAC — 0019.
+     *
+     * Four letters from the NMFTA register, and the only field that says
+     * *which* carrier's API answers for a shipment. Carrier-direct tracking is
+     * free precisely because the deployment holds its own credentials per
+     * carrier group (`service/adapters/dcsa-tracking.ts`); this is what ties a
+     * job's carrier partner to one of them, and without it the poll worker has
+     * no one to ask.
+     *
+     * Reference data, not code (FR-AD-03): an administrator adds a carrier and
+     * types its SCAC without a release, and the feed starts covering it the
+     * next hour.
+     *
+     * Null for every partner that is not a carrier, and for the carriers that
+     * still publish nothing but EDI.
+     */
+    scac: text('scac'),
+    /**
      * This partner's own tolerance, overriding the charge type's — 0014.
      *
      * Specific beats general with no blending (`core/matching.ts`): an agent
@@ -340,7 +358,80 @@ export const rateRequests = pgTable(
   (t) => [index('rate_requests_enquiry_idx').on(t.enquiryId)],
 )
 
+/**
+ * A credit limit that was exceeded, and who decided to proceed anyway.
+ *
+ * `customer_branch_terms.credit_limit` has existed since the first migration
+ * and nothing has ever read it, which made it a number an administrator typed
+ * into a form that could not affect anything. Enforcing it needs somewhere to
+ * record the exception, because a limit with no override is a limit that gets
+ * raised permanently the first time it blocks an urgent shipment — and then it
+ * is a number an administrator typed into a form that cannot affect anything
+ * again.
+ *
+ * ## Why the figures are copied onto the row
+ *
+ * `exposure`, `credit_limit` and the currency are stamped here rather than
+ * recomputed from the ledger when somebody asks. The exposure that justified
+ * the decision is a fact about the moment it was taken; six weeks later the
+ * customer has paid two invoices and raised three, and a recomputation would
+ * show a manager approving an amount nobody ever saw. This is the same reason
+ * `quotes.priced_snapshot` exists.
+ *
+ * ## Why it is branch-scoped
+ *
+ * The limit is per branch (`customer_branch_terms`), so the decision is too. A
+ * Doha manager releasing a Doha shipment has not spoken for Kuwait's exposure
+ * to the same customer.
+ */
+export const creditOverrides = pgTable(
+  'credit_overrides',
+  {
+    id: pk(),
+    branchId: ref('branch_id')
+      .notNull()
+      .references(() => branches.id),
+    customerId: ref('customer_id')
+      .notNull()
+      .references(() => customers.id),
+    /**
+     * What was let through. Exactly one is set in practice, and neither is
+     * required: a manager may raise the decision from the customer screen
+     * before the job exists, which is the conversation that actually happens.
+     */
+    jobId: ref('job_id'),
+    invoiceId: ref('invoice_id'),
+    /** What the customer already owed when the decision was taken. */
+    exposure: amount('exposure').notNull(),
+    creditLimit: amount('credit_limit').notNull(),
+    currency: text('currency')
+      .notNull()
+      .references(() => currencies.code),
+    /** Required. An override with no reason is an override nobody can review. */
+    reason: text('reason').notNull(),
+    approvedById: ref('approved_by_id')
+      .notNull()
+      .references(() => principals.id),
+    approvedAt: tsz('approved_at').notNull().defaultNow(),
+    /**
+     * How long this decision stands.
+     *
+     * Null is a one-shot: it authorised the job or invoice named above and
+     * nothing else. A date lets a manager say "this customer trades over the
+     * limit until the end of the month" without anybody editing the limit
+     * itself, which is the edit that never gets reverted.
+     */
+    expiresOn: date('expires_on'),
+    ...timestamps,
+  },
+  (t) => [
+    index('credit_overrides_customer_idx').on(t.customerId, t.branchId, t.approvedAt),
+    index('credit_overrides_standing_idx').on(t.expiresOn),
+  ],
+)
+
 export type Customer = typeof customers.$inferSelect
 export type Partner = typeof partners.$inferSelect
 export type RateCard = typeof rateCards.$inferSelect
 export type RateCardLine = typeof rateCardLines.$inferSelect
+export type CreditOverride = typeof creditOverrides.$inferSelect

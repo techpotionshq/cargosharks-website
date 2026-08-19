@@ -10,11 +10,13 @@
 import type { Job } from 'pg-boss'
 import { JOBS, getBoss } from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
+import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch, registerChannel } from './notification-dispatch'
 import { resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierEventIngest } from './carrier-event'
+import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
@@ -63,6 +65,15 @@ export async function registerWorkers(log: {
     log.info(result, 'free-time accrual complete')
   })
 
+  /*
+    The other direction on the same clock: the accrual above bills what a
+    container has already cost, this tells somebody while it is still free.
+  */
+  await work(JOBS.freeTimeWarning, async () => {
+    const result = await runFreeTimeWarnings()
+    if (result.warned > 0) log.info(result, 'free-time warnings raised')
+  })
+
   await work(JOBS.slaEscalation, async () => {
     const result = await runSlaEscalation()
     log.info(result, 'SLA escalation complete')
@@ -93,6 +104,23 @@ export async function registerWorkers(log: {
       const result = await runCarrierEventIngest(eventId)
       log.info(result, 'carrier event ingested')
     }
+  })
+
+  /*
+    Carrier-direct tracking: we ask, rather than paying somebody to be told.
+
+    The counterpart to `carrierEvent` above, which is an aggregator pushing.
+    Both end in `carrier-milestone.ts`, so the two feeds cannot drift apart on
+    the question of whether a machine may overwrite a person.
+  */
+  await work(JOBS.carrierPoll, async () => {
+    const result = await runCarrierPoll()
+    /*
+      Logged only when it asked somebody something. This runs hourly on every
+      deployment including the ones with no carrier registered, and a
+      per-hour "nothing to do" line is how a log stops being read.
+    */
+    if (result.polled > 0) log.info(result, 'carrier poll complete')
   })
 
   /*

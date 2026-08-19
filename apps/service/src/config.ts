@@ -88,11 +88,50 @@ const schema = z.object({
   /** Which currencies to keep a rate for, against the base above. */
   FX_QUOTE_CURRENCIES: z.string().default('USD,AED,EUR,GBP,SAR,QAR,BHD,OMR,INR,CNY'),
 
-  CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49']).default('manual'),
+  CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49', 'dcsa']).default('manual'),
   CARRIER_TRACKING_API_KEY: z.string().optional(),
   CARRIER_TRACKING_BASE_URL: z.string().default('https://api.terminal49.com'),
   /** Required before the webhook will accept anything — see webhooks/index.ts. */
   CARRIER_WEBHOOK_SECRET: z.string().optional(),
+
+  /*
+    Carrier-direct over DCSA — the driver with no licence fee.
+
+    One credential per carrier group, because that is how the carriers issue
+    them: registration is self-serve and the key belongs to this deployment,
+    not to us (IN-06). A carrier with no key here is simply one the poll
+    worker never asks about.
+
+    The base URLs are overridable because none of them has been run against a
+    live key from this repository. A sandbox host, a gateway migration or a
+    moved path is then a configuration change rather than a release.
+  */
+  DCSA_MAERSK_CONSUMER_KEY: z.string().optional(),
+  /**
+   * Maersk's OAuth client secret, where the granted tier issues one.
+   *
+   * `track-and-trace-private` wants a bearer as well as the Consumer-Key: the
+   * key identifies the registered application, the bearer authorises the
+   * customer whose shipments are being asked about. Set it and the adapter
+   * exchanges it for a token and caches that; leave it blank and the adapter
+   * sends the key alone, which is what the tiers that want only a key expect.
+   */
+  DCSA_MAERSK_CLIENT_SECRET: z.string().optional(),
+  DCSA_MAERSK_BASE_URL: z.string().optional(),
+  DCSA_HAPAG_CLIENT_ID: z.string().optional(),
+  DCSA_HAPAG_CLIENT_SECRET: z.string().optional(),
+  DCSA_HAPAG_BASE_URL: z.string().optional(),
+  DCSA_CMACGM_API_KEY: z.string().optional(),
+  DCSA_CMACGM_BASE_URL: z.string().optional(),
+  /**
+   * How many shipments one poll run asks about.
+   *
+   * Carrier gateways rate-limit per key and a fleet of open jobs is the shape
+   * that trips it. The cap is per run rather than per hour: the run is
+   * hourly, the oldest-polled jobs go first, and a backlog drains over a few
+   * hours instead of earning a 429 that stops everything.
+   */
+  CARRIER_POLL_BATCH: z.coerce.number().default(150),
 
   EINVOICE_DRIVER: z.enum(['none', 'asp']).default('none'),
   EINVOICE_ASP_URL: z.string().optional(),

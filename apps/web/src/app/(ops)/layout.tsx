@@ -22,7 +22,7 @@ import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { THEME_COOKIE, isThemeChoice } from '@/lib/theme'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { canOpenSettings } from '@/lib/permissions'
+import { can, canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
 import { SupportAccessBanner } from '@/features/support/ui/banner'
 import { signOut } from '@/features/auth/actions'
@@ -137,6 +137,18 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           badge: counts.payablesToReview,
         },
         { href: '/settlements', label: t('settlements'), icon: 'finance' },
+        /*
+          Last in the finance section, and gated.
+
+          It is the only screen here that shows the whole book at once rather
+          than one document, so it sits behind `report.read` — which finance
+          and management hold and a coordinator does not. The page asserts the
+          same permission; this only stops it appearing in a menu that would
+          then refuse it.
+        */
+        ...(can(session, 'report.read')
+          ? [{ href: '/reports', label: t('reports'), icon: 'chart' as const }]
+          : []),
       ],
     },
   ]

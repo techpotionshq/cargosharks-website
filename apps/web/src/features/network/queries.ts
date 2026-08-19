@@ -20,6 +20,8 @@ export interface PartnerRow {
   readonly countryCode: string | null
   readonly currency: string | null
   readonly paymentTermsDays: number | null
+  /** The carrier code the tracking poll asks with — 0019. */
+  readonly scac: string | null
   readonly isActive: boolean
   readonly openJobs: number
 }
@@ -37,6 +39,7 @@ export async function listPartners(actor: Actor, search?: string): Promise<Partn
         countryCode: partners.countryCode,
         currency: partners.currency,
         paymentTermsDays: partners.paymentTermsDays,
+        scac: partners.scac,
         isActive: partners.isActive,
         openJobs: sql<number>`(
           select count(*)::int from job_partners jp
@@ -137,6 +140,8 @@ export interface PartnerDetail {
   readonly countryCode: string | null
   readonly currency: string | null
   readonly paymentTermsDays: number | null
+  /** The carrier code the tracking poll asks with — 0019. */
+  readonly scac: string | null
   readonly isActive: boolean
   /** How far this partner's bills may drift from the accrual — 0014. */
   readonly varianceTolerancePercent: string
@@ -174,7 +179,7 @@ export async function getPartnerDetail(
       select p.id, p.code, p.type::text as type,
              p.legal_name_en as "legalNameEn", p.legal_name_ar as "legalNameAr",
              p.country_code as "countryCode", p.currency,
-             p.payment_terms_days as "paymentTermsDays", p.is_active as "isActive",
+             p.payment_terms_days as "paymentTermsDays", p.scac, p.is_active as "isActive",
              /* Payables configuration — 0014. See core/matching.ts. */
              p.variance_tolerance_percent::text  as "varianceTolerancePercent",
              p.variance_tolerance_absolute::text as "varianceToleranceAbsolute",
