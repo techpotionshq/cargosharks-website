@@ -15,10 +15,12 @@
 import { test } from '@playwright/test'
 import {
   ALL_ROUTES,
+  DETAIL_ROUTES,
   MODE,
   NEEDS_DATABASE,
   OPS_ROUTES,
   SETTINGS_ROUTES,
+  openFirstRecordAndAssertHealthy,
   visitAndAssertHealthy,
 } from './support/harness'
 
@@ -51,6 +53,27 @@ test.describe('settings routes', () => {
   for (const route of SETTINGS_ROUTES) {
     test(`renders ${route}`, async ({ page }, testInfo) => {
       await visitAndAssertHealthy(page, route, testInfo)
+    })
+  }
+})
+
+/**
+ * The registers prove a board renders. These prove a record opens.
+ *
+ * A board draws summary rows; a detail page draws the cards, dialogs and
+ * client boundaries that summary rows never touch. Everything that made the
+ * job file throw for anyone holding `job.update` lived on that side of the
+ * line, and the sweep above walked past it eighteen times a run.
+ */
+test.describe('detail routes', () => {
+  test.skip(
+    MODE !== 'full',
+    'a record has to exist before it can be opened — run with E2E_MODE=full',
+  )
+
+  for (const register of DETAIL_ROUTES) {
+    test(`opens a record from ${register}`, async ({ page }, testInfo) => {
+      await openFirstRecordAndAssertHealthy(page, register, testInfo)
     })
   }
 })

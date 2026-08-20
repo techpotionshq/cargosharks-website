@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from '@playwright/test'
-import { MODE } from './support/harness'
+import { MODE, collectPageErrors } from './support/harness'
 
 test.describe('boards', () => {
   test.skip(MODE !== 'full', 'the operations registers require a database — run with E2E_MODE=full')
@@ -80,6 +80,52 @@ test.describe('boards', () => {
       page.getByText(reference).first(),
       'the job detail page does not name the job that was opened',
     ).toBeVisible()
+  })
+
+  /**
+   * Delivery capture, opened rather than merely present.
+   *
+   * This is the test the job file did not have, and the shape of it is the
+   * lesson. `PodCaptureDialog` resolves a permission on the server and hands
+   * the modal a trigger; a trigger is a function, a function cannot be
+   * serialised across the server/client boundary, and the whole job file fell
+   * to the error boundary the moment anyone who could actually capture a
+   * delivery opened it. Nothing 500s, nothing is missing from the board, and
+   * the console is the only witness — so the console is asserted on.
+   *
+   * The trigger is required to be visible rather than skipped over when it is
+   * absent. It renders only for `job.update`, so a principal reduced to
+   * `read_only` would make this test pass while covering nothing at all —
+   * which is precisely the state the bug survived in.
+   */
+  test('opens the delivery capture dialog on a job file', async ({ page }) => {
+    const errors = collectPageErrors(page)
+
+    await page.goto('/jobs', { waitUntil: 'domcontentloaded' })
+    await page
+      .getByRole('link', { name: /[A-Z]{3}-[A-Z0-9]+-\d{4,5}/ })
+      .first()
+      .click()
+
+    await expect(
+      page.getByRole('heading', { name: /proof of delivery/i }),
+      'the job file no longer carries the proof-of-delivery card',
+    ).toBeVisible()
+
+    const capture = page.getByRole('button', { name: /capture delivery/i })
+    await expect(
+      capture,
+      'no capture trigger — either the dialog is broken, or this run signed in ' +
+        'as a principal without job.update and is covering nothing',
+    ).toBeVisible()
+
+    await capture.click()
+
+    // The native `<dialog>` only takes the dialog role once `showModal()` has
+    // run, so this asserts the client trigger actually fired.
+    await expect(page.getByRole('dialog'), 'the capture dialog did not open').toBeVisible()
+
+    expect(errors, 'the job file logged browser errors').toEqual([])
   })
 })
 
