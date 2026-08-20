@@ -54,6 +54,20 @@ Roles: `administrator`, `finance`, `operations_manager`, `coordinator`,
 (FR-ID-06). The permission matrix behind them is seeded by `pnpm db:seed` and
 is editable without a release.
 
+**An overseas agent is `--partner`, not a role.** They sign in at the same form
+and land in `/agent`, where they see a job because their partner is named on it
+— the `agent_contact` arm of every policy keys off the partner, not off a
+branch. So an agent gets no branch role at all, and combining `--partner` with
+`--role` or `--branch` is refused: a branch role carries internal permissions,
+and an agent holding `job.book` in Kuwait is not a narrower agent, it is a
+member of staff.
+
+```bash
+# the partner code comes from `pnpm db:seed` or the Partners screen
+pnpm db:create-user --email dubai@gulffreight.example --name "Gulf Freight Dubai" \
+                    --partner GULF-DXB
+```
+
 **Or with no database at all.** The interface runs on the seeded pilot dataset
 — twenty jobs at varied stages, a live customs hold, a demurrage clock that has
 already written its own charge line:

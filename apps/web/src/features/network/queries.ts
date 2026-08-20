@@ -225,3 +225,33 @@ export async function getPartnerDetail(
     return result.rows[0] as unknown as PartnerDetail | undefined
   })
 }
+
+/**
+ * The agency an `agent_contact` is signed in as — the agent shell's header.
+ *
+ * One row, read through the actor like everything else: the `agent_contact`
+ * arm of the `partners` policy (0004 §5.3) resolves to `id = app.partner_id()`,
+ * so this cannot return anybody else's agency even if the id on the actor were
+ * wrong. That is why it filters on the actor's `partnerId` and does not take
+ * one as an argument.
+ *
+ * Null rather than a throw where the principal carries no partner: a header is
+ * not worth failing a page over, and the shell simply omits the name.
+ */
+export async function agentPartnerName(
+  actor: Actor,
+  locale: 'en' | 'ar',
+): Promise<string | null> {
+  if (!actor.partnerId) return null
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({ nameEn: partners.legalNameEn, nameAr: partners.legalNameAr })
+      .from(partners)
+      .where(eq(partners.id, actor.partnerId!))
+      .limit(1)
+
+    if (!row) return null
+    return (locale === 'ar' ? row.nameAr : row.nameEn) ?? row.nameEn
+  })
+}

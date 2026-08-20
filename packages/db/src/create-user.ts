@@ -25,17 +25,34 @@
  *   pnpm db:create-user --email a@b.com --name "Full Name" --role administrator \
  *     [--password '…'] [--branch KWI --branch DXB] [--locale en|ar] [--phone …]
  *
+ *   pnpm db:create-user --email a@b.com --name "Full Name" --partner MSC-DXB \
+ *     [--password '…'] [--locale en|ar] [--phone …]
+ *
  * Omitting `--password` generates one and prints it once.
+ *
+ * **`--partner` makes an agent, not a member of staff** (FR-AG). An overseas
+ * agent signs in to the same form as everyone else and lands in `/agent`,
+ * where they see a job only because their partner appears on it — the
+ * `agent_contact` arm of every policy keys off `app.partner_id()` (0004 §5.3),
+ * not off a branch. So an agent gets *no* `principal_branch_roles` row at all,
+ * and asking for one alongside `--partner` is refused rather than quietly
+ * granted: a branch role carries internal permissions, and an agent holding
+ * `job.book` in Kuwait is not a narrower agent, it is a member of staff.
+ *
+ * The row is also linked into `partner_contacts`, which is where the rest of
+ * the system looks for a partner's people — the settlement pack and the
+ * compliance-expiry warnings address that table, not `principals`.
  */
 
 import { randomUUID, randomBytes } from 'node:crypto'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { hashPassword } from 'better-auth/crypto'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
 import { authAccount, authUser } from './schema/auth'
 import { branches, principalBranchRoles, principals, roles } from './schema/identity'
+import { partnerContacts, partners } from './schema/commercial'
 
 loadEnv()
 
@@ -43,7 +60,10 @@ interface Options {
   email: string
   name: string
   nameAr?: string
-  role: string
+  /** Empty for an agent contact, whose access comes from the partner instead. */
+  role?: string
+  /** A `partners.code`. Present means an `agent_contact`, not internal staff. */
+  partner?: string
   password?: string
   branches: string[]
   locale: 'en' | 'ar'
@@ -69,11 +89,29 @@ function parseArgs(argv: string[]): Options {
   const email = one('email')
   const name = one('name')
   const role = one('role')
+  const partner = one('partner')
+  const branchCodes = out['branch'] ?? []
 
-  if (!email || !name || !role) {
+  if (!email || !name || (!role && !partner)) {
     throw new Error(
-      'usage: pnpm db:create-user --email <email> --name <name> --role <role key> ' +
-        '[--password <pw>] [--branch <code>]... [--locale en|ar] [--name-ar <name>] [--phone <phone>]',
+      'usage: pnpm db:create-user --email <email> --name <name> ' +
+        '(--role <role key> [--branch <code>]... | --partner <partner code>) ' +
+        '[--password <pw>] [--locale en|ar] [--name-ar <name>] [--phone <phone>]',
+    )
+  }
+
+  /*
+    Refused rather than reconciled.
+
+    The two flags describe two different kinds of account — one scoped by
+    branch role, one scoped by partner — and there is no sensible account that
+    is both. Picking a winner silently is how somebody ends up handing an
+    overseas agent a coordinator's permissions and never finding out.
+  */
+  if (partner && (role || branchCodes.length)) {
+    throw new Error(
+      '--partner makes an agent contact, whose access comes from the partner rather ' +
+        'than from a branch role — so it cannot be combined with --role or --branch.',
     )
   }
 
@@ -83,9 +121,10 @@ function parseArgs(argv: string[]): Options {
     email: email.trim().toLowerCase(),
     name: name.trim(),
     nameAr: one('name-ar')?.trim(),
-    role: role.trim(),
+    role: role?.trim(),
+    partner: partner?.trim(),
     password: one('password'),
-    branches: out['branch'] ?? [],
+    branches: branchCodes,
     locale,
     phone: one('phone'),
   }
@@ -122,13 +161,46 @@ async function main(): Promise<void> {
   await withActor(
     systemActor(),
     async (tx) => {
-      const [role] = await tx
-        .select({ id: roles.id, key: roles.key, requiresTwoFactor: roles.requiresTwoFactor })
-        .from(roles)
-        .where(eq(roles.key, options.role))
-        .limit(1)
+      /*
+        An agent contact takes the partner branch of this script and stops.
 
-      if (!role) {
+        No role lookup and no branch lookup, because neither applies: the
+        partner *is* the scope. `partnerRow` stays null for internal staff and
+        `role`/`branchRows` stay empty for an agent, and the two halves meet
+        again at the `principals` write below.
+      */
+      const partnerRow = options.partner
+        ? await (async () => {
+            const [found] = await tx
+              .select({ id: partners.id, code: partners.code, name: partners.legalNameEn })
+              .from(partners)
+              .where(eq(partners.code, options.partner!))
+              .limit(1)
+
+            if (!found) {
+              const available = await tx
+                .select({ code: partners.code })
+                .from(partners)
+                .where(eq(partners.isActive, true))
+              throw new Error(
+                `unknown partner "${options.partner}" — active partners: ` +
+                  (available.map((partner) => partner.code).join(', ') || '(none)'),
+              )
+            }
+
+            return found
+          })()
+        : null
+
+      const [role] = options.role
+        ? await tx
+            .select({ id: roles.id, key: roles.key, requiresTwoFactor: roles.requiresTwoFactor })
+            .from(roles)
+            .where(eq(roles.key, options.role))
+            .limit(1)
+        : []
+
+      if (options.role && !role) {
         const available = await tx.select({ key: roles.key }).from(roles)
         throw new Error(
           `unknown role "${options.role}" — available: ${available.map((r) => r.key).join(', ')}`,
@@ -138,14 +210,16 @@ async function main(): Promise<void> {
       // No `--branch` means every active branch, which is what an administrator
       // almost always wants and what a coordinator almost never does. Being
       // explicit about the default beats silently granting one branch.
-      const branchRows = options.branches.length
-        ? await tx
-            .select({ id: branches.id, code: branches.code })
-            .from(branches)
-            .where(inArray(branches.code, options.branches))
-        : await tx.select({ id: branches.id, code: branches.code }).from(branches)
+      const branchRows = partnerRow
+        ? []
+        : options.branches.length
+          ? await tx
+              .select({ id: branches.id, code: branches.code })
+              .from(branches)
+              .where(inArray(branches.code, options.branches))
+          : await tx.select({ id: branches.id, code: branches.code }).from(branches)
 
-      if (!branchRows.length) {
+      if (!partnerRow && !branchRows.length) {
         /*
           The bootstrap deadlock, named.
 
@@ -217,10 +291,23 @@ async function main(): Promise<void> {
         })
       }
 
+      /*
+        `type` and `partner_id` are restated on conflict, not only on insert.
+
+        Re-running this script is the documented way to reset a password, and
+        an update that left those two alone would silently keep an account on
+        whichever side of the internal/agent line it was first created on —
+        the credential would change, the scope would not, and the operator
+        would have no way to see it from the output.
+      */
+      const type = partnerRow ? ('agent_contact' as const) : ('internal' as const)
+      const partnerId = partnerRow?.id ?? null
+
       const [principal] = await tx
         .insert(principals)
         .values({
-          type: 'internal',
+          type,
+          partnerId,
           authUserId: userId,
           email: options.email,
           nameEn: options.name,
@@ -232,6 +319,8 @@ async function main(): Promise<void> {
         .onConflictDoUpdate({
           target: principals.email,
           set: {
+            type,
+            partnerId,
             authUserId: userId,
             nameEn: options.name,
             nameAr: options.nameAr ?? null,
@@ -244,28 +333,84 @@ async function main(): Promise<void> {
 
       const principalId = principal!.id
 
-      for (const branch of branchRows) {
-        await tx
-          .insert(principalBranchRoles)
-          .values({ principalId, branchId: branch.id, roleId: role.id })
-          .onConflictDoUpdate({
-            target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
-            set: { roleId: role.id, updatedAt: now },
+      /*
+        The agent's row in `partner_contacts`.
+
+        `principals` is the login; `partner_contacts` is the address book the
+        rest of the system reads — settlement statements and compliance-expiry
+        warnings are sent to it. An agent login that existed only in
+        `principals` could sign in and would never be written to, which is the
+        harder half of the bug to notice.
+      */
+      if (partnerRow) {
+        const [contact] = await tx
+          .select({ id: partnerContacts.id })
+          .from(partnerContacts)
+          .where(
+            and(
+              eq(partnerContacts.partnerId, partnerRow.id),
+              eq(partnerContacts.email, options.email),
+            ),
+          )
+          .limit(1)
+
+        if (contact) {
+          await tx
+            .update(partnerContacts)
+            .set({
+              principalId,
+              nameEn: options.name,
+              nameAr: options.nameAr ?? null,
+              phone: options.phone ?? null,
+              isActive: true,
+              updatedAt: now,
+            })
+            .where(eq(partnerContacts.id, contact.id))
+        } else {
+          await tx.insert(partnerContacts).values({
+            partnerId: partnerRow.id,
+            principalId,
+            nameEn: options.name,
+            nameAr: options.nameAr ?? null,
+            email: options.email,
+            phone: options.phone ?? null,
+            isActive: true,
           })
+        }
+      }
+
+      // `branchRows` is already empty for an agent; the `role` guard is what
+      // says so to the type checker, and it costs nothing to state twice.
+      if (role) {
+        for (const branch of branchRows) {
+          await tx
+            .insert(principalBranchRoles)
+            .values({ principalId, branchId: branch.id, roleId: role.id })
+            .onConflictDoUpdate({
+              target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
+              set: { roleId: role.id, updatedAt: now },
+            })
+        }
       }
 
       console.log('')
       console.log(existing ? '  updated user' : '  created user')
       console.log(`  email     ${options.email}`)
       console.log(`  name      ${options.name}`)
-      console.log(`  role      ${role.key}`)
-      console.log(`  branches  ${branchRows.map((b) => b.code).join(', ')}`)
+      if (partnerRow) {
+        console.log(`  type      agent contact`)
+        console.log(`  partner   ${partnerRow.code} — ${partnerRow.name}`)
+        console.log(`  sees      jobs their partner is named on; signs in at /agent`)
+      } else {
+        console.log(`  role      ${role!.key}`)
+        console.log(`  branches  ${branchRows.map((b) => b.code).join(', ')}`)
+      }
       if (generated) {
         console.log('')
         console.log(`  password  ${password}`)
         console.log('  ^ shown once — it is stored only as a hash.')
       }
-      if (role.requiresTwoFactor) {
+      if (role?.requiresTwoFactor) {
         console.log('')
         console.log(`  NOTE: the ${role.key} role requires two-factor enrolment (FR-ID-06).`)
         console.log('        Sign in once and complete TOTP setup before relying on this account.')

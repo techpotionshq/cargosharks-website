@@ -22,7 +22,8 @@ export default async function AgentHome() {
   const t = await getTranslations('agent')
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+    /* The shell owns the page frame now — `(agent)/layout.tsx`. */
+    <>
       <PageHeader
         eyebrow={session.principal.nameEn}
         title={t('title')}
@@ -33,6 +34,6 @@ export default async function AgentHome() {
       <Card>
         <EmptyState icon="partners" title={t('empty')} description={t('rateRequests')} />
       </Card>
-    </main>
+    </>
   )
 }
