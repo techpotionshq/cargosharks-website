@@ -83,6 +83,22 @@ export const branches = pgTable(
      */
     marginFloorPercent: quantity('margin_floor_percent'),
     letterheadAssetId: ref('letterhead_asset_id').references(() => assets.id),
+    /**
+     * Standard trading conditions, printed on the quotation — FR-EQ-08.
+     *
+     * Per legal entity rather than one deployment-wide text, for the same
+     * reason `invoice_series` is: a Kuwait forwarder and a Dubai one trade
+     * under different law and file with different authorities, and a single
+     * paragraph covering both is a paragraph that is wrong somewhere.
+     *
+     * Columns rather than a template in code, because FR-AD-03 puts wording an
+     * administrator can change without a release in the database — the same
+     * argument as `notification_templates`. Both nullable: a branch that has
+     * not supplied its conditions yet prints a quotation without them rather
+     * than being unable to issue one.
+     */
+    tradingConditionsEn: text('trading_conditions_en'),
+    tradingConditionsAr: text('trading_conditions_ar'),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),
     isActive: boolean('is_active').notNull().default(true),

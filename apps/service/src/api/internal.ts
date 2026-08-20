@@ -32,7 +32,7 @@ import { assets, db, principals, withActor, type Actor } from '@qabandi/db'
 import { adapters, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
-import { DocumentNotFoundError, renderInvoicePdf } from '../pdf/documents'
+import { DocumentNotFoundError, renderInvoicePdf, renderQuotationPdf } from '../pdf/documents'
 import {
   JOB_DOCUMENT_KINDS,
   renderJobDocumentPdf,
@@ -343,6 +343,45 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         return reply
           .header('content-type', 'application/pdf')
           .header('content-disposition', `inline; filename="${filename}"`)
+          .header('cache-control', 'private, no-store')
+          .send(pdf)
+      } catch (error) {
+        if (error instanceof DocumentNotFoundError) {
+          return reply.code(404).send({ error: 'not_found' })
+        }
+        throw error
+      }
+    },
+  )
+
+  /**
+   * The quotation — FR-EQ-08.
+   *
+   * Streamed only, and never stored. A revision is a new `quotes` row with the
+   * previous one marked superseded (FR-RT-08), so the record already keeps
+   * every version that was ever offered; a stored PDF beside it would be a
+   * second copy of the same fact with nothing to reconcile it against.
+   */
+  app.post<{ Params: { id: string }; Body: DocumentRequest }>(
+    '/documents/quotation/:id',
+    async (request, reply) => {
+      const { actor, locale } = request.body ?? {}
+
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+
+      try {
+        const { pdf, filename } = await renderQuotationPdf(
+          actor,
+          request.params.id,
+          locale === 'ar' ? 'ar' : 'en',
+        )
+
+        return reply
+          .header('content-type', 'application/pdf')
+          .header('content-disposition', `inline; filename="${filename}"`)
+          // Never cached: a quotation carries a price and a customer name.
           .header('cache-control', 'private, no-store')
           .send(pdf)
       } catch (error) {

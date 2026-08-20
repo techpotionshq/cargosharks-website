@@ -14,6 +14,7 @@ import { can } from '@/lib/permissions'
 import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
 import { CustomerForm } from '@/features/customers/ui/customer-form'
+import { RetireCustomerDialog } from '@/features/customers/ui/dialogs'
 import { creditView } from '@/features/credit/queries'
 import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
@@ -77,9 +78,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         title={displayName}
         description={t('detailSubtitle')}
         actions={
-          <Badge tone={customer.isActive ? 'positive' : 'muted'}>
-            {customer.isActive ? tc('active') : tc('inactive')}
-          </Badge>
+          <>
+            <Badge tone={customer.isActive ? 'positive' : 'muted'}>
+              {customer.isActive ? tc('active') : tc('inactive')}
+            </Badge>
+            <RetireCustomerDialog
+              customerId={id}
+              name={displayName}
+              isActive={customer.isActive}
+            />
+          </>
         }
       />
 

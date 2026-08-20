@@ -13,7 +13,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { saveBranch, saveReferenceRecord, saveUser } from '../form-actions'
+import { saveBranch, saveReferenceRecord, saveUser, setUserActive } from '../form-actions'
 
 const REFERENCE_TABLES = ['commodity', 'charge_type', 'document_type', 'exception_code'] as const
 const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
@@ -186,6 +186,8 @@ export interface BranchDefaults {
   readonly bankAccountCode?: string | null
   readonly fxVarianceAccountCode?: string | null
   readonly roundingAccountCode?: string | null
+  readonly tradingConditionsEn?: string | null
+  readonly tradingConditionsAr?: string | null
   readonly isActive?: boolean
 }
 
@@ -374,6 +376,43 @@ export async function BranchDialog({
           span: 4,
           mono: true,
           defaultValue: defaults?.roundingAccountCode,
+        },
+      ],
+    },
+    /*
+      The trading conditions this entity quotes under — FR-EQ-08.
+
+      Its own section and its own language pair, because the Arabic is not a
+      translation of the English: a Kuwaiti forwarder's conditions are drafted
+      in Arabic and the English is the courtesy copy, which is the opposite of
+      how the rest of this form works. Machine-translating one into the other
+      produces a term nobody would enforce.
+
+      Both optional. A branch with no conditions issues a quotation without the
+      footer rather than being unable to issue one — the same treatment the
+      chart of accounts above gets, and for the same reason.
+    */
+    {
+      kind: 'section',
+      title: t('tradingSection'),
+      hint: t('tradingSectionHint'),
+      fields: [
+        {
+          kind: 'textarea',
+          name: 'tradingConditionsEn',
+          label: t('tradingConditionsEn'),
+          span: 12,
+          rows: 6,
+          hint: t('tradingConditionsHint'),
+          defaultValue: defaults?.tradingConditionsEn,
+        },
+        {
+          kind: 'textarea',
+          name: 'tradingConditionsAr',
+          label: t('tradingConditionsAr'),
+          span: 12,
+          rows: 6,
+          defaultValue: defaults?.tradingConditionsAr,
         },
       ],
     },
@@ -579,6 +618,69 @@ export async function ReferenceDialog({
         title: editing ? t(`editTitle.${table}`) : t(`title.${table}`),
         description: t(`description.${table}`),
         submit: editing ? tc('save') : tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Suspending an account, and restoring one.
+ *
+ * The only way to take somebody's access away through the interface. There is
+ * no delete and there should not be: a principal is referenced by every row
+ * they ever wrote — `created_by_id`, `posted_by_id`, the audit trail — so
+ * removing the row would either fail on a foreign key or orphan the history
+ * that makes the audit trail worth keeping (§5.5).
+ *
+ * `setUserActive` refuses to suspend the caller's own account, because that
+ * locks them out with no way back through the interface. This does not try to
+ * anticipate that with a disabled button: the action is the boundary, and a
+ * check here as well would be a second place for the rule to live.
+ */
+export async function SuspendUserDialog({
+  principalId,
+  name,
+  isActive,
+}: {
+  readonly principalId: string
+  readonly name: string
+  readonly isActive: boolean
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.users.write')) return null
+
+  // Their own row offers nothing: the action refuses it, and an control that
+  // only ever fails is worse than no control.
+  if (isActive && principalId === session.principal.id) return null
+
+  const [t, tc] = await Promise.all([getTranslations('userForm'), getTranslations('common')])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'principalId', value: principalId },
+    // Presence is the signal — see `setUserActive`.
+    ...(isActive ? [] : [{ kind: 'hidden' as const, name: 'isActive', value: 'true' }]),
+    {
+      kind: 'note',
+      text: isActive ? t('suspendWarning') : t('restoreNote'),
+      tone: isActive ? 'caution' : 'info',
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={setUserActive}
+      fields={fields}
+      icon={isActive ? 'hold' : 'check'}
+      variant="ghost"
+      iconOnly
+      submitIcon={isActive ? 'hold' : 'check'}
+      labels={{
+        open: isActive ? t('suspend') : t('restore'),
+        title: isActive ? t('suspendTitle', { name }) : t('restoreTitle', { name }),
+        description: isActive ? t('suspendDescription') : t('restoreDescription'),
+        submit: isActive ? t('suspend') : t('restore'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

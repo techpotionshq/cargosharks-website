@@ -459,7 +459,8 @@ Everything below runs in `apps/service` on pg-boss. Jobs enqueue inside the busi
 
 | Job | Trigger | Requirement |
 |---|---|---|
-| Inbound email → enquiry | Webhook | `FR-EQ-02` — queued within one minute, attachments preserved |
+| Inbound mail poll → enquiry | Every minute | `FR-EQ-02` — IMAP over the branch mailboxes, attachments preserved |
+| Inbound email → enquiry | Webhook | `FR-EQ-02` — the provider half; the route verifies and enqueues, the conversion is unbuilt |
 | Inbound WhatsApp → job thread | Webhook | `FR-NT-05` |
 | Notification dispatch | Outbox | `FR-NT-01…07` |
 | PDF render — quote, invoice, DO, job pack | On demand | `§8`, bilingual, per-entity letterhead |
@@ -478,7 +479,7 @@ Bulk import runs as a job precisely because `FR-MD-11` requires that a file with
 
 ## 10. Integrations and ports
 
-Seven interfaces in the entire system. Each has a real first implementation today and a named second one in the SRS.
+Eight interfaces in the entire system. Each has a real first implementation today and a named second one in the SRS.
 
 | Port | R1 implementation | Named second | Source |
 |---|---|---|---|
@@ -489,8 +490,11 @@ Seven interfaces in the entire system. Each has a real first implementation toda
 | `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) · aggregator | `§8`, R2 |
 | `CustomsFiling` | manual reference capture | Kuwait Single Window | `§8`, R2 |
 | `EInvoiceTransmit` | compliant data, no transmission | accredited provider | `§8`, R2 |
+| `InboundMailSource` | IMAP poll of the branch mailboxes | provider webhook (Resend · Postmark · SES) | `FR-EQ-02`, `§9` |
 
-The last three are not speculative: R1 has a genuine first implementation (manual capture), and `SRS §8` states the intent that R2's connection be *"a plug, not a rebuild."* Everything else in the system is concrete.
+The last three of the original seven are not speculative: R1 has a genuine first implementation (manual capture), and `SRS §8` states the intent that R2's connection be *"a plug, not a rebuild."* Everything else in the system is concrete.
+
+`InboundMailSource` is the eighth and it was added rather than assumed. Al-Qabandi's front door is five mailboxes — `SRS §3` calls that *"the single most telling finding"* — so the first implementation reads those five over IMAP rather than asking anybody to move: no MX change, no new vendor, and the existing mail host's spam filtering inherited for free. The named second is the provider webhook `§9` already lists as an integration, and the route for it exists. Both produce the same `InboundMessage`, which is the point: `FR-EQ-02`'s rules about what becomes an enquiry, what threads onto a job, and which sender may be identified as a customer are the hard part, and they are written once.
 
 `CarrierTracking` is the first of the three to have the plug fitted, and it is the argument for the rule. Three implementations now sit behind it — manual entry, an aggregator that pushes, and the carriers themselves answering a poll — and adding the third changed one signature (`poll` takes a query rather than a bare string, because DCSA has three reference parameters and a string cannot say which one it is). Nothing outside `adapters/` and the two workers knows which of the three a deployment runs.
 

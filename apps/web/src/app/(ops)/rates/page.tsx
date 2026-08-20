@@ -20,7 +20,12 @@
 import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { laneMargins, listRateCards, rateCardSummary } from '@/features/rates/queries'
+import {
+  laneMargins,
+  listExpiringRateCards,
+  listRateCards,
+  rateCardSummary,
+} from '@/features/rates/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
@@ -44,13 +49,14 @@ export default async function RatesPage({
   const session = await requireSession()
   const { direction } = await searchParams
 
-  const [rows, summary, margins] = await Promise.all([
+  const [rows, summary, margins, expiring] = await Promise.all([
     listRateCards(
       session.actor,
       direction === 'buy' || direction === 'sell' ? direction : undefined,
     ),
     rateCardSummary(session.actor),
     laneMargins(session.actor),
+    listExpiringRateCards(session.actor),
   ])
 
   const t = await getTranslations('rates')
@@ -97,6 +103,76 @@ export default async function RatesPage({
           hint={t('expiringHint')}
         />
       </div>
+
+      {/* ---- coverage about to lapse (FR-RT-11) --------------------------- */}
+      {expiring.length > 0 ? (
+        <Panel
+          className="mb-4"
+          padding="none"
+          icon="clock"
+          title={t('expiringSoonTitle')}
+          explain={t('expiringSoonExplain')}
+        >
+          <TableShell>
+            <THead>
+              <TR>
+                <TH>{t('lane')}</TH>
+                <TH>{tEnq('mode')}</TH>
+                <TH>{t('direction')}</TH>
+                <TH>{t('counterparty')}</TH>
+                <TH>{t('validity')}</TH>
+                <TH align="end">{t('daysLeft')}</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {expiring.map((card) => (
+                <TR key={card.id}>
+                  {/* The Arabic lane is not a translation of the English one:
+                      the arrow points the other way, because the line reads
+                      the other way. */}
+                  <TD className="font-medium text-ink">
+                    {locale === 'ar' ? card.laneAr : card.lane}
+                  </TD>
+                  <TD>
+                    <span className="inline-flex items-center gap-1.5 text-ink-muted">
+                      <Icon name={modeIcon(card.mode)} size={14} />
+                      {tMode(card.mode as 'air')}
+                    </span>
+                  </TD>
+                  <TD>
+                    <Badge tone={card.direction === 'buy' ? 'info' : 'brand'}>
+                      {card.direction === 'buy' ? t('buy') : t('sell')}
+                    </Badge>
+                  </TD>
+                  <TD className="text-ink-muted">
+                    {locale === 'ar' ? card.counterpartyAr : card.counterparty}
+                  </TD>
+                  <TD className="text-ink-muted">{formatDate(card.validTo, locale)}</TD>
+                  {/*
+                    Zero days left is today, and it still reads as a number
+                    rather than as "expired" — the card is valid until the end
+                    of the day it names, and a quotation priced on it this
+                    morning is a correct quotation.
+                  */}
+                  <TD align="end" numeric>
+                    <span
+                      className={
+                        card.daysRemaining <= 7
+                          ? 'font-semibold text-critical'
+                          : card.daysRemaining <= 14
+                            ? 'text-caution'
+                            : 'text-ink-muted'
+                      }
+                    >
+                      {formatNumber(card.daysRemaining, locale)}
+                    </span>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </TableShell>
+        </Panel>
+      ) : null}
 
       {/* ---- what each lane earns ---------------------------------------- */}
       {margins.length > 0 ? (

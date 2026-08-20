@@ -25,6 +25,7 @@ import type {
   EnquirySummary,
   ExceptionView,
   JobDetail,
+  JobPartnerView,
   JobSummary,
   MilestoneView,
   Mode,
@@ -532,6 +533,7 @@ function milestonesFor(seed: JobSeed, now: number): MilestoneView[] {
     const slipped = !done && seed.customs === 'held' && index >= seed.done
 
     return {
+      id: `${seed.branch}-${seed.seq}-${code}`,
       code,
       nameEn,
       nameAr,
@@ -696,6 +698,7 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
     clocks: clocksFor(seed, now),
     exceptions: pilotExceptions(now).filter((e) => e.jobId === summary.id),
     documents: documentsFor(seed, now),
+    partners: partnersFor(seed),
     customsNote:
       seed.customs === 'held'
         ? 'Held by Kuwait General Administration of Customs pending origin certificate attestation.'
@@ -703,6 +706,41 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
           ? 'Physical inspection scheduled — yard 4.'
           : null,
   }
+}
+
+/**
+ * Who we engaged on the shipment.
+ *
+ * A carrier on everything and an agent at the far end on anything that
+ * crossed a border, which is the shape of a real file — and enough for the
+ * panel to have something in it rather than an empty state that reads like a
+ * broken query.
+ */
+function partnersFor(seed: JobSeed): JobPartnerView[] {
+  const stem = `${seed.branch}-${seed.seq}`
+  const carrier =
+    seed.mode === 'air'
+      ? 'Emirates SkyCargo'
+      : seed.mode === 'land'
+        ? 'Al-Mulla Transport'
+        : 'ONE — Ocean Network Express'
+
+  return [
+    {
+      id: `${stem}-carrier`,
+      partnerId: `${stem}-p1`,
+      name: carrier,
+      role: 'carrier',
+      reference: `BK-${seed.seq}9812`,
+    },
+    {
+      id: `${stem}-agent`,
+      partnerId: `${stem}-p2`,
+      name: seed.direction === 'import' ? 'Everbright Logistics (Shanghai)' : 'Gulf Agency Co.',
+      role: seed.direction === 'import' ? 'origin_agent' : 'destination_agent',
+      reference: null,
+    },
+  ]
 }
 
 // --- exceptions ------------------------------------------------------------

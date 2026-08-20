@@ -13,9 +13,35 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { closeException, raiseException, saveCustomsStage } from '../form-actions'
+import {
+  addContainer,
+  closeException,
+  completeMilestone,
+  raiseException,
+  saveCustomsStage,
+  setJobStatus,
+} from '../form-actions'
 
 const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
+
+/*
+  The statuses a coordinator sets by hand.
+
+  `draft` is not among them: a job is drafted by being created and there is no
+  way back to it — offering it would produce a form whose only outcome is the
+  action refusing a terminal move.
+*/
+const JOB_STATUSES = [
+  'booked',
+  'in_transit',
+  'arrived',
+  'customs',
+  'delivered',
+  'completed',
+  'closed',
+  'on_hold',
+  'cancelled',
+] as const
 
 const CUSTOMS_STATUSES = [
   'not_started',
@@ -342,4 +368,222 @@ async function loadOpenShipments(session: Awaited<ReturnType<typeof requireSessi
       label: row.customer ? `${row.reference} — ${row.customer}` : row.reference,
     }))
   })
+}
+
+/**
+ * The job status a coordinator sets by hand.
+ *
+ * Deliberately not routed through `jobMachine` — `setJobStatus` says why at
+ * length, and the short version is that the machine does not enumerate every
+ * legal move a coordinator makes. What the machine *does* decide is terminal:
+ * a cancelled or closed job stays that way, and the action refuses.
+ *
+ * Cancelling asks for a reason and the other moves do not. A cancellation is
+ * the one that destroys work somebody planned around, and "why is KWI-0042
+ * cancelled" is answered by that field or by nobody.
+ */
+export async function JobStatusDialog({
+  jobId,
+  status,
+  variant = 'ghost',
+}: {
+  readonly jobId: string
+  readonly status: string
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  // Any of the four is enough to open it; the action checks the one the chosen
+  // status actually needs, which is where the rule belongs.
+  if (!can(session, 'job.update') && !can(session, 'job.hold') && !can(session, 'job.cancel')) {
+    return null
+  }
+
+  const [t, tj, tc] = await Promise.all([
+    getTranslations('jobActions'),
+    getTranslations('job'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'jobId', value: jobId },
+    {
+      kind: 'select',
+      name: 'status',
+      label: t('status'),
+      span: 12,
+      required: true,
+      options: JOB_STATUSES.map((key) => ({ value: key, label: tj(`statuses.${key}`) })),
+      defaultValue: status,
+    },
+    {
+      kind: 'textarea',
+      name: 'reason',
+      label: t('reason'),
+      span: 12,
+      rows: 2,
+      hint: t('reasonHint'),
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={setJobStatus}
+      fields={fields}
+      icon="jobs"
+      variant={variant}
+      labels={{
+        open: t('setStatus'),
+        title: t('setStatusTitle'),
+        description: t('setStatusDescription'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Marking a milestone reached, and taking it back.
+ *
+ * One dialog for both directions rather than a control on every row of the
+ * timeline. The timeline is a read of the shipment that the customer portal
+ * and the public tracking page render from the same component, and putting an
+ * operator's buttons inside it would mean that component learning who is
+ * looking at it.
+ *
+ * `actualAt` is offered and optional. Milestones are recorded late far more
+ * often than they are recorded live — the vessel sailed on Tuesday and
+ * somebody types it on Thursday — and defaulting to now while refusing to
+ * accept Tuesday is how a tracking page ends up lying politely.
+ */
+export async function MilestoneDialog({
+  jobId,
+  milestones,
+  variant = 'ghost',
+}: {
+  readonly jobId: string
+  readonly milestones: readonly {
+    readonly id: string
+    readonly name: string
+    readonly actualAt: Date | null
+  }[]
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'job.update')) return null
+  if (milestones.length === 0) return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('jobActions'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'jobId', value: jobId },
+    {
+      kind: 'select',
+      name: 'milestoneId',
+      label: t('milestone'),
+      span: 12,
+      required: true,
+      placeholder: tc('choose'),
+      // Reached ones are marked rather than hidden: undoing one is the reason
+      // this dialog takes an `undo` box at all.
+      options: milestones.map((m) => ({
+        value: m.id,
+        label: m.actualAt ? `${m.name} ✓` : m.name,
+      })),
+    },
+    {
+      kind: 'datetime-local',
+      name: 'actualAt',
+      label: t('reachedAt'),
+      span: 12,
+      hint: t('reachedAtHint'),
+    },
+    {
+      kind: 'switch',
+      name: 'undo',
+      label: t('undo'),
+      span: 12,
+      hint: t('undoHint'),
+      defaultChecked: false,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={completeMilestone}
+      fields={fields}
+      icon="tracking"
+      variant={variant}
+      labels={{
+        open: t('recordMilestone'),
+        title: t('recordMilestoneTitle'),
+        description: t('recordMilestoneDescription'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/** A container on the shipment — the row free-time clocks and a POD hang off. */
+export async function AddContainerDialog({
+  jobId,
+  variant = 'ghost',
+}: {
+  readonly jobId: string
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'job.update')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('jobActions'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'jobId', value: jobId },
+    {
+      kind: 'text',
+      name: 'containerNo',
+      label: t('containerNo'),
+      span: 8,
+      mono: true,
+      hint: t('containerNoHint'),
+    },
+    {
+      kind: 'select',
+      name: 'containerType',
+      label: t('containerType'),
+      span: 4,
+      options: options.containerTypes,
+      placeholder: tc('choose'),
+    },
+    { kind: 'text', name: 'sealNo', label: t('sealNo'), span: 6, mono: true },
+    { kind: 'number', name: 'grossWeightKg', label: t('grossWeightKg'), span: 3 },
+    { kind: 'number', name: 'tareWeightKg', label: t('tareWeightKg'), span: 3 },
+  ]
+
+  return (
+    <RecordDialog
+      action={addContainer}
+      fields={fields}
+      icon="container"
+      variant={variant}
+      labels={{
+        open: t('addContainer'),
+        title: t('addContainerTitle'),
+        description: t('addContainerDescription'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
 }

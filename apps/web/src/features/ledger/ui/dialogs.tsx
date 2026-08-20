@@ -13,7 +13,10 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { createInvoice, createQuote, recordPayment } from '../form-actions'
+import { addQuoteLine, createInvoice, createQuote, recordPayment } from '../form-actions'
+
+/** The charge bases a quotation line can carry — `rating.ts` in core. */
+const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
 
 const TAX_TREATMENTS = [
   'out_of_scope',
@@ -466,4 +469,97 @@ async function loadOutstandingInvoices(session: Awaited<ReturnType<typeof requir
       label: `${row.label} — ${row.customer} — ${row.currency} ${row.balance}`,
     }))
   })
+}
+
+/**
+ * A priced line on a draft quotation.
+ *
+ * Offered only while the quote is a draft, which is not a nicety: `addQuoteLine`
+ * refuses anything else, because a sent quotation is an offer somebody is
+ * holding and a revision is a new row (FR-RT-08). A control that appears and
+ * then refuses teaches people the product is unreliable; one that is absent
+ * teaches them the rule.
+ *
+ * The line total is not asked for. It is `quantity * rate`, computed in
+ * PostgreSQL on `numeric` — see the action, and the reason is that `0.1 * 3`
+ * is not `0.3` in a float and a quotation is not where anybody should discover
+ * that.
+ */
+export async function QuoteLineDialog({
+  quoteId,
+  currency,
+  variant = 'secondary',
+}: {
+  readonly quoteId: string
+  /** The quote's own currency; a line cannot be in another one. */
+  readonly currency: string
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'quote.send')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('quoteForm'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'quoteId', value: quoteId },
+    // Fixed to the quotation's currency. A quote whose lines are in three
+    // currencies has no total, and the schema would take one happily.
+    { kind: 'hidden', name: 'currency', value: currency },
+    {
+      kind: 'select',
+      name: 'chargeTypeId',
+      label: t('charge'),
+      span: 12,
+      required: true,
+      options: options.chargeTypes,
+      placeholder: tc('choose'),
+    },
+    {
+      kind: 'text',
+      name: 'description',
+      label: t('lineDescription'),
+      span: 12,
+      hint: t('lineDescriptionHint'),
+    },
+    {
+      kind: 'select',
+      name: 'basis',
+      label: t('basis'),
+      span: 4,
+      required: true,
+      options: BASES.map((key) => ({ value: key, label: t(`bases.${key}`) })),
+      defaultValue: 'flat',
+    },
+    {
+      kind: 'text',
+      name: 'quantity',
+      label: t('quantity'),
+      span: 4,
+      required: true,
+      mono: true,
+      defaultValue: '1',
+    },
+    { kind: 'text', name: 'rate', label: t('rate'), span: 4, required: true, mono: true },
+  ]
+
+  return (
+    <RecordDialog
+      action={addQuoteLine}
+      fields={fields}
+      icon="plus"
+      variant={variant}
+      labels={{
+        open: t('addLine'),
+        title: t('addLineTitle'),
+        description: t('addLineDescription'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
 }

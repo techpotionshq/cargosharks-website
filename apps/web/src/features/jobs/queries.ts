@@ -27,8 +27,10 @@ import {
   exceptions,
   freeTimeClocks,
   jobMilestones,
+  jobPartners,
   jobs,
   locations,
+  partners,
   principals,
   withActor,
   type Actor,
@@ -336,8 +338,14 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
 
     if (!row) return undefined
 
-    const [milestoneRows, containerRows, clockRows, documentRows, exceptionRows] =
-      await Promise.all([
+    const [
+      milestoneRows,
+      containerRows,
+      clockRows,
+      documentRows,
+      exceptionRows,
+      partnerRows,
+    ] = await Promise.all([
         tx
           .select()
           .from(jobMilestones)
@@ -364,6 +372,26 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
           .innerJoin(assets, eq(assets.id, documents.assetId))
           .where(and(eq(documents.jobId, id), isNull(documents.supersededById))),
         listExceptionRows(tx, id),
+        /*
+          Who we engaged, as against who is named on the bill.
+
+          `job_parties` is the shipper and consignee — the contract of
+          carriage. This is the carrier, the agents and the haulier we placed
+          the work with, which is a different list and the one that decides
+          who gets settled with.
+        */
+        tx
+          .select({
+            id: jobPartners.id,
+            partnerId: jobPartners.partnerId,
+            name: partners.legalNameEn,
+            role: jobPartners.role,
+            reference: jobPartners.reference,
+          })
+          .from(jobPartners)
+          .innerJoin(partners, eq(partners.id, jobPartners.partnerId))
+          .where(eq(jobPartners.jobId, id))
+          .orderBy(asc(jobPartners.role)),
       ])
 
     const summary = toJobSummary(row as JobRow)
@@ -388,7 +416,17 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       volumeCbm: row.volumeCbm === null ? null : Number(row.volumeCbm),
       pieces: row.pieces,
       customsNote: row.customsNote,
+      partners: partnerRows.map((p) => ({
+        id: p.id,
+        partnerId: p.partnerId,
+        name: p.name,
+        role: p.role,
+        reference: p.reference,
+      })),
       milestones: milestoneRows.map((m) => ({
+        // The id is what `completeMilestone` takes. The timeline does not use
+        // it — the dialog beside the timeline does.
+        id: m.id,
         code: m.code,
         nameEn: m.nameEn,
         nameAr: m.nameAr,

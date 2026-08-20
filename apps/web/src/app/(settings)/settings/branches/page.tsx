@@ -150,6 +150,8 @@ export default async function BranchesPage() {
                     bankAccountCode: row.bankAccountCode,
                     fxVarianceAccountCode: row.fxVarianceAccountCode,
                     roundingAccountCode: row.roundingAccountCode,
+                    tradingConditionsEn: row.tradingConditionsEn,
+                    tradingConditionsAr: row.tradingConditionsAr,
                     isActive: row.isActive,
                   }}
                 />

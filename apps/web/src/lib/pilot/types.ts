@@ -20,6 +20,20 @@ export interface Money {
 }
 
 export interface MilestoneView {
+  /**
+   * The row's own id, which the milestone dialog posts to `completeMilestone`.
+   *
+   * Optional, and absent on purpose where this view is built for the public
+   * tracking page. That page is unauthenticated (FR-CP-05) and this shape is
+   * shared with it, so an id present here would be an internal identifier
+   * printed in the markup of a page anyone can open with a reference number.
+   * The operator's job screen fills it in; nothing else needs to.
+   *
+   * On fixtures it is synthetic rather than a uuid. Nothing in fixture mode
+   * writes — the action needs a database — so what matters is that it is
+   * stable and unique per row, which is all a select option asks of it.
+   */
+  readonly id?: string
   readonly code: string
   readonly nameEn: string
   readonly nameAr: string
@@ -73,6 +87,21 @@ export interface ExceptionView {
   readonly owner: string | null
   readonly description: string | null
   readonly customerName: string
+}
+
+/**
+ * A partner on a shipment — who is carrying it, clearing it, hauling it.
+ *
+ * `job_parties` is the shipper and consignee named on the bill; this is the
+ * companies *we* engaged. The distinction matters at settlement time: the
+ * consignee is not who we owe money to.
+ */
+export interface JobPartnerView {
+  readonly id: string
+  readonly partnerId: string
+  readonly name: string
+  readonly role: string
+  readonly reference: string | null
 }
 
 export interface DocumentView {
@@ -145,6 +174,7 @@ export interface JobDetail extends JobSummary {
   readonly clocks: readonly ClockView[]
   readonly exceptions: readonly ExceptionView[]
   readonly documents: readonly DocumentView[]
+  readonly partners: readonly JobPartnerView[]
   readonly customsNote: string | null
 }
 

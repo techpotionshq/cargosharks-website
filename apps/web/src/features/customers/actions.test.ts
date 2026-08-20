@@ -313,12 +313,21 @@ describe.skipIf(!enabled)('customers', () => {
   })
 
   describe('retiring rather than deleting — FR-ID-09', () => {
+    /*
+      Presence of `isActive` is the signal, not its value — the checkbox
+      convention every form in the application follows. Retiring omits the
+      field; bringing one back sends it.
+    */
+    const retire = (customerId: string) => setCustomerActive({}, form({ customerId }))
+    const restore = (customerId: string) =>
+      setCustomerActive({}, form({ customerId, isActive: 'true' }))
+
     it('stops the customer being selectable and keeps the row', async () => {
       const code = nextCode()
       await create(customerForm({ code }))
       const row = await byCode(code)
 
-      await setCustomerActive(row!.id, false)
+      await retire(row!.id)
 
       const after = await byCode(code)
       expect(after).toBeDefined()
@@ -330,18 +339,25 @@ describe.skipIf(!enabled)('customers', () => {
       await create(customerForm({ code }))
       const row = await byCode(code)
 
-      await setCustomerActive(row!.id, false)
-      await setCustomerActive(row!.id, true)
+      await retire(row!.id)
+      await restore(row!.id)
 
       expect((await byCode(code))?.isActive).toBe(true)
+    })
+
+    /** A form with no customer on it is a no-op, not a crash. */
+    it('says so plainly when no customer was named', async () => {
+      const state = await setCustomerActive({}, form({}))
+
+      expect(state.message).toContain('Nothing to update')
     })
 
     it('refuses a caller who may not write customers', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(
-          setCustomerActive('00000000-0000-7000-8000-0000000000cd', false),
-        ).rejects.toThrow('customer.write')
+        await expect(retire('00000000-0000-7000-8000-0000000000cd')).rejects.toThrow(
+          'customer.write',
+        )
       } finally {
         harness.session = sessionWith(['customer.write'])
       }

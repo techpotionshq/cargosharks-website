@@ -29,7 +29,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { failWith, succeed, type ActionState } from '@/lib/form-state'
+import { fail, failWith, succeed, type ActionState } from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -114,17 +114,35 @@ export async function createAccountingExport(
   return succeed(result.exportId)
 }
 
-export async function voidAccountingExportAction(form: FormData): Promise<void> {
+/**
+ * Unwind a posted period, with a reason.
+ *
+ * Returns an `ActionState` rather than throwing, which is a change from how it
+ * was first written and the reason it could not be reached from a screen:
+ * `RecordDialog` drives `(state, form) => ActionState`, and every refusal here
+ * is something the finance manager can act on. "That export has already been
+ * voided" and "a void needs a reason" belong on the form beside the field, not
+ * on an error boundary that loses what they typed.
+ */
+export async function voidAccountingExportAction(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'finance.export')
 
   const exportId = read(form, 'exportId')
   const reason = read(form, 'reason')
-  if (!exportId) throw new Error('Nothing to void')
-  if (!reason) throw new Error('A void needs a reason')
+  if (!exportId) return failWith('Nothing to void.')
+  /*
+    On the field, not as a banner. The reason *is* the record — "why was March
+    posted twice" is answered by this column or by nobody — so an empty one is
+    a field error, and the dialog keeps the rest of what was typed.
+  */
+  if (!reason) return fail({ reason: 'Say why this is being unwound.' })
 
   const target = service()
-  if (!target) throw new Error('SERVICE_URL and INTERNAL_API_SECRET are required')
+  if (!target) return failWith('SERVICE_URL and INTERNAL_API_SECRET are required.')
 
   const response = await fetch(`${target.url}/internal/accounting/export/${exportId}/void`, {
     method: 'POST',
@@ -134,9 +152,12 @@ export async function voidAccountingExportAction(form: FormData): Promise<void> 
   })
 
   if (!response.ok) {
+    // The service refuses by name — `already_void`, `not_found`, and the
+    // message it gives is written for this reader (see `ExportError`).
     const detail = (await response.json().catch(() => null)) as ServiceRefusal | null
-    throw new Error(detail?.message ?? 'The export could not be voided')
+    return failWith(detail?.message ?? 'The export could not be voided.')
   }
 
   revalidatePath('/finance')
+  return succeed(exportId)
 }

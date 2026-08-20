@@ -16,7 +16,7 @@ import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { LocationDialog } from '@/features/network/ui/dialogs'
+import { LocationDialog, RetireNetworkDialog } from '@/features/network/ui/dialogs'
 
 const KIND_ICON = {
   seaport: 'ship',
@@ -78,6 +78,7 @@ export default async function LocationsPage({
             <TH>{t('country')}</TH>
             <TH align="end">{t('shipments')}</TH>
             <TH>{tc('status')}</TH>
+            <TH align="end" />
           </TR>
         </THead>
         <TBody>
@@ -104,6 +105,14 @@ export default async function LocationsPage({
                 <Badge tone={row.isActive ? 'positive' : 'muted'}>
                   {row.isActive ? tc('active') : tc('inactive')}
                 </Badge>
+              </TD>
+              <TD align="end">
+                <RetireNetworkDialog
+                  kind="location"
+                  id={row.id}
+                  name={row.nameEn}
+                  isActive={row.isActive}
+                />
               </TD>
             </TR>
           ))}

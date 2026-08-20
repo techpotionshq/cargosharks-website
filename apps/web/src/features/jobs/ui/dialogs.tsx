@@ -16,7 +16,17 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { saveJob } from '../form-actions'
+import { addJobPartner, saveJob } from '../form-actions'
+
+/** The roles a partner can hold on a shipment — `job_partners.role`. */
+const PARTNER_ROLES = [
+  'carrier',
+  'origin_agent',
+  'destination_agent',
+  'customs_broker',
+  'haulier',
+  'terminal',
+] as const
 
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
@@ -347,6 +357,86 @@ export async function JobDialog({
         title: editing ? t('editTitle') : t('title'),
         description: editing ? t('editDescription') : t('description'),
         submit: editing ? tc('save') : t('submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Engaging a partner on a shipment.
+ *
+ * `job_partners` is who *we* placed the work with — the carrier, the agent at
+ * the far end, the haulier. Distinct from `job_parties`, which is the shipper
+ * and consignee named on the bill of lading, and the distinction is the one
+ * that decides who gets settled with at the end of the month: the consignee is
+ * not somebody we owe money to.
+ *
+ * The reference is the partner's own number for the job — their booking, their
+ * job file. It is what somebody quotes down the phone when they ring the agent,
+ * and the reason this form has three fields rather than two.
+ */
+export async function JobPartnerDialog({
+  jobId,
+  branchId,
+  variant = 'ghost',
+}: {
+  readonly jobId: string
+  readonly branchId: string
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'job.update')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('jobPartners'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'jobId', value: jobId },
+    { kind: 'hidden', name: 'branchId', value: branchId },
+    {
+      kind: 'select',
+      name: 'partnerId',
+      label: t('partner'),
+      span: 12,
+      required: true,
+      options: options.partners,
+      placeholder: tc('choose'),
+    },
+    {
+      kind: 'select',
+      name: 'role',
+      label: t('role'),
+      span: 6,
+      required: true,
+      options: PARTNER_ROLES.map((key) => ({ value: key, label: t(`roles.${key}`) })),
+      defaultValue: 'carrier',
+    },
+    {
+      kind: 'text',
+      name: 'reference',
+      label: t('reference'),
+      span: 6,
+      mono: true,
+      hint: t('referenceHint'),
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={addJobPartner}
+      fields={fields}
+      icon="partners"
+      variant={variant}
+      labels={{
+        open: t('add'),
+        title: t('addTitle'),
+        description: t('addDescription'),
+        submit: tc('save'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

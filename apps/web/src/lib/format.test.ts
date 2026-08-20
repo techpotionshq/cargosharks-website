@@ -73,8 +73,15 @@ describe('formatMoney', () => {
     )
   })
 
+  /**
+   * Lower-case `k`, because the application formats as `en-GB`.
+   *
+   * `intlLocale` maps every non-Arabic locale to `en-GB`, and CLDR's British
+   * English compact notation is `25k` where American English is `25K`. The
+   * assertion was written against the latter and had never matched.
+   */
   it('compacts at and above ten thousand', () => {
-    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(/25K/)
+    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(/25k/)
   })
 
   /**

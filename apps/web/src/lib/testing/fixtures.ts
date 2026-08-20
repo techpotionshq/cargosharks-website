@@ -170,7 +170,18 @@ export async function world(): Promise<World> {
 
     /*
       Two places, because a shipment needs somewhere to start and somewhere to
-      go — `saveJob` requires both and nothing seeds `locations`.
+      go — `saveJob` requires both.
+
+      Their UN/LOCODEs are invented (`KWFX1`, `AEFX1`) and that is the point.
+      These rows were `KWSWK` and `AEJEA`, the real Shuwaikh and Jebel Ali,
+      which the seed also creates — and `locations_unlocode_idx` is unique, so
+      on a seeded database the insert below conflicted, did nothing, and the
+      ids `ORIGIN` and `DESTINATION` never existed. Every suite that put a lane
+      on an enquiry then failed on a foreign key, but only on a machine where
+      `pnpm db:seed` had been run, which is every machine except the one where
+      the fixture was written. `apps/service` hit the identical fault from the
+      other side and solved it by looking the ports up; here the rows belong to
+      this fixture, so they get codes nothing else will ever claim.
     */
     await tx
       .insert(locations)
@@ -178,17 +189,17 @@ export async function world(): Promise<World> {
         {
           id: ORIGIN,
           kind: 'seaport',
-          unlocode: 'KWSWK',
-          nameEn: 'Shuwaikh',
-          nameAr: 'الشويخ',
+          unlocode: 'KWFX1',
+          nameEn: 'Fixture Origin',
+          nameAr: 'ميناء الاختبار',
           countryCode: 'KW',
         },
         {
           id: DESTINATION,
           kind: 'seaport',
-          unlocode: 'AEJEA',
-          nameEn: 'Jebel Ali',
-          nameAr: 'جبل علي',
+          unlocode: 'AEFX1',
+          nameEn: 'Fixture Destination',
+          nameAr: 'ميناء الوصول للاختبار',
           countryCode: 'AE',
         },
       ])

@@ -234,7 +234,7 @@ describe('closing a period', () => {
     it('asks the service to release what the export consumed', async () => {
       fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ released: 4 }) })
 
-      await voidAccountingExportAction(voidForm())
+      await voidAccountingExportAction({}, voidForm())
 
       const [url, init] = fetchMock.mock.calls[0]!
       expect(url).toBe(
@@ -243,24 +243,30 @@ describe('closing a period', () => {
       expect(JSON.parse((init as { body: string }).body).reason).toBe('Wrong period')
     })
 
-    /** "Why was March posted twice" is answered by that row or by nobody. */
-    it('refuses a void with no reason', async () => {
-      await expect(voidAccountingExportAction(voidForm({ reason: '' }))).rejects.toThrow(
-        'needs a reason',
-      )
+    /**
+     * "Why was March posted twice" is answered by that row or by nobody.
+     *
+     * On the field rather than thrown: the reason is the whole record, and a
+     * dialog that throws loses what the finance manager had already typed.
+     */
+    it('refuses a void with no reason, on the field', async () => {
+      const state = await voidAccountingExportAction({}, voidForm({ reason: '' }))
+
+      expect(state.errors?.reason).toContain('why')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('refuses a void with nothing to void', async () => {
-      await expect(voidAccountingExportAction(voidForm({ exportId: '' }))).rejects.toThrow(
-        'Nothing to void',
-      )
+      const state = await voidAccountingExportAction({}, voidForm({ exportId: '' }))
+
+      expect(state.message).toContain('Nothing to void')
+      expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('refuses a caller without the export permission', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(voidAccountingExportAction(voidForm())).rejects.toThrow('finance.export')
+        await expect(voidAccountingExportAction({}, voidForm())).rejects.toThrow('finance.export')
       } finally {
         harness.session = sessionWith(['finance.export'])
       }
@@ -269,7 +275,8 @@ describe('closing a period', () => {
     it('names the variables that are missing', async () => {
       vi.stubEnv('INTERNAL_API_SECRET', '')
       try {
-        await expect(voidAccountingExportAction(voidForm())).rejects.toThrow('INTERNAL_API_SECRET')
+        const state = await voidAccountingExportAction({}, voidForm())
+        expect(state.message).toContain('INTERNAL_API_SECRET')
       } finally {
         vi.stubEnv('INTERNAL_API_SECRET', 'secret')
       }
@@ -282,7 +289,8 @@ describe('closing a period', () => {
         json: async () => ({ message: 'That export has already been voided' }),
       })
 
-      await expect(voidAccountingExportAction(voidForm())).rejects.toThrow('already been voided')
+      const state = await voidAccountingExportAction({}, voidForm())
+      expect(state.message).toContain('already been voided')
     })
 
     it('falls back to a plain sentence where the service said nothing', async () => {
@@ -292,7 +300,8 @@ describe('closing a period', () => {
         json: async () => null,
       })
 
-      await expect(voidAccountingExportAction(voidForm())).rejects.toThrow('could not be voided')
+      const state = await voidAccountingExportAction({}, voidForm())
+      expect(state.message).toContain('could not be voided')
     })
   })
 })

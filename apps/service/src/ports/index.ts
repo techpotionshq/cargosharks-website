@@ -1,10 +1,10 @@
 /**
- * The seven ports — Architecture §10.
+ * The eight ports — Architecture §10.
  *
  * These are the *only* interfaces in the system. The rule from §1 applies
  * without exception: no abstraction without a named second implementation.
- * Each of the seven has a real first implementation today and a second one the
- * SRS itself names — which is why there is no `Repository`, no `Mapper`, no
+ * Each has a real first implementation today and a second one the SRS itself
+ * names — which is why there is no `Repository`, no `Mapper`, no
  * `IEnquiryService` anywhere in this codebase.
  *
  *   NotificationChannel  email · WhatsApp · in-app   -> further channels (FR-NT-02)
@@ -14,10 +14,20 @@
  *   CarrierTracking      manual milestone entry      -> tracking provider (R2)
  *   CustomsFiling        manual reference capture    -> Kuwait Single Window (R2)
  *   EInvoiceTransmit     compliant data, no send     -> accredited provider (R2)
+ *   InboundMailSource    IMAP poll of the mailboxes  -> provider webhook
  *
- * The last three are not speculative. R1 has a genuine first implementation —
- * manual capture — and SRS §8 states the intent that R2's connection be
- * "a plug, not a rebuild".
+ * The last three of the first seven are not speculative. R1 has a genuine
+ * first implementation — manual capture — and SRS §8 states the intent that
+ * R2's connection be "a plug, not a rebuild".
+ *
+ * `InboundMailSource` is the eighth, and it earns the rule rather than bending
+ * it. The first implementation polls Al-Qabandi's own mailboxes over IMAP; the
+ * second is the provider webhook SRS §9 already names as an integration
+ * ("Email — inbound"), where a Resend, Postmark or SES receipt is parsed by
+ * somebody else and posted to `/webhooks/email`. Both hand the same
+ * `InboundMessage` to the same worker, which is the whole point: FR-EQ-02's
+ * rules about what becomes an enquiry are hard, and they should not be written
+ * twice.
  */
 
 export interface OutboundMessage {
@@ -145,4 +155,68 @@ export interface EInvoiceTransmit {
     invoiceId: string,
     document: Record<string, unknown>,
   ): Promise<{ accepted: boolean; reference?: string }>
+}
+
+// --- inbound mail -----------------------------------------------------------
+
+export interface InboundAttachment {
+  readonly filename: string
+  readonly contentType: string
+  readonly content: Buffer
+}
+
+/**
+ * One received email, normalised.
+ *
+ * Deliberately not the provider's shape and deliberately not raw MIME. An IMAP
+ * poll and a webhook receipt disagree about almost everything — one hands over
+ * a parsed object, the other a base64 blob or a URL to fetch — and the FR-EQ-02
+ * rules about what becomes an enquiry are hard enough without also carrying
+ * that difference through them.
+ */
+export interface InboundMessage {
+  /**
+   * RFC 5322 `Message-ID`, and the idempotency key.
+   *
+   * `inbound_webhook_events` is unique on `(provider, external_id)`, which is
+   * what stops a redelivered — or re-polled — mail becoming a second enquiry.
+   * A message with no `Message-ID` is malformed but not rare, so an adapter
+   * synthesises one from the parts that identify the mail rather than skipping
+   * it: better a stable hash than a new enquiry every minute forever.
+   */
+  readonly externalId: string
+  /** Which configured mailbox received it — this is what names the branch. */
+  readonly mailbox: string
+  readonly from: string
+  readonly fromName?: string
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly subject: string
+  /** Plain text. HTML mail is flattened by the adapter, never stored as HTML. */
+  readonly body: string
+  readonly receivedAt: Date
+  /** Threading headers — how a reply finds the job it belongs to (FR-NT-05). */
+  readonly inReplyTo?: string
+  readonly references: readonly string[]
+  readonly attachments: readonly InboundAttachment[]
+}
+
+/**
+ * Somewhere email arrives from.
+ *
+ * `collect` takes the handler rather than returning a list, because the
+ * acknowledgement has to happen *after* the work and the adapter is the only
+ * thing that knows how to acknowledge. IMAP sets `\Seen`; a webhook source has
+ * already been acknowledged with a 202 by the time this runs. Returning an
+ * array would put "mark it done" in the caller, which is where a crash halfway
+ * through a batch turns into either a lost enquiry or a duplicated one.
+ *
+ * A handler that throws leaves the message unacknowledged, so it is collected
+ * again on the next run. At-least-once, and the same trade the notification
+ * dispatcher makes for the same reason: a duplicate enquiry is a merge, a lost
+ * one is a customer who never got a quote.
+ */
+export interface InboundMailSource {
+  readonly key: string
+  collect(handler: (message: InboundMessage) => Promise<void>): Promise<number>
 }

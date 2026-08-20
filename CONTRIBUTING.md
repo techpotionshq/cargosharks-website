@@ -36,7 +36,7 @@ them; the domain makes far more sense that way round.
 ## The loop
 
 ```bash
-pnpm lint        # oxlint + four repository invariants (below)
+pnpm lint        # oxlint + six repository invariants (below)
 pnpm typecheck   # every package
 pnpm test:core   # the engines. No database, no network, ~1.4s
 pnpm test:db     # migrations, seed, RLS matrix. Needs a database
@@ -50,7 +50,7 @@ three are what CI runs, in that order, ordered by how quickly they fail.
 
 ## What will stop you, and why
 
-`pnpm lint` runs four checks that are not style. Each exists because the bug it
+`pnpm lint` runs six checks that are not style. Each exists because the bug it
 catches actually shipped, and each prints the fix rather than the rule:
 
 | Check | Refuses |
@@ -59,6 +59,8 @@ catches actually shipped, and each prints the fix rather than the rule:
 | [`check-migrations.mjs`](scripts/check-migrations.mjs) | a migration folder whose newest snapshot is stale — see below |
 | [`check-messages.mjs`](scripts/check-messages.mjs) | an English string with no Arabic, or a key that resolves to nothing |
 | [`check-links.mjs`](scripts/check-links.mjs) | an `href` to a route that does not exist |
+| [`check-schedules.mjs`](scripts/check-schedules.mjs) | a job on the cron schedule with no handler registered to run it |
+| [`check-permissions.mjs`](scripts/check-permissions.mjs) | a permission the application enforces that `core` does not declare — so no role, not even `administrator`, is ever granted it |
 
 If one of these fires, read the message. It names the file, the line, and the
 correct form.

@@ -3,6 +3,8 @@ import {
   IllegalTransitionError,
   assertTransition,
   canTransition,
+  customsMachine,
+  entryPermission,
   invoiceMachine,
   isTerminal,
   jobMachine,
@@ -51,5 +53,68 @@ describe('permissions gate the available actions (FR-ID-03)', () => {
     expect(keys).toContain('invoice.credit')
     expect(keys).toContain('customs.file')
     expect(new Set(keys).size).toBe(keys.length)
+  })
+})
+
+describe('what reaching a state demands (entryPermission)', () => {
+  /**
+   * The bug this closes: the customs form asserted `customs.update` for every
+   * move, so a coordinator correcting a declaration number could also file the
+   * declaration and clear the duty — two keys the machine declares and nothing
+   * checked.
+   */
+  it('reads the separation of duties off the customs machine', () => {
+    expect(entryPermission(customsMachine, 'declaration_filed')).toBe('customs.file')
+    expect(entryPermission(customsMachine, 'duty_paid')).toBe('customs.pay')
+    expect(entryPermission(customsMachine, 'released')).toBe('customs.update')
+  })
+
+  /** Reached from four states, all demanding the same key — still unambiguous. */
+  it('is content when every path into a state agrees', () => {
+    expect(entryPermission(customsMachine, 'inspection')).toBe('customs.update')
+  })
+
+  /** The initial state is entered by creation, not by a transition. */
+  it('demands nothing for a state nothing transitions into', () => {
+    expect(entryPermission(customsMachine, 'not_started')).toBeUndefined()
+  })
+
+  /**
+   * Loudly, rather than by guessing.
+   *
+   * Returning `undefined` would silently drop the check and returning either
+   * key would enforce a permission the principal's actual path did not
+   * require. Both are worse than a caller that has to use `assertTransition`.
+   */
+  it('refuses to answer where two paths in disagree', () => {
+    const forked = {
+      name: 'forked',
+      initial: 'a' as const,
+      states: ['a', 'b', 'c'] as const,
+      terminal: [] as const,
+      transitions: [
+        { from: 'a', to: 'c', requires: 'one', label: 'via a' },
+        { from: 'b', to: 'c', requires: 'two', label: 'via b' },
+      ],
+    }
+
+    expect(() => entryPermission(forked, 'c')).toThrow(/different permissions/)
+    expect(() => entryPermission(forked, 'c')).toThrow(/one, two/)
+  })
+
+  /** A guarded path and an unguarded one into the same state is the same fault. */
+  it('refuses where one path in is unguarded', () => {
+    const partly = {
+      name: 'partly',
+      initial: 'a' as const,
+      states: ['a', 'b', 'c'] as const,
+      terminal: [] as const,
+      transitions: [
+        { from: 'a', to: 'c', requires: 'one', label: 'guarded' },
+        { from: 'b', to: 'c', label: 'unguarded' },
+      ],
+    }
+
+    expect(() => entryPermission(partly, 'c')).toThrow(/none, one/)
   })
 })

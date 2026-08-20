@@ -199,9 +199,29 @@ export async function updateCustomer(
  * A customer with shipment history cannot be removed without taking the
  * history with it, so the record stays and stops being selectable.
  */
-export async function setCustomerActive(customerId: string, isActive: boolean): Promise<void> {
+export async function setCustomerActive(
+  _previous: CustomerFormState,
+  form: FormData,
+): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+
+  /*
+    A form action like every other one here, rather than the two positional
+    arguments it used to take.
+
+    That signature is why it went unused: no form could post to it, so the
+    only path to it was `.bind()`, and the deactivation this file's own
+    docstring describes had no control anywhere in the interface. The shape
+    below is the one `RecordDialog` drives, which is what every other mutation
+    in this slice already is.
+  */
+  const customerId = String(form.get('customerId') ?? '')
+  if (!customerId) return { message: 'Nothing to update.' }
+
+  // Presence is the signal, matching the checkbox convention of every form in
+  // the application: reactivating sends the field, deactivating omits it.
+  const isActive = form.get('isActive') !== null
 
   await withActor(session.actor, async (tx) => {
     await tx
@@ -212,4 +232,5 @@ export async function setCustomerActive(customerId: string, isActive: boolean): 
 
   revalidatePath('/customers')
   revalidatePath(`/customers/${customerId}`)
+  return { message: 'saved' }
 }

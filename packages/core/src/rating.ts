@@ -120,6 +120,16 @@ export function calcCharge(line: RateLine, ctx: ChargeContext = {}): Money {
   return amount
 }
 
+/**
+ * How far ahead coverage is warned about — FR-RT-11's thirty days.
+ *
+ * Here rather than in the worker that sends the digest, because the screen
+ * that shows "expiring" and the mail that says so must mean the same window.
+ * They did not have to be told twice about free time either; `clocks.ts` holds
+ * that one for the same reason.
+ */
+export const RATE_CARD_EXPIRY_HORIZON_DAYS = 30
+
 // --- charge lines ----------------------------------------------------------
 
 export type Direction = 'cost' | 'revenue'

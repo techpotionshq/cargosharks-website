@@ -282,6 +282,42 @@ export function assertTransition<S extends string>(m: Machine<S>, from: S, to: S
 }
 
 /**
+ * The permission that *reaching* a state demands, wherever it is reached from.
+ *
+ * For the caller who knows both ends of the move, `assertTransition` returns
+ * the transition and its `requires` is the exact answer. This exists for the
+ * caller who does not: a form that sets a status without caring what the
+ * status was, and — the case it was written for — the creation of a record
+ * whose first status is chosen rather than transitioned into.
+ *
+ * `customs.file` and `customs.pay` were declared on the customs machine and
+ * checked nowhere: the customs form asserted `customs.update` for every move,
+ * so anyone who could correct a declaration number could also file the
+ * declaration and clear the duty. Re-stating the mapping at the call site is
+ * what let it drift in the first place, so it is derived here instead.
+ *
+ * ## Throws where the answer is ambiguous, rather than guessing
+ *
+ * If two paths into a state demand different permissions there is no single
+ * answer, and the tempting fallbacks are both wrong: returning `undefined`
+ * silently drops the check, and returning either one enforces a permission the
+ * principal's actual path did not require. A machine written that way is a
+ * machine whose caller must use `assertTransition`, and this says so loudly at
+ * the moment it becomes true rather than at the moment somebody exploits it.
+ */
+export function entryPermission<S extends string>(m: Machine<S>, to: S): string | undefined {
+  const required = new Set(m.transitions.filter((t) => t.to === to).map((t) => t.requires))
+  if (required.size > 1) {
+    throw new Error(
+      `${m.name}: reaching "${to}" requires different permissions depending on where it is ` +
+        `reached from (${[...required].map((r) => r ?? 'none').sort().join(', ')}). ` +
+        'Use assertTransition, which knows the path taken.',
+    )
+  }
+  return [...required][0]
+}
+
+/**
  * The transitions a principal holding `permissions` may take from `from` —
  * what the UI renders as available actions, derived rather than duplicated.
  */
@@ -313,6 +349,17 @@ export function permissionKeys(): string[] {
  * "every permission" from `core` silently got the operational half and none of
  * the administrative one.
  *
+ * That fault then happened a second time, inside the fix. `consol.write`,
+ * `consol.allocate` and `document.generate` were enforced by `assertCan` and
+ * granted per role in `db/seed.ts`, and never added here — so they existed
+ * everywhere except the one list that defines "all of them". The consequence
+ * is not a denied request that reads as a bug: the `administrator` role is
+ * seeded from `allPermissionKeys()` and nothing else, so an administrator
+ * simply never received them, and the button was absent rather than refused.
+ * `scripts/check-permissions.mjs` now fails the build on a key enforced in the
+ * application and missing from this file, because review does not catch it —
+ * twice now.
+ *
  * The comments are the separation of duties, and each is load-bearing:
  *
  * - `admin.branches.write` is its own key rather than folded into
@@ -335,6 +382,17 @@ export const ADMIN_PERMISSIONS = [
     rather than riding on `job.update`, which every coordinator holds.
   */
   'document.release',
+  /*
+    Issuing is a second key, and not the same one as releasing.
+
+    `document.release` is "the customer now has it"; `document.generate` is
+    "these bytes are now the document" — it stores a rendered PDF, versions the
+    copy before it and writes the `documents` row. They are adjacent and they
+    are not the same act, which is why a coordinator holds both but the split
+    survives: regenerating a bill of lading differently after release is the
+    failure this pair exists to make visible.
+  */
+  'document.generate',
   'admin.audit.read',
   'admin.users.write',
   'admin.api_keys.write',
@@ -368,6 +426,21 @@ export const ADMIN_PERMISSIONS = [
   'payable.record',
   'payable.approve',
   'payable.pay',
+  /*
+    Consolidation, split in two — FR-CN.
+
+    `consol.write` builds the master: open it, attach and detach houses, close
+    it at the cut-off. That is operations' work, and the coordinator holding
+    the file does it.
+
+    `consol.allocate` splits the master's cost across those houses, which
+    decides what twenty jobs cost and therefore what twenty margins are. It
+    sits with the people who answer for the margin, on the same reasoning that
+    puts `invoice.issue` with finance and `job.book` with operations — and it
+    is why building the master and pricing it are not one key.
+  */
+  'consol.write',
+  'consol.allocate',
   /*
     Netting an agent's account is neither of the above.
 

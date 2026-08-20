@@ -26,10 +26,11 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
+import { QuoteLineDialog } from '@/features/ledger/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
-import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, quoteTone } from '@/ui/status'
@@ -68,6 +69,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const money = (amount: number) => formatMoney({ amount, currency: quote.currency }, locale)
 
   const expired = quote.validUntil !== null && new Date(quote.validUntil).getTime() < Date.now()
+  const pdf = `/api/quotes/${quote.id}/pdf`
 
   return (
     <>
@@ -99,6 +101,21 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             {quote.version > 1 ? (
               <Badge tone="muted">{t('version', { version: quote.version })}</Badge>
             ) : null}
+            {/*
+              The document the customer receives — FR-EQ-08.
+
+              Both languages, as plain links: a `GET` renders and streams and
+              stores nothing, so opening one in a tab is safe. The href is
+              built above rather than interpolated inline because
+              `check-links.mjs` reads an interpolated href by its literal
+              prefix and cannot see past the first `${`.
+            */}
+            <Button size="sm" variant="ghost" href={pdf} download icon="download">
+              {t('pdf')}
+            </Button>
+            <Button size="sm" variant="ghost" href={`${pdf}?locale=ar`} download>
+              {t('pdfAr')}
+            </Button>
             <QuoteStatusActions quoteId={quote.id} status={quote.status} />
           </>
         }
@@ -149,6 +166,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           icon="finance"
           title={t('lines')}
           explain={t('linesExplain')}
+          actions={
+            /*
+              Only on a draft. `addQuoteLine` refuses anything else — a sent
+              quotation is an offer somebody is holding, and changing it means
+              a revision (FR-RT-08), not an edit.
+            */
+            quote.status === 'draft' ? (
+              <QuoteLineDialog quoteId={quote.id} currency={quote.currency} variant="ghost" />
+            ) : null
+          }
         >
           {quote.lines.length === 0 ? (
             <EmptyState icon="finance" title={t('noLines')} description={t('noLinesHint')} />

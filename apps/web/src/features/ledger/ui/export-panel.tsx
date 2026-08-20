@@ -17,7 +17,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { createAccountingExport } from '../export-actions'
+import { createAccountingExport, voidAccountingExportAction } from '../export-actions'
 
 /** Last month, as two ISO dates. Computed on the server, in UTC. */
 function lastMonth(): { from: string; to: string } {
@@ -77,6 +77,67 @@ export async function AccountingExportDialog({
         title: post ? t('postTitle') : t('previewTitle'),
         description: post ? t('postDescription') : t('previewDescription'),
         submit: post ? t('post') : t('preview'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Unwinding a posted period.
+ *
+ * Its own dialog rather than a button, because a void needs a reason and the
+ * reason is the whole point: an auditor asking "why was March posted twice"
+ * gets their answer from `void_reason` or from nobody. A one-click void would
+ * make the destructive act the easy one and leave the record silent.
+ *
+ * `caution` on the note, not `critical`: nothing is destroyed. The export row
+ * stays, marked void with its reason, and what is released is the *link* from
+ * each invoice back to it — so the period becomes exportable again (§5.5).
+ */
+export async function VoidExportDialog({
+  exportId,
+  period,
+}: {
+  readonly exportId: string
+  readonly period: string
+}) {
+  const session = await requireSession()
+  if (!can(session, 'finance.export')) return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('accountingExport'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'exportId', value: exportId },
+    {
+      kind: 'textarea',
+      name: 'reason',
+      label: t('voidReason'),
+      span: 12,
+      required: true,
+      rows: 3,
+      hint: t('voidReasonHint'),
+    },
+    { kind: 'note', text: t('voidWarning'), tone: 'caution' },
+  ]
+
+  return (
+    <RecordDialog
+      action={voidAccountingExportAction}
+      fields={fields}
+      icon="alert"
+      variant="ghost"
+      iconOnly
+      submitIcon="alert"
+      labels={{
+        open: t('void'),
+        title: t('voidTitle', { period }),
+        description: t('voidDescription'),
+        submit: t('void'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

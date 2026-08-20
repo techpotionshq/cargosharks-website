@@ -92,6 +92,11 @@ const capabilities = [
     without: 'no notification email leaves the outbox, and password reset cannot be delivered',
   },
   {
+    name: 'Inbound mail',
+    keys: ['INBOUND_MAILBOXES'],
+    without: 'emailed enquiries never reach the queue; every lead is typed in by hand (FR-EQ-02)',
+  },
+  {
     name: 'FX rates',
     keys: ['FX_API_URL'],
     without: 'foreign-currency charge lines need a rate entered by hand',

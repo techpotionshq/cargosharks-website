@@ -13,6 +13,7 @@
 
 import { asc, desc, eq, sql } from 'drizzle-orm'
 import {
+  accountingExports,
   branches,
   customers,
   enquiries,
@@ -519,4 +520,64 @@ export async function getInvoiceDetail(
     `)
     return result.rows[0] as unknown as InvoiceDetail | undefined
   })
+}
+
+export interface AccountingExportRow {
+  readonly id: string
+  readonly branchCode: string | null
+  readonly format: string
+  readonly periodFrom: string
+  readonly periodTo: string
+  readonly rowCount: number
+  readonly status: string
+  readonly postedAt: Date | null
+  readonly postedBy: string | null
+  readonly voidedAt: Date | null
+  readonly voidReason: string | null
+}
+
+/**
+ * The exports this desk has run — FR-FN-12.
+ *
+ * Written because the void existed and was unreachable. `createAccountingExport`
+ * had a screen; `voidAccountingExportAction` was implemented, tested against
+ * the real service route, and called by nothing — so an export posted against
+ * the wrong period consumed it permanently, and the only remedy was a
+ * developer with a database connection.
+ *
+ * Voided rows stay in the list. That is the point of a void rather than a
+ * delete: the reason someone gives for unwinding a posted period is a thing an
+ * auditor asks about, and a list that hid them would answer "that export never
+ * happened" (§5.5).
+ */
+export async function listAccountingExports(
+  actor: Actor,
+  limit = 12,
+): Promise<AccountingExportRow[]> {
+  return withActor(actor, async (tx) =>
+    tx
+      .select({
+        id: accountingExports.id,
+        branchCode: branches.code,
+        format: accountingExports.format,
+        periodFrom: accountingExports.periodFrom,
+        periodTo: accountingExports.periodTo,
+        rowCount: accountingExports.rowCount,
+        status: accountingExports.status,
+        postedAt: accountingExports.postedAt,
+        postedBy: principals.nameEn,
+        voidedAt: accountingExports.voidedAt,
+        voidReason: accountingExports.voidReason,
+      })
+      .from(accountingExports)
+      .leftJoin(branches, eq(branches.id, accountingExports.branchId))
+      .leftJoin(principals, eq(principals.id, accountingExports.postedById))
+      /*
+        Newest first, and by when the period was *posted* rather than by the
+        period itself: closing January in March puts it at the top, which is
+        where somebody looking for the export they just ran expects it.
+      */
+      .orderBy(desc(accountingExports.createdAt))
+      .limit(limit),
+  )
 }

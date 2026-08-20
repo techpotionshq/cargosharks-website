@@ -27,7 +27,7 @@ import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { UserDialog } from '@/features/admin/ui/dialogs'
+import { SuspendUserDialog, UserDialog } from '@/features/admin/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('users')
@@ -89,6 +89,7 @@ export default async function UsersPage() {
             <TH>{t('signIn')}</TH>
             <TH>{t('lastSeen')}</TH>
             <TH>{tc('status')}</TH>
+            <TH align="end" />
           </TR>
         </THead>
         <TBody>
@@ -131,6 +132,13 @@ export default async function UsersPage() {
                 <Badge tone={person.isActive ? 'positive' : 'muted'}>
                   {person.isActive ? tc('active') : tc('inactive')}
                 </Badge>
+              </TD>
+              <TD align="end">
+                <SuspendUserDialog
+                  principalId={person.id}
+                  name={person.nameEn}
+                  isActive={person.isActive}
+                />
               </TD>
             </TR>
           ))}

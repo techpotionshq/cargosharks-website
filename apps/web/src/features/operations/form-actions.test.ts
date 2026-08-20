@@ -72,7 +72,14 @@ const session = {
     'job.hold',
     'job.close',
     'job.cancel',
+    /*
+      All three customs keys, because this session stands in for a coordinator
+      who does the whole job. The separation between them is asserted in its
+      own describe below, by taking one away.
+    */
     'customs.update',
+    'customs.file',
+    'customs.pay',
     'exception.raise',
     'exception.close',
     'document.release',
@@ -362,6 +369,80 @@ describe.skipIf(!enabled)('operations mutations', () => {
     it('rejects a malformed job id before touching the database', async () => {
       const state = await saveCustomsStage({}, form({ jobId: 'not-a-uuid', status: 'not_started' }))
       expect(state.errors).toBeDefined()
+    })
+
+    /**
+     * The separation of duties the customs machine declares — FR-ID-03.
+     *
+     * `customs.file` and `customs.pay` were on the machine and checked
+     * nowhere: every status change asserted `customs.update`, so the
+     * coordinator who corrects a declaration number could also file the
+     * declaration and clear the duty. These take one key away at a time and
+     * check the move it guards is the move that stops.
+     */
+    describe('the three customs keys are three keys', () => {
+      const withoutKey = async (missing: string, run: () => Promise<unknown>) => {
+        const held = new Set(session.permissions)
+        held.delete(missing)
+        harness.session = { ...session, permissions: held }
+        try {
+          return await run()
+        } finally {
+          harness.session = session
+        }
+      }
+
+      it('needs customs.file to file the declaration', async () => {
+        const jobId = await job()
+        await saveCustomsStage({}, form({ jobId, status: 'documents_pending' }))
+
+        await withoutKey('customs.file', async () => {
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'declaration_filed' })),
+          ).rejects.toThrow('customs.file')
+        })
+      })
+
+      it('needs customs.pay to clear the duty', async () => {
+        const jobId = await job()
+        await saveCustomsStage({}, form({ jobId, status: 'documents_pending' }))
+        await saveCustomsStage({}, form({ jobId, status: 'declaration_filed' }))
+        await saveCustomsStage({}, form({ jobId, status: 'assessed' }))
+
+        await withoutKey('customs.pay', async () => {
+          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
+            'customs.pay',
+          )
+        })
+      })
+
+      /** The ordinary moves keep working on `customs.update` alone. */
+      it('leaves the rest of the stage to customs.update', async () => {
+        const jobId = await job()
+
+        const state = await withoutKey('customs.file', () =>
+          saveCustomsStage({}, form({ jobId, status: 'documents_pending' })),
+        )
+
+        expect((state as { errors?: unknown }).errors).toBeUndefined()
+      })
+
+      /**
+       * Creation is checked too.
+       *
+       * A stage created directly at `duty_paid` reaches duty_paid without
+       * transitioning into it, so a check that ran only on the update path
+       * would be a permission anyone could step around by having no stage yet.
+       */
+      it('checks the key on creation, not only on a move', async () => {
+        const jobId = await job()
+
+        await withoutKey('customs.pay', async () => {
+          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
+            'customs.pay',
+          )
+        })
+      })
     })
   })
 

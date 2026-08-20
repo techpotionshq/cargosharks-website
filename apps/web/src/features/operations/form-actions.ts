@@ -18,7 +18,13 @@
 import { revalidatePath } from 'next/cache'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assertTransition, customsMachine, isTerminal, jobMachine } from '@qabandi/core'
+import {
+  assertTransition,
+  customsMachine,
+  entryPermission,
+  isTerminal,
+  jobMachine,
+} from '@qabandi/core'
 import {
   customsStages,
   documentTypes,
@@ -261,6 +267,17 @@ export async function saveCustomsStage(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  /*
+    Every customs move needs this; two of them need more.
+
+    `customs.file` and `customs.pay` are declared on the machine and were
+    checked nowhere — every status change asserted `customs.update`, so the
+    coordinator who corrects a declaration number could also file the
+    declaration and clear the duty. That is the separation the three keys exist
+    to draw, and FR-ID-03 puts the mapping on the transition rather than here:
+    `entryPermission` reads it off the machine, so a change to the machine
+    cannot leave this behind.
+  */
   assertCan(session, 'customs.update')
 
   const parsed = customsSchema.safeParse({
@@ -278,6 +295,15 @@ export async function saveCustomsStage(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
+
+  /*
+    Checked against the *target* status, and so on creation as well as on a
+    move. A stage that is created directly at `duty_paid` reaches duty_paid
+    without transitioning into it, and a check that only ran on the update path
+    would be a permission anyone could step around by having no stage yet.
+  */
+  const required = entryPermission(customsMachine, data.status)
+  if (required) assertCan(session, required)
 
   try {
     await withActor(session.actor, async (tx) => {

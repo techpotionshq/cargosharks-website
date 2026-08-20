@@ -21,11 +21,12 @@
  * attached to it is a discrepancy at the port.
  */
 
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm'
 import {
-  SEED_CHARGEABLE_RULES,
   SEED_CURRENCIES,
   chargeableWeight,
+  dec,
+  type ChargeableRule,
   customsValue as computeCustomsValue,
   estimateDuty,
   type CurrencySpec,
@@ -35,6 +36,7 @@ import {
 import {
   branches,
   chargeLines,
+  chargeableRules,
   consolidations,
   customers,
   customsStages,
@@ -100,6 +102,54 @@ export const DOCUMENT_TYPE_KEYS: Record<JobDocumentKind, string> = {
 const currencySpec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
 
+/**
+ * The volumetric rule for a mode, as this branch configures it.
+ *
+ * Two rows can match: the seeded default carries no branch, and a branch that
+ * negotiated its own divisor carries one. `branch_id` sorts nulls last here so
+ * the branch's own row wins where it exists — which is the whole reason the
+ * unique constraint is on `(mode, branch_id)` rather than on `mode` alone.
+ *
+ * Returns `null` rather than a default when nothing matches. See the caller.
+ */
+async function chargeableRuleFor(
+  tx: Parameters<Parameters<typeof withActor>[1]>[0],
+  mode: string | null,
+  branchId: string,
+): Promise<ChargeableRule | null> {
+  if (!mode) return null
+
+  const [rule] = await tx
+    .select({
+      mode: chargeableRules.mode,
+      divisorCm3PerKg: chargeableRules.divisorCm3PerKg,
+      roundUpToKg: chargeableRules.roundUpToKg,
+      minimumKg: chargeableRules.minimumKg,
+    })
+    .from(chargeableRules)
+    .where(
+      and(
+        eq(chargeableRules.mode, mode as ChargeableRule['mode']),
+        eq(chargeableRules.isActive, true),
+        or(eq(chargeableRules.branchId, branchId), isNull(chargeableRules.branchId)),
+      ),
+    )
+    .orderBy(asc(chargeableRules.branchId))
+    .limit(1)
+
+  if (!rule) return null
+
+  return {
+    mode: rule.mode,
+    // `numeric` arrives as a string; `Decimal` is what the engine takes, and
+    // the round-trip through a JS number is exactly the precision loss the
+    // divisor is stored this way to avoid.
+    divisorCm3PerKg: rule.divisorCm3PerKg === null ? null : dec(rule.divisorCm3PerKg),
+    roundUpToKg: dec(rule.roundUpToKg),
+    minimumKg: dec(rule.minimumKg),
+  }
+}
+
 export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<JobDocumentView> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -121,6 +171,8 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
         originId: jobs.originId,
         destinationId: jobs.destinationId,
         consolidationId: jobs.consolidationId,
+        // For the chargeable rule lookup — a branch may configure its own.
+        branchId: jobs.branchId,
         customerEn: customers.legalNameEn,
         customerAr: customers.legalNameAr,
         branchEn: branches.legalNameEn,
@@ -200,12 +252,26 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
       is, and deriving it here beats printing a blank box on a document whose
       whole purpose is to state that number.
 
-      The divisor comes from the seeded rule rather than a literal 6000: an
+      The divisor comes from `chargeable_rules` rather than a literal 6000: an
       airline that moves to a 5000 divisor is an admin edit (FR-AD-03), and a
       waybill computing its own is a waybill that disagrees with the rating
       engine the day after that edit.
+
+      It reads the *table*, and this paragraph used to say "the seeded rule"
+      while the code read `SEED_CHARGEABLE_RULES` — the compiled constant that
+      seeded the table, not the table. The two are identical the day the seed
+      runs and diverge the moment an administrator does the edit this comment
+      promises they can do, at which point the waybill keeps printing the old
+      divisor and nothing says so.
+
+      No fallback to the constant when the lookup misses. Falling back is what
+      made the original bug invisible: the document renders, the number looks
+      reasonable, and it came from a source nobody can edit. An unconfigured
+      mode prints no derived weight, which is the same thing the box already
+      does for a job whose cargo has no dimensions — and `/reference` counts
+      these rows precisely so an empty table is visible before a document is.
     */
-    const rule = SEED_CHARGEABLE_RULES.find((r) => r.mode === row.mode)
+    const rule = await chargeableRuleFor(tx, row.mode, row.branchId)
     const derived =
       rule && cargo.length > 0
         ? chargeableWeight(

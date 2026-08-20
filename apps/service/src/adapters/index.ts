@@ -38,9 +38,10 @@ import type {
   FxRateSource,
 } from '../ports/index'
 
-import type { NotificationChannel } from '../ports/index'
+import type { InboundMailSource, NotificationChannel } from '../ports/index'
 import { config } from '../config'
 import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
+import { imapSource } from './imap'
 import { resolveCarrierTracking } from './carrier-tracking'
 import { resolveCustomsFiling } from './customs'
 import { resolveEInvoiceTransmit } from './einvoice'
@@ -73,6 +74,7 @@ export {
   type DcsaReading,
   type CarrierEstimates,
 } from './dcsa-events'
+export { imapSource, flattenHtml, toInboundMessage, ImapError, type ImapOptions } from './imap'
 export { noTransmit, aspTransmit } from './einvoice'
 export { manualCustomsFiling } from './customs'
 export {
@@ -124,6 +126,38 @@ export function resolveEmailChannel(log: (o: unknown, m: string) => void): Notif
   return smtpChannel(smtpOptions())
 }
 
+/**
+ * The mailboxes this deployment polls — one source each.
+ *
+ * Returns empty for `INBOUND_MAIL_DRIVER=none`, which is the default and which
+ * the worker reports as "nothing to do" rather than branching, exactly as
+ * `fxIngest` does when no feed is bought.
+ *
+ * A driver of `imap` with no mailboxes throws instead of returning empty, and
+ * the difference matters: the first is a deployment that has not bought this,
+ * the second is one that meant to and mistyped the variable. Silently polling
+ * nothing would look identical to working right up until somebody asks why the
+ * enquiry queue is empty.
+ */
+export function resolveInboundMail(): InboundMailSource[] {
+  if (config.INBOUND_MAIL_DRIVER === 'none') return []
+
+  if (config.INBOUND_MAILBOXES.length === 0) {
+    throw new Error(
+      'INBOUND_MAIL_DRIVER=imap but INBOUND_MAILBOXES is empty. ' +
+        'Set it to a JSON array of mailboxes, or set INBOUND_MAIL_DRIVER=none.',
+    )
+  }
+
+  return config.INBOUND_MAILBOXES.map((box) =>
+    imapSource({
+      ...box,
+      batch: config.INBOUND_MAIL_BATCH,
+      maxAttachmentBytes: config.INBOUND_MAIL_MAX_ATTACHMENT_MB * 1024 * 1024,
+    }),
+  )
+}
+
 export interface Adapters {
   readonly fx: FxRateSource
   readonly fileStore: FileStore
@@ -172,6 +206,16 @@ export function describeAdapters(): Record<string, string> {
       config.MAIL_DRIVER === 'log'
         ? 'log (not sending)'
         : `smtp ${config.SMTP_HOST}:${config.SMTP_PORT}`,
+    /*
+      Read from config for the same reason as `email` above: "off" and "on but
+      polling nothing" look identical from outside, and this is the line that
+      separates them. FR-EQ-02 is a Must, so a deployment showing `none` here
+      is one where the enquiry front door is not connected.
+    */
+    inboundMail:
+      config.INBOUND_MAIL_DRIVER === 'none'
+        ? 'none (not receiving)'
+        : `imap — ${config.INBOUND_MAILBOXES.map((m) => m.user).join(', ')}`,
     fx: a.fx.key,
     fileStore: a.fileStore.key,
     carrierTracking: a.carrierTracking.key,

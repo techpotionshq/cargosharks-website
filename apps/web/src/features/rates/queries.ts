@@ -16,7 +16,18 @@
  */
 
 import { sql } from 'drizzle-orm'
-import { withActor, type Actor } from '@qabandi/db'
+import { listExpiringRateCards, withActor, type Actor, type ExpiringRateCard } from '@qabandi/db'
+
+/**
+ * Coverage about to lapse — FR-RT-11's screen half.
+ *
+ * Re-exported rather than re-queried. The read lives in `@qabandi/db` because
+ * the nightly digest in `apps/service` needs the same answer, and a panel that
+ * disagrees with the mail it was meant to explain is worse than no panel: the
+ * argument then is about which of the two is broken, and nobody looks at the
+ * lane.
+ */
+export { listExpiringRateCards, type ExpiringRateCard }
 
 export interface RateCardRow {
   readonly id: string

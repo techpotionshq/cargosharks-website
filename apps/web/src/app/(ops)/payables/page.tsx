@@ -12,11 +12,14 @@ import Link from 'next/link'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
+  listPayableInvoices,
   listSupplierInvoices,
+  listSupplierPayments,
   payablesAgeing,
   payablesSummary,
 } from '@/features/payables/queries'
 import {
+  AllocatePaymentDialog,
   SupplierInvoiceDialog,
   SupplierPaymentDialog,
 } from '@/features/payables/ui/dialogs'
@@ -45,16 +48,38 @@ export default async function PayablesPage({
   const session = await requireSession()
   const filters = await searchParams
 
-  const [rows, summary, ageing, t, tc] = await Promise.all([
+  const [rows, summary, ageing, payments, t, tc] = await Promise.all([
     listSupplierInvoices(session.actor, {
       status: filters.status,
       partnerId: filters.partner,
     }),
     payablesSummary(session.actor),
     payablesAgeing(session.actor),
+    listSupplierPayments(session.actor),
     getTranslations('payables'),
     getTranslations('common'),
   ])
+
+  /*
+    What is left on each payment, and the bills it could still go against.
+
+    Loaded per partner rather than once for everybody: `listPayableInvoices`
+    is partner-scoped because an allocation across partners is not a thing
+    that exists, and offering one on the form would be offering a mistake.
+    Only payments with something left to place need the lookup at all, so a
+    fully allocated register costs no queries.
+  */
+  const openPayments = payments.filter(
+    (payment) => Number(payment.amount) - Number(payment.allocated) > 0,
+  )
+  const billsByPartner = new Map(
+    await Promise.all(
+      [...new Set(openPayments.map((payment) => payment.partnerId))].map(
+        async (partnerId) =>
+          [partnerId, await listPayableInvoices(session.actor, partnerId)] as const,
+      ),
+    ),
+  )
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -182,6 +207,79 @@ export default async function PayablesPage({
           )}
         </Card>
       </Grid>
+
+      {/*
+        Money that has left the building and has not been put against a bill.
+
+        `AllocatePaymentDialog` was written, tested and rendered nowhere, so a
+        payment recorded before its invoice arrived — which is the ordinary
+        case for a deposit or an advance to an agent — stayed unallocated with
+        no way to place it. The register is here rather than on a payment
+        detail page because that is how the work arrives: somebody asks what is
+        still sitting unapplied, and the answer is a list.
+      */}
+      <Card className="mt-4" padding="none">
+        <div className="p-5 pb-3">
+          <h2 className="text-[0.9375rem] font-semibold text-ink">{t('paymentsTitle')}</h2>
+          <p className="mt-1 text-[0.8125rem] text-ink-muted">{t('paymentsHint')}</p>
+        </div>
+
+        {openPayments.length === 0 ? (
+          <EmptyState icon="check" title={t('allAllocated')} description={t('allAllocatedHint')} />
+        ) : (
+          <TableShell className="border-t border-line">
+            <THead>
+              <TR>
+                <TH>{t('paymentPartner')}</TH>
+                <TH>{t('paymentPaidOn')}</TH>
+                <TH>{t('paymentReference')}</TH>
+                <TH align="end">{t('paymentAmount')}</TH>
+                <TH align="end">{t('paymentUnallocated')}</TH>
+                <TH align="end" />
+              </TR>
+            </THead>
+            <TBody>
+              {openPayments.map((payment) => {
+                const unallocated = (Number(payment.amount) - Number(payment.allocated)).toFixed(3)
+                const bills = billsByPartner.get(payment.partnerId) ?? []
+                return (
+                  <TR key={payment.id}>
+                    <TD className="font-medium text-ink">{payment.partnerName}</TD>
+                    <TD className="whitespace-nowrap text-ink-muted">
+                      {payment.paidOn ? formatDate(new Date(payment.paidOn), locale) : '—'}
+                    </TD>
+                    <TD className="ref text-ink-muted">{payment.reference ?? '—'}</TD>
+                    <TD align="end" numeric>
+                      {money(payment.amount, payment.currency)}
+                    </TD>
+                    <TD align="end" numeric className="font-semibold text-caution">
+                      {money(unallocated, payment.currency)}
+                    </TD>
+                    <TD align="end">
+                      {/*
+                        No open bill means nothing to allocate against, and a
+                        dialog whose only select is empty is worse than none.
+                      */}
+                      {bills.length === 0 ? (
+                        <span className="text-[0.75rem] text-ink-subtle">{t('noOpenBills')}</span>
+                      ) : (
+                        <AllocatePaymentDialog
+                          paymentId={payment.id}
+                          unallocated={unallocated}
+                          bills={bills.map((bill) => ({
+                            id: bill.id,
+                            label: `${bill.reference} · ${money(bill.outstanding, payment.currency)}`,
+                          }))}
+                        />
+                      )}
+                    </TD>
+                  </TR>
+                )
+              })}
+            </TBody>
+          </TableShell>
+        )}
+      </Card>
     </>
   )
 }

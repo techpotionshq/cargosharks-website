@@ -452,6 +452,9 @@
     "live": "Live",
     "notLive": "Not live",
     "expiringSoon": "Expiring",
+    "expiringSoonTitle": "Coverage about to lapse",
+    "expiringSoonExplain": "Cards ending within thirty days, soonest first. Lanes already renewed are left out — what is here is what still needs a call.",
+    "daysLeft": "Days left",
     "noneYet": "No rate cards yet.",
     "noneYetHint": "Load your carrier contracts and a quotation prices itself instead of being worked out by hand.",
     "noneMatching": "No rate cards of that type."
@@ -529,7 +532,20 @@
     "openInvoices": "Open the invoice register",
     "paymentsTitle": "Receipts",
     "paymentsExplain": "Money received, and how much of it is matched to an invoice.",
-    "openPayments": "Open the receipts register"
+    "openPayments": "Open the receipts register",
+    "exports": "Accounting exports",
+    "exportsExplain": "Periods handed to the accounting package. Posting consumes a period; voiding gives it back.",
+    "noExports": "No period has been exported yet.",
+    "noExportsHint": "Preview a month first — it builds the file and marks nothing.",
+    "exportPeriod": "Period",
+    "exportBranch": "Entity",
+    "exportRows": "Rows",
+    "exportStatus": "Status",
+    "exportStatuses": {
+      "draft": "Preview",
+      "posted": "Posted",
+      "void": "Voided"
+    }
   },
   "signIn": {
     "title": "Sign in",
@@ -616,7 +632,15 @@
     "onHold": "On hold",
     "save": "Save customer",
     "forbidden": "You cannot create customers",
-    "forbiddenHint": "Your role does not include customer.write. An administrator can grant it."
+    "forbiddenHint": "Your role does not include customer.write. An administrator can grant it.",
+    "retire": "Retire",
+    "retireTitle": "Retire {name}",
+    "retireDescription": "Stops them being selectable on a new enquiry, quotation or job. Everything already on file stays.",
+    "retireWarning": "Nothing is deleted. The customer stays on the register, marked inactive, with all their shipment history — and can be brought back at any time.",
+    "restore": "Bring back",
+    "restoreTitle": "Bring {name} back",
+    "restoreDescription": "Makes them selectable again on new work.",
+    "restoreNote": "They become selectable again everywhere they were before."
   },
   "setup": {
     "title": "Finish setting up",
@@ -1157,7 +1181,24 @@
     "validUntilHint": "After this the quotation expires by itself",
     "notes": "Notes",
     "notesHint": "Anything that should appear on the quotation",
-    "submit": "Create quotation"
+    "submit": "Create quotation",
+    "addLine": "Add a line",
+    "addLineTitle": "Add a charge to this quotation",
+    "addLineDescription": "Only while it is a draft. Once sent, changing the price means a revision.",
+    "charge": "Charge",
+    "lineDescription": "Description",
+    "lineDescriptionHint": "Overrides the charge type’s own name on the customer’s copy.",
+    "basis": "Basis",
+    "quantity": "Quantity",
+    "rate": "Rate",
+    "bases": {
+      "flat": "Flat",
+      "per_unit": "Per unit",
+      "per_kg": "Per kg",
+      "per_container": "Per container",
+      "per_day": "Per day",
+      "percent": "Percent"
+    }
   },
   "invoiceForm": {
     "open": "New invoice",
@@ -1289,7 +1330,15 @@
     "locales": {
       "en": "English",
       "ar": "Arabic"
-    }
+    },
+    "suspend": "Suspend",
+    "suspendTitle": "Suspend {name}",
+    "suspendDescription": "Takes their access away. Everything they wrote stays exactly as it is.",
+    "suspendWarning": "Nothing is deleted. The account stays on this list, marked inactive, and their name keeps appearing on the records they created.",
+    "restore": "Restore",
+    "restoreTitle": "Restore {name}",
+    "restoreDescription": "Gives their access back, with the same branches and roles they had.",
+    "restoreNote": "They can sign in again with the assignments already on their account."
   },
   "branchForm": {
     "open": "Add branch",
@@ -1313,7 +1362,12 @@
     "invoiceSeries": "Invoice prefix",
     "invoiceSeriesHint": "Defaults to the branch code. Cannot be changed later.",
     "active": "In use",
-    "submit": "Add branch"
+    "submit": "Add branch",
+    "tradingSection": "Trading conditions",
+    "tradingSectionHint": "Printed at the foot of every quotation this entity issues. Leave empty and the quotation prints without them.",
+    "tradingConditionsEn": "Conditions (English)",
+    "tradingConditionsAr": "Conditions (Arabic)",
+    "tradingConditionsHint": "Each entity trades under its own law — Kuwait and Dubai do not share a footer."
   },
   "referenceForm": {
     "code": "Code",
@@ -1447,7 +1501,9 @@
       "sent": "Send it",
       "accepted": "Accept",
       "rejected": "Reject"
-    }
+    },
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -1898,7 +1954,13 @@
     "branch": "Legal entity",
     "branchHint": "Each entity posts to its own chart of accounts",
     "from": "From",
-    "to": "To"
+    "to": "To",
+    "void": "Void",
+    "voidTitle": "Void the export for {period}",
+    "voidDescription": "Releases every invoice, cost and receipt this export claimed, so the period can be exported again.",
+    "voidReason": "Why",
+    "voidReasonHint": "Kept on the record. This is what answers “why was this period posted twice”.",
+    "voidWarning": "Nothing is deleted. The export stays on the list, marked void with this reason, and the period becomes exportable again."
   },
   "duty": {
     "open": "Estimate duty",
@@ -2026,7 +2088,17 @@
       "over": "Billed over",
       "under": "Billed under",
       "unbilled": "Not billed"
-    }
+    },
+    "paymentsTitle": "Payments not yet placed",
+    "paymentsHint": "Money that has left the building and is not against a bill — a deposit, an advance, or a payment that arrived before its invoice.",
+    "allAllocated": "Every payment is against a bill.",
+    "allAllocatedHint": "Nothing is sitting unapplied.",
+    "paymentPartner": "Paid to",
+    "paymentPaidOn": "Paid on",
+    "paymentReference": "Reference",
+    "paymentAmount": "Amount",
+    "paymentUnallocated": "Unapplied",
+    "noOpenBills": "No open bill"
   },
   "payableForm": {
     "capture": "Capture bill",
@@ -2283,5 +2355,61 @@
     "marginPercent": "Margin",
     "empty": "Nothing in this period",
     "emptyHint": "No shipment with charge lines departed between these dates. Widen the range, or check that costs have been entered."
+  },
+  "network": {
+    "retire": "Retire",
+    "retireTitle": "Retire {name}",
+    "retireDescription": "Takes it out of every picker in the product. Nothing already pointing at it changes.",
+    "retireWarning": "Nothing is deleted. The row stays on this list, marked inactive, and can be brought back at any time.",
+    "restore": "Bring back",
+    "restoreTitle": "Bring {name} back",
+    "restoreDescription": "Puts it back in the pickers it was taken out of.",
+    "restoreNote": "It becomes selectable again everywhere it was before."
+  },
+  "jobActions": {
+    "setStatus": "Move it on",
+    "setStatusTitle": "Where has this shipment got to?",
+    "setStatusDescription": "Sets the status by hand. Holding, cancelling and closing each need their own permission.",
+    "status": "Status",
+    "reason": "Why",
+    "reasonHint": "Required when cancelling — it stays on the record.",
+    "recordMilestone": "Record a milestone",
+    "recordMilestoneTitle": "Record a milestone",
+    "recordMilestoneDescription": "What the customer sees on the tracking page, and what the portal reads.",
+    "milestone": "Milestone",
+    "reachedAt": "Reached at",
+    "reachedAtHint": "Leave empty for now. Milestones are typed up later far more often than live.",
+    "undo": "Take it back",
+    "undoHint": "Clears the time on a milestone recorded by mistake.",
+    "addContainer": "Add a container",
+    "addContainerTitle": "Add a container",
+    "addContainerDescription": "The unit a free-time clock runs against and a proof of delivery is signed for.",
+    "containerNo": "Container number",
+    "containerNoHint": "Four letters and seven digits, as it is stencilled on the box.",
+    "containerType": "Type",
+    "sealNo": "Seal number",
+    "grossWeightKg": "Gross (kg)",
+    "tareWeightKg": "Tare (kg)"
+  },
+  "jobPartners": {
+    "eyebrow": "Engaged",
+    "title": "Who is moving it",
+    "hint": "The companies we placed the work with — not the shipper and consignee on the bill.",
+    "none": "Nobody engaged yet.",
+    "partner": "Partner",
+    "role": "Role",
+    "reference": "Their reference",
+    "referenceHint": "Their booking or job number — what you quote when you ring them.",
+    "add": "Engage a partner",
+    "addTitle": "Engage a partner on this shipment",
+    "addDescription": "The carrier, the agent at the far end, the haulier. This is who gets settled with.",
+    "roles": {
+      "carrier": "Carrier",
+      "origin_agent": "Origin agent",
+      "destination_agent": "Destination agent",
+      "customs_broker": "Customs broker",
+      "haulier": "Haulier",
+      "terminal": "Terminal"
+    }
   }
 }

@@ -16,7 +16,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { savePartner, saveLocation } from '../form-actions'
+import { savePartner, saveLocation, setNetworkActive } from '../form-actions'
 
 const PARTNER_TYPES = ['carrier', 'agent', 'broker', 'haulier', 'terminal'] as const
 const PLACE_KINDS = ['seaport', 'airport', 'inland', 'border', 'depot', 'warehouse'] as const
@@ -273,6 +273,73 @@ export async function LocationDialog({
         title: editing ? t('editTitle') : t('title'),
         description: editing ? t('editDescription') : t('description'),
         submit: editing ? tc('save') : t('submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Retiring a partner or a location, and bringing one back.
+ *
+ * A dialog rather than a toggle, because the two directions are not
+ * symmetrical: reactivating restores a row somebody expects to see, and
+ * retiring removes a name from every picker in the product. A stray click on
+ * a table row should not do the second one.
+ *
+ * This is what `is_active` is *for*. `DELETE` is revoked from `app_user` and a
+ * partner has settlements and a location has jobs pointing at it, so there is
+ * no version of "remove it" that is not this (§5.5). The list still shows the
+ * row, marked, which is the behaviour an operator wanting it back depends on.
+ */
+export async function RetireNetworkDialog({
+  kind,
+  id,
+  name,
+  isActive,
+}: {
+  readonly kind: 'partner' | 'location'
+  readonly id: string
+  readonly name: string
+  /** Current state. The dialog offers the opposite of it. */
+  readonly isActive: boolean
+}) {
+  const session = await requireSession()
+  if (!can(session, kind === 'partner' ? 'partner.write' : 'admin.reference.write')) return null
+
+  const [t, tc] = await Promise.all([getTranslations('network'), getTranslations('common')])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'kind', value: kind },
+    { kind: 'hidden', name: 'id', value: id },
+    /*
+      Presence is the signal, not the value — `setNetworkActive` reads
+      `form.get('isActive') !== null`, the checkbox convention every form in
+      this application follows. Reactivating sends the field; retiring omits
+      it entirely.
+    */
+    ...(isActive ? [] : [{ kind: 'hidden' as const, name: 'isActive', value: 'true' }]),
+    {
+      kind: 'note',
+      text: isActive ? t('retireWarning') : t('restoreNote'),
+      tone: isActive ? 'caution' : 'info',
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={setNetworkActive}
+      fields={fields}
+      icon={isActive ? 'hold' : 'check'}
+      variant="ghost"
+      iconOnly
+      submitIcon={isActive ? 'hold' : 'check'}
+      labels={{
+        open: isActive ? t('retire') : t('restore'),
+        title: isActive ? t('retireTitle', { name }) : t('restoreTitle', { name }),
+        description: isActive ? t('retireDescription') : t('restoreDescription'),
+        submit: isActive ? t('retire') : t('restore'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

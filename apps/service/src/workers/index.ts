@@ -18,12 +18,24 @@ import { runFxRefresh } from './fx-refresh'
 import { runCarrierEventIngest } from './carrier-event'
 import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
+import { runInboundMailPoll } from './inbound-mail'
+import { runRateCardExpiryDigest } from './rate-card-expiry'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
 /** Jobs still to be built. Named so nothing silently goes missing. */
 const PENDING: { name: string; trigger: string; requirement: string }[] = [
-  { name: JOBS.inboundEmail, trigger: 'webhook', requirement: 'FR-EQ-02' },
+  /*
+    Still pending, and now for a narrower reason.
+
+    FR-EQ-02's intake is built — `inbound-mail.ts`, fed by `JOBS.inboundMailPoll`
+    against Al-Qabandi's own mailboxes. This entry is the *other* implementation
+    of `InboundMailSource`: the route in `webhooks/index.ts` verifies a
+    signature and enqueues, and nothing yet turns a provider's receipt into an
+    `InboundMessage`. Everything downstream of that conversion already exists,
+    so closing it is an adapter rather than a feature.
+  */
+  { name: JOBS.inboundEmail, trigger: 'webhook', requirement: 'FR-EQ-02 — provider half' },
   { name: JOBS.inboundWhatsApp, trigger: 'webhook', requirement: 'FR-NT-05' },
   /*
     The renderer and the invoice template now exist and are wired to
@@ -34,7 +46,6 @@ const PENDING: { name: string; trigger: string; requirement: string }[] = [
   */
   { name: JOBS.pdfRender, trigger: 'on issue', requirement: '§8 — needs FileStore' },
   { name: JOBS.complianceExpiry, trigger: 'nightly', requirement: 'FR-MD-05' },
-  { name: JOBS.rateCardExpiry, trigger: 'nightly', requirement: 'FR-RT-11' },
   { name: JOBS.bulkImport, trigger: 'on upload', requirement: 'FR-MD-11, FR-RT-09' },
   { name: JOBS.webhookDelivery, trigger: 'event', requirement: 'FR-AD-06' },
   { name: JOBS.scheduledReport, trigger: 'daily/weekly', requirement: 'FR-RP-07' },
@@ -77,6 +88,20 @@ export async function registerWorkers(log: {
   await work(JOBS.slaEscalation, async () => {
     const result = await runSlaEscalation()
     log.info(result, 'SLA escalation complete')
+  })
+
+  /*
+    Inbound mail — FR-EQ-02's front door.
+
+    Logged only when it did something. This runs every minute on every
+    deployment including the ones with no mailbox configured, and a per-minute
+    "collected 0" would bury every other line in the service log within a day.
+    A mailbox that *failed* is logged by the worker itself regardless, because
+    that one is an incident.
+  */
+  await work(JOBS.inboundMailPoll, async () => {
+    const result = await runInboundMailPoll()
+    if (result.collected > 0 || result.failed > 0) log.info(result, 'inbound mail collected')
   })
 
   /*
@@ -126,6 +151,19 @@ export async function registerWorkers(log: {
     if (result.polled > 0 || result.rateLimited.length > 0 || result.malformed.length > 0) {
       log.info(result, 'carrier poll complete')
     }
+  })
+
+  /*
+    Coverage about to lapse (FR-RT-11).
+
+    Scheduled since Release One with nothing behind it, exactly as `fxIngest`
+    was: enqueued at 21:45 every night and discarded for want of a handler.
+    Two of those is a pattern, so `pnpm lint` now compares the schedule list
+    against this one instead of a person doing it.
+  */
+  await work(JOBS.rateCardExpiry, async () => {
+    const result = await runRateCardExpiryDigest()
+    if (result.raised > 0) log.info(result, 'rate-card expiry digest raised')
   })
 
   /*

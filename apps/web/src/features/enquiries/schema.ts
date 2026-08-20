@@ -46,14 +46,3 @@ export const createEnquirySchema = insertEnquiry
   )
 
 export type CreateEnquiryInput = z.infer<typeof createEnquirySchema>
-
-export const assignEnquirySchema = z.object({
-  enquiryId: z.uuid(),
-  ownerId: z.uuid(),
-})
-
-export const closeEnquirySchema = z.object({
-  enquiryId: z.uuid(),
-  outcome: z.enum(['won', 'lost']),
-  reason: z.string().max(500).optional(),
-})

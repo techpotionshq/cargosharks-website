@@ -30,6 +30,67 @@ const blankIsUnset = () =>
     .optional()
     .transform((value) => (value === '' ? undefined : value))
 
+/**
+ * One mailbox to poll, and which branch owns what arrives in it.
+ *
+ * `branch` is a `branches.code` rather than an id, because this is written by
+ * whoever holds the mail credentials and `KWI` is a thing they know while a
+ * UUID is not. The worker resolves it, and a code that matches no branch stops
+ * that mailbox with a named error rather than filing its mail somewhere
+ * arbitrary.
+ */
+const mailbox = z.object({
+  branch: z.string().min(1),
+  host: z.string().min(1),
+  port: z.coerce.number().default(993),
+  /** Implicit TLS, which is what 993 is. STARTTLS on 143 is the other one. */
+  secure: z.coerce.boolean().default(true),
+  user: z.string().min(1),
+  password: z.string().min(1),
+  folder: z.string().default('INBOX'),
+  /**
+   * Where a handled message goes. Unset leaves it in place, flagged `\Seen`.
+   *
+   * Setting it is the kinder configuration for a mailbox a person also reads:
+   * a coordinator watching `kuwait@` should see the queue drain as the system
+   * takes each mail, rather than watch a hundred read messages accumulate
+   * underneath the ones that still need them.
+   */
+  archiveFolder: z.string().optional(),
+})
+
+export type Mailbox = z.infer<typeof mailbox>
+
+/**
+ * `INBOUND_MAILBOXES` as JSON, because five offices is five of these.
+ *
+ * The other multi-tenant credential in this file — the DCSA carriers — is
+ * flattened into `DCSA_<CARRIER>_*` variables, and that works there because
+ * the carriers are a closed set this repository knows the names of. Branches
+ * are not: a deployment adds one, and a scheme that needs a code change to
+ * accept `INBOUND_MAILBOX_DOH_PASSWORD` is the thing FR-AD-03 exists to stop.
+ *
+ * Parsed here rather than in the adapter so a malformed entry fails at boot
+ * with a path into the array, in keeping with everything else in this file:
+ * a bad mailbox should stop the service while somebody is looking at it, not
+ * surface as an enquiry queue that has been silently empty for a week.
+ */
+const inboundMailboxes = () =>
+  z
+    .string()
+    .trim()
+    .default('[]')
+    .transform((raw, ctx) => {
+      if (raw === '') return []
+      try {
+        return JSON.parse(raw) as unknown
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'INBOUND_MAILBOXES is not valid JSON' })
+        return z.NEVER
+      }
+    })
+    .pipe(z.array(mailbox))
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   SERVICE_PORT: z.coerce.number().default(3001),
@@ -82,6 +143,47 @@ const schema = z.object({
    */
   SMTP_TLS_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
   MAIL_FROM: z.string().default('no-reply@qabandi.local'),
+
+  /*
+    Inbound mail — FR-EQ-02, the other direction.
+
+    `imap` polls Al-Qabandi's own mailboxes. `none` is the default and it is
+    the *opposite* choice to `MAIL_DRIVER` above, deliberately: outbound has a
+    localhost relay that means something on a laptop, and inbound has no
+    equivalent. There is no mailbox to poll until somebody supplies a
+    credential, so a default of `imap` would mean every deployment failing at
+    boot with an error about a setting it has never heard of.
+
+    The webhook half of this port — `INBOUND_EMAIL_WEBHOOK_SECRET` below and
+    the route in `webhooks/index.ts` — is the second implementation and is not
+    a driver here yet: nothing parses a provider's receipt into an
+    `InboundMessage`. `PENDING` in `workers/index.ts` holds that gap.
+  */
+  INBOUND_MAIL_DRIVER: z.enum(['none', 'imap']).default('none'),
+  INBOUND_MAILBOXES: inboundMailboxes(),
+  /**
+   * When the poll runs. Cron, UTC.
+   *
+   * Every minute, which is the finest a cron expression goes and therefore the
+   * closest this shape gets to FR-EQ-02's "within one minute". Be honest about
+   * what that means: a mail landing just after a tick waits most of a minute
+   * for the next one and is then processed, so the requirement is met *at* the
+   * boundary rather than comfortably inside it. IMAP IDLE is the fix and it is
+   * an adapter change, not a redesign — the port is shaped for it.
+   */
+  INBOUND_MAIL_CRON: z.string().default('* * * * *'),
+  /** How many messages one run takes from one mailbox. The rest wait a minute. */
+  INBOUND_MAIL_BATCH: z.coerce.number().default(25),
+  /**
+   * Attachments larger than this are recorded by name and not stored.
+   *
+   * Freight mail carries packing lists and commercial invoices, and it also
+   * carries the occasional 80MB scan of a whole customs file. Refusing the
+   * mail over it would lose the enquiry; pulling it into memory would take the
+   * worker down. So the enquiry is created either way and the oversized part
+   * is noted on the message, which is the outcome a coordinator can act on.
+   */
+  INBOUND_MAIL_MAX_ATTACHMENT_MB: z.coerce.number().default(25),
 
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),

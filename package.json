@@ -13,7 +13,7 @@
     "doctor": "node scripts/doctor.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-migrations.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs",
+    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-migrations.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs && node scripts/check-schedules.mjs && node scripts/check-permissions.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",

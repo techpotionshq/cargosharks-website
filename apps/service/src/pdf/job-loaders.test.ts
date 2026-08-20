@@ -26,8 +26,8 @@
  * marked superseded, after version 2 is written.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { and, eq } from 'drizzle-orm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -75,6 +75,7 @@ const {
   branches,
   chargeLines,
   chargeTypes,
+  chargeableRules,
   consolidations,
   customers,
   customsStages,
@@ -85,6 +86,7 @@ const {
   jobCargo,
   jobParties,
   jobs,
+  locations,
   partners,
   principals,
   withActor,
@@ -106,8 +108,22 @@ const CUSTOMER = '00000000-0000-7000-8000-00000000db02'
 const PRINCIPAL = '00000000-0000-7000-8000-00000000db03'
 const BROKER = '00000000-0000-7000-8000-00000000db04'
 const CARRIER = '00000000-0000-7000-8000-00000000db05'
-const SHUWAIKH = '00000000-0000-7000-8000-00000000c00a'
-const JEBEL_ALI = '00000000-0000-7000-8000-00000000c00b'
+/*
+  The two ports are *looked up*, not asserted into existence.
+
+  These were fixed ids copied from `apps/web/src/lib/testing/fixtures.ts`,
+  which meant this suite passed only on a database where the web suite had run
+  first and lost a race with the seed: `locations.unlocode` is unique, so on a
+  seeded database the web fixture's insert conflicts, does nothing, and the ids
+  never exist. Three tests here then failed with no explanation on any machine
+  that had run `pnpm db:seed` — including CI's.
+
+  Resolving by UN/LOCODE asks the question this suite actually cares about
+  ("the seeded port called AEJEA"), and cannot be broken by whoever happened to
+  create the row.
+*/
+let SHUWAIKH: string
+let JEBEL_ALI: string
 const ABSENT = '00000000-0000-7000-8000-00000000db00'
 
 const actor: Actor = { principalId: PRINCIPAL, type: 'internal', branchIds: [BRANCH] }
@@ -255,6 +271,14 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
         .where(eq(workingCalendars.key, 'kuwait'))
         .limit(1)
       if (!calendar) throw new Error('Run `pnpm db:seed` before this suite')
+
+      const ports = await tx
+        .select({ id: locations.id, unlocode: locations.unlocode })
+        .from(locations)
+        .where(inArray(locations.unlocode, ['KWSWK', 'AEJEA']))
+      SHUWAIKH = ports.find((port) => port.unlocode === 'KWSWK')?.id ?? ''
+      JEBEL_ALI = ports.find((port) => port.unlocode === 'AEJEA')?.id ?? ''
+      if (!SHUWAIKH || !JEBEL_ALI) throw new Error('Run `pnpm db:seed` before this suite')
 
       await tx
         .insert(principals)
@@ -577,6 +601,116 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
 
         expect(view.chargeableWeightKg).toBeNull()
         expect(view.chargeableBasis).toBeNull()
+      })
+
+      /**
+       * The three below are the regression, and the bug they cover shipped.
+       *
+       * The loader read `SEED_CHARGEABLE_RULES` — the constant the seed writes
+       * the table *from* — while its own comment said it read the seeded rule
+       * so that a divisor change would be an admin edit (FR-AD-03). Every
+       * assertion above passes either way, because a freshly seeded table and
+       * the constant agree by construction. They only disagree once somebody
+       * exercises the edit the feature exists for, which is what these do.
+       */
+      describe('comes from the table, not from the constant it was seeded with', () => {
+        /** The seeded air row: 6000 cm³/kg, rounded to the half kilo, floor 45. */
+        const SEEDED = { divisorCm3PerKg: '6000.000', roundUpToKg: '0.500', minimumKg: '45.000' }
+
+        interface RuleEdit {
+          divisorCm3PerKg?: string | null
+          roundUpToKg?: string
+          minimumKg?: string
+          isActive?: boolean
+        }
+
+        // Active unless a case says otherwise, so no test has to restate the
+        // flag it is not interested in.
+        const setDefault = (over: RuleEdit) =>
+          withActor(systemActor, (tx) =>
+            tx
+              .update(chargeableRules)
+              .set({ isActive: true, ...over })
+              .where(and(eq(chargeableRules.mode, 'air'), isNull(chargeableRules.branchId))),
+          )
+
+        /*
+          The branch's own row is upserted and then deactivated, never removed.
+
+          `DELETE` is revoked from `app_user` — the first draft of this cleaned
+          up with one and the database refused, which is the rule working. So
+          the row is created once and toggled by `is_active` from then on, and
+          the upsert is what makes a second run of the suite find its own row
+          rather than collide with `unique (mode, branch_id)`.
+        */
+        const setBranchRule = (over: RuleEdit) =>
+          withActor(systemActor, (tx) =>
+            tx
+              .insert(chargeableRules)
+              .values({ mode: 'air', branchId: BRANCH, ...SEEDED, ...over } as never)
+              .onConflictDoUpdate({
+                target: [chargeableRules.mode, chargeableRules.branchId],
+                set: over,
+              }),
+          )
+
+        // Both rows are put back whatever the test did, and the default is
+        // restored last so a failure part-way through still leaves the shared
+        // reference data as the rest of this file expects to find it.
+        afterEach(async () => {
+          await setBranchRule({ isActive: false })
+          await setDefault(SEEDED)
+        })
+
+        it('follows the divisor an administrator changed', async () => {
+          // The move every air department eventually makes: 6000 to 5000.
+          await setBranchRule({ isActive: false })
+          await setDefault({ divisorCm3PerKg: '5000.000' })
+
+          const id = await job({ mode: 'air' })
+          await cargo(id, { grossWeightKg: '100.000', volumeCbm: '1.200' })
+
+          // 1.2 cbm at 5000 is 240 kg, where 6000 gave the 200 above.
+          const view = await loadJobDocumentView(actor, id)
+          expect(Number(view.chargeableWeightKg)).toBeCloseTo(240, 3)
+          expect(view.chargeableBasis).toBe('volumetric')
+        })
+
+        /** `unique (mode, branch_id)` exists so a branch can differ. */
+        it('prefers the branch’s own rule over the default', async () => {
+          await setDefault(SEEDED)
+          await setBranchRule({ divisorCm3PerKg: '4000.000', isActive: true })
+
+          const id = await job({ mode: 'air' })
+          await cargo(id, { grossWeightKg: '100.000', volumeCbm: '1.200' })
+
+          // 1.2 cbm at the branch's 4000, not the default 6000.
+          expect(Number((await loadJobDocumentView(actor, id)).chargeableWeightKg)).toBeCloseTo(
+            300,
+            3,
+          )
+        })
+
+        /**
+         * No silent fallback to the constant.
+         *
+         * A fallback is what made the original fault invisible: the box fills
+         * with a plausible number sourced from something nobody can edit. An
+         * unconfigured mode prints nothing, the same as cargo with no
+         * dimensions — and `/reference` counts these rows so the empty table
+         * is visible before the document is.
+         */
+        it('prints nothing where the mode has no active rule', async () => {
+          await setBranchRule({ isActive: false })
+          await setDefault({ isActive: false })
+
+          const id = await job({ mode: 'air' })
+          await cargo(id, { grossWeightKg: '100.000', volumeCbm: '1.200' })
+
+          const view = await loadJobDocumentView(actor, id)
+          expect(view.chargeableWeightKg).toBeNull()
+          expect(view.chargeableBasis).toBeNull()
+        })
       })
     })
   })

@@ -155,6 +155,56 @@ charge is ours until the container moves.
 `,
   ),
 
+  /*
+    The rate-card digest (internal) — FR-RT-11.
+
+    The body opens with the date it was compiled, because two digests can sit
+    in one inbox — last night's and tonight's — and the difference between
+    them is the only thing that tells a reader which one is still true.
+
+    The subject carries the count and the first date, because that is the whole
+    decision: eleven cards lapsing next month is a call to an agent this week,
+    and one card lapsing in three days is a call this morning. The list arrives
+    pre-rendered in `{{lanes}}` — the worker builds it, in both languages,
+    because a template cannot loop and should not learn how.
+  */
+  t(
+    'rate_card.expiring',
+    'en',
+    '{{count}} rate card(s) lapse within {{horizonDays}} days — first on {{soonest}}',
+    `
+Hello {{recipientName}}
+
+As at {{asOf}}, {{count}} rate card(s) reach the end of their validity within
+the next {{horizonDays}} days. The first lapses on {{soonest}}.
+
+{{lanes}}
+
+Renewed cards are already excluded. A lane with no live buying rate is quoted
+from memory, and the difference turns up at month end.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'rate_card.expiring',
+    'ar',
+    'انتهاء صلاحية {{count}} من بطاقات الأسعار خلال {{horizonDays}} يوماً — أولها في {{soonest}}',
+    `
+مرحباً {{recipientName}}
+
+بتاريخ {{asOf}}: تنتهي صلاحية {{count}} من بطاقات الأسعار خلال {{horizonDays}}
+يوماً القادمة، وأولها بتاريخ {{soonest}}.
+
+{{lanesAr}}
+
+البطاقات التي تم تجديدها مستثناة من القائمة. والخط الذي لا تتوفر له بطاقة شراء
+سارية يُسعَّر بالتقدير، ويظهر الفرق عند إقفال الشهر.
+
+{{senderName}}
+`,
+  ),
+
   // --- quote.sent (customer) ------------------------------------------------
   t(
     'quote.sent',

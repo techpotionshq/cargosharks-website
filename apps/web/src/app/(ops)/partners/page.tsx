@@ -16,7 +16,7 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { PartnerDialog } from '@/features/network/ui/dialogs'
+import { PartnerDialog, RetireNetworkDialog } from '@/features/network/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('partners')
@@ -93,6 +93,7 @@ export default async function PartnersPage({
             <TH align="end">{t('paymentTerms')}</TH>
             <TH align="end">{t('openJobs')}</TH>
             <TH>{tc('status')}</TH>
+            <TH align="end" />
           </TR>
         </THead>
         <TBody>
@@ -118,6 +119,14 @@ export default async function PartnersPage({
                 <Badge tone={row.isActive ? 'positive' : 'muted'}>
                   {row.isActive ? tc('active') : tc('inactive')}
                 </Badge>
+              </TD>
+              <TD align="end">
+                <RetireNetworkDialog
+                  kind="partner"
+                  id={row.id}
+                  name={row.legalNameEn}
+                  isActive={row.isActive}
+                />
               </TD>
             </TR>
           ))}

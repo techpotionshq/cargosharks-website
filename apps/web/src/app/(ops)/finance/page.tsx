@@ -21,13 +21,14 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
   invoiceSummary,
+  listAccountingExports,
   paymentSummary,
   receivablesAgeing,
   topDebtors,
   type AgeingBucket,
 } from '@/features/ledger/queries'
 import { InvoiceDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
-import { AccountingExportDialog } from '@/features/ledger/ui/export-panel'
+import { AccountingExportDialog, VoidExportDialog } from '@/features/ledger/ui/export-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { BarList } from '@/ui/chart'
@@ -55,11 +56,12 @@ const BUCKET_COLOR: Record<AgeingBucket['key'], string> = {
 export default async function FinancePage() {
   const session = await requireSession()
 
-  const [ageing, invoices, payments, debtors] = await Promise.all([
+  const [ageing, invoices, payments, debtors, exports] = await Promise.all([
     receivablesAgeing(session.actor),
     invoiceSummary(session.actor),
     paymentSummary(session.actor),
     topDebtors(session.actor),
+    listAccountingExports(session.actor),
   ])
 
   const t = await getTranslations('finance')
@@ -328,6 +330,88 @@ export default async function FinancePage() {
           ) : null}
         </Panel>
       </Grid>
+
+      {/*
+        What has been handed to the accountant, and the way back.
+
+        The panel exists because the void did: `voidAccountingExportAction` was
+        written and reachable from nowhere, so a period posted against the wrong
+        dates was consumed permanently and the only remedy was a developer with
+        a database connection. A destructive act needs its list.
+
+        Voided rows stay, marked, with their reason. That is what makes this a
+        void and not a delete (§5.5) — and "why was March posted twice" is a
+        question somebody eventually asks.
+      */}
+      <Panel
+        className="mt-4"
+        padding="none"
+        icon="sealed"
+        title={t('exports')}
+        explain={t('exportsExplain')}
+      >
+        {exports.length === 0 ? (
+          <EmptyState icon="finance" title={t('noExports')} description={t('noExportsHint')} />
+        ) : (
+          <TableShell minWidth="none">
+            <THead>
+              <TR>
+                <TH>{t('exportPeriod')}</TH>
+                <TH>{t('exportBranch')}</TH>
+                <TH align="end">{t('exportRows')}</TH>
+                <TH>{t('exportStatus')}</TH>
+                <TH align="end" />
+              </TR>
+            </THead>
+            <TBody>
+              {exports.map((row) => {
+                const period = `${formatDate(new Date(row.periodFrom), locale)} — ${formatDate(
+                  new Date(row.periodTo),
+                  locale,
+                )}`
+                return (
+                  <TR key={row.id}>
+                    <TD className="font-medium whitespace-nowrap text-ink">{period}</TD>
+                    <TD className="ref">{row.branchCode ?? '—'}</TD>
+                    <TD align="end" numeric>
+                      {formatNumber(row.rowCount, locale)}
+                    </TD>
+                    <TD>
+                      <Badge
+                        tone={
+                          row.status === 'void'
+                            ? 'muted'
+                            : row.status === 'posted'
+                              ? 'positive'
+                              : 'info'
+                        }
+                        dot
+                      >
+                        {t(`exportStatuses.${row.status}` as 'exportStatuses.posted')}
+                      </Badge>
+                      {row.voidReason ? (
+                        <span className="ms-2 text-[0.6875rem] text-ink-subtle">
+                          {row.voidReason}
+                        </span>
+                      ) : null}
+                    </TD>
+                    <TD align="end">
+                      {/*
+                        Only a posted export can be unwound. A draft consumed
+                        nothing, so there is nothing to give back, and a void
+                        that has already happened is not repeatable.
+                      */}
+                      {row.status === 'posted' ? (
+                        <VoidExportDialog exportId={row.id} period={period} />
+                      ) : null}
+                    </TD>
+                  </TR>
+                )
+              })}
+            </TBody>
+          </TableShell>
+        )}
+      </Panel>
     </>
   )
 }

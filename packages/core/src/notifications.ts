@@ -152,6 +152,22 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['reference', 'kind', 'containerNo', 'daysRemaining', 'expiresOn', 'perDiem', 'currency'],
   }),
 
+  /*
+    Coverage about to be lost, told to the desk that can renew it.
+
+    Internal for a reason that is not obvious: a rate card names a partner, and
+    a partner has portal principals. Sending "your tariff with us expires in
+    eleven days" to the agent is a negotiating position handed over by a cron
+    job — and the buy rate on the card is our cost, which is not theirs to see.
+  */
+  event({
+    key: 'rate_card.expiring',
+    audience: 'internal',
+    requirement: 'FR-RT-11',
+    summary: 'Rate cards reach the end of their validity within the month.',
+    fields: ['asOf', 'count', 'horizonDays', 'soonest', 'lanes', 'lanesAr'],
+  }),
+
   // --- exception -----------------------------------------------------------
   event({
     key: 'exception.opened',

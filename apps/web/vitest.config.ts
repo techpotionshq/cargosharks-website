@@ -39,5 +39,24 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],
     environment: 'node',
+    /*
+      Long enough for a real database on the other end of a network.
+
+      Most suites in this package are `describe.skipIf(!enabled)` blocks that
+      insert fixtures and assert over them against `TEST_DATABASE_URL`, exactly
+      like `apps/service` — which sets 30s for this reason. This package
+      inherited Vitest's 5s default, and against anything but a database on
+      localhost the result was three or four failures per run, a *different*
+      three or four each time, all at exactly 5000ms. That is indistinguishable
+      from flaky code until you notice the number never varies, and it trains
+      people to re-run a suite until it passes.
+
+      The timeout is a backstop against a hung query, not a performance
+      assertion. A test that legitimately needs six seconds is not a failure.
+    */
+    testTimeout: 30_000,
+    // Fixtures are inserted over the same link as the assertions, so the hooks
+    // need the same allowance as the tests.
+    hookTimeout: 30_000,
   },
 })

@@ -12,6 +12,7 @@ export * from './actor'
 export { createDatabase, createPool, db, type Database, type PoolConfig } from './client'
 export * from './validation'
 export * from './credit'
+export * from './rate-cards'
 export * from './schema-version'
 export {
   NOTIFICATION_TEMPLATES,

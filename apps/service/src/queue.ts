@@ -14,6 +14,7 @@ import { config } from './config'
 
 /** One name per job type; the worker files mirror these one to one. */
 export const JOBS = {
+  inboundMailPoll: 'inbound-mail-poll',
   inboundEmail: 'inbound-email-to-enquiry',
   inboundWhatsApp: 'inbound-whatsapp-to-thread',
   notificationDispatch: 'notification-dispatch',
@@ -107,7 +108,18 @@ export async function registerSchedules(): Promise<void> {
   */
   await b.schedule(JOBS.freeTimeWarning, '0 4 * * *')
   await b.schedule(JOBS.slaEscalation, '*/15 * * * *')
-  await b.schedule(JOBS.complianceExpiry, '30 21 * * *')
+  /*
+    `complianceExpiry` is deliberately not here.
+
+    It was scheduled at 21:30 from Release One with no handler — the third of
+    these found by `scripts/check-schedules.mjs`, and the only one still open.
+    A cron with nobody listening is worse than no cron: it costs a discarded
+    job every night and it makes the feature look built. FR-MD-05 also wants
+    warnings at 60, 30 and 7 days sent to the *partner* as well as to us, and
+    `NotificationAudience` has no partner arm yet, so this is a design decision
+    rather than a missing function. It goes back on the schedule the day the
+    handler exists; `PENDING` in `workers/index.ts` holds the gap until then.
+  */
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
 
@@ -138,6 +150,22 @@ export async function registerSchedules(): Promise<void> {
   */
   await b.schedule(JOBS.quoteExpiry, '0 5 * * *')
   await b.schedule(JOBS.invoiceOverdue, '10 5 * * *')
+
+  /*
+    The inbound mail poll — `INBOUND_MAIL_CRON`, every minute by default.
+
+    Every minute because FR-EQ-02 says an emailed enquiry appears in the queue
+    "within one minute", and a cron expression has no finer resolution. Worth
+    stating plainly rather than claiming compliance: a mail landing just after
+    a tick waits most of a minute and is then processed, so this meets the
+    requirement at its boundary. IMAP IDLE would make it immediate and is an
+    adapter change — `InboundMailSource` was shaped so it would be.
+
+    Off unless `INBOUND_MAIL_DRIVER=imap`: the worker answers "nothing to do"
+    for `none` rather than branching, exactly as `fxIngest` and `carrierPoll`
+    do when nobody has configured a feed.
+  */
+  await b.schedule(JOBS.inboundMailPoll, config.INBOUND_MAIL_CRON)
 
   /*
     The dispatcher itself, which nothing had ever enqueued.

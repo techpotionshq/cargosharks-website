@@ -308,9 +308,25 @@ ${body}
 </html>`
 }
 
+/**
+ * The legal entity a document is issued by — what the letterhead prints.
+ *
+ * Narrower than `JobDocumentView` on purpose: a quotation is issued by a
+ * branch and belongs to no job, and typing the letterhead against the whole
+ * shipment view would have meant either inventing an empty shipment to print
+ * a quote on, or a second copy of this block.
+ */
+export interface IssuingEntity {
+  readonly branch: {
+    readonly legalNameEn: string
+    readonly legalNameAr: string
+    readonly taxRegistration: string | null
+  }
+}
+
 /** The letterhead block every document opens with. */
 export function letterhead(
-  view: JobDocumentView,
+  view: IssuingEntity,
   title: string,
   subtitle: string,
   locale: DocumentLocale,

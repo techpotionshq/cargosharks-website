@@ -148,6 +148,28 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     })
 
     /**
+     * One sequence across every branch, so a branch's own numbers have gaps —
+     * fine for a handle people say on the phone, and not fine for an invoice
+     * series where a gap reads as a deleted document (FR-ID-01).
+     *
+     * This and the away-branch case below moved here when the duplicate
+     * `actions.ts` was removed: both cover `nextReference`, which that file
+     * carried its own copy of, and this is now the only copy.
+     */
+    it('never issues the same number twice', async () => {
+      const first = await raise()
+      const second = await raise()
+
+      expect(second.reference).not.toBe(first.reference)
+    })
+
+    it('numbers an away-branch enquiry with the away branch code', async () => {
+      const row = await raise({ branchId: AWAY_BRANCH })
+
+      expect(row.reference).toMatch(/^FXA-ENQ-/)
+    })
+
+    /**
      * The clock is stored, not derived. Four working hours from now through
      * the branch's calendar, which is never four wall-clock hours across a
      * weekend.

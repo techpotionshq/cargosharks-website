@@ -33,11 +33,14 @@ import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import {
+  AddContainerDialog,
   CloseExceptionDialog,
   CustomsDialog,
+  JobStatusDialog,
+  MilestoneDialog,
   RaiseExceptionDialog,
 } from '@/features/operations/ui/dialogs'
-import { JobDialog } from '@/features/jobs/ui/dialogs'
+import { JobDialog, JobPartnerDialog } from '@/features/jobs/ui/dialogs'
 import {
   listJobCargo,
   listJobContainers,
@@ -103,6 +106,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const tTrack = await getTranslations('track')
   const tMode = await getTranslations('mode')
   const tDirection = await getTranslations('direction')
+  const tPartners = await getTranslations('jobPartners')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
@@ -139,12 +143,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               </Badge>
             ) : null}
             {/*
-              The three things somebody actually does from a job file, in the
-              order they are needed: flag a problem, move customs on, correct
-              the record. Each is permission-gated inside its own component, so
-              a coordinator sees only what they can act on.
+              The four things somebody actually does from a job file, in the
+              order they are needed: flag a problem, move customs on, move the
+              shipment on, correct the record. Each is permission-gated inside
+              its own component, so a coordinator sees only what they can act
+              on — and `job.hold`, `job.cancel` and `job.close` are separate
+              keys that the status dialog's own action checks per status.
             */}
             <RaiseExceptionDialog jobId={job.id} variant="secondary" />
+            <JobStatusDialog jobId={job.id} status={job.status} variant="secondary" />
             <CustomsDialog
               jobId={job.id}
               variant="secondary"
@@ -228,6 +235,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             eyebrow={t('shipment')}
             title={t('milestones')}
             description={t('milestonesHint')}
+            actions={
+              <MilestoneDialog
+                jobId={job.id}
+                milestones={job.milestones.flatMap((m) =>
+                  // `id` is optional on the shared view — see `MilestoneView`.
+                  // Here it is always present; the filter is what makes that a
+                  // type the dialog can rely on rather than an assertion.
+                  m.id ? [{ id: m.id, name: nameOf(m.nameEn, m.nameAr), actualAt: m.actualAt }] : [],
+                )}
+              />
+            }
           />
           <div className="mt-5">
             <MilestoneTimeline
@@ -430,10 +448,57 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           )}
         </Card>
 
+        {/* --- who we engaged ---------------------------------------- */}
+        <Card className="lg:col-span-5" padding="none">
+          <div className="p-5 pb-3">
+            <CardHeader
+              icon="partners"
+              eyebrow={tPartners('eyebrow')}
+              title={tPartners('title')}
+              description={tPartners('hint')}
+              actions={<JobPartnerDialog jobId={job.id} branchId={job.branchId} />}
+            />
+          </div>
+
+          {job.partners.length === 0 ? (
+            <EmptyState icon="partners" title={tPartners('none')} />
+          ) : (
+            <TableShell className="border-t border-line" minWidth="none">
+              <THead>
+                <TR>
+                  <TH>{tPartners('partner')}</TH>
+                  <TH>{tPartners('role')}</TH>
+                  <TH>{tPartners('reference')}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {job.partners.map((partner) => (
+                  <TR key={partner.id}>
+                    <TD className="font-medium text-ink">{partner.name}</TD>
+                    <TD>
+                      <Badge tone="info">
+                        {tPartners(`roles.${partner.role}` as 'roles.carrier')}
+                      </Badge>
+                    </TD>
+                    <TD numeric className="ref text-ink-muted">
+                      {partner.reference ?? '—'}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </TableShell>
+          )}
+        </Card>
+
         {/* --- containers -------------------------------------------- */}
         <Card className="lg:col-span-5" padding="none">
           <div className="p-5 pb-3">
-            <CardHeader icon="container" eyebrow={t('equipment')} title={t('equipment')} />
+            <CardHeader
+              icon="container"
+              eyebrow={t('equipment')}
+              title={t('equipment')}
+              actions={<AddContainerDialog jobId={job.id} />}
+            />
           </div>
 
           {job.containers.length === 0 ? (

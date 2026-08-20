@@ -288,6 +288,18 @@ const branchSchema = z.object({
   bankAccountCode: optional(30),
   fxVarianceAccountCode: optional(30),
   roundingAccountCode: optional(30),
+  /**
+   * Standard trading conditions, as they print on this entity's quotations —
+   * FR-EQ-08.
+   *
+   * Long, and optional in both languages. A branch that has not supplied them
+   * issues a quotation without the footer rather than being unable to issue
+   * one, which matches how the chart of accounts above is treated: the missing
+   * piece is named at the point it matters, not demanded on a form somebody
+   * filled in months earlier.
+   */
+  tradingConditionsEn: optional(8000),
+  tradingConditionsAr: optional(8000),
   isActive: z.coerce.boolean(),
 })
 
@@ -322,6 +334,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     bankAccountCode: read(form, 'bankAccountCode'),
     fxVarianceAccountCode: read(form, 'fxVarianceAccountCode'),
     roundingAccountCode: read(form, 'roundingAccountCode'),
+    tradingConditionsEn: read(form, 'tradingConditionsEn'),
+    tradingConditionsAr: read(form, 'tradingConditionsAr'),
     isActive: form.get('isActive') !== null,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
@@ -356,6 +370,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
             bankAccountCode: data.bankAccountCode,
             fxVarianceAccountCode: data.fxVarianceAccountCode,
             roundingAccountCode: data.roundingAccountCode,
+            tradingConditionsEn: data.tradingConditionsEn,
+            tradingConditionsAr: data.tradingConditionsAr,
             isActive: data.isActive,
             updatedAt: new Date(),
           })
@@ -378,6 +394,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
           bankAccountCode: data.bankAccountCode,
           fxVarianceAccountCode: data.fxVarianceAccountCode,
           roundingAccountCode: data.roundingAccountCode,
+          tradingConditionsEn: data.tradingConditionsEn,
+          tradingConditionsAr: data.tradingConditionsAr,
           isActive: data.isActive,
         })
       }
