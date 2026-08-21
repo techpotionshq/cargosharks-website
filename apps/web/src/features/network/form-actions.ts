@@ -17,9 +17,16 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { eq } from 'drizzle-orm'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { locations, partners, withActor } from '@qabandi/db'
+import {
+  locations,
+  partnerCompliance,
+  partnerContacts,
+  partnerCoverage,
+  partners,
+  withActor,
+} from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import {
@@ -256,4 +263,254 @@ export async function setNetworkActive(
 
   revalidatePath(kind === 'partner' ? '/partners' : '/locations')
   return succeed(id)
+}
+
+/* ------------------------------------------------ what a partner is made of */
+
+const contactSchema = z.object({
+  contactId: z.uuid().optional(),
+  partnerId: z.uuid(),
+  nameEn: z.string().trim().min(2, 'Required').max(200),
+  nameAr: optional(200),
+  email: z.union([z.email('Not an email address'), z.literal('')]).optional(),
+  phone: optional(40),
+  role: optional(80),
+  isPrimary: z.coerce.boolean(),
+  isActive: z.coerce.boolean(),
+})
+
+/**
+ * A person at the agent — FR-MD-04.
+ *
+ * The partner screen has shown these since it was written and never had a way
+ * to add one: `partner_contacts` was written by `db:create-user` when an agent
+ * was given a login, and by nothing else. So the only contact a partner could
+ * have was one who had been issued portal access, which is the wrong way round
+ * — you know the operations manager's mobile long before you invite them to
+ * anything.
+ */
+export async function savePartnerContact(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'partner.write')
+
+  const parsed = contactSchema.safeParse({
+    contactId: read(form, 'contactId'),
+    partnerId: read(form, 'partnerId'),
+    nameEn: read(form, 'nameEn') ?? '',
+    nameAr: read(form, 'nameAr'),
+    email: read(form, 'email') ?? '',
+    phone: read(form, 'phone'),
+    role: read(form, 'role'),
+    isPrimary: form.get('isPrimary') !== null,
+    isActive: form.get('isActive') !== null,
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  await withActor(session.actor, async (tx) => {
+    const values = {
+      partnerId: data.partnerId,
+      nameEn: data.nameEn,
+      nameAr: data.nameAr,
+      email: data.email || null,
+      phone: data.phone,
+      role: data.role,
+      isPrimary: data.isPrimary,
+      isActive: data.isActive,
+    }
+
+    if (data.contactId) {
+      await tx
+        .update(partnerContacts)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(partnerContacts.id, data.contactId))
+    } else {
+      await tx.insert(partnerContacts).values(values)
+    }
+
+    /*
+      One primary per partner, demoted rather than refused.
+
+      "Primary" is who gets rung, and two of them is the same as none — the
+      caller picks whichever the list happens to order first. Refusing the save
+      would make the operator go and unset the old one, which is a step they
+      would take anyway.
+    */
+    if (data.isPrimary) {
+      await tx
+        .update(partnerContacts)
+        .set({ isPrimary: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(partnerContacts.partnerId, data.partnerId),
+            data.contactId ? ne(partnerContacts.id, data.contactId) : sql`true`,
+            eq(partnerContacts.isPrimary, true),
+          ),
+        )
+    }
+  })
+
+  revalidatePath(`/partners/${data.partnerId}`)
+  return succeed(data.nameEn)
+}
+
+const coverageSchema = z.object({
+  coverageId: z.uuid().optional(),
+  partnerId: z.uuid(),
+  mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
+  originId: z.union([z.uuid(), z.literal('')]).optional(),
+  destinationId: z.union([z.uuid(), z.literal('')]).optional(),
+  originCountry: optional(2),
+  destinationCountry: optional(2),
+  transitDays: z
+    .union([z.coerce.number().int().min(0).max(365), z.literal('')])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? null : v)),
+  isActive: z.coerce.boolean(),
+})
+
+/**
+ * A lane this partner covers — FR-RT-10, and what RFQ routing reads.
+ *
+ * Ports where the partner names them, countries where they do not: an agent
+ * who says "anywhere in India" is a country row, and one who quotes Nhava
+ * Sheva only is a port row. The index on `(mode, origin_id, destination_id)`
+ * exists so the uncovered-lane lookup meets §12's two-second budget, and
+ * PostgreSQL 18's skip scan is what lets a query that leaves `mode` open still
+ * use it.
+ */
+export async function savePartnerCoverage(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'partner.write')
+
+  const parsed = coverageSchema.safeParse({
+    coverageId: read(form, 'coverageId'),
+    partnerId: read(form, 'partnerId'),
+    mode: read(form, 'mode') ?? 'sea_fcl',
+    originId: read(form, 'originId') ?? '',
+    destinationId: read(form, 'destinationId') ?? '',
+    originCountry: read(form, 'originCountry'),
+    destinationCountry: read(form, 'destinationCountry'),
+    transitDays: read(form, 'transitDays') ?? '',
+    isActive: form.get('isActive') !== null,
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  /*
+    A row naming neither a port nor a country covers every lane on the mode,
+    which is almost never what somebody means and is impossible to unpick
+    later — the RFQ would go to this agent for every enquiry in the system.
+  */
+  if (!data.originId && !data.destinationId && !data.originCountry && !data.destinationCountry) {
+    return fail(
+      { originId: 'Name at least one end — a port, or a country.' },
+      echo(form),
+    )
+  }
+
+  await withActor(session.actor, async (tx) => {
+    const values = {
+      partnerId: data.partnerId,
+      mode: data.mode,
+      originId: data.originId || null,
+      destinationId: data.destinationId || null,
+      originCountry: data.originCountry ? data.originCountry.toUpperCase() : null,
+      destinationCountry: data.destinationCountry
+        ? data.destinationCountry.toUpperCase()
+        : null,
+      transitDays: data.transitDays,
+      isActive: data.isActive,
+    }
+    if (data.coverageId) {
+      await tx
+        .update(partnerCoverage)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(partnerCoverage.id, data.coverageId))
+    } else {
+      await tx.insert(partnerCoverage).values(values)
+    }
+  })
+
+  revalidatePath(`/partners/${data.partnerId}`)
+  return succeed(data.mode)
+}
+
+const complianceSchema = z.object({
+  partnerId: z.uuid(),
+  documentTypeId: z.uuid('Choose a document type'),
+  reference: optional(120),
+  issuedOn: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
+    .optional()
+    .transform((v) => v || null),
+  expiresOn: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
+    .optional()
+    .transform((v) => v || null),
+  supersedesId: z.union([z.uuid(), z.literal('')]).optional(),
+})
+
+/**
+ * A licence, an insurance certificate, a trade registration — FR-MD-05.
+ *
+ * The table the nightly compliance-expiry warning was written against, and it
+ * had no rows because nothing could create one. So `JOBS.complianceExpiry` sat
+ * in `PENDING` reading a table that would have been empty anyway.
+ *
+ * A renewal *supersedes* rather than replaces (§5.5). The expired certificate
+ * is what proves the agent was covered on the day the shipment moved, which is
+ * the only day anybody ever asks about.
+ */
+export async function savePartnerCompliance(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'partner.write')
+
+  const parsed = complianceSchema.safeParse({
+    partnerId: read(form, 'partnerId'),
+    documentTypeId: read(form, 'documentTypeId') ?? '',
+    reference: read(form, 'reference'),
+    issuedOn: read(form, 'issuedOn') ?? '',
+    expiresOn: read(form, 'expiresOn') ?? '',
+    supersedesId: read(form, 'supersedesId') ?? '',
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  if (data.issuedOn && data.expiresOn && data.expiresOn < data.issuedOn) {
+    return fail({ expiresOn: 'It cannot expire before it was issued.' }, echo(form))
+  }
+
+  await withActor(session.actor, async (tx) => {
+    const [row] = await tx
+      .insert(partnerCompliance)
+      .values({
+        partnerId: data.partnerId,
+        documentTypeId: data.documentTypeId,
+        reference: data.reference,
+        issuedOn: data.issuedOn,
+        expiresOn: data.expiresOn,
+      })
+      .returning({ id: partnerCompliance.id })
+
+    // The old certificate points forward to the renewal, and stays.
+    if (data.supersedesId) {
+      await tx
+        .update(partnerCompliance)
+        .set({ supersededById: row!.id, updatedAt: new Date() })
+        .where(eq(partnerCompliance.id, data.supersedesId))
+    }
+  })
+
+  revalidatePath(`/partners/${data.partnerId}`)
+  return succeed(data.documentTypeId)
 }

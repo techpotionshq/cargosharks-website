@@ -284,7 +284,18 @@ export async function loadQuotationView(actor: Actor, quoteId: string): Promise<
       transitDays: typeof snapshot.transitDays === 'number' ? snapshot.transitDays : null,
       notes: typeof snapshot.notes === 'string' ? snapshot.notes : null,
       inclusions: list('inclusions'),
+      /*
+        Both languages, because the exclusions are written in both.
+
+        `default_exclusions_ar` is the entity's own Arabic, not a translation
+        of the English — the same reasoning as the trading conditions and the
+        notification templates. Rendering the English list under an Arabic
+        heading is how a customer learns the Arabic document is an
+        afterthought, and this is the block that decides who pays for a
+        customs examination.
+      */
       exclusions: list('exclusions'),
+      exclusionsAr: list('exclusionsAr'),
       branch: {
         legalNameEn: row.branchEn,
         legalNameAr: row.branchAr,

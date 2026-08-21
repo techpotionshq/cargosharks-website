@@ -50,6 +50,7 @@ import {
   branches,
   calendarHolidays,
   customerContacts,
+  mailboxes,
   enquiries,
   inboundWebhookEvents,
   jobs,
@@ -62,7 +63,6 @@ import {
 } from '@qabandi/db'
 import { slaDueAt, type WorkingCalendar } from '@qabandi/core'
 import { adapters, resolveInboundMail } from '../adapters/index'
-import { config } from '../config'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
 import { identifyingDomain, inboundStorageKey, referencesIn } from './inbound-routing'
 
@@ -95,8 +95,10 @@ export interface InboundMailResult {
  */
 export async function runInboundMailPoll(
   asOf = new Date(),
-  sources: readonly InboundMailSource[] = resolveInboundMail(),
+  injected?: readonly InboundMailSource[],
 ): Promise<InboundMailResult> {
+  const sources = injected ?? (await resolveInboundMail())
+
   if (sources.length === 0) {
     return { collected: 0, created: 0, threaded: 0, duplicates: 0, failed: 0 }
   }
@@ -125,9 +127,9 @@ export async function runInboundMailPoll(
         */
         if (!branch) {
           throw new Error(
-            `Mailbox ${message.mailbox} names branch code ` +
-              `"${mailboxBranchCode(message.mailbox)}", which no branch has. ` +
-              'Fix INBOUND_MAILBOXES or add the branch.',
+            `No active mailbox row matches ${message.mailbox}, so there is no ` +
+              'branch to file its mail under. It was most likely deactivated ' +
+              'between the poll starting and this message being handled.',
           )
         }
 
@@ -160,27 +162,37 @@ interface BranchRef {
   readonly code: string
 }
 
-function mailboxBranchCode(user: string): string {
-  return config.INBOUND_MAILBOXES.find((m) => m.user === user)?.branch ?? '?'
-}
-
-/** Mailbox address -> the branch that owns what arrives in it. */
+/**
+ * Mailbox address -> the branch that owns what arrives in it.
+ *
+ * A join rather than a lookup against configuration: the mapping is a column
+ * on `mailboxes` now, so the branch a message belongs to is a fact the same
+ * row already carries. One query per run, and it is the query that makes a
+ * mailbox added on the settings screen work on the next tick.
+ *
+ * Keyed on the *username* because that is what the adapter stamps onto an
+ * `InboundMessage`, and it is unique across the table by
+ * `mailboxes_address_unique`.
+ */
 async function resolveBranches(): Promise<Map<string, BranchRef>> {
-  if (config.INBOUND_MAILBOXES.length === 0) return new Map()
-
   const rows = await withActor(systemActor(), async (tx) =>
-    tx.select({ id: branches.id, code: branches.code }).from(branches),
+    tx
+      .select({
+        username: mailboxes.username,
+        id: branches.id,
+        code: branches.code,
+      })
+      .from(mailboxes)
+      .innerJoin(branches, eq(branches.id, mailboxes.branchId))
+      .where(eq(mailboxes.isActive, true)),
   )
 
-  const byCode = new Map(rows.map((b: BranchRef) => [b.code, b]))
-  const byMailbox = new Map<string, BranchRef>()
-
-  for (const box of config.INBOUND_MAILBOXES) {
-    const branch = byCode.get(box.branch)
-    if (branch) byMailbox.set(box.user, branch)
-  }
-
-  return byMailbox
+  return new Map(
+    rows.map((r: { username: string; id: string; code: string }) => [
+      r.username,
+      { id: r.id, code: r.code },
+    ]),
+  )
 }
 
 type Outcome = 'created' | 'threaded' | 'duplicate'

@@ -17,12 +17,17 @@ import {
   addContainer,
   closeException,
   completeMilestone,
+  freeTimeDefaults,
   raiseException,
   saveCustomsStage,
+  saveFreeTimeClock,
   setJobStatus,
 } from '../form-actions'
 
 const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
+
+/** Demurrage is at the port, detention is the box, storage is the warehouse. */
+const CLOCK_KINDS = ['demurrage', 'detention', 'storage'] as const
 
 /*
   The statuses a coordinator sets by hand.
@@ -580,6 +585,153 @@ export async function AddContainerDialog({
         open: t('addContainer'),
         title: t('addContainerTitle'),
         description: t('addContainerDescription'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Starting a free-time clock, and stopping one — §7.2.
+ *
+ * The control demurrage never had. Everything else about free time existed —
+ * the nightly accrual, the warning at three days, the charge line it writes
+ * by itself, the counter on the dashboard — and the only way a clock came into
+ * being was the demo seed. So the feature ran, correctly, on data no customer
+ * had shipped.
+ *
+ * Defaults come from `free_time_rules` where the branch has configured the
+ * mode, and are typed where it has not. Pre-filling from the rules table is
+ * the point of that table: the terms a forwarder negotiated with a carrier
+ * should not live in whoever opens the dialog's memory.
+ */
+export async function FreeTimeClockDialog({
+  jobId,
+  containers,
+  partners: partnerOptions,
+  defaults,
+  variant = 'ghost',
+}: {
+  readonly jobId: string
+  readonly containers: readonly { value: string; label: string }[]
+  readonly partners: readonly { value: string; label: string }[]
+  readonly defaults?: {
+    readonly id?: string
+    readonly kind?: string
+    readonly equipmentId?: string | null
+    readonly startsOn?: string
+    readonly endsOn?: string | null
+    readonly freeDays?: number
+    readonly perDiem?: string
+    readonly currency?: string
+    readonly counterpartyId?: string | null
+  }
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'job.update')) return null
+
+  const [t, tc] = await Promise.all([getTranslations('freeTime'), getTranslations('common')])
+
+  // The branch's own terms for this mode, where it has any. Demurrage is the
+  // dialog's default kind, so that is what the defaults are fetched for.
+  const terms = defaults?.id
+    ? null
+    : await freeTimeDefaults({ jobId, kind: 'demurrage' }).catch(() => null)
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'jobId', value: jobId },
+    ...(defaults?.id ? [{ kind: 'hidden' as const, name: 'clockId', value: defaults.id }] : []),
+    {
+      kind: 'select',
+      name: 'kind',
+      label: t('kind'),
+      span: 6,
+      required: true,
+      options: CLOCK_KINDS.map((key) => ({ value: key, label: t(`kinds.${key}`) })),
+      defaultValue: defaults?.kind ?? 'demurrage',
+      hint: t('kindHint'),
+    },
+    {
+      kind: 'select',
+      name: 'equipmentId',
+      label: t('container'),
+      span: 6,
+      options: containers,
+      placeholder: t('wholeShipment'),
+      hint: t('containerHint'),
+      defaultValue: defaults?.equipmentId ?? undefined,
+    },
+    {
+      kind: 'date',
+      name: 'startsOn',
+      label: t('startsOn'),
+      span: 6,
+      required: true,
+      hint: t('startsOnHint'),
+      defaultValue: defaults?.startsOn,
+    },
+    {
+      kind: 'date',
+      name: 'endsOn',
+      label: t('endsOn'),
+      span: 6,
+      // Setting it stops the accrual and leaves charged days alone (§5.5).
+      hint: t('endsOnHint'),
+      defaultValue: defaults?.endsOn ?? undefined,
+    },
+    {
+      kind: 'number',
+      name: 'freeDays',
+      label: t('freeDays'),
+      span: 4,
+      required: true,
+      hint: terms ? t('fromRules') : t('freeDaysHint'),
+      defaultValue: (defaults?.freeDays ?? terms?.freeDays ?? 0).toString(),
+    },
+    {
+      kind: 'text',
+      name: 'perDiem',
+      label: t('perDiem'),
+      span: 4,
+      required: true,
+      mono: true,
+      defaultValue: defaults?.perDiem ?? terms?.perDiem,
+    },
+    {
+      kind: 'text',
+      name: 'currency',
+      label: t('currency'),
+      span: 4,
+      required: true,
+      mono: true,
+      defaultValue: defaults?.currency ?? terms?.currency ?? 'KWD',
+    },
+    {
+      kind: 'select',
+      name: 'counterpartyId',
+      label: t('counterparty'),
+      span: 12,
+      options: partnerOptions,
+      placeholder: tc('choose'),
+      hint: t('counterpartyHint'),
+      defaultValue: defaults?.counterpartyId ?? undefined,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveFreeTimeClock}
+      fields={fields}
+      icon="clock"
+      variant={variant}
+      iconOnly={Boolean(defaults?.id)}
+      labels={{
+        open: defaults?.id ? tc('edit') : t('open'),
+        title: t('title'),
+        description: t('description'),
         submit: tc('save'),
         submitting: tc('saving'),
         cancel: tc('cancel'),

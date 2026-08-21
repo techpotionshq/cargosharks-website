@@ -93,8 +93,18 @@ const capabilities = [
   },
   {
     name: 'Inbound mail',
-    keys: ['INBOUND_MAILBOXES'],
-    without: 'emailed enquiries never reach the queue; every lead is typed in by hand (FR-EQ-02)',
+    keys: ['MAILBOX_ENCRYPTION_KEY'],
+    /*
+      The key, not the mailbox list — the list is rows an administrator edits.
+
+      Without the key a mailbox cannot be saved on the settings screen and an
+      already-saved one cannot be opened by the poll, so this single variable
+      is the difference between an intake that works and one that silently
+      collects nothing.
+    */
+    without:
+      'mailboxes cannot be connected or read, so emailed enquiries never reach ' +
+      'the queue and every lead is typed in by hand (FR-EQ-02)',
   },
   {
     name: 'FX rates',

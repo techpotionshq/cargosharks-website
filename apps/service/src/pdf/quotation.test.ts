@@ -43,6 +43,7 @@ const base: QuotationView = {
   notes: null,
   inclusions: ['Ocean freight', 'Terminal handling at destination'],
   exclusions: ['Duties and taxes', 'Customs examination charges'],
+  exclusionsAr: ['الرسوم والضرائب', 'مصاريف الفحص الجمركي'],
   branch: {
     legalNameEn: 'Al-Qabandi & Partners Co.',
     legalNameAr: 'شركة القبندي وشركاه',
@@ -233,6 +234,23 @@ describe('the quotation', () => {
 
       expect(html).toContain('1,284.500')
       expect(html).not.toMatch(/[٠-٩]/)
+    })
+
+    it('prints the Arabic exclusions, not the English ones', () => {
+      const html = renderQuotationHtml(quote(), 'ar')
+
+      expect(html).toContain('الرسوم والضرائب')
+      expect(html).not.toContain('Duties and taxes')
+    })
+
+    /**
+     * A blank block would read as "nothing is excluded", which is the
+     * opposite of what it means.
+     */
+    it('falls back to the English exclusions where there is no Arabic', () => {
+      const html = renderQuotationHtml(quote({ exclusionsAr: [] }), 'ar')
+
+      expect(html).toContain('Duties and taxes')
     })
 
     /** Falls back rather than printing an empty footer. */

@@ -396,6 +396,15 @@ export const ADMIN_PERMISSIONS = [
   'admin.audit.read',
   'admin.users.write',
   'admin.api_keys.write',
+  /*
+    Mailbox credentials — FR-EQ-02, FR-AD-03.
+
+    Administrator-only, and not granted to the operations manager who holds
+    most of the other configuration. The row carries the credential to a
+    mailbox that is usually a real person's account, so the screen that edits
+    it is a different kind of screen from the one that edits charge types.
+  */
+  'admin.mailboxes.write',
   'admin.branches.write',
   'admin.brand.read',
   'rate.card.write',

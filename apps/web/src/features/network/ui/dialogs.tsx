@@ -16,7 +16,14 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { savePartner, saveLocation, setNetworkActive } from '../form-actions'
+import {
+  saveLocation,
+  savePartner,
+  savePartnerCompliance,
+  savePartnerContact,
+  savePartnerCoverage,
+  setNetworkActive,
+} from '../form-actions'
 
 const PARTNER_TYPES = ['carrier', 'agent', 'broker', 'haulier', 'terminal'] as const
 const PLACE_KINDS = ['seaport', 'airport', 'inland', 'border', 'depot', 'warehouse'] as const
@@ -340,6 +347,283 @@ export async function RetireNetworkDialog({
         title: isActive ? t('retireTitle', { name }) : t('restoreTitle', { name }),
         description: isActive ? t('retireDescription') : t('restoreDescription'),
         submit: isActive ? t('retire') : t('restore'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/** A person at the agent — FR-MD-04. */
+export async function PartnerContactDialog({
+  partnerId,
+  defaults,
+  variant = 'ghost',
+}: {
+  readonly partnerId: string
+  readonly defaults?: {
+    readonly id?: string
+    readonly nameEn?: string
+    readonly nameAr?: string | null
+    readonly email?: string | null
+    readonly phone?: string | null
+    readonly role?: string | null
+    readonly isPrimary?: boolean
+    readonly isActive?: boolean
+  }
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'partner.write')) return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('partnerContactForm'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'partnerId', value: partnerId },
+    ...(defaults?.id ? [{ kind: 'hidden' as const, name: 'contactId', value: defaults.id }] : []),
+    {
+      kind: 'text',
+      name: 'nameEn',
+      label: t('nameEn'),
+      span: 6,
+      required: true,
+      defaultValue: defaults?.nameEn,
+    },
+    {
+      kind: 'text',
+      name: 'nameAr',
+      label: t('nameAr'),
+      span: 6,
+      defaultValue: defaults?.nameAr ?? undefined,
+    },
+    {
+      kind: 'text',
+      name: 'role',
+      label: t('role'),
+      span: 12,
+      hint: t('roleHint'),
+      defaultValue: defaults?.role ?? undefined,
+    },
+    {
+      kind: 'email',
+      name: 'email',
+      label: t('email'),
+      span: 6,
+      defaultValue: defaults?.email ?? undefined,
+    },
+    {
+      kind: 'tel',
+      name: 'phone',
+      label: t('phone'),
+      span: 6,
+      mono: true,
+      defaultValue: defaults?.phone ?? undefined,
+    },
+    {
+      kind: 'switch',
+      name: 'isPrimary',
+      label: t('isPrimary'),
+      span: 6,
+      // Setting it demotes whoever held it — see the action.
+      hint: t('isPrimaryHint'),
+      defaultChecked: defaults?.isPrimary ?? false,
+    },
+    {
+      kind: 'switch',
+      name: 'isActive',
+      label: tc('active'),
+      span: 6,
+      defaultChecked: defaults?.isActive ?? true,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={savePartnerContact}
+      fields={fields}
+      icon="users"
+      variant={variant}
+      iconOnly={Boolean(defaults?.id)}
+      labels={{
+        open: defaults?.id ? tc('edit') : t('open'),
+        title: t('title'),
+        description: t('description'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/** A lane this partner covers — what RFQ routing reads (FR-RT-10). */
+export async function PartnerCoverageDialog({
+  partnerId,
+  variant = 'ghost',
+}: {
+  readonly partnerId: string
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'partner.write')) return null
+
+  const [options, t, tc, tMode] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('partnerCoverageForm'),
+    getTranslations('common'),
+    getTranslations('mode'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'partnerId', value: partnerId },
+    {
+      kind: 'select',
+      name: 'mode',
+      label: t('mode'),
+      span: 6,
+      required: true,
+      options: (['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const).map((m) => ({
+        value: m,
+        label: tMode(m as 'air'),
+      })),
+      defaultValue: 'sea_fcl',
+    },
+    {
+      kind: 'number',
+      name: 'transitDays',
+      label: t('transitDays'),
+      span: 6,
+      hint: t('transitDaysHint'),
+    },
+    /*
+      A port where they name one, a country where they do not.
+
+      An agent who says "anywhere in India" is a country row; one who quotes
+      Nhava Sheva only is a port row. Both ends may be either, and the action
+      refuses a row that names neither — that would route every enquiry in the
+      system to this agent.
+    */
+    {
+      kind: 'select',
+      name: 'originId',
+      label: t('originPort'),
+      span: 6,
+      options: options.locations,
+      placeholder: t('anyPort'),
+    },
+    {
+      kind: 'select',
+      name: 'destinationId',
+      label: t('destinationPort'),
+      span: 6,
+      options: options.locations,
+      placeholder: t('anyPort'),
+    },
+    {
+      kind: 'text',
+      name: 'originCountry',
+      label: t('originCountry'),
+      span: 6,
+      mono: true,
+      hint: t('countryHint'),
+    },
+    {
+      kind: 'text',
+      name: 'destinationCountry',
+      label: t('destinationCountry'),
+      span: 6,
+      mono: true,
+    },
+    { kind: 'switch', name: 'isActive', label: tc('active'), span: 12, defaultChecked: true },
+  ]
+
+  return (
+    <RecordDialog
+      action={savePartnerCoverage}
+      fields={fields}
+      icon="globe"
+      variant={variant}
+      labels={{
+        open: t('open'),
+        title: t('title'),
+        description: t('description'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/** A licence or certificate, with the date it lapses — FR-MD-05. */
+export async function PartnerComplianceDialog({
+  partnerId,
+  supersedes,
+  variant = 'ghost',
+}: {
+  readonly partnerId: string
+  /** Offered when renewing: the old row points forward and stays (§5.5). */
+  readonly supersedes?: readonly { value: string; label: string }[]
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'partner.write')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('partnerComplianceForm'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'partnerId', value: partnerId },
+    {
+      kind: 'select',
+      name: 'documentTypeId',
+      label: t('documentType'),
+      span: 12,
+      required: true,
+      options: options.documentTypes,
+      placeholder: tc('choose'),
+    },
+    { kind: 'text', name: 'reference', label: t('reference'), span: 12, mono: true },
+    { kind: 'date', name: 'issuedOn', label: t('issuedOn'), span: 6 },
+    {
+      kind: 'date',
+      name: 'expiresOn',
+      label: t('expiresOn'),
+      span: 6,
+      hint: t('expiresOnHint'),
+    },
+    ...(supersedes && supersedes.length > 0
+      ? [
+          {
+            kind: 'select' as const,
+            name: 'supersedesId',
+            label: t('supersedes'),
+            span: 12 as const,
+            options: supersedes,
+            placeholder: t('newDocument'),
+            hint: t('supersedesHint'),
+          },
+        ]
+      : []),
+  ]
+
+  return (
+    <RecordDialog
+      action={savePartnerCompliance}
+      fields={fields}
+      icon="document"
+      variant={variant}
+      labels={{
+        open: t('open'),
+        title: t('title'),
+        description: t('description'),
+        submit: tc('save'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

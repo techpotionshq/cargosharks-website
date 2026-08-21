@@ -20,17 +20,25 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog } from '@/ui/record-dialog'
-import { assignEnquiryAction, closeEnquiryAction, respondEnquiryAction } from '../form-actions'
+import {
+  advanceEnquiry,
+  assignEnquiryAction,
+  closeEnquiryAction,
+  respondEnquiryAction,
+} from '../form-actions'
 
 export async function EnquiryActions({
   enquiryId,
   hasResponded,
   isClosed,
+  status,
 }: {
   readonly enquiryId: string
   /** Hides "mark replied" once the clock has already been stopped. */
   readonly hasResponded: boolean
   readonly isClosed: boolean
+  /** Decides whether "start rating" is a move this enquiry can make. */
+  readonly status?: string
 }) {
   const session = await requireSession()
 
@@ -42,6 +50,8 @@ export async function EnquiryActions({
 
   const mayAssign = can(session, 'enquiry.assign')
   const mayClose = can(session, 'enquiry.close')
+  const mayRate = can(session, 'enquiry.rate')
+  const mayCancel = can(session, 'enquiry.cancel')
 
   // A closed enquiry is a record, not a queue item. Offering actions on it
   // would be offering to reopen something the state machine will refuse.
@@ -95,6 +105,67 @@ export async function EnquiryActions({
             title: t('assignTitle'),
             description: t('assignDescription'),
             submit: t('assignSubmit'),
+            submitting: tc('saving'),
+            cancel: tc('cancel'),
+          }}
+        />
+      ) : null}
+
+      {/*
+        Two transitions the machine declared and nothing offered.
+
+        `rating` is what tells the escalation worker somebody is on it — an
+        enquiry sitting in `assigned` looks unanswered whether it is being
+        priced or has been forgotten. `cancelled` is for the customer who went
+        elsewhere before we quoted, which is neither won nor lost and was
+        previously chased for ever.
+      */}
+      {mayRate && status === 'assigned' ? (
+        <RecordDialog
+          action={advanceEnquiry}
+          icon="rates"
+          size="sm"
+          variant="ghost"
+          fields={[
+            { kind: 'hidden', name: 'enquiryId', value: enquiryId },
+            { kind: 'hidden', name: 'to', value: 'rating' },
+            { kind: 'note', text: t('ratingNote') },
+          ]}
+          labels={{
+            open: t('startRating'),
+            title: t('startRatingTitle'),
+            description: t('startRatingDescription'),
+            submit: t('startRating'),
+            submitting: tc('saving'),
+            cancel: tc('cancel'),
+          }}
+        />
+      ) : null}
+
+      {mayCancel ? (
+        <RecordDialog
+          action={advanceEnquiry}
+          icon="close"
+          size="sm"
+          variant="ghost"
+          fields={[
+            { kind: 'hidden', name: 'enquiryId', value: enquiryId },
+            { kind: 'hidden', name: 'to', value: 'cancelled' },
+            {
+              kind: 'textarea',
+              name: 'reason',
+              label: t('reason'),
+              span: 12,
+              required: true,
+              rows: 3,
+              hint: t('cancelReasonHint'),
+            },
+          ]}
+          labels={{
+            open: t('cancel'),
+            title: t('cancelTitle'),
+            description: t('cancelDescription'),
+            submit: t('cancel'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
           }}

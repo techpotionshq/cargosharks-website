@@ -52,11 +52,15 @@ export default defineConfig({
       people to re-run a suite until it passes.
 
       The timeout is a backstop against a hung query, not a performance
-      assertion. A test that legitimately needs six seconds is not a failure.
+      assertion. Against a database on another continent a fixture-heavy test
+      — open a lane, raise an enquiry, load a rate card, price it, read the
+      result — is fifteen round trips and runs to twenty seconds without
+      anything being wrong. Sixty gives that room and still catches a query
+      that has genuinely stopped.
     */
-    testTimeout: 30_000,
+    testTimeout: 60_000,
     // Fixtures are inserted over the same link as the assertions, so the hooks
     // need the same allowance as the tests.
-    hookTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 })

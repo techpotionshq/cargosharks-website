@@ -135,6 +135,9 @@ export async function getQuoteComparison(
       pricingMs: 0,
       hasResponded: header.firstRespondedAt !== null,
       isClosed: ['won', 'lost', 'cancelled', 'expired'].includes(header.status),
+      // The raw status too: "start rating" is only a move from `assigned`,
+      // and `isClosed` cannot answer which of the open states it is in.
+      status: header.status,
       options,
     }
   })

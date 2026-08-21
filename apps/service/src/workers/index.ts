@@ -20,6 +20,7 @@ import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
+import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
@@ -47,7 +48,6 @@ const PENDING: { name: string; trigger: string; requirement: string }[] = [
   { name: JOBS.pdfRender, trigger: 'on issue', requirement: '§8 — needs FileStore' },
   { name: JOBS.complianceExpiry, trigger: 'nightly', requirement: 'FR-MD-05' },
   { name: JOBS.bulkImport, trigger: 'on upload', requirement: 'FR-MD-11, FR-RT-09' },
-  { name: JOBS.webhookDelivery, trigger: 'event', requirement: 'FR-AD-06' },
   { name: JOBS.scheduledReport, trigger: 'daily/weekly', requirement: 'FR-RP-07' },
 ]
 
@@ -164,6 +164,22 @@ export async function registerWorkers(log: {
   await work(JOBS.rateCardExpiry, async () => {
     const result = await runRateCardExpiryDigest()
     if (result.raised > 0) log.info(result, 'rate-card expiry digest raised')
+  })
+
+  /*
+    Outbound webhooks (FR-AD-06).
+
+    On the same minute as the notification dispatcher below, and for the same
+    reason: both read `notification_outbox`, and a customer's system should
+    learn a container was discharged at the same time their inbox does. The two
+    stamps are separate columns so neither channel's progress marks the event
+    finished for the other.
+  */
+  await work(JOBS.webhookDelivery, async () => {
+    const result = await runWebhookDelivery()
+    if (result.expanded + result.sent + result.failed > 0) {
+      log.info(result, 'outbound webhooks')
+    }
   })
 
   /*

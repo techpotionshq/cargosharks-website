@@ -99,6 +99,23 @@ export const branches = pgTable(
      */
     tradingConditionsEn: text('trading_conditions_en'),
     tradingConditionsAr: text('trading_conditions_ar'),
+    /**
+     * What a quotation from this entity does not cover — FR-EQ-08.
+     *
+     * One exclusion per line, and a list rather than prose because that is how
+     * it prints: "duties, taxes and customs examination charges are excluded"
+     * buried in a paragraph is a term the customer was deemed to have read,
+     * and the same sentence in a box beside the charges is one they did read.
+     * It is the line that decides who pays when the container is pulled.
+     *
+     * Per entity for the same reason the conditions above are: a Kuwait
+     * customs brokerage and a Dubai freight desk exclude different things.
+     * Inclusions are not stored beside it — they are the charges actually on
+     * the quotation, derived rather than typed, so they cannot disagree with
+     * the table above them.
+     */
+    defaultExclusionsEn: text('default_exclusions_en'),
+    defaultExclusionsAr: text('default_exclusions_ar'),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),
     isActive: boolean('is_active').notNull().default(true),

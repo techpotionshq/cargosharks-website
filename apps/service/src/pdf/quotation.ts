@@ -85,6 +85,8 @@ export interface QuotationView extends IssuingEntity {
   readonly notes: string | null
   readonly inclusions: readonly string[]
   readonly exclusions: readonly string[]
+  /** Empty falls back to the English list rather than printing nothing. */
+  readonly exclusionsAr: readonly string[]
   readonly tradingConditionsEn: string | null
   readonly tradingConditionsAr: string | null
   readonly lines: readonly QuotationLineView[]
@@ -214,6 +216,11 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
 
   const conditions = localised(quote.tradingConditionsEn, quote.tradingConditionsAr, locale)
 
+  // Arabic where the entity supplied it, English where it did not. A blank
+  // block would read as "nothing is excluded", which is the opposite.
+  const exclusions =
+    locale === 'ar' && quote.exclusionsAr.length > 0 ? quote.exclusionsAr : quote.exclusions
+
   /*
     One overlay, and the order is the order of consequence.
 
@@ -255,8 +262,8 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
     quote.inclusions.length > 0
       ? `<div class="col"><h2>${esc(t.inclusions)}</h2><ul>${bullets(quote.inclusions)}</ul></div>`
       : '',
-    quote.exclusions.length > 0
-      ? `<div class="col"><h2>${esc(t.exclusions)}</h2><ul>${bullets(quote.exclusions)}</ul></div>`
+    exclusions.length > 0
+      ? `<div class="col"><h2>${esc(t.exclusions)}</h2><ul>${bullets(exclusions)}</ul></div>`
       : '',
   ]
     .filter(Boolean)

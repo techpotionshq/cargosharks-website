@@ -490,11 +490,13 @@ Eight interfaces in the entire system. Each has a real first implementation toda
 | `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) · aggregator | `§8`, R2 |
 | `CustomsFiling` | manual reference capture | Kuwait Single Window | `§8`, R2 |
 | `EInvoiceTransmit` | compliant data, no transmission | accredited provider | `§8`, R2 |
-| `InboundMailSource` | IMAP poll of the branch mailboxes | provider webhook (Resend · Postmark · SES) | `FR-EQ-02`, `§9` |
+| `InboundMailSource` | IMAP poll of the mailboxes in `mailboxes` | provider webhook (Resend · Postmark · SES) | `FR-EQ-02`, `§9` |
 
 The last three of the original seven are not speculative: R1 has a genuine first implementation (manual capture), and `SRS §8` states the intent that R2's connection be *"a plug, not a rebuild."* Everything else in the system is concrete.
 
 `InboundMailSource` is the eighth and it was added rather than assumed. Al-Qabandi's front door is five mailboxes — `SRS §3` calls that *"the single most telling finding"* — so the first implementation reads those five over IMAP rather than asking anybody to move: no MX change, no new vendor, and the existing mail host's spam filtering inherited for free. The named second is the provider webhook `§9` already lists as an integration, and the route for it exists. Both produce the same `InboundMessage`, which is the point: `FR-EQ-02`'s rules about what becomes an enquiry, what threads onto a job, and which sender may be identified as a customer are the hard part, and they are written once.
+
+**Which mailboxes, and the one thing that stayed in the environment.** The mailbox list is `mailboxes` rows edited at Settings → Mailboxes, not configuration — `FR-AD-03` again, and the difference between onboarding an office in a minute and onboarding it in a sprint. The exception is `MAILBOX_ENCRYPTION_KEY`, which seals the passwords on those rows with AES-256-GCM. It stays in the environment deliberately: `mailboxes` is in every backup, restore drill and replica, and a key stored beside the ciphertext it protects is encoding rather than encryption. The database enforces the shape with a check constraint, so a plaintext password cannot be written by a script, a seed, or a fix applied against `psql` at 2am — the failure mode that would otherwise work perfectly and be invisible until somebody read a dump.
 
 `CarrierTracking` is the first of the three to have the plug fitted, and it is the argument for the rule. Three implementations now sit behind it — manual entry, an aggregator that pushes, and the carriers themselves answering a poll — and adding the third changed one signature (`poll` takes a query rather than a bare string, because DCSA has three reference parameters and a string cannot say which one it is). Nothing outside `adapters/` and the two workers knows which of the three a deployment runs.
 

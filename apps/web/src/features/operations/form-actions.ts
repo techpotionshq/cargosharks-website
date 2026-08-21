@@ -30,6 +30,8 @@ import {
   documentTypes,
   documents,
   equipment,
+  freeTimeClocks,
+  freeTimeTermsFor,
   exceptionCodes,
   exceptions,
   jobMilestones,
@@ -554,8 +556,18 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
   const reason = read(form, 'reason')
   if (!jobId || !status) return fail({ _: 'Nothing to update.' })
 
+  /*
+    One key per consequential move, and `job.complete` was missing from it.
+
+    The machine declares it on `delivered → completed`, and this chain checked
+    `job.update` instead — so anybody who could correct a vessel name could
+    also declare the shipment finished, which is the moment the job stops
+    accruing and starts being invoiced. Four keys, four branches; the ordinary
+    moves keep `job.update`.
+  */
   if (status === 'cancelled') assertCan(session, 'job.cancel')
   else if (status === 'closed') assertCan(session, 'job.close')
+  else if (status === 'completed') assertCan(session, 'job.complete')
   else if (status === 'on_hold') assertCan(session, 'job.hold')
   else assertCan(session, 'job.update')
 
@@ -700,4 +712,138 @@ export async function releaseDocument(form: FormData): Promise<void> {
 
   revalidatePath('/documents')
   revalidatePath('/jobs')
+}
+
+/* ------------------------------------------------------------- free time */
+
+const clockSchema = z.object({
+  clockId: z.uuid().optional(),
+  jobId: z.uuid(),
+  equipmentId: z.union([z.uuid(), z.literal('')]).optional(),
+  kind: z.enum(['demurrage', 'detention', 'storage']),
+  startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+  endsOn: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
+    .optional()
+    .transform((v) => v || null),
+  freeDays: z.coerce.number().int().min(0).max(365),
+  perDiem: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,6})?$/, 'An amount per day'),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((v) => v.toUpperCase()),
+  counterpartyId: z.union([z.uuid(), z.literal('')]).optional(),
+})
+
+/**
+ * Start a free-time clock, or stop one — §7.2, FR-JB-11.
+ *
+ * The half of demurrage that never existed. `free_time_clocks` was read by the
+ * dashboard, the job screen and the nightly accrual, and written only by
+ * `seed-demo` — so the counter that is the point of the feature ran on
+ * demonstration data and on nothing a customer had shipped. An operator whose
+ * container was sitting at Shuwaikh had no way to say so.
+ *
+ * ## Stopping is a date, not a delete
+ *
+ * `ends_on` is when the box came back. Setting it stops the accrual and leaves
+ * every day already charged where it is, which is what a credit note is for if
+ * they were wrong (§5.5). The worker skips clocks with an end date, so this is
+ * the whole of "stop it".
+ */
+export async function saveFreeTimeClock(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'job.update')
+
+  const parsed = clockSchema.safeParse({
+    clockId: read(form, 'clockId'),
+    jobId: read(form, 'jobId'),
+    equipmentId: read(form, 'equipmentId') ?? '',
+    kind: read(form, 'kind') ?? 'demurrage',
+    startsOn: read(form, 'startsOn') ?? '',
+    endsOn: read(form, 'endsOn') ?? '',
+    freeDays: read(form, 'freeDays') ?? '0',
+    perDiem: read(form, 'perDiem') ?? '',
+    currency: read(form, 'currency') ?? 'KWD',
+    counterpartyId: read(form, 'counterpartyId') ?? '',
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  if (data.endsOn && data.endsOn < data.startsOn) {
+    return fail({ endsOn: 'It cannot have come back before it went out.' }, echo(form))
+  }
+
+  await withActor(session.actor, async (tx) => {
+    const values = {
+      jobId: data.jobId,
+      equipmentId: data.equipmentId || null,
+      kind: data.kind,
+      startsOn: data.startsOn,
+      endsOn: data.endsOn,
+      freeDays: data.freeDays,
+      perDiem: data.perDiem,
+      currency: data.currency,
+      counterpartyId: data.counterpartyId || null,
+    }
+
+    if (data.clockId) {
+      await tx
+        .update(freeTimeClocks)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(freeTimeClocks.id, data.clockId))
+    } else {
+      await tx.insert(freeTimeClocks).values(values)
+    }
+  })
+
+  revalidatePath(`/jobs/${data.jobId}`)
+  revalidatePath('/jobs')
+  revalidatePath('/dashboard')
+  return succeed(data.kind)
+}
+
+/**
+ * The terms this branch grants, for the form's defaults — FR-AD-03.
+ *
+ * Read from `free_time_rules` rather than defaulted in the dialog, because
+ * that table exists precisely so the terms are configuration. Returning
+ * nothing is a legitimate answer: an unconfigured mode means the operator
+ * types the days and the rate, which is what they did for every clock before
+ * this existed.
+ */
+export async function freeTimeDefaults(input: {
+  readonly jobId: string
+  readonly kind: 'demurrage' | 'detention' | 'storage'
+  readonly containerType?: string | null
+}): Promise<{ freeDays: number; perDiem: string; currency: string } | null> {
+  const session = await requireSession()
+  assertCan(session, 'job.update')
+
+  return withActor(session.actor, async (tx) => {
+    const [job] = await tx
+      .select({ branchId: jobs.branchId, mode: jobs.mode })
+      .from(jobs)
+      .where(eq(jobs.id, input.jobId))
+      .limit(1)
+    if (!job) return null
+
+    const terms = await freeTimeTermsFor(tx, {
+      kind: input.kind,
+      branchId: job.branchId,
+      mode: job.mode,
+      containerType: input.containerType ?? null,
+    })
+
+    return terms
+      ? { freeDays: terms.freeDays, perDiem: terms.perDiem, currency: terms.currency }
+      : null
+  })
 }

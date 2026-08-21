@@ -1,11 +1,20 @@
 /**
  * Administration reads — people, branches, reference tables, the audit trail.
  *
- * These are the screens that answer "who can do what, and who did what". They
- * are read-only here: user creation is `pnpm db:create-user` (FR-ID-07 makes
- * the product invitation-only, and the first account necessarily precedes any
- * account that could authorise it), and the reference tables are edited
- * through migrations rather than through a form nobody audits.
+ * These are the screens that answer "who can do what, and who did what".
+ *
+ * User *creation* is still `pnpm db:create-user` — FR-ID-07 makes the product
+ * invitation-only, and the first account necessarily precedes any account that
+ * could authorise it.
+ *
+ * The reference tables are no longer among the read-only ones. This file used
+ * to say they were "edited through migrations rather than through a form
+ * nobody audits", which described the state of the build rather than a
+ * decision: FR-AD-03 and `CLAUDE.md` both say charge types, milestone
+ * templates, exception codes, document types and calendars are rows an
+ * administrator edits without a release, and the forms that do it are in
+ * `reference-actions.ts`. The audit concern was always answered — every write
+ * here goes through `withActor`, and the trigger records it.
  */
 
 import { asc, desc, eq, sql } from 'drizzle-orm'
@@ -17,6 +26,7 @@ import {
   countries,
   currencies,
   documentTypes,
+  dutyRates,
   exceptionCodes,
   incoterms,
   milestoneTemplates,
@@ -140,6 +150,8 @@ export interface BranchRow {
   readonly roundingAccountCode: string | null
   readonly tradingConditionsEn: string | null
   readonly tradingConditionsAr: string | null
+  readonly defaultExclusionsEn: string | null
+  readonly defaultExclusionsAr: string | null
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
@@ -170,6 +182,8 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         roundingAccountCode: branches.roundingAccountCode,
         tradingConditionsEn: branches.tradingConditionsEn,
         tradingConditionsAr: branches.tradingConditionsAr,
+        defaultExclusionsEn: branches.defaultExclusionsEn,
+        defaultExclusionsAr: branches.defaultExclusionsAr,
         isActive: branches.isActive,
         calendarId: branches.calendarId,
         calendarName: workingCalendars.nameEn,
@@ -415,5 +429,203 @@ export async function listCalendarOptions(
       .where(eq(workingCalendars.isActive, true))
       .orderBy(asc(workingCalendars.nameEn))
     return rows.map((row) => ({ value: row.id, label: row.name }))
+  })
+}
+
+/* ------------------------------------------ the configuration engines read */
+
+export interface MilestoneTemplateRow {
+  readonly id: string
+  readonly mode: string
+  readonly direction: string
+  readonly seq: number
+  readonly code: string
+  readonly nameEn: string
+  readonly nameAr: string
+  readonly ownerRole: string | null
+  readonly plannedOffsetDays: number | null
+  readonly customerVisible: boolean
+  readonly isActive: boolean
+}
+
+/** The plan a job of each shape is booked with — FR-JB-02. */
+export async function listMilestoneTemplates(actor: Actor): Promise<MilestoneTemplateRow[]> {
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: milestoneTemplates.id,
+        mode: milestoneTemplates.mode,
+        direction: milestoneTemplates.direction,
+        seq: milestoneTemplates.seq,
+        code: milestoneTemplates.code,
+        nameEn: milestoneTemplates.nameEn,
+        nameAr: milestoneTemplates.nameAr,
+        ownerRole: milestoneTemplates.ownerRole,
+        plannedOffsetDays: milestoneTemplates.plannedOffsetDays,
+        customerVisible: milestoneTemplates.customerVisible,
+        isActive: milestoneTemplates.isActive,
+      })
+      .from(milestoneTemplates)
+      .orderBy(
+        asc(milestoneTemplates.mode),
+        asc(milestoneTemplates.direction),
+        asc(milestoneTemplates.seq),
+      ),
+  )
+}
+
+export interface CalendarRow {
+  readonly id: string
+  readonly key: string
+  readonly nameEn: string
+  readonly nameAr: string
+  readonly timeZone: string
+  readonly weekend: number[]
+  readonly dayStartMinute: number
+  readonly dayEndMinute: number
+  readonly isActive: boolean
+  readonly holidays: number
+}
+
+/** Working weeks, with how many closures each one carries — NFR-03. */
+export async function listCalendars(actor: Actor): Promise<CalendarRow[]> {
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: workingCalendars.id,
+        key: workingCalendars.key,
+        nameEn: workingCalendars.nameEn,
+        nameAr: workingCalendars.nameAr,
+        timeZone: workingCalendars.timeZone,
+        weekend: workingCalendars.weekend,
+        dayStartMinute: workingCalendars.dayStartMinute,
+        dayEndMinute: workingCalendars.dayEndMinute,
+        isActive: workingCalendars.isActive,
+        holidays: sql<number>`(
+          select count(*) from calendar_holidays h
+           where h.calendar_id = "working_calendars"."id"
+        )::int`,
+      })
+      .from(workingCalendars)
+      .orderBy(asc(workingCalendars.key)),
+  )
+}
+
+export interface DutyRateRow {
+  readonly id: string
+  readonly country: string
+  readonly hsPrefix: string
+  readonly ratePercent: string
+  readonly descriptionEn: string
+  readonly descriptionAr: string | null
+  readonly effectiveFrom: string
+  readonly effectiveTo: string | null
+  readonly notes: string | null
+  readonly isActive: boolean
+}
+
+/**
+ * The tariff, longest prefix first.
+ *
+ * The order the engine matches in, so the screen reads the way `findRate`
+ * decides: an operator looking for "which line will catch 8703.23" scans down
+ * and stops at the first one it starts with.
+ */
+export async function listDutyRates(actor: Actor): Promise<DutyRateRow[]> {
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: dutyRates.id,
+        country: dutyRates.country,
+        hsPrefix: dutyRates.hsPrefix,
+        ratePercent: dutyRates.ratePercent,
+        descriptionEn: dutyRates.descriptionEn,
+        descriptionAr: dutyRates.descriptionAr,
+        effectiveFrom: dutyRates.effectiveFrom,
+        effectiveTo: dutyRates.effectiveTo,
+        notes: dutyRates.notes,
+        isActive: dutyRates.isActive,
+      })
+      .from(dutyRates)
+      .orderBy(
+        asc(dutyRates.country),
+        sql`length(${dutyRates.hsPrefix}) desc`,
+        asc(dutyRates.hsPrefix),
+        desc(dutyRates.effectiveFrom),
+      )
+      .limit(500),
+  )
+}
+
+export interface EngineRuleRow {
+  readonly id: string
+  readonly label: string
+  readonly scope: string
+  readonly detail: string
+  readonly isActive: boolean
+  /** The row itself, so the edit dialog can pre-fill without a second read. */
+  readonly raw: Record<string, unknown>
+}
+
+/**
+ * The two rules tables the engines measure with, in one shape.
+ *
+ * `chargeable_rules` and `free_time_rules` are read by `packages/db` and by
+ * nothing in this application — correct, and the reason neither had a screen:
+ * the divisor a shipment is billed on and the days before demurrage starts
+ * were configuration with no way to configure them. Presented together because
+ * an operator thinks of them together: what does this mode weigh, and how long
+ * do we get before it costs.
+ */
+export async function listEngineRules(actor: Actor): Promise<{
+  chargeable: EngineRuleRow[]
+  freeTime: EngineRuleRow[]
+}> {
+  return withActor(actor, async (tx) => {
+    const chargeable = await tx.execute(sql`
+      select r.id, r.mode::text as mode, r.branch_id as "branchId", b.code as "branchCode",
+             r.divisor_cm3_per_kg::text as "divisorCm3PerKg",
+             r.round_up_to_kg::text as "roundUpToKg", r.minimum_kg::text as "minimumKg",
+             r.is_active as "isActive"
+        from chargeable_rules r
+        left join branches b on b.id = r.branch_id
+       order by r.mode, r.branch_id nulls first
+    `)
+
+    const freeTime = await tx.execute(sql`
+      select r.id, r.kind::text as kind, r.branch_id as "branchId", b.code as "branchCode",
+             r.mode::text as mode, r.container_type as "containerType",
+             r.free_days as "freeDays", r.per_diem::text as "perDiem", r.currency,
+             r.day_basis::text as "dayBasis", r.is_active as "isActive"
+        from free_time_rules r
+        left join branches b on b.id = r.branch_id
+       order by r.kind, r.branch_id nulls first, r.mode nulls first
+    `)
+
+    return {
+      chargeable: (chargeable.rows as Record<string, unknown>[]).map((row) => ({
+        id: row.id as string,
+        label: row.mode as string,
+        scope: (row.branchCode as string) ?? '—',
+        // Stated as the trade states it: a divisor, an increment, a floor. A
+        // null divisor is FCL, which is billed per container and never by
+        // volume.
+        detail:
+          row.divisorCm3PerKg === null
+            ? 'per container'
+            : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
+        isActive: row.isActive as boolean,
+        raw: row,
+      })),
+      freeTime: (freeTime.rows as Record<string, unknown>[]).map((row) => ({
+        id: row.id as string,
+        label: row.kind as string,
+        // Absence is how a rule widens, so an empty scope is "everything".
+        scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
+        detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
+        isActive: row.isActive as boolean,
+        raw: row,
+      })),
+    }
   })
 }

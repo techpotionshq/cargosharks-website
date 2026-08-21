@@ -38,6 +38,8 @@ import type {
   FxRateSource,
 } from '../ports/index'
 
+import { eq } from 'drizzle-orm'
+import { hasSecretKey, mailboxes, openSecret, systemActor, withActor } from '@qabandi/db'
 import type { InboundMailSource, NotificationChannel } from '../ports/index'
 import { config } from '../config'
 import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
@@ -127,35 +129,78 @@ export function resolveEmailChannel(log: (o: unknown, m: string) => void): Notif
 }
 
 /**
- * The mailboxes this deployment polls — one source each.
+ * The mailboxes this deployment polls — one source each, read from rows.
  *
- * Returns empty for `INBOUND_MAIL_DRIVER=none`, which is the default and which
- * the worker reports as "nothing to do" rather than branching, exactly as
- * `fxIngest` does when no feed is bought.
+ * Configuration is rows, not code (FR-AD-03): an administrator adds the Doha
+ * office on a screen, and the next poll reads it. There is no environment
+ * variable to set and no deployment to wait for, which is the difference
+ * between an office onboarded in a minute and one onboarded in a sprint.
  *
- * A driver of `imap` with no mailboxes throws instead of returning empty, and
- * the difference matters: the first is a deployment that has not bought this,
- * the second is one that meant to and mistyped the variable. Silently polling
- * nothing would look identical to working right up until somebody asks why the
- * enquiry queue is empty.
+ * Async, unlike the other six resolvers, and that is the whole reason this one
+ * is not memoised into `adapters()` beside them. Those hold a key or a client
+ * and are resolved once at boot; this is a query, and it has to run *per poll*
+ * — a mailbox added at 09:05 must be read at 09:06, not at the next restart.
+ *
+ * A row whose password will not open is skipped rather than fatal: one Dubai
+ * credential sealed under a rotated key should not stop Kuwait's mail. The
+ * reason is written back to `last_error`, which is what the settings screen
+ * shows, because an administrator who can see "this key cannot open it" fixes
+ * it in a minute and one who sees an empty queue does not know to look.
  */
-export function resolveInboundMail(): InboundMailSource[] {
-  if (config.INBOUND_MAIL_DRIVER === 'none') return []
+export async function resolveInboundMail(): Promise<InboundMailSource[]> {
+  const rows = await withActor(systemActor(), (tx) =>
+    tx
+      .select({
+        id: mailboxes.id,
+        host: mailboxes.host,
+        port: mailboxes.port,
+        secure: mailboxes.secure,
+        username: mailboxes.username,
+        passwordSealed: mailboxes.passwordSealed,
+        folder: mailboxes.folder,
+        archiveFolder: mailboxes.archiveFolder,
+      })
+      .from(mailboxes)
+      .where(eq(mailboxes.isActive, true)),
+  )
 
-  if (config.INBOUND_MAILBOXES.length === 0) {
-    throw new Error(
-      'INBOUND_MAIL_DRIVER=imap but INBOUND_MAILBOXES is empty. ' +
-        'Set it to a JSON array of mailboxes, or set INBOUND_MAIL_DRIVER=none.',
+  const sources: InboundMailSource[] = []
+
+  for (const row of rows) {
+    let password: string
+    try {
+      password = openSecret(row.passwordSealed)
+    } catch (error) {
+      await noteMailboxError(row.id, error instanceof Error ? error.message : String(error))
+      continue
+    }
+
+    sources.push(
+      imapSource({
+        host: row.host,
+        port: row.port,
+        secure: row.secure,
+        user: row.username,
+        password,
+        folder: row.folder,
+        archiveFolder: row.archiveFolder ?? undefined,
+        batch: config.INBOUND_MAIL_BATCH,
+        maxAttachmentBytes: config.INBOUND_MAIL_MAX_ATTACHMENT_MB * 1024 * 1024,
+      }),
     )
   }
 
-  return config.INBOUND_MAILBOXES.map((box) =>
-    imapSource({
-      ...box,
-      batch: config.INBOUND_MAIL_BATCH,
-      maxAttachmentBytes: config.INBOUND_MAIL_MAX_ATTACHMENT_MB * 1024 * 1024,
-    }),
-  )
+  return sources
+}
+
+/** Records why a mailbox produced nothing, for the settings screen to show. */
+export async function noteMailboxError(id: string, message: string | null): Promise<void> {
+  await withActor(systemActor(), async (tx) => {
+    await tx
+      .update(mailboxes)
+      .set({ lastError: message, lastPolledAt: new Date() })
+      .where(eq(mailboxes.id, id))
+  })
 }
 
 export interface Adapters {
@@ -212,10 +257,17 @@ export function describeAdapters(): Record<string, string> {
       separates them. FR-EQ-02 is a Must, so a deployment showing `none` here
       is one where the enquiry front door is not connected.
     */
-    inboundMail:
-      config.INBOUND_MAIL_DRIVER === 'none'
-        ? 'none (not receiving)'
-        : `imap — ${config.INBOUND_MAILBOXES.map((m) => m.user).join(', ')}`,
+    /*
+      Whether inbound mail *can* work, not how many mailboxes exist.
+
+      The mailbox list is rows now, and reading it here would mean a database
+      query inside the boot log. What this line can still answer is the
+      question that actually strands a deployment: without the key, every
+      mailbox is unreadable and the screen that adds one cannot save.
+    */
+    inboundMail: hasSecretKey()
+      ? 'imap — mailboxes configured in settings'
+      : 'imap — MAILBOX_ENCRYPTION_KEY not set, mailboxes unreadable',
     fx: a.fx.key,
     fileStore: a.fileStore.key,
     carrierTracking: a.carrierTracking.key,

@@ -19,6 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { unknownMergeFields } from '@qabandi/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -27,13 +28,14 @@ import {
   commodities,
   documentTypes,
   exceptionCodes,
+  notificationTemplates,
   principalBranchRoles,
   principals,
   roles,
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan } from '@/lib/permissions'
+import { assertCan, assertInBranch } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -300,6 +302,9 @@ const branchSchema = z.object({
    */
   tradingConditionsEn: optional(8000),
   tradingConditionsAr: optional(8000),
+  /** One exclusion per line — see the column comment. */
+  defaultExclusionsEn: optional(4000),
+  defaultExclusionsAr: optional(4000),
   isActive: z.coerce.boolean(),
 })
 
@@ -336,6 +341,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     roundingAccountCode: read(form, 'roundingAccountCode'),
     tradingConditionsEn: read(form, 'tradingConditionsEn'),
     tradingConditionsAr: read(form, 'tradingConditionsAr'),
+    defaultExclusionsEn: read(form, 'defaultExclusionsEn'),
+    defaultExclusionsAr: read(form, 'defaultExclusionsAr'),
     isActive: form.get('isActive') !== null,
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
@@ -372,6 +379,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
             roundingAccountCode: data.roundingAccountCode,
             tradingConditionsEn: data.tradingConditionsEn,
             tradingConditionsAr: data.tradingConditionsAr,
+            defaultExclusionsEn: data.defaultExclusionsEn,
+            defaultExclusionsAr: data.defaultExclusionsAr,
             isActive: data.isActive,
             updatedAt: new Date(),
           })
@@ -396,6 +405,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
           roundingAccountCode: data.roundingAccountCode,
           tradingConditionsEn: data.tradingConditionsEn,
           tradingConditionsAr: data.tradingConditionsAr,
+          defaultExclusionsEn: data.defaultExclusionsEn,
+          defaultExclusionsAr: data.defaultExclusionsAr,
           isActive: data.isActive,
         })
       }
@@ -582,4 +593,121 @@ export async function getUserGrants(principalId: string): Promise<{
       branchIds: rows.map((row) => row.branchId),
     }
   })
+}
+
+/* ---------------------------------------------------- notification wording */
+
+const templateSchema = z.object({
+  templateId: z.uuid().optional(),
+  eventKey: z.string().trim().min(3),
+  locale: z.enum(['en', 'ar']),
+  branchId: z.union([z.uuid(), z.literal('')]).optional(),
+  subject: optional(200),
+  body: z.string().trim().min(5, 'A template needs something to say').max(8000),
+  isActive: z.coerce.boolean(),
+})
+
+/**
+ * Edit the wording a notification goes out in — FR-NT-03.
+ *
+ * The requirement is that an administrator changes it without a developer, and
+ * until this existed the only way was a database client. `notification_templates`
+ * was seeded with every event in both languages and read by the dispatcher and
+ * by nothing else.
+ *
+ * ## A branch row overrides the default; both are edited here
+ *
+ * `branch_id` null is the fallback (§7.4). Saving with a branch creates or
+ * updates that branch's own copy and leaves the default alone, which is what
+ * makes "Dubai says it differently" a row rather than a release.
+ */
+export async function saveNotificationTemplate(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'admin.reference.write')
+
+  const parsed = templateSchema.safeParse({
+    templateId: read(form, 'templateId'),
+    eventKey: read(form, 'eventKey') ?? '',
+    locale: read(form, 'locale') ?? 'en',
+    branchId: read(form, 'branchId') ?? '',
+    subject: read(form, 'subject'),
+    body: read(form, 'body') ?? '',
+    isActive: form.get('isActive') !== null,
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  const branchId = data.branchId ? data.branchId : null
+  if (branchId) assertInBranch(session, branchId)
+
+  /*
+    Merge fields, checked before the row is written.
+
+    `renderTemplate` substitutes an unknown field with an empty string, which
+    is right for a dispatcher — it is delivering mail, not proof-reading it —
+    and catastrophic as the only line of defence: a typo'd `{{referenceNo}}`
+    sends "Your shipment  has arrived" to every customer, successfully, until
+    somebody reads one. This is the moment a person is looking at the text, so
+    it is the moment to say so.
+  */
+  const unknown = [
+    ...new Set([
+      ...unknownMergeFields(data.eventKey, data.body),
+      ...unknownMergeFields(data.eventKey, data.subject ?? ''),
+    ]),
+  ]
+  if (unknown.length > 0) {
+    return fail(
+      {
+        body: `This event does not supply ${unknown.map((f) => `{{${f}}}`).join(', ')}. It would send as blank.`,
+      },
+      echo(form),
+    )
+  }
+
+  await withActor(session.actor, async (tx) => {
+    const values = {
+      eventKey: data.eventKey,
+      channel: 'email' as const,
+      locale: data.locale,
+      branchId,
+      subject: data.subject,
+      body: data.body,
+      isActive: data.isActive,
+    }
+
+    if (data.templateId) {
+      await tx
+        .update(notificationTemplates)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(notificationTemplates.id, data.templateId))
+    } else {
+      /*
+        Upsert on the natural key rather than insert.
+
+        `(event_key, channel, locale, branch_id) nulls not distinct` is unique,
+        and an administrator adding an override for a branch that already has
+        one means "change it" — an error saying the row exists would send them
+        looking for a row the screen had not shown them.
+      */
+      await tx
+        .insert(notificationTemplates)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [
+            notificationTemplates.eventKey,
+            notificationTemplates.channel,
+            notificationTemplates.locale,
+            notificationTemplates.branchId,
+          ],
+          set: { subject: values.subject, body: values.body, isActive: values.isActive },
+        })
+    }
+  })
+
+  revalidatePath('/settings/notifications')
+  return succeed(`${data.eventKey}:${data.locale}`)
 }

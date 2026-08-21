@@ -17,7 +17,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { and, eq, sql } from 'drizzle-orm'
-import { assertTransition, enquiryMachine, slaDueAt, type WorkingCalendar } from '@qabandi/core'
+import {
+  assertTransition,
+  enquiryMachine,
+  entryPermission,
+  slaDueAt,
+  type WorkingCalendar,
+} from '@qabandi/core'
 import {
   branches,
   calendarHolidays,
@@ -28,7 +34,7 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 import { createEnquirySchema } from './schema'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
@@ -273,4 +279,87 @@ async function nextReference(
   const result = await tx.execute(sql`select nextval('enquiry_reference_seq')::text as seq`)
   const seq = (result.rows[0] as { seq: string }).seq
   return `${branch.code}-ENQ-${year}-${seq.padStart(5, '0')}`
+}
+
+/**
+ * Cancel an enquiry, or start rating one — the two transitions the machine
+ * declared and nothing exercised.
+ *
+ * `enquiry.cancel` and `enquiry.rate` were in `permissionKeys()` from Release
+ * One, seeded into the matrix, and checked in no file: the queue could take an
+ * enquiry and close it won or lost, and had no way to say "this one is being
+ * priced" or "the customer went elsewhere before we quoted".
+ *
+ * Both matter for the same reason, which is the SLA. An enquiry sitting in
+ * `assigned` looks unanswered to the escalation worker whether somebody is
+ * working on it or whether it has been forgotten; `rating` is the difference.
+ * And a cancelled enquiry that stays `new` is chased for ever.
+ */
+export async function advanceEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+
+  // This file reads FormData directly, like its siblings above.
+  const enquiryId = String(form.get('enquiryId') ?? '')
+  const to = String(form.get('to') ?? '')
+  const reason = String(form.get('reason') ?? '').trim()
+  if (!enquiryId || (to !== 'cancelled' && to !== 'rating')) {
+    return failWith('Nothing to do.')
+  }
+
+  // The key the machine declares for the move, rather than one restated here.
+  const required = entryPermission(enquiryMachine, to)
+  if (required) assertCan(session, required)
+
+  /*
+    A cancellation needs a reason, and reuses `lost_reason`.
+
+    The column is "why this enquiry produced no job", and cancelled and lost
+    are two ways of arriving there. A second column would split the one report
+    anybody runs on this — why are we not winning work — across two fields.
+  */
+  if (to === 'cancelled' && reason === '') {
+    return fail({ reason: 'Say why it was cancelled — it stays on the record.' }, echo(form))
+  }
+
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [current] = await tx
+      .select({ status: enquiries.status, branchId: enquiries.branchId })
+      .from(enquiries)
+      .where(eq(enquiries.id, enquiryId))
+      .limit(1)
+    if (!current) return 'not_found' as const
+    assertInBranch(session, current.branchId)
+
+    try {
+      assertTransition(enquiryMachine, current.status, to)
+    } catch {
+      return 'illegal' as const
+    }
+
+    await tx
+      .update(enquiries)
+      .set({
+        status: to,
+        // Cancelling closes it; starting to rate does not.
+        closedAt: to === 'cancelled' ? new Date() : undefined,
+        lostReason: to === 'cancelled' ? reason : undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(enquiries.id, enquiryId))
+
+    return 'ok' as const
+  })
+
+  if (outcome === 'not_found') return failWith('No such enquiry, or it is not one you can see.')
+  if (outcome === 'illegal') {
+    return failWith('That is not a step this enquiry can take from where it is.')
+  }
+
+  revalidatePath('/enquiries')
+  revalidatePath(`/enquiries/${enquiryId}`)
+  revalidatePath('/dashboard')
+  return succeed(enquiryId)
 }

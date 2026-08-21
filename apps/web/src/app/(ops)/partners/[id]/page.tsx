@@ -18,8 +18,13 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { getPartnerDetail } from '@/features/network/queries'
-import { PartnerDialog } from '@/features/network/ui/dialogs'
+import { getPartnerDetail, listPartnerCredentials } from '@/features/network/queries'
+import {
+  PartnerComplianceDialog,
+  PartnerContactDialog,
+  PartnerCoverageDialog,
+  PartnerDialog,
+} from '@/features/network/ui/dialogs'
 import { getPartnerAccount } from '@/features/payables/queries'
 import { PartnerAccountCard } from '@/features/payables/ui/panels'
 import { PartnerAccountDialog, PartnerToleranceDialog } from '@/features/payables/ui/dialogs'
@@ -50,6 +55,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   if (!partner) notFound()
 
   const account = await getPartnerAccount(session.actor, id)
+  const credentials = await listPartnerCredentials(session.actor, id)
+
+  /** Live certificates, as options for a renewal to point back at. */
+  const renewable = credentials.compliance
+    .filter((row) => row.supersededById === null)
+    .map((row) => ({ value: row.id, label: `${row.documentType}${row.reference ? ` · ${row.reference}` : ''}` }))
 
   const t = await getTranslations('partnerDetail')
   const tc = await getTranslations('common')
@@ -223,14 +234,23 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
             </dl>
           </Panel>
 
-          <Panel padding="none" icon="users" title={t('contacts')} explain={t('contactsExplain')}>
+          <Panel
+            padding="none"
+            icon="users"
+            title={t('contacts')}
+            explain={t('contactsExplain')}
+            actions={<PartnerContactDialog partnerId={id} />}
+          >
             {partner.contacts.length === 0 ? (
               <EmptyState icon="users" title={t('noContacts')} description={t('noContactsHint')} />
             ) : (
               <ul className="divide-y divide-line">
                 {partner.contacts.map((contact) => (
                   <li key={contact.id} className="px-5 py-3">
-                    <p className="text-[0.875rem] font-medium text-ink">{contact.nameEn}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[0.875rem] font-medium text-ink">{contact.nameEn}</p>
+                      <PartnerContactDialog partnerId={id} defaults={contact} />
+                    </div>
                     {contact.role ? (
                       <p className="text-[0.75rem] text-ink-subtle">{contact.role}</p>
                     ) : null}
@@ -252,6 +272,116 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
             )}
           </Panel>
         </div>
+
+        {/*
+          Where they go, and what they hold.
+
+          Two tables that existed from Release One and were read by nothing:
+          coverage is what RFQ routing is meant to consult (FR-RT-10), and
+          compliance is what the nightly expiry warning sweeps (FR-MD-05) —
+          which would have swept an empty table, because nothing could put a
+          certificate in it.
+        */}
+        <Panel
+          className="lg:col-span-6"
+          padding="none"
+          icon="globe"
+          title={t('coverage')}
+          explain={t('coverageExplain')}
+          actions={<PartnerCoverageDialog partnerId={id} />}
+        >
+          {credentials.coverage.length === 0 ? (
+            <EmptyState icon="globe" title={t('noCoverage')} description={t('noCoverageHint')} />
+          ) : (
+            <TableShell minWidth="none">
+              <THead>
+                <TR>
+                  <TH>{t('mode')}</TH>
+                  <TH>{t('lane')}</TH>
+                  <TH align="end">{t('transit')}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {credentials.coverage.map((row) => (
+                  <TR key={row.id}>
+                    <TD>
+                      <Badge tone={row.isActive ? 'info' : 'muted'}>{row.mode}</Badge>
+                    </TD>
+                    <TD className="text-ink">{row.lane}</TD>
+                    <TD align="end" numeric className="text-ink-muted">
+                      {row.transitDays === null ? '—' : t('days', { days: row.transitDays })}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </TableShell>
+          )}
+        </Panel>
+
+        <Panel
+          className="lg:col-span-6"
+          padding="none"
+          icon="document"
+          title={t('compliance')}
+          explain={t('complianceExplain')}
+          actions={<PartnerComplianceDialog partnerId={id} supersedes={renewable} />}
+        >
+          {credentials.compliance.length === 0 ? (
+            <EmptyState
+              icon="document"
+              title={t('noCompliance')}
+              description={t('noComplianceHint')}
+            />
+          ) : (
+            <TableShell minWidth="none">
+              <THead>
+                <TR>
+                  <TH>{t('document')}</TH>
+                  <TH>{t('reference')}</TH>
+                  <TH align="end">{t('expires')}</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {credentials.compliance.map((row) => {
+                  // Superseded rows stay — the certificate current on the day
+                  // a shipment moved is the one anybody ever asks about.
+                  const superseded = row.supersededById !== null
+                  const lapsed = row.daysRemaining !== null && row.daysRemaining < 0
+                  return (
+                    <TR key={row.id}>
+                      <TD className={superseded ? 'text-ink-subtle' : 'text-ink'}>
+                        {row.documentType}
+                        {superseded ? (
+                          <Badge tone="muted" className="ms-2">
+                            {t('renewed')}
+                          </Badge>
+                        ) : null}
+                      </TD>
+                      <TD className="ref text-ink-muted">{row.reference ?? '—'}</TD>
+                      <TD align="end" className="whitespace-nowrap">
+                        {row.expiresOn === null ? (
+                          <span className="text-ink-subtle">—</span>
+                        ) : superseded ? (
+                          <span className="text-ink-subtle">
+                            {formatDate(new Date(row.expiresOn), locale)}
+                          </span>
+                        ) : (
+                          <Badge
+                            tone={
+                              lapsed ? 'critical' : row.daysRemaining! <= 60 ? 'caution' : 'muted'
+                            }
+                          >
+                            {formatDate(new Date(row.expiresOn), locale)}
+                          </Badge>
+                        )}
+                      </TD>
+                    </TR>
+                  )
+                })}
+              </TBody>
+            </TableShell>
+          )}
+        </Panel>
 
         {/*
           The current account, both directions (0014).

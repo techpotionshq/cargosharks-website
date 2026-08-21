@@ -66,6 +66,49 @@ export const SETTINGS_AREAS = [
     meaning and a matrix with an extra row nobody can explain.
   */
   { key: 'support', href: '/settings/support', permission: 'admin.users.write', icon: 'audit' },
+  /*
+    The wording every customer notification goes out in — FR-NT-03.
+
+    On `admin.reference.write` rather than a key of its own, because it is the
+    same authority as editing a charge type or an exception code: configuration
+    an administrator changes without a release, which is the whole of FR-AD-03.
+    A separate key would be a matrix row nobody could explain the difference of.
+  */
+  {
+    key: 'notifications',
+    href: '/settings/notifications',
+    permission: 'admin.reference.write',
+    icon: 'bell',
+  },
+  /*
+    Read-only keys a customer's ERP integrates against — FR-AD-05.
+
+    Its own key in the matrix, and it always was: `admin.api_keys.write` has
+    been in `ADMIN_PERMISSIONS` since it was written and was checked nowhere,
+    because there was no screen. Issuing an outsider a credential to this
+    deployment's data is not the same authority as editing a charge type.
+  */
+  {
+    key: 'apiKeys',
+    href: '/settings/api-keys',
+    permission: 'admin.api_keys.write',
+    icon: 'globe',
+  },
+  /*
+    The mailboxes the intake reads — FR-EQ-02, FR-AD-03.
+
+    Its own key rather than `admin.reference.write`, and the difference is
+    real: a charge type is a business rule, and this row is the password to a
+    mailbox that in an office this size is usually somebody's whole account.
+    An operations manager who should be able to add a port should not be able
+    to point the enquiry intake at a mailbox of their choosing.
+  */
+  {
+    key: 'mailboxes',
+    href: '/settings/mailboxes',
+    permission: 'admin.mailboxes.write',
+    icon: 'enquiries',
+  },
   { key: 'brand', href: '/settings/brand', permission: 'admin.brand.read', icon: 'admin' },
 ] as const
 

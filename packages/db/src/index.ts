@@ -12,8 +12,21 @@ export * from './actor'
 export { createDatabase, createPool, db, type Database, type PoolConfig } from './client'
 export * from './validation'
 export * from './credit'
+export * from './chargeable'
 export * from './rate-cards'
 export * from './schema-version'
+/*
+  Named rather than `export *`: `open` is a common enough word that a star
+  export would collide with something eventually, and a shadowed `open` is a
+  bug nobody reads twice.
+*/
+export {
+  seal as sealSecret,
+  open as openSecret,
+  hasSecretKey,
+  SecretKeyError,
+  SealedSecretError,
+} from './secrets'
 export {
   NOTIFICATION_TEMPLATES,
   type NotificationTemplateSeed,

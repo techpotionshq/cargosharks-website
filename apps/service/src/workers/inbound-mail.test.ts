@@ -194,17 +194,15 @@ const MAILBOX = 'kuwait-fixture@qabandi.test'
 const ORPHAN_MAILBOX = 'nowhere-fixture@qabandi.test'
 
 /*
-  Set before the config module is imported below.
+  Set before the modules below are imported.
 
-  `config.ts` parses `process.env` once at module load, and the mailbox list is
-  what maps an arriving message to a branch. Assigning it afterwards would be
-  read by nothing.
+  `config.ts` and `secrets.ts` both read `process.env`, and `secrets.ts` needs a
+  key to seal the fixture mailbox's password with — the column has a database
+  constraint requiring sealed ciphertext, so an unsealed fixture cannot be
+  inserted at all. A throwaway key: this one seals nothing that outlives the
+  suite.
 */
-process.env.INBOUND_MAIL_DRIVER = 'imap'
-process.env.INBOUND_MAILBOXES = JSON.stringify([
-  { branch: 'IMB', host: 'imap.invalid', user: MAILBOX, password: 'x' },
-  { branch: 'NO-SUCH-BRANCH', host: 'imap.invalid', user: ORPHAN_MAILBOX, password: 'x' },
-])
+process.env.MAILBOX_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64')
 // Attachments go to memory rather than to a bucket this suite has no key for.
 process.env.FILE_STORE_DRIVER = 'memory'
 
@@ -215,10 +213,12 @@ const {
   customers,
   enquiries,
   inboundWebhookEvents,
+  mailboxes,
   messageAttachments,
   messages,
   notificationOutbox,
   principals,
+  sealSecret,
   systemActor,
   withActor,
   workingCalendars,
@@ -351,6 +351,24 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
           isPrimary: true,
         })
         .onConflictDoNothing()
+
+      /*
+        The mailbox row is the branch mapping now.
+
+        `resolveBranches` joins `mailboxes` to `branches` on the username the
+        adapter stamps onto each message, so without this row every fixture
+        message is an orphan — which is exactly what `ORPHAN_MAILBOX` below
+        relies on, and why only one of the two addresses gets a row.
+      */
+      await tx
+        .insert(mailboxes)
+        .values({
+          branchId: BRANCH,
+          host: 'imap.invalid',
+          username: MAILBOX,
+          passwordSealed: sealSecret('fixture-password'),
+        })
+        .onConflictDoNothing()
     })
   })
 
@@ -378,6 +396,13 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
         .update(notificationOutbox)
         .set({ dispatchedAt: new Date() })
         .where(eq(notificationOutbox.branchId, BRANCH))
+
+      // Deactivated rather than deleted (§5.5), and so a real poll on this
+      // database never tries to reach `imap.invalid`.
+      await tx
+        .update(mailboxes)
+        .set({ isActive: false })
+        .where(eq(mailboxes.branchId, BRANCH))
     })
   })
 
@@ -568,11 +593,12 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
   })
 
   /**
-   * A mailbox naming a branch code nothing has is a configuration error, and
-   * the message must survive it. The run records the failure and moves on; the
-   * mail is never flagged, so it is still there when somebody fixes the code.
+   * A message whose mailbox has no active row has no branch to be filed under
+   * — the row that carried the mapping was deactivated, or never existed. The
+   * run records the failure and moves on; the mail is never flagged, so it is
+   * still there when somebody puts the row back.
    */
-  it('fails a mailbox whose branch code matches nothing, without losing the mail', async () => {
+  it('fails a message from a mailbox with no active row, without losing the mail', async () => {
     const result = await runInboundMailPoll(
       new Date('2026-08-18T07:29:00Z'),
       sourceOf(mail({ mailbox: ORPHAN_MAILBOX, subject: `Orphan ${RUN}` })),

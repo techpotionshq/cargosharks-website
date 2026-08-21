@@ -156,7 +156,17 @@ export function Field({ label, name, span = 6, hint, error, required, children }
 }
 
 export interface InputProps extends Omit<FieldProps, 'children'> {
-  readonly type?: 'text' | 'email' | 'tel' | 'url' | 'number' | 'date' | 'datetime-local' | 'search'
+  readonly type?:
+    | 'text'
+    | 'email'
+    | 'tel'
+    | 'url'
+    | 'number'
+    | 'date'
+    | 'datetime-local'
+    | 'search'
+    /** A credential being typed in. Masks the field; says nothing about storage. */
+    | 'password'
   readonly defaultValue?: string | number | null
   readonly placeholder?: string
   readonly step?: string

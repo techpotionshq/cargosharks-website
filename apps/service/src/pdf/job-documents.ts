@@ -21,12 +21,10 @@
  * attached to it is a discrepancy at the port.
  */
 
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
   SEED_CURRENCIES,
   chargeableWeight,
-  dec,
-  type ChargeableRule,
   customsValue as computeCustomsValue,
   estimateDuty,
   type CurrencySpec,
@@ -36,7 +34,7 @@ import {
 import {
   branches,
   chargeLines,
-  chargeableRules,
+  chargeableRuleFor,
   consolidations,
   customers,
   customsStages,
@@ -101,54 +99,6 @@ export const DOCUMENT_TYPE_KEYS: Record<JobDocumentKind, string> = {
  */
 const currencySpec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
-
-/**
- * The volumetric rule for a mode, as this branch configures it.
- *
- * Two rows can match: the seeded default carries no branch, and a branch that
- * negotiated its own divisor carries one. `branch_id` sorts nulls last here so
- * the branch's own row wins where it exists — which is the whole reason the
- * unique constraint is on `(mode, branch_id)` rather than on `mode` alone.
- *
- * Returns `null` rather than a default when nothing matches. See the caller.
- */
-async function chargeableRuleFor(
-  tx: Parameters<Parameters<typeof withActor>[1]>[0],
-  mode: string | null,
-  branchId: string,
-): Promise<ChargeableRule | null> {
-  if (!mode) return null
-
-  const [rule] = await tx
-    .select({
-      mode: chargeableRules.mode,
-      divisorCm3PerKg: chargeableRules.divisorCm3PerKg,
-      roundUpToKg: chargeableRules.roundUpToKg,
-      minimumKg: chargeableRules.minimumKg,
-    })
-    .from(chargeableRules)
-    .where(
-      and(
-        eq(chargeableRules.mode, mode as ChargeableRule['mode']),
-        eq(chargeableRules.isActive, true),
-        or(eq(chargeableRules.branchId, branchId), isNull(chargeableRules.branchId)),
-      ),
-    )
-    .orderBy(asc(chargeableRules.branchId))
-    .limit(1)
-
-  if (!rule) return null
-
-  return {
-    mode: rule.mode,
-    // `numeric` arrives as a string; `Decimal` is what the engine takes, and
-    // the round-trip through a JS number is exactly the precision loss the
-    // divisor is stored this way to avoid.
-    divisorCm3PerKg: rule.divisorCm3PerKg === null ? null : dec(rule.divisorCm3PerKg),
-    roundUpToKg: dec(rule.roundUpToKg),
-    minimumKg: dec(rule.minimumKg),
-  }
-}
 
 export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<JobDocumentView> {
   return withActor(actor, async (tx) => {

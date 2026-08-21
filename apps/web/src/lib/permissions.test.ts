@@ -160,6 +160,8 @@ describe('settings areas', () => {
       'branches',
       'audit',
       'support',
+      'notifications',
+      'apiKeys',
       'brand',
     ])
   })

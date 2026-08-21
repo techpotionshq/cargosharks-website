@@ -35,6 +35,7 @@ import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import {
   AddContainerDialog,
   CloseExceptionDialog,
+  FreeTimeClockDialog,
   CustomsDialog,
   JobStatusDialog,
   MilestoneDialog,
@@ -310,10 +311,34 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             </dl>
           </Card>
 
-          {/* --- the free-time clocks --------------------------------- */}
+          {/*
+            --- the free-time clocks ---------------------------------
+
+            The card renders even with no clock on the shipment, which it did
+            not before: starting one had no control anywhere in the product,
+            so demurrage accrued on seeded data and on nothing a customer had
+            shipped. An operator whose box is sitting at Shuwaikh needs to be
+            able to say so.
+          */}
           {job.clocks.length > 0 ? (
             <Card tone="critical">
-              <CardHeader icon="clock" eyebrow={t('clocks')} title={t('clocksHint')} />
+              <CardHeader
+                icon="clock"
+                eyebrow={t('clocks')}
+                title={t('clocksHint')}
+                actions={
+                  <FreeTimeClockDialog
+                    jobId={job.id}
+                    containers={containerOptions}
+                    // Whoever the days are owed to — the carrier or the
+                    // terminal — is a partner already engaged on the job.
+                    partners={job.partners.map((partner) => ({
+                      value: partner.partnerId,
+                      label: partner.name,
+                    }))}
+                  />
+                }
+              />
               <ul className="mt-4 flex flex-col gap-3">
                 {job.clocks.map((clock) => (
                   <li key={clock.id}>
@@ -368,7 +393,36 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 ))}
               </ul>
             </Card>
-          ) : null}
+          ) : (
+            /*
+              No clock yet, and the card still renders.
+
+              Hiding it until one exists was how demurrage came to run only on
+              seeded data: the control that creates the first clock was inside
+              the card that only appeared once a clock existed. The tone is
+              neutral rather than critical here — nothing is accruing, and a
+              red panel saying so would cry wolf on every shipment.
+            */
+            <Card>
+              <CardHeader
+                icon="clock"
+                eyebrow={t('clocks')}
+                title={t('noClocks')}
+                description={t('noClocksHint')}
+                actions={
+                  <FreeTimeClockDialog
+                    jobId={job.id}
+                    containers={containerOptions}
+                    partners={job.partners.map((partner) => ({
+                      value: partner.partnerId,
+                      label: partner.name,
+                    }))}
+                    variant="secondary"
+                  />
+                }
+              />
+            </Card>
+          )}
         </div>
       </Grid>
 

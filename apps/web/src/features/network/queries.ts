@@ -255,3 +255,73 @@ export async function agentPartnerName(
     return (locale === 'ar' ? row.nameAr : row.nameEn) ?? row.nameEn
   })
 }
+
+export interface PartnerCoverageRow {
+  readonly id: string
+  readonly mode: string
+  readonly lane: string
+  readonly transitDays: number | null
+  readonly isActive: boolean
+}
+
+export interface PartnerComplianceRow {
+  readonly id: string
+  readonly documentType: string
+  readonly reference: string | null
+  readonly issuedOn: string | null
+  readonly expiresOn: string | null
+  readonly supersededById: string | null
+  readonly daysRemaining: number | null
+}
+
+/**
+ * The lanes a partner covers and the papers they hold — FR-RT-10, FR-MD-05.
+ *
+ * Both tables existed and neither was read by anything: RFQ routing was to be
+ * driven by coverage, and a nightly job was to warn on compliance expiry. The
+ * second is still in `PENDING`, and it would have swept an empty table until
+ * this screen could fill it.
+ *
+ * Superseded certificates are returned, not filtered. A renewal points the old
+ * row forward and the old row stays, because what proves an agent was insured
+ * on the day a shipment moved is the certificate that was current *then*.
+ */
+export async function listPartnerCredentials(
+  actor: Actor,
+  partnerId: string,
+): Promise<{ coverage: PartnerCoverageRow[]; compliance: PartnerComplianceRow[] }> {
+  return withActor(actor, async (tx) => {
+    const coverage = await tx.execute(sql`
+      select c.id, c.mode::text as mode, c.transit_days as "transitDays",
+             c.is_active as "isActive",
+             coalesce(o.name_en, c.origin_country, '—') || ' → ' ||
+             coalesce(d.name_en, c.destination_country, '—') as lane
+        from partner_coverage c
+        left join locations o on o.id = c.origin_id
+        left join locations d on d.id = c.destination_id
+       where c.partner_id = ${partnerId}
+       order by c.mode, lane
+    `)
+
+    const compliance = await tx.execute(sql`
+      select pc.id, dt.name_en as "documentType", pc.reference,
+             pc.issued_on::text as "issuedOn", pc.expires_on::text as "expiresOn",
+             pc.superseded_by_id as "supersededById",
+             case when pc.expires_on is null then null
+                  else (pc.expires_on - current_date) end as "daysRemaining"
+        from partner_compliance pc
+        join document_types dt on dt.id = pc.document_type_id
+       where pc.partner_id = ${partnerId}
+       -- Live ones first, then the superseded, each by how long is left.
+       order by (pc.superseded_by_id is not null), pc.expires_on nulls last
+    `)
+
+    return {
+      coverage: coverage.rows as unknown as PartnerCoverageRow[],
+      compliance: (compliance.rows as unknown as PartnerComplianceRow[]).map((row) => ({
+        ...row,
+        daysRemaining: row.daysRemaining === null ? null : Number(row.daysRemaining),
+      })),
+    }
+  })
+}

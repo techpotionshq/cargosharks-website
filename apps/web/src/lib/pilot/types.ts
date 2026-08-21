@@ -230,6 +230,8 @@ export interface QuoteLineView {
 }
 
 export interface QuoteComparison {
+  /** The enquiry's own status — decides which transitions are offered. */
+  readonly status?: string
   readonly enquiryReference: string
   readonly customerName: string
   readonly lane: string

@@ -82,6 +82,14 @@ export interface ButtonProps {
    */
   readonly download?: boolean
   readonly type?: 'button' | 'submit'
+  /**
+   * Only meaningful on a `<button>`, and deliberately not forwarded to a link.
+   *
+   * `disabled` is not an anchor attribute — React drops it, the element stays
+   * clickable, and it looks disabled while navigating anyway. A destination
+   * that should not be reachable is one that should not be rendered as a link.
+   */
+  readonly disabled?: boolean
   readonly className?: string
   readonly title?: string
   readonly 'aria-label'?: string
@@ -105,6 +113,7 @@ export function Button({
   href,
   download = false,
   type = 'button',
+  disabled = false,
   className,
   ...rest
 }: ButtonProps) {
@@ -112,6 +121,9 @@ export function Button({
     'inline-flex items-center justify-center rounded-sm font-medium whitespace-nowrap transition-colors',
     BUTTON_VARIANT[variant],
     BUTTON_SIZE[size],
+    // Dimmed and inert, but still readable — a pending submit says what it is
+    // doing, and a label nobody can read is worse than a live button.
+    disabled ? 'pointer-events-none opacity-60' : '',
     className,
   ]
     .filter(Boolean)
@@ -138,7 +150,7 @@ export function Button({
       {inner}
     </Link>
   ) : (
-    <button type={type} className={classes} {...rest}>
+    <button type={type} className={classes} disabled={disabled} {...rest}>
       {inner}
     </button>
   )

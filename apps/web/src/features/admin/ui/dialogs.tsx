@@ -13,7 +13,13 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { saveBranch, saveReferenceRecord, saveUser, setUserActive } from '../form-actions'
+import {
+  saveBranch,
+  saveNotificationTemplate,
+  saveReferenceRecord,
+  saveUser,
+  setUserActive,
+} from '../form-actions'
 
 const REFERENCE_TABLES = ['commodity', 'charge_type', 'document_type', 'exception_code'] as const
 const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
@@ -188,6 +194,8 @@ export interface BranchDefaults {
   readonly roundingAccountCode?: string | null
   readonly tradingConditionsEn?: string | null
   readonly tradingConditionsAr?: string | null
+  readonly defaultExclusionsEn?: string | null
+  readonly defaultExclusionsAr?: string | null
   readonly isActive?: boolean
 }
 
@@ -413,6 +421,33 @@ export async function BranchDialog({
           span: 12,
           rows: 6,
           defaultValue: defaults?.tradingConditionsAr,
+        },
+        /*
+          Exclusions are a list, and print as one beside the charges.
+
+          Separate from the conditions above because the reader treats them
+          differently: a paragraph at the foot is a term somebody is deemed to
+          have read, and a short list next to the price is one they did. It is
+          the line that decides who pays when the container is pulled for
+          examination. Inclusions have no field here — they are the charges
+          actually on the quotation, derived so they cannot disagree with it.
+        */
+        {
+          kind: 'textarea',
+          name: 'defaultExclusionsEn',
+          label: t('exclusionsEn'),
+          span: 6,
+          rows: 4,
+          hint: t('exclusionsHint'),
+          defaultValue: defaults?.defaultExclusionsEn,
+        },
+        {
+          kind: 'textarea',
+          name: 'defaultExclusionsAr',
+          label: t('exclusionsAr'),
+          span: 6,
+          rows: 4,
+          defaultValue: defaults?.defaultExclusionsAr,
         },
       ],
     },
@@ -681,6 +716,109 @@ export async function SuspendUserDialog({
         title: isActive ? t('suspendTitle', { name }) : t('restoreTitle', { name }),
         description: isActive ? t('suspendDescription') : t('restoreDescription'),
         submit: isActive ? t('suspend') : t('restore'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Editing what a notification says — FR-NT-03.
+ *
+ * The merge fields are listed in the hint rather than left to be remembered,
+ * because the failure they guard against is silent: `renderTemplate`
+ * substitutes an unknown field with an empty string, so a typo sends "Your
+ * shipment  has arrived" successfully, for ever. The action refuses one it
+ * does not recognise; this is what stops the administrator having to guess in
+ * the first place.
+ *
+ * Opening it against a branch creates that branch's override and leaves the
+ * default alone (§7.4) — which is what makes "Dubai says it differently" a row
+ * rather than a release.
+ */
+export async function NotificationTemplateDialog({
+  eventKey,
+  locale,
+  mergeFields,
+  template,
+  branches: branchOptions,
+  variant = 'ghost',
+}: {
+  readonly eventKey: string
+  readonly locale: 'en' | 'ar'
+  readonly mergeFields: readonly string[]
+  readonly template?: {
+    readonly id?: string
+    readonly branchId?: string | null
+    readonly subject?: string | null
+    readonly body?: string
+    readonly isActive?: boolean
+  }
+  readonly branches: readonly { value: string; label: string }[]
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.reference.write')) return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('notificationTemplates'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'eventKey', value: eventKey },
+    { kind: 'hidden', name: 'locale', value: locale },
+    ...(template?.id ? [{ kind: 'hidden' as const, name: 'templateId', value: template.id }] : []),
+    {
+      kind: 'select',
+      name: 'branchId',
+      label: t('branch'),
+      span: 12,
+      options: branchOptions,
+      placeholder: t('allBranches'),
+      hint: t('branchHint'),
+      defaultValue: template?.branchId ?? undefined,
+    },
+    {
+      kind: 'text',
+      name: 'subject',
+      label: t('subject'),
+      span: 12,
+      defaultValue: template?.subject ?? undefined,
+    },
+    {
+      kind: 'textarea',
+      name: 'body',
+      label: t('body'),
+      span: 12,
+      required: true,
+      rows: 10,
+      hint: t('fieldsHint', { fields: mergeFields.map((f) => `{{${f}}}`).join(' ') }),
+      defaultValue: template?.body,
+    },
+    {
+      kind: 'switch',
+      name: 'isActive',
+      label: t('active'),
+      span: 12,
+      hint: t('activeHint'),
+      defaultChecked: template?.isActive ?? true,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveNotificationTemplate}
+      fields={fields}
+      icon="bell"
+      variant={variant}
+      iconOnly={Boolean(template?.id)}
+      labels={{
+        open: template?.id ? tc('edit') : t('override'),
+        title: t('title', { event: eventKey }),
+        description: t('description'),
+        submit: tc('save'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
       }}

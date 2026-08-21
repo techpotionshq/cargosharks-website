@@ -32,6 +32,7 @@ import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
+import { PriceEnquiryButton } from '@/features/ledger/ui/price-button'
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
@@ -69,7 +70,18 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               enquiryId={id}
               hasResponded={comparison.hasResponded}
               isClosed={comparison.isClosed}
+              status={comparison.status}
             />
+            {/*
+              Instant pricing first, the manual form second — the order they
+              are reached for. A covered lane never needs the dialog.
+            */}
+            {comparison.isClosed ? null : (
+              <PriceEnquiryButton
+                enquiryId={id}
+                labels={{ price: t('priceIt'), pricing: t('pricing') }}
+              />
+            )}
             <QuoteDialog enquiryId={id} />
           </>
         }

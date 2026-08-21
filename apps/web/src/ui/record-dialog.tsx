@@ -58,7 +58,24 @@ export interface BaseField {
 
 export type FieldSpec =
   | (BaseField & {
-      readonly kind: 'text' | 'email' | 'tel' | 'url' | 'number' | 'date' | 'datetime-local'
+      readonly kind:
+        | 'text'
+        | 'email'
+        | 'tel'
+        | 'url'
+        | 'number'
+        | 'date'
+        | 'datetime-local'
+        /*
+          `password` renders `type="password"` and nothing else — the input
+          type is the field kind. It exists so a credential is not typed in
+          clear over somebody's shoulder; it is not a claim about storage,
+          which is `sealSecret`'s job.
+
+          A caller using this must also keep the field out of `echo()` on
+          failure, or a rejected form re-renders the secret into the DOM.
+        */
+        | 'password'
       readonly defaultValue?: string | number | null
       readonly placeholder?: string
       readonly step?: string

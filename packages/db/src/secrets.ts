@@ -1,0 +1,163 @@
+/**
+ * Sealing a credential that has to be given back — `mailboxes.password_sealed`.
+ *
+ * Almost every secret in this system is *verified*, never replayed: an API key
+ * is Argon2id'd and compared, a session token is looked up. Those are hashes,
+ * and a hash is the right answer because nothing ever needs the original back.
+ *
+ * An IMAP password is the exception. The poll worker has to present it to the
+ * mail server on every connection, so it must be recoverable, so it must be
+ * encrypted rather than hashed. That is a materially weaker position and the
+ * design has to earn it.
+ *
+ * ## The key is not in the database
+ *
+ * `MAILBOX_ENCRYPTION_KEY` lives in the environment, and that is the whole
+ * point of the exercise. `mailboxes` is a row like any other: it is in every
+ * `pnpm fleet:backup`, every restore drill, every replica, and every dump
+ * somebody takes to debug something. If the key travelled with the ciphertext
+ * then none of those would be safe to hand anybody, and "encrypted at rest"
+ * would be a sentence rather than a property.
+ *
+ * This matters more here than for most credentials. A forwarding desk's
+ * mailbox password is very often the staff member's whole account password,
+ * because that is how mail accounts are issued in an office of this size.
+ *
+ * ## AES-256-GCM, and why authenticated encryption specifically
+ *
+ * GCM authenticates as well as encrypts, so a ciphertext altered in the
+ * database fails to open rather than decrypting to rubbish that is then handed
+ * to a mail server as a password. The failure is loud and in the right place.
+ *
+ * A fresh 96-bit IV per seal, which is what GCM requires — reusing one across
+ * two seals under the same key is the catastrophic misuse of this mode, so no
+ * caller is given the opportunity to supply it.
+ *
+ * ## The version prefix
+ *
+ * `v1:` costs six bytes and buys the ability to rotate. Re-keying a fleet
+ * without it means guessing which rows are in which scheme, which is the point
+ * at which people decide not to rotate at all.
+ */
+
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+
+const SCHEME = 'v1'
+const ALGORITHM = 'aes-256-gcm'
+const IV_BYTES = 12
+const KEY_BYTES = 32
+
+export class SecretKeyError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SecretKeyError'
+  }
+}
+
+export class SealedSecretError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SealedSecretError'
+  }
+}
+
+/**
+ * The key, read at use rather than at import.
+ *
+ * At import would mean every command that touches `@qabandi/db` — migrations,
+ * the seed, a one-off script — refusing to start over a variable only the mail
+ * poller and one settings screen need.
+ */
+function key(): Buffer {
+  const configured = process.env.MAILBOX_ENCRYPTION_KEY?.trim()
+
+  if (!configured) {
+    throw new SecretKeyError(
+      'MAILBOX_ENCRYPTION_KEY is not set, so mailbox passwords can be neither ' +
+        'stored nor read. Generate one with:\n' +
+        "  node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    )
+  }
+
+  /*
+    Base64 of 32 raw bytes, not a passphrase.
+
+    Accepting a passphrase would mean deriving a key from it, and a derivation
+    nobody specified is one somebody will do with a single unsalted SHA-256 —
+    at which point the key has the entropy of the passphrase, which is to say
+    the entropy of a word somebody typed.
+  */
+  const raw = Buffer.from(configured, 'base64')
+
+  if (raw.byteLength !== KEY_BYTES) {
+    throw new SecretKeyError(
+      `MAILBOX_ENCRYPTION_KEY must be ${KEY_BYTES} bytes, base64-encoded — ` +
+        `this one decodes to ${raw.byteLength}. Generate one with:\n` +
+        "  node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
+    )
+  }
+
+  return raw
+}
+
+/** Whether a key is configured, for the boot log and the settings screen. */
+export function hasSecretKey(): boolean {
+  try {
+    key()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** `v1:<iv>:<tag>:<ciphertext>`, each part base64. */
+export function seal(plaintext: string): string {
+  if (plaintext === '') throw new SealedSecretError('Refusing to seal an empty secret.')
+
+  const iv = randomBytes(IV_BYTES)
+  const cipher = createCipheriv(ALGORITHM, key(), iv)
+  const body = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+
+  return [
+    SCHEME,
+    iv.toString('base64'),
+    cipher.getAuthTag().toString('base64'),
+    body.toString('base64'),
+  ].join(':')
+}
+
+export function open(sealed: string): string {
+  const [scheme, iv, tag, body] = sealed.split(':')
+
+  if (scheme !== SCHEME || !iv || !tag || !body) {
+    throw new SealedSecretError(
+      `Not a sealed secret this build understands (scheme "${scheme ?? 'none'}").`,
+    )
+  }
+
+  try {
+    const decipher = createDecipheriv(ALGORITHM, key(), Buffer.from(iv, 'base64'))
+    decipher.setAuthTag(Buffer.from(tag, 'base64'))
+    return Buffer.concat([
+      decipher.update(Buffer.from(body, 'base64')),
+      decipher.final(),
+    ]).toString('utf8')
+  } catch (error) {
+    /*
+      A key error passes through; anything else becomes one sentence.
+
+      `final()` throws the same unhelpful "unable to authenticate data" for a
+      wrong key, a rotated key and a tampered row, and the operator's next step
+      differs for each. Naming all three is the most honest thing this layer
+      can say, because it genuinely cannot tell them apart — that is what
+      authentication means.
+    */
+    if (error instanceof SecretKeyError) throw error
+
+    throw new SealedSecretError(
+      'This mailbox password could not be opened. Either MAILBOX_ENCRYPTION_KEY ' +
+        'is not the key it was sealed with, or the stored value has been altered. ' +
+        'Re-enter the password on the mailbox to seal it again.',
+    )
+  }
+}

@@ -21,6 +21,82 @@ import { customers } from './commercial'
 import { enquiries, jobs } from './jobs'
 
 /**
+ * The mailboxes this deployment reads — FR-EQ-02, FR-AD-03.
+ *
+ * A row rather than an environment variable, and that is the house rule rather
+ * than a preference: *"configuration is rows, not code"*, and FR-AD-03 wants
+ * everything an administrator changes to take effect without a release. Adding
+ * the Doha office should be a screen, not a deployment — and the deployment is
+ * the reason the office waits three weeks.
+ *
+ * ## The password is sealed, not stored
+ *
+ * `password_sealed` holds AES-256-GCM ciphertext, keyed by
+ * `MAILBOX_ENCRYPTION_KEY` from the environment. The key never enters the
+ * database, so a dump, a restore drill or a replica carries no usable mailbox
+ * credential — which matters more here than for most secrets, because an IMAP
+ * password is frequently the staff member's whole account password.
+ *
+ * This is the one thing that cannot move into a row. Sealing with a key stored
+ * beside the ciphertext is not encryption, it is encoding.
+ *
+ * ## Never deleted
+ *
+ * `is_active`, like everything else (§5.5). "Were we reading that mailbox in
+ * March, and with whose credential" is a question asked after an incident, and
+ * a deleted row cannot answer it.
+ */
+export const mailboxes = pgTable(
+  'mailboxes',
+  {
+    id: pk(),
+    /** The office whose enquiries arrive here. Scopes the rows RLS returns. */
+    branchId: ref('branch_id')
+      .notNull()
+      .references(() => branches.id),
+    host: text('host').notNull(),
+    port: integer('port').notNull().default(993),
+    /** Implicit TLS, which is what 993 is. STARTTLS on 143 is the other one. */
+    secure: boolean('secure').notNull().default(true),
+    username: text('username').notNull(),
+    /** AES-256-GCM, `v1:<iv>:<tag>:<ciphertext>`. See `secrets.ts`. */
+    passwordSealed: text('password_sealed').notNull(),
+    folder: text('folder').notNull().default('INBOX'),
+    /**
+     * Where a handled message is moved. Null leaves it flagged in place.
+     *
+     * Setting it is the kinder shape for a mailbox a coordinator also reads
+     * with their own eyes: they watch the queue drain rather than watch read
+     * messages pile up beneath the ones that still need them.
+     */
+    archiveFolder: text('archive_folder'),
+    isActive: boolean('is_active').notNull().default(true),
+    /*
+      What the last run did, so the screen can say so.
+
+      A mailbox that stopped working is otherwise invisible: the enquiry queue
+      simply goes quiet, and quiet looks like a slow week. These three columns
+      are what turn that into a red row an administrator can see.
+    */
+    lastPolledAt: tsz('last_polled_at'),
+    lastMessageAt: tsz('last_message_at'),
+    lastError: text('last_error'),
+    ...timestamps,
+  },
+  (t) => [
+    index('mailboxes_branch_idx').on(t.branchId, t.isActive),
+    /*
+      One row per address per host.
+
+      Two rows for the same mailbox would poll it twice, and the second poll
+      would find nothing because the first had already flagged everything —
+      an intermittent-looking bug with a configuration cause.
+    */
+    unique('mailboxes_address_unique').on(t.host, t.username),
+  ],
+)
+
+/**
  * The conversation thread against a job or enquiry — FR-NT-05.
  *
  * Inbound WhatsApp and email land here alongside outbound messages, so the
@@ -96,9 +172,27 @@ export const notificationOutbox = pgTable(
     /** Set once pg-boss has accepted it; unclaimed rows are the retry set. */
     enqueuedAt: tsz('enqueued_at'),
     dispatchedAt: tsz('dispatched_at'),
+    /**
+     * Separate from `dispatched_at`, because two channels read this table.
+     *
+     * An event becomes email *and* outbound webhooks (FR-AD-06), and the two
+     * run independently: mail can be deferred by quiet hours while a webhook
+     * fires immediately, and a webhook subscriber can be down while mail
+     * leaves normally. One column for both would make either channel's
+     * progress mark the event finished for the other — so an event dispatched
+     * as mail would never reach a subscriber, silently.
+     *
+     * Stamped even when nothing subscribes, so an event with no endpoints is
+     * examined once rather than on every sweep for ever.
+     */
+    webhooksExpandedAt: tsz('webhooks_expanded_at'),
     ...timestamps,
   },
-  (t) => [index('notification_outbox_pending_idx').on(t.dispatchedAt, t.createdAt)],
+  (t) => [
+    index('notification_outbox_pending_idx').on(t.dispatchedAt, t.createdAt),
+    // The webhook expander's whole query: unexpanded, oldest first.
+    index('notification_outbox_webhooks_idx').on(t.webhooksExpandedAt, t.createdAt),
+  ],
 )
 
 /**
@@ -203,6 +297,8 @@ export const inboundWebhookEvents = systemTable(
   (t) => [unique('inbound_webhook_events_unique').on(t.provider, t.externalId)],
 )
 
+export type Mailbox = typeof mailboxes.$inferSelect
+export type NewMailbox = typeof mailboxes.$inferInsert
 export type Message = typeof messages.$inferSelect
 export type NotificationOutbox = typeof notificationOutbox.$inferSelect
 export type NotificationDelivery = typeof notificationDeliveries.$inferSelect

@@ -180,5 +180,14 @@ export async function registerSchedules(): Promise<void> {
     A minute is well inside what any of these events needs, and it is also what
     picks up a delivery whose retry backoff has expired.
   */
+  /*
+    Outbound webhooks, every minute alongside the dispatcher (FR-AD-06).
+
+    A subscriber integrating their pipeline expects an event within a minute of
+    it happening; anything slower and they poll the read API instead, which is
+    the thing webhooks exist to replace.
+  */
+  await b.schedule(JOBS.webhookDelivery, '* * * * *')
+
   await b.schedule(JOBS.notificationDispatch, '* * * * *')
 }
