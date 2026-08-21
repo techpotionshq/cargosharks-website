@@ -41,7 +41,8 @@ export default async function NewCustomerPage() {
   return (
     <>
       <PageHeader eyebrow={t('eyebrow')} title={t('new')} description={t('newSubtitle')} />
-      <div className="max-w-4xl">
+      {/* The same measure as the record it becomes — see `customers/[id]`. */}
+      <div className="w-full">
         <CustomerForm
           action={createCustomer}
           branches={reference.branches}

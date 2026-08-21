@@ -8,14 +8,13 @@
  */
 
 import type { Job } from 'pg-boss'
-import { JOBS, applyCarrierPollSchedule, getBoss } from '../queue'
+import { JOBS, applyCarrierPollSchedule, applyInboundMailSchedule, getBoss } from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch, registerChannel } from './notification-dispatch'
 import { resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
-import { runCarrierEventIngest } from './carrier-event'
 import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
@@ -109,6 +108,20 @@ export async function registerWorkers(log: {
   await work(JOBS.inboundMailPoll, async () => {
     const result = await runInboundMailPoll()
     if (result.collected > 0 || result.failed > 0) log.info(result, 'inbound mail collected')
+
+    /*
+      Pick up a schedule change, at the end and never fatally.
+
+      The same reconciler the carrier poll runs, for the same reason: pg-boss
+      holds the cron it was registered with and nothing re-reads it. This job
+      runs every minute, so a corrected expression takes effect on the next
+      tick.
+    */
+    try {
+      await applyInboundMailSchedule()
+    } catch (error) {
+      log.info({ err: error }, 'inbound mail schedule not applied; keeping the previous one')
+    }
   })
 
   /*
@@ -123,27 +136,11 @@ export async function registerWorkers(log: {
   })
 
   /*
-    One carrier event per job, because attribution can refuse.
-
-    A batch would have to decide what to do when three of ten events cannot be
-    tied to a shipment — retry the batch and reprocess the seven that
-    succeeded, or swallow them. One at a time makes each outcome its own record
-    and its own retry.
-  */
-  await work(JOBS.carrierEvent, async (queued) => {
-    for (const job of queued) {
-      const { eventId } = job.data as { eventId: string }
-      const result = await runCarrierEventIngest(eventId)
-      log.info(result, 'carrier event ingested')
-    }
-  })
-
-  /*
     Carrier-direct tracking: we ask, rather than paying somebody to be told.
 
-    The counterpart to `carrierEvent` above, which is an aggregator pushing.
-    Both end in `carrier-milestone.ts`, so the two feeds cannot drift apart on
-    the question of whether a machine may overwrite a person.
+    The only automatic milestone feed there is. It ends in
+    `carrier-milestone.ts`, which owns the rule about whether a machine may
+    overwrite a person — the one place that question is answered.
   */
   await work(JOBS.carrierPoll, async () => {
     const result = await runCarrierPoll()

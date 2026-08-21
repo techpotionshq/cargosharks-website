@@ -102,11 +102,28 @@ function key(): Buffer {
 
 /** Whether a key is configured, for the boot log and the settings screen. */
 export function hasSecretKey(): boolean {
+  return secretKeyProblem() === null
+}
+
+/**
+ * Why the key cannot be used, or null when it can.
+ *
+ * `hasSecretKey()` collapses two very different states into one `false`, and
+ * the screens that consumed it told the reader the wrong one: a key that is
+ * *set but the wrong shape* was reported as "not set on this deployment",
+ * which sends somebody to check whether a variable exists when it plainly
+ * does. A passphrase pasted in place of 32 base64 bytes is the common way in
+ * — it looks like a secret, and every other secret in the environment is one.
+ *
+ * `key()` already produces the precise message, including the command that
+ * generates a valid one. This hands it back rather than throwing it away.
+ */
+export function secretKeyProblem(): string | null {
   try {
     key()
-    return true
-  } catch {
-    return false
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
   }
 }
 

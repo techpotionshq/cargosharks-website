@@ -103,8 +103,6 @@ services:
       FX_API_URL: ${FX_API_URL:-}
       FX_API_KEY: ${FX_API_KEY:-}
       CARRIER_TRACKING_DRIVER: ${CARRIER_TRACKING_DRIVER:-manual}
-      CARRIER_TRACKING_API_KEY: ${CARRIER_TRACKING_API_KEY:-}
-      CARRIER_WEBHOOK_SECRET: ${CARRIER_WEBHOOK_SECRET:-}
 
       # Leave false. It disables the refusal that keeps principal
       # impersonation off the internet when a proxy rule is wrong.

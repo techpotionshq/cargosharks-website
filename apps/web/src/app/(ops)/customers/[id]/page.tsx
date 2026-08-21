@@ -71,8 +71,20 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const displayName =
     locale === 'ar' && customer.legalNameAr ? customer.legalNameAr : customer.legalNameEn
 
+  /*
+    Full width, like every other screen in the product.
+
+    This briefly carried a `max-w-5xl` measure, on the reasoning that a single
+    column of card, table and form has nowhere to put 2500px. The reasoning was
+    sound and the result was still wrong: it made this the one internal screen
+    that stops short of the viewport, and an operator moving between the board
+    and a customer saw the content change width under them. Consistency across
+    the product beats an optimal line length on one page. What the measure was
+    actually protecting against — a credit card at full bleed above a form
+    capped at 56rem — is fixed by the two agreeing, which they now do.
+  */
   return (
-    <>
+    <div className="w-full">
       <PageHeader
         eyebrow={<span className="ref text-brand">{customer.code}</span>}
         title={displayName}
@@ -82,11 +94,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <Badge tone={customer.isActive ? 'positive' : 'muted'}>
               {customer.isActive ? tc('active') : tc('inactive')}
             </Badge>
-            <RetireCustomerDialog
-              customerId={id}
-              name={displayName}
-              isActive={customer.isActive}
-            />
+            <RetireCustomerDialog customerId={id} name={displayName} isActive={customer.isActive} />
           </>
         }
       />
@@ -154,30 +162,28 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       ) : null}
 
       {mayWrite ? (
-        <div className="max-w-4xl">
-          <CustomerForm
-            action={updateCustomer}
-            branches={reference.branches}
-            countries={reference.countries}
-            labels={labels}
-            defaults={{
-              customerId: customer.id,
-              code: customer.code,
-              legalNameEn: customer.legalNameEn,
-              legalNameAr: customer.legalNameAr,
-              registration: customer.registration,
-              taxRegistration: customer.taxRegistration,
-              countryCode: customer.countryCode,
-              primaryBranchId: customer.primaryBranchId,
-              isActive: customer.isActive,
-              paymentTermsDays: primaryTerms?.paymentTermsDays ?? 30,
-              creditLimit: trimDecimal(primaryTerms?.creditLimit),
-              creditCurrency: primaryTerms?.creditCurrency ?? null,
-              freeTimeDays: primaryTerms?.freeTimeDays ?? null,
-              defaultIncoterm: primaryTerms?.defaultIncoterm ?? null,
-            }}
-          />
-        </div>
+        <CustomerForm
+          action={updateCustomer}
+          branches={reference.branches}
+          countries={reference.countries}
+          labels={labels}
+          defaults={{
+            customerId: customer.id,
+            code: customer.code,
+            legalNameEn: customer.legalNameEn,
+            legalNameAr: customer.legalNameAr,
+            registration: customer.registration,
+            taxRegistration: customer.taxRegistration,
+            countryCode: customer.countryCode,
+            primaryBranchId: customer.primaryBranchId,
+            isActive: customer.isActive,
+            paymentTermsDays: primaryTerms?.paymentTermsDays ?? 30,
+            creditLimit: trimDecimal(primaryTerms?.creditLimit),
+            creditCurrency: primaryTerms?.creditCurrency ?? null,
+            freeTimeDays: primaryTerms?.freeTimeDays ?? null,
+            defaultIncoterm: primaryTerms?.defaultIncoterm ?? null,
+          }}
+        />
       ) : (
         <Card>
           <CardHeader icon="customers" eyebrow={t('eyebrow')} title={t('identity')} />
@@ -195,6 +201,6 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </dl>
         </Card>
       )}
-    </>
+    </div>
   )
 }

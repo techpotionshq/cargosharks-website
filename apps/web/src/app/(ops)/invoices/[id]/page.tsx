@@ -31,6 +31,7 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon } from '@/ui/icon'
 import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { Notice } from '@/ui/notice'
 import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, invoiceTone } from '@/ui/status'
@@ -109,10 +110,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       />
 
       {overdue ? (
-        <p className="mb-4 flex items-center gap-2 rounded-card border border-critical/40 bg-critical-soft/50 px-4 py-3 text-[0.875rem] text-critical">
-          <Icon name="alert" size={16} className="shrink-0" />
+        <Notice tone="critical" className="mb-4">
           {t('overdueSince', { on: formatDate(new Date(invoice.dueOn!), locale) })}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">

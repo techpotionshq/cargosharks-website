@@ -42,6 +42,7 @@ export const MODE: Mode = process.env.E2E_MODE === 'full' ? 'full' : 'offline'
 /** Every internal screen, as the sidebar groups it. */
 const ALL_OPS_ROUTES = [
   '/dashboard',
+  '/search',
   '/enquiries',
   '/quotes',
   '/jobs',
@@ -49,6 +50,7 @@ const ALL_OPS_ROUTES = [
   '/customs',
   '/exceptions',
   '/documents',
+  '/assistant',
   '/finance',
   '/invoices',
   '/payments',
@@ -109,7 +111,7 @@ const ALL_DETAIL_ROUTES = [
  * `NEEDS_DATABASE` below — each route moves here as its query learns the
  * `usePilotFixtures()` branch every other feature already has.
  */
-const OFFLINE_OPS_ROUTES = ['/imports'] as const
+const OFFLINE_OPS_ROUTES = ['/imports', '/search'] as const
 const OFFLINE_SETTINGS_ROUTES = ['/settings', '/settings/brand'] as const
 
 /**

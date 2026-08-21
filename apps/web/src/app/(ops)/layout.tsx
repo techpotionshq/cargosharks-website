@@ -25,6 +25,9 @@ import { usePilotFixtures } from '@/lib/pilot/source'
 import { can, canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
 import { SupportAccessBanner } from '@/features/support/ui/banner'
+import { AssistantDock } from '@/features/assistant/ui/assistant-dock'
+import { assistantLabels } from '@/features/assistant/labels'
+import { assistantConfigured } from '@/features/assistant/queries'
 import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
@@ -38,6 +41,8 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
   if (session.actor.type === 'agent_contact') redirect('/agent')
 
   const t = await getTranslations('nav')
+  const ta = await getTranslations('assistant')
+  const aiConfigured = await assistantConfigured()
   const tc = await getTranslations('common')
   const tApp = await getTranslations('app')
   const brand = getBrand()
@@ -91,6 +96,26 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         { href: '/consolidations', label: t('consolidations'), icon: 'ship' },
         { href: '/customs', label: t('customs'), icon: 'customs' },
         { href: '/documents', label: t('documents'), icon: 'document' },
+        /*
+          In the nav as well as in the dock, because they are different jobs.
+
+          The dock is for a question asked mid-task and is deliberately
+          transient. This is where somebody goes to read back a thread from
+          Tuesday, or to work through a morning one exception at a time — and a
+          surface reachable only by a floating button is one that half the
+          staff never discover.
+        */
+        /*
+          Offered only where it can answer.
+
+          The nav is a list of things this deployment does, and an entry that
+          leads to "no key is set" belongs on the settings screen rather than
+          beside Documents. An administrator who has just added the key sees it
+          on their next navigation.
+        */
+        ...(aiConfigured
+          ? [{ href: '/assistant', label: t('assistant'), icon: 'assistant' as const }]
+          : []),
       ],
     },
     {
@@ -180,8 +205,19 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       */}
       <div className="hidden w-62 shrink-0 border-e border-chrome-line bg-chrome md:block">
         <nav className="sticky top-0 flex h-dvh flex-col">
-          <div className="border-b border-chrome-line px-4 py-3.5">
-            <Link href="/dashboard" className="block rounded-sm outline-offset-4">
+          {/*
+            Exactly the topbar's height, and centred rather than padded.
+
+            The hairline under this block and the one under the topbar are read
+            as a single rule across the top of the application, so a four-pixel
+            disagreement is visible as a broken line at the sidebar seam — which
+            is what `py-3.5` produced, because the lockup is a two-line column
+            and taller than the padding was calculated against. `h-14` with
+            flex centring states the height the seam actually depends on, and
+            stays true if the logo or its tagline ever changes size.
+          */}
+          <div className="flex h-14 items-center border-b border-chrome-line px-4">
+            <Link href="/dashboard" className="block min-w-0 rounded-sm outline-offset-4">
               <Logo brand={brand} locale={locale} tone="chrome" size="sm" />
             </Link>
           </div>
@@ -260,7 +296,15 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             <Logo brand={brand} locale={locale} size="sm" markOnly />
           </Link>
 
-          <form action="/jobs" className="relative hidden max-w-sm flex-1 sm:block">
+          {/*
+            Points at `/search`, not at the board.
+
+            The placeholder promises references, containers and customers; the
+            operations board reads neither `q` nor any of those, so submitting
+            this used to land on an unfiltered list of live shipments — which
+            looks like an answer and is not one.
+          */}
+          <form action="/search" className="relative hidden max-w-sm flex-1 sm:block">
             <Icon
               name="search"
               size={16}
@@ -279,7 +323,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             {usePilotFixtures() ? (
               <span
                 className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-[0.6875rem] font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
-                title="Seeded pilot data — replaced by the client's own job files and rate card."
+                title={tApp('pilotHint')}
               >
                 <Icon name="dot" size={9} />
                 {tApp('pilot')}
@@ -308,8 +352,45 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         */}
         <SupportAccessBanner session={session} />
 
-        <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
+        {/*
+          A flex column, so a page can choose to fill the viewport.
+
+          Every existing screen is a block of content that grows downwards and
+          is unaffected: a single child of a column flex container with the
+          default `stretch` still lays out exactly as it did. What it buys is
+          `/assistant`, which is a chat and therefore has to pin a composer to
+          the bottom of the *screen* rather than to the bottom of its content —
+          and the alternative was subtracting the chrome's height by hand in a
+          `calc`, which is wrong the first time the header wraps.
+        */}
+        {/*
+          The block-end padding is the assistant's footprint, not taste.
+
+          The dock is `fixed bottom-5 end-5` at `h-11`, so it floats four rems
+          up from the viewport floor over whatever is beneath it — and what is
+          beneath it, on every register in the product, is the total row of a
+          table. A charge breakdown's margin and amount were sitting under it.
+          Six rems clears the button with a gap; page-level padding is enough
+          because nothing here scrolls in its own container.
+        */}
+        <main className="flex flex-1 flex-col px-4 pt-6 pb-24 md:px-6 lg:px-8">{children}</main>
       </div>
+
+      {/*
+        The assistant, on every internal screen and outside `main`.
+
+        In the layout rather than on a page of its own because the questions it
+        answers are asked *while* doing something else — a coordinator with an
+        enquiry half-written wants to know what the agent quoted last time, and
+        navigating away to ask would lose the form. It opens over whatever is
+        there and closes back to it.
+
+        Labels are resolved here, on the server, like every other string in
+        this layout: the panel is a client component, and a client component
+        that reached for translations would pull the whole message catalogue
+        across the boundary.
+      */}
+      <AssistantDock labels={assistantLabels(ta)} configured={aiConfigured} />
     </div>
   )
 }

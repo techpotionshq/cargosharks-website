@@ -61,7 +61,12 @@ not reliably available from anybody.
 
 ### 2.2 Terminal49 — verified, and the wrong shape for us
 
-**Verified** with a live free key on 18 August 2026.
+**Verified** with a live free key on 18 August 2026. **The adapter written for
+it was removed on 21 August 2026** — §2.4 is what the code has now, and the
+argument for the removal is kept at the top of
+[`adapters/carrier-tracking.ts`](../apps/service/src/adapters/carrier-tracking.ts).
+This section stays because a "let us just buy a feed" proposal will come back,
+and it is what such a proposal has to answer.
 
 The adapter was first written to `CarrierTracking.poll(reference)` and called
 `/v2/containers/{ref}/transport_events`. **That endpoint does not exist.** It

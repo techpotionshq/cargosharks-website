@@ -3,14 +3,14 @@
  *
  * The protocol itself is in `s3.ts`, which imports no configuration and so can
  * be tested against AWS's published signing vectors without an environment —
- * the same split as `carrier-events.ts` sitting beneath `carrier-tracking.ts`.
+ * the same split as `dcsa-events.ts` sitting beneath `dcsa-tracking.ts`.
  * What is left here is the one decision that belongs to a deployment: which
  * driver, and with which credentials.
  */
 
 import type { FileStore } from '../ports/index'
-import { config } from '../config'
-import { memoryFileStore, s3FileStore } from './s3'
+import type { LiveIntegration } from '../settings'
+import { FileStoreError, memoryFileStore, s3FileStore } from './s3'
 
 export {
   s3FileStore,
@@ -36,15 +36,20 @@ export {
  * `memory` and means it; an operator who says `s3` and omits the bucket has
  * made a mistake, and this is the cheapest possible moment to tell them.
  */
-export function resolveFileStore(): FileStore {
-  if (config.FILE_STORE_DRIVER === 'memory') return memoryFileStore()
+export function resolveFileStore(settings: LiveIntegration): FileStore {
+  if (settings.driver === 'memory') return memoryFileStore()
+
+  const endpoint = settings.text('endpoint')
+  const bucket = settings.text('bucket')
+  const accessKeyId = settings.text('accessKeyId')
+  const secretAccessKey = settings.secret('secretAccessKey')
 
   const missing = (
     [
-      ['S3_ENDPOINT', config.S3_ENDPOINT],
-      ['S3_BUCKET', config.S3_BUCKET],
-      ['S3_ACCESS_KEY_ID', config.S3_ACCESS_KEY_ID],
-      ['S3_SECRET_ACCESS_KEY', config.S3_SECRET_ACCESS_KEY],
+      ['endpoint', endpoint],
+      ['bucket', bucket],
+      ['access key id', accessKeyId],
+      ['secret access key', secretAccessKey],
     ] as const
   )
     .filter(([, value]) => !value)
@@ -52,17 +57,48 @@ export function resolveFileStore(): FileStore {
 
   if (missing.length > 0) {
     throw new Error(
-      `FILE_STORE_DRIVER=s3 requires ${missing.join(', ')}. ` +
-        'Set them, or set FILE_STORE_DRIVER=memory to run without object storage.',
+      `Object storage is set to s3 and is missing ${missing.join(', ')}. ` +
+        'Set them at Settings › Integrations, or choose the memory driver to ' +
+        'run without object storage.',
     )
   }
 
   return s3FileStore({
-    endpoint: config.S3_ENDPOINT!,
-    bucket: config.S3_BUCKET!,
-    region: config.S3_REGION,
-    accessKeyId: config.S3_ACCESS_KEY_ID!,
-    secretAccessKey: config.S3_SECRET_ACCESS_KEY!,
-    forcePathStyle: config.S3_FORCE_PATH_STYLE,
+    endpoint: endpoint!,
+    bucket: bucket!,
+    region: settings.text('region') ?? 'us-east-1',
+    accessKeyId: accessKeyId!,
+    secretAccessKey: secretAccessKey!,
+    forcePathStyle: settings.bool('forcePathStyle', true),
   })
 }
+
+/**
+ * A store that refuses every operation, and says why.
+ *
+ * The fallback for a *misconfigured* deployment, and the one place in this
+ * system where degrading to the Release One behaviour would be wrong. Every
+ * other port has a safe default: manual milestones, manual rates, no
+ * transmission — each means "a person does it instead". `memoryFileStore` does
+ * not mean that. It accepts the upload, reports success, holds the bytes in
+ * the process and loses them at the next restart, with nothing anywhere saying
+ * a document went missing.
+ *
+ * So a bad configuration refuses at the point of use. The upload fails
+ * loudly, the caller already handles `FileStoreError`, and the settings card
+ * shows the reason — which is recoverable, where a silent loss is not.
+ */
+export function unavailableFileStore(reason: string): FileStore {
+  const refuse = (): never => {
+    throw new FileStoreError(`Object storage is not configured: ${reason}`)
+  }
+
+  return {
+    key: 'unavailable',
+    put: refuse,
+    get: refuse,
+    signedUrl: refuse,
+    retire: refuse,
+  }
+}
+

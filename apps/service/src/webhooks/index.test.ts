@@ -1,7 +1,7 @@
 /**
  * The inbound webhook edge.
  *
- * Three routes, one shape: verify the signature, record the receipt, enqueue
+ * Two routes, one shape: verify the signature, record the receipt, enqueue
  * the work. Everything interesting is in what happens when one of those goes
  * wrong, and none of it is visible from a screen.
  *
@@ -11,19 +11,19 @@
  * The test for this sends a body no `JSON.stringify` would produce.
  *
  * **The signature is required, not optional-if-unconfigured.** These endpoints
- * write to shipment history: an unauthenticated caller who reached
- * `/terminal49` could move a discharge date, and a demurrage figure moves with
- * it. A deployment that has not set the secret has not finished configuring
- * the integration and must refuse rather than accept.
+ * put work in front of a coordinator: an unauthenticated caller who reached
+ * `/email` could raise an enquiry in a customer's name. A deployment that has
+ * not set the secret has not finished configuring the integration and must
+ * refuse rather than accept.
  *
  * **A redelivery is a no-op, not a second enquiry.** Providers retry. The
  * unique key on `(provider, external_id)` is what makes the second delivery
  * cost nothing, and the enqueue happens only for the insert that won — so one
  * inbound email cannot become three.
  *
- * **Anything recorded is acknowledged.** A 4xx or 5xx for an event the system
- * simply does not map teaches the provider to redeliver for ever, and
- * Terminal49 sends lifecycle events that are not milestones by design.
+ * **Anything recorded is acknowledged.** A 4xx or 5xx for a payload the
+ * system simply does not understand teaches the provider to redeliver for
+ * ever. Recorded, acknowledged, and dropped by the worker with a reason.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -38,13 +38,12 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const WHATSAPP_SECRET = 'whatsapp-app-secret'
 const EMAIL_SECRET = 'inbound-email-secret'
-const CARRIER_SECRET = 'carrier-webhook-secret'
 const VERIFY_TOKEN = 'meta-verify-token'
 
 const harness = vi.hoisted(() => ({
   sent: [] as { name: string; data: unknown }[],
   /** Cleared per test so "no secret configured" can be posed. */
-  carrierSecret: undefined as string | undefined,
+  emailSecret: undefined as string | undefined,
 }))
 
 vi.mock('../config', () => ({
@@ -53,10 +52,7 @@ vi.mock('../config', () => ({
       return WHATSAPP_SECRET
     },
     get INBOUND_EMAIL_WEBHOOK_SECRET() {
-      return EMAIL_SECRET
-    },
-    get CARRIER_WEBHOOK_SECRET() {
-      return harness.carrierSecret
+      return harness.emailSecret
     },
     get WHATSAPP_WEBHOOK_VERIFY_TOKEN() {
       return VERIFY_TOKEN
@@ -126,7 +122,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
 
   afterEach(() => {
     harness.sent.length = 0
-    harness.carrierSecret = CARRIER_SECRET
+    harness.emailSecret = EMAIL_SECRET
   })
 
   afterAll(async () => {
@@ -167,8 +163,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
     it('accepts a correctly signed delivery', async () => {
       const raw = body()
 
-      const reply = await post('/terminal49', raw, {
-        'x-t49-webhook-signature': sign(raw, CARRIER_SECRET),
+      const reply = await post('/email', raw, {
+        'x-webhook-signature': sign(raw, EMAIL_SECRET),
       })
 
       expect(reply.statusCode).toBe(202)
@@ -178,8 +174,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
     it('refuses a signature computed with the wrong secret', async () => {
       const raw = body()
 
-      const reply = await post('/terminal49', raw, {
-        'x-t49-webhook-signature': sign(raw, 'not-the-secret'),
+      const reply = await post('/email', raw, {
+        'x-webhook-signature': sign(raw, 'not-the-secret'),
       })
 
       expect(reply.statusCode).toBe(401)
@@ -188,7 +184,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
     })
 
     it('refuses a delivery with no signature at all', async () => {
-      const reply = await post('/terminal49', body(), {})
+      const reply = await post('/email', body(), {})
 
       expect(reply.statusCode).toBe(401)
     })
@@ -200,22 +196,22 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
      * refusal into a crash.
      */
     it('refuses a signature of the wrong length without falling over', async () => {
-      const reply = await post('/terminal49', body(), { 'x-t49-webhook-signature': 'ab' })
+      const reply = await post('/email', body(), { 'x-webhook-signature': 'ab' })
 
       expect(reply.statusCode).toBe(401)
     })
 
     /**
      * The rule this endpoint states at length. An unauthenticated caller who
-     * reached it could move a discharge date, and a demurrage figure moves
-     * with it — so an unconfigured deployment refuses rather than accepts.
+     * reached it could raise an enquiry in a customer's name — so an
+     * unconfigured deployment refuses rather than accepts.
      */
     it('refuses everything when no secret is configured', async () => {
-      harness.carrierSecret = undefined
+      harness.emailSecret = undefined
       const raw = body()
 
-      const reply = await post('/terminal49', raw, {
-        'x-t49-webhook-signature': sign(raw, CARRIER_SECRET),
+      const reply = await post('/email', raw, {
+        'x-webhook-signature': sign(raw, EMAIL_SECRET),
       })
 
       expect(reply.statusCode).toBe(401)
@@ -232,8 +228,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
     it('verifies the bytes the provider sent, not a reserialised copy', async () => {
       const raw = `{\n  "zeta": 1,\n  "id": "raw-${RUN}",\n   "alpha": 2\n}`
 
-      const reply = await post('/terminal49', raw, {
-        'x-t49-webhook-signature': sign(raw, CARRIER_SECRET),
+      const reply = await post('/email', raw, {
+        'x-webhook-signature': sign(raw, EMAIL_SECRET),
       })
 
       expect(reply.statusCode).toBe(202)
@@ -261,9 +257,11 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const email = await post('/email', raw, {
         'x-webhook-signature': sign(raw, EMAIL_SECRET),
       })
-      // The email secret is not the carrier one, and the header differs too.
-      const crossed = await post('/email', raw, {
-        'x-t49-webhook-signature': sign(raw, EMAIL_SECRET),
+      // Meta's header, correctly signed with Meta's secret — on the mail
+      // route, which reads neither. A handler that took any valid-looking
+      // signature would accept this.
+      const crossed = await post('/email', body(), {
+        'x-hub-signature-256': sign(raw, WHATSAPP_SECRET, 'sha256='),
       })
 
       expect(email.statusCode).toBe(202)
@@ -276,10 +274,10 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const id = `once-${RUN}`
       const raw = body({ id })
 
-      await post('/terminal49', raw, { 'x-t49-webhook-signature': sign(raw, CARRIER_SECRET) })
+      await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
 
       expect(await recorded(id)).toHaveLength(1)
-      expect(harness.sent).toEqual([{ name: JOBS.carrierEvent, data: { eventId: expect.any(String) } }])
+      expect(harness.sent).toEqual([{ name: JOBS.inboundEmail, data: { eventId: expect.any(String) } }])
     })
 
     /**
@@ -290,11 +288,11 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
     it('treats a redelivery as a no-op', async () => {
       const id = `retry-${RUN}`
       const raw = body({ id })
-      const headers = { 'x-t49-webhook-signature': sign(raw, CARRIER_SECRET) }
+      const headers = { 'x-webhook-signature': sign(raw, EMAIL_SECRET) }
 
-      const first = await post('/terminal49', raw, headers)
+      const first = await post('/email', raw, headers)
       harness.sent.length = 0
-      const second = await post('/terminal49', raw, headers)
+      const second = await post('/email', raw, headers)
 
       // Acknowledged both times — a 4xx would teach the provider to keep going.
       expect(first.statusCode).toBe(202)
@@ -323,11 +321,13 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const id = `shared-${RUN}`
       const raw = body({ id })
 
-      await post('/terminal49', raw, { 'x-t49-webhook-signature': sign(raw, CARRIER_SECRET) })
       await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
+      await post('/whatsapp', raw, {
+        'x-hub-signature-256': sign(raw, WHATSAPP_SECRET, 'sha256='),
+      })
 
       const rows = await recorded(id)
-      expect(rows.map((row) => row.provider).sort()).toEqual(['email', 'terminal49'])
+      expect(rows.map((row) => row.provider).sort()).toEqual(['email', 'whatsapp'])
     })
   })
 
@@ -339,11 +339,11 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
      */
     it('falls back to hashing the payload, and still deduplicates', async () => {
       const raw = JSON.stringify({ noIdHere: `payload-${RUN}` })
-      const headers = { 'x-t49-webhook-signature': sign(raw, CARRIER_SECRET) }
+      const headers = { 'x-webhook-signature': sign(raw, EMAIL_SECRET) }
 
-      await post('/terminal49', raw, headers)
+      await post('/email', raw, headers)
       harness.sent.length = 0
-      const second = await post('/terminal49', raw, headers)
+      const second = await post('/email', raw, headers)
 
       expect(second.statusCode).toBe(202)
       expect(harness.sent).toEqual([])
@@ -353,8 +353,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const first = JSON.stringify({ noIdHere: `a-${RUN}` })
       const second = JSON.stringify({ noIdHere: `b-${RUN}` })
 
-      await post('/terminal49', first, { 'x-t49-webhook-signature': sign(first, CARRIER_SECRET) })
-      await post('/terminal49', second, { 'x-t49-webhook-signature': sign(second, CARRIER_SECRET) })
+      await post('/email', first, { 'x-webhook-signature': sign(first, EMAIL_SECRET) })
+      await post('/email', second, { 'x-webhook-signature': sign(second, EMAIL_SECRET) })
 
       expect(harness.sent).toHaveLength(2)
     })
@@ -375,8 +375,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
   describe('a body that is not JSON', () => {
     /** The parser refuses it before any handler runs, and nothing is recorded. */
     it('refuses it without recording anything', async () => {
-      const reply = await post('/terminal49', '{not json at all', {
-        'x-t49-webhook-signature': 'whatever',
+      const reply = await post('/email', '{not json at all', {
+        'x-webhook-signature': 'whatever',
       })
 
       expect(reply.statusCode).toBeGreaterThanOrEqual(400)

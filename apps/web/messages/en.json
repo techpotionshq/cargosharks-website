@@ -2,7 +2,8 @@
   "app": {
     "tagline": "Shipping & Forwarding",
     "operations": "Operations",
-    "pilot": "Pilot environment"
+    "pilot": "Pilot environment",
+    "pilotHint": "Seeded pilot data — replaced by the client's own job files and rate card."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -48,7 +49,8 @@
     "consolidations": "Consolidations",
     "payables": "Payables",
     "settlements": "Settlements",
-    "reports": "Reports"
+    "reports": "Reports",
+    "assistant": "Assistant"
   },
   "common": {
     "search": "Search",
@@ -67,6 +69,7 @@
     "of": "of",
     "all": "All",
     "none": "None",
+    "notRecorded": "Not recorded",
     "today": "Today",
     "overdue": "Overdue",
     "dueIn": "Due in {time}",
@@ -104,6 +107,29 @@
     "currency": "Currency",
     "notes": "Notes",
     "description": "Description"
+  },
+  "search": {
+    "title": "Search",
+    "subtitle": "References, container numbers and customers, across every shipment you can see.",
+    "prompt": "Type a reference, a container number or a customer name.",
+    "promptHint": "Master and house bill numbers, booking numbers and the customer's own reference all match too.",
+    "empty": "Nothing matches “{query}”.",
+    "emptyHint": "Check the spelling, or try part of a reference rather than all of it.",
+    "found": "{count, plural, one {# result} other {# results}}",
+    "jobs": "Shipments",
+    "containers": "Containers",
+    "customers": "Customers",
+    "containerType": "Type",
+    "code": "Code",
+    "openJobs": "Open shipments",
+    "fields": {
+      "reference": "reference",
+      "masterBill": "master bill",
+      "houseBill": "house bill",
+      "booking": "booking",
+      "customerReference": "customer reference",
+      "customer": "customer"
+    }
   },
   "dashboard": {
     "title": "Operations dashboard",
@@ -199,6 +225,7 @@
     "customer": "Customer",
     "lane": "Lane",
     "mode": "Mode",
+    "incoterm": "Incoterm",
     "channel": "Channel",
     "owner": "Owner",
     "status": "Status",
@@ -1806,6 +1833,8 @@
   "support": {
     "bannerRead": "Support has read access to your data",
     "bannerWrite": "Support has write access to your data",
+    "bannerMany": "{count} support sessions have access to your data",
+    "bannerExpand": "Show each one",
     "scopeAllBranches": "every branch",
     "scopeBranches": "{branches}",
     "expires": "until {time}",
@@ -1872,7 +1901,7 @@
     "add": "Add party",
     "addTitle": "Add a bill party",
     "editTitle": "Edit bill party",
-    "description": "Printed on the bill of lading exactly as entered, and kept as entered - a document records what was said, not what is currently true.",
+    "description": "Printed on the bill of lading exactly as entered, and kept as entered — a document records what was said, not what is currently true.",
     "role": "Role",
     "name": "Name",
     "nameHint": "As it should print",
@@ -1905,7 +1934,7 @@
     "add": "Add cargo line",
     "addTitle": "Add a cargo line",
     "editTitle": "Edit cargo line",
-    "dialogDescription": "Printed verbatim on the bill of lading - the carrier prints what it is given, and nothing here improves the shipper’s wording.",
+    "dialogDescription": "Printed verbatim on the bill of lading — the carrier prints what it is given, and nothing here improves the shipper’s wording.",
     "description": "Description of goods",
     "descriptionHint": "As the shipper declared it",
     "descriptionAr": "Description (Arabic)",
@@ -1932,9 +1961,11 @@
     "eyebrow": "Documents",
     "title": "Issue and preview",
     "issue": "Issue",
-    "needsCargo": "Add cargo lines first - every document below reads from them.",
+    "previewEn": "Preview in English",
+    "previewAr": "Preview in Arabic",
+    "needsCargo": "Add cargo lines first — every document below reads from them.",
     "dutyPrompt": "Landed cost, before it ships",
-    "issueNote": "Preview renders and stores nothing. Issue keeps the copy that was handed over and supersedes the previous version - regenerating never replaces.",
+    "issueNote": "Preview renders and stores nothing. Issue keeps the copy that was handed over and supersedes the previous version — regenerating never replaces.",
     "kinds": {
       "house_bill": "House bill of lading",
       "delivery_order": "Delivery order",
@@ -2039,11 +2070,11 @@
     "preview": "Preview journal",
     "previewTitle": "Preview the period",
     "previewDescription": "Builds the journal and marks nothing. Run it as often as you like before posting.",
-    "previewNote": "Nothing is consumed by a preview - every invoice, cost and receipt stays available to post.",
+    "previewNote": "Nothing is consumed by a preview — every invoice, cost and receipt stays available to post.",
     "post": "Post period",
     "postTitle": "Post the period to the ledger",
     "postDescription": "Stamps every invoice, cost and receipt it covers. A second export of the same period will find nothing.",
-    "postWarning": "This consumes the period. Getting back requires voiding the export, with a reason - so post once you are satisfied with the preview.",
+    "postWarning": "This consumes the period. Getting back requires voiding the export, with a reason — so post once you are satisfied with the preview.",
     "branch": "Legal entity",
     "branchHint": "Each entity posts to its own chart of accounts",
     "from": "From",
@@ -2062,7 +2093,7 @@
     "goods": "Goods value",
     "goodsHint": "From the commercial invoice",
     "freight": "Freight",
-    "freightHint": "Duty is assessed on CIF - leaving this out understates it",
+    "freightHint": "Duty is assessed on CIF — leaving this out understates it",
     "insurance": "Insurance",
     "generalRate": "Apply the GCC general rate to unclassified lines",
     "generalRateHint": "Off by default. 5% on a code the tariff has no row for is a guess that looks researched.",
@@ -2527,6 +2558,13 @@
       "internal": "To the office"
     },
     "footnote": "Templates are rows, not code. Editing one takes effect on the next send.",
+    "sending": "Sending",
+    "sendingTitle": "What actually sends",
+    "sendingHint": "Separate from the wording below. Turning an event off here stops it being sent; deactivating its template only falls back to the default beneath it.",
+    "masterLabel": "Send notification email",
+    "masterHint": "Off silences every event on this channel, whatever the switches beneath say. Nothing is lost — each notification is still recorded, marked held back.",
+    "masterOverrides": "Held back while outbound email is off.",
+    "offBadge": "Not sending",
     "events": {
       "job": {
         "created": "A shipment is booked",
@@ -2859,8 +2897,8 @@
     "fromNothing": "Not set anywhere. Falls back to {variable} if that is set later.",
     "editTitle": "Configure {name}",
     "editSubtitle": "Saved values take precedence over the deployment environment. Credentials are sealed and are never shown again.",
-    "noKey": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a credential cannot be sealed. Set it and restart before saving one.",
-    "noKeyBanner": "Credentials cannot be saved — MAILBOX_ENCRYPTION_KEY is not set",
+    "noKey": "A credential cannot be sealed on this deployment.",
+    "noKeyBanner": "Credentials cannot be saved",
     "failingHint": "An integration marked not working is one the service could not resolve on its last run. The reason is shown on the card; correcting it here takes effect within a minute.",
     "missingHint": "Still needed before this can be switched on: {fields}.",
     "callsPerHour": "Calls per hour",
@@ -2885,20 +2923,22 @@
       "whatsapp": "WhatsApp Business",
       "einvoice": "E-invoice transmission",
       "inboundEmail": "Inbound mail webhook",
-      "ai": "Document extraction"
+      "ai": "Document extraction",
+      "fileStore": "Object storage"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
       "fx": "A daily rate for each currency marked tracked. Nothing prices from the feed — a charge line keeps the rate it was struck at.",
       "carrierPoll": "How often the poll asks, and how many shipments each run covers. Calls per hour has to stay under the carrier’s cap.",
-      "carrierTracking": "Where container milestones come from. Carrier-direct is free and self-serve; the aggregator costs per container.",
+      "carrierTracking": "Where container milestones come from. The carriers publish their own events — free, self-serve, one registration each.",
       "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
       "carrierHapag": "Covers HLCU and HLXU, and takes an id as well as a secret. Registration is self-serve at api.hlag.com.",
       "carrierCmacgm": "Covers CMDU, ANNU, APLU and CHNL. Registration is self-serve at apis.cma-cgm.net.",
       "whatsapp": "The business number customer notifications go out from, where a deployment has one. Email is the fallback.",
       "einvoice": "The accredited provider that files an invoice with the tax authority. We are not the access point and cannot be.",
       "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
-      "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed."
+      "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
+      "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept."
     },
     "drivers": {
       "smtp": {
@@ -2911,12 +2951,15 @@
       },
       "carrierTracking": {
         "manual": "Typed by an operator",
-        "dcsa": "Carrier-direct (free)",
-        "terminal49": "Aggregator (per container)"
+        "dcsa": "Carrier-direct (free)"
       },
       "einvoice": {
         "none": "Not transmitted",
         "asp": "Through a provider"
+      },
+      "fileStore": {
+        "s3": "S3-compatible bucket",
+        "memory": "In the process (lost on restart)"
       }
     },
     "fields": {
@@ -2937,9 +2980,7 @@
         "cron": "Schedule",
         "activeWithinMinutes": "Only poll if somebody signed in within"
       },
-      "carrierTracking": {
-        "baseUrl": "Aggregator URL"
-      },
+      "carrierTracking": {},
       "carrierMaersk": {
         "baseUrl": "Gateway",
         "eventsPath": "Events path"
@@ -2958,10 +2999,19 @@
       "einvoice": {
         "url": "Provider URL"
       },
-      "inboundEmail": {},
+      "inboundEmail": {
+        "cron": "Poll schedule"
+      },
       "ai": {
         "model": "Model",
         "monthlyBudgetUsd": "Monthly ceiling (USD)"
+      },
+      "fileStore": {
+        "endpoint": "Endpoint",
+        "bucket": "Bucket",
+        "region": "Region",
+        "accessKeyId": "Access key id",
+        "forcePathStyle": "Path-style addressing"
       }
     },
     "secrets": {
@@ -2972,10 +3022,7 @@
         "apiKey": "API key"
       },
       "carrierPoll": {},
-      "carrierTracking": {
-        "apiKey": "API key",
-        "webhookSecret": "Webhook signing secret"
-      },
+      "carrierTracking": {},
       "carrierMaersk": {
         "consumerKey": "Consumer key",
         "clientSecret": "Client secret"
@@ -3000,7 +3047,76 @@
       },
       "ai": {
         "apiKey": "API key"
+      },
+      "fileStore": {
+        "secretAccessKey": "Secret access key"
       }
+    },
+    "groups": {
+      "platform": "Platform",
+      "carriers": "Carriers",
+      "finance": "Finance",
+      "intelligence": "Document extraction"
+    },
+    "groupHints": {
+      "platform": "Where documents are kept, and how mail comes in and goes out. Without these the product cannot store a file or write to a customer.",
+      "carriers": "Where container milestones come from, and how much of each carrier’s rate limit the poll is allowed to spend.",
+      "finance": "Exchange rates, and transmission to the tax authority. Both are off until somebody has bought them.",
+      "intelligence": "Reading documents with a model. Billed per document, and capped by a ceiling set here."
+    },
+    "off": "Off",
+    "notInUse": "Not in use",
+    "configure": "Configure",
+    "offHint": "Set to “{driver}”. Nothing is configured here, and nothing needs to be — open Configure to switch it on.",
+    "offHintPlain": "Not switched on. Open Configure to set it up."
+  },
+  "assistant": {
+    "title": "Assistant",
+    "explain": "Ask about your shipments, enquiries and invoices. It reads only what you can see.",
+    "placeholder": "Ask a question…",
+    "composerHint": "Enter to send, Shift+Enter for a new line",
+    "ask": "Ask",
+    "thinking": "Looking…",
+    "close": "Close",
+    "emptyTitle": "What would you like to know?",
+    "emptyHint": "It looks things up before answering, and tells you what it checked. It cannot change anything — where an action makes sense it offers you the record to confirm on.",
+    "looked": "Checked",
+    "confirm": "Open to confirm",
+    "proposalNote": "Suggested. Nothing has been changed — open the record to confirm.",
+    "truncated": "It ran out of lookups before finishing. Try asking something narrower.",
+    "emptyReply": "No answer came back that time. Ask again — it usually works on a second try.",
+    "newThread": "New",
+    "threads": "Conversations",
+    "noThreads": "Nothing here yet. Ask something and it will be kept.",
+    "closeThread": "Close conversation",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "minimise": "Minimise",
+    "openFull": "Open full screen",
+    "loading": "Opening…",
+    "notConfigured": "No model key is set",
+    "notConfiguredHint": "The assistant needs an OpenRouter key before it can answer. An administrator can add one.",
+    "openSettings": "Open settings",
+    "unreachable": "The assistant service is not responding",
+    "unreachableHint": "Your key is set — something between here and the model is down. Try again in a moment.",
+    "checking": "Checking %label%…",
+    "tools": {
+      "search": "the registers",
+      "get_job": "the shipment",
+      "list_jobs": "the shipment board",
+      "list_enquiries": "the enquiry board",
+      "list_exceptions": "open exceptions",
+      "list_free_time": "free time and demurrage",
+      "list_overdue_invoices": "overdue invoices",
+      "get_supplier_variance": "the supplier's bill against the job",
+      "propose_transition": "an action for you to confirm"
+    },
+    "toolUnknown": "the records",
+    "suggestions": {
+      "overdue": "Which invoices are overdue?",
+      "clearance": "What is sitting in customs clearance?",
+      "freeTime": "Whose free time runs out this week?",
+      "exceptions": "What should I look at today?"
     }
   }
 }

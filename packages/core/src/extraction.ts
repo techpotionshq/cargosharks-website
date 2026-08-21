@@ -83,14 +83,38 @@ import { AiError } from './ai'
  * float anywhere in between — which is the same rule the wire format obeys
  * everywhere else in this system (§11).
  *
- * `additionalProperties: false` throughout, because strict structured output
- * needs it and because a model that invents a field is a model whose output we
- * would otherwise silently drop.
+ * `additionalProperties: false` throughout, and **every property named in
+ * `required`** — including the ones that are genuinely optional, which are
+ * typed nullable instead.
+ *
+ * That second rule was learned from a live call rather than read in a
+ * specification, and it is the more important half. `required` is the list of
+ * keys the model must emit; a key left out of it is one the model may simply
+ * decline to produce. `minimax/minimax-m3` read a generated invoice perfectly,
+ * classified both charge lines, and returned neither `subtotal` nor `total` —
+ * and then, on the identical request, returned both. It was never obliged to.
+ *
+ * The cost of that omission is worse than a missing field, which is why an
+ * intermittent version of it is worse still. `reconcileInvoice` compares the
+ * lines against the printed net, and with no printed net there is nothing to
+ * compare against — so the check that catches a **dropped line** passes in
+ * silence. "Optional" in this schema has to mean *the model must tell us it was
+ * not printed*, never *the model may stay quiet*.
  */
 export const INVOICE_EXTRACTION_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['invoiceNumber', 'invoiceDate', 'currency', 'lines', 'confidence'],
+  required: [
+    'invoiceNumber',
+    'invoiceDate',
+    'dueOn',
+    'currency',
+    'subtotal',
+    'taxAmount',
+    'total',
+    'lines',
+    'confidence',
+  ],
   properties: {
     invoiceNumber: {
       type: 'string',
@@ -107,7 +131,7 @@ export const INVOICE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['description', 'amount'],
+        required: ['description', 'quantity', 'unitPrice', 'amount', 'taxAmount', 'chargeType'],
         properties: {
           description: { type: 'string' },
           quantity: { type: ['string', 'null'] },
@@ -523,12 +547,21 @@ export function reconcileInvoice(
 /**
  * Whether this extraction may be written without a person reading the PDF.
  *
- * Deliberately strict, and the strictness is the feature. Three conditions,
- * and only the first is about the model:
+ * Deliberately strict, and the strictness is the feature. Four conditions, and
+ * only the first is about the model:
  *
  *   - it said it was sure, above the deployment's threshold;
  *   - every line parsed, by `FR-MD-11`'s all-or-nothing rule;
- *   - **the document adds up.**
+ *   - **the document adds up**;
+ *   - and there was something to add it up *against*.
+ *
+ * The last is the subtle one and it is not hypothetical — a live model read a
+ * two-line invoice correctly and returned no subtotal and no total, so
+ * `reconcileInvoice` had nothing to compare the lines with and returned no
+ * findings at all. Absence of findings is not evidence of correctness when
+ * nothing was checked, and a multi-line invoice with no printed net is exactly
+ * the shape a dropped line hides in. One line needs no cross-check: it *is*
+ * the total, and a debit note that prints nothing but an amount is ordinary.
  *
  * The third does most of the work. A confident model that misread a digit
  * fails it; a hesitant model that read the page correctly passes. That is the
@@ -549,6 +582,16 @@ export function isSelfConsistent(
   if (!extracted.lines.ok) return false
   if (extracted.lines.rows.length === 0) return false
   if (extracted.confidence < confidenceThreshold) return false
+
+  /*
+    Nothing to reconcile against. See the note above: with two or more lines
+    and no printed net, the arithmetic that would catch a missing line has no
+    second figure to use, and reports success by doing nothing.
+  */
+  const hasStatedTotal =
+    extracted.header.subtotal !== undefined || extracted.header.total !== undefined
+  if (extracted.lines.rows.length > 1 && !hasStatedTotal) return false
+
   return reconcileInvoice(extracted, spec).length === 0
 }
 

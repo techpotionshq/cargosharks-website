@@ -161,14 +161,44 @@ export function EmptyState({
   title,
   description,
   action,
+  variant = 'page',
   className,
 }: {
   readonly icon?: IconName
   readonly title: string
   readonly description?: string
   readonly action?: ReactNode
+  /**
+   * An empty *section* is not an empty *page*.
+   *
+   * The centred treatment below is sized for a card whose entire body is
+   * missing — it wants the room, and the reader's eye has nowhere else to go.
+   * A section inside a card that has other content is the opposite case: the
+   * heading it belongs to sits at the inline start, and centring the note
+   * across a wide card strands it in the middle of an acre of nothing, a
+   * quarter of a screen away from the words it answers. `inline` is a quiet
+   * line of prose that stays next to its heading.
+   */
+  readonly variant?: 'page' | 'inline'
   readonly className?: string
 }) {
+  if (variant === 'inline') {
+    return (
+      <div
+        className={['flex items-start gap-2 text-[0.8125rem] text-ink-muted', className]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        <Icon name={icon} size={15} className="mt-px shrink-0 text-ink-subtle" />
+        <span>
+          {title}
+          {description ? <span className="text-ink-subtle"> {description}</span> : null}
+        </span>
+        {action}
+      </div>
+    )
+  }
+
   return (
     <div
       className={['flex flex-col items-center px-6 py-12 text-center', className]

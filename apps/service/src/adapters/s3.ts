@@ -12,8 +12,8 @@
  *
  * `@aws-sdk/client-s3` plus the presigner is fifteen megabytes and several
  * dozen transitive packages to do two things: sign a request and put bytes on
- * the end of it. `httpFxSource` and the Terminal49 adapter are both plain
- * `fetch`, and the S3 REST surface this needs is four verbs wide — PUT, GET,
+ * the end of it. `httpFxSource` and the DCSA adapter are both plain `fetch`,
+ * and the S3 REST surface this needs is four verbs wide — PUT, GET,
  * DELETE and the copy that makes a retirement. SigV4 is the only hard part and
  * it is a hundred lines of HMAC that has not changed since 2012; it is covered
  * below by the signing vectors AWS publishes for exactly this purpose.

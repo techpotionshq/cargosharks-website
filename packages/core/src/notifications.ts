@@ -214,6 +214,65 @@ export function notificationEvent(key: string): NotificationEvent | undefined {
   return BY_KEY.get(key)
 }
 
+// --- whether an event sends on a channel at all -----------------------------
+
+/**
+ * One row of `notification_channel_settings`, as this module needs it.
+ *
+ * Structural rather than imported, because `core` depends on nothing — the
+ * dispatcher and the settings screen both pass their own rows in.
+ */
+export interface NotificationSwitch {
+  /** Null is the master switch for the channel; a key narrows it to an event. */
+  readonly eventKey: string | null
+  readonly channel: string
+  readonly isEnabled: boolean
+}
+
+export type ChannelDecision =
+  | { readonly enabled: true }
+  /** Recorded verbatim in `notification_deliveries.suppressed_reason`. */
+  | { readonly enabled: false; readonly reason: string }
+
+const ON: ChannelDecision = { enabled: true }
+
+/**
+ * May this event send on this channel?
+ *
+ * Two switches, master first: turning the channel off silences everything on
+ * it regardless of the per-event rows, so an administrator stopping mail
+ * during a relay migration does not have to also find and clear thirteen
+ * toggles — and does not have to remember to restore them afterwards.
+ *
+ * **Absence is on.** A deployment with no rows sends everything, which is what
+ * every deployment did before this table existed. Only an explicit `false`
+ * silences anything, so a failed read or an empty table can never quietly
+ * become a communications blackout — the failure mode of a default-off switch
+ * is silence, and silence is indistinguishable from working.
+ *
+ * The reason is returned rather than logged because it is written to the
+ * delivery row: FR-NT-06's log has to say *why* something was held back, and
+ * "off" and "the customer opted out" are answers to different questions from
+ * the person reading it.
+ */
+export function channelDecision(
+  switches: readonly NotificationSwitch[],
+  eventKey: string,
+  channel: string,
+): ChannelDecision {
+  const onChannel = switches.filter((s) => s.channel === channel)
+
+  const master = onChannel.find((s) => s.eventKey === null)
+  if (master && !master.isEnabled) return { enabled: false, reason: `${channel} is switched off` }
+
+  const event = onChannel.find((s) => s.eventKey === eventKey)
+  if (event && !event.isEnabled) {
+    return { enabled: false, reason: `${eventKey} is switched off for ${channel}` }
+  }
+
+  return ON
+}
+
 /**
  * `{{field}}` substitution.
  *

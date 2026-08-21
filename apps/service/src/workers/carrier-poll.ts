@@ -149,12 +149,11 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
   const dcsa = asDcsa(source)
 
   /*
-    Every other driver answers "nothing to do" rather than branching.
+    A deployment on `manual` answers "nothing to do" rather than branching.
 
-    `manual` has no feed, and Terminal49 pushes rather than answers — its
-    `poll` refuses on purpose. Keeping the worker's shape identical in all
-    three configurations means the schedule is the same everywhere and nobody
-    has to know which mode a deployment is in to read its log.
+    It has no feed, so the poll has nothing to ask. Keeping the worker's shape
+    identical in both configurations means the schedule is the same everywhere
+    and nobody has to know which mode a deployment is in to read its log.
   */
   if (!dcsa) return { source: source.key, ...empty, deferred: 0 }
 

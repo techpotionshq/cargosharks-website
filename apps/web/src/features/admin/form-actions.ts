@@ -19,7 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { unknownMergeFields } from '@qabandi/core'
+import { NOTIFICATION_EVENTS, unknownMergeFields } from '@qabandi/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -28,6 +28,7 @@ import {
   commodities,
   documentTypes,
   exceptionCodes,
+  notificationChannelSettings,
   notificationTemplates,
   principalBranchRoles,
   principals,
@@ -753,4 +754,74 @@ export async function saveNotificationTemplate(
 
   revalidatePath('/settings/notifications')
   return succeed(`${data.eventKey}:${data.locale}`)
+}
+
+// --- which notifications send at all ---------------------------------------
+
+/**
+ * Save the send switches — FR-NT-03.
+ *
+ * One form and one action for the master switch and all thirteen events,
+ * rather than a toggle that saves on click. Two reasons, and the second is the
+ * one that decided it:
+ *
+ * 1. It submits without JavaScript, like every other form on this screen.
+ * 2. Turning notifications off is a decision somebody should make deliberately
+ *    and see the whole of before it takes effect. A switch that saved on click
+ *    would let an administrator silence `invoice.overdue` with a stray tap on
+ *    a phone and get no chance to notice.
+ *
+ * ## Absent means on, so "on" writes a row anyway
+ *
+ * `channelDecision` treats a missing row as enabled, which is what keeps a
+ * fresh deployment sending. That makes it tempting to delete rows that are
+ * switched on and store only the offs — and it would be wrong twice over:
+ * nothing in this product deletes (§5.5), and `app_user` holds no DELETE on
+ * this table to do it with. So every switch writes its row, and turning
+ * something back on is an `is_enabled = true` row rather than an absence. The
+ * audit trail then reads as a sequence of decisions instead of a gap.
+ *
+ * ## A plain action, not an `ActionState` one
+ *
+ * Every neighbour in this file returns `ActionState` because it has something
+ * to say when a field is wrong. A checkbox cannot be wrong — there is nothing
+ * to validate and nothing to echo back — so this takes the plain
+ * `(FormData) => void` shape and the screen posts it with no client JavaScript
+ * at all, the way `ui/preferences.tsx` does. Permission is enforced by
+ * `assertCan` throwing, which is the same guard the page renders behind.
+ */
+export async function saveNotificationSwitches(form: FormData): Promise<void> {
+  const session = await requireSession()
+  assertCan(session, 'admin.reference.write')
+
+  /*
+    An unchecked checkbox posts nothing, so the switches are read as
+    "present means on" against the declared event list rather than by walking
+    the form. Walking the form would make a silenced event indistinguishable
+    from a field the browser never sent — which is the same thing on the wire
+    and very much not the same thing in a customer's inbox.
+  */
+  const channel = 'email' as const
+  const rows = [
+    { eventKey: null, channel, isEnabled: form.get('master') !== null },
+    ...NOTIFICATION_EVENTS.map((event) => ({
+      eventKey: event.key,
+      channel,
+      isEnabled: form.get(`event:${event.key}`) !== null,
+    })),
+  ]
+
+  await withActor(session.actor, async (tx) => {
+    await tx
+      .insert(notificationChannelSettings)
+      .values(rows)
+      .onConflictDoUpdate({
+        // `(event_key, channel) nulls not distinct` — the null row is the
+        // master switch and must collide with itself, not multiply.
+        target: [notificationChannelSettings.eventKey, notificationChannelSettings.channel],
+        set: { isEnabled: sql`excluded.is_enabled`, updatedAt: new Date() },
+      })
+  })
+
+  revalidatePath('/settings/notifications')
 }

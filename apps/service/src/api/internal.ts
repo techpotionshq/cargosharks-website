@@ -29,7 +29,7 @@ import type { FastifyInstance } from 'fastify'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { assets, db, principals, withActor, type Actor } from '@qabandi/db'
-import { adapters, mailSettings, sendMail, smtpOptions } from '../adapters/index'
+import { fileStore, mailSettings, modelProvider, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf, renderQuotationPdf } from '../pdf/documents'
@@ -43,6 +43,8 @@ import { storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 import { extractSupplierInvoice } from '../workers/invoice-extract'
 import { AiUnavailableError } from '../ai/ledger'
+import { ask, askStreaming } from '../ai/assistant'
+import { closeThread, historyFor, listThreads, readThread, recordExchange } from '../ai/threads'
 import { describeFinding } from '@qabandi/core'
 
 interface DocumentRequest {
@@ -78,6 +80,28 @@ interface VoidExportRequest {
 interface PasswordResetRequest {
   readonly email: string
   readonly url: string
+}
+
+interface AssistantRequest {
+  readonly actor?: Actor
+  readonly branchId?: string
+  /** Permission keys the web app resolved for this session. */
+  readonly permissions?: readonly string[]
+  readonly locale?: 'en' | 'ar'
+  readonly question?: string
+  /**
+   * The conversation to continue, if any.
+   *
+   * Used as a filter and never as a destination trusted on sight: RLS narrows
+   * it to threads this principal owns, so somebody else's id matches nothing
+   * and a fresh thread is opened instead.
+   */
+  readonly threadId?: string | null
+}
+
+interface ThreadRequest {
+  readonly actor?: Actor
+  readonly threadId?: string
 }
 
 interface ExtractInvoiceRequest {
@@ -390,12 +414,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
           locale === 'ar' ? 'ar' : 'en',
         )
 
-        return reply
-          .header('content-type', 'application/pdf')
-          .header('content-disposition', `inline; filename="${filename}"`)
-          // Never cached: a quotation carries a price and a customer name.
-          .header('cache-control', 'private, no-store')
-          .send(pdf)
+        return (
+          reply
+            .header('content-type', 'application/pdf')
+            .header('content-disposition', `inline; filename="${filename}"`)
+            // Never cached: a quotation carries a price and a customer name.
+            .header('cache-control', 'private, no-store')
+            .send(pdf)
+        )
       } catch (error) {
         if (error instanceof DocumentNotFoundError) {
           return reply.code(404).send({ error: 'not_found' })
@@ -516,6 +542,210 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     `write` defaults to false here for that reason. A route a screen calls must
     not create a row behind the person filling one in, or they end up with two.
   */
+
+  /*
+    The operator assistant.
+
+    Permissions are passed rather than re-derived, exactly as the actor is, and
+    on the same reasoning this file opens with: the web app has already
+    resolved the session, this route trusts the shared secret for
+    authentication and the passed identity for authorisation. What the
+    assistant may *see* is not decided here at all — the actor is stamped into
+    every tool's transaction and RLS answers that question a layer below
+    anything a prompt can reach.
+
+    Nothing this route does can change a business record. A proposal comes back
+    as data for the interface to render as a button; pressing it runs the
+    ordinary server action under the person's own actor.
+  */
+  app.post<{ Body: AssistantRequest }>('/ai/assistant', async (request, reply) => {
+    const { actor, branchId, permissions, locale, question, threadId } = request.body ?? {}
+
+    if (!actor || !branchId || !question?.trim()) {
+      return reply.code(400).send({ error: 'incomplete_request' })
+    }
+
+    try {
+      /*
+        History is read from the thread rather than posted by the browser.
+
+        A client that sends its own transcript is a client that can send one it
+        was never given — a rewritten "earlier turn" is the cheapest possible
+        prompt injection, and it would arrive from an authenticated session
+        looking exactly like the real thing. Reading it back under the same
+        actor costs one indexed query and removes the whole class.
+      */
+      const history = threadId ? await historyFor(actor, threadId) : []
+
+      const answer = await ask({
+        actor,
+        branchId,
+        permissions: new Set(permissions ?? []),
+        locale: locale === 'ar' ? 'ar' : 'en',
+        question: question.trim(),
+        history,
+      })
+
+      const stored = await recordExchange({
+        actor,
+        branchId,
+        threadId,
+        question: question.trim(),
+        answer: answer.reply,
+        proposals: answer.proposals as unknown as Record<string, unknown>[],
+        used: answer.used as unknown as Record<string, unknown>[],
+        invocationId: answer.invocationIds.at(-1) ?? null,
+      })
+
+      return reply.send({ ...answer, threadId: stored.threadId, title: stored.title })
+    } catch (error) {
+      if (error instanceof AiUnavailableError) {
+        return reply.code(503).send({ error: error.code, message: error.message })
+      }
+      throw error
+    }
+  })
+
+  /*
+    The assistant, streamed.
+
+    Server-sent events rather than a JSON body, because the loop can take half a
+    minute and somebody watching a spinner for that long assumes it has hung.
+    Three kinds of event arrive: which lookup is running, fragments of the
+    answer, and a final settlement carrying the thread and any proposals.
+
+    The exchange is still stored server-side at the end, so a reload shows what
+    was read rather than the pieces it arrived in. A connection dropped
+    mid-answer loses that turn's transcript and keeps the ledger row — the right
+    way round, since the spend happened and the conversation did not.
+  */
+  app.post<{ Body: AssistantRequest }>('/ai/assistant/stream', async (request, reply) => {
+    const { actor, branchId, permissions, locale, question, threadId } = request.body ?? {}
+
+    if (!actor || !branchId || !question?.trim()) {
+      return reply.code(400).send({ error: 'incomplete_request' })
+    }
+
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      /*
+        Nginx and friends buffer proxied responses by default, which delivers a
+        stream in one piece at the end — the exact thing this route exists to
+        avoid, and invisible in development where nothing sits in front.
+      */
+      'x-accel-buffering': 'no',
+    })
+
+    const send = (event: unknown): void => {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+    }
+
+    try {
+      const history = threadId ? await historyFor(actor, threadId) : []
+
+      let answer = ''
+      let proposals: unknown[] = []
+      let used: string[] = []
+      let invocationIds: string[] = []
+      let truncated: string | undefined
+
+      for await (const event of askStreaming({
+        actor,
+        branchId,
+        permissions: new Set(permissions ?? []),
+        locale: locale === 'ar' ? 'ar' : 'en',
+        question: question.trim(),
+        history,
+      })) {
+        if (event.type === 'done') {
+          answer = event.reply
+          proposals = event.proposals as unknown[]
+          used = [...event.used]
+          invocationIds = [...event.invocationIds]
+          truncated = event.truncated
+        } else {
+          send(event)
+        }
+      }
+
+      const stored = await recordExchange({
+        actor,
+        branchId,
+        threadId,
+        question: question.trim(),
+        answer,
+        proposals: proposals as Record<string, unknown>[],
+        used: used.map((name) => ({ name })),
+        invocationId: invocationIds.at(-1) ?? null,
+      })
+
+      send({
+        type: 'done',
+        reply: answer,
+        proposals,
+        used,
+        truncated,
+        threadId: stored.threadId,
+        title: stored.title,
+      })
+    } catch (error) {
+      /*
+        The head is already sent, so a failure cannot become a status code. It
+        becomes an event the panel renders as a message — better than a silently
+        truncated stream, where a person cannot tell a finished answer from an
+        abandoned one.
+      */
+      send({
+        type: 'failed',
+        code: error instanceof AiUnavailableError ? error.code : 'error',
+        message:
+          error instanceof AiUnavailableError
+            ? error.message
+            : 'The assistant could not finish that answer.',
+      })
+    } finally {
+      reply.raw.end()
+    }
+
+    return reply
+  })
+
+  /**
+   * This person's conversations, and whether the assistant can run at all.
+   *
+   * The two together because the panel asks this once when it opens and the
+   * answer decides what it renders. Reporting "no key" only after somebody has
+   * typed a question and waited is the wrong order: the deployment already
+   * knew, and the person spent a minute finding out.
+   *
+   * `available` and not the reason — an operator sees "add a key in Settings",
+   * which is the only thing they can act on, and the driver's own diagnosis
+   * stays in the boot log where an engineer will look for it.
+   */
+  app.post<{ Body: ThreadRequest }>('/ai/threads', async (request, reply) => {
+    const { actor } = request.body ?? {}
+    if (!actor) return reply.code(400).send({ error: 'incomplete_request' })
+
+    const [threads, provider] = await Promise.all([listThreads(actor), modelProvider()])
+    return reply.send({ threads, configured: provider.available })
+  })
+
+  /** One conversation, in full — what a person said, not what the model saw. */
+  app.post<{ Body: ThreadRequest }>('/ai/thread', async (request, reply) => {
+    const { actor, threadId } = request.body ?? {}
+    if (!actor || !threadId) return reply.code(400).send({ error: 'incomplete_request' })
+    return reply.send({ turns: await readThread(actor, threadId) })
+  })
+
+  /** Closing hides a thread. Nothing is deleted (§5.5). */
+  app.post<{ Body: ThreadRequest }>('/ai/thread/close', async (request, reply) => {
+    const { actor, threadId } = request.body ?? {}
+    if (!actor || !threadId) return reply.code(400).send({ error: 'incomplete_request' })
+    return reply.send({ closed: await closeThread(actor, threadId) })
+  })
+
   app.post<{ Body: ExtractInvoiceRequest }>('/ai/supplier-invoice', async (request, reply) => {
     const { actor, branchId, assetId, partnerId, jobId, write } = request.body ?? {}
 
@@ -709,7 +939,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       const storageKey = `pod/${branchId}/${checksum}.${extension}`
 
       try {
-        const stored = await adapters().fileStore.put(storageKey, bytes, contentType)
+        const stored = await (await fileStore()).put(storageKey, bytes, contentType)
 
         const [asset] = await withActor(actor, (tx) =>
           tx
@@ -764,11 +994,11 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const url = await adapters().fileStore.signedUrl(
-        storageKey,
-        expiresInSeconds ?? DEFAULT_DOWNLOAD_EXPIRY_SECONDS,
-        { downloadFilename: fileName },
-      )
+      const url = await (
+        await fileStore()
+      ).signedUrl(storageKey, expiresInSeconds ?? DEFAULT_DOWNLOAD_EXPIRY_SECONDS, {
+        downloadFilename: fileName,
+      })
       return reply.header('cache-control', 'private, no-store').send({ url })
     } catch (error) {
       if (error instanceof FileStoreError) {

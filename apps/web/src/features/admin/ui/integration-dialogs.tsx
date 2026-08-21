@@ -38,12 +38,13 @@ function inputKind(field: IntegrationField): 'text' | 'url' | 'number' | 'email'
 
 export async function IntegrationDialog({
   integration,
-  keyConfigured,
+  keyProblem,
   variant = 'secondary',
   iconOnly = false,
 }: {
   readonly integration: IntegrationView
-  readonly keyConfigured: boolean
+  /** Why a credential cannot be sealed, or null. Shown before the fields. */
+  readonly keyProblem: string | null
   readonly variant?: 'primary' | 'secondary' | 'ghost'
   readonly iconOnly?: boolean
 }) {
@@ -70,9 +71,9 @@ export async function IntegrationDialog({
       who fills in six fields and is only then told the deployment cannot
       accept them has been wasted rather than informed.
     */
-    ...(keyConfigured || spec.secrets.length === 0
+    ...(!keyProblem || spec.secrets.length === 0
       ? []
-      : [{ kind: 'note' as const, text: t('noKey'), tone: 'caution' as const }]),
+      : [{ kind: 'note' as const, text: `${t('noKey')} ${keyProblem}`, tone: 'caution' as const }]),
 
     ...(spec.drivers
       ? [
@@ -177,7 +178,7 @@ export async function IntegrationDialog({
       variant={variant}
       iconOnly={iconOnly}
       labels={{
-        open: tc('edit'),
+        open: t('configure'),
         title: t('editTitle', { name: label(`keys.${integration.key}`) }),
         description: t('editSubtitle'),
         submit: tc('save'),

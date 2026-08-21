@@ -35,6 +35,6 @@ export async function customerFormLabels(): Promise<CustomerFormLabels> {
     submit: t('save'),
     submitting: tc('saving'),
     saved: tc('saved'),
-    none: tc('none'),
+    choose: tc('choose'),
   }
 }

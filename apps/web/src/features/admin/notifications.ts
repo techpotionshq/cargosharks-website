@@ -20,8 +20,40 @@ import 'server-only'
  */
 
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
-import { NOTIFICATION_EVENTS, UNIVERSAL_MERGE_FIELDS, unknownMergeFields } from '@qabandi/core'
-import { branches, notificationTemplates, withActor, type Actor } from '@qabandi/db'
+import {
+  NOTIFICATION_EVENTS,
+  UNIVERSAL_MERGE_FIELDS,
+  unknownMergeFields,
+  type NotificationSwitch,
+} from '@qabandi/core'
+import {
+  branches,
+  notificationChannelSettings,
+  notificationTemplates,
+  withActor,
+  type Actor,
+} from '@qabandi/db'
+
+/**
+ * The send switches, as the settings screen needs them — FR-NT-03.
+ *
+ * Returned as the whole table rather than as a resolved answer per event,
+ * because the screen renders the *switches* and `channelDecision` in `core`
+ * renders the answer. Duplicating that precedence here would give the product
+ * two implementations of "is this on", and the one on the screen would be the
+ * one nobody tested against a dispatcher.
+ */
+export async function listChannelSettings(actor: Actor): Promise<NotificationSwitch[]> {
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        eventKey: notificationChannelSettings.eventKey,
+        channel: notificationChannelSettings.channel,
+        isEnabled: notificationChannelSettings.isEnabled,
+      })
+      .from(notificationChannelSettings),
+  )
+}
 
 export interface TemplateRow {
   readonly id: string

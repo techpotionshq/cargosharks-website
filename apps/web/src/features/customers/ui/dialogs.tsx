@@ -48,7 +48,18 @@ export async function RetireCustomerDialog({
       action={setCustomerActive}
       fields={fields}
       icon={isActive ? 'hold' : 'check'}
-      variant="ghost"
+      /*
+        Outlined, not ghost — and critical only in the direction that removes
+        something.
+
+        A ghost trigger reads as a label rather than a control, which is the
+        wrong affordance for the only destructive act on the screen: retiring a
+        customer takes them out of every enquiry and job picker in the product.
+        `danger` here is the outlined variant, not the filled one, so it is
+        legible without competing with the form's own submit. Restoring is the
+        harmless direction and stays `secondary`.
+      */
+      variant={isActive ? 'danger' : 'secondary'}
       submitIcon={isActive ? 'hold' : 'check'}
       labels={{
         open: isActive ? t('retire') : t('restore'),

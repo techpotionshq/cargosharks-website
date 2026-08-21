@@ -25,6 +25,7 @@ export {
   seal as sealSecret,
   open as openSecret,
   hasSecretKey,
+  secretKeyProblem,
   SecretKeyError,
   SealedSecretError,
 } from './secrets'

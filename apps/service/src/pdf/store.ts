@@ -26,7 +26,7 @@
 
 import { and, desc, eq } from 'drizzle-orm'
 import { assets, documentTypes, documents, jobs, withActor, type Actor } from '@qabandi/db'
-import { adapters } from '../adapters/index'
+import { fileStore } from '../adapters/index'
 import { DocumentNotFoundError } from './documents'
 import type { DocumentLocale } from './document-kit'
 import { DOCUMENT_TYPE_KEYS, type JobDocumentKind } from './job-documents'
@@ -68,7 +68,7 @@ export async function storeJobDocument(
   pdf: Buffer,
   filename: string,
 ): Promise<StoredDocument> {
-  const fileStore = adapters().fileStore
+  const store = await fileStore()
 
   /*
     Read, write to storage, then record — in that order, and the order matters.
@@ -131,7 +131,7 @@ export async function storeJobDocument(
     locale,
   )
 
-  const stored = await fileStore.put(storageKey, pdf, 'application/pdf')
+  const stored = await store.put(storageKey, pdf, 'application/pdf')
 
   return withActor(actor, async (tx) => {
     const [asset] = await tx

@@ -27,14 +27,46 @@ export function TableShell({
    * last columns are permanently off-screen.
    */
   minWidth = 'wide',
+  /**
+   * `fill`: take whatever height the card has left, and scroll inside it.
+   *
+   * For a register that shares a grid row with something short. Left to run,
+   * a forty-row table drags the row to its own length and every card beside
+   * it ends in a column of dead canvas. The fix is *not* a height of the
+   * table's own — a fixed cap only moves the dead canvas inside the card,
+   * below the last row. The card owns the height (the grid stretches it, a
+   * `max-h` bounds it) and the body claims the remainder, so the last row is
+   * always at the card's bottom edge whichever way the row was sized.
+   *
+   * `min-h-0` because a flex child's floor is its content: without it a
+   * forty-row table refuses to shrink and pushes the card past its cap
+   * instead of scrolling. `qb-scroll` draws the bar, since a panel whose
+   * scrollbar is hidden until hover is indistinguishable from a short one.
+   *
+   * `THead` is already `sticky top-0`, which does nothing until there is a
+   * vertical scroll container for it to stick inside; this is that container.
+   * Both axes are `auto` on the one element, which is the arrangement sticky
+   * wants — the case that breaks it is `overflow-x` scrolling against a
+   * `visible` cross axis, and `visible` is exactly what `auto` is not.
+   */
+  scroll = 'none',
 }: {
   readonly children: ReactNode
   readonly className?: string
   readonly minWidth?: 'wide' | 'none'
+  readonly scroll?: 'none' | 'fill'
 }) {
   return (
     // Wide boards scroll inside their own card rather than the page.
-    <div className={['w-full overflow-x-auto', className].filter(Boolean).join(' ')}>
+    <div
+      className={[
+        'w-full overflow-x-auto',
+        scroll === 'fill' ? 'qb-scroll min-h-0 flex-1 overflow-y-auto' : '',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <table
         className={`w-full border-collapse text-[0.8125rem] ${
           minWidth === 'wide' ? 'min-w-208' : ''

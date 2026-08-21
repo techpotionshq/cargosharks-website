@@ -177,8 +177,11 @@ export async function ChargeLineDialog({
     },
   ]
 
+  // `lg`, not the default: the currency picker sits in a span-4 column, and
+  // at `md` that is narrow enough to render "KWD — Kuwaiti D" and stop.
   return (
     <RecordDialog
+      size="lg"
       action={saveChargeLine}
       fields={fields}
       icon="finance"

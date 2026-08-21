@@ -66,7 +66,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
-import { adapters } from '../adapters/index'
+import { fileStore } from '../adapters/index'
 
 export class ExportError extends Error {
   readonly code: string
@@ -637,7 +637,7 @@ export async function buildAccountingExport(
     world; being able to say which one it was is worth the object.
   */
   const storageKey = `accounting/${branch.code}/${request.from}-${request.to}-${checksum.slice(0, 12)}.csv`
-  const stored = await adapters().fileStore.put(storageKey, bytes, 'text/csv; charset=utf-8')
+  const stored = await (await fileStore()).put(storageKey, bytes, 'text/csv; charset=utf-8')
 
   return withActor(actor, async (tx) => {
     /*

@@ -48,6 +48,7 @@ const {
   branches,
   customerContacts,
   customers,
+  notificationChannelSettings,
   notificationDeliveries,
   notificationOutbox,
   principalBranchRoles,
@@ -412,6 +413,122 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
         hour12: false,
       }).format(end)
       expect(Number(local)).toBe(7)
+    })
+  })
+
+  /**
+   * The send switches — FR-NT-03.
+   *
+   * These write to `notification_channel_settings`, which is *global*: it has
+   * no branch, no run prefix and nothing to scope it to this file. A test that
+   * left the master switch off would silence every test beneath it, and — since
+   * this suite runs against a real database — would silence the deployment that
+   * database belongs to until somebody noticed. So each test restores exactly
+   * the keys it touched, and restoring means writing `true` rather than
+   * deleting: `app_user` holds no DELETE on any table (§5.5).
+   */
+  describe('whether an event sends at all', () => {
+    const setSwitch = (eventKey: string | null, isEnabled: boolean) =>
+      withActor(systemActor, (tx) =>
+        tx
+          .insert(notificationChannelSettings)
+          .values({ eventKey, channel: 'email' as const, isEnabled })
+          .onConflictDoUpdate({
+            target: [notificationChannelSettings.eventKey, notificationChannelSettings.channel],
+            set: { isEnabled },
+          }),
+      )
+
+    const touched: (string | null)[] = []
+
+    const off = async (eventKey: string | null) => {
+      touched.push(eventKey)
+      await setSwitch(eventKey, false)
+    }
+
+    afterEach(async () => {
+      // Restored in a loop rather than by a blanket update, so a bug here
+      // cannot switch on something the deployment had deliberately switched
+      // off.
+      while (touched.length > 0) await setSwitch(touched.pop()!, true)
+    })
+
+    /*
+      An adapter is registered for the two "it still sends" tests, and that is
+      not incidental. `runNotificationDispatch` expands *and* flushes, so a
+      delivery left to itself with no adapter is immediately marked
+      `failed: no adapter` — never `queued`. Asserting on a queued row would
+      therefore fail for a reason that has nothing to do with the switch, and
+      asserting merely that a row exists would pass even if the switch had
+      wrongly suppressed it. Sending for real is the assertion that separates
+      "the switch let it through" from every other outcome.
+    */
+    it('sends when nothing is switched off, because absence means on', async () => {
+      const channel = fakeChannel({ accepted: true })
+      registerChannel(channel)
+
+      const id = await raised('enquiry.sla_breached')
+      const result = await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      expect(result.expanded).toBeGreaterThan(0)
+      expect(result.sent).toBeGreaterThan(0)
+      const rows = await deliveriesFor(id)
+      expect(rows.some((d) => d.status === 'sent')).toBe(true)
+      expect(rows.some((d) => d.status === 'suppressed')).toBe(false)
+    })
+
+    it('records a switched-off event as suppressed rather than dropping it', async () => {
+      await off('enquiry.sla_breached')
+      const id = await raised('enquiry.sla_breached')
+
+      const result = await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const rows = await deliveriesFor(id)
+      expect(result.suppressed).toBeGreaterThan(0)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.every((d) => d.status === 'suppressed')).toBe(true)
+      // The reason has to name the event, because the person reading the
+      // delivery log is deciding which screen to go and fix.
+      expect(rows[0]?.suppressedReason).toContain('enquiry.sla_breached')
+    })
+
+    it('leaves other events alone when one is switched off', async () => {
+      registerChannel(fakeChannel({ accepted: true }))
+      await off('enquiry.sla_breached')
+
+      const id = await raised('exception.opened')
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const rows = await deliveriesFor(id)
+      expect(rows.some((d) => d.status === 'sent')).toBe(true)
+      expect(rows.some((d) => d.status === 'suppressed')).toBe(false)
+    })
+
+    it('lets the master switch silence an event whose own switch is on', async () => {
+      // Explicitly on, so this proves precedence rather than absence.
+      touched.push('exception.opened')
+      await setSwitch('exception.opened', true)
+      await off(null)
+
+      const id = await raised('exception.opened')
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const rows = await deliveriesFor(id)
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.every((d) => d.status === 'suppressed')).toBe(true)
+      // Names the channel, not the event — the master is what stopped it.
+      expect(rows[0]?.suppressedReason).toContain('email')
+      expect(rows[0]?.suppressedReason).not.toContain('exception.opened')
+    })
+
+    /** Marked dispatched, so a silenced event is not re-read for ever. */
+    it('clears the outbox row even when nothing is sent', async () => {
+      await off('exception.opened')
+      const id = await raised('exception.opened')
+
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      expect((await outboxRow(id)).dispatchedAt).not.toBeNull()
     })
   })
 

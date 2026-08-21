@@ -316,3 +316,36 @@ describe('driftMagnitude', () => {
     expect(Number(toDb(driftMagnitude(findings, KWD)))).toBeGreaterThan(0)
   })
 })
+
+describe('the cross-check has to have something to check against', () => {
+  /*
+    Found by a live call, not by reading a specification: the model read a
+    two-line invoice correctly and returned no subtotal and no total, so
+    `reconcileInvoice` compared nothing and reported nothing wrong. An absence
+    of findings is not evidence of correctness when nothing was checked.
+  */
+  it('reports no findings when the page stated no net — which is the danger', () => {
+    const blind = read({ subtotal: null, total: null, lines: [line(), line()] })
+    expect(reconcileInvoice(blind, KWD)).toEqual([])
+  })
+
+  it('refuses to write a multi-line invoice that cannot be cross-checked', () => {
+    const blind = read({ subtotal: null, total: null, lines: [line(), line()], confidence: 0.99 })
+    expect(isSelfConsistent(blind, KWD, 0.8)).toBe(false)
+  })
+
+  /*
+    One line is its own total. A single-line agent debit note that prints
+    nothing but an amount is ordinary, and refusing it would send a coordinator
+    to type the one figure the extraction already had.
+  */
+  it('still accepts a single-line invoice with no printed total', () => {
+    const one = read({ subtotal: null, total: null, lines: [line()] })
+    expect(isSelfConsistent(one, KWD, 0.8)).toBe(true)
+  })
+
+  it('accepts a multi-line invoice once a net is stated', () => {
+    const checked = read({ subtotal: '1800.000', total: '1800.000', lines: [line(), line()] })
+    expect(isSelfConsistent(checked, KWD, 0.8)).toBe(true)
+  })
+})

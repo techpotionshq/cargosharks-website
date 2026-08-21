@@ -67,7 +67,7 @@ import {
 import { buildAccountingExport } from './accounting/export'
 import { loadCustomsPackView, renderJobDocumentPdf, renderManifestPdf } from './pdf/job-documents'
 import { storeJobDocument } from './pdf/store'
-import { adapters } from './adapters/index'
+import { fileStore } from './adapters/index'
 
 loadEnv()
 
@@ -274,7 +274,7 @@ async function checkDocuments(fixture: Fixture): Promise<void> {
 async function checkStorage(fixture: Fixture): Promise<void> {
   console.log('\nissue and storage')
 
-  const driver = adapters().fileStore.key
+  const driver = (await fileStore()).key
   if (driver === 'none' || driver === 'memory') {
     skip('store', `FileStore driver is "${driver}" — set S3_* to check the real bucket`)
     return
@@ -290,7 +290,7 @@ async function checkStorage(fixture: Fixture): Promise<void> {
   }
   ok('versioning', `re-issue wrote v${again.version} and superseded v${first.version}`)
 
-  const fetched = await adapters().fileStore.get(again.storageKey)
+  const fetched = await (await fileStore()).get(again.storageKey)
   if (fetched.byteLength !== pdf.byteLength) {
     throw new Error(`stored ${pdf.byteLength} B, read back ${fetched.byteLength} B`)
   }

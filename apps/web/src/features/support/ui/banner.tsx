@@ -57,57 +57,99 @@ export async function SupportAccessBanner({ session }: { session: Session }) {
   const t = await getTranslations('support')
   const mayRevoke = can(session, 'admin.users.write')
 
-  return (
-    <div className="border-b border-caution/25 bg-caution-soft">
-      {open.map((grant) => (
-        <div
-          key={grant.id}
-          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-[0.8125rem] text-caution"
-        >
-          <Icon name="audit" size={15} className="shrink-0" />
+  /*
+    One row per grant, written once and rendered in both arrangements below.
 
-          <span className="font-medium">
-            {grant.scope === 'write' ? t('bannerWrite') : t('bannerRead')}
-          </span>
+    A local closure rather than a component, because everything it needs — the
+    catalogue and the permission — is already resolved here, and a second
+    component would have to be handed both back.
+  */
+  const row = (grant: (typeof open)[number]) => (
+    <div
+      key={grant.id}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-[0.8125rem] text-caution"
+    >
+      <Icon name="audit" size={15} className="shrink-0" />
 
-          <span className="text-ink-muted">
-            {grant.engineer} · {grant.reason}
-          </span>
+      <span className="font-medium">
+        {grant.scope === 'write' ? t('bannerWrite') : t('bannerRead')}
+      </span>
 
-          <span className="text-ink-subtle">
-            {/*
-              Scope stated in the sentence rather than left to be inferred.
-              "Every branch" is the case worth naming out loud, because it is
-              the one an operator would want to question.
-            */}
-            {grant.branchCodes.length === 0
-              ? t('scopeAllBranches')
-              : t('scopeBranches', { branches: grant.branchCodes.join(', ') })}
-          </span>
+      <span className="text-ink-muted">
+        {grant.engineer} · {grant.reason}
+      </span>
 
-          <time dateTime={grant.expiresAt.toISOString()} className="text-ink-subtle tabular-nums">
-            {t('expires', {
-              time: grant.expiresAt.toLocaleTimeString('en-GB', {
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'Asia/Kuwait',
-              }),
-            })}
-          </time>
+      <span className="text-ink-subtle">
+        {/*
+          Scope stated in the sentence rather than left to be inferred.
+          "Every branch" is the case worth naming out loud, because it is
+          the one an operator would want to question.
+        */}
+        {grant.branchCodes.length === 0
+          ? t('scopeAllBranches')
+          : t('scopeBranches', { branches: grant.branchCodes.join(', ') })}
+      </span>
 
-          {mayRevoke && (
-            <form action={revokeSupportAccess} className="ms-auto">
-              <input type="hidden" name="grantId" value={grant.id} />
-              <button
-                type="submit"
-                className="rounded-sm px-2.5 py-1 font-medium text-caution underline-offset-2 hover:underline"
-              >
-                {t('revoke')}
-              </button>
-            </form>
-          )}
-        </div>
-      ))}
+      <time dateTime={grant.expiresAt.toISOString()} className="text-ink-subtle tabular-nums">
+        {t('expires', {
+          time: grant.expiresAt.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Kuwait',
+          }),
+        })}
+      </time>
+
+      {mayRevoke && (
+        <form action={revokeSupportAccess} className="ms-auto">
+          <input type="hidden" name="grantId" value={grant.id} />
+          <button
+            type="submit"
+            className="rounded-sm px-2.5 py-1 font-medium text-caution underline-offset-2 hover:underline"
+          >
+            {t('revoke')}
+          </button>
+        </form>
+      )}
     </div>
+  )
+
+  /*
+    One grant is a notice. Three is a wall.
+
+    A single open session states itself in a line, and that case is left
+    exactly as it was: the sentence is short, the revoke control is right
+    there, and nothing is hidden. Stacked, the same treatment took two hundred
+    pixels off the top of every internal screen before the operator saw a
+    single row of their own work — which is how a notice teaches people to
+    scroll past it.
+
+    So more than one collapses to a count and opens to exactly those rows: same
+    sentences, same per-grant revoke, none of them unreachable. `<details>`
+    rather than component state, because this renders in the operations layout
+    on every screen in the product and a banner that needs JavaScript to reveal
+    who is reading your data is a banner that is blank when it matters most.
+  */
+  if (open.length === 1) {
+    return <div className="border-b border-caution/25 bg-caution-soft">{open.map(row)}</div>
+  }
+
+  return (
+    <details className="group border-b border-caution/25 bg-caution-soft">
+      <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-2.5 text-[0.8125rem] font-medium text-caution [&::-webkit-details-marker]:hidden">
+        <Icon name="audit" size={15} className="shrink-0" />
+        <span>{t('bannerMany', { count: open.length })}</span>
+        <span className="ms-auto inline-flex items-center gap-1.5 text-ink-muted">
+          {t('bannerExpand')}
+          {/* Points along the reading direction closed, down when open. */}
+          <Icon
+            name="chevron-end"
+            size={13}
+            className="transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90"
+          />
+        </span>
+      </summary>
+      <div className="border-t border-caution/20">{open.map(row)}</div>
+    </details>
   )
 }

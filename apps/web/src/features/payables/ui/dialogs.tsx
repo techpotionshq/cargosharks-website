@@ -169,11 +169,20 @@ export async function SupplierInvoiceDialog({
     },
   ]
 
+  /*
+    Wider than the default `md`, because two of these fields are pickers whose
+    values have to be readable: at `md` a supplier reads "CAR-ACCRUAL — Accrual
+    Fixtu" and a currency reads "KWD — Kuwaiti D". A supplier you cannot read
+    is a supplier you cannot confirm you picked, and this is the form where
+    picking the wrong one books a stranger's bill. `xl` would leave nine fields
+    swimming; `lg` is the width at which the date row stops being three slivers.
+  */
   return (
     <RecordDialog
       action={saveSupplierInvoice}
       fields={fields}
       icon="payments"
+      size="lg"
       variant={variant}
       labels={{
         open: editing ? tc('edit') : t('capture'),
@@ -491,8 +500,11 @@ export async function SupplierPaymentDialog({
     { kind: 'text', name: 'reference', label: t('paymentReference'), span: 4, mono: true },
   ]
 
+  // `lg`, not the default: currency and method share a span-4 row with the
+  // date, and at `md` both pickers cut their own values off mid-word.
   return (
     <RecordDialog
+      size="lg"
       action={recordSupplierPayment}
       fields={fields}
       icon="payments"

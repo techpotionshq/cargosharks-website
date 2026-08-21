@@ -53,7 +53,22 @@ export async function ProofOfDeliveryCard({
       />
 
       {records.length === 0 ? (
-        <EmptyState className="mt-3" icon="truck" title={t('none')} description={t('noneHint')} />
+        /*
+          Inline, not centred, and the reason is the span this card is given.
+
+          It runs the full twelve columns, and the centred empty state is sized
+          for a page with nothing on it: a glyph, a heading and a paragraph
+          floating in a band of air the width of the board, a long way from the
+          title it answers. One quiet line under the header says the same thing
+          and leaves the card the height of what it actually contains.
+        */
+        <EmptyState
+          className="mt-3"
+          variant="inline"
+          icon="truck"
+          title={t('none')}
+          description={t('noneHint')}
+        />
       ) : (
         <ul className="mt-4 space-y-4">
           {records.map((pod) => {
@@ -61,10 +76,7 @@ export async function ProofOfDeliveryCard({
             return (
               <li
                 key={pod.id}
-                className={[
-                  'rounded-sm border border-line p-4',
-                  superseded ? 'opacity-60' : '',
-                ]
+                className={['rounded-sm border border-line p-4', superseded ? 'opacity-60' : '']
                   .filter(Boolean)
                   .join(' ')}
               >

@@ -41,6 +41,7 @@
 
 import type {
   ModelContent,
+  ModelDelta,
   ModelMessage,
   ModelProvider,
   ModelRequest,
@@ -102,16 +103,20 @@ export class ModelError extends Error {
  * Callers check `available` before asking. Nothing in this system is allowed
  * to *require* a model.
  */
+const unconfigured = (): ModelError =>
+  new ModelError(
+    'model.not_configured',
+    'No model provider is configured. Add an OpenRouter key on Settings → Integrations.',
+  )
+
 export const noModel: ModelProvider = {
   key: 'none',
   available: false,
-  complete: () =>
-    Promise.reject(
-      new ModelError(
-        'model.not_configured',
-        'No model provider is configured. Add an OpenRouter key on Settings → Integrations.',
-      ),
-    ),
+  complete: () => Promise.reject(unconfigured()),
+  // eslint-disable-next-line require-yield
+  async *stream() {
+    throw unconfigured()
+  },
 }
 
 /* -------------------------------------------------------------------------
@@ -174,102 +179,132 @@ export function openRouterModel(options: OpenRouterOptions): ModelProvider {
     available: true,
 
     async complete(request: ModelRequest): Promise<ModelResponse> {
-      const body: Record<string, unknown> = {
-        model: options.model,
-        messages: request.messages.map(toWireMessage),
-        /*
-          Zero by default. Every surface here reads a fact that is either on
-          the page or is not, and sampling would trade reproducibility — the
-          thing the golden set depends on — for variety nobody wants.
-        */
-        temperature: request.temperature ?? 0,
-        /*
-          Ask the router to report what the call cost.
-
-          Without this the response carries token counts and no price, and
-          pricing them ourselves means holding a table of per-model rates that
-          goes stale silently. `costOf` in core still has that table as a
-          fallback, because a provider that stops reporting should degrade to
-          an estimate rather than to zero — and zero is what an absent cost
-          looks like in a monthly sum.
-        */
-        usage: { include: true },
-      }
-
-      if (request.maxOutputTokens !== undefined) body.max_tokens = request.maxOutputTokens
-
-      if (request.schema) {
-        body.response_format = {
-          type: 'json_schema',
-          json_schema: { name: 'extraction', strict: true, schema: request.schema },
-        }
-      }
-
-      if (request.tools?.length) {
-        body.tools = request.tools.map((tool) => ({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-          },
-        }))
-      }
-
-      let response: Response
-      try {
-        response = await fetch(`${options.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${options.apiKey}`,
-            'content-type': 'application/json',
-            ...(options.appUrl ? { 'http-referer': options.appUrl } : {}),
-            ...(options.appTitle ? { 'x-title': options.appTitle } : {}),
-          },
-          body: JSON.stringify(body),
-          /*
-            A timeout, because there is no such thing as a request without
-            one — the same sentence `fx.ts` writes, and the same reasoning.
-            This runs inside a worker, so a hang does not look like a slow
-            page; it looks like a worker that quietly stopped doing its other
-            work, which is far harder to notice.
-          */
-          signal: AbortSignal.timeout(options.timeoutMs),
-        })
-      } catch (error) {
-        const timedOut = error instanceof Error && error.name === 'TimeoutError'
-        throw new ModelError(
-          timedOut ? 'model.timeout' : 'model.unreachable',
-          timedOut
-            ? `The model did not answer within ${options.timeoutMs}ms.`
-            : `Could not reach the model provider: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      }
-
+      const response = await send(options, request, false)
       const raw: unknown = await response.json().catch(() => null)
-
-      if (!response.ok) {
-        const message = (raw as ChatCompletion | null)?.error?.message ?? `HTTP ${response.status}`
-        /*
-          402 and 429 are named rather than lumped in with "the provider said
-          no", because they are the two an operator can actually act on and
-          they are the two that arrive at the worst moment. Out of credit and
-          rate-limited both stop extraction; only one of them is fixed by
-          waiting, and a log that cannot tell them apart sends somebody to
-          check the wrong thing at 2am.
-        */
-        const code =
-          response.status === 402
-            ? 'model.out_of_credit'
-            : response.status === 429
-              ? 'model.rate_limited'
-              : 'model.refused'
-        throw new ModelError(code, message, response.status)
-      }
-
       return readCompletion(raw as ChatCompletion, options.model)
     },
+
+    /**
+     * The same call, read as it arrives.
+     *
+     * Tool calls are accumulated rather than streamed onward: a caller cannot
+     * act on half an argument list, and the loop needs the whole thing before
+     * it can run anything. Text is yielded the moment it appears, which is the
+     * only part a person can use early.
+     */
+    async *stream(request: ModelRequest): AsyncIterable<ModelDelta> {
+      const response = await send(options, request, true)
+      yield* readStream(response, options.model)
+    },
   }
+}
+
+/** The request body and the POST, shared by both methods. */
+async function send(
+  options: OpenRouterOptions,
+  request: ModelRequest,
+  streaming: boolean,
+): Promise<Response> {
+  const body: Record<string, unknown> = {
+    model: options.model,
+    messages: request.messages.map(toWireMessage),
+    /*
+    Zero by default. Every surface here reads a fact that is either on
+    the page or is not, and sampling would trade reproducibility — the
+    thing the golden set depends on — for variety nobody wants.
+  */
+    temperature: request.temperature ?? 0,
+    /*
+    Ask the router to report what the call cost.
+
+    Without this the response carries token counts and no price, and
+    pricing them ourselves means holding a table of per-model rates that
+    goes stale silently. `costOf` in core still has that table as a
+    fallback, because a provider that stops reporting should degrade to
+    an estimate rather than to zero — and zero is what an absent cost
+    looks like in a monthly sum.
+  */
+    usage: { include: true },
+  }
+
+  if (streaming) body.stream = true
+
+  if (request.maxOutputTokens !== undefined) body.max_tokens = request.maxOutputTokens
+
+  if (request.schema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: 'extraction', strict: true, schema: request.schema },
+    }
+  }
+
+  if (request.tools?.length) {
+    body.tools = request.tools.map((tool) => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      },
+    }))
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${options.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${options.apiKey}`,
+        'content-type': 'application/json',
+        ...(options.appUrl ? { 'http-referer': options.appUrl } : {}),
+        ...(options.appTitle ? { 'x-title': options.appTitle } : {}),
+      },
+      body: JSON.stringify(body),
+      /*
+      A timeout, because there is no such thing as a request without
+      one — the same sentence `fx.ts` writes, and the same reasoning.
+      This runs inside a worker, so a hang does not look like a slow
+      page; it looks like a worker that quietly stopped doing its other
+      work, which is far harder to notice.
+    */
+      signal: AbortSignal.timeout(options.timeoutMs),
+    })
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === 'TimeoutError'
+    throw new ModelError(
+      timedOut ? 'model.timeout' : 'model.unreachable',
+      timedOut
+        ? `The model did not answer within ${options.timeoutMs}ms.`
+        : `Could not reach the model provider: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+
+  /*
+  Only read on failure. A streaming response's body is the stream, and
+  consuming it here to look for an error would leave nothing to iterate.
+*/
+  const raw: unknown = response.ok ? null : await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message = (raw as ChatCompletion | null)?.error?.message ?? `HTTP ${response.status}`
+    /*
+    402 and 429 are named rather than lumped in with "the provider said
+    no", because they are the two an operator can actually act on and
+    they are the two that arrive at the worst moment. Out of credit and
+    rate-limited both stop extraction; only one of them is fixed by
+    waiting, and a log that cannot tell them apart sends somebody to
+    check the wrong thing at 2am.
+  */
+    const code =
+      response.status === 402
+        ? 'model.out_of_credit'
+        : response.status === 429
+          ? 'model.rate_limited'
+          : 'model.refused'
+    throw new ModelError(code, message, response.status)
+  }
+
+  return response
 }
 
 /**
@@ -351,14 +386,33 @@ function readFinishReason(reason: string | undefined): ModelResponse['finishReas
 
 /** Our message shape, in the wire's. */
 function toWireMessage(message: ModelMessage): Record<string, unknown> {
-  if (typeof message.content === 'string') {
-    return { role: message.role, content: message.content }
+  const content =
+    typeof message.content === 'string' ? message.content : message.content.map(toWirePart)
+
+  /*
+    A tool result names the call it answers.
+
+    Without `tool_call_id` the provider cannot pair the result with the
+    request, and the usual symptom is not an error — it is a model that asks
+    for the same tool again because, as far as it can tell, nothing came back.
+  */
+  if (message.role === 'tool') {
+    return { role: 'tool', tool_call_id: message.toolCallId, content }
   }
 
-  return {
-    role: message.role,
-    content: message.content.map(toWirePart),
+  if (message.toolCalls?.length) {
+    return {
+      role: message.role,
+      content,
+      tool_calls: message.toolCalls.map((call) => ({
+        id: call.id,
+        type: 'function',
+        function: { name: call.name, arguments: call.arguments },
+      })),
+    }
   }
+
+  return { role: message.role, content }
 }
 
 function toWirePart(part: ModelContent): Record<string, unknown> {
@@ -384,21 +438,177 @@ function toWirePart(part: ModelContent): Record<string, unknown> {
   /*
     PDF, in OpenRouter's `file` part.
 
-    **Documented, not verified** — the tag `Integration_Landscape.md` uses, and
-    it is applied here for the reason `Operations_Findings.md` gives: two
-    integrations in this repository were written against documentation and both
-    were wrong in ways a live call caught immediately. This shape has not been
-    run against a real key from this codebase.
+    **Verified** — `Integration_Landscape.md`'s tag, earned rather than assumed:
+    `pnpm --filter @qabandi/service verify:model` generates a supplier invoice,
+    sends it through this exact path against a live key, and checks that what
+    came back reconciles. `Operations_Findings.md` is the reason that script
+    exists — two integrations here were written against documentation and both
+    were wrong in ways one real call caught immediately.
 
-    What that costs, precisely: a provider that wants a different field name
-    answers 400 with a message, `ModelError` carries it through to
-    `ai_invocations.error`, and the extraction records that it could not run.
-    It does not silently return an empty invoice, which is the failure that
-    would matter.
+    A provider that wants a different field name answers 400 with a message,
+    `ModelError` carries it through to `ai_invocations.error`, and the
+    extraction records that it could not run. It does not silently return an
+    empty invoice, which is the failure that would matter.
   */
   return {
     type: 'file',
     file: { filename: part.filename, file_data: part.dataUri },
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Reading a stream
+ * ---------------------------------------------------------------------- */
+
+/** One server-sent chunk, in the shape the streaming API sends. */
+interface ChatChunk {
+  readonly model?: string
+  readonly choices?: readonly {
+    readonly delta?: {
+      readonly content?: string | null
+      readonly tool_calls?: readonly {
+        readonly index?: number
+        readonly id?: string
+        readonly function?: { readonly name?: string; readonly arguments?: string }
+      }[]
+    }
+    readonly finish_reason?: string
+  }[]
+  readonly usage?: {
+    readonly prompt_tokens?: number
+    readonly completion_tokens?: number
+    readonly cost?: number
+  }
+}
+
+/**
+ * Server-sent events, turned into deltas and one assembled response.
+ *
+ * Three things here are not obvious and all three are the difference between
+ * this working and appearing to work.
+ *
+ * **A chunk can be split across TCP reads.** `data: {"cho` and the rest can
+ * arrive separately, so the tail of a read is held back until a blank line
+ * proves an event is complete. Parsing per read instead drops content
+ * intermittently under exactly the conditions that matter — a long answer on a
+ * slow connection.
+ *
+ * **Tool calls arrive in pieces, keyed by index.** The name comes in one
+ * chunk, the arguments in a dozen more, and they are only identified by
+ * position in an array. They are merged by `index` rather than appended,
+ * because appending produces one malformed call per fragment.
+ *
+ * **Usage arrives last, in its own chunk, after `finish_reason`.** Stopping at
+ * the finish reason loses the token counts and the cost, which is the whole
+ * ledger — so the loop runs to `[DONE]` rather than to the first finish.
+ */
+export async function* readStream(
+  response: Response,
+  requested: string,
+): AsyncIterable<ModelDelta> {
+  const body = response.body
+  if (!body) throw new ModelError('model.empty_response', 'The provider returned no stream.')
+
+  const decoder = new TextDecoder()
+  const reader = body.getReader()
+
+  let buffered = ''
+  let text = ''
+  let model = requested
+  let finish: string | undefined
+  let usage: ChatChunk['usage']
+  const calls = new Map<number, { id: string; name: string; arguments: string }>()
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffered += decoder.decode(value, { stream: true })
+
+      // Events are separated by a blank line; anything after the last one is
+      // an incomplete event and waits for the next read.
+      const events = buffered.split(/\r?\n\r?\n/)
+      buffered = events.pop() ?? ''
+
+      for (const event of events) {
+        for (const line of event.split(/\r?\n/)) {
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (payload === '' || payload === '[DONE]') continue
+
+          let chunk: ChatChunk
+          try {
+            chunk = JSON.parse(payload) as ChatChunk
+          } catch {
+            // A comment or a keep-alive rather than an event. Providers send
+            // these to hold the connection open and they are not errors.
+            continue
+          }
+
+          if (chunk.model) model = chunk.model
+          if (chunk.usage) usage = chunk.usage
+
+          const choice = chunk.choices?.[0]
+          if (choice?.finish_reason) finish = choice.finish_reason
+
+          const piece = choice?.delta?.content
+          if (piece) {
+            text += piece
+            yield { type: 'text', text: piece }
+          }
+
+          for (const partial of choice?.delta?.tool_calls ?? []) {
+            const index = partial.index ?? 0
+            const existing = calls.get(index) ?? { id: '', name: '', arguments: '' }
+            calls.set(index, {
+              id: partial.id ?? existing.id,
+              name: partial.function?.name ?? existing.name,
+              arguments: existing.arguments + (partial.function?.arguments ?? ''),
+            })
+          }
+        }
+      }
+    }
+  } finally {
+    // Releases the connection when a consumer stops iterating early — a person
+    // closing the panel mid-answer would otherwise hold a socket until the
+    // model finished talking to nobody.
+    reader.cancel().catch(() => {})
+  }
+
+  const toolCalls: ModelToolCall[] = [...calls.entries()]
+    .sort(([a], [b]) => a - b)
+    .filter(([, call]) => call.name)
+    .map(([index, call]) => ({
+      id: call.id || `call_${index}`,
+      name: call.name,
+      arguments: call.arguments || '{}',
+    }))
+
+  yield {
+    type: 'final',
+    response: {
+      model,
+      text,
+      toolCalls,
+      inputTokens: usage?.prompt_tokens ?? 0,
+      outputTokens: usage?.completion_tokens ?? 0,
+      costUsd: typeof usage?.cost === 'number' ? usage.cost.toFixed(6) : undefined,
+      /*
+        A stream that ended without saying why is `stop` only if it produced
+        something. Nothing at all is `error`, on the same reasoning
+        `readFinishReason` gives: an unrecognised ending may be a truncated
+        answer, and calling it a clean stop lets half a sentence be applied as
+        if it were whole.
+      */
+      finishReason: finish
+        ? readFinishReason(finish)
+        : text || toolCalls.length > 0
+          ? 'stop'
+          : 'error',
+      raw: { streamed: true, model, text, toolCalls, usage },
+    },
   }
 }
 

@@ -17,12 +17,14 @@ import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { listDeliveries, listTemplates } from '@/features/admin/notifications'
+import { listChannelSettings, listDeliveries, listTemplates } from '@/features/admin/notifications'
 import { NotificationTemplateDialog } from '@/features/admin/ui/dialogs'
+import { saveNotificationSwitches } from '@/features/admin/form-actions'
 import { loadOptions } from '@/lib/options'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
+import { FormGrid, Switch } from '@/ui/form'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
@@ -36,13 +38,27 @@ export default async function NotificationsPage() {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
 
-  const [events, deliveries, options, t, tc] = await Promise.all([
+  const [events, deliveries, switches, options, t, tc] = await Promise.all([
     listTemplates(session.actor),
     listDeliveries(session.actor),
+    listChannelSettings(session.actor),
     loadOptions(session.actor),
     getTranslations('notificationTemplates'),
     getTranslations('common'),
   ])
+
+  /*
+    Absent means on, exactly as `channelDecision` reads it.
+
+    The screen must not invent its own precedence: if this said `?? false` a
+    fresh deployment would render thirteen switched-off toggles over a
+    dispatcher that was cheerfully sending everything, and the first person to
+    press Save would silence the product by agreeing with what they saw.
+  */
+  const enabled = (eventKey: string | null): boolean =>
+    switches.find((row) => row.eventKey === eventKey && row.channel === 'email')?.isEnabled ?? true
+
+  const masterOn = enabled(null)
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -54,6 +70,63 @@ export default async function NotificationsPage() {
         title={t('pageTitle')}
         description={t('pageSubtitle')}
       />
+
+      {/*
+        What sends at all, above the wording of what is sent.
+
+        Deliberately the first thing on the screen and deliberately separate
+        from the template cards below. `notification_templates.is_active` means
+        "fall back to the default beneath this"; these mean "do not send". They
+        read alike and are opposites, and putting the send switches at the top
+        is what stops somebody deactivating a default template to achieve
+        silence and getting a delivery log full of `failed: no template`.
+      */}
+      <Card className="mb-4">
+        <CardHeader
+          icon="bell"
+          eyebrow={t('sending')}
+          title={t('sendingTitle')}
+          description={t('sendingHint')}
+        />
+
+        <form action={saveNotificationSwitches} className="mt-4">
+          <FormGrid>
+            <Switch
+              name="master"
+              span={12}
+              defaultChecked={masterOn}
+              label={t('masterLabel')}
+              hint={t('masterHint')}
+            />
+
+            {/*
+              Rendered but disabled-looking when the master is off — the rows
+              still submit their own state, so switching the master back on
+              restores exactly what was there rather than whatever the form
+              happened to post while everything was silenced.
+            */}
+            {events.map((event) => (
+              <Switch
+                key={event.key}
+                name={`event:${event.key}`}
+                span={6}
+                defaultChecked={enabled(event.key)}
+                label={t(`events.${event.key}` as 'events.job.created')}
+                hint={masterOn ? undefined : t('masterOverrides')}
+              />
+            ))}
+          </FormGrid>
+
+          <div className="mt-4 flex justify-end border-t border-line pt-3">
+            <button
+              type="submit"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+            >
+              {tc('save')}
+            </button>
+          </div>
+        </form>
+      </Card>
 
       <div className="space-y-4">
         {events.map((event) => (
@@ -72,9 +145,21 @@ export default async function NotificationsPage() {
               title={t(`events.${event.key}` as 'events.job.created')}
               description={event.summary}
               actions={
-                <Badge tone={event.audience === 'customer' ? 'info' : 'muted'}>
-                  {t(`audiences.${event.audience}` as 'audiences.customer')}
-                </Badge>
+                <span className="flex flex-wrap items-center gap-2">
+                  {/*
+                    Said here as well as on the switch above, because this is
+                    the card somebody is looking at when they ask why a
+                    customer never got the message. The wording being present
+                    and correct is exactly what makes a silenced event
+                    confusing from this end.
+                  */}
+                  {masterOn && enabled(event.key) ? null : (
+                    <Badge tone="muted">{t('offBadge')}</Badge>
+                  )}
+                  <Badge tone={event.audience === 'customer' ? 'info' : 'muted'}>
+                    {t(`audiences.${event.audience}` as 'audiences.customer')}
+                  </Badge>
+                </span>
               }
             />
 

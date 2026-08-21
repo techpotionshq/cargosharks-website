@@ -295,6 +295,70 @@
   }
 
   /**
+   * The caret at the end of an answer that is still being written.
+   *
+   * A hard blink on a step timing, the way a text cursor behaves — not a fade.
+   * The point is to say "a person is watching something arrive", and the eye
+   * reads an on/off edge as activity where it reads a slow fade as decoration.
+   */
+  .qb-caret {
+    animation: qb-caret 1.05s steps(1, end) infinite;
+  }
+
+  @keyframes qb-caret {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    50.01%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qb-caret {
+      animation: none;
+      opacity: 0.65;
+    }
+  }
+
+  /**
+   * A placeholder for something that is on its way.
+   *
+   * Used instead of a spinner or an "Opening…" line wherever the *shape* of
+   * what is coming is already known — a thread's messages, an inbox's rows. A
+   * person reading a skeleton is reading the layout they are about to get,
+   * which is why the screen does not jump when the data lands; a spinner tells
+   * them only that something is happening somewhere.
+   *
+   * Opacity rather than a travelling gradient: a sweep across a dozen bars at
+   * once is more movement than a loading state has any business making, on a
+   * screen somebody opens forty times a day.
+   */
+  .qb-skeleton {
+    border-radius: var(--qb-radius-sm);
+    background-color: var(--qb-line);
+    animation: qb-skeleton 1.4s ease-in-out infinite;
+  }
+
+  @keyframes qb-skeleton {
+    0%,
+    100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .qb-skeleton {
+      animation: none;
+    }
+  }
+
+  /**
    * The board's section rule.
    *
    * A hairline with the section title sitting on it, used instead of a card
@@ -314,6 +378,107 @@
     background-color: var(--qb-line);
   }
 
+  /**
+   * A scroll region that admits it is one.
+   *
+   * macOS hides its overlay scrollbars until the pointer moves, so a panel
+   * that scrolls and a panel that has simply run out of rows look identical —
+   * and nobody scrolls a table they believe they have already finished. The
+   * bar here is always drawn, from the same line token `html` uses, so the
+   * page keeps one scrollbar treatment: it costs a few pixels of gutter and
+   * it is the only thing on the screen saying there is more below.
+   *
+   * Both engines, because they disagree about which properties exist: Firefox
+   * takes the two standard ones and ignores the pseudo-elements, WebKit and
+   * Chromium the reverse. `scrollbar-gutter: stable` reserves the channel up
+   * front so a table does not shift sideways the first time the bar appears,
+   * and `overscroll-behavior: contain` stops a flick at the end of a panel
+   * from carrying on into the page behind it.
+   */
+  .qb-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--qb-line-strong) transparent;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+  }
+
+  .qb-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .qb-scroll::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .qb-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--qb-line-strong);
+    border-radius: 999px;
+    /*
+      The border is the inset: a transparent one narrows nothing by itself, so
+      the paint has to be told to stop at the content box or the thumb fills
+      the full ten pixels and reads as a slab rather than a hairline.
+    */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  .qb-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: var(--qb-ink-subtle);
+  }
+}
+
+/*
+  The viewport-page rules live OUTSIDE `@layer components`, for the same reason
+  MapLibre's do below: **unlayered CSS beats layered CSS outright**, whatever
+  the specificity. Written inside the layer, `padding: 0` lost to `main`'s own
+  `px-4 pt-6 pb-24` — utilities are a later layer — and the assistant kept a
+  four-rem grey border on every side of a workspace that is supposed to be
+  flush to the chrome.
+*/
+/**
+ * A page that fills the viewport instead of scrolling the document.
+ *
+ * Opt-in, and scoped by `:has()` so that opting in is the *page's* decision
+ * and costs every other screen nothing: without a `.qb-viewport-page` in the
+ * tree not one of these rules matches, and the ops shell keeps growing
+ * downwards and scrolling the document exactly as every register needs it
+ * to. `/assistant` is the only page that asks, because a chat has to pin its
+ * composer to the bottom of the screen rather than to the bottom of its
+ * messages — and a chat that scrolls the document is a chat you scroll to
+ * type into.
+ *
+ * The selectors walk the shell rather than naming it: the ops layout is
+ * `shell > column > main > page`, and each step has to stop growing for the
+ * one below it to be allowed to shrink. `min-height: 0` is the whole trick —
+ * a flex item refuses to go below its own content height without it.
+ */
+html:has(.qb-viewport-page),
+html:has(.qb-viewport-page) body {
+  overflow: hidden;
+}
+
+/* The shell: a definite height, so what is inside it has something to fill. */
+div:has(> div > main .qb-viewport-page) {
+  height: 100dvh;
+}
+
+div:has(> main .qb-viewport-page),
+main:has(.qb-viewport-page) {
+  min-height: 0;
+}
+
+/*
+  Flush to the chrome, with no page padding at all.
+
+  `main` pads every register away from the topbar and reserves six rems at
+  the foot for the floating launcher — right for a card on a canvas, wrong
+  for a workspace that *is* the screen. The launcher does not render on the
+  assistant's own page either, so the gap would hold nothing.
+*/
+main:has(.qb-viewport-page) {
+  margin: 0;
+  padding: 0;
 }
 
 /*

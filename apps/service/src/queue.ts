@@ -28,7 +28,6 @@ export const JOBS = {
   quoteExpiry: 'quote-expiry-warning',
   invoiceOverdue: 'invoice-overdue-notice',
   fxIngest: 'fx-rate-ingest',
-  carrierEvent: 'carrier-event-ingest',
   carrierPoll: 'carrier-poll',
   bulkImport: 'bulk-import-validate',
   /*
@@ -162,7 +161,7 @@ export async function registerSchedules(): Promise<void> {
     for `none` rather than branching, exactly as `fxIngest` and `carrierPoll`
     do when nobody has configured a feed.
   */
-  await b.schedule(JOBS.inboundMailPoll, config.INBOUND_MAIL_CRON)
+  await applyInboundMailSchedule()
 
   /*
     The dispatcher itself, which nothing had ever enqueued.
@@ -238,5 +237,27 @@ export async function applyCarrierPollSchedule(): Promise<string> {
   // Idempotent by job name: pg-boss replaces the existing schedule rather than
   // adding a second one, so this is safe to call on every run.
   await b.schedule(JOBS.carrierPoll, cron)
+  return cron
+}
+
+/**
+ * The inbound mail poll's schedule — the second cron that is a settings row.
+ *
+ * Same shape and same reason as `applyCarrierPollSchedule` above: pg-boss
+ * holds the expression it was registered with, so a cache expiry cannot
+ * deliver a change on its own and something has to re-register. The poll
+ * reconciles its own schedule at the end of each run, which for a per-minute
+ * job means a change takes effect within a minute.
+ */
+export async function applyInboundMailSchedule(): Promise<string> {
+  const b = await getBoss()
+  const settings = await integration('inboundEmail')
+  const cron = settings.text('cron')?.trim() || config.INBOUND_MAIL_CRON
+
+  if (!/^\S+(\s+\S+){4}$/.test(cron)) {
+    throw new Error(`The inbound mail schedule "${cron}" is not a five-field cron expression.`)
+  }
+
+  await b.schedule(JOBS.inboundMailPoll, cron)
   return cron
 }

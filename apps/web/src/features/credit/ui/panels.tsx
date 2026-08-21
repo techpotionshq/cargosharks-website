@@ -77,16 +77,27 @@ export async function CreditStandingCard({
         }
       />
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Badge tone={TONES[view.outcome]}>{t(`outcome.${view.outcome}` as 'outcome.on_hold')}</Badge>
-        {view.nearLimit ? <Badge tone="caution">{t('nearLimit')}</Badge> : null}
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-6">
+      {/*
+        The outcome sits with the figures it is a verdict on, not on a line of
+        its own above them. "No limit set" alone in a band of whitespace reads
+        as a heading for the row beneath it; at the end of that row it reads as
+        what it is — the conclusion drawn from the numbers to its inline start.
+        `items-end` lands the badge on the same line as the values, since a
+        `Field` carries its label above them.
+      */}
+      <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
         <Field label={t('outstanding')} mono>
           {amount(view.outstanding)}
         </Field>
-        <Field label={t('limit')} mono>
+        {/*
+          Mono is applied to the value, not to the field.
+
+          `.ref` is the face for machine identifiers and `.numeric` for
+          figures; neither is for words. "None agreed" is a sentence, and set
+          in the monospace it looked like a code the operator was meant to
+          recognise.
+        */}
+        <Field label={t('limit')} mono={Boolean(view.limit)}>
           {view.limit ? amount(view.limit) : t('noLimit')}
         </Field>
         {view.blocked ? (
@@ -98,6 +109,12 @@ export async function CreditStandingCard({
             {amount(view.headroom)}
           </Field>
         ) : null}
+        <div className="flex flex-wrap items-center gap-2 pb-0.5">
+          <Badge tone={TONES[view.outcome]}>
+            {t(`outcome.${view.outcome}` as 'outcome.on_hold')}
+          </Badge>
+          {view.nearLimit ? <Badge tone="caution">{t('nearLimit')}</Badge> : null}
+        </div>
       </div>
 
       {/*
@@ -117,7 +134,7 @@ export async function CreditStandingCard({
       <h3 className="mt-6 text-[0.8125rem] font-medium text-ink">{t('overridesTitle')}</h3>
 
       {view.overrides.length === 0 ? (
-        <EmptyState className="mt-2" title={t('noOverrides')} />
+        <EmptyState className="mt-1.5" variant="inline" icon="check" title={t('noOverrides')} />
       ) : (
         <TableShell className="mt-2">
           <THead>
@@ -125,7 +142,7 @@ export async function CreditStandingCard({
               <TH>{t('approvedAt')}</TH>
               <TH>{t('approvedBy')}</TH>
               <TH>{t('scope')}</TH>
-              <TH className="text-end">{t('exposureThen')}</TH>
+              <TH align="end">{t('exposureThen')}</TH>
               <TH>{t('reason')}</TH>
             </TR>
           </THead>
@@ -145,7 +162,7 @@ export async function CreditStandingCard({
                     </Badge>
                   )}
                 </TD>
-                <TD className="text-end tabular-nums">
+                <TD align="end" numeric>
                   {o.exposure} / {o.creditLimit} {o.currency}
                 </TD>
                 <TD className="max-w-[22rem] whitespace-normal text-ink-muted">{o.reason}</TD>

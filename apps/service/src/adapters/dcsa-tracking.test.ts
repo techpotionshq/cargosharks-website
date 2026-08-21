@@ -339,10 +339,10 @@ describe('the DCSA adapter as the port sees it', () => {
   })
 
   /**
-   * Refused rather than answered empty, and this is the lesson Terminal49
-   * paid for: an empty list means "nothing has happened to this container",
-   * and on a quiet shipment that claim is indistinguishable from a working
-   * feed.
+   * Refused rather than answered empty. An empty list means "nothing has
+   * happened to this container", and on a quiet shipment that claim is
+   * indistinguishable from a working feed — which is the worst failure
+   * available to a tracking adapter.
    */
   it('refuses a poll it cannot honestly answer', async () => {
     const adapter = dcsaTracking({ maersk: { key: 'k' } })

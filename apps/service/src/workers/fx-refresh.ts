@@ -10,6 +10,20 @@
  * That separation is what makes a slow or rate-limited provider a monitoring
  * problem rather than an outage.
  *
+ * ## Nothing here is configured
+ *
+ * Both halves of "what to fetch" are derived rather than set. The bases are
+ * the distinct `base_currency` of the active branches; the quotes are the
+ * currencies marked `is_tracked`. There is no setting for either, because
+ * every value a setting could hold is already a fact the database knows, and
+ * the two were not merely redundant — they disagreed.
+ *
+ * `FX_BASE_CURRENCY` was a single deployment-wide currency, defaulting to
+ * KWD. A Dubai entity invoicing in AED therefore had *no rates fetched at
+ * all*, silently, on a deployment that looked correctly configured — and the
+ * fault could only be seen by comparing an environment variable against a
+ * column nobody thought to compare it to.
+ *
  * ## Idempotent by the unique key, not by checking first
  *
  * `fx_rates_unique` is `(from, to, effective_on, source)`. Running twice in a
@@ -21,18 +35,18 @@
  */
 
 import { eq } from 'drizzle-orm'
-import { currencies, fxRates, systemActor, withActor } from '@qabandi/db'
+import { branches, currencies, fxRates, systemActor, withActor } from '@qabandi/db'
 import { fxSource } from '../adapters/index'
-import { integration } from '../settings'
 
 export interface FxRefreshResult {
   readonly source: string
   readonly written: number
   readonly skipped: string[]
+  /** The base currencies asked about — one per distinct branch base. */
+  readonly bases: string[]
 }
 
 export async function runFxRefresh(): Promise<FxRefreshResult> {
-  const settings = await integration('fx')
   const source = await fxSource()
 
   /*
@@ -43,65 +57,85 @@ export async function runFxRefresh(): Promise<FxRefreshResult> {
     rather than making the caller ask which mode it is in.
   */
   if (source.key === 'manual') {
-    return { source: 'manual', written: 0, skipped: [] }
+    return { source: 'manual', written: 0, skipped: [], bases: [] }
   }
 
-  const base = (settings.text('base') ?? 'KWD').toUpperCase()
-
   /*
-    Which currencies to fetch is a column on `currencies`, not a list.
+    What to fetch, read entirely from rows that already exist.
 
-    `FX_QUOTE_CURRENCIES` was a comma-separated string in the environment — a
-    second answer to a question this table already answered, free to disagree
-    with it, and it did: a currency an administrator added here was invisible
-    to the feed until somebody edited a deployment variable. The old code then
-    intersected the two anyway, which is the tell that only one of them was
-    ever the real list.
+    The bases are the distinct base currencies of the active branches — a
+    branch is a legal entity that invoices in one currency (FR-ID-01), so the
+    set of currencies this operator needs rates *into* is exactly that column.
+    The quotes are `currencies.is_tracked`, which is the list of currencies the
+    operator trades in with the metered ones ticked.
 
-    Reading it from the table also removes the failure that intersection
-    existed for. `fx_rates.from_currency` and `to_currency` are real foreign
-    keys, so a code that is not a row cannot be asked for in the first place.
+    Neither is a setting, and neither should be. A second answer to a question
+    a column already answers is free to disagree with it, and both did.
   */
-  const { wanted, hasBase } = await withActor(systemActor(), async (tx) => {
-    const rows = await tx
-      .select({ code: currencies.code, tracked: currencies.isTracked })
+  const { bases, wanted } = await withActor(systemActor(), async (tx) => {
+    const entities = await tx
+      .selectDistinct({ code: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.isActive, true))
+
+    const tracked = await tx
+      .select({ code: currencies.code, isTracked: currencies.isTracked })
       .from(currencies)
       .where(eq(currencies.isActive, true))
 
+    const known = new Set(tracked.map((row) => row.code.toUpperCase()))
+
     return {
-      wanted: rows
-        .filter((row) => row.tracked)
+      /*
+        Only bases that are currency rows. `branches.base_currency` is not a
+        foreign key, so a typo there would otherwise be asked of the feed and
+        written into `fx_rates`, which *is* a foreign key — one bad branch
+        failing every good rate in the batch.
+      */
+      bases: entities
         .map((row) => row.code.toUpperCase())
-        .filter((code) => code !== base),
-      hasBase: rows.some((row) => row.code.toUpperCase() === base),
+        .filter((code) => known.has(code))
+        .sort(),
+      wanted: tracked
+        .filter((row) => row.isTracked)
+        .map((row) => row.code.toUpperCase()),
     }
   })
 
-  if (!hasBase) {
-    throw new Error(
-      `The FX base currency ${base} is not an active row in the currencies table — ` +
-        'add it before enabling the feed, or the rates have nothing to hang off.',
-    )
+  if (bases.length === 0 || wanted.length === 0) {
+    return { source: source.key, written: 0, skipped: [], bases }
   }
 
-  if (wanted.length === 0) return { source: source.key, written: 0, skipped: [] }
-
   /*
-    Fetched outside the transaction, and that is not a detail.
+    One call per base, outside any transaction.
 
-    This is a fifteen-second timeout against somebody else's gateway. Holding a
-    pooled connection open across it would let one slow provider take a
-    connection out of a pool of ten for the duration, every morning — a
-    database problem caused by a currency API, which is the hardest kind of
-    incident to attribute.
+    Two entities on different currencies is the normal shape of this product,
+    not an edge case — Kuwait invoices in KWD and Dubai in AED — so the feed is
+    asked once for each. Sequentially rather than in parallel: these are
+    metered, rate-limited endpoints, and two bases is two calls a day.
+
+    Outside the transaction because each is a fifteen-second timeout against
+    somebody else's gateway, and holding a pooled connection across it lets one
+    slow provider take a connection out of a pool of ten every morning.
   */
-  const quotes = await source.fetch(base, wanted)
+  const usable: { from: string; to: string; rate: string; source: string; effectiveOn: string }[] =
+    []
+  const skipped: string[] = []
 
-  const known = new Set([base, ...wanted])
-  const usable = quotes.filter((quote) => known.has(quote.to))
-  const skipped = quotes.filter((quote) => !known.has(quote.to)).map((quote) => quote.to)
+  for (const base of bases) {
+    const quotes = await source.fetch(
+      base,
+      wanted.filter((code) => code !== base),
+    )
 
-  if (usable.length === 0) return { source: source.key, written: 0, skipped }
+    const known = new Set([base, ...wanted])
+    for (const quote of quotes) {
+      if (known.has(quote.to)) usable.push(quote)
+      else skipped.push(quote.to)
+    }
+  }
+
+  if (usable.length === 0) return { source: source.key, written: 0, skipped, bases }
 
   return withActor(systemActor(), async (tx) => {
     await tx
@@ -117,6 +151,6 @@ export async function runFxRefresh(): Promise<FxRefreshResult> {
       )
       .onConflictDoNothing()
 
-    return { source: source.key, written: usable.length, skipped }
+    return { source: source.key, written: usable.length, skipped, bases }
   })
 }

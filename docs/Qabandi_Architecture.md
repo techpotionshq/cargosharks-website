@@ -487,7 +487,7 @@ Eight interfaces in the entire system. Each has a real first implementation toda
 | `FileStore` | Supabase Storage | S3 | pilot → R1 move |
 | `AuthProvider` | Better Auth | replaceable | `§8` |
 | `FxRateSource` | daily feed + manual override | provider change | `§8` |
-| `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) · aggregator | `§8`, R2 |
+| `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) | `§8`, R2 |
 | `CustomsFiling` | manual reference capture | Kuwait Single Window | `§8`, R2 |
 | `EInvoiceTransmit` | compliant data, no transmission | accredited provider | `§8`, R2 |
 | `InboundMailSource` | IMAP poll of the mailboxes in `mailboxes` | provider webhook (Resend · Postmark · SES) | `FR-EQ-02`, `§9` |
@@ -508,7 +508,7 @@ Three properties make that safe to have done:
 
 Three settings moved *out* of the environment without becoming integration rows, because they belong to something that already had a row: `INBOUND_MAIL_BATCH` and `INBOUND_MAIL_MAX_ATTACHMENT_MB` are columns on the mailbox they tune, `FX_QUOTE_CURRENCIES` is `currencies.is_tracked`, and `FR-NT-07`'s quiet hours — which were not even variables, but constants in the dispatcher — are columns on `branches`, whose `time_zone` the comparison was already made in.
 
-`CarrierTracking` is the first of the three to have the plug fitted, and it is the argument for the rule. Three implementations now sit behind it — manual entry, an aggregator that pushes, and the carriers themselves answering a poll — and adding the third changed one signature (`poll` takes a query rather than a bare string, because DCSA has three reference parameters and a string cannot say which one it is). Nothing outside `adapters/` and the two workers knows which of the three a deployment runs.
+`CarrierTracking` is the first of the three to have the plug fitted, and it is the argument for the rule. Three implementations have sat behind it — manual entry, an aggregator that pushed events at a webhook, and the carriers themselves answering a poll. Fitting the third changed one signature (`poll` takes a query rather than a bare string, because DCSA has three reference parameters and a string cannot say which one it is); *removing* the aggregator, once carrier-direct proved cheaper and honest about what it knows, took a driver row, a route and a worker, and nothing outside `adapters/` and the poll worker had to be told.
 
 **Outbound public surfaces:** the read-only REST API (`FR-AD-05`) and webhooks (`FR-AD-06`) are served from `apps/service`, share the Zod schemas generated from the Drizzle tables, and are versioned from day one.
 

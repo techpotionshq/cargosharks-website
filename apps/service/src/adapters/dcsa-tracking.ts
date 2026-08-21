@@ -15,10 +15,11 @@
  * covers several carriers, and per-carrier auth is the only difference between
  * them. All of them are free; the cost is this file.
  *
- * The port's original shape was right and Terminal49 was the outlier: carrier
- * APIs answer "what has happened to this reference" when asked, which is
- * exactly `CarrierTracking.poll`. So this needs no webhook, no inbound route
- * and no public endpoint — a poll worker on a schedule, like `fx-refresh`.
+ * The port's original shape was right and the aggregator tried before it was
+ * the outlier: carrier APIs answer "what has happened to this reference" when
+ * asked, which is exactly `CarrierTracking.poll`. So this needs no webhook, no
+ * inbound route and no public endpoint — a poll worker on a schedule, like
+ * `fx-refresh`.
  *
  * ## What is verified here, and what is not
  *

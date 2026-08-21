@@ -327,8 +327,8 @@ Two things deliberately do *not* follow the brand:
 
 ## Integration settings
 
-The mail relay, the FX feed, the carrier registrations, the poll budget,
-WhatsApp, the e-invoice provider and the model provider are **rows, not
+Object storage, the mail relay, the FX feed, the carrier registrations, the
+poll budgets, WhatsApp, the e-invoice provider and the model are **rows, not
 environment variables** — `integration_settings`, edited at Settings →
 Integrations, with credentials sealed under `MAILBOX_ENCRYPTION_KEY`
 (`FR-AD-03`).
@@ -366,15 +366,16 @@ list, and says plainly that it reads no database and so cannot see the rows.
 | Integration | Key | Environment fallback |
 | --- | --- | --- |
 | Outbound mail | `smtp` | `MAIL_DRIVER` `SMTP_HOST` `SMTP_PORT` `SMTP_SECURE` `SMTP_USER` `MAIL_FROM` `SMTP_TLS_REJECT_UNAUTHORIZED` `SMTP_PASSWORD` |
-| Exchange rates | `fx` | `FX_SOURCE` `FX_API_URL` `FX_BASE_CURRENCY` `FX_API_KEY` |
+| Object storage | `fileStore` | `FILE_STORE_DRIVER` `S3_ENDPOINT` `S3_BUCKET` `S3_REGION` `S3_ACCESS_KEY_ID` `S3_FORCE_PATH_STYLE` `S3_SECRET_ACCESS_KEY` |
+| Exchange rates | `fx` | `FX_SOURCE` `FX_API_URL` `FX_API_KEY` |
 | Carrier poll budget | `carrierPoll` | `CARRIER_POLL_BATCH` `CARRIER_POLL_CRON` `CARRIER_POLL_ACTIVE_WITHIN_MINUTES` |
-| Container tracking | `carrierTracking` | `CARRIER_TRACKING_DRIVER` `CARRIER_TRACKING_BASE_URL` `CARRIER_TRACKING_API_KEY` `CARRIER_WEBHOOK_SECRET` |
+| Container tracking | `carrierTracking` | `CARRIER_TRACKING_DRIVER` |
 | Maersk | `carrierMaersk` | `DCSA_MAERSK_BASE_URL` `DCSA_MAERSK_EVENTS_PATH` `DCSA_MAERSK_CONSUMER_KEY` `DCSA_MAERSK_CLIENT_SECRET` |
 | Hapag-Lloyd | `carrierHapag` | `DCSA_HAPAG_BASE_URL` `DCSA_HAPAG_EVENTS_PATH` `DCSA_HAPAG_CLIENT_ID` `DCSA_HAPAG_CLIENT_SECRET` |
 | CMA CGM | `carrierCmacgm` | `DCSA_CMACGM_BASE_URL` `DCSA_CMACGM_EVENTS_PATH` `DCSA_CMACGM_API_KEY` |
 | WhatsApp Business | `whatsapp` | `WHATSAPP_PHONE_NUMBER_ID` `WHATSAPP_ACCESS_TOKEN` `WHATSAPP_WEBHOOK_VERIFY_TOKEN` `WHATSAPP_APP_SECRET` |
 | E-invoice transmission | `einvoice` | `EINVOICE_DRIVER` `EINVOICE_ASP_URL` `EINVOICE_ASP_API_KEY` |
-| Inbound mail webhook | `inboundEmail` | `INBOUND_EMAIL_WEBHOOK_SECRET` |
+| Inbound mail webhook | `inboundEmail` | `INBOUND_MAIL_CRON` `INBOUND_EMAIL_WEBHOOK_SECRET` |
 | Document extraction | `ai` | `AI_MODEL` `AI_MONTHLY_BUDGET_USD` `OPENROUTER_API_KEY` |
 
 Four settings left the environment without becoming integration rows, because
@@ -385,9 +386,17 @@ they belong to something that already had one:
 | `INBOUND_MAIL_BATCH` | `mailboxes.poll_batch` — a fact about one mailbox |
 | `INBOUND_MAIL_MAX_ATTACHMENT_MB` | `mailboxes.max_attachment_mb` |
 | `FX_QUOTE_CURRENCIES` | `currencies.is_tracked` |
+| `FX_BASE_CURRENCY` | the distinct `branches.base_currency` of active entities |
 | `MAIL_FROM` per entity | `branches.mail_from` |
 
-These four are **not** read as a fallback — there is nothing deployment-wide
+`FX_BASE_CURRENCY` is the one that was worse than redundant. It was a single
+deployment-wide currency defaulting to KWD, so a Dubai entity invoicing in AED
+had **no rates fetched at all** — silently, on a deployment whose configuration
+looked complete, and visible only by comparing a variable against a column
+nobody thought to compare it to. Both halves of "what to fetch" are derived now
+and neither can be set.
+
+These are **not** read as a fallback — there is nothing deployment-wide
 left for them to fall back to. The column defaults are the old values, so a
 deployment that never tuned them is unaffected; one that did re-enters them on
 the row. `FR-NT-07`'s quiet hours moved the same way, from constants in the

@@ -218,6 +218,27 @@
       "when": 1787305724132,
       "tag": "0031_chilly_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787322464314,
+      "tag": "0032_spotty_terrax",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787322490163,
+      "tag": "0033_mixed_molecule_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787323643442,
+      "tag": "0034_damp_blink",
+      "breakpoints": true
     }
   ]
 }

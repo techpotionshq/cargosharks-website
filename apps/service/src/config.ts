@@ -152,21 +152,32 @@ const schema = z.object({
   /** A URL template. `{base}` and `{key}` are substituted per request. */
   FX_API_URL: z.string().optional(),
   FX_API_KEY: z.string().optional(),
-  FX_BASE_CURRENCY: z.string().default('KWD'),
   /*
-    `FX_QUOTE_CURRENCIES` was here and is now `currencies.is_tracked`.
+    Neither `FX_BASE_CURRENCY` nor `FX_QUOTE_CURRENCIES` is here any more.
 
-    It was a second list of this operator's currencies sitting beside the table
-    that already was one, free to disagree with it — and the refresh worker
-    intersected the two before writing anything, which is the tell that only
-    one of them was ever the real list.
+    Both were a second answer to a question a column already answered. The
+    quotes are `currencies.is_tracked`; the bases are the distinct
+    `branches.base_currency` of the active entities — a branch is a legal
+    entity that invoices in one currency (FR-ID-01), so that column *is* the
+    list of currencies this operator needs rates into.
+
+    The base one was not merely redundant. It was a single deployment-wide
+    value defaulting to KWD, so a Dubai entity invoicing in AED had no rates
+    fetched at all — silently, on a deployment whose configuration looked
+    complete, and visible only by comparing a variable against a column nobody
+    thought to compare it to.
   */
 
-  CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49', 'dcsa']).default('manual'),
-  CARRIER_TRACKING_API_KEY: z.string().optional(),
-  CARRIER_TRACKING_BASE_URL: z.string().default('https://api.terminal49.com'),
-  /** Required before the webhook will accept anything — see webhooks/index.ts. */
-  CARRIER_WEBHOOK_SECRET: z.string().optional(),
+  /*
+    Where container milestones come from: an operator, or the carriers.
+
+    There is no aggregator driver any more. It priced per container and it
+    pushed rather than answered, so it bought an ingestion worker and a public
+    endpoint that could move a discharge date — in exchange for events the
+    carriers below publish for nothing. `adapters/carrier-tracking.ts` keeps
+    the longer version of that argument.
+  */
+  CARRIER_TRACKING_DRIVER: z.enum(['manual', 'dcsa']).default('manual'),
 
   /*
     Carrier-direct over DCSA — the driver with no licence fee.

@@ -62,7 +62,7 @@ import {
   workingCalendars,
 } from '@qabandi/db'
 import { slaDueAt, type WorkingCalendar } from '@qabandi/core'
-import { adapters, resolveInboundMail } from '../adapters/index'
+import { fileStore, resolveInboundMail } from '../adapters/index'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
 import { identifyingDomain, inboundStorageKey, referencesIn } from './inbound-routing'
 
@@ -605,7 +605,7 @@ async function storeAttachments(
 ): Promise<StoredAttachment[]> {
   if (message.attachments.length === 0) return []
 
-  const fileStore = adapters().fileStore
+  const store = await fileStore()
   const out: StoredAttachment[] = []
 
   for (const [index, part] of message.attachments.entries()) {
@@ -632,7 +632,7 @@ async function storeAttachments(
       continue
     }
 
-    const stored = await fileStore.put(key, part.content, part.contentType)
+    const stored = await store.put(key, part.content, part.contentType)
     out.push({
       storageKey: stored.storageKey,
       filename: part.filename,

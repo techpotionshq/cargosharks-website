@@ -383,6 +383,56 @@ export const notificationTemplates = pgTable(
 )
 
 /**
+ * Whether an event sends on a channel at all — FR-NT-01, FR-NT-03.
+ *
+ * Distinct from `notification_templates.is_active`, and the difference is the
+ * whole reason this table exists. Deactivating a template means *"fall back to
+ * the default beneath it"*; deactivating the **default** therefore leaves the
+ * dispatcher with no template and it records `failed: no template` — an
+ * administrator who wanted silence gets a delivery log full of failures and a
+ * red screen. "Do not send this" and "word this differently" are different
+ * questions and now have different columns.
+ *
+ * Equally distinct from `integration_settings.is_active`, which means "ignore
+ * this row and read the environment instead" — a rollback, not a kill switch.
+ * Switching SMTP off there falls through to `MAIL_DRIVER`'s default and keeps
+ * sending, which is the opposite of what anybody clicking it expects.
+ *
+ * ## Absence means on
+ *
+ * There is no seed for this table and there should not be one. A deployment
+ * that has never opened the screen has no rows and sends everything, which is
+ * the behaviour every deployment already had — `core/integrations.ts` argues
+ * the same for the mail driver: *"a deployment that quietly decided not to
+ * send anything would satisfy the letter of 'no surprises' by failing at the
+ * thing it was installed to do."* Only an explicit `false` silences anything.
+ */
+export const notificationChannelSettings = pgTable(
+  'notification_channel_settings',
+  {
+    id: pk(),
+    /** Null is the master switch for the channel; an event key narrows it. */
+    eventKey: text('event_key'),
+    channel: channelEnum('channel').notNull(),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    ...timestamps,
+  },
+  /*
+    `nulls not distinct`, exactly as `notification_templates` does it.
+
+    Postgres treats NULLs as distinct in a unique index by default, so without
+    this the master row — the one with a null `event_key` — could be inserted
+    twice and the upsert in `saveNotificationChannelSettings` would have no
+    conflict target to land on.
+  */
+  (t) => [
+    unique('notification_channel_settings_unique')
+      .on(t.eventKey, t.channel)
+      .nullsNotDistinct(),
+  ],
+)
+
+/**
  * Free-time configuration — the three rows behind one clock (§7.2).
  *
  * Demurrage, detention and storage differ only in what starts them, who they

@@ -207,9 +207,17 @@ export interface EnquirySummary {
  */
 export interface QuoteOptionView {
   readonly id: string
-  readonly carrier: string
-  readonly service: string
-  readonly transitDays: number
+  /*
+    Null where the quotation was priced off a rate card, which is most of them.
+
+    A card knows what a lane costs, not who sails it — carrier, service and
+    transit only exist once an agent has answered an RFQ. Modelled as absent
+    rather than as the string "—" so the screen can decide how to say so;
+    a dash baked into a query reads as a rendering fault everywhere it lands.
+  */
+  readonly carrier: string | null
+  readonly service: string | null
+  readonly transitDays: number | null
   readonly buy: Money
   readonly sell: Money
   readonly marginPct: number
@@ -234,15 +242,21 @@ export interface QuoteComparison {
   readonly status?: string
   readonly enquiryReference: string
   readonly customerName: string
-  readonly lane: string
+  readonly lane: string | null
   readonly mode: Mode
   readonly containerType: string | null
-  readonly incoterm: string
+  readonly incoterm: string | null
   readonly preparedBy: string
   readonly pricedAt: Date
-  /** How long the same enquiry took by hand — Moment 2's punchline. */
-  readonly manualTurnaroundHours: number
-  readonly pricingMs: number
+  /**
+   * How long the same enquiry took by hand — Moment 2's punchline — and how
+   * long the engine took to answer it.
+   *
+   * Both null unless they were actually measured. "Priced in 0 ms" is not a
+   * fast quotation, it is a missing number wearing the punchline's clothes.
+   */
+  readonly manualTurnaroundHours: number | null
+  readonly pricingMs: number | null
   /**
    * Whether the SLA clock has been stopped, and whether the enquiry is
    * finished.

@@ -121,6 +121,67 @@ export async function monthToDateUsd(): Promise<number> {
 }
 
 /**
+ * Ask a model in pieces, and record having asked.
+ *
+ * The same guarantees as `invoke` — the budget is checked before, the row is
+ * written after and on both paths — with the answer yielded as it arrives.
+ * The ledger is written from the `final` delta, which carries exactly the
+ * response `complete` would have returned, so a streamed call and a whole one
+ * are indistinguishable in `ai_invocations`.
+ *
+ * A consumer that abandons the iterator still gets a row: the `finally` runs
+ * on early return, and a person who closed the panel halfway through an answer
+ * was still billed for what the model had generated.
+ */
+export async function* invokeStream(
+  context: InvocationContext,
+  request: ModelRequest,
+): AsyncGenerator<string, Invocation | undefined, void> {
+  const provider = await modelProvider()
+  if (!provider.available) {
+    throw new AiUnavailableError(
+      'ai.not_configured',
+      'No model provider is configured for this deployment.',
+    )
+  }
+
+  await assertWithinBudget()
+
+  const requested = modelOf(provider)
+  const inputHash = fingerprint(request, requested, context.promptVersion)
+  const startedAt = Date.now()
+
+  let response: ModelResponse | undefined
+  let failure: Error | undefined
+
+  try {
+    for await (const delta of provider.stream(request)) {
+      if (delta.type === 'text') yield delta.text
+      else response = delta.response
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error : new Error(String(error))
+  } finally {
+    const invocationId = await record({
+      context,
+      request,
+      requested,
+      inputHash,
+      latencyMs: Date.now() - startedAt,
+      response,
+      failure,
+    })
+    if (!failure && response) {
+      // eslint-disable-next-line no-unsafe-finally
+      return { response, invocationId }
+    }
+  }
+
+  if (failure) throw failure
+  return undefined
+}
+
+/**
  * Ask a model, and record having asked.
  *
  * The order matters and is not the obvious one: the provider is resolved and
@@ -198,6 +259,31 @@ export async function invoke(
 
   if (failure) throw failure
   return { response: response!, invocationId }
+}
+
+/**
+ * The model name off the resolved provider rather than out of the settings.
+ *
+ * `key` is `openrouter:<model>`, and reading it here is what keeps the ledger's
+ * `model_requested` in step with what was actually sent.
+ */
+function modelOf(provider: { readonly key: string }): string {
+  return provider.key.includes(':') ? provider.key.split(':').slice(1).join(':') : provider.key
+}
+
+/** Refuses before the call when the month's ceiling has been reached. */
+async function assertWithinBudget(): Promise<void> {
+  const settings = await integration('ai')
+  const ceiling = monthlyBudgetUsd(settings)
+  if (ceiling <= 0) return
+
+  const spent = await monthToDateUsd()
+  if (spent >= ceiling) {
+    throw new AiUnavailableError(
+      'ai.budget_exhausted',
+      `This month's model spend (${spent.toFixed(2)} USD) has reached the ceiling of ${ceiling.toFixed(2)} USD.`,
+    )
+  }
 }
 
 interface RecordInput {

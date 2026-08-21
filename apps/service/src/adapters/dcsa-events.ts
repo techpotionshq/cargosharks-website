@@ -1,14 +1,13 @@
 /**
  * DCSA Track & Trace 2.2, translated to ours — the pure half of carrier-direct.
  *
- * Sits beside `carrier-events.ts` rather than inside it, and for a reason that
- * is about shape rather than tidiness. That file maps a *string* — one
- * provider event name to one milestone code — because Terminal49 and Vizion
- * both send a name. A DCSA event has no single name: what happened is the pair
- * `eventType` + the type code for that event type, and *whether it happened at
- * all* is a third field, `eventClassifierCode`. Flattening that into a
- * synthetic string first would invent a vocabulary no carrier sends and make
- * every bug a bug in the flattening.
+ * A DCSA event has no single name to look up, which is what makes this a
+ * table of pairs rather than the one-string-to-one-code map a provider feed
+ * would want. What happened is `eventType` plus the type code belonging to
+ * that event type, and *whether it happened at all* is a third field,
+ * `eventClassifierCode`. Flattening those into a synthetic string first would
+ * invent a vocabulary no carrier sends and make every bug a bug in the
+ * flattening.
  *
  * It obeys the same rule about not reaching for the world — no `config`
  * import, no fetch — so it runs in CI where a carrier account never could.
@@ -93,10 +92,11 @@ interface Mapping {
  *
  * Keyed `EVENTTYPE/CODE` because that pair is what DCSA actually sends. The
  * right-hand side is the seeded `milestone_templates.code` vocabulary in lower
- * snake case — `discharged`, `vessel_departed`, `gate_out` — which is the
- * mistake `carrier-events.ts` records making the first time: invented codes
- * match no template, every event is dropped with a reason, and the integration
- * looks wired up while delivering nothing.
+ * snake case — `discharged`, `vessel_departed`, `gate_out` — and it is worth
+ * being exact about, because the first feed built here invented its own
+ * (`DISCHARGED`, `GATE_OUT_DESTINATION`): invented codes match no template,
+ * every event is dropped with a reason, and the integration looks wired up
+ * while delivering nothing.
  *
  * Codes deliberately absent, each because it has no seeded template and a
  * milestone without one has no sequence, no owner and no visibility rule:
@@ -233,10 +233,9 @@ export function readDcsaEvents(events: readonly DcsaEvent[]): DcsaReading {
     /*
       An unparseable timestamp is dropped, not defaulted to now.
 
-      The same call `carrier-events.ts` makes, for the same reason: free time
-      and demurrage are counted from these dates (FR-JB-07), so a milestone
-      dated "now" because its timestamp was malformed bills the customer
-      wrongly and looks entirely plausible on the screen.
+      Free time and demurrage are counted from these dates (FR-JB-07), so a
+      milestone dated "now" because its timestamp was malformed bills the
+      customer wrongly and looks entirely plausible on the screen.
     */
     if (!occurredAt) {
       unmapped.push(`${key} (bad timestamp: ${event.eventDateTime ?? 'absent'})`)

@@ -13,7 +13,8 @@
     "./states": "./src/states.ts",
     "./import": "./src/import.ts",
     "./ai": "./src/ai.ts",
-    "./extraction": "./src/extraction.ts"
+    "./extraction": "./src/extraction.ts",
+    "./assistant": "./src/assistant.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

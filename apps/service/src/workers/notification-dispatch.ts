@@ -51,6 +51,7 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import {
   branches,
   customerContacts,
+  notificationChannelSettings,
   notificationDeliveries,
   notificationOutbox,
   notificationTemplates,
@@ -59,7 +60,7 @@ import {
   systemActor,
   withActor,
 } from '@qabandi/db'
-import { notificationEvent, renderTemplate } from '@qabandi/core'
+import { channelDecision, notificationEvent, renderTemplate } from '@qabandi/core'
 import type { NotificationChannel } from '../ports/index'
 
 /** Registered adapters. Adding a channel is one entry and a column value. */
@@ -120,11 +121,23 @@ export interface DispatchResult {
   readonly suppressed: number
 }
 
+/**
+ * `data` is nullable because the scheduler sends nothing.
+ *
+ * pg-boss gives a cron-scheduled job a null payload, and this ran on a cron
+ * from the day it was written: `data.outboxId` threw `TypeError` on every
+ * tick, so the scheduled dispatcher never once completed — 616 failed jobs
+ * and not a single delivery. Every test called it as `{ outboxId }`, which is
+ * the one shape the scheduler never sends, so the suite stayed green over a
+ * worker that had never worked.
+ *
+ * The optional chain is the fix; the signature is the documentation.
+ */
 export async function runNotificationDispatch(
-  data: Record<string, unknown>,
+  data: Record<string, unknown> | null | undefined,
   asOf = new Date(),
 ): Promise<DispatchResult> {
-  const outboxId = typeof data.outboxId === 'string' ? data.outboxId : null
+  const outboxId = typeof data?.outboxId === 'string' ? data.outboxId : null
   const { expanded, suppressed } = await expand(outboxId, asOf)
   const { sent, failed, deferred } = await flush(asOf)
   return { expanded, sent, failed, deferred, suppressed }
@@ -145,6 +158,23 @@ async function expand(
   asOf: Date,
 ): Promise<{ expanded: number; suppressed: number }> {
   return withActor(systemActor(), async (tx) => {
+    /*
+      The send switches, read once for the whole run rather than per delivery.
+
+      A busy morning expands hundreds of rows against thirteen events and one
+      channel, so this is one query instead of one per recipient per channel.
+      Reading it *inside* the same transaction as the expansion matters: an
+      administrator switching mail off while a batch is mid-flight gets a
+      consistent answer for that batch rather than half of one.
+    */
+    const switches = await tx
+      .select({
+        eventKey: notificationChannelSettings.eventKey,
+        channel: notificationChannelSettings.channel,
+        isEnabled: notificationChannelSettings.isEnabled,
+      })
+      .from(notificationChannelSettings)
+
     const pending = await tx
       .select({
         id: notificationOutbox.id,
@@ -232,6 +262,41 @@ async function expand(
         }
 
         for (const channel of targets) {
+          /*
+            Switched off — FR-NT-03.
+
+            Recorded rather than skipped, and checked *before* the template is
+            resolved. Both halves are deliberate.
+
+            Recorded, because a notification that leaves no row is one nobody
+            can answer a question about: "did the customer get told the invoice
+            was overdue" has to have an answer six months later, and "off at
+            the time" is a perfectly good one. It is the same `suppressed`
+            state that quiet hours and opt-outs already write, so the delivery
+            log stays one list with one vocabulary.
+
+            Before the template, because a silenced event does not need one. A
+            deployment that turns an event off and then deletes its wording
+            would otherwise start recording `failed: no template` against a
+            decision that was working exactly as intended, and a log full of
+            failures is a log nobody reads.
+          */
+          const decision = channelDecision(switches, event.eventKey, channel)
+
+          if (!decision.enabled) {
+            await tx.insert(notificationDeliveries).values({
+              outboxId: event.id,
+              principalId: recipient.principalId,
+              channel: channel as 'email',
+              locale: recipient.locale,
+              toAddress: recipient.email,
+              status: 'suppressed' as const,
+              suppressedReason: decision.reason,
+            })
+            suppressed++
+            continue
+          }
+
           const template = await resolveTemplate(
             tx,
             event.eventKey,

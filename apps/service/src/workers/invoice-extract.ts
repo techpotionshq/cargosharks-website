@@ -64,7 +64,7 @@ import {
 } from '@qabandi/core'
 import { INVOICE_EXTRACTION_SCHEMA } from '@qabandi/core'
 import type { ImportLookups } from '@qabandi/core/import'
-import { adapters } from '../adapters/index'
+import { fileStore } from '../adapters/index'
 import { invoke } from '../ai/ledger'
 import { INVOICE_PROMPT_VERSION, INVOICE_USER_PROMPT, invoiceSystemPrompt } from '../ai/prompts'
 import type { ModelContent } from '../ports/index'
@@ -134,7 +134,7 @@ export async function extractSupplierInvoice(
   const asset = await loadAsset(actor, assetId)
   const reference = await loadReference(actor)
 
-  const bytes = await adapters().fileStore.get(asset.storageKey)
+  const bytes = await (await fileStore()).get(asset.storageKey)
   if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
     /*
       Refused before the call rather than after it.

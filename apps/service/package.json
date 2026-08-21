@@ -12,7 +12,8 @@
     "verify:storage": "tsx src/adapters/verify-file-store.ts",
     "verify:notifications": "tsx src/workers/verify-notifications.ts",
     "verify:last-mile": "tsx src/verify-last-mile.ts",
-    "verify:tracking": "tsx src/adapters/verify-carrier-tracking.ts"
+    "verify:tracking": "tsx src/adapters/verify-carrier-tracking.ts",
+    "verify:model": "tsx src/adapters/verify-model.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

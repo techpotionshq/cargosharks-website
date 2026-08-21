@@ -147,13 +147,23 @@ export interface RecordDialogProps {
   readonly trigger?: (props: { onClick: () => void }) => ReactNode
 }
 
+/*
+  All four triggers stand `h-9`, and that is the point of the map.
+
+  These buttons share action bars with `Button` — the enquiry header alone
+  carries three of them next to "Price it" — and `Button`'s default size is
+  `h-9`. `ghost` used to be `h-8`, which is invisible in isolation and obvious
+  in a row: two dialogs, a link and a submit, none of them agreeing on a
+  baseline. Quiet is carried by colour and by the missing border; it is not
+  carried by being four pixels shorter than its neighbours.
+*/
 const TRIGGER: Record<string, string> = {
   primary:
     'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover',
   secondary:
     'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken',
   ghost:
-    'inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink',
+    'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink',
   danger:
     'inline-flex h-9 items-center gap-1.5 rounded-sm border border-critical/40 bg-surface px-3.5 text-[0.875rem] font-medium text-critical transition-colors hover:bg-critical-soft',
 }

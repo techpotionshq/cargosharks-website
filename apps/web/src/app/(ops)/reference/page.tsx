@@ -40,6 +40,25 @@ import {
 } from '@/features/admin/ui/reference-dialogs'
 import { trimDecimal } from '@/lib/format'
 
+/**
+ * One height for every register on this page — 34rem.
+ *
+ * Picked against what the tables actually hold rather than against how a
+ * window happens to look. A row is about 40px, so the seeded registers lay out
+ * flat at roughly: charge types 21 rows (~54rem), milestone templates 43
+ * (~110rem), document types 11, exception codes 9, working calendars 4, and a
+ * duty tariff that is three lines seeded and the national schedule in a real
+ * deployment. The short side of the first row is the fixed one — four
+ * calendars above nine exception codes comes to about this — so the cap is set
+ * there: the stack ends up full, the charge register scrolls, and no single
+ * table gets to decide that the page is two thousand pixels tall.
+ *
+ * The cards are flex columns so their bodies can claim whatever is left below
+ * the header; that is what keeps the last row against the card's bottom edge
+ * instead of floating above a slab of empty canvas.
+ */
+const PANEL = 'flex max-h-136 flex-col'
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('reference')
   return { title: t('title') }
@@ -98,7 +117,17 @@ export default async function ReferencePage() {
         </p>
       ) : null}
 
-      {/* The counts first — this is the screen's actual job. */}
+      {/*
+        The counts first — this is the screen's actual job.
+
+        The separators are the `bg-line` container showing through a one-pixel
+        gap, which is cheap and correct right up to the moment the last row
+        runs short: the cells that were never rendered leave the container
+        itself on display, and a slab of line-grey at the end of the strip
+        reads as a tile that failed to load. Padding the list to a multiple of
+        six covers it at all three breakpoints at once, since six divides by
+        both two and three.
+      */}
       <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         {counts.map((row) => (
           <div key={row.key} className="bg-surface px-4 py-3">
@@ -112,10 +141,13 @@ export default async function ReferencePage() {
             </p>
           </div>
         ))}
+        {Array.from({ length: (6 - (counts.length % 6)) % 6 }, (_, index) => (
+          <div key={`pad-${index}`} aria-hidden className="bg-surface" />
+        ))}
       </div>
 
       <Grid className="mb-4">
-        <Card className="lg:col-span-7" padding="none">
+        <Card className={`${PANEL} lg:col-span-7`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="finance"
@@ -124,7 +156,7 @@ export default async function ReferencePage() {
               description={t('chargeTypesHint')}
             />
           </div>
-          <TableShell minWidth="none" className="border-t border-line">
+          <TableShell minWidth="none" scroll="fill" className="border-t border-line">
             <THead>
               <TR>
                 <TH>{t('key')}</TH>
@@ -163,8 +195,13 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <div className="flex flex-col gap-4 lg:col-span-5">
-          <Card>
+        <div className={`${PANEL} gap-4 lg:col-span-5`}>
+          {/*
+            `shrink-0`: a forwarder has four working calendars and will never
+            have forty, so this card keeps its natural height and the card
+            below it absorbs whatever the row's cap leaves over.
+          */}
+          <Card className="shrink-0">
             <CardHeader icon="calendar" eyebrow={t('eyebrow')} title={t('calendars')} />
             <p className="mt-1 mb-4 text-[0.8125rem] text-ink-muted">{t('calendarsHint')}</p>
             <ul className="flex flex-col gap-2">
@@ -180,9 +217,16 @@ export default async function ReferencePage() {
             </ul>
           </Card>
 
-          <Card>
+          {/*
+            `flex-1` and its own scroll, for the same reason the register has
+            one: the grid stretches this column to the row's height but a stack
+            of cards keeps its natural one, so the remainder fell out of the
+            bottom as bare canvas. The last card takes it, and the list inside
+            scrolls rather than deciding how tall the row is.
+          */}
+          <Card className="flex min-h-0 flex-1 flex-col">
             <CardHeader icon="alert" eyebrow={t('eyebrow')} title={t('exceptionCodes')} />
-            <ul className="mt-4 flex flex-col gap-2">
+            <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
               {sample.exceptions.map((code) => (
                 <li
                   key={code.code}
@@ -203,9 +247,9 @@ export default async function ReferencePage() {
       </Grid>
 
       <Grid>
-        <Card className="lg:col-span-4">
+        <Card className={`${PANEL} lg:col-span-4`}>
           <CardHeader icon="jobs" eyebrow={t('eyebrow')} title={t('containers')} />
-          <ul className="mt-4 flex flex-col gap-1.5">
+          <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.containers.map((row) => (
               <li key={row.code} className="flex items-center justify-between text-[0.875rem]">
                 <span className="ref text-ink">{row.code}</span>
@@ -215,9 +259,11 @@ export default async function ReferencePage() {
           </ul>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className={`${PANEL} lg:col-span-4`}>
           <CardHeader icon="rates" eyebrow={t('eyebrow')} title={t('incoterms')} />
-          <ul className="mt-4 grid grid-cols-2 gap-1.5">
+          {/* `content-start`: a two-column grid given spare height spreads its
+              rows down it, which would undo the point of the fill. */}
+          <ul className="qb-scroll mt-4 grid min-h-0 flex-1 auto-rows-min grid-cols-2 content-start gap-1.5 overflow-y-auto">
             {sample.incoterms.map((row) => (
               <li key={row.code} className="flex flex-col text-[0.8125rem]">
                 <span className="ref text-ink">{row.code}</span>
@@ -227,9 +273,9 @@ export default async function ReferencePage() {
           </ul>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className={`${PANEL} lg:col-span-4`}>
           <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('documentTypes')} />
-          <ul className="mt-4 flex flex-col gap-1.5">
+          <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.documents.map((row) => (
               <li key={row.code} className="flex items-center justify-between text-[0.8125rem]">
                 <span className="text-ink">{row.nameEn}</span>
@@ -250,7 +296,7 @@ export default async function ReferencePage() {
         same kind of thing as a charge type: rows the product runs on.
       */}
       <Grid className="mt-4">
-        <Card className="lg:col-span-12" padding="none">
+        <Card className={`${PANEL} lg:col-span-12`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="tracking"
@@ -264,7 +310,7 @@ export default async function ReferencePage() {
           {milestones.length === 0 ? (
             <EmptyState icon="tracking" title={t('noMilestones')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('shape')}</TH>
@@ -306,7 +352,24 @@ export default async function ReferencePage() {
           )}
         </Card>
 
-        <Card className="lg:col-span-6" padding="none">
+        {/*
+          The pair where the row is sized by the *shorter* card, not the taller.
+
+          A forwarder has three or four working calendars and, once the
+          national tariff is loaded, several hundred duty lines. Stretching the
+          calendars to the tariff's cap gives four rows above a slab of
+          emptiness; letting each end where its data ends leaves the tariff
+          hanging a couple of hundred pixels below its neighbour. Neither is a
+          grid.
+
+          So the calendars keep their natural height and set the row, and the
+          tariff beside them takes `h-0 min-h-full` — a grid item with no
+          height of its own contributes nothing to the row's measurement, then
+          fills whatever the row turns out to be. The tariff scrolls inside it.
+          Both cards end on the same line, neither is padded, and the height
+          follows the data rather than a number chosen here.
+        */}
+        <Card className={`${PANEL} lg:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="calendar"
@@ -322,7 +385,7 @@ export default async function ReferencePage() {
             />
           </div>
 
-          <TableShell className="border-t border-line" minWidth="none">
+          <TableShell className="border-t border-line" minWidth="none" scroll="fill">
             <THead>
               <TR>
                 <TH>{t('calendar')}</TH>
@@ -361,7 +424,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <Card className="lg:col-span-6" padding="none">
+        <Card className={`${PANEL} h-0 min-h-full lg:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="customs"
@@ -375,7 +438,7 @@ export default async function ReferencePage() {
           {duties.length === 0 ? (
             <EmptyState icon="customs" title={t('noDuties')} description={t('noDutiesHint')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('hsPrefix')}</TH>
@@ -385,7 +448,15 @@ export default async function ReferencePage() {
                 </TR>
               </THead>
               <TBody>
-                {duties.slice(0, 25).map((row) => (
+                {/*
+                  Every row the query returns, not the first 25 it used to
+                  show. A silent slice was survivable while the panel ended
+                  where the data did; now that it scrolls, the last visible row
+                  *is* the claim that there is nothing after it, and a
+                  truncation nothing announces makes the panel lie. The real
+                  ceiling stays where it belongs, in `listDutyRates`.
+                */}
+                {duties.map((row) => (
                   <TR key={row.id}>
                     <TD className="ref whitespace-nowrap">
                       {row.hsPrefix}
@@ -417,7 +488,7 @@ export default async function ReferencePage() {
         with no way to configure it.
       */}
       <Grid className="mt-4">
-        <Card className="lg:col-span-6" padding="none">
+        <Card className={`${PANEL} lg:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="rates"
@@ -427,7 +498,7 @@ export default async function ReferencePage() {
               actions={<ChargeableRuleDialog />}
             />
           </div>
-          <TableShell className="border-t border-line" minWidth="none">
+          <TableShell className="border-t border-line" minWidth="none" scroll="fill">
             <THead>
               <TR>
                 <TH>{t('mode')}</TH>
@@ -451,7 +522,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <Card className="lg:col-span-6" padding="none">
+        <Card className={`${PANEL} lg:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="clock"
@@ -468,7 +539,7 @@ export default async function ReferencePage() {
               description={t('noFreeTimeRulesHint')}
             />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('kind')}</TH>

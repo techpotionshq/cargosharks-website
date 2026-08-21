@@ -284,8 +284,11 @@ export async function ConsolChargeDialog({ consolidationId }: { readonly consoli
     { kind: 'text', name: 'description', label: tc('description'), span: 12 },
   ]
 
+  // `lg`, not the default: the currency picker sits in a span-4 column, and
+  // at `md` that is narrow enough to render "KWD — Kuwaiti D" and stop.
   return (
     <RecordDialog
+      size="lg"
       action={addConsolCharge}
       fields={fields}
       icon="finance"

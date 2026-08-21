@@ -91,8 +91,10 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     <div className="flex min-h-dvh bg-canvas">
       <div className="hidden w-62 shrink-0 border-e border-chrome-line bg-chrome md:block">
         <nav className="sticky top-0 flex h-dvh flex-col">
-          <div className="border-b border-chrome-line px-4 py-3.5">
-            <Link href="/dashboard" className="block rounded-sm outline-offset-4">
+          {/* The topbar's height exactly, so the two hairlines meet at the
+              seam — see the same block in `app/(ops)/layout.tsx`. */}
+          <div className="flex h-14 items-center border-b border-chrome-line px-4">
+            <Link href="/dashboard" className="block min-w-0 rounded-sm outline-offset-4">
               <Logo brand={brand} locale={locale} tone="chrome" size="sm" />
             </Link>
           </div>

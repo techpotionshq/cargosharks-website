@@ -36,6 +36,7 @@ import { Panel } from '@/ui/panel'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Term } from '@/ui/term'
+import { Notice } from '@/ui/notice'
 
 export async function generateMetadata({
   params,
@@ -126,10 +127,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         precisely because a customer came back late — but it says so first.
       */}
       {expired && !['accepted', 'rejected'].includes(quote.status) ? (
-        <p className="mb-4 flex items-center gap-2 rounded-card border border-caution/40 bg-caution-soft/50 px-4 py-3 text-[0.875rem] text-caution">
-          <Icon name="clock" size={16} className="shrink-0" />
+        <Notice tone="caution" icon="clock" className="mb-4">
           {t('expired', { on: formatDate(new Date(quote.validUntil!), locale) })}
-        </p>
+        </Notice>
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">

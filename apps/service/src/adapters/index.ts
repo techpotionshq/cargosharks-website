@@ -65,7 +65,7 @@ import {
 } from './carrier-tracking'
 import { resolveCustomsFiling } from './customs'
 import { noTransmit, resolveEInvoiceTransmit } from './einvoice'
-import { resolveFileStore } from './file-store'
+import { resolveFileStore, unavailableFileStore } from './file-store'
 import { manualFxSource, resolveFxSource } from './fx'
 import { modelProviderFrom, noModel } from './model'
 
@@ -78,8 +78,7 @@ export {
   type SmtpOptions,
 } from './smtp'
 export { manualFxSource, httpFxSource } from './fx'
-export { manualCarrierTracking, terminal49Tracking, dcsaCredentials } from './carrier-tracking'
-export { mapProviderEvents, type ProviderEvent } from './carrier-events'
+export { manualCarrierTracking, dcsaCredentials } from './carrier-tracking'
 export {
   dcsaTracking,
   fetchDcsaEvents,
@@ -381,30 +380,55 @@ export async function noteMailboxError(id: string, message: string | null): Prom
 }
 
 /**
- * The ports that are still environment-only, and still resolved once.
+ * The one port that is still environment-only, and still resolved once.
  *
- * Two of the original five. `fileStore` holds a signing client and its
- * credentials belong to the service alone; `customsFiling` has one
- * implementation. Neither can be changed from a screen, so neither has a
- * reason to be re-resolved — and memoising keeps a configuration error from
- * presenting as an intermittent one.
- *
- * The other three moved to `fxSource()`, `carrierTracking()` and
- * `eInvoiceTransmit()` above, which are async and unmemoised.
+ * `customsFiling` has a single implementation and nothing to configure. Every
+ * other port is a settings row now and is resolved per use, on the reasoning
+ * at the top of this file.
  */
 export interface Adapters {
-  readonly fileStore: FileStore
   readonly customsFiling: CustomsFiling
 }
 
 let resolved: Adapters | undefined
 
 export function adapters(): Adapters {
-  resolved ??= {
-    fileStore: resolveFileStore(),
-    customsFiling: resolveCustomsFiling(),
-  }
+  resolved ??= { customsFiling: resolveCustomsFiling() }
   return resolved
+}
+
+/**
+ * Object storage, resolved per use.
+ *
+ * The one resolver here that does **not** degrade to a working default, and
+ * the reason is worth stating where somebody will read it: every other port's
+ * fallback means "a person does this by hand instead". `memoryFileStore` does
+ * not. It accepts an upload, reports success, and loses the bytes at the next
+ * restart — so falling back to it would turn a mistyped bucket name into
+ * documents that silently disappear.
+ *
+ * A bad configuration therefore returns a store that refuses, loudly, at the
+ * point of use. `FileStoreError` is a shape every caller already handles.
+ */
+export async function fileStore(log?: (o: unknown, m: string) => void): Promise<FileStore> {
+  const settings = await integration('fileStore')
+
+  try {
+    const built = resolveFileStore(settings)
+    if (noted.get('fileStore') !== null) {
+      noted.set('fileStore', null)
+      await noteIntegrationResult('fileStore', null).catch(() => {})
+    }
+    return built
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (noted.get('fileStore') !== message) {
+      noted.set('fileStore', message)
+      await noteIntegrationResult('fileStore', message).catch(() => {})
+      log?.({ integration: 'fileStore', err: message }, 'object storage is not configured')
+    }
+    return unavailableFileStore(message)
+  }
 }
 
 /**
@@ -426,12 +450,13 @@ export async function describeAdapters(): Promise<Record<string, string>> {
     resolver here falls back to the environment — so this cannot be the thing
     that prevents a service from starting and saying why.
   */
-  const [mail, fx, carrier, einvoice, model] = await Promise.all([
+  const [mail, fx, carrier, einvoice, model, store] = await Promise.all([
     integration('smtp'),
     fxSource(),
     carrierTracking(),
     eInvoiceTransmit(),
     modelProvider(),
+    fileStore(),
   ])
 
   return {
@@ -467,7 +492,7 @@ export async function describeAdapters(): Promise<Record<string, string>> {
       ? 'imap — mailboxes configured in settings'
       : 'imap — MAILBOX_ENCRYPTION_KEY not set, mailboxes unreadable',
     fx: fx.key,
-    fileStore: a.fileStore.key,
+    fileStore: store.key,
     carrierTracking: carrier.key,
     customsFiling: a.customsFiling.key,
     eInvoice: einvoice.key,

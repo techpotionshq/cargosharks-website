@@ -102,8 +102,20 @@ export interface IntegrationDriver {
   readonly live: boolean
 }
 
+/**
+ * Which heading an integration sits under on the settings screen.
+ *
+ * Twelve flat cards is a list somebody scrolls past. Grouped, it is four short
+ * answers to "what is this deployment wired to" — and the grouping is not
+ * decoration: the four are owned by different people. Storage and mail are the
+ * platform's, the carriers are operations', money is finance's, and the model
+ * is a spend somebody signs off.
+ */
+export type IntegrationGroup = 'platform' | 'carriers' | 'finance' | 'intelligence'
+
 export interface IntegrationSpec {
   readonly key: string
+  readonly group: IntegrationGroup
   /** Absent where the integration has no on/off switch, only settings. */
   readonly drivers?: readonly IntegrationDriver[]
   readonly driverEnv?: string
@@ -134,6 +146,7 @@ function dcsaCarrier(
 ): IntegrationSpec {
   return {
     key,
+    group: 'carriers',
     fields: [
       {
         name: 'baseUrl',
@@ -175,6 +188,7 @@ function dcsaCarrier(
 export const INTEGRATIONS: readonly IntegrationSpec[] = [
   {
     key: 'smtp',
+    group: 'platform',
     driverEnv: 'MAIL_DRIVER',
     defaultDriver: 'smtp',
     /*
@@ -221,8 +235,65 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     probe: true,
   },
 
+  /*
+    Object storage — every document this system stores.
+
+    On the screen for the same reason as the rest: the bucket and its keys are
+    the client's, provisioned at Cloudflare R2 or AWS on their account, and a
+    key rotation there should not be a deploy here.
+
+    Unlike every other integration, this one has no safe degraded mode. A
+    tracking feed that fails means milestones are typed by hand; a file store
+    that fails and falls back to `memory` means a document was accepted, stored
+    in a process, and lost at the next restart — with nothing anywhere saying
+    so. So `memory` is a driver somebody chooses, never one this deployment
+    falls back to.
+  */
+  {
+    key: 'fileStore',
+    group: 'platform',
+    driverEnv: 'FILE_STORE_DRIVER',
+    defaultDriver: 's3',
+    drivers: [
+      { value: 's3', live: true },
+      { value: 'memory', live: false },
+    ],
+    fields: [
+      {
+        name: 'endpoint',
+        kind: 'url',
+        env: 'S3_ENDPOINT',
+        required: true,
+        mono: true,
+        placeholder: 'https://<account>.r2.cloudflarestorage.com',
+      },
+      { name: 'bucket', kind: 'text', env: 'S3_BUCKET', required: true, mono: true },
+      /*
+        R2 ignores the value and still signs with it, so it is required rather
+        than optional — an empty region produces a signature the gateway
+        rejects with a message about credentials, which sends the reader
+        looking at the wrong field.
+      */
+      { name: 'region', kind: 'text', env: 'S3_REGION', required: true, mono: true },
+      /*
+        The access key id is an identifier, not a credential — every cloud
+        console shows it in clear beside the secret it pairs with. Keeping it
+        visible is what lets an administrator confirm *which* key is in use
+        without being able to read the half that matters.
+      */
+      { name: 'accessKeyId', kind: 'text', env: 'S3_ACCESS_KEY_ID', required: true, mono: true },
+      /* R2 wants path-style; AWS deprecated it. */
+      { name: 'forcePathStyle', kind: 'switch', env: 'S3_FORCE_PATH_STYLE', defaultOn: true },
+    ],
+    secrets: [
+      { name: 'secretAccessKey', env: 'S3_SECRET_ACCESS_KEY', required: true, keepOnBlank: true },
+    ],
+    probe: true,
+  },
+
   {
     key: 'fx',
+    group: 'finance',
     driverEnv: 'FX_SOURCE',
     defaultDriver: 'manual',
     drivers: [
@@ -243,12 +314,18 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         placeholder: 'https://open.er-api.com/v6/latest/{base}',
       },
       /*
-        Which currencies are fetched is *not* here. It is `currencies.is_tracked`
-        — a column on the table that already lists this operator's currencies,
-        rather than a second comma-separated answer to the same question that
-        could disagree with it.
+        Neither half of "what to fetch" is here, and neither should be.
+
+        The quote currencies are `currencies.is_tracked`; the base currencies
+        are the distinct `branches.base_currency` of the active entities. Both
+        were settings once and both were a second answer to a question a column
+        already answered — `FX_QUOTE_CURRENCIES` could disagree with the
+        currency table, and `FX_BASE_CURRENCY` was a single deployment-wide
+        value that left a Dubai entity invoicing in AED with no rates fetched
+        at all, silently, on a deployment that looked correctly configured.
+
+        So this integration is only ever "which feed, and with what key".
       */
-      { name: 'base', kind: 'text', env: 'FX_BASE_CURRENCY', mono: true, placeholder: 'KWD' },
     ],
     secrets: [{ name: 'apiKey', env: 'FX_API_KEY', keepOnBlank: true }],
     probe: true,
@@ -265,6 +342,7 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
   */
   {
     key: 'carrierPoll',
+    group: 'carriers',
     fields: [
       {
         name: 'batch',
@@ -288,24 +366,24 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
 
   {
     key: 'carrierTracking',
+    group: 'carriers',
     driverEnv: 'CARRIER_TRACKING_DRIVER',
     defaultDriver: 'manual',
     drivers: [
       { value: 'manual', live: false },
       { value: 'dcsa', live: true },
-      { value: 'terminal49', live: true },
     ],
-    fields: [{ name: 'baseUrl', kind: 'url', env: 'CARRIER_TRACKING_BASE_URL', mono: true }],
-    secrets: [
-      /*
-        Not `required`, because `dcsa` is a live driver that takes neither of
-        these — its credentials are the three carrier rows below. Demanding an
-        aggregator key to switch on carrier-direct tracking would be demanding
-        the licence fee the DCSA driver exists to avoid.
-      */
-      { name: 'apiKey', env: 'CARRIER_TRACKING_API_KEY', keepOnBlank: true },
-      { name: 'webhookSecret', env: 'CARRIER_WEBHOOK_SECRET', keepOnBlank: true },
-    ],
+    /*
+      A driver and nothing else: this row chooses the feed, and the credentials
+      belong to the three carrier rows below.
+
+      There was an aggregator driver here with a key and a webhook secret. It
+      charged per container and pushed rather than answered, so switching
+      tracking on used to mean signing a per-container contract. Carrier-direct
+      is free and self-serve, which is why this row has nothing left to fill in.
+    */
+    fields: [],
+    secrets: [],
   },
 
   dcsaCarrier(
@@ -340,6 +418,7 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
 
   {
     key: 'whatsapp',
+    group: 'platform',
     fields: [{ name: 'phoneNumberId', kind: 'text', env: 'WHATSAPP_PHONE_NUMBER_ID', mono: true }],
     secrets: [
       { name: 'accessToken', env: 'WHATSAPP_ACCESS_TOKEN', keepOnBlank: true },
@@ -350,6 +429,7 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
 
   {
     key: 'einvoice',
+    group: 'finance',
     driverEnv: 'EINVOICE_DRIVER',
     defaultDriver: 'none',
     drivers: [
@@ -362,7 +442,23 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
 
   {
     key: 'inboundEmail',
-    fields: [],
+    group: 'platform',
+    fields: [
+      /*
+        How often the mailboxes are read. Cron, UTC.
+
+        Every minute by default because FR-EQ-02 asks for "within one minute"
+        and a cron expression has no finer resolution — so this meets the
+        requirement at its boundary rather than comfortably inside it.
+
+        Here rather than in the environment because it is the same *kind* of
+        knob as the carrier poll's schedule: the right frequency is a function
+        of what the mail host tolerates, which differs per deployment and is
+        discovered after it is running. Like that one, it is registered with
+        pg-boss and so needs a reconciler rather than only a cache expiry.
+      */
+      { name: 'cron', kind: 'text', env: 'INBOUND_MAIL_CRON', mono: true, placeholder: '* * * * *' },
+    ],
     secrets: [{ name: 'webhookSecret', env: 'INBOUND_EMAIL_WEBHOOK_SECRET', keepOnBlank: true }],
   },
 
@@ -389,13 +485,14 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
   */
   {
     key: 'ai',
+    group: 'intelligence',
     fields: [
       {
         name: 'model',
         kind: 'text',
         env: 'AI_MODEL',
         mono: true,
-        placeholder: 'anthropic/claude-opus-5',
+        placeholder: 'minimax/minimax-m3',
       },
       /*
         A ceiling in USD across every surface, checked against the ledger
@@ -409,6 +506,14 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     probe: true,
   },
 ] as const
+
+/** The order the groups appear in, and the order a deployment configures them. */
+export const INTEGRATION_GROUPS: readonly IntegrationGroup[] = [
+  'platform',
+  'carriers',
+  'finance',
+  'intelligence',
+]
 
 /** Every integration key, for the settings screen and the coverage checks. */
 export const INTEGRATION_KEYS: readonly string[] = INTEGRATIONS.map((spec) => spec.key)

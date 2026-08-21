@@ -56,12 +56,19 @@ export interface ModelPricing {
  * three knobs to get wrong.
  *
  * Verified against OpenRouter's own catalogue rather than remembered: this
- * slug accepts image input, which the three-way split existed to guarantee and
- * now simply is the requirement. Anything a deployment substitutes must accept
- * images too — a text-only model answers the invoice prompt confidently and
- * about nothing, since it never saw the invoice.
+ * slug reports `['text', 'image', 'video']`, which the three-way split existed
+ * to guarantee and now simply is the requirement. Anything a deployment
+ * substitutes must accept images too — a text-only model answers the invoice
+ * prompt confidently and about nothing, since it never saw the invoice.
+ *
+ * Chosen for what this workload actually is: a forwarder reads hundreds of
+ * scans a month and almost never needs an argument constructed. At $0.30 per
+ * million input tokens it is roughly a seventeenth of a frontier model's input
+ * rate, and a supplier invoice is nearly all input — which is what decides
+ * whether reading every bill is worth doing at all. The million-token context
+ * is the other half: a customs file arrives as forty pages, not one.
  */
-export const DEFAULT_MODEL = 'anthropic/claude-opus-5'
+export const DEFAULT_MODEL = 'minimax/minimax-m3'
 
 /**
  * The default model's published rate, per million tokens, in USD.
@@ -76,8 +83,8 @@ export const DEFAULT_MODEL = 'anthropic/claude-opus-5'
  * missing.
  */
 export const DEFAULT_MODEL_PRICING: ModelPricing = {
-  inputPerMillionUsd: '5',
-  outputPerMillionUsd: '25',
+  inputPerMillionUsd: '0.3',
+  outputPerMillionUsd: '1.2',
 }
 
 /* -------------------------------------------------------------------------

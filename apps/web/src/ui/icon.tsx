@@ -21,6 +21,7 @@ import type { Icon as PhosphorIcon } from '@phosphor-icons/react'
 import {
   Airplane,
   Anchor,
+  Sparkle,
   ArrowRight,
   ArrowSquareOut,
   ArrowUpRight,
@@ -129,6 +130,8 @@ const ICONS = {
   download: DownloadSimple,
   external: ArrowSquareOut,
   'sign-out': SignOut,
+  /** The assistant. A role, not a glyph — see the header. */
+  assistant: Sparkle,
   close: X,
   menu: List,
   plus: Plus,

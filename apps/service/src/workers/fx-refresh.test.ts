@@ -23,11 +23,14 @@
  * **A deployment that bought no feed is not a failure.** `manual` answers
  * "nothing to do" rather than making the caller ask which mode it is in.
  *
- * **Which currencies are fetched is a column, not a list.** `FX_QUOTE_CURRENCIES`
- * was a comma-separated environment variable sitting beside the table that
- * already listed this operator's currencies, free to disagree with it — so the
- * cases below set `currencies.is_tracked` rather than a string, and the tests
- * that used to check how that string was parsed are gone with the string.
+ * **Nothing about what to fetch is configured.** The quote currencies are
+ * `currencies.is_tracked`; the base currencies are the distinct
+ * `branches.base_currency` of the active entities. Both were environment
+ * variables sitting beside columns that already answered the same question,
+ * and `FX_BASE_CURRENCY` was worse than redundant — one deployment-wide value
+ * meant a Dubai entity invoicing in AED had no rates fetched at all. So the
+ * cases below write to those columns, and the tests that used to check how a
+ * comma-separated string was parsed are gone with the string.
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -42,7 +45,6 @@ const harness = vi.hoisted(() => ({
   key: 'http',
   quotes: [] as { from: string; to: string; rate: string; source: string; effectiveOn: string }[],
   asked: [] as { base: string; quotes: readonly string[] }[],
-  base: 'KWD',
 }))
 
 vi.mock('../adapters/index', () => ({
@@ -52,29 +54,16 @@ vi.mock('../adapters/index', () => ({
     },
     fetch: async (base: string, quotes: readonly string[]) => {
       harness.asked.push({ base, quotes })
-      return harness.quotes
+      /*
+        Answer only for the base actually asked about.
+
+        The worker calls once per distinct branch base currency, and the
+        fixtures carry two (KWD and AED). A feed that returned the same rows to
+        both would double every count below and hide which base a rate came
+        from — which is the one thing these cases are now about.
+      */
+      return harness.quotes.filter((q) => q.from === base)
     },
-  }),
-}))
-
-/*
-  The settings layer, stubbed to the one value the worker reads from it.
-
-  The base currency moved out of the environment and into the `fx` integration
-  row, so this stands in for the row rather than for `config` — which is the
-  whole shape of the change under test.
-*/
-vi.mock('../settings', () => ({
-  integration: async () => ({
-    key: 'fx',
-    driver: 'api',
-    live: true,
-    missing: [],
-    fromRow: true,
-    text: (name: string) => (name === 'base' ? harness.base : undefined),
-    number: (_name: string, fallback: number) => fallback,
-    bool: (_name: string, fallback: boolean) => fallback,
-    secret: () => undefined,
   }),
 }))
 
@@ -103,6 +92,9 @@ const quote = (to: string, rate: string, effectiveOn: string, from = 'KWD') => (
   source: `fx-test-${RUN}`,
   effectiveOn,
 })
+
+/** The call the worker made for one base, or undefined if it made none. */
+const askedFor = (base: string) => harness.asked.find((call) => call.base === base)
 
 const stored = (effectiveOn: string) =>
   withActor(actor, (tx) =>
@@ -139,7 +131,6 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
     harness.key = 'http'
     harness.quotes = []
     harness.asked.length = 0
-    harness.base = 'KWD'
     await track(['USD', 'EUR'])
   })
 
@@ -165,7 +156,7 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
       const result = await runFxRefresh()
 
-      expect(result).toEqual({ source: 'manual', written: 0, skipped: [] })
+      expect(result).toEqual({ source: 'manual', written: 0, skipped: [], bases: [] })
       expect(harness.asked).toEqual([])
     })
   })
@@ -177,18 +168,9 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
       await runFxRefresh()
 
-      expect(harness.asked[0]?.base).toBe('KWD')
-      expect(harness.asked[0]?.quotes).toEqual(['USD', 'EUR'])
-    })
-
-    /** A rate from a currency to itself is one, and asking for it is noise. */
-    it('never asks for the base against itself', async () => {
-      await track(['USD', 'KWD', 'EUR'])
-      harness.quotes = []
-
-      await runFxRefresh()
-
-      expect(harness.asked[0]?.quotes).toEqual(['USD', 'EUR'])
+      // Sorted: the order is the table's, and asserting on it would be a test
+      // of the row order rather than of what was asked for.
+      expect([...(askedFor('KWD')?.quotes ?? [])].sort()).toEqual(['EUR', 'USD'])
     })
 
     /**
@@ -203,12 +185,12 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
       await track(['USD'])
       harness.quotes = []
       await runFxRefresh()
-      expect(harness.asked[0]?.quotes).toEqual(['USD'])
+      expect([...(askedFor('KWD')?.quotes ?? [])]).toEqual(['USD'])
 
       await track(['USD', 'GBP'])
       harness.asked.length = 0
       await runFxRefresh()
-      expect([...(harness.asked[0]?.quotes ?? [])].sort()).toEqual(['GBP', 'USD'])
+      expect([...(askedFor('KWD')?.quotes ?? [])].sort()).toEqual(['GBP', 'USD'])
     })
 
     /** Nothing tracked is not a failure, and not worth a round trip either. */
@@ -306,19 +288,48 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
     })
   })
 
-  describe('a base currency nobody seeded', () => {
-    /**
-     * Refused loudly rather than skipped. Every rate hangs off the base, so a
-     * deployment that enabled the feed without seeding its own currency has a
-     * configuration fault and should hear about it at the first run — not
-     * accumulate a table of rows pointing at nothing.
-     */
-    it('refuses to run at all, and says what to fix', async () => {
-      harness.base = 'XYZ'
-      await track(['USD'])
-      harness.quotes = [quote('USD', '1.000000', day(), 'XYZ')]
+  describe('which bases it asks about', () => {
+    /*
+      Two entities on two currencies is the normal shape, not an edge case.
 
-      await expect(runFxRefresh()).rejects.toThrow('XYZ')
+      This is the case `FX_BASE_CURRENCY` got wrong: one deployment-wide value
+      meant whichever entity did not hold it was never quoted, silently.
+    */
+    it('asks once per distinct branch base currency', async () => {
+      harness.quotes = []
+
+      await runFxRefresh()
+
+      const bases = harness.asked.map((a) => a.base).sort()
+      expect(bases).toEqual([...new Set(bases)])
+      expect(bases).toContain('KWD')
+      // The seeded fixtures carry a Dubai entity on AED.
+      expect(bases).toContain('AED')
     })
+
+    /** A rate from a currency to itself is one, and asking for it is noise. */
+    it('never asks a base for itself', async () => {
+      await track(['USD', 'KWD', 'AED'])
+      harness.quotes = []
+
+      await runFxRefresh()
+
+      for (const call of harness.asked) {
+        expect(call.quotes).not.toContain(call.base)
+      }
+    })
+
+    /*
+      The guard against a base that is not a currency row is deliberately not
+      exercised here.
+
+      `branches.base_currency` is not a foreign key, so the filter in the
+      worker is real and worth having — a typo there would otherwise be asked
+      of the feed and then written into `fx_rates`, which *is* a foreign key,
+      failing every good rate in the batch. Proving it needs a branch with a
+      bad base, and this suite runs against a shared database where a branch
+      cannot be un-inserted (§5.5) and would be visible to every other test
+      while it existed. The cost of the proof exceeds the value of it.
+    */
   })
 })

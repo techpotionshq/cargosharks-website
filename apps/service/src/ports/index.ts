@@ -276,8 +276,20 @@ export type ModelContent =
     }
 
 export interface ModelMessage {
-  readonly role: 'system' | 'user' | 'assistant'
+  readonly role: 'system' | 'user' | 'assistant' | 'tool'
   readonly content: string | readonly ModelContent[]
+  /**
+   * The tools an assistant turn asked for, replayed back on the next request.
+   *
+   * A tool-calling exchange is only coherent if the model is shown its own
+   * request beside our answer to it. Dropping this and sending only the result
+   * produces a model that asks for the same tool again, having no record of
+   * having asked — which is a loop that terminates on the turn limit rather
+   * than on an answer.
+   */
+  readonly toolCalls?: readonly ModelToolCall[]
+  /** On a `tool` message: which call this answers. */
+  readonly toolCallId?: string
 }
 
 /**
@@ -349,6 +361,19 @@ export interface ModelResponse {
 }
 
 /**
+ * A piece of an answer as it arrives.
+ *
+ * `text` is a fragment to show immediately; `final` is the whole response,
+ * assembled, and always arrives last. Two shapes rather than one because they
+ * serve different callers: the interface wants the fragment, and the ledger
+ * wants the token counts, the cost and the finish reason — none of which exist
+ * until the stream ends.
+ */
+export type ModelDelta =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'final'; readonly response: ModelResponse }
+
+/**
  * Somewhere to ask a language model something.
  *
  * The ninth port, and it earns §10's rule rather than bending it. The first
@@ -374,4 +399,19 @@ export interface ModelProvider {
   /** Whether this driver can actually reach a model. `none` cannot. */
   readonly available: boolean
   complete(request: ModelRequest): Promise<ModelResponse>
+  /**
+   * The same request, answered in pieces.
+   *
+   * A separate method rather than a flag on `ModelRequest`, because the return
+   * types genuinely differ and a caller must choose one deliberately. The
+   * extraction surfaces want `complete`: a supplier invoice half-read is not
+   * useful, and nobody is watching a worker. The assistant wants this, because
+   * somebody *is* watching and a tool-calling loop can take half a minute
+   * before it has a word to show.
+   *
+   * The last item is always `final`, carrying the assembled response — so a
+   * caller that only needs the whole thing can drain the iterator and take it,
+   * and the ledger is written from exactly the same shape either way.
+   */
+  stream(request: ModelRequest): AsyncIterable<ModelDelta>
 }

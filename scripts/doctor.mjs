@@ -119,7 +119,6 @@ const capabilities = [
       'DCSA_MAERSK_CONSUMER_KEY',
       'DCSA_HAPAG_CLIENT_ID',
       'DCSA_CMACGM_API_KEY',
-      'CARRIER_TRACKING_API_KEY',
     ],
     /*
       One key is enough here, unlike everywhere else on this list.
@@ -127,8 +126,8 @@ const capabilities = [
       Carrier-direct tracking is per carrier: a deployment registered with
       Maersk alone has a working feed for Maersk shipments and nothing for
       Hapag-Lloyd, which is a real and useful state rather than a half-built
-      one. Reporting it as missing until all four were set would tell an
-      operator to go and buy something they already have.
+      one. Reporting it as missing until all three were set would tell an
+      operator to go and register for something they do not need.
     */
     any: true,
     without: 'carrier milestones are entered by an operator rather than ingested',

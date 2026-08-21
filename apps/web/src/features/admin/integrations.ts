@@ -35,11 +35,12 @@ import {
   integrationSpec,
   isLiveDriver,
   pollRunsPerHour,
+  type IntegrationGroup,
   type IntegrationSpec,
 } from '@qabandi/core'
 import {
-  hasSecretKey,
   integrationSettings,
+  secretKeyProblem,
   resolveIntegration,
   sealSecret,
   withActor,
@@ -64,6 +65,7 @@ export interface IntegrationSecretView {
 
 export interface IntegrationView {
   readonly key: string
+  readonly group: IntegrationGroup
   readonly driver: string | undefined
   readonly driverSource: SettingSource
   readonly live: boolean
@@ -126,6 +128,7 @@ export async function listIntegrations(): Promise<IntegrationView[]> {
 
     return {
       key: spec.key,
+      group: spec.group,
       driver: resolved.driver,
       driverSource: resolved.driverSource,
       live: resolved.live,
@@ -166,11 +169,21 @@ function callsPerHour(settings: Readonly<Record<string, string | undefined>>): n
   return runs * batch
 }
 
-/** Whether a credential can be sealed at all — the screen says so if not. */
-export async function integrationKeyConfigured(): Promise<boolean> {
+/**
+ * Why a credential cannot be sealed, or null when one can.
+ *
+ * The reason rather than a boolean, because the two ways this fails look
+ * identical from a `false` and are fixed differently: a key that is missing
+ * needs one generating, and a key that is *set but the wrong shape* — a
+ * passphrase where 32 base64 bytes belong, which is the common way in, since
+ * every other secret in the environment is a phrase — needs replacing. The
+ * screen used to report both as "not set on this deployment", which sends
+ * somebody to check whether a variable exists when it plainly does.
+ */
+export async function integrationKeyProblem(): Promise<string | null> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
-  return hasSecretKey()
+  return secretKeyProblem()
 }
 
 /** A form value, trimmed, with blank meaning absent rather than empty. */
@@ -360,12 +373,9 @@ export async function saveIntegration(
     const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet)
     if (Object.keys(errors).length > 0) return fail(errors, safeEcho())
 
-    if (provided.size > 0 && !hasSecretKey()) {
-      return failWith(
-        'MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a credential ' +
-          'cannot be sealed. Set it and restart before saving one.',
-        safeEcho(),
-      )
+    const keyProblem = secretKeyProblem()
+    if (provided.size > 0 && keyProblem) {
+      return failWith(`A credential cannot be sealed: ${keyProblem}`, safeEcho())
     }
 
     /*

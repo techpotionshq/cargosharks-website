@@ -1,18 +1,15 @@
 /**
- * Writing one carrier milestone onto one job — shared by both feeds.
+ * Writing one carrier milestone onto one job — the half no feed may own.
  *
- * There are two ways a carrier milestone reaches this system and they meet
- * here. An aggregator *pushes* (`carrier-event.ts`, a webhook); the carriers
- * themselves *answer when asked* (`carrier-poll.ts`, a schedule). The half
- * that differs is attribution — which job this is about — and the half that
- * must not differ is what happens next: template lookup, upsert, and the rule
- * about not overruling a person.
+ * `carrier-poll.ts` decides *which* shipment a carrier's event is about. What
+ * happens next — template lookup, upsert, and the rule about not overruling a
+ * person — happens here, once, on purpose.
  *
- * They did differ, for exactly as long as this was one copy in the webhook
- * worker. A second copy in the poll worker would have had its own answer to
- * "does the feed overwrite a hand-entered date", and the two answers would
- * have been indistinguishable on the board until somebody disputed a demurrage
- * figure and found the two paths disagreed about a discharge.
+ * It lived inside a feed once, and when a second feed arrived it was copied.
+ * The two copies grew two answers to "does the feed overwrite a hand-entered
+ * date", and the two answers were indistinguishable on the board until
+ * somebody disputed a demurrage figure and found the paths disagreed about a
+ * discharge. A third feed will call this rather than reimplement it.
  */
 
 import { and, eq, isNull, or, sql } from 'drizzle-orm'

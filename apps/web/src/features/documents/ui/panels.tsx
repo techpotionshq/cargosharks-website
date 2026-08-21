@@ -19,6 +19,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { Card, CardHeader } from '@/ui/card'
 import { Button, EmptyState } from '@/ui/layout'
+import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { CargoDialog, PartyDialog } from './dialogs'
 import { issueDocument } from '../form-actions'
@@ -148,7 +149,8 @@ export async function CargoCard({
                 <TD>
                   <span className="font-medium">{line.descriptionEn}</span>
                   <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
-                    {[line.hsCode, line.containerNo].filter(Boolean).join(' · ') || t('unclassified')}
+                    {[line.hsCode, line.containerNo].filter(Boolean).join(' · ') ||
+                      t('unclassified')}
                   </span>
                 </TD>
                 <TD align="end" numeric className="text-ink-muted">
@@ -243,7 +245,9 @@ export async function DocumentActionsCard({
       <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('title')} />
 
       {!hasCargo ? (
-        <p className="mt-3 text-[0.8125rem] text-ink-muted">{t('needsCargo')}</p>
+        <p className="mt-3 rounded-sm bg-surface-sunken px-3 py-2 text-[0.8125rem] text-ink-muted">
+          {t('needsCargo')}
+        </p>
       ) : null}
 
       <ul className="mt-4 space-y-2.5">
@@ -257,56 +261,90 @@ export async function DocumentActionsCard({
           const preview = `/api/jobs/${jobId}/documents/${kind}`
           const label = kind === 'house_bill' && mode === 'air' ? 'air_waybill' : kind
           return (
-          <li
-            key={kind}
-            className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5 last:border-0"
-          >
-            <div className="min-w-0">
-              <span className="block text-[0.875rem] font-medium text-ink">
-                {t(`kinds.${label}` as 'kinds.house_bill')}
-              </span>
-              <span className="block text-[0.6875rem] text-ink-subtle">
-                {t(`hints.${label}` as 'hints.house_bill')}
-              </span>
-            </div>
+            <li
+              key={kind}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5 last:border-0"
+            >
+              <div className="min-w-0">
+                <span className="block text-[0.875rem] font-medium text-ink">
+                  {t(`kinds.${label}` as 'kinds.house_bill')}
+                </span>
+                <span className="block text-[0.6875rem] text-ink-subtle">
+                  {t(`hints.${label}` as 'hints.house_bill')}
+                </span>
+              </div>
 
-            <div className="flex items-center gap-1.5">
-              {/*
-                Both languages, as links. A `GET` renders and streams and
-                stores nothing, so opening one in a tab is safe and sharing
-                the URL costs nothing but a render.
-              */}
-              <Button size="sm" variant="ghost" href={preview} download icon="download">
-                EN
-              </Button>
-              <Button size="sm" variant="ghost" href={`${preview}?locale=ar`} download>
-                AR
-              </Button>
+              <div className="flex shrink-0 items-center gap-2">
+                {/*
+                  Both languages, as links. A `GET` renders and streams and
+                  stores nothing, so opening one in a tab is safe and sharing
+                  the URL costs nothing but a render.
 
-              {mayIssue ? (
-                <form action={issueDocument}>
-                  <input type="hidden" name="jobId" value={jobId} />
-                  <input type="hidden" name="kind" value={kind} />
-                  <input type="hidden" name="locale" value="en" />
-                  <Button size="sm" variant="secondary" type="submit" icon="check">
-                    {t('issue')}
+                  One control in two languages, so it is drawn as one control.
+                  The glyph used to hang off EN alone, which made the pair read
+                  as a download and then some other thing called AR — two
+                  buttons of apparently different kinds for what is a single
+                  choice of language. It now sits ahead of both, inside the
+                  group it governs, and each link carries the language name for
+                  a reader who hears the page rather than sees it.
+                */}
+                <span className="inline-flex items-center rounded-sm border border-line ps-2">
+                  <Icon name="download" size={14} className="shrink-0 text-ink-subtle" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    href={preview}
+                    download
+                    aria-label={t('previewEn')}
+                  >
+                    EN
                   </Button>
-                </form>
-              ) : null}
-            </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    href={`${preview}?locale=ar`}
+                    download
+                    aria-label={t('previewAr')}
+                  >
+                    AR
+                  </Button>
+                </span>
+
+                {mayIssue ? (
+                  <form action={issueDocument}>
+                    <input type="hidden" name="jobId" value={jobId} />
+                    <input type="hidden" name="kind" value={kind} />
+                    <input type="hidden" name="locale" value="en" />
+                    <Button size="sm" variant="secondary" type="submit" icon="check">
+                      {t('issue')}
+                    </Button>
+                  </form>
+                ) : null}
+              </div>
             </li>
           )
         })}
       </ul>
 
+      {/*
+        The duty estimate belongs *to* the list above, not after it.
+
+        Under a rule it read as an orphaned footer stranded between the
+        documents and the fine print — a divider says "a different subject
+        follows", and this is the same subject: the customs pack one line up
+        is a form until somebody puts a number in the duty column. Tinted and
+        attached, it reads as the last thing the list offers.
+      */}
       {dutyAction ? (
-        <div className="mt-4 flex items-center justify-between gap-2 border-t border-line pt-4">
-          <span className="text-[0.75rem] text-ink-muted">{t('dutyPrompt')}</span>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-2">
+          <span className="text-[0.8125rem] text-ink-muted">{t('dutyPrompt')}</span>
           {dutyAction}
         </div>
       ) : null}
 
-      <p className="mt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">{t('issueNote')}</p>
+      <p className="mt-4 border-t border-line pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+        {t('issueNote')}
+      </p>
     </Card>
   )
 }

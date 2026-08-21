@@ -42,16 +42,8 @@ import {
   RaiseExceptionDialog,
 } from '@/features/operations/ui/dialogs'
 import { JobDialog, JobPartnerDialog } from '@/features/jobs/ui/dialogs'
-import {
-  listJobCargo,
-  listJobContainers,
-  listJobParties,
-} from '@/features/documents/queries'
-import {
-  CargoCard,
-  DocumentActionsCard,
-  PartiesCard,
-} from '@/features/documents/ui/panels'
+import { listJobCargo, listJobContainers, listJobParties } from '@/features/documents/queries'
+import { CargoCard, DocumentActionsCard, PartiesCard } from '@/features/documents/ui/panels'
 import { getJobLedger } from '@/features/costing/queries'
 import { JobLedgerCard } from '@/features/costing/ui/panels'
 import { jobEquipmentOptions, jobProofOfDelivery } from '@/features/pod/queries'
@@ -243,7 +235,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   // `id` is optional on the shared view — see `MilestoneView`.
                   // Here it is always present; the filter is what makes that a
                   // type the dialog can rely on rather than an assertion.
-                  m.id ? [{ id: m.id, name: nameOf(m.nameEn, m.nameAr), actualAt: m.actualAt }] : [],
+                  m.id
+                    ? [{ id: m.id, name: nameOf(m.nameEn, m.nameAr), actualAt: m.actualAt }]
+                    : [],
                 )}
               />
             }
@@ -321,7 +315,17 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             able to say so.
           */}
           {job.clocks.length > 0 ? (
-            <Card tone="critical">
+            /*
+              `flex-1` on the last card, not on the column.
+
+              The grid stretches this column to the height of the milestone
+              timeline beside it, but a stack of cards keeps its natural
+              height — so the leftover fell out of the bottom as a band of
+              canvas under the last card, which read as something failing to
+              load. The final card absorbs it instead, and the two columns end
+              on the same line.
+            */
+            <Card tone="critical" className="flex-1">
               <CardHeader
                 icon="clock"
                 eyebrow={t('clocks')}
@@ -403,7 +407,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               neutral rather than critical here — nothing is accruing, and a
               red panel saying so would cry wolf on every shipment.
             */
-            <Card>
+            // Centred rather than top-aligned: with no clocks to list there is
+            // nothing to fill the height with, and a sentence pinned to the top
+            // of a tall empty card looks like the rest of it failed to render.
+            <Card className="flex flex-1 flex-col justify-center">
               <CardHeader
                 icon="clock"
                 eyebrow={t('clocks')}
@@ -602,19 +609,30 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           className="lg:col-span-12"
         />
 
+        {/*
+          Cargo and the documents it produces, side by side and in that order.
+
+          They were stacked the other way round, and the issue card asked for
+          five of twelve columns with a full-width card either side of it — a
+          span that can share a row with nothing, so it rendered at two fifths
+          of the width with seven columns of nothing beside it. Paired with the
+          cargo table it packs the row, and the pairing is the one the card's
+          own first line already makes: every document below reads from these
+          lines, so the reader should be able to see both at once.
+        */}
+        <CargoCard
+          jobId={id}
+          cargo={cargo}
+          containers={containerOptions}
+          className="lg:col-span-7"
+        />
+
         <DocumentActionsCard
           jobId={id}
           hasCargo={cargo.length > 0}
           mode={job.mode}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
           className="lg:col-span-5"
-        />
-
-        <CargoCard
-          jobId={id}
-          cargo={cargo}
-          containers={containerOptions}
-          className="lg:col-span-12"
         />
 
         {/*

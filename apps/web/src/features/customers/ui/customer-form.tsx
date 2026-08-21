@@ -46,7 +46,15 @@ export interface CustomerFormLabels {
   readonly submit: string
   readonly submitting: string
   readonly saved: string
-  readonly none: string
+  /**
+   * The empty option in every select on this form.
+   *
+   * Not "None": in a list of incoterms "None" reads as one of them — a term
+   * the operator chose — rather than as the absence of a choice. The dashed
+   * prompt used everywhere else in the product says the same thing without
+   * pretending to be a value.
+   */
+  readonly choose: string
 }
 
 export interface CustomerDefaults {
@@ -232,7 +240,7 @@ export function CustomerForm({
               defaultValue={value('primaryBranchId')}
               className={`${FIELD} ${error('primaryBranchId') ? FIELD_ERROR : ''}`}
             >
-              <option value="">—</option>
+              <option value="">{labels.choose}</option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>
                   {branch.code} · {branch.name}
@@ -248,7 +256,7 @@ export function CustomerForm({
               defaultValue={value('countryCode')}
               className={FIELD}
             >
-              <option value="">{labels.none}</option>
+              <option value="">{labels.choose}</option>
               {countries.map((country) => (
                 <option key={country.code} value={country.code}>
                   {country.name}
@@ -355,7 +363,7 @@ export function CustomerForm({
               defaultValue={value('creditCurrency')}
               className={FIELD}
             >
-              <option value="">{labels.none}</option>
+              <option value="">{labels.choose}</option>
               {[...new Set(branches.map((b) => b.currency))].map((currency) => (
                 <option key={currency} value={currency}>
                   {currency}
@@ -394,7 +402,7 @@ export function CustomerForm({
               defaultValue={value('defaultIncoterm')}
               className={FIELD}
             >
-              <option value="">{labels.none}</option>
+              <option value="">{labels.choose}</option>
               {['EXW', 'FCA', 'FOB', 'CFR', 'CIF', 'CPT', 'CIP', 'DAP', 'DPU', 'DDP'].map(
                 (term) => (
                   <option key={term} value={term}>
@@ -405,11 +413,20 @@ export function CustomerForm({
             </select>
           </Field>
         </div>
-      </section>
 
-      <div className="flex items-center gap-3">
-        <Submit labels={labels} />
-      </div>
+        {/*
+          The submit belongs to the card, not to the page.
+
+          Loose at the foot of a wide screen it was a button floating in the
+          margin with nothing to say what it saved. The negative margins pull
+          this row out to the card's own edges so it becomes a footer on the
+          thing it submits rather than the next item down the page, and
+          `justify-end` leaves it where the eye leaves a form in either script.
+        */}
+        <div className="-mx-5 -mb-5 mt-5 flex items-center justify-end gap-3 rounded-b-card border-t border-line bg-surface-sunken px-5 py-4">
+          <Submit labels={labels} />
+        </div>
+      </section>
     </form>
   )
 }

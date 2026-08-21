@@ -51,6 +51,11 @@ export type ServerAction = (state: FormState, form: FormData) => Promise<FormSta
  * Twelve rather than a fixed two or three, because these forms mix a full-width
  * legal name with a pair of half-width dates and a row of four short codes, and
  * a rigid column count forces one of those to be wrong.
+ *
+ * It is also the grid the fields *borrow*. Each `Field` spans three of this
+ * grid's rows — label, control, message — and subgrids them, so that the three
+ * bands line up across every field sharing a visual row no matter how many
+ * lines each label happens to take. See `Field` for why that matters.
  */
 export function FormGrid({
   children,
@@ -119,12 +124,40 @@ export interface FieldProps {
   readonly children?: ReactNode
 }
 
+/*
+  Three rows of the parent grid, borrowed.
+
+  A field is three stacked things — label, control, message — and left as an
+  ordinary block each one stacks against *its own* label. So the moment one
+  label in a row wraps to two lines and its neighbours do not, that field's
+  input drops eighteen pixels below theirs and a row of three date pickers
+  reads as three separate rows of one. It is not hypothetical: "Their invoice
+  date" wraps in a three-column slot and "Due" never will, and Arabic wraps in
+  different places again, so no amount of shortening the English fixes it.
+
+  `grid-rows-subgrid` makes the three bands belong to the *form* rather than to
+  the field. Every field in a visual row draws its label from the same track,
+  its control from the same track and its message from the same track, and the
+  tallest label sets the height for all of them. Nothing has to be measured and
+  nothing has to be guessed at translation time.
+
+  Two details that are load-bearing and look like noise:
+
+    - `grid-cols-1` — the inner grid's implicit column would otherwise be
+      `auto`, which sizes to the label's *max-content* and pushes the whole
+      field out past its column. Measured: a 121px slot rendering 151px wide.
+    - `gap-y-0` — a subgrid uses its own gutters for the tracks it spans, so
+      without this the parent's `gap-y-4` lands between a label and its input.
+      The margins on the label and the message do that spacing instead.
+*/
+const FIELD_BAND = 'row-span-3 grid grid-cols-1 grid-rows-subgrid gap-y-0'
+
 /** The label / control / message wrapper. Every control below uses it. */
 export function Field({ label, name, span = 6, hint, error, required, children }: FieldProps) {
   const describedBy = error ? `${name}-error` : hint ? `${name}-hint` : undefined
 
   return (
-    <div className={SPAN[span]}>
+    <div className={`${SPAN[span]} ${FIELD_BAND}`}>
       <label
         htmlFor={name}
         className="mb-1.5 block text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase"
@@ -347,10 +380,25 @@ export function Switch({
   readonly span?: Span
 }) {
   return (
-    <div className={SPAN[span]}>
+    // `row-span-3` even though a switch has no label band of its own: it makes
+    // the switch occupy the same three rows a `Field` does, so one sitting
+    // beside an input squares off with the whole field rather than with the
+    // input's label. Without it the grid gives the switch a row of its own and
+    // the two controls stop being a row.
+    <div className={`${SPAN[span]} row-span-3`}>
+      {/*
+        `h-full` so a pair of switches on one row squares off.
+
+        Two of these side by side are almost never the same height — one
+        carries a hint and the other does not, and the hint wraps to two lines
+        at the width half a dialog gives it. Sized to its own content, the
+        shorter box floats with its bottom edge halfway up its neighbour and
+        the two read as different kinds of control rather than the same control
+        twice. The grid cell already stretches; this is the label taking it.
+      */}
       <label
         htmlFor={name}
-        className="flex cursor-pointer items-start gap-3 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-brand/40 has-checked:bg-brand-soft/40"
+        className="flex h-full cursor-pointer items-start gap-3 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-brand/40 has-checked:bg-brand-soft/40"
       >
         <input
           id={name}
