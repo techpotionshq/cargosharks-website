@@ -35,7 +35,8 @@ import {
   jobMilestones,
   jobs,
   locations,
-  withoutActor,
+  systemActor,
+  withActor,
 } from '@qabandi/db'
 import type { Mode, TrackingResult } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
@@ -60,12 +61,33 @@ export async function trackShipment(
   if (usePilotFixtures()) return pilotTracking(ref, key)
 
   /**
-   * Deliberately un-actored: there is no principal on this page. It is one of
-   * only two sanctioned uses of `withoutActor` in the web application — the
-   * other is session establishment itself — and it is safe because the
-   * verifier is required and the projection carries nothing internal.
+   * Run as the **system** principal, for the same reason session establishment
+   * does: there is no principal on this page, and there is no such thing as a
+   * query that runs without one.
+   *
+   * This was `withoutActor`, on the reasoning that a public page has no actor
+   * to supply. That reasoning was wrong in exactly the way the sign-in query
+   * was wrong before it. `jobs` is `FORCE ROW LEVEL SECURITY` and its policy is
+   * a `case` on `app.principal_type()` ending in `else false`. With no settings
+   * stamped, no arm matches, the select returned zero rows for every input, and
+   * **public tracking could never find anything** — a correct reference and a
+   * correct verifier produced the same "no shipment matches that pair" as a
+   * typo. It only ever worked on fixtures, which is why it survived a demo:
+   * fixtures return before this line, and production does not.
+   *
+   * The system actor is a real widening, so the argument for why it is safe
+   * here has to stand on its own rather than on the policy:
+   *
+   *   - The caller must already hold **two** identifiers that agree, one of
+   *     which is not guessable from the other. That pair is the bearer secret,
+   *     exactly as the session token is above.
+   *   - The projection below is fixed and carries nothing internal, so a
+   *     widened row does not become a widened answer.
+   *   - No caller-supplied value reaches a table name, a column or an id — the
+   *     reference and the verifier are compared, never interpolated — so this
+   *     cannot be steered into reading a row it was not asked for.
    */
-  return withoutActor(async (tx) => {
+  return withActor(systemActor(), async (tx) => {
     const [row] = await tx
       .select({
         id: jobs.id,

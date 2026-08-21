@@ -22,8 +22,10 @@ import {
   assertTransition,
   customsMachine,
   entryPermission,
+  isPlausibleClockStart,
   isTerminal,
   jobMachine,
+  MAX_CLOCK_BACKDATE_DAYS,
 } from '@qabandi/core'
 import {
   customsStages,
@@ -716,6 +718,18 @@ export async function releaseDocument(form: FormData): Promise<void> {
 
 /* ------------------------------------------------------------- free time */
 
+/**
+ * Today, in the branch's own day.
+ *
+ * Kuwait is UTC+3, so for the first three hours of a local day the server's
+ * UTC date is still yesterday's. It makes no difference to a two-year bound,
+ * but a date helper that is quietly wrong for three hours a day is the kind
+ * that gets reused somewhere it does matter.
+ */
+function todayInKuwait(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait' }).format(new Date())
+}
+
 const clockSchema = z.object({
   clockId: z.uuid().optional(),
   jobId: z.uuid(),
@@ -779,6 +793,30 @@ export async function saveFreeTimeClock(
   const data = parsed.data
   if (data.endsOn && data.endsOn < data.startsOn) {
     return fail({ endsOn: 'It cannot have come back before it went out.' }, echo(form))
+  }
+
+  /*
+    A mistyped year is the expensive typo on this form.
+
+    The regex above accepts any well-formed date, which is how a clock came to
+    start in 2019 on a shipment that arrived a fortnight ago: the nightly
+    accrual read it, billed 2427 days at KWD 28, and wrote the charge line
+    itself. The field is free text with no default, so there is nothing between
+    the wrong keystroke and the invoice except this.
+
+    Refused here as well as skipped by the worker, because the worker only
+    stops the bill — the operator who typed it is the one who can correct it,
+    and they are standing here.
+  */
+  if (!isPlausibleClockStart(data.startsOn, todayInKuwait())) {
+    return fail(
+      {
+        startsOn: `Check the year — a clock cannot start more than ${
+          MAX_CLOCK_BACKDATE_DAYS / 365
+        } years ago.`,
+      },
+      echo(form),
+    )
   }
 
   await withActor(session.actor, async (tx) => {

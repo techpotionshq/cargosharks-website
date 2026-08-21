@@ -6,6 +6,7 @@ import {
   addWorkingDays,
   elapsedWorkingHours,
   freeTimeRemaining,
+  isPlausibleClockStart,
   isWorkingDay,
   slaDueAt,
   toCalendarDate,
@@ -126,5 +127,41 @@ describe('free-time clocks (FR-JB-08, PP-07)', () => {
       new Date('2026-08-16T06:00:00Z'),
     )
     expect(result.chargeableDays).toBe(3)
+  })
+})
+
+describe('clock start plausibility', () => {
+  const today = '2026-08-22'
+
+  it('accepts an ordinary discharge a fortnight ago', () => {
+    expect(isPlausibleClockStart('2026-08-08', today)).toBe(true)
+  })
+
+  it('accepts a container genuinely stuck for a year', () => {
+    expect(isPlausibleClockStart('2025-08-22', today)).toBe(true)
+  })
+
+  it('refuses the mistyped year that billed 2427 days', () => {
+    expect(isPlausibleClockStart('2019-12-26', today)).toBe(false)
+  })
+
+  it('allows a clock set up ahead of an expected discharge', () => {
+    expect(isPlausibleClockStart('2026-09-15', today)).toBe(true)
+  })
+
+  it('refuses a date that is years away rather than weeks', () => {
+    expect(isPlausibleClockStart('2029-01-01', today)).toBe(false)
+  })
+
+  /*
+    The boundary is stated rather than implied: 730 days back is the last
+    acceptable day, so a test that only checked "two years ago" would pass
+    against an off-by-one in either direction.
+  */
+  it('is inclusive on both bounds', () => {
+    expect(isPlausibleClockStart('2024-08-22', today)).toBe(true)
+    expect(isPlausibleClockStart('2024-08-21', today)).toBe(false)
+    expect(isPlausibleClockStart('2027-08-22', today)).toBe(true)
+    expect(isPlausibleClockStart('2027-08-23', today)).toBe(false)
   })
 })

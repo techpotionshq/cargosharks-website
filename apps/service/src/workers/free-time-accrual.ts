@@ -12,7 +12,14 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm'
-import { accrue, dec, toDb, type ClockConfig } from '@qabandi/core'
+import {
+  accrue,
+  dec,
+  isPlausibleClockStart,
+  toCalendarDate,
+  toDb,
+  type ClockConfig,
+} from '@qabandi/core'
 import {
   branches,
   chargeLines,
@@ -26,9 +33,10 @@ import { loadCalendars } from './calendars'
 
 export async function runFreeTimeAccrual(
   asOf = new Date(),
-): Promise<{ clocks: number; lines: number }> {
+): Promise<{ clocks: number; lines: number; implausible: number }> {
   const actor = systemActor()
   let lines = 0
+  let implausible = 0
 
   return withActor(actor, async (tx) => {
     const calendars = await loadCalendars(tx)
@@ -56,6 +64,26 @@ export async function runFreeTimeAccrual(
         currency: row.clock.currency,
         dayBasis: row.clock.dayBasis,
         tiers: row.clock.tiers?.map((t) => ({ fromDay: t.fromDay, perDiem: dec(t.perDiem) })),
+      }
+
+      /*
+        A start date outside living memory is a typo, not six years of demurrage.
+
+        `accrue` will answer honestly for any date it is given, and this worker
+        writes a charge line from the answer with nobody in the loop — so one
+        mistyped year became KWD 67,956 on a shipment that had been in the
+        country a fortnight, above a green tick reading "charge line written
+        automatically". Refusing to bill it is the smaller wrong: the days are
+        recoverable from a corrected date, an invoice sent to a customer is not.
+
+        Counted rather than ignored. The result is logged whole, so a clock this
+        skips shows up as a number somebody can ask about — a silent `continue`
+        here would read as "nothing was accruing", which is what let the wrong
+        figure sit on the screen in the first place.
+      */
+      if (!isPlausibleClockStart(row.clock.startsOn, toCalendarDate(asOf, calendar))) {
+        implausible++
+        continue
       }
 
       const result = accrue(
@@ -131,6 +159,6 @@ export async function runFreeTimeAccrual(
       lines++
     }
 
-    return { clocks: open.length, lines }
+    return { clocks: open.length, lines, implausible }
   })
 }

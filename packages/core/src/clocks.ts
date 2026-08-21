@@ -334,6 +334,35 @@ export function accrue(
   }
 }
 
+/**
+ * The window a free-time clock's start date may sit in — the guard that keeps
+ * a typo from becoming an invoice.
+ *
+ * `accrue` is pure and correct: give it a start date and it will tell you what
+ * has accrued since, however long ago that was. That is the right behaviour for
+ * a function and the wrong behaviour for a system, because the nightly worker
+ * writes a charge line from the answer without anybody reading it first. A
+ * demurrage clock mistyped `2019-12-26` instead of `2026-…` accrued 2427 days
+ * at KWD 28 and put KWD 67,956 on a shipment that had been in the country a
+ * fortnight — and the screen said "charge line written automatically", which
+ * was true and was the problem.
+ *
+ * Two years back, because a container genuinely stuck in a customs dispute is
+ * a real thing and a plausible one; six years is not. One year forward, because
+ * starting a clock ahead of an expected discharge is ordinary planning and
+ * accrues nothing until the day arrives.
+ *
+ * A bound rather than a clamp: silently moving somebody's date would bill a day
+ * they did not choose, and the honest failure is to refuse the date and say so.
+ */
+export const MAX_CLOCK_BACKDATE_DAYS = 730
+export const MAX_CLOCK_FUTURE_DAYS = 365
+
+export function isPlausibleClockStart(startsOn: CalendarDate, today: CalendarDate): boolean {
+  const offset = calendarDaysBetween(today, startsOn)
+  return offset >= -MAX_CLOCK_BACKDATE_DAYS && offset <= MAX_CLOCK_FUTURE_DAYS
+}
+
 /** Sums the per-diem across escalation bands. */
 function chargeFor(chargeableDays: number, cfg: ClockConfig): Money {
   if (!cfg.tiers || cfg.tiers.length === 0) {
