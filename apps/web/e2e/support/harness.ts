@@ -71,6 +71,7 @@ const ALL_SETTINGS_ROUTES = [
   '/settings/audit',
   '/settings/support',
   '/settings/integrations',
+  '/settings/notifications',
   '/settings/brand',
 ] as const
 
@@ -145,6 +146,14 @@ export const NEEDS_DATABASE: Record<string, string> = {
     one that is honestly listed as needing a database.
   */
   '/settings/integrations': 'admin/integrations.ts listIntegrations',
+  /*
+    Absent from this sweep until an untranslatable event key threw
+    MISSING_MESSAGE on it in `main`. The cards are driven by
+    `NOTIFICATION_EVENTS` in core rather than by the table, so the page draws
+    all thirteen — and re-throws that class of fault — even against an empty
+    `notification_templates`.
+  */
+  '/settings/notifications': 'admin/notifications.ts listTemplates',
   '/payables': 'payables/queries.ts listSupplierInvoices — no fixture branch',
   '/settlements': 'payables/queries.ts listSettlements — no fixture branch',
   /*

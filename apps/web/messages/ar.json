@@ -2528,19 +2528,35 @@
     },
     "footnote": "النصوص سطور في قاعدة البيانات لا شيفرة. ويسري التعديل على الإرسال التالي.",
     "events": {
-      "job.created": "عند حجز شحنة",
-      "job.milestone_reached": "عند بلوغ مرحلة",
-      "job.eta_changed": "عند تغيّر موعد الوصول",
-      "document.released": "عند إتاحة مستند للعميل",
-      "invoice.issued": "عند إصدار فاتورة",
-      "invoice.overdue": "عند تأخّر سداد فاتورة",
-      "quote.sent": "عند إرسال عرض سعر",
-      "quote.expiring": "عند اقتراب انتهاء عرض سعر",
-      "enquiry.created": "عند ورود طلب",
-      "enquiry.sla_breached": "عند تجاوز مهلة الرد",
-      "exception.opened": "عند تسجيل استثناء",
-      "free_time.expiring": "عند اقتراب انتهاء وقت السماح",
-      "rate_card.expiring": "عند اقتراب انتهاء تعرفة"
+      "job": {
+        "created": "عند حجز شحنة",
+        "milestone_reached": "عند بلوغ مرحلة",
+        "eta_changed": "عند تغيّر موعد الوصول"
+      },
+      "document": {
+        "released": "عند إتاحة مستند للعميل"
+      },
+      "invoice": {
+        "issued": "عند إصدار فاتورة",
+        "overdue": "عند تأخّر سداد فاتورة"
+      },
+      "quote": {
+        "sent": "عند إرسال عرض سعر",
+        "expiring": "عند اقتراب انتهاء عرض سعر"
+      },
+      "enquiry": {
+        "created": "عند ورود طلب",
+        "sla_breached": "عند تجاوز مهلة الرد"
+      },
+      "exception": {
+        "opened": "عند تسجيل استثناء"
+      },
+      "free_time": {
+        "expiring": "عند اقتراب انتهاء وقت السماح"
+      },
+      "rate_card": {
+        "expiring": "عند اقتراب انتهاء تعرفة"
+      }
     },
     "log": "الإرسال",
     "logTitle": "ما أُرسل",

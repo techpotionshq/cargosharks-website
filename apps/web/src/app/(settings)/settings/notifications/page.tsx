@@ -58,6 +58,14 @@ export default async function NotificationsPage() {
       <div className="space-y-4">
         {events.map((event) => (
           <Card key={event.key}>
+            {/*
+              The event keys carry a dot — `invoice.overdue` — and next-intl
+              reads a dot as a path separator, so `events` is nested by prefix
+              in the message files rather than holding thirteen literal dotted
+              keys. Written flat, the lookup walks `events → invoice →
+              overdue`, finds nothing, and throws MISSING_MESSAGE for every
+              event on the page.
+            */}
             <CardHeader
               icon="bell"
               eyebrow={event.key}

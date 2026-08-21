@@ -2528,19 +2528,35 @@
     },
     "footnote": "Templates are rows, not code. Editing one takes effect on the next send.",
     "events": {
-      "job.created": "A shipment is booked",
-      "job.milestone_reached": "A milestone is reached",
-      "job.eta_changed": "The ETA moves",
-      "document.released": "A document is released to the customer",
-      "invoice.issued": "An invoice is issued",
-      "invoice.overdue": "An invoice goes overdue",
-      "quote.sent": "A quotation is sent",
-      "quote.expiring": "A quotation is about to expire",
-      "enquiry.created": "An enquiry arrives",
-      "enquiry.sla_breached": "An enquiry misses its SLA",
-      "exception.opened": "An exception is raised",
-      "free_time.expiring": "Free time is running out",
-      "rate_card.expiring": "A rate card is about to lapse"
+      "job": {
+        "created": "A shipment is booked",
+        "milestone_reached": "A milestone is reached",
+        "eta_changed": "The ETA moves"
+      },
+      "document": {
+        "released": "A document is released to the customer"
+      },
+      "invoice": {
+        "issued": "An invoice is issued",
+        "overdue": "An invoice goes overdue"
+      },
+      "quote": {
+        "sent": "A quotation is sent",
+        "expiring": "A quotation is about to expire"
+      },
+      "enquiry": {
+        "created": "An enquiry arrives",
+        "sla_breached": "An enquiry misses its SLA"
+      },
+      "exception": {
+        "opened": "An exception is raised"
+      },
+      "free_time": {
+        "expiring": "Free time is running out"
+      },
+      "rate_card": {
+        "expiring": "A rate card is about to lapse"
+      }
     },
     "log": "Delivery",
     "logTitle": "What was sent",

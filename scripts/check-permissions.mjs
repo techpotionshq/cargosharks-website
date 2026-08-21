@@ -23,6 +23,24 @@
  * So the rule is one sentence: **if the application enforces it, `core` must
  * declare it.**
  *
+ * ## Declaring it is not granting it
+ *
+ * This check ends where the source ends, and there is a third failure it
+ * cannot see: a key correctly declared here and correctly enforced there is
+ * still held by *nobody* until `pnpm db:seed` runs against the database. The
+ * `administrator` role is granted `allPermissionKeys()` at seed time, and a
+ * seed that ran last week knows nothing about a key added today.
+ *
+ * The symptom is identical to the two above — `can()` returns false, the
+ * navigation entry is filtered out, the route calls `notFound()` — so a
+ * finished screen looks like a screen that was never built. It happened to
+ * `admin.integrations.write`: declared, enforced, policy written, screen
+ * shipped, and invisible on every already-seeded database.
+ *
+ * A static check cannot verify a grant, so this one reports the keys that are
+ * new enough to be worth suspecting and says what to run. See the note beside
+ * `report()` at the foot of this file.
+ *
  * Text, not imports: this reads the same source review reads, and a check that
  * needs a build step is a check people skip.
  */
@@ -34,6 +52,9 @@ const STATES = 'packages/core/src/states.ts'
 const ROOTS = ['apps/web/src', 'apps/service/src']
 
 const states = readFileSync(STATES, 'utf8')
+
+/** The seed's per-role matrix, read as text for the advisory note at the end. */
+const seedMatrix = readFileSync('packages/db/src/seed.ts', 'utf8')
 
 /**
  * What `core` declares: the `requires:` on every machine transition, plus the
@@ -119,6 +140,35 @@ for (const [key, file] of [...enforced].sort()) {
 if (failures > 0) {
   console.error(`\n${failures} permission(s) enforced but not declared.`)
   process.exit(1)
+}
+
+/*
+  Which keys an already-seeded database will not have.
+
+  Not an error, and it cannot be: this script opens no database, so it cannot
+  know which grants exist — and a developer who has just run the seed would be
+  nagged by a failure they had already fixed.
+
+  What it can do is name the keys whose *declaration* is newer than the last
+  change to the seed's own role matrix, which is a good proxy for "added since
+  anybody last ran `db:seed`". Git is the source: a key introduced in an
+  uncommitted or recent change to `states.ts` is exactly the one nobody holds.
+
+  Cheap and advisory, and it is the line that would have saved an afternoon.
+*/
+const untracked = [...declared].filter((key) => {
+  // Keys the seed's per-role matrix names explicitly are granted to somebody
+  // on any seed run. What is left is granted only via `allPermissionKeys()`
+  // to `administrator` — which is the path that goes stale.
+  return !seedMatrix.includes(`'${key}'`)
+})
+
+if (untracked.length > 0) {
+  console.log(
+    `permissions: ${untracked.length} key(s) reach a role only through ` +
+      '`allPermissionKeys()` — run `pnpm db:seed` after adding one, or no ' +
+      'account will hold it and its screen will be invisible rather than refused.',
+  )
 }
 
 console.log(`permissions: ${enforced.size} enforced keys, all declared`)
