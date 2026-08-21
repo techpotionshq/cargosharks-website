@@ -322,12 +322,13 @@ export function encodeHeader(value: string): string {
  *
  * `MAIL_FROM` is a *sender*, and SMTP wants two different things from it. The
  * envelope — `MAIL FROM:<…>` — takes a bare address and nothing else, while
- * the `From:` header takes the display name too. `.env.example` ships
- * `"Al-Qabandi & Partners <no-reply@qabandi.local>"`, so a client that used
- * the setting verbatim in both places would send
- * `MAIL FROM:<Al-Qabandi & Partners <no-reply@qabandi.local>>`, which every
- * relay on earth rejects — and only on deployments that copied the example,
- * which is all of them.
+ * the `From:` header takes the display name too. The settings screen accepts
+ * `"Al-Qabandi & Partners <no-reply@qabandi.com>"` — and should, because that
+ * is what a sender looks like — so a client that used the value verbatim in
+ * both places would send
+ * `MAIL FROM:<Al-Qabandi & Partners <no-reply@qabandi.com>>`, which every
+ * relay on earth rejects. A branch's own `mail_from` takes the same form and
+ * comes through the same parser, so there is one place this can be wrong.
  *
  * The display name is encoded rather than passed through: an Arabic-branded
  * deployment writes its own name there, and a header is ASCII.
@@ -490,11 +491,21 @@ export async function sendMail(options: SmtpOptions, message: OutboundMessage): 
 
     // The bare address. See `parseAddress` — the header form belongs in the
     // message, and putting it here is a rejection from every relay.
-    await session.command(`MAIL FROM:<${parseAddress(options.from).address}>`, [2])
+    /*
+      The message's own sender, where it named one.
+
+      Note that this decides the *envelope* sender as well as the header, and
+      those must agree: a relay that accepts a `From:` header it was not asked
+      to send as is a relay that will be asked to stop by the recipient's spam
+      filter. Both come off the same value here so they cannot drift.
+    */
+    const sender = message.from?.trim() || options.from
+
+    await session.command(`MAIL FROM:<${parseAddress(sender).address}>`, [2])
     await session.command(`RCPT TO:<${message.to}>`, [2])
     await session.command('DATA', [3])
 
-    session.write(stuff('\r\n' + buildMessage(message, options.from)).slice(2))
+    session.write(stuff('\r\n' + buildMessage(message, sender)).slice(2))
     const accepted = await session.command('.', [2])
 
     // Most servers put a queue id in the 250 — the only handle that exists for

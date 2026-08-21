@@ -74,9 +74,34 @@ export function clearChannels(): void {
   channels.clear()
 }
 
-/** Quiet hours in the *branch's* local time — no outbound between these. */
+/**
+ * Quiet hours, where a branch has not been given its own.
+ *
+ * These were the whole of FR-NT-07 until the columns existed, which made "we
+ * do not write to customers between nine at night and seven in the morning" a
+ * fact about the deployment rather than about the office. It is an office
+ * fact: everything else about the window was already per-branch, because the
+ * comparison is made in `branches.time_zone`.
+ *
+ * Kept as the fallback rather than deleted — a branch row that predates the
+ * migration takes these values as its column defaults, so the behaviour is
+ * unchanged for everyone until somebody deliberately changes it.
+ */
 const QUIET_FROM_HOUR = 21
 const QUIET_TO_HOUR = 7
+
+/** The window one branch keeps. */
+export interface QuietHours {
+  readonly enabled: boolean
+  readonly from: number
+  readonly to: number
+}
+
+export const DEFAULT_QUIET_HOURS: QuietHours = {
+  enabled: true,
+  from: QUIET_FROM_HOUR,
+  to: QUIET_TO_HOUR,
+}
 
 /** How long a claimed delivery stays claimed before another run may retry it. */
 const LEASE_MS = 5 * 60_000
@@ -128,6 +153,9 @@ async function expand(
         customerId: notificationOutbox.customerId,
         payload: notificationOutbox.payload,
         timeZone: branches.timeZone,
+        quietEnabled: branches.quietHoursEnabled,
+        quietFrom: branches.quietHoursFromHour,
+        quietTo: branches.quietHoursToHour,
       })
       .from(notificationOutbox)
       .innerJoin(branches, eq(branches.id, notificationOutbox.branchId))
@@ -173,9 +201,15 @@ async function expand(
         breach would suppress the alarm precisely during the hours nobody is
         watching the board — which inverts what the alarm is for.
       */
+      const quiet: QuietHours = {
+        enabled: event.quietEnabled,
+        from: event.quietFrom,
+        to: event.quietTo,
+      }
+
       const defer =
-        declared.audience === 'customer' && inQuietHours(asOf, event.timeZone)
-          ? nextQuietHoursEnd(asOf, event.timeZone)
+        declared.audience === 'customer' && inQuietHours(asOf, event.timeZone, quiet)
+          ? nextQuietHoursEnd(asOf, event.timeZone, quiet)
           : null
 
       // Registered channels, so a deployment with no adapter records the fact
@@ -405,6 +439,7 @@ async function flush(asOf: Date): Promise<{ sent: number; failed: number; deferr
 
     const result = await adapter.send({
       to: delivery.toAddress,
+      from: delivery.senderAddress ?? undefined,
       subject: renderTemplate(delivery.subject ?? '', merged),
       body: renderTemplate(delivery.body, merged),
       locale: delivery.locale,
@@ -471,6 +506,8 @@ interface ClaimedDelivery {
   readonly recipientNameAr: string | null
   readonly senderNameEn: string
   readonly senderNameAr: string
+  /** The branch's own `From:`, or null to use the channel's configured one. */
+  readonly senderAddress: string | null
 }
 
 /**
@@ -540,6 +577,14 @@ async function claim(asOf: Date): Promise<ClaimedDelivery[]> {
         recipientNameAr: sql<string | null>`coalesce(${customerContacts.nameAr}, ${principals.nameAr})`,
         senderNameEn: branches.legalNameEn,
         senderNameAr: branches.legalNameAr,
+        /*
+          The branch's own sender address, where it has one.
+
+          Null for a branch that has not been given one, and the channel's
+          configured default answers instead — so this is additive for every
+          deployment and for every branch inside one.
+        */
+        senderAddress: branches.mailFrom,
       })
       .from(notificationDeliveries)
       .innerJoin(notificationOutbox, eq(notificationOutbox.id, notificationDeliveries.outboxId))
@@ -581,9 +626,27 @@ function localHour(at: Date, timeZone: string): number {
   )
 }
 
-export function inQuietHours(at: Date, timeZone: string): boolean {
+export function inQuietHours(
+  at: Date,
+  timeZone: string,
+  quiet: QuietHours = DEFAULT_QUIET_HOURS,
+): boolean {
+  if (!quiet.enabled) return false
+
   const hour = localHour(at, timeZone)
-  return hour >= QUIET_FROM_HOUR || hour < QUIET_TO_HOUR
+
+  /*
+    Two readings of the same pair, and both are legitimate.
+
+    21 to 7 wraps midnight and is the shape every deployment uses; 1 to 6 does
+    not wrap and is what a branch with a short maintenance window would set.
+    Treating the second as though it wrapped would silence the whole working
+    day. `from = to` is refused by the check constraint in `0029` because it
+    has no reading that is not a coin toss between these two.
+  */
+  return quiet.from > quiet.to
+    ? hour >= quiet.from || hour < quiet.to
+    : hour >= quiet.from && hour < quiet.to
 }
 
 /**
@@ -597,13 +660,17 @@ export function inQuietHours(at: Date, timeZone: string): boolean {
  *
  * At most 24 iterations of an `Intl` format call, once per deferred event.
  */
-export function nextQuietHoursEnd(from: Date, timeZone: string): Date {
+export function nextQuietHoursEnd(
+  from: Date,
+  timeZone: string,
+  quiet: QuietHours = DEFAULT_QUIET_HOURS,
+): Date {
   const at = new Date(from)
   at.setUTCMinutes(0, 0, 0)
 
   for (let step = 0; step < 24; step++) {
     at.setUTCHours(at.getUTCHours() + 1)
-    if (localHour(at, timeZone) === QUIET_TO_HOUR) return at
+    if (localHour(at, timeZone) === quiet.to) return at
   }
 
   // Unreachable with any real zone; a defined answer beats an infinite defer.

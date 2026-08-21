@@ -21,13 +21,25 @@
  * switching on because a variable was left in an example file is the wrong
  * failure.
  *
- * ## Resolved once, at boot
+ * ## Two lifetimes, because there are two configuration layers
  *
- * Each resolver throws on a half-configured driver — a key without a URL, a
- * driver without a key. `config.ts` already argues why: *"a missing WhatsApp
- * token should stop the service at start-up with a clear message, not surface
- * at 2am as a failed notification for a shipment that has already sailed."*
- * The same reasoning covers a tracking feed that silently returns nothing.
+ * `adapters()` still resolves once and memoises. What is left in it — the file
+ * store and customs filing — is configured purely from the environment, holds
+ * a client or a credential, and cannot change without a restart anyway.
+ *
+ * Mail, FX, carrier tracking and e-invoice transmission are resolved *per run*
+ * instead, because they are rows now (`integration_settings`, FR-AD-03) and
+ * the entire point of a row is that a key pasted at 09:05 works at 09:06.
+ * `resolveInboundMail` below has taken this shape since the mailbox list
+ * became rows, and for the same stated reason.
+ *
+ * Each resolver still throws on a half-configured driver — a key without a
+ * URL, a driver without a key — and `safely` decides what that means. From the
+ * environment it is a boot failure, exactly as `config.ts` argues: *"a missing
+ * WhatsApp token should stop the service at start-up with a clear message, not
+ * surface at 2am as a failed notification for a shipment that has already
+ * sailed."* From a row it must not be, because the screen that fixes it is
+ * served by the process that would be refusing to start.
  */
 
 import type {
@@ -36,19 +48,26 @@ import type {
   EInvoiceTransmit,
   FileStore,
   FxRateSource,
+  ModelProvider,
 } from '../ports/index'
 
 import { eq } from 'drizzle-orm'
 import { hasSecretKey, mailboxes, openSecret, systemActor, withActor } from '@qabandi/db'
 import type { InboundMailSource, NotificationChannel } from '../ports/index'
-import { config } from '../config'
+import { integration, noteIntegrationResult, type LiveIntegration } from '../settings'
 import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
 import { imapSource } from './imap'
-import { resolveCarrierTracking } from './carrier-tracking'
+import {
+  CARRIER_SETTINGS_KEYS,
+  manualCarrierTracking,
+  resolveCarrierTracking,
+  type CarrierSettings,
+} from './carrier-tracking'
 import { resolveCustomsFiling } from './customs'
-import { resolveEInvoiceTransmit } from './einvoice'
+import { noTransmit, resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore } from './file-store'
-import { resolveFxSource } from './fx'
+import { manualFxSource, resolveFxSource } from './fx'
+import { modelProviderFrom, noModel } from './model'
 
 export {
   smtpChannel,
@@ -80,6 +99,15 @@ export { imapSource, flattenHtml, toInboundMessage, ImapError, type ImapOptions 
 export { noTransmit, aspTransmit } from './einvoice'
 export { manualCustomsFiling } from './customs'
 export {
+  openRouterModel,
+  readCompletion,
+  modelProviderFrom,
+  monthlyBudgetUsd,
+  noModel,
+  ModelError,
+  type OpenRouterOptions,
+} from './model'
+export {
   s3FileStore,
   memoryFileStore,
   parseStorageKey,
@@ -89,23 +117,76 @@ export {
 } from './file-store'
 
 /**
+ * A resolver that must not be able to take the deployment down.
+ *
+ * The two configuration layers fail differently and this is where the
+ * difference is applied. An environment variable that is wrong stops the
+ * service at boot, which is right: it is fixed by the person deploying, before
+ * anybody depends on the process. A *row* that is wrong is fixed on a screen —
+ * so refusing to resolve would take out the screen along with the mistake, and
+ * leave a deployment that can only be recovered through psql.
+ *
+ * So a bad row degrades to the Release One driver, records why on the row, and
+ * the settings page shows it red. The capability is off, which it was anyway,
+ * and everything else keeps running.
+ *
+ * `noted` makes the write a transition rather than a heartbeat: stamping
+ * `last_ok_at` on every resolve would be a write per worker tick against a
+ * table of ten rows, for no information a fresher timestamp would carry.
+ */
+const noted = new Map<string, string | null>()
+
+async function safely<T>(
+  key: string,
+  fallback: T,
+  build: () => T,
+  log?: (o: unknown, m: string) => void,
+): Promise<T> {
+  try {
+    const built = build()
+    if (noted.get(key) !== null) {
+      noted.set(key, null)
+      await noteIntegrationResult(key, null).catch(() => {})
+    }
+    return built
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (noted.get(key) !== message) {
+      noted.set(key, message)
+      await noteIntegrationResult(key, message).catch(() => {})
+      log?.({ integration: key, err: message }, 'integration is misconfigured; using the default')
+    }
+    return fallback
+  }
+}
+
+/**
  * The mail options this deployment is configured with.
  *
  * Lives here rather than in `smtp.ts` for the same reason `resolveFileStore`
  * lives outside `s3.ts`: the wire protocol takes options and knows nothing
  * about where they came from, which is what lets it be tested against a socket
  * with no environment at all.
+ *
+ * `from` takes a branch override when one is supplied — five legal entities
+ * sending from one address is the same mistake as five numbering from one
+ * invoice series, and the more visible one because the customer reads it.
  */
-export function smtpOptions(): SmtpOptions {
+export function smtpOptions(settings: LiveIntegration, from?: string | null): SmtpOptions {
   return {
-    host: config.SMTP_HOST,
-    port: config.SMTP_PORT,
-    secure: config.SMTP_SECURE,
-    user: config.SMTP_USER,
-    password: config.SMTP_PASSWORD,
-    from: config.MAIL_FROM,
-    rejectUnauthorized: config.SMTP_TLS_REJECT_UNAUTHORIZED,
+    host: settings.text('host') ?? 'localhost',
+    port: settings.number('port', 1025),
+    secure: settings.bool('secure', false),
+    user: settings.text('user'),
+    password: settings.secret('password'),
+    from: from?.trim() || settings.text('from') || 'no-reply@qabandi.local',
+    rejectUnauthorized: settings.bool('rejectUnauthorized', true),
   }
+}
+
+/** The mail settings, resolved. Exposed so the dispatcher can pick a branch `from`. */
+export async function mailSettings(): Promise<LiveIntegration> {
+  return integration('smtp')
 }
 
 /**
@@ -117,15 +198,100 @@ export function smtpOptions(): SmtpOptions {
  * Sending mail is neither: FR-NT-01 is a Must, and a deployment that quietly
  * decided not to send anything would satisfy the letter of "no surprises" by
  * failing at the thing it was installed to do.
+ *
+ * Resolved per dispatch run rather than once at boot, which is what makes a
+ * relay corrected on the settings screen take effect on the next tick instead
+ * of at the next restart. The dispatcher runs every minute, and `settings.ts`
+ * caches for thirty seconds, so this is at most two queries a minute.
  */
-export function resolveEmailChannel(log: (o: unknown, m: string) => void): NotificationChannel {
-  if (config.MAIL_DRIVER === 'log') return logChannel(log)
+export async function resolveEmailChannel(
+  log: (o: unknown, m: string) => void,
+): Promise<NotificationChannel> {
+  const settings = await integration('smtp')
 
-  if (config.SMTP_USER && !config.SMTP_PASSWORD) {
-    throw new Error('SMTP_USER is set without SMTP_PASSWORD. Set both, or neither.')
+  if (settings.driver === 'log') return logChannel(log)
+
+  return safely(
+    'smtp',
+    logChannel(log),
+    () => {
+      /*
+        A user with no password is refused rather than sent.
+
+        The adapter would otherwise offer the username and no credential, which
+        most relays answer by accepting the connection and rejecting the
+        recipient — a per-message failure that reads as a bad address.
+      */
+      if (settings.text('user') && !settings.secret('password')) {
+        throw new Error('A mail username is set with no password. Set both, or neither.')
+      }
+      return smtpChannel(smtpOptions(settings))
+    },
+    log,
+  )
+}
+
+/**
+ * The FX feed, resolved per run.
+ *
+ * Async and unmemoised for the same reason `resolveInboundMail` below is: this
+ * is a query now, and the whole point of the query is that a key pasted at
+ * 09:05 works at 09:06.
+ */
+export async function fxSource(log?: (o: unknown, m: string) => void): Promise<FxRateSource> {
+  const settings = await integration('fx')
+  return safely('fx', manualFxSource, () => resolveFxSource(settings), log)
+}
+
+/** The carrier feed — one driver row plus one credential row per carrier. */
+export async function carrierTracking(
+  log?: (o: unknown, m: string) => void,
+): Promise<CarrierTracking> {
+  const loaded = await Promise.all(CARRIER_SETTINGS_KEYS.map((key) => integration(key)))
+
+  const carriers: Record<string, LiveIntegration> = {}
+  CARRIER_SETTINGS_KEYS.forEach((key, index) => {
+    const value = loaded[index]
+    if (value) carriers[key] = value
+  })
+
+  const settings: CarrierSettings = {
+    tracking: carriers['carrierTracking'] ?? (await integration('carrierTracking')),
+    carriers,
   }
 
-  return smtpChannel(smtpOptions())
+  return safely(
+    'carrierTracking',
+    manualCarrierTracking,
+    () => resolveCarrierTracking(settings),
+    log,
+  )
+}
+
+/** The e-invoice transmitter. `none` until a deployment appoints a provider. */
+export async function eInvoiceTransmit(
+  log?: (o: unknown, m: string) => void,
+): Promise<EInvoiceTransmit> {
+  const settings = await integration('einvoice')
+  return safely('einvoice', noTransmit, () => resolveEInvoiceTransmit(settings), log)
+}
+
+/**
+ * The model provider, resolved per call.
+ *
+ * The model slug is part of this driver's identity — `key` reads
+ * `openrouter:<model>` — so the ledger records which model answered rather
+ * than which vendor did.
+ *
+ * Degrades to `noModel` rather than throwing, through `safely`, for the reason
+ * that applies to every row-configured integration and applies hardest here: a
+ * mistyped slug must not take out the settings screen that fixes it. A surface
+ * that finds `available === false` records that it could not run — which is
+ * different from recording that it found nothing.
+ */
+export async function modelProvider(log?: (o: unknown, m: string) => void): Promise<ModelProvider> {
+  const settings = await integration('ai')
+  return safely('ai', noModel, () => modelProviderFrom(settings), log)
 }
 
 /**
@@ -159,6 +325,8 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
         passwordSealed: mailboxes.passwordSealed,
         folder: mailboxes.folder,
         archiveFolder: mailboxes.archiveFolder,
+        pollBatch: mailboxes.pollBatch,
+        maxAttachmentMb: mailboxes.maxAttachmentMb,
       })
       .from(mailboxes)
       .where(eq(mailboxes.isActive, true)),
@@ -184,8 +352,17 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
         password,
         folder: row.folder,
         archiveFolder: row.archiveFolder ?? undefined,
-        batch: config.INBOUND_MAIL_BATCH,
-        maxAttachmentBytes: config.INBOUND_MAIL_MAX_ATTACHMENT_MB * 1024 * 1024,
+        /*
+          Per mailbox, not per deployment.
+
+          A shared Office 365 mailbox on a throttled tenant and a self-hosted
+          Dovecot want different answers, and `INBOUND_MAIL_BATCH` meant
+          tuning one of them down tuned all five. The columns carry the old
+          environment values as their defaults, so nothing moves until an
+          administrator moves it.
+        */
+        batch: row.pollBatch,
+        maxAttachmentBytes: row.maxAttachmentMb * 1024 * 1024,
       }),
     )
   }
@@ -203,29 +380,29 @@ export async function noteMailboxError(id: string, message: string | null): Prom
   })
 }
 
+/**
+ * The ports that are still environment-only, and still resolved once.
+ *
+ * Two of the original five. `fileStore` holds a signing client and its
+ * credentials belong to the service alone; `customsFiling` has one
+ * implementation. Neither can be changed from a screen, so neither has a
+ * reason to be re-resolved — and memoising keeps a configuration error from
+ * presenting as an intermittent one.
+ *
+ * The other three moved to `fxSource()`, `carrierTracking()` and
+ * `eInvoiceTransmit()` above, which are async and unmemoised.
+ */
 export interface Adapters {
-  readonly fx: FxRateSource
   readonly fileStore: FileStore
-  readonly carrierTracking: CarrierTracking
   readonly customsFiling: CustomsFiling
-  readonly eInvoice: EInvoiceTransmit
 }
 
 let resolved: Adapters | undefined
 
-/**
- * Resolve every external port, once.
- *
- * Memoised because these hold connections and keys, and because resolving per
- * call would turn a configuration error into an intermittent one.
- */
 export function adapters(): Adapters {
   resolved ??= {
-    fx: resolveFxSource(),
     fileStore: resolveFileStore(),
-    carrierTracking: resolveCarrierTracking(),
     customsFiling: resolveCustomsFiling(),
-    eInvoice: resolveEInvoiceTransmit(),
   }
   return resolved
 }
@@ -237,20 +414,41 @@ export function adapters(): Adapters {
  * question of any support conversation about a fleet, and reading it off the
  * environment by hand gets it wrong.
  */
-export function describeAdapters(): Record<string, string> {
+export async function describeAdapters(): Promise<Record<string, string>> {
   const a = adapters()
+
+  /*
+    Async now, and the reason is the point of the whole change: four of these
+    answers live in the database, so the boot log has to ask it. It runs once
+    per process start, after the pool is up.
+
+    A database that cannot be reached does not stop the log line — every
+    resolver here falls back to the environment — so this cannot be the thing
+    that prevents a service from starting and saying why.
+  */
+  const [mail, fx, carrier, einvoice, model] = await Promise.all([
+    integration('smtp'),
+    fxSource(),
+    carrierTracking(),
+    eInvoiceTransmit(),
+    modelProvider(),
+  ])
+
   return {
     /*
-      Read from config rather than from the channel, because the channel is
-      registered on the dispatcher rather than held here — and because
       `email: log` is the single most important line in this log. A deployment
       that is writing mail to a file instead of sending it looks identical from
       the outside to one that is working.
+
+      The `(row)` marker matters as much: "the relay is wrong" and "the relay
+      you edited is not the one in use" are different problems with the same
+      symptom, and this is the only place that distinguishes them.
     */
     email:
-      config.MAIL_DRIVER === 'log'
+      mail.driver === 'log'
         ? 'log (not sending)'
-        : `smtp ${config.SMTP_HOST}:${config.SMTP_PORT}`,
+        : `smtp ${mail.text('host') ?? 'localhost'}:${mail.number('port', 1025)}` +
+          (mail.fromRow ? ' (from settings)' : ''),
     /*
       Read from config for the same reason as `email` above: "off" and "on but
       polling nothing" look identical from outside, and this is the line that
@@ -268,10 +466,16 @@ export function describeAdapters(): Record<string, string> {
     inboundMail: hasSecretKey()
       ? 'imap — mailboxes configured in settings'
       : 'imap — MAILBOX_ENCRYPTION_KEY not set, mailboxes unreadable',
-    fx: a.fx.key,
+    fx: fx.key,
     fileStore: a.fileStore.key,
-    carrierTracking: a.carrierTracking.key,
+    carrierTracking: carrier.key,
     customsFiling: a.customsFiling.key,
-    eInvoice: a.eInvoice.key,
+    eInvoice: einvoice.key,
+    /*
+      The only line here that is also a spend. `none` means no document is
+      being read by a model, which is a legitimate configuration and an
+      expensive surprise if it was not the intended one.
+    */
+    model: model.key,
   }
 }

@@ -109,6 +109,24 @@ export const SETTINGS_AREAS = [
     permission: 'admin.mailboxes.write',
     icon: 'enquiries',
   },
+  /*
+    The credentials this deployment reaches its suppliers with — FR-AD-03.
+
+    Its own key, and the strictest reasoning on this list. The mailbox entry
+    above earns a separate permission because a row carries one office's
+    credential; this one carries *every* office's, because
+    `integration_settings` has no `branch_id` to narrow it. There is no such
+    thing as changing the SMTP relay or the Maersk registration for Kuwait
+    only, so the permission is the whole of the scoping — which is why the
+    policy conditions on it rather than on the branch list every other
+    configuration table narrows by.
+  */
+  {
+    key: 'integrations',
+    href: '/settings/integrations',
+    permission: 'admin.integrations.write',
+    icon: 'globe',
+  },
   { key: 'brand', href: '/settings/brand', permission: 'admin.brand.read', icon: 'admin' },
 ] as const
 

@@ -29,7 +29,7 @@
  *
  * Ordered by ETA, because the shipment arriving on Tuesday is the one whose
  * discharge date is about to become a demurrage clock. When the fleet exceeds
- * `CARRIER_POLL_BATCH` the result names how many were left — a silent
+ * the configured batch, the result names how many were left — a silent
  * truncation would read as "we polled everything" for as long as nobody
  * counted.
  */
@@ -44,8 +44,8 @@ import {
   systemActor,
   withActor,
 } from '@qabandi/db'
-import { adapters } from '../adapters/index'
-import { config } from '../config'
+import { carrierTracking } from '../adapters/index'
+import { integration } from '../settings'
 import type { DcsaPollResult, DcsaTracking } from '../adapters/dcsa-tracking'
 import { DcsaError } from '../adapters/dcsa-tracking'
 import { writeCarrierMilestone } from './carrier-milestone'
@@ -132,7 +132,20 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
     unmapped: [],
     rateLimited: [],
   }
-  const source = adapters().carrierTracking
+  /*
+    The poll's budget, read from its settings row.
+
+    `batch × runs-per-hour ≤ the carrier's cap` is the arithmetic a deployment
+    has to get right, and it changes when a carrier tier changes — a commercial
+    event, on the client's calendar rather than ours. It was three environment
+    variables and a worked example in a comment; it is a form that checks the
+    multiplication now.
+  */
+  const poll = await integration('carrierPoll')
+  const batchSize = poll.number('batch', 15)
+  const activeWithin = poll.number('activeWithinMinutes', 0)
+
+  const source = await carrierTracking()
   const dcsa = asDcsa(source)
 
   /*
@@ -154,16 +167,16 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
 
     A trial tier allows twenty calls an hour, and a poll that runs all night
     against an empty office arrives at nine with the quota already gone. Off by
-    default — see `CARRIER_POLL_ACTIVE_WITHIN_MINUTES`, which explains why
+    default — see the poll settings at Settings › Integrations, which explain why
     production wants the opposite.
   */
-  if (config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES > 0) {
-    if (!(await someoneIsAround(config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES))) {
+  if (activeWithin > 0) {
+    if (!(await someoneIsAround(activeWithin))) {
       return {
         source: source.key,
         ...empty,
         deferred: 0,
-        skipped: `nobody signed in within ${config.CARRIER_POLL_ACTIVE_WITHIN_MINUTES}m`,
+        skipped: `nobody signed in within ${activeWithin}m`,
       }
     }
   }
@@ -203,11 +216,11 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
         ),
       )
       .orderBy(sql`${jobs.eta} asc nulls last`, asc(jobs.reference))
-      .limit(config.CARRIER_POLL_BATCH + 1),
+      .limit(batchSize + 1),
   )
 
-  const deferred = Math.max(0, candidates.length - config.CARRIER_POLL_BATCH)
-  const batch = candidates.slice(0, config.CARRIER_POLL_BATCH)
+  const deferred = Math.max(0, candidates.length - batchSize)
+  const batch = candidates.slice(0, batchSize)
 
   let written = 0
   let preserved = 0

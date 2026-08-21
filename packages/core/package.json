@@ -11,7 +11,9 @@
     "./rating": "./src/rating.ts",
     "./clocks": "./src/clocks.ts",
     "./states": "./src/states.ts",
-    "./import": "./src/import.ts"
+    "./import": "./src/import.ts",
+    "./ai": "./src/ai.ts",
+    "./extraction": "./src/extraction.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -29,7 +29,7 @@ import type { FastifyInstance } from 'fastify'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import { assets, db, principals, withActor, type Actor } from '@qabandi/db'
-import { adapters, sendMail, smtpOptions } from '../adapters/index'
+import { adapters, mailSettings, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf, renderQuotationPdf } from '../pdf/documents'
@@ -41,6 +41,9 @@ import {
 } from '../pdf/job-documents'
 import { storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
+import { extractSupplierInvoice } from '../workers/invoice-extract'
+import { AiUnavailableError } from '../ai/ledger'
+import { describeFinding } from '@qabandi/core'
 
 interface DocumentRequest {
   readonly actor: Actor
@@ -75,6 +78,15 @@ interface VoidExportRequest {
 interface PasswordResetRequest {
   readonly email: string
   readonly url: string
+}
+
+interface ExtractInvoiceRequest {
+  readonly actor?: Actor
+  readonly branchId?: string
+  readonly assetId?: string
+  readonly partnerId?: string
+  readonly jobId?: string | null
+  readonly write?: boolean
 }
 
 /**
@@ -490,6 +502,78 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
    * request — a 404 for an unknown address would rebuild the account-enumeration
    * oracle that `signIn` is careful not to be (FR-ID-04).
    */
+
+  /*
+    Supplier invoice extraction — FR-FN-09's missing half.
+
+    Synchronous, unlike the queued path in `workers/index.ts`, and the two
+    exist for genuinely different callers. This one serves a coordinator who is
+    standing on the capture form with the PDF already uploaded: they are
+    waiting, the answer pre-fills the form in front of them, and the review
+    *is* the form. The queued job serves a bill that arrived by email with
+    nobody looking.
+
+    `write` defaults to false here for that reason. A route a screen calls must
+    not create a row behind the person filling one in, or they end up with two.
+  */
+  app.post<{ Body: ExtractInvoiceRequest }>('/ai/supplier-invoice', async (request, reply) => {
+    const { actor, branchId, assetId, partnerId, jobId, write } = request.body ?? {}
+
+    if (!actor || !branchId || !assetId || !partnerId) {
+      return reply.code(400).send({ error: 'incomplete_request' })
+    }
+
+    try {
+      const result = await extractSupplierInvoice({
+        actor,
+        branchId,
+        assetId,
+        partnerId,
+        jobId: jobId ?? null,
+        write: write === true,
+      })
+
+      return reply.send({
+        invocationId: result.invocationId,
+        consistent: result.consistent,
+        supplierInvoiceId: result.supplierInvoiceId ?? null,
+        refusal: result.refusal ?? null,
+        header: result.extracted.header,
+        confidence: result.extracted.confidence,
+        lines: result.extracted.lines.rows.map((row) => row.values),
+        /*
+          Both the machine-readable findings and the sentence. The screen wants
+          to point at line 3; the log and the toast want "line 3 says 450.000,
+          the figures give 451.500" — and rendering that sentence in three
+          places is how three renderings of one fact drift apart.
+        */
+        findings: result.findings.map((finding) => ({
+          check: finding.check,
+          line: finding.line ?? null,
+          message: describeFinding(finding),
+        })),
+        issues: [
+          ...result.extracted.headerIssues,
+          ...result.extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
+        ],
+      })
+    } catch (error) {
+      /*
+        `503` for an unconfigured or exhausted provider, not `500`.
+
+        A deployment that has bought no model, and one that has spent its
+        ceiling for the month, are both *this service is not offering that
+        right now* — a state the screen should explain and fall back from, not
+        an error it should report as a fault. The code travels so the web app
+        can say which of the two it is.
+      */
+      if (error instanceof AiUnavailableError) {
+        return reply.code(503).send({ error: error.code, message: error.message })
+      }
+      throw error
+    }
+  })
+
   app.post<{ Body: PasswordResetRequest }>('/mail/password-reset', async (request, reply) => {
     const { email, url } = request.body ?? {}
 
@@ -517,7 +601,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     const name = (locale === 'ar' ? principal?.nameAr : principal?.nameEn) ?? ''
 
     try {
-      await sendMail(smtpOptions(), {
+      await sendMail(smtpOptions(await mailSettings()), {
         to: email,
         subject: locale === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset your password',
         body: passwordResetBody(locale, name, url),

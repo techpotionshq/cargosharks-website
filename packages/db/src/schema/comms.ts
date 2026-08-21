@@ -70,6 +70,21 @@ export const mailboxes = pgTable(
      * messages pile up beneath the ones that still need them.
      */
     archiveFolder: text('archive_folder'),
+    /**
+     * Messages taken per run from *this* mailbox. The rest wait a minute.
+     *
+     * `INBOUND_MAIL_BATCH` until now, which meant one number for every office.
+     * The row it belongs on already existed: a shared Office 365 mailbox on a
+     * throttled tenant and a self-hosted Dovecot want different answers, and
+     * tuning one of them down used to tune all five.
+     */
+    pollBatch: integer('poll_batch').notNull().default(25),
+    /**
+     * Attachments larger than this are recorded by name with their bytes
+     * dropped — an 80MB scan of a customs file should not lose the enquiry it
+     * came attached to, and should not take the worker down either.
+     */
+    maxAttachmentMb: integer('max_attachment_mb').notNull().default(25),
     isActive: boolean('is_active').notNull().default(true),
     /*
       What the last run did, so the screen can say so.

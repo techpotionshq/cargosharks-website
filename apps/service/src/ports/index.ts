@@ -1,5 +1,5 @@
 /**
- * The eight ports — Architecture §10.
+ * The nine ports — Architecture §10.
  *
  * These are the *only* interfaces in the system. The rule from §1 applies
  * without exception: no abstraction without a named second implementation.
@@ -15,6 +15,11 @@
  *   CustomsFiling        manual reference capture    -> Kuwait Single Window (R2)
  *   EInvoiceTransmit     compliant data, no send     -> accredited provider (R2)
  *   InboundMailSource    IMAP poll of the mailboxes  -> provider webhook
+ *   ModelProvider        OpenRouter                  -> a model hosted in region
+ *
+ * `ModelProvider` is the ninth and the newest; the argument for it being a port
+ * at all is at its declaration below, and the reasoning it answers to is
+ * `docs/Qabandi_AI_Surface.md`.
  *
  * The last three of the first seven are not speculative. R1 has a genuine
  * first implementation — manual capture — and SRS §8 states the intent that
@@ -35,6 +40,19 @@ export interface OutboundMessage {
   readonly subject?: string
   readonly body: string
   readonly locale: 'en' | 'ar'
+  /**
+   * Who it comes from, where the sender is not the deployment's default.
+   *
+   * Optional, and the channel's own configured `from` is what answers when it
+   * is absent. It exists because a branch is a legal entity (FR-ID-01): five
+   * entities sending from one address is the same mistake as five numbering
+   * from one invoice series, and the more visible one, because the customer
+   * reads this and never reads the series.
+   *
+   * A channel with no notion of a sender address — WhatsApp sends from a
+   * number the account owns — is free to ignore it.
+   */
+  readonly from?: string
   /** The approved template name, where the channel requires one. */
   readonly providerTemplateName?: string
   readonly attachments?: readonly { filename: string; content: Buffer; contentType: string }[]
@@ -219,4 +237,141 @@ export interface InboundMessage {
 export interface InboundMailSource {
   readonly key: string
   collect(handler: (message: InboundMessage) => Promise<void>): Promise<number>
+}
+
+/* -------------------------------------------------------------------------
+ * The ninth port — a language model
+ * ---------------------------------------------------------------------- */
+
+/**
+ * One part of a message. Text, or an image for the vision surfaces.
+ *
+ * Images are carried as data URIs rather than as URLs, and that is a security
+ * property rather than a convenience: a `https://` image URL in a request
+ * makes the provider fetch it, which turns "extract this bill of lading" into
+ * a server-side request this application did not make and cannot see. Our
+ * documents live behind signed URLs on object storage; the bytes go in the
+ * body, and nothing about a scan's location leaves the building.
+ */
+export type ModelContent =
+  | { readonly type: 'text'; readonly text: string }
+  | {
+      readonly type: 'image'
+      /** `data:image/png;base64,…` — the bytes, not a link to them. */
+      readonly dataUri: string
+    }
+  | {
+      readonly type: 'document'
+      /**
+       * A PDF, inlined. `data:application/pdf;base64,…`.
+       *
+       * Separate from `image` because providers carry the two differently, and
+       * because the distinction is one the caller genuinely has: a scan
+       * attached to an email is a PDF far more often than it is a PNG, and
+       * every supplier invoice this system will read is one.
+       */
+      readonly dataUri: string
+      /** Shown to the model, and useful to it: invoices are named. */
+      readonly filename: string
+    }
+
+export interface ModelMessage {
+  readonly role: 'system' | 'user' | 'assistant'
+  readonly content: string | readonly ModelContent[]
+}
+
+/**
+ * A function the model may ask us to run — the assistant's read tools.
+ *
+ * `parameters` is a JSON Schema. It is the provider's own contract and there
+ * is no value in wrapping it: every provider worth using takes JSON Schema,
+ * and a bespoke type here would be a translation layer between two identical
+ * things that breaks on the first schema keyword it did not anticipate.
+ */
+export interface ModelTool {
+  readonly name: string
+  readonly description: string
+  readonly parameters: Record<string, unknown>
+}
+
+export interface ModelToolCall {
+  readonly id: string
+  readonly name: string
+  /** Raw JSON as the model produced it. Parsed and validated by the caller. */
+  readonly arguments: string
+}
+
+export interface ModelRequest {
+  /**
+   * Which surface is asking — `AiSurface` in `core/ai.ts`.
+   *
+   * Required, and it is not telemetry. It selects the model, it selects the
+   * spend limit, and it is the dimension the cost report is grouped by. A
+   * call that cannot say which feature made it is a call nobody can price or
+   * switch off.
+   */
+  readonly surface: string
+  readonly messages: readonly ModelMessage[]
+  /** Forces structured output where the provider supports it. */
+  readonly schema?: Record<string, unknown>
+  readonly tools?: readonly ModelTool[]
+  readonly maxOutputTokens?: number
+  /**
+   * Zero unless a surface argues otherwise, and none of them do yet.
+   *
+   * Every surface in this system extracts a fact that is either on the page
+   * or is not. Sampling buys variety, which is worth nothing here and costs
+   * reproducibility — and reproducibility is what makes the golden set in
+   * `AI-19` mean anything from one week to the next.
+   */
+  readonly temperature?: number
+}
+
+export interface ModelResponse {
+  /**
+   * What actually answered.
+   *
+   * Distinct from what was asked for, because a router may serve a different
+   * model than the slug named — a fallback, a quantisation, a provider
+   * outage. The ledger records both, since "the extraction got worse on
+   * Tuesday" is otherwise an unanswerable question.
+   */
+  readonly model: string
+  readonly text: string
+  readonly toolCalls: readonly ModelToolCall[]
+  readonly inputTokens: number
+  readonly outputTokens: number
+  /** USD, as a string, where the provider reports it. Never a JS number. */
+  readonly costUsd?: string
+  readonly finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error'
+  /** The provider's own body, stored verbatim in the ledger. */
+  readonly raw: unknown
+}
+
+/**
+ * Somewhere to ask a language model something.
+ *
+ * The ninth port, and it earns §10's rule rather than bending it. The first
+ * implementation is OpenRouter, which is itself a router and therefore makes
+ * the *model* a configuration value rather than a code change. The named
+ * second is a regionally hosted model: GCC data residency is a live question
+ * for a client whose customs declarations and commercial invoices are the
+ * payload, and the answer may be that they may not leave the Gulf.
+ *
+ * The third is `none`, and it is a real implementation rather than an absence
+ * — the same argument `manualFxSource` makes. A deployment that has bought no
+ * model refuses politely and says so at boot, and `QABANDI_PILOT_FIXTURES=1`
+ * keeps running the whole interface with no network at all.
+ *
+ * One method. Retries, backoff and the ledger live in the caller, once, not
+ * in each adapter — the same division `NotificationChannel` draws, and for the
+ * same reason: FR-NT-06's delivery states are not a per-provider concern and
+ * neither is what a call cost.
+ */
+export interface ModelProvider {
+  /** Which driver answered, for the boot log — as on the other eight. */
+  readonly key: string
+  /** Whether this driver can actually reach a model. `none` cannot. */
+  readonly available: boolean
+  complete(request: ModelRequest): Promise<ModelResponse>
 }

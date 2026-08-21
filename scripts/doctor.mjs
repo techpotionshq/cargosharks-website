@@ -1,10 +1,12 @@
 /**
  * `pnpm doctor` — what is configured, what is not, and what that costs you.
  *
- * `.env.example` is ten kilobytes describing forty-four variables, and a new
- * developer reading it top to bottom cannot tell which four decide whether the
- * application starts and which forty are integrations they will never touch.
- * The file is documentation; this is the answer to "am I set up yet".
+ * `.env.example` used to be ten kilobytes describing forty-four variables, and
+ * a new developer reading it top to bottom could not tell which four decided
+ * whether the application starts and which forty were integrations they would
+ * never touch. Most of those forty are `integration_settings` rows now and the
+ * file is down to the infrastructure, but the question this answers is the
+ * same one: the file is documentation, and this is "am I set up yet".
  *
  * The distinction it draws is the one that matters and that a flat list cannot:
  *
@@ -133,13 +135,37 @@ const capabilities = [
   },
   {
     name: 'E-invoice transmission',
-    keys: ['EINVOICE_API_KEY'],
+    /*
+      `EINVOICE_ASP_API_KEY`, which is what `config.ts` declares.
+
+      This read `EINVOICE_API_KEY` — a variable that exists nowhere else in the
+      repository — so the doctor reported transmission as unconfigured on a
+      deployment that had configured it, and reported it that way for ever
+      because no amount of correct configuration could set a key nothing names.
+      Exactly the class of drift a flat list of strings invites, which is why
+      the integration keys below are read from the catalogue instead.
+    */
+    keys: ['EINVOICE_ASP_API_KEY'],
     without: 'invoices render but are not transmitted to the tax authority',
   },
   {
     name: 'WhatsApp',
     keys: ['WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ACCESS_TOKEN'],
     without: 'customer notifications fall back to email only',
+  },
+  {
+    /*
+      One key, because the key is the switch.
+
+      The model has a default and the endpoint is a constant, so a deployment
+      holding a key is a deployment that can read documents. Reporting on the
+      model as well would report a configured capability as missing whenever
+      somebody was happy with the default.
+    */
+    name: 'Document and email extraction',
+    keys: ['OPENROUTER_API_KEY'],
+    without:
+      'no document or email is read by a model: cargo facts, supplier invoice lines and rate sheets are all typed in by hand',
   },
   {
     name: 'Telemetry',
@@ -196,6 +222,56 @@ for (const cap of capabilities) {
   console.log(`${ok ? tick : dash} ${cap.name}${partial ? '  (partially configured)' : ''}`)
   if (!ok) console.log(`       without it: ${cap.without}`)
 }
+
+/*
+  The variables below are no longer the only place these can be set.
+
+  Most of what this section reports moved to `integration_settings` rows an
+  administrator edits at Settings › Integrations (FR-AD-03), and a row wins
+  over the variable it replaces. This script deliberately opens no database —
+  "a doctor that needs the patient healthy to give a diagnosis is not much
+  use" — so it cannot know which of them a deployment has already moved.
+
+  Saying so is the difference between a report that is incomplete and one that
+  is wrong. Without this line an operator reads `-- Container tracking` on a
+  deployment whose Maersk key is configured perfectly well, and goes looking
+  for a variable to set that the interface has already replaced.
+*/
+console.log('')
+
+/*
+  Named from the message catalogue rather than typed out here.
+
+  Typing the list out is how this file already went wrong once — it checked
+  `EINVOICE_API_KEY`, a variable that exists nowhere, and reported e-invoice
+  transmission as unconfigured for ever. `INTEGRATIONS` in `@qabandi/core` is
+  the real authority, and this script cannot import TypeScript; but
+  `integrations.keys` in the English catalogue has one entry per integration
+  and `check-messages.mjs` fails the build when the two disagree. So it is the
+  same list, reachable from a plain `JSON.parse`, and an integration added
+  later appears here without anybody remembering to add it.
+*/
+let integrationNames = []
+try {
+  const catalogue = JSON.parse(readFileSync('apps/web/messages/en.json', 'utf8'))
+  integrationNames = Object.values(catalogue.integrations?.keys ?? {})
+} catch {
+  // A missing or unreadable catalogue is not worth failing the doctor over —
+  // the note below simply becomes a little less specific.
+}
+
+console.log(
+  integrationNames.length > 0
+    ? `  Note: ${integrationNames.length} integrations — ${integrationNames.join(', ')} —`
+    : '  Note: the integrations above',
+)
+console.log(
+  '        can also be configured at Settings › Integrations, and a saved value wins',
+)
+console.log(
+  '        over the variable above. This script reads no database, so a capability',
+)
+console.log('        marked missing here may already be configured there.')
 
 // Auth secret: not required to boot in development, and refused at boot in
 // production by apps/web/instrumentation.ts. Worth reporting either way,

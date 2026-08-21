@@ -85,6 +85,23 @@ vi.mock('../adapters/index', () => ({
     harness.mailed.push(message as never)
   },
   smtpOptions: () => ({}),
+  /*
+    The relay's settings are a row now, so the handler asks for them before it
+    builds the options. Stubbed to the shape rather than to a value: nothing in
+    the password-reset path reads a field off it, and a stub that answered with
+    plausible settings would be asserting something this test does not test.
+  */
+  mailSettings: async () => ({
+    key: 'smtp',
+    driver: 'smtp',
+    live: true,
+    missing: [],
+    fromRow: false,
+    text: () => undefined,
+    number: (_name: string, fallback: number) => fallback,
+    bool: (_name: string, fallback: boolean) => fallback,
+    secret: () => undefined,
+  }),
 }))
 
 vi.mock('../pdf/documents', () => ({

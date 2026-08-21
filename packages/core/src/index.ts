@@ -24,6 +24,9 @@ export * from './clocks'
 export * from './credit'
 export * from './states'
 export * from './notifications'
+export * from './integrations'
+export * from './ai'
+export * from './extraction'
 
 /**
  * `./import` is deliberately *not* re-exported here.

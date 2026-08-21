@@ -36,18 +36,30 @@ import {
 } from './schema/index'
 loadEnv()
 
+/*
+  `isTracked` decides which of these the daily FX refresh fetches a rate for.
+
+  Every currency except the base, because that is what `FX_QUOTE_CURRENCIES`
+  defaulted to before this was a column and a fresh seed should behave the way
+  a fresh deployment always has. KWD is left untracked because a rate from the
+  base to itself is one, and asking a metered feed for it is noise.
+
+  An administrator narrows this on the reference screen where the feed is
+  metered — it is separate from `is_active` precisely so a currency can stay
+  perfectly live on historic invoices without costing an API call a day.
+*/
 const CURRENCIES = [
-  { code: 'KWD', nameEn: 'Kuwaiti Dinar', nameAr: 'دينار كويتي', minorUnits: 3, symbol: 'د.ك' },
-  { code: 'BHD', nameEn: 'Bahraini Dinar', nameAr: 'دينار بحريني', minorUnits: 3, symbol: 'د.ب' },
-  { code: 'OMR', nameEn: 'Omani Rial', nameAr: 'ريال عماني', minorUnits: 3, symbol: 'ر.ع' },
-  { code: 'USD', nameEn: 'US Dollar', nameAr: 'دولار أمريكي', minorUnits: 2, symbol: '$' },
-  { code: 'EUR', nameEn: 'Euro', nameAr: 'يورو', minorUnits: 2, symbol: '€' },
-  { code: 'GBP', nameEn: 'Pound Sterling', nameAr: 'جنيه إسترليني', minorUnits: 2, symbol: '£' },
-  { code: 'AED', nameEn: 'UAE Dirham', nameAr: 'درهم إماراتي', minorUnits: 2, symbol: 'د.إ' },
-  { code: 'QAR', nameEn: 'Qatari Riyal', nameAr: 'ريال قطري', minorUnits: 2, symbol: 'ر.ق' },
-  { code: 'SAR', nameEn: 'Saudi Riyal', nameAr: 'ريال سعودي', minorUnits: 2, symbol: 'ر.س' },
-  { code: 'INR', nameEn: 'Indian Rupee', nameAr: 'روبية هندية', minorUnits: 2, symbol: '₹' },
-  { code: 'CNY', nameEn: 'Chinese Yuan', nameAr: 'يوان صيني', minorUnits: 2, symbol: '¥' },
+  { code: 'KWD', nameEn: 'Kuwaiti Dinar', nameAr: 'دينار كويتي', minorUnits: 3, symbol: 'د.ك', isTracked: false },
+  { code: 'BHD', nameEn: 'Bahraini Dinar', nameAr: 'دينار بحريني', minorUnits: 3, symbol: 'د.ب', isTracked: true },
+  { code: 'OMR', nameEn: 'Omani Rial', nameAr: 'ريال عماني', minorUnits: 3, symbol: 'ر.ع', isTracked: true },
+  { code: 'USD', nameEn: 'US Dollar', nameAr: 'دولار أمريكي', minorUnits: 2, symbol: '$', isTracked: true },
+  { code: 'EUR', nameEn: 'Euro', nameAr: 'يورو', minorUnits: 2, symbol: '€', isTracked: true },
+  { code: 'GBP', nameEn: 'Pound Sterling', nameAr: 'جنيه إسترليني', minorUnits: 2, symbol: '£', isTracked: true },
+  { code: 'AED', nameEn: 'UAE Dirham', nameAr: 'درهم إماراتي', minorUnits: 2, symbol: 'د.إ', isTracked: true },
+  { code: 'QAR', nameEn: 'Qatari Riyal', nameAr: 'ريال قطري', minorUnits: 2, symbol: 'ر.ق', isTracked: true },
+  { code: 'SAR', nameEn: 'Saudi Riyal', nameAr: 'ريال سعودي', minorUnits: 2, symbol: 'ر.س', isTracked: true },
+  { code: 'INR', nameEn: 'Indian Rupee', nameAr: 'روبية هندية', minorUnits: 2, symbol: '₹', isTracked: true },
+  { code: 'CNY', nameEn: 'Chinese Yuan', nameAr: 'يوان صيني', minorUnits: 2, symbol: '¥', isTracked: true },
 ]
 
 const COUNTRIES = [

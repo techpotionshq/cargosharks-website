@@ -260,6 +260,26 @@ const branchSchema = z.object({
     .transform((v) => v.toUpperCase()),
   calendarId: z.uuid('Every branch needs a working calendar'),
   timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
+  /**
+   * Who notifications from this entity come from — FR-NT-01.
+   *
+   * Optional: a branch that has not been given its own address sends from the
+   * deployment's, which is the state every branch starts in. A display name is
+   * understood, and only the bare address goes in the SMTP envelope.
+   */
+  mailFrom: optional(200),
+  /*
+    Quiet hours — FR-NT-07, in this branch's local time.
+
+    Refused when the two hours are equal, because that has two defensible
+    readings — no quiet hours, or nothing but — and storing a value whose
+    meaning is a coin toss is worse than refusing it. The switch is how an
+    administrator turns the window off. The database says the same thing in
+    `branches_quiet_hours_window`; this says it where somebody can read it.
+  */
+  quietHoursEnabled: z.boolean(),
+  quietHoursFromHour: z.coerce.number().int().min(0).max(23),
+  quietHoursToHour: z.coerce.number().int().min(0).max(23),
   /** The prefix on this branch's invoice numbers. Defaults to the code. */
   invoiceSeries: z
     .string()
@@ -330,6 +350,10 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     country: read(form, 'country') ?? '',
     calendarId: read(form, 'calendarId'),
     timeZone: read(form, 'timeZone') ?? 'Asia/Kuwait',
+    mailFrom: read(form, 'mailFrom'),
+    quietHoursEnabled: form.get('quietHoursEnabled') !== null,
+    quietHoursFromHour: read(form, 'quietHoursFromHour') ?? 21,
+    quietHoursToHour: read(form, 'quietHoursToHour') ?? 7,
     invoiceSeries: read(form, 'invoiceSeries'),
     taxRegistration: read(form, 'taxRegistration'),
     houseBillSeries: read(form, 'houseBillSeries'),
@@ -348,6 +372,17 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
+
+  if (data.quietHoursEnabled && data.quietHoursFromHour === data.quietHoursToHour) {
+    return fail(
+      {
+        quietHoursToHour:
+          'Quiet hours have to start and end at different times. Turn the switch ' +
+          'off to send at any hour.',
+      },
+      echo(form),
+    )
+  }
 
   try {
     await withActor(session.actor, async (tx) => {
@@ -369,6 +404,10 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
             country: data.country,
             calendarId: data.calendarId,
             timeZone: data.timeZone,
+            mailFrom: data.mailFrom,
+            quietHoursEnabled: data.quietHoursEnabled,
+            quietHoursFromHour: data.quietHoursFromHour,
+            quietHoursToHour: data.quietHoursToHour,
             taxRegistration: data.taxRegistration,
             houseBillSeries: data.houseBillSeries,
             arAccountCode: data.arAccountCode,
@@ -394,6 +433,10 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
           country: data.country,
           calendarId: data.calendarId,
           timeZone: data.timeZone,
+          mailFrom: data.mailFrom,
+          quietHoursEnabled: data.quietHoursEnabled,
+          quietHoursFromHour: data.quietHoursFromHour,
+          quietHoursToHour: data.quietHoursToHour,
           invoiceSeries: data.invoiceSeries ?? data.code,
           taxRegistration: data.taxRegistration,
           houseBillSeries: data.houseBillSeries,

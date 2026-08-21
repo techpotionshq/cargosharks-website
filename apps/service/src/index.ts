@@ -85,7 +85,12 @@ process.on('SIGINT', () => void shutdown('SIGINT'))
   it wrong. Resolving here also means a half-configured driver — a key with no
   URL — stops the service at boot with a clear message rather than surfacing
   as a feed that quietly returns nothing.
+
+  Awaited, because four of these answers are rows now (FR-AD-03) and the log
+  has to ask the database for them. A row that is wrong does *not* stop the
+  boot — that would put the screen which fixes it behind the mistake — so this
+  line is also where a misconfigured row first announces itself.
 */
-app.log.info(describeAdapters(), 'external adapters resolved')
+app.log.info(await describeAdapters(), 'external adapters resolved')
 
 await app.listen({ port: config.SERVICE_PORT, host: '0.0.0.0' })

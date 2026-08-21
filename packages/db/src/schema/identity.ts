@@ -118,6 +118,36 @@ export const branches = pgTable(
     defaultExclusionsAr: text('default_exclusions_ar'),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),
+    /**
+     * Who a notification from this entity comes from — FR-NT-01.
+     *
+     * Per legal entity, for the same reason `invoice_series`, the letterhead
+     * and the trading conditions are: five entities sending from one address
+     * is the same mistake as five entities numbering from one series, and it
+     * is the more visible one because the customer reads it.
+     *
+     * Null falls back to the deployment's own `from` — the `smtp` integration
+     * row, or `MAIL_FROM` beneath it. A branch that has not been given its own
+     * address sends from the operator's rather than failing to send.
+     */
+    mailFrom: text('mail_from'),
+    /*
+      Quiet hours — FR-NT-07, in this branch's local time.
+
+      Constants in the notification dispatcher until now, which made "we do not
+      write to customers between nine at night and seven in the morning" a
+      statement about the deployment rather than about the office. It is an
+      office fact: a Kuwait desk and a Dubai desk keep different hours, and the
+      dispatcher already resolves the branch's `time_zone` to apply it — so
+      everything was per-branch except the two numbers.
+
+      Hours rather than minutes because that is the granularity of the decision
+      being made, and `from = to` is disallowed by the check constraint in
+      `0028` rather than silently meaning either "always" or "never".
+    */
+    quietHoursEnabled: boolean('quiet_hours_enabled').notNull().default(true),
+    quietHoursFromHour: integer('quiet_hours_from_hour').notNull().default(21),
+    quietHoursToHour: integer('quiet_hours_to_hour').notNull().default(7),
     isActive: boolean('is_active').notNull().default(true),
     ...timestamps,
   },

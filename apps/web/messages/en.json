@@ -1413,7 +1413,15 @@
     "tradingConditionsHint": "Each entity trades under its own law — Kuwait and Dubai do not share a footer.",
     "exclusionsEn": "Not included (English)",
     "exclusionsAr": "Not included (Arabic)",
-    "exclusionsHint": "One per line. Prints beside the charges on every quotation — duties, taxes, examination charges."
+    "exclusionsHint": "One per line. Prints beside the charges on every quotation — duties, taxes, examination charges.",
+    "mailFrom": "Sends from",
+    "mailFromHint": "Who notifications from this entity come from. Leave blank to use the deployment’s own address.",
+    "quietHours": "Quiet hours",
+    "quietHoursHint": "No customer notification leaves between the hours below, in this branch’s local time. Internal alerts are never held.",
+    "quietHoursFrom": "From (hour)",
+    "quietHoursFromHint": "24-hour clock. 21 is nine at night.",
+    "quietHoursTo": "Until (hour)",
+    "quietHoursToHint": "Must differ from the start. 7 is seven in the morning."
   },
   "referenceForm": {
     "code": "Code",
@@ -1723,6 +1731,10 @@
       "mailboxes": {
         "title": "Mailboxes",
         "description": "The addresses this system reads for incoming enquiries."
+      },
+      "integrations": {
+        "title": "Integrations",
+        "description": "The relay that sends the mail, the carrier registrations that feed the board, and the provider that will transmit the invoices. A credential saved here takes effect within a minute, with no release."
       }
     },
     "referenceMoved": "Ports, charge types and other reference data are operational and stayed in",
@@ -2808,5 +2820,171 @@
     "reactivateTitle": "Start reading this mailbox",
     "reactivateSubtitle": "Unread mail already in the folder will be collected on the next check.",
     "reactivateWarning": "Anything unread that has accumulated since this was stopped will arrive as enquiries."
+  },
+  "integrations": {
+    "eyebrow": "Deployment",
+    "title": "Integrations",
+    "subtitle": "The accounts this system reaches the outside world with — the relay that sends the mail, the carrier registrations that feed the board, the provider that will transmit the invoices. Changing one takes effect within a minute; none of it needs a release.",
+    "erroring": "Not working",
+    "incomplete": "Incomplete",
+    "fromEnvironment": "From the environment",
+    "driver": "Mode",
+    "driverHint": "What this deployment uses. The first option in each list is the one that costs nothing and asks nobody.",
+    "credentials": "Credentials",
+    "credentialsHint": "Sealed on the way in and never shown again. Leave a field blank to keep the credential already stored.",
+    "secretSet": "Stored",
+    "secretUnset": "Not set",
+    "secretKeepHint": "A credential is stored. Leave this blank to keep it, or type a new one to replace it.",
+    "secretHint": "Nothing is stored yet. Falls back to {variable} until one is saved here.",
+    "sourceEnv": "Environment",
+    "sourceRow": "Saved here",
+    "fromEnv": "Currently answered by {variable}. Type over it to save a value that takes precedence.",
+    "fromRow": "Saved on this screen.",
+    "fromNothing": "Not set anywhere. Falls back to {variable} if that is set later.",
+    "editTitle": "Configure {name}",
+    "editSubtitle": "Saved values take precedence over the deployment environment. Credentials are sealed and are never shown again.",
+    "noKey": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a credential cannot be sealed. Set it and restart before saving one.",
+    "noKeyBanner": "Credentials cannot be saved — MAILBOX_ENCRYPTION_KEY is not set",
+    "failingHint": "An integration marked not working is one the service could not resolve on its last run. The reason is shown on the card; correcting it here takes effect within a minute.",
+    "missingHint": "Still needed before this can be switched on: {fields}.",
+    "callsPerHour": "Calls per hour",
+    "callsUnknown": "Cannot be worked out from this schedule",
+    "lastOk": "Last confirmed",
+    "deactivate": "Stop using these settings",
+    "reactivate": "Use these settings again",
+    "deactivateTitle": "Stop using these settings",
+    "reactivateTitle": "Use these settings again",
+    "deactivateSubtitle": "The deployment falls back to its environment variables. Nothing typed here is lost.",
+    "reactivateSubtitle": "These settings take precedence over the environment again.",
+    "deactivateWarning": "The saved settings are kept but ignored, and the deployment goes back to whatever its environment variables say. This is how a change is rolled back.",
+    "reactivateWarning": "The settings saved here take precedence over the environment again.",
+    "keys": {
+      "smtp": "Outbound mail",
+      "fx": "Exchange rates",
+      "carrierPoll": "Carrier poll budget",
+      "carrierTracking": "Container tracking",
+      "carrierMaersk": "Maersk",
+      "carrierHapag": "Hapag-Lloyd",
+      "carrierCmacgm": "CMA CGM",
+      "whatsapp": "WhatsApp Business",
+      "einvoice": "E-invoice transmission",
+      "inboundEmail": "Inbound mail webhook",
+      "ai": "Document extraction"
+    },
+    "descriptions": {
+      "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
+      "fx": "A daily rate for each currency marked tracked. Nothing prices from the feed — a charge line keeps the rate it was struck at.",
+      "carrierPoll": "How often the poll asks, and how many shipments each run covers. Calls per hour has to stay under the carrier’s cap.",
+      "carrierTracking": "Where container milestones come from. Carrier-direct is free and self-serve; the aggregator costs per container.",
+      "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
+      "carrierHapag": "Covers HLCU and HLXU, and takes an id as well as a secret. Registration is self-serve at api.hlag.com.",
+      "carrierCmacgm": "Covers CMDU, ANNU, APLU and CHNL. Registration is self-serve at apis.cma-cgm.net.",
+      "whatsapp": "The business number customer notifications go out from, where a deployment has one. Email is the fallback.",
+      "einvoice": "The accredited provider that files an invoice with the tax authority. We are not the access point and cannot be.",
+      "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
+      "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed."
+    },
+    "drivers": {
+      "smtp": {
+        "smtp": "Sending",
+        "log": "Written to the log, not sent"
+      },
+      "fx": {
+        "manual": "Typed by hand",
+        "api": "Daily from a feed"
+      },
+      "carrierTracking": {
+        "manual": "Typed by an operator",
+        "dcsa": "Carrier-direct (free)",
+        "terminal49": "Aggregator (per container)"
+      },
+      "einvoice": {
+        "none": "Not transmitted",
+        "asp": "Through a provider"
+      }
+    },
+    "fields": {
+      "smtp": {
+        "host": "Server",
+        "port": "Port",
+        "secure": "Implicit TLS",
+        "user": "Username",
+        "from": "From address",
+        "rejectUnauthorized": "Verify the certificate"
+      },
+      "fx": {
+        "url": "Feed URL",
+        "base": "Base currency"
+      },
+      "carrierPoll": {
+        "batch": "Shipments per run",
+        "cron": "Schedule",
+        "activeWithinMinutes": "Only poll if somebody signed in within"
+      },
+      "carrierTracking": {
+        "baseUrl": "Aggregator URL"
+      },
+      "carrierMaersk": {
+        "baseUrl": "Gateway",
+        "eventsPath": "Events path"
+      },
+      "carrierHapag": {
+        "baseUrl": "Gateway",
+        "eventsPath": "Events path"
+      },
+      "carrierCmacgm": {
+        "baseUrl": "Gateway",
+        "eventsPath": "Events path"
+      },
+      "whatsapp": {
+        "phoneNumberId": "Phone number id"
+      },
+      "einvoice": {
+        "url": "Provider URL"
+      },
+      "inboundEmail": {},
+      "ai": {
+        "model": "Model",
+        "monthlyBudgetUsd": "Monthly ceiling (USD)"
+      }
+    },
+    "secrets": {
+      "smtp": {
+        "password": "Password"
+      },
+      "fx": {
+        "apiKey": "API key"
+      },
+      "carrierPoll": {},
+      "carrierTracking": {
+        "apiKey": "API key",
+        "webhookSecret": "Webhook signing secret"
+      },
+      "carrierMaersk": {
+        "consumerKey": "Consumer key",
+        "clientSecret": "Client secret"
+      },
+      "carrierHapag": {
+        "clientId": "Client id",
+        "clientSecret": "Client secret"
+      },
+      "carrierCmacgm": {
+        "apiKey": "API key"
+      },
+      "whatsapp": {
+        "accessToken": "Access token",
+        "webhookVerifyToken": "Webhook verify token",
+        "appSecret": "App secret"
+      },
+      "einvoice": {
+        "apiKey": "API key"
+      },
+      "inboundEmail": {
+        "webhookSecret": "Webhook signing secret"
+      },
+      "ai": {
+        "apiKey": "API key"
+      }
+    }
   }
 }

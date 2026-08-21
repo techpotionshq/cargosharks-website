@@ -11,6 +11,7 @@
 
 import { PgBoss } from 'pg-boss'
 import { config } from './config'
+import { integration } from './settings'
 
 /** One name per job type; the worker files mirror these one to one. */
 export const JOBS = {
@@ -30,6 +31,15 @@ export const JOBS = {
   carrierEvent: 'carrier-event-ingest',
   carrierPoll: 'carrier-poll',
   bulkImport: 'bulk-import-validate',
+  /*
+    Extraction is queued rather than awaited, even on the attended path.
+
+    A model call is tens of seconds on a multi-page scan, and a coordinator
+    who uploaded a PDF should not be holding a request open for it. The job
+    also buys the retry policy every call that leaves the building needs —
+    which is why `adapters/model.ts` deliberately has no retry loop of its own.
+  */
+  invoiceExtract: 'supplier-invoice-extract',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -123,20 +133,7 @@ export async function registerSchedules(): Promise<void> {
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
 
-  /*
-    The carrier poll — `CARRIER_POLL_CRON`, hourly on the half hour by default.
-
-    Hourly because that is the resolution the events themselves have: a carrier
-    publishes a discharge minutes to an hour after the crane, so asking more
-    often buys nothing but rate limit. Configurable because a trial tier's
-    budget and a commercial tier's are different problems, and because a demo
-    wants to see the thing work inside ten minutes rather than inside an hour.
-
-    Off unless `CARRIER_TRACKING_DRIVER=dcsa`: the worker answers "nothing to
-    do" for the other drivers rather than branching, exactly as `fxIngest`
-    does when no feed is bought.
-  */
-  await b.schedule(JOBS.carrierPoll, config.CARRIER_POLL_CRON)
+  await applyCarrierPollSchedule()
 
   /*
     The two time-driven notifications (FR-NT-01).
@@ -190,4 +187,56 @@ export async function registerSchedules(): Promise<void> {
   await b.schedule(JOBS.webhookDelivery, '* * * * *')
 
   await b.schedule(JOBS.notificationDispatch, '* * * * *')
+}
+
+/**
+ * The carrier poll's schedule, which is a settings row rather than a constant.
+ *
+ * Hourly on the half hour by default, because that is the resolution the
+ * events themselves have: a carrier publishes a discharge minutes to an hour
+ * after the crane, so asking more often buys nothing but rate limit. It is
+ * configurable because a trial tier's budget and a commercial tier's are
+ * different problems, and because a demo wants to see the thing work inside
+ * ten minutes rather than inside an hour.
+ *
+ * Off unless carrier tracking is set to `dcsa`: the worker answers "nothing to
+ * do" for the other drivers rather than branching, exactly as `fxIngest` does
+ * when no feed is bought.
+ *
+ * ## Why this needs a reconciler and the other settings do not
+ *
+ * Everything else that moved into `integration_settings` is read at the moment
+ * it is used, so a change takes effect on the next tick. A cron is different:
+ * it is *registered with pg-boss*, once, and pg-boss keeps firing the old one
+ * until somebody tells it otherwise. A settings cache expiring cannot deliver
+ * that — something has to notice and re-register.
+ *
+ * So the poll reconciles its own schedule at the end of each run. Changing
+ * hourly to every ten minutes therefore takes effect at the next hourly run
+ * rather than immediately, which is the right trade: the alternative is a
+ * reconcile loop on its own timer, running for ever on every deployment, to
+ * save at most one period of a setting that changes when a carrier contract
+ * does. It converges, it is self-healing after a restart, and it costs
+ * nothing on the deployments that never touch it.
+ */
+export async function applyCarrierPollSchedule(): Promise<string> {
+  const b = await getBoss()
+  const settings = await integration('carrierPoll')
+  const cron = settings.text('cron')?.trim() || config.CARRIER_POLL_CRON
+
+  /*
+    A cron pg-boss cannot parse would throw out of the run that reconciled it,
+    and on the boot path it would stop the service. Refused here and the
+    previous schedule is left alone, which is the state an administrator can
+    still recover from — the form validates this too, so reaching it means the
+    value arrived some other way.
+  */
+  if (!/^\S+(\s+\S+){4}$/.test(cron)) {
+    throw new Error(`The carrier poll schedule "${cron}" is not a five-field cron expression.`)
+  }
+
+  // Idempotent by job name: pg-boss replaces the existing schedule rather than
+  // adding a second one, so this is safe to call on every run.
+  await b.schedule(JOBS.carrierPoll, cron)
+  return cron
 }

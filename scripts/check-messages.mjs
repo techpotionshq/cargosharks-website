@@ -176,10 +176,76 @@ for (const [enumName, groups] of Object.entries(ENUM_GROUPS)) {
   }
 }
 
+// --- 4. the integration catalogue's groups agree with each other ----------
+
+/**
+ * The keys a static scan cannot see, part two.
+ *
+ * `settings/integrations` renders every label through an interpolated call —
+ * `t(`fields.${integration.key}.${field.name}`)` — because the form is
+ * generated from `INTEGRATIONS` rather than written out ten times. That is the
+ * right shape for the screen and it is invisible to the scan above, so the
+ * gap shows up the way `partners.types.terminal` did: as a raw key path in the
+ * middle of a settings page.
+ *
+ * The enum check above reads the schema, because the enum is the authority
+ * there. Here the authority is a TypeScript literal built partly by a helper
+ * function, and a regex over it would be a check that breaks when somebody
+ * refactors the file rather than when they break the thing it protects.
+ *
+ * So this checks the five groups against *each other*. Every integration named
+ * in `keys` must have a description, a field group and a secret group — which
+ * is the drift that actually happens, because adding an integration means
+ * touching all of them and there is no reason a person would remember which.
+ * An integration added to the catalogue and to none of these is caught by the
+ * page rendering its key path, one screen away.
+ */
+const integrations = catalogues.en.integrations
+if (!integrations?.keys) {
+  console.error('\nthe `integrations` message group is missing its `keys` block.')
+  failures++
+} else {
+  const declared = Object.keys(integrations.keys)
+
+  for (const language of ['en', 'ar']) {
+    const group = catalogues[language].integrations ?? {}
+
+    for (const key of declared) {
+      // A description, and a group for the fields and secrets — even an empty
+      // one, because "this integration has no settings" is a fact worth being
+      // written down rather than inferred from an absence.
+      for (const section of ['descriptions', 'fields', 'secrets']) {
+        if (group[section]?.[key] === undefined) {
+          console.error(
+            `\nintegrations.${section}.${key} (${language}) is missing — ` +
+              'every key in `integrations.keys` needs one.',
+          )
+          failures++
+        }
+      }
+    }
+
+    // The reverse direction: a label for an integration nobody declares is a
+    // rename that was done in four places out of five.
+    for (const section of ['descriptions', 'fields', 'secrets', 'drivers']) {
+      for (const key of Object.keys(group[section] ?? {})) {
+        if (!declared.includes(key)) {
+          console.error(
+            `\nintegrations.${section}.${key} (${language}) names an integration ` +
+              'that `integrations.keys` does not.',
+          )
+          failures++
+        }
+      }
+    }
+  }
+}
+
 const uniqueDynamic = [...new Set(dynamic)]
 console.log(
   `\nchecked ${used.size} static key(s) against ${defined.en.size} defined, ` +
-    `plus ${Object.keys(ENUM_GROUPS).length} enum-backed group(s); ` +
+    `plus ${Object.keys(ENUM_GROUPS).length} enum-backed group(s) ` +
+    `and ${Object.keys(catalogues.en.integrations?.keys ?? {}).length} integration(s); ` +
     `${uniqueDynamic.length} interpolated call site(s) remain unverifiable.`,
 )
 

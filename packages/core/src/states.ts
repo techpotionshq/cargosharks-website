@@ -405,6 +405,18 @@ export const ADMIN_PERMISSIONS = [
     it is a different kind of screen from the one that edits charge types.
   */
   'admin.mailboxes.write',
+  /*
+    The credentials this deployment reaches the outside world with — FR-AD-03.
+
+    Deliberately not `admin.reference.write`, and for a sharper reason than the
+    mailbox key above. `integration_settings` has no `branch_id` to narrow it:
+    one row is the SMTP relay every branch sends through, and one is the Maersk
+    key every branch's tracking runs on. There is no such thing as changing it
+    for Kuwait only, so the permission is the whole of the scoping — which is
+    why the policy in `0028` conditions on this key rather than on principal
+    type alone, unlike every other configuration table.
+  */
+  'admin.integrations.write',
   'admin.branches.write',
   'admin.brand.read',
   'rate.card.write',

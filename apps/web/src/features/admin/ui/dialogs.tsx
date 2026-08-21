@@ -183,6 +183,10 @@ export interface BranchDefaults {
   readonly country?: string
   readonly calendarId?: string
   readonly timeZone?: string
+  readonly mailFrom?: string | null
+  readonly quietHoursEnabled?: boolean
+  readonly quietHoursFromHour?: number
+  readonly quietHoursToHour?: number
   readonly invoiceSeries?: string
   readonly taxRegistration?: string | null
   readonly houseBillSeries?: string | null
@@ -291,6 +295,52 @@ export async function BranchDialog({
       required: true,
       hint: t('timeZoneHint'),
       defaultValue: defaults?.timeZone ?? 'Asia/Kuwait',
+    },
+    /*
+      Who this entity writes to customers as, and when it stops.
+
+      Both are per legal entity for the same reason `invoice_series` is: five
+      entities sending from one address is the same mistake as five numbering
+      from one series, and quiet hours were already resolved against this
+      branch's `timeZone` — everything about the window was per-branch except
+      the two numbers, which were constants in the dispatcher.
+    */
+    {
+      kind: 'text',
+      name: 'mailFrom',
+      label: t('mailFrom'),
+      span: 12,
+      hint: t('mailFromHint'),
+      placeholder: 'Al-Qabandi & Partners <no-reply@qabandi.com>',
+      defaultValue: defaults?.mailFrom ?? '',
+    },
+    {
+      kind: 'switch',
+      name: 'quietHoursEnabled',
+      label: t('quietHours'),
+      span: 4,
+      hint: t('quietHoursHint'),
+      defaultChecked: defaults?.quietHoursEnabled ?? true,
+    },
+    {
+      kind: 'number',
+      name: 'quietHoursFromHour',
+      label: t('quietHoursFrom'),
+      span: 4,
+      min: 0,
+      max: 23,
+      hint: t('quietHoursFromHint'),
+      defaultValue: defaults?.quietHoursFromHour ?? 21,
+    },
+    {
+      kind: 'number',
+      name: 'quietHoursToHour',
+      label: t('quietHoursTo'),
+      span: 4,
+      min: 0,
+      max: 23,
+      hint: t('quietHoursToHint'),
+      defaultValue: defaults?.quietHoursToHour ?? 7,
     },
     {
       kind: 'text',

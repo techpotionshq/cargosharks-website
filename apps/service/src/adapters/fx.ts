@@ -21,7 +21,7 @@
  */
 
 import type { FxQuote, FxRateSource } from '../ports/index'
-import { config } from '../config'
+import type { LiveIntegration } from '../settings'
 
 /**
  * The Release One behaviour, kept as a real implementation rather than an
@@ -134,17 +134,24 @@ export function httpFxSource(url: string, apiKey?: string): FxRateSource {
  * Defaults to manual, so a deployment that has configured nothing behaves
  * exactly as Release One did rather than failing at boot over a feature nobody
  * asked for.
+ *
+ * Takes its configuration rather than reading it. The value is not purity for
+ * its own sake: the same function now has to answer for a settings row and for
+ * an environment variable, and a resolver that reached for `config` directly
+ * could only ever answer for one of them.
  */
-export function resolveFxSource(): FxRateSource {
-  if (config.FX_SOURCE !== 'api') return manualFxSource
+export function resolveFxSource(settings: LiveIntegration): FxRateSource {
+  if (settings.driver !== 'api') return manualFxSource
 
-  if (!config.FX_API_URL) {
+  const url = settings.text('url')
+
+  if (!url) {
     throw new Error(
-      'FX_SOURCE=api but FX_API_URL is not set. It is a URL template — the ' +
+      'The FX source is set to `api` with no URL. It is a template — the ' +
         '`{base}` placeholder is substituted per request, e.g. ' +
         'https://open.er-api.com/v6/latest/{base}',
     )
   }
 
-  return httpFxSource(config.FX_API_URL, config.FX_API_KEY)
+  return httpFxSource(url, settings.secret('apiKey'))
 }

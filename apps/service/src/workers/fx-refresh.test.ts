@@ -22,10 +22,16 @@
  *
  * **A deployment that bought no feed is not a failure.** `manual` answers
  * "nothing to do" rather than making the caller ask which mode it is in.
+ *
+ * **Which currencies are fetched is a column, not a list.** `FX_QUOTE_CURRENCIES`
+ * was a comma-separated environment variable sitting beside the table that
+ * already listed this operator's currencies, free to disagree with it — so the
+ * cases below set `currencies.is_tracked` rather than a string, and the tests
+ * that used to check how that string was parsed are gone with the string.
  */
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -37,35 +43,42 @@ const harness = vi.hoisted(() => ({
   quotes: [] as { from: string; to: string; rate: string; source: string; effectiveOn: string }[],
   asked: [] as { base: string; quotes: readonly string[] }[],
   base: 'KWD',
-  wanted: 'USD,EUR',
 }))
 
 vi.mock('../adapters/index', () => ({
-  adapters: () => ({
-    fx: {
-      get key() {
-        return harness.key
-      },
-      fetch: async (base: string, quotes: readonly string[]) => {
-        harness.asked.push({ base, quotes })
-        return harness.quotes
-      },
+  fxSource: async () => ({
+    get key() {
+      return harness.key
+    },
+    fetch: async (base: string, quotes: readonly string[]) => {
+      harness.asked.push({ base, quotes })
+      return harness.quotes
     },
   }),
 }))
 
-vi.mock('../config', () => ({
-  config: {
-    get FX_BASE_CURRENCY() {
-      return harness.base
-    },
-    get FX_QUOTE_CURRENCIES() {
-      return harness.wanted
-    },
-  },
+/*
+  The settings layer, stubbed to the one value the worker reads from it.
+
+  The base currency moved out of the environment and into the `fx` integration
+  row, so this stands in for the row rather than for `config` — which is the
+  whole shape of the change under test.
+*/
+vi.mock('../settings', () => ({
+  integration: async () => ({
+    key: 'fx',
+    driver: 'api',
+    live: true,
+    missing: [],
+    fromRow: true,
+    text: (name: string) => (name === 'base' ? harness.base : undefined),
+    number: (_name: string, fallback: number) => fallback,
+    bool: (_name: string, fallback: boolean) => fallback,
+    secret: () => undefined,
+  }),
 }))
 
-const { fxRates, withActor } = await import('@qabandi/db')
+const { currencies, fxRates, withActor } = await import('@qabandi/db')
 const { runFxRefresh } = await import('./fx-refresh')
 
 const actor: Actor = {
@@ -104,16 +117,44 @@ const stored = (effectiveOn: string) =>
       .where(and(eq(fxRates.effectiveOn, effectiveOn), eq(fxRates.source, `fx-test-${RUN}`))),
   )
 
+/**
+ * Mark exactly these currencies as tracked, and nothing else.
+ *
+ * The list used to be a string this test could set on a mock. It is a column
+ * now, so the fixture has to write to the table — and it writes the *whole*
+ * state rather than only the codes it wants, because a row left tracked by an
+ * earlier case is a currency the feed is asked for in a later one, which is
+ * the flakiest possible shape for a test to have.
+ */
+const track = async (codes: readonly string[]) =>
+  withActor(actor, async (tx) => {
+    await tx.update(currencies).set({ isTracked: false }).where(eq(currencies.isTracked, true))
+    if (codes.length > 0) {
+      await tx.update(currencies).set({ isTracked: true }).where(inArray(currencies.code, [...codes]))
+    }
+  })
+
 describe.skipIf(!enabled)('the daily FX refresh', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     harness.key = 'http'
     harness.quotes = []
     harness.asked.length = 0
     harness.base = 'KWD'
-    harness.wanted = 'USD,EUR'
+    await track(['USD', 'EUR'])
   })
 
-  afterAll(() => {
+  afterAll(async () => {
+    /*
+      Put the deployment default back.
+
+      `0029` backfills these ten, and a suite that left the table with two
+      tracked currencies would silently narrow what the next developer's local
+      database fetches — a change to seeded data made by a test run, which is
+      the kind of thing nobody thinks to look for.
+    */
+    if (enabled) {
+      await track(['USD', 'AED', 'EUR', 'GBP', 'SAR', 'QAR', 'BHD', 'OMR', 'INR', 'CNY'])
+    }
     vi.restoreAllMocks()
   })
 
@@ -142,7 +183,7 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
     /** A rate from a currency to itself is one, and asking for it is noise. */
     it('never asks for the base against itself', async () => {
-      harness.wanted = 'USD,KWD,EUR'
+      await track(['USD', 'KWD', 'EUR'])
       harness.quotes = []
 
       await runFxRefresh()
@@ -150,13 +191,34 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
       expect(harness.asked[0]?.quotes).toEqual(['USD', 'EUR'])
     })
 
-    it('reads a list however it was spaced or cased', async () => {
-      harness.wanted = ' usd , eur ,, '
+    /**
+     * The whole point of moving the list onto the table.
+     *
+     * A currency an administrator marks tracked is fetched on the next run,
+     * with no deployment in between — which is what `FX_QUOTE_CURRENCIES`
+     * could not do, and why a currency added on the reference screen used to
+     * be invisible to the feed until somebody edited a variable.
+     */
+    it('picks up a currency the moment it is marked tracked', async () => {
+      await track(['USD'])
       harness.quotes = []
-
       await runFxRefresh()
+      expect(harness.asked[0]?.quotes).toEqual(['USD'])
 
-      expect(harness.asked[0]?.quotes).toEqual(['USD', 'EUR'])
+      await track(['USD', 'GBP'])
+      harness.asked.length = 0
+      await runFxRefresh()
+      expect([...(harness.asked[0]?.quotes ?? [])].sort()).toEqual(['GBP', 'USD'])
+    })
+
+    /** Nothing tracked is not a failure, and not worth a round trip either. */
+    it('asks nobody anything when no currency is tracked', async () => {
+      await track([])
+
+      const result = await runFxRefresh()
+
+      expect(result.written).toBe(0)
+      expect(harness.asked).toEqual([])
     })
   })
 
@@ -202,7 +264,10 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
      */
     it('keeps the rates it can use and names the ones it cannot', async () => {
       const on = day()
-      harness.wanted = 'USD,XYZ'
+      // `XYZ` is not a currency row, so it cannot be tracked — which is the
+      // point: the feed can still answer with it, and the filter is what stops
+      // one unknown code failing the whole insert on the foreign key.
+      await track(['USD'])
       harness.quotes = [quote('USD', '3.257000', on), quote('XYZ', '1.000000', on)]
 
       const result = await runFxRefresh()
@@ -214,7 +279,7 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
     it('writes nothing, and says so, when every rate is unusable', async () => {
       const on = day()
-      harness.wanted = 'XYZ'
+      await track(['USD'])
       harness.quotes = [quote('XYZ', '1.000000', on)]
 
       const result = await runFxRefresh()
@@ -250,10 +315,10 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
      */
     it('refuses to run at all, and says what to fix', async () => {
       harness.base = 'XYZ'
-      harness.wanted = 'USD'
+      await track(['USD'])
       harness.quotes = [quote('USD', '1.000000', day(), 'XYZ')]
 
-      await expect(runFxRefresh()).rejects.toThrow('FX_BASE_CURRENCY=XYZ')
+      await expect(runFxRefresh()).rejects.toThrow('XYZ')
     })
   })
 })

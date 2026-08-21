@@ -14,12 +14,17 @@ loadEnv()
 /**
  * An optional setting that is *absent* when blank, not empty.
  *
- * `.env.example` carries empty keys as documentation — `DCSA_MAERSK_BASE_URL=`
- * is how the file says "there is a knob here, and you probably do not need
- * it". `z.string().optional()` reads that line as the empty string rather than
- * as unset, so a `?? default` downstream picks the empty string and wins:
+ * An example file carries empty keys as documentation — `DCSA_MAERSK_BASE_URL=`
+ * was how `.env.example` said "there is a knob here, and you probably do not
+ * need it". `z.string().optional()` reads that line as the empty string rather
+ * than as unset, so a `?? default` downstream picks the empty string and wins:
  * `new URL('' + '')` throws "Invalid URL", from a deployment that had done
  * exactly what the example file told it to.
+ *
+ * Those particular keys have since moved to `integration_settings` rows and
+ * out of the example file, but the hazard has not: a blank value can still
+ * arrive from a real environment, a compose file or a hosting panel, all of
+ * which set empty strings just as readily.
  *
  * Anywhere a blank line means "use the default", this is the reader to use.
  */
@@ -112,18 +117,20 @@ const schema = z.object({
    * shaped so that is an adapter change.
    */
   INBOUND_MAIL_CRON: z.string().default('* * * * *'),
-  /** How many messages one run takes from one mailbox. The rest wait a minute. */
-  INBOUND_MAIL_BATCH: z.coerce.number().default(25),
-  /**
-   * Attachments larger than this are recorded by name and not stored.
-   *
-   * Freight mail carries packing lists and commercial invoices, and it also
-   * carries the occasional 80MB scan of a whole customs file. Refusing the
-   * mail over it would lose the enquiry; pulling it into memory would take the
-   * worker down. So the enquiry is created either way and the oversized part
-   * is noted on the message, which is the outcome a coordinator can act on.
-   */
-  INBOUND_MAIL_MAX_ATTACHMENT_MB: z.coerce.number().default(25),
+  /*
+    `INBOUND_MAIL_BATCH` and `INBOUND_MAIL_MAX_ATTACHMENT_MB` were here and are
+    now `poll_batch` and `max_attachment_mb` on the `mailboxes` row they apply
+    to. They are facts about one mailbox rather than about the deployment: a
+    shared Office 365 mailbox on a throttled tenant and a self-hosted Dovecot
+    want different answers, and one variable for both meant tuning one of them
+    down tuned all five.
+
+    Deliberately not kept as a fallback, unlike everything else that moved.
+    There is nothing to fall back *to*: the value applies per row, and a row
+    already carries the old defaults as its column defaults. A deployment that
+    had tuned the variable re-enters it per mailbox — see "Integration
+    settings" in `README.md`.
+  */
 
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
@@ -146,8 +153,14 @@ const schema = z.object({
   FX_API_URL: z.string().optional(),
   FX_API_KEY: z.string().optional(),
   FX_BASE_CURRENCY: z.string().default('KWD'),
-  /** Which currencies to keep a rate for, against the base above. */
-  FX_QUOTE_CURRENCIES: z.string().default('USD,AED,EUR,GBP,SAR,QAR,BHD,OMR,INR,CNY'),
+  /*
+    `FX_QUOTE_CURRENCIES` was here and is now `currencies.is_tracked`.
+
+    It was a second list of this operator's currencies sitting beside the table
+    that already was one, free to disagree with it — and the refresh worker
+    intersected the two before writing anything, which is the tell that only
+    one of them was ever the real list.
+  */
 
   CARRIER_TRACKING_DRIVER: z.enum(['manual', 'terminal49', 'dcsa']).default('manual'),
   CARRIER_TRACKING_API_KEY: z.string().optional(),
@@ -230,6 +243,37 @@ const schema = z.object({
   EINVOICE_DRIVER: z.enum(['none', 'asp']).default('none'),
   EINVOICE_ASP_URL: z.string().optional(),
   EINVOICE_ASP_API_KEY: z.string().optional(),
+
+  /*
+    The model provider — the ninth port (§10).
+
+    Three variables, and only as the bootstrap layer beneath the `ai` row: the
+    settings screen is where these belong, because a model slug is repriced and
+    deprecated on someone else's schedule and neither event should need a
+    deploy.
+
+    The key is the switch. No key means no document is read by a model, which
+    is a legitimate configuration and the default — this is billed per
+    document, and a deployment that has not decided to spend money should not
+    begin because a variable was left in an example file.
+
+    There is no driver, no base URL and no per-surface model. Every surface in
+    this product reads a scan, so a model that cannot see is useless to all of
+    them and "which model for the ones with pictures" has one answer.
+  */
+  OPENROUTER_API_KEY: blankIsUnset(),
+  /** Blank uses `DEFAULT_MODEL` from core. Must accept image input. */
+  AI_MODEL: blankIsUnset(),
+  /**
+   * A hard monthly ceiling in USD across every surface. `0` disables it.
+   *
+   * Off by default because a cap nobody chose is a cap that stops extraction
+   * mid-month for a reason nobody can find. On, it is checked against the
+   * `ai_invocations` ledger before each call — the only place the true figure
+   * exists, since a router bills for what it served rather than for what we
+   * meant to ask.
+   */
+  AI_MONTHLY_BUDGET_USD: z.coerce.number().default(0),
 
   CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
 })

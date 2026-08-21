@@ -47,6 +47,21 @@ export const currencies = pgTable('currencies', {
   nameAr: text('name_ar').notNull(),
   minorUnits: integer('minor_units').notNull(),
   symbol: text('symbol'),
+  /**
+   * Whether the daily FX refresh fetches a rate for this currency.
+   *
+   * `FX_QUOTE_CURRENCIES` was a comma-separated string in the environment — a
+   * second list of this operator's currencies, sitting beside the table that
+   * already was one, free to disagree with it. It did: a currency added here
+   * by an administrator was invisible to the feed until somebody edited an
+   * environment variable, and the refresh worker then filtered the feed's
+   * answer back down against this table anyway.
+   *
+   * Separate from `is_active` because they are different questions. A currency
+   * can be perfectly live on historic invoices and not worth a daily API call,
+   * and on a metered feed that distinction is the bill.
+   */
+  isTracked: boolean('is_tracked').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   ...timestamps,
 })

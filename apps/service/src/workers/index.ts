@@ -8,7 +8,7 @@
  */
 
 import type { Job } from 'pg-boss'
-import { JOBS, getBoss } from '../queue'
+import { JOBS, applyCarrierPollSchedule, getBoss } from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
@@ -20,6 +20,7 @@ import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
+import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extract'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
@@ -57,15 +58,21 @@ export async function registerWorkers(log: {
   const boss = await getBoss()
 
   /*
-    The channel registry, filled.
+    The channel registry, filled at boot and refreshed per run.
 
     It has been empty since Release One, which meant every notification the
     product raised resolved no adapter and was written off as
     `failed: no adapter` — recorded honestly, and read by nobody. Registering
     here rather than inside `adapters()` keeps the logger out of the adapter
     resolver and puts the registration next to the dispatcher that consumes it.
+
+    Filled here *and* before each dispatch, because the relay is a settings row
+    now. Registering once at boot would mean an administrator who corrects the
+    SMTP password watches the queue keep failing against the old one until
+    somebody restarts the service — which is the failure this whole change
+    exists to remove, reintroduced one layer up.
   */
-  registerChannel(resolveEmailChannel(log.info.bind(log)))
+  registerChannel(await resolveEmailChannel(log.info.bind(log)))
 
   const work = async (name: string, handler: Handler): Promise<void> => {
     await boss.work(name, { batchSize: 1 }, handler as never)
@@ -151,6 +158,21 @@ export async function registerWorkers(log: {
     if (result.polled > 0 || result.rateLimited.length > 0 || result.malformed.length > 0) {
       log.info(result, 'carrier poll complete')
     }
+
+    /*
+      Pick up a schedule change, at the end rather than the start.
+
+      The cron is registered with pg-boss and nothing re-reads it, so unlike
+      every other setting a cache expiry cannot deliver this one — something
+      has to notice and re-register. At the end so that a rejected expression
+      cannot stop the run that would have reported it, and logged rather than
+      thrown for the same reason.
+    */
+    try {
+      await applyCarrierPollSchedule()
+    } catch (error) {
+      log.info({ err: error }, 'carrier poll schedule not applied; keeping the previous one')
+    }
   })
 
   /*
@@ -198,12 +220,59 @@ export async function registerWorkers(log: {
   })
 
   await work(JOBS.notificationDispatch, async (jobs) => {
+    /*
+      Re-resolved per run, not per message.
+
+      `settings.ts` caches for thirty seconds, so this is one query a minute in
+      the steady state and none at all on a deployment configured purely from
+      the environment. Doing it inside the loop would be a resolve per queued
+      notification, which on a busy morning is the difference between a query
+      and a thousand of them.
+    */
+    registerChannel(await resolveEmailChannel(log.info.bind(log)))
+
     for (const job of jobs) {
       const result = await runNotificationDispatch(job.data)
       // Logged only when it did something. This runs every minute, and a
       // per-minute "nothing to do" line is how a log stops being read.
       if (result.expanded || result.sent || result.failed || result.deferred) {
         log.info(result, 'notifications dispatched')
+      }
+    }
+  })
+
+  /*
+    Supplier invoice extraction — FR-FN-09's missing half.
+
+    The failure is logged and swallowed rather than rethrown, and that is
+    deliberate for this job alone. Every other worker here is idempotent
+    housekeeping that should retry; this one has already spent money by the
+    time it can fail, the ledger already carries the reason, and pg-boss's five
+    retries would spend it five more times against a scan that is not going to
+    become readable. A bill that could not be read is a bill somebody types —
+    which is exactly where they were before this existed.
+  */
+  await work(JOBS.invoiceExtract, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as ExtractInvoiceInput
+      try {
+        const result = await extractSupplierInvoice(input)
+        log.info(
+          {
+            assetId: input.assetId,
+            invocationId: result.invocationId,
+            consistent: result.consistent,
+            lines: result.extracted.lines.rows.length,
+            supplierInvoiceId: result.supplierInvoiceId,
+            refusal: result.refusal,
+          },
+          result.supplierInvoiceId ? 'supplier invoice extracted' : 'supplier invoice not written',
+        )
+      } catch (error) {
+        log.info(
+          { assetId: input.assetId, err: error instanceof Error ? error.message : String(error) },
+          'supplier invoice extraction failed',
+        )
       }
     }
   })

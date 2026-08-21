@@ -614,7 +614,7 @@ async function storeAttachments(
     /*
       An oversized part was emptied by the adapter and is recorded, not stored.
 
-      `INBOUND_MAIL_MAX_ATTACHMENT_MB` explains the trade: the enquiry is worth
+      the mailbox's `max_attachment_mb` explains the trade: the enquiry is worth
       more than the file, so the mail is accepted either way and the row says a
       file arrived that we did not keep. Writing a zero-byte object would give
       a coordinator a download that succeeds and produces nothing, which is

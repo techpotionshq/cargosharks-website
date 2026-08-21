@@ -52,7 +52,7 @@
  */
 
 import type { CarrierMilestone, CarrierTracking } from '../ports/index'
-import { config } from '../config'
+import type { LiveIntegration } from '../settings'
 import {
   DCSA_CARRIERS,
   dcsaTracking,
@@ -199,19 +199,54 @@ export function terminal49Tracking(apiKey: string, baseUrl: string): Terminal49T
 }
 
 /**
- * The DCSA profiles this deployment can authenticate to.
+ * Which settings key holds each carrier's credentials, and what that carrier
+ * calls the two slots.
+ *
+ * The adapter models one credential shape — a key and an optional secret —
+ * because that is what the three gateways actually take. What differs is only
+ * the name on the portal page the administrator is copying from, and getting
+ * that name right on the screen is the difference between a key pasted into
+ * the correct box and an afternoon of 401s.
+ */
+const DCSA_SETTINGS: Record<string, { key: string; keyName: string; secretName?: string }> = {
+  maersk: { key: 'carrierMaersk', keyName: 'consumerKey', secretName: 'clientSecret' },
+  hapag: { key: 'carrierHapag', keyName: 'clientId', secretName: 'clientSecret' },
+  cmacgm: { key: 'carrierCmacgm', keyName: 'apiKey' },
+}
+
+/** Every settings key the carrier tracking resolver needs, for the caller to load. */
+export const CARRIER_SETTINGS_KEYS: readonly string[] = [
+  'carrierTracking',
+  ...Object.values(DCSA_SETTINGS).map((entry) => entry.key),
+]
+
+/** What `resolveCarrierTracking` is handed: the driver row, and one per carrier. */
+export interface CarrierSettings {
+  readonly tracking: LiveIntegration
+  readonly carriers: Readonly<Record<string, LiveIntegration>>
+}
+
+/**
+ * The DCSA credentials this deployment can authenticate with.
  *
  * Lives here rather than in `dcsa-tracking.ts` for the same reason
  * `smtpOptions()` lives outside `smtp.ts`: the adapter takes credentials and
  * knows nothing about where they came from, which is what lets it be tested
  * against a stubbed `fetch` with no environment at all.
  */
-export function dcsaCredentials(): Record<string, DcsaCredential> {
-  return {
-    maersk: { key: config.DCSA_MAERSK_CONSUMER_KEY, secret: config.DCSA_MAERSK_CLIENT_SECRET },
-    hapag: { key: config.DCSA_HAPAG_CLIENT_ID, secret: config.DCSA_HAPAG_CLIENT_SECRET },
-    cmacgm: { key: config.DCSA_CMACGM_API_KEY },
+export function dcsaCredentials(settings: CarrierSettings): Record<string, DcsaCredential> {
+  const credentials: Record<string, DcsaCredential> = {}
+
+  for (const [carrier, entry] of Object.entries(DCSA_SETTINGS)) {
+    const source = settings.carriers[entry.key]
+    if (!source) continue
+    credentials[carrier] = {
+      key: source.secret(entry.keyName),
+      secret: entry.secretName ? source.secret(entry.secretName) : undefined,
+    }
   }
+
+  return credentials
 }
 
 /**
@@ -222,39 +257,39 @@ export function dcsaCredentials(): Record<string, DcsaCredential> {
  * same gateway and a different proxy, and a key issued for one is refused by
  * the other. Overriding the host alone would have made that a code change.
  */
-function dcsaProfiles(): DcsaCarrierProfile[] {
-  const baseUrls: Record<string, string | undefined> = {
-    maersk: config.DCSA_MAERSK_BASE_URL,
-    hapag: config.DCSA_HAPAG_BASE_URL,
-    cmacgm: config.DCSA_CMACGM_BASE_URL,
-  }
-
-  const paths: Record<string, string | undefined> = {
-    maersk: config.DCSA_MAERSK_EVENTS_PATH,
-    hapag: config.DCSA_HAPAG_EVENTS_PATH,
-    cmacgm: config.DCSA_CMACGM_EVENTS_PATH,
-  }
-
-  return DCSA_CARRIERS.map((profile) => ({
-    ...profile,
-    baseUrl: baseUrls[profile.key] ?? profile.baseUrl,
-    eventsPath: paths[profile.key] ?? profile.eventsPath,
-  }))
+function dcsaProfiles(settings: CarrierSettings): DcsaCarrierProfile[] {
+  return DCSA_CARRIERS.map((profile) => {
+    const entry = DCSA_SETTINGS[profile.key]
+    const source = entry ? settings.carriers[entry.key] : undefined
+    return {
+      ...profile,
+      baseUrl: source?.text('baseUrl') ?? profile.baseUrl,
+      eventsPath: source?.text('eventsPath') ?? profile.eventsPath,
+    }
+  })
 }
 
 /** Which tracking source this deployment runs on. Manual unless configured. */
-export function resolveCarrierTracking(): CarrierTracking {
-  if (config.CARRIER_TRACKING_DRIVER === 'dcsa') {
-    const credentials = dcsaCredentials()
-    const profiles = dcsaProfiles()
+export function resolveCarrierTracking(settings: CarrierSettings): CarrierTracking {
+  const tracking = settings.tracking
+
+  if (tracking.driver === 'dcsa') {
+    const credentials = dcsaCredentials(settings)
+    const profiles = dcsaProfiles(settings)
 
     /*
-      A half-configured carrier is refused at boot, not at 2am.
+      A half-configured carrier is refused here, not at 2am.
 
       Hapag's gateway takes an id and a secret. Setting one of the two would
       produce 401s from a carrier that reads as configured in the boot log,
       against shipments that have already sailed — which is the failure this
       whole file's `config.ts` sibling exists to prevent.
+
+      Thrown rather than returned, and caught by `adapters/index.ts`: an
+      environment that says this at boot should still refuse to start, and a
+      *row* that says it must degrade to manual and go red on the screen
+      instead. Those are different policies about the same mistake, and the
+      caller is the only place that knows which layer the value came from.
     */
     for (const profile of profiles) {
       const credential = credentials[profile.key]
@@ -267,20 +302,22 @@ export function resolveCarrierTracking(): CarrierTracking {
 
     if (!profiles.some((profile) => credentials[profile.key]?.key)) {
       throw new Error(
-        'CARRIER_TRACKING_DRIVER=dcsa but no carrier credentials are set. Register with ' +
-          'at least one of Maersk, Hapag-Lloyd or CMA CGM — all self-serve, all free — ' +
-          'and set its key, or leave the driver on manual.',
+        'Carrier tracking is set to `dcsa` but no carrier credentials are set. Register ' +
+          'with at least one of Maersk, Hapag-Lloyd or CMA CGM — all self-serve, all free — ' +
+          'and set its key, or leave tracking on manual.',
       )
     }
 
     return dcsaTracking(credentials, profiles)
   }
 
-  if (config.CARRIER_TRACKING_DRIVER !== 'terminal49') return manualCarrierTracking
+  if (tracking.driver !== 'terminal49') return manualCarrierTracking
 
-  if (!config.CARRIER_TRACKING_API_KEY) {
-    throw new Error('CARRIER_TRACKING_DRIVER=terminal49 but CARRIER_TRACKING_API_KEY is not set.')
+  const apiKey = tracking.secret('apiKey')
+
+  if (!apiKey) {
+    throw new Error('Carrier tracking is set to `terminal49` but no API key is set.')
   }
 
-  return terminal49Tracking(config.CARRIER_TRACKING_API_KEY, config.CARRIER_TRACKING_BASE_URL)
+  return terminal49Tracking(apiKey, tracking.text('baseUrl') ?? 'https://api.terminal49.com')
 }

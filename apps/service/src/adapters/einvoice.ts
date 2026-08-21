@@ -26,7 +26,7 @@
  */
 
 import type { EInvoiceTransmit } from '../ports/index'
-import { config } from '../config'
+import type { LiveIntegration } from '../settings'
 
 /**
  * Release One: the data is made compliant and nothing is sent.
@@ -129,16 +129,19 @@ export function aspTransmit(url: string, apiKey: string): EInvoiceTransmit {
 }
 
 /** Which transmitter this deployment runs on. Nothing sent unless configured. */
-export function resolveEInvoiceTransmit(): EInvoiceTransmit {
-  if (config.EINVOICE_DRIVER !== 'asp') return noTransmit
+export function resolveEInvoiceTransmit(settings: LiveIntegration): EInvoiceTransmit {
+  if (settings.driver !== 'asp') return noTransmit
 
-  if (!config.EINVOICE_ASP_URL || !config.EINVOICE_ASP_API_KEY) {
+  const url = settings.text('url')
+  const apiKey = settings.secret('apiKey')
+
+  if (!url || !apiKey) {
     throw new Error(
-      'EINVOICE_DRIVER=asp requires EINVOICE_ASP_URL and EINVOICE_ASP_API_KEY. ' +
-        'Transmission goes through an accredited provider — we cannot be one ' +
-        '(the accreditation requires two years of operating history).',
+      'E-invoice transmission is set to `asp` and needs both a provider URL and ' +
+        'an API key. Transmission goes through an accredited provider — we cannot ' +
+        'be one (the accreditation requires two years of operating history).',
     )
   }
 
-  return aspTransmit(config.EINVOICE_ASP_URL, config.EINVOICE_ASP_API_KEY)
+  return aspTransmit(url, apiKey)
 }

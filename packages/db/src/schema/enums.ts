@@ -259,3 +259,47 @@ export const accountingExportStatusEnum = pgEnum('accounting_export_status', [
   'posted',
   'void',
 ])
+
+/**
+ * Every place in the product that may ask a model something — `core/ai.ts`.
+ *
+ * An enum by the line this file draws at the top: a surface is only extensible
+ * by writing the code that calls from it, so the database makes an unknown one
+ * unrepresentable rather than merely unexpected. What *is* configuration is
+ * which model each surface uses and what it may decide — environment and rows
+ * respectively, never this list.
+ *
+ * It is also the cost dimension. "What is the AI costing us" has one useful
+ * answer and it is grouped by this column: an assistant answering forty
+ * questions a day and an extraction reading four hundred invoices a month fail
+ * economically in completely different ways.
+ */
+export const aiSurfaceEnum = pgEnum('ai_surface', [
+  'enquiry_extract',
+  'document_classify',
+  'document_extract',
+  'invoice_extract',
+  'rate_mapping',
+  'rate_extract',
+  'assistant',
+  'draft_reply',
+])
+
+/**
+ * What became of a proposal.
+ *
+ * `refused` is not a rejection by a person — it is the allowlist in
+ * `core/ai.ts` catching a model that tried to write a field its surface may
+ * not speak to. It is kept as its own state rather than folded into
+ * `rejected` because the two mean completely different things: one is a
+ * coordinator disagreeing, the other is a prompt-injection attempt or a
+ * prompt bug, and only the second is somebody's job to investigate tonight.
+ */
+export const proposalStatusEnum = pgEnum('proposal_status', [
+  'proposed',
+  'accepted',
+  'rejected',
+  'applied',
+  'superseded',
+  'refused',
+])

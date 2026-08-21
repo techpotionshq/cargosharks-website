@@ -231,6 +231,7 @@ this area.
 | [`Gulf_Market_Analysis.md`](docs/Gulf_Market_Analysis.md) | Can this be sold to a second customer — competitors, mandates, wedges |
 | [`Integration_Landscape.md`](docs/Integration_Landscape.md) | What the external services actually offer: tracking, e-invoicing, customs, FX. Every claim tagged verified, documented or reported |
 | [`Operations_Findings.md`](docs/Operations_Findings.md) | What broke in the first real deployment and what it taught us. Read before standing up customer number two |
+| [`Qabandi_AI_Surface.md`](docs/Qabandi_AI_Surface.md) | Where a language model earns its place — intake, rate cards, document extraction, an assistant — and where the honest answer is arithmetic |
 
 ## The parts worth reading first
 
@@ -323,6 +324,83 @@ Two things deliberately do *not* follow the brand:
   validated for lightness band, chroma floor, adjacent-pair separation under
   simulated protanopia and deuteranopia, and contrast against both surfaces —
   in both themes. Changing a support hue means re-running that validation.
+
+## Integration settings
+
+The mail relay, the FX feed, the carrier registrations, the poll budget,
+WhatsApp, the e-invoice provider and the model provider are **rows, not
+environment variables** — `integration_settings`, edited at Settings →
+Integrations, with credentials sealed under `MAILBOX_ENCRYPTION_KEY`
+(`FR-AD-03`).
+
+That is not a preference. Every one of these is the *client's* to provision
+(`IN-06`, Discovery Q5): they register with Maersk themselves, buy their own
+relay, appoint their own e-invoice provider. While these were variables, each
+credential arriving meant a redeploy — so the capability waited for whoever
+held the deploy keys rather than for whoever held the credential.
+
+### The environment is the fallback, and stays one
+
+A row wins. The variable answers when there is no row. Three things fall out of
+that, and each is the reason the fallback is not being removed:
+
+- **It is the bootstrap.** `SMTP_*` has to work before anyone can sign in to
+  change `SMTP_*`. A deployment whose relay is only configurable from inside
+  the application is one nobody can be invited into.
+- **It is the rollback.** Deactivating a row returns the deployment to exactly
+  what its variables say, with nothing typed lost.
+- **It keeps the change additive.** A deployment that configures nothing on the
+  screen behaves exactly as it did before the table existed.
+
+The variables are listed here rather than in `.env.example` deliberately. A
+name in that file reads as *the* place to set something, and for these it is
+the place of last resort — someone who copies it and fills in an SMTP password
+has configured the one layer the screen will then silently override.
+
+### The names
+
+`INTEGRATIONS` in [`packages/core/src/integrations.ts`](packages/core/src/integrations.ts)
+is the authority; this table is a snapshot of it. `pnpm doctor` prints the live
+list, and says plainly that it reads no database and so cannot see the rows.
+
+| Integration | Key | Environment fallback |
+| --- | --- | --- |
+| Outbound mail | `smtp` | `MAIL_DRIVER` `SMTP_HOST` `SMTP_PORT` `SMTP_SECURE` `SMTP_USER` `MAIL_FROM` `SMTP_TLS_REJECT_UNAUTHORIZED` `SMTP_PASSWORD` |
+| Exchange rates | `fx` | `FX_SOURCE` `FX_API_URL` `FX_BASE_CURRENCY` `FX_API_KEY` |
+| Carrier poll budget | `carrierPoll` | `CARRIER_POLL_BATCH` `CARRIER_POLL_CRON` `CARRIER_POLL_ACTIVE_WITHIN_MINUTES` |
+| Container tracking | `carrierTracking` | `CARRIER_TRACKING_DRIVER` `CARRIER_TRACKING_BASE_URL` `CARRIER_TRACKING_API_KEY` `CARRIER_WEBHOOK_SECRET` |
+| Maersk | `carrierMaersk` | `DCSA_MAERSK_BASE_URL` `DCSA_MAERSK_EVENTS_PATH` `DCSA_MAERSK_CONSUMER_KEY` `DCSA_MAERSK_CLIENT_SECRET` |
+| Hapag-Lloyd | `carrierHapag` | `DCSA_HAPAG_BASE_URL` `DCSA_HAPAG_EVENTS_PATH` `DCSA_HAPAG_CLIENT_ID` `DCSA_HAPAG_CLIENT_SECRET` |
+| CMA CGM | `carrierCmacgm` | `DCSA_CMACGM_BASE_URL` `DCSA_CMACGM_EVENTS_PATH` `DCSA_CMACGM_API_KEY` |
+| WhatsApp Business | `whatsapp` | `WHATSAPP_PHONE_NUMBER_ID` `WHATSAPP_ACCESS_TOKEN` `WHATSAPP_WEBHOOK_VERIFY_TOKEN` `WHATSAPP_APP_SECRET` |
+| E-invoice transmission | `einvoice` | `EINVOICE_DRIVER` `EINVOICE_ASP_URL` `EINVOICE_ASP_API_KEY` |
+| Inbound mail webhook | `inboundEmail` | `INBOUND_EMAIL_WEBHOOK_SECRET` |
+| Document extraction | `ai` | `AI_MODEL` `AI_MONTHLY_BUDGET_USD` `OPENROUTER_API_KEY` |
+
+Four settings left the environment without becoming integration rows, because
+they belong to something that already had one:
+
+| Was | Now |
+| --- | --- |
+| `INBOUND_MAIL_BATCH` | `mailboxes.poll_batch` — a fact about one mailbox |
+| `INBOUND_MAIL_MAX_ATTACHMENT_MB` | `mailboxes.max_attachment_mb` |
+| `FX_QUOTE_CURRENCIES` | `currencies.is_tracked` |
+| `MAIL_FROM` per entity | `branches.mail_from` |
+
+These four are **not** read as a fallback — there is nothing deployment-wide
+left for them to fall back to. The column defaults are the old values, so a
+deployment that never tuned them is unaffected; one that did re-enters them on
+the row. `FR-NT-07`'s quiet hours moved the same way, from constants in the
+dispatcher to `branches.quiet_hours_*`, whose `time_zone` the comparison was
+already made in.
+
+### When a row is wrong
+
+An invalid *variable* still stops the service at boot. An invalid *row* must
+not: refusing to resolve would take out the settings screen along with the
+mistake, leaving a deployment recoverable only through `psql`. So a bad row
+degrades to the Release One driver, records why on itself, and the card shows
+red — the shape `mailboxes.last_error` already uses.
 
 ## Deliberately absent
 

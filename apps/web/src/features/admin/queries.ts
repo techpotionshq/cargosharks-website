@@ -138,6 +138,10 @@ export interface BranchRow {
   readonly country: string
   readonly baseCurrency: string
   readonly timeZone: string
+  readonly mailFrom: string | null
+  readonly quietHoursEnabled: boolean
+  readonly quietHoursFromHour: number
+  readonly quietHoursToHour: number
   readonly invoiceSeries: string | null
   readonly invoiceSeriesNext: number
   readonly taxRegistration: string | null
@@ -170,6 +174,10 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         country: branches.country,
         baseCurrency: branches.baseCurrency,
         timeZone: branches.timeZone,
+        mailFrom: branches.mailFrom,
+        quietHoursEnabled: branches.quietHoursEnabled,
+        quietHoursFromHour: branches.quietHoursFromHour,
+        quietHoursToHour: branches.quietHoursToHour,
         invoiceSeries: branches.invoiceSeries,
         invoiceSeriesNext: branches.invoiceSeriesNext,
         taxRegistration: branches.taxRegistration,

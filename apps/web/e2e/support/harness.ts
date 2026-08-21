@@ -70,6 +70,7 @@ const ALL_SETTINGS_ROUTES = [
   '/settings/branches',
   '/settings/audit',
   '/settings/support',
+  '/settings/integrations',
   '/settings/brand',
 ] as const
 
@@ -136,6 +137,14 @@ export const NEEDS_DATABASE: Record<string, string> = {
   '/settings/branches': 'admin/queries.ts — branch register',
   '/settings/audit': 'admin/queries.ts — audit register',
   '/settings/support': 'features/support/queries.ts — grants and access trail',
+  /*
+    Reads `integration_settings` to merge each row over the environment. It
+    could resolve from the environment alone with no database — the resolver
+    already does exactly that when a row is absent — but a settings screen that
+    silently showed only half its answer would be worse in fixture mode than
+    one that is honestly listed as needing a database.
+  */
+  '/settings/integrations': 'admin/integrations.ts listIntegrations',
   '/payables': 'payables/queries.ts listSupplierInvoices — no fixture branch',
   '/settlements': 'payables/queries.ts listSettlements — no fixture branch',
   /*

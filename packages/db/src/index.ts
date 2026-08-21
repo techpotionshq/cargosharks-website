@@ -14,6 +14,7 @@ export * from './validation'
 export * from './credit'
 export * from './chargeable'
 export * from './rate-cards'
+export * from './integrations'
 export * from './schema-version'
 /*
   Named rather than `export *`: `open` is a common enough word that a star

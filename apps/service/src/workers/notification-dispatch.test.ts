@@ -338,6 +338,54 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
       expect(inQuietHours(instant, 'Europe/London')).toBe(false)
     })
 
+    /*
+      The window is the branch's now, not the deployment's — FR-NT-07.
+
+      It was two constants in this file, which made "we do not write to
+      customers between nine at night and seven in the morning" a fact about
+      the installation. It is an office fact: everything else about the window
+      was already per-branch, because the comparison is made in the branch's
+      own `time_zone` — the two numbers were the only part that was not.
+    */
+    it('keeps the window the branch was given', () => {
+      // 18:30Z is 21:30 in Kuwait: inside the default window, outside a
+      // branch that goes quiet at 23:00.
+      const instant = new Date('2033-05-10T18:30:00Z')
+
+      expect(inQuietHours(instant, 'Asia/Kuwait', { enabled: true, from: 23, to: 7 })).toBe(false)
+      expect(inQuietHours(instant, 'Asia/Kuwait', { enabled: true, from: 21, to: 7 })).toBe(true)
+    })
+
+    /**
+     * A window that does not wrap midnight is a real setting — a branch with a
+     * short maintenance quiet period — and reading it as though it wrapped
+     * would silence the entire working day instead.
+     */
+    it('reads a window inside one day as inside one day', () => {
+      const oneAm = new Date('2033-05-10T22:00:00Z') // 01:00 in Kuwait
+      const noon = new Date('2033-05-10T09:00:00Z') // 12:00 in Kuwait
+
+      expect(inQuietHours(oneAm, 'Asia/Kuwait', { enabled: true, from: 1, to: 6 })).toBe(true)
+      expect(inQuietHours(noon, 'Asia/Kuwait', { enabled: true, from: 1, to: 6 })).toBe(false)
+    })
+
+    /** Switched off means send at any hour, not send at no hour. */
+    it('holds nothing when the branch has quiet hours turned off', () => {
+      expect(inQuietHours(NIGHT, 'Asia/Kuwait', { enabled: false, from: 21, to: 7 })).toBe(false)
+      expect(inQuietHours(DAYTIME, 'Asia/Kuwait', { enabled: false, from: 21, to: 7 })).toBe(false)
+    })
+
+    it('lifts the silence at the hour the branch chose', () => {
+      const end = nextQuietHoursEnd(NIGHT, 'Asia/Kuwait', { enabled: true, from: 21, to: 5 })
+      expect(
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Kuwait',
+          hour: '2-digit',
+          hour12: false,
+        }).format(end),
+      ).toBe('05')
+    })
+
     /**
      * Stepped forward an hour at a time rather than by constructing a local
      * midnight, because the alternative needs an offset — and an offset is the
