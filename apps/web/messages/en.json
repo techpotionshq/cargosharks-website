@@ -965,19 +965,7 @@
     "noneYetHint": "Branches are created with the database seed.",
     "accounts": "Ledger",
     "accountsSet": "Mapped",
-    "accountsMissing": "Unmapped",
-    "houseBillSeries": "House B/L series",
-    "houseBillSeriesHint": "Leave blank to number house bills by hand",
-    "accountsSection": "Chart of accounts",
-    "accountsSectionHint": "Where this entity posts. Leave blank until you have the codes — the accounting export names what is missing.",
-    "arAccount": "Receivables",
-    "arAccountHint": "The control account invoices post to",
-    "apAccount": "Payables",
-    "bankAccount": "Bank",
-    "taxAccount": "Output tax",
-    "fxAccount": "FX variance",
-    "fxAccountHint": "Where a rate that moved between invoice and receipt lands",
-    "roundingAccount": "Rounding"
+    "accountsMissing": "Unmapped"
   },
   "reference": {
     "eyebrow": "Administration",
@@ -1448,7 +1436,19 @@
     "quietHoursFrom": "From (hour)",
     "quietHoursFromHint": "24-hour clock. 21 is nine at night.",
     "quietHoursTo": "Until (hour)",
-    "quietHoursToHint": "Must differ from the start. 7 is seven in the morning."
+    "quietHoursToHint": "Must differ from the start. 7 is seven in the morning.",
+    "houseBillSeries": "House B/L series",
+    "houseBillSeriesHint": "Leave blank to number house bills by hand",
+    "accountsSection": "Chart of accounts",
+    "accountsSectionHint": "Where this entity posts. Leave blank until you have the codes — the accounting export names what is missing.",
+    "arAccount": "Receivables",
+    "arAccountHint": "The control account invoices post to",
+    "apAccount": "Payables",
+    "bankAccount": "Bank",
+    "taxAccount": "Output tax",
+    "fxAccount": "FX variance",
+    "fxAccountHint": "Where a rate that moved between invoice and receipt lands",
+    "roundingAccount": "Rounding"
   },
   "referenceForm": {
     "code": "Code",
@@ -2873,7 +2873,8 @@
     "reactivate": "Start reading",
     "reactivateTitle": "Start reading this mailbox",
     "reactivateSubtitle": "Unread mail already in the folder will be collected on the next check.",
-    "reactivateWarning": "Anything unread that has accumulated since this was stopped will arrive as enquiries."
+    "reactivateWarning": "Anything unread that has accumulated since this was stopped will arrive as enquiries.",
+    "noBranchRole": "You hold no branch role, so there is no branch you can connect a mailbox for. Ask an administrator to give you a role in the office whose mail you need to read."
   },
   "integrations": {
     "eyebrow": "Deployment",

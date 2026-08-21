@@ -127,8 +127,13 @@ export function Readout({
           never be clipped — right for a number, wrong for the facts that are
           *names*. "Felixstowe → Dubai International Airport" is a legitimate
           value here and it pushed itself straight out of the panel. Capping
-          the label at 60% keeps the pair balanced, and `title` means the full
-          text is still recoverable.
+          the label at 60% keeps the pair balanced, and `title` on *both* halves
+          means the full text is still recoverable.
+
+          Both halves, because the label is the half that actually loses. A
+          narrow panel clips "Busiest route" to "Bus…", and with the hover title
+          only on the value there was no way to read it back — the fact was
+          simply gone, which is worse than not stating it.
         */
         const body = (
           <>
@@ -136,7 +141,12 @@ export function Readout({
               {fact.icon ? (
                 <Icon name={fact.icon} size={14} className="shrink-0 text-ink-subtle" />
               ) : null}
-              <span className="truncate">{fact.label}</span>
+              <span
+                className="truncate"
+                title={typeof fact.label === 'string' ? fact.label : undefined}
+              >
+                {fact.label}
+              </span>
             </dt>
             <dd
               className="min-w-0 truncate text-end text-[0.8125rem] font-semibold text-ink"

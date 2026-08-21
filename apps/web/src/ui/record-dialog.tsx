@@ -233,10 +233,24 @@ export function RecordDialog({
 }
 
 /** Sections and notes have no `name`, so the index stands in for one. */
+/*
+  The index is part of the key, and that is not belt-and-braces.
+
+  A repeated `name` is deliberate in this form vocabulary: branch access
+  renders one switch per branch, all called `branchIds`, so the browser submits
+  an array (FR-ID-02). Keying on the name alone therefore gave every one of
+  those switches the same key, and React warned about duplicate children on
+  every render of the user dialog — with two branches it merely warned, but the
+  documented consequence is a child being duplicated or dropped, which here
+  would be a branch grant silently missing from the form.
+
+  Fields are built in a fixed order and never reordered or filtered between
+  renders, so pairing the name with its position is stable.
+*/
 function fieldKey(field: FieldSpec, index: number): string {
   if (field.kind === 'section') return `section:${field.title}`
   if (field.kind === 'note') return `note:${index}`
-  return field.name
+  return `${field.name}:${index}`
 }
 
 function RenderField({ field, state }: { field: FieldSpec; state: ActionState }) {

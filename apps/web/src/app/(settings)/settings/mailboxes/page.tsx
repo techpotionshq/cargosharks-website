@@ -54,9 +54,26 @@ export default async function MailboxesPage() {
   const active = rows.filter((row) => row.isActive).length
   const failing = rows.filter((row) => row.isActive && row.lastError).length
 
+  /*
+    Only the branches this administrator actually holds a role in.
+
+    `loadOptions` lists every branch, because `branches_scope` is `using (true)`
+    — a customer has to be able to read the entity that invoices them, so the
+    table is readable to everyone. Holding a *role* in a branch is a different
+    question, and it is the one that governs writing: `mailboxes_scope` scopes
+    the insert to `app.branch_ids()`, so a branch offered here but not held
+    would be a choice the database refuses after the form is filled in.
+
+    Filtering it out of the select is the fix rather than a better error. FR-ID-02
+    is explicit that the same user is not the same everywhere, so an
+    administrator of Kuwait seeing Dubai in this list is the interface making a
+    promise the tenancy model never made.
+  */
+  const assignable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+
   return (
     <Register
-      actions={<MailboxDialog branches={options.branches} keyConfigured={keyConfigured} />}
+      actions={<MailboxDialog branches={assignable} keyConfigured={keyConfigured} />}
       eyebrow={t('eyebrow')}
       title={t('title')}
       description={t('subtitle')}
@@ -124,7 +141,7 @@ export default async function MailboxesPage() {
               <TD align="end">
                 <div className="flex justify-end gap-1">
                   <MailboxDialog
-                    branches={options.branches}
+                    branches={assignable}
                     keyConfigured={keyConfigured}
                     variant="ghost"
                     iconOnly
@@ -149,6 +166,15 @@ export default async function MailboxesPage() {
 
       {rows.some((row) => row.isActive && row.lastError) ? (
         <p className="mt-3 text-sm text-muted">{t('errorHint')}</p>
+      ) : null}
+
+      {/*
+        An administrator with the permission and no branch role can open this
+        screen and do nothing on it. Saying so beats a select with no options,
+        which reads as a bug in the page rather than as a gap in their roles.
+      */}
+      {assignable.length === 0 ? (
+        <p className="mt-3 text-sm text-muted">{t('noBranchRole')}</p>
       ) : null}
     </Register>
   )

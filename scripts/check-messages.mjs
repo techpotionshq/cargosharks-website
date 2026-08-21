@@ -77,6 +77,59 @@ for (const [have, want] of [
  */
 const BIND =
   /(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'\s*\)/g
+
+/**
+ * The *other* way this codebase binds a namespace, and the reason this file
+ * once passed a screen that threw `MISSING_MESSAGE` on every render:
+ *
+ *   const [options, t, tc] = await Promise.all([
+ *     loadOptions(actor),
+ *     getTranslations('branchForm'),
+ *     getTranslations('common'),
+ *   ])
+ *
+ * `BIND` cannot match that — the binding is a destructuring pattern, not a
+ * name — so the file registered *no* namespaces at all and the scan below
+ * skipped it whole. Thirty-two files went unchecked that way, and they were
+ * disproportionately the dialogs: every create-and-edit form in the product.
+ * `BranchDialog` read twelve keys that live under `branches.*` through the
+ * `branchForm` namespace, and nothing failed until the dialog was opened.
+ *
+ * Pairing is positional, so the array has to be split on *top-level* commas —
+ * a nested `f(a, b)` argument is not an element boundary.
+ */
+const DESTRUCTURED =
+  /(?:const|let)\s*\[([^\]]+)\]\s*=\s*(?:await\s+)?Promise\.all\(\s*\[([\s\S]*?)\]\s*\)/g
+const NAMESPACE_ARG = /^(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'\s*\)$/
+
+/**
+ * Splits an array literal's body on commas that are not inside brackets.
+ *
+ * Comments come out first, and that is not tidiness: the arrays this runs over
+ * are heavily commented in the house style, and prose commas are indis-
+ * tinguishable from element boundaries once you are counting brackets. One
+ * comment in `payables/[id]` shifted every element one place right and bound
+ * `tc` to `payables` instead of `common`, which reported a key that was never
+ * missing.
+ */
+function topLevelElements(body) {
+  const source = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+  const out = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (ch === '(' || ch === '[' || ch === '{') depth++
+    else if (ch === ')' || ch === ']' || ch === '}') depth--
+    else if (ch === ',' && depth === 0) {
+      out.push(source.slice(start, i).trim())
+      start = i + 1
+    }
+  }
+  out.push(source.slice(start).trim())
+  return out
+}
+
 const CALL = /\b(\w+)\(\s*'([^']+)'/g
 const DYNAMIC = /\b(\w+)\(\s*`/g
 
@@ -87,10 +140,21 @@ for (const file of globSync('apps/web/src/**/*.{ts,tsx}')) {
   const source = readFileSync(file, 'utf8')
 
   const namespaces = new Map()
-  for (const match of source.matchAll(BIND)) {
-    if (!namespaces.has(match[1])) namespaces.set(match[1], new Set())
-    namespaces.get(match[1]).add(match[2])
+  const bind = (name, namespace) => {
+    if (!namespaces.has(name)) namespaces.set(name, new Set())
+    namespaces.get(name).add(namespace)
   }
+
+  for (const match of source.matchAll(BIND)) bind(match[1], match[2])
+
+  for (const match of source.matchAll(DESTRUCTURED)) {
+    const names = match[1].split(',').map((name) => name.trim())
+    topLevelElements(match[2]).forEach((element, index) => {
+      const namespace = element.match(NAMESPACE_ARG)?.[1]
+      if (namespace && names[index]) bind(names[index], namespace)
+    })
+  }
+
   if (!namespaces.size) continue
 
   for (const match of source.matchAll(CALL)) {

@@ -21,6 +21,12 @@ import { CHROME_ROUTE, LOCALE_COOKIE, collectPageErrors } from './support/harnes
 
 const ARABIC = /[؀-ۿ]/
 
+/** The dock's own question box, in either language. */
+const questionBox = (page: import('@playwright/test').Page) =>
+  page
+    .getByRole('region', { name: /assistant|المساعد/i })
+    .getByRole('textbox')
+
 test.describe('the assistant panel', () => {
   test('is offered on the board, and opens', async ({ page }) => {
     const errors = collectPageErrors(page)
@@ -97,12 +103,20 @@ test.describe('the assistant panel', () => {
     expect(errors).toEqual([])
   })
 
+  /*
+    The question box is located by its label, not as `the` textarea on the page.
+
+    A bare `locator('textarea')` passed offline and was ambiguous in full mode:
+    the board carries a Notes field of its own there, so the selector resolved
+    to two elements and the test failed on a product that was working. The dock
+    is the thing under test, so the locator names it.
+  */
   test('puts the caret in the question box when it opens', async ({ page }) => {
     const errors = collectPageErrors(page)
     await page.goto(CHROME_ROUTE)
     await page.keyboard.press('ControlOrMeta+k')
 
-    await expect(page.locator('textarea')).toBeFocused()
+    await expect(questionBox(page)).toBeFocused()
     expect(errors).toEqual([])
   })
 
@@ -145,7 +159,7 @@ test.describe('the assistant panel', () => {
     await page.goto(CHROME_ROUTE)
     await page.keyboard.press('ControlOrMeta+k')
 
-    await page.locator('textarea').fill('Which invoices are overdue?')
+    await questionBox(page).fill('Which invoices are overdue?')
     await page.getByRole('button', { name: /^ask$/i }).click()
 
     await expect(page.getByRole('region', { name: /assistant|المساعد/i })).toContainText(
