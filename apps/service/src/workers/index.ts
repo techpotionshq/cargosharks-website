@@ -20,32 +20,30 @@ import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-r
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
 import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extract'
+import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
+import {
+  runInboundEmailWebhook,
+  type InboundEmailWebhookInput,
+} from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
 /** Jobs still to be built. Named so nothing silently goes missing. */
 const PENDING: { name: string; trigger: string; requirement: string }[] = [
-  /*
-    Still pending, and now for a narrower reason.
-
-    FR-EQ-02's intake is built — `inbound-mail.ts`, fed by `JOBS.inboundMailPoll`
-    against Al-Qabandi's own mailboxes. This entry is the *other* implementation
-    of `InboundMailSource`: the route in `webhooks/index.ts` verifies a
-    signature and enqueues, and nothing yet turns a provider's receipt into an
-    `InboundMessage`. Everything downstream of that conversion already exists,
-    so closing it is an adapter rather than a feature.
-  */
-  { name: JOBS.inboundEmail, trigger: 'webhook', requirement: 'FR-EQ-02 — provider half' },
   { name: JOBS.inboundWhatsApp, trigger: 'webhook', requirement: 'FR-NT-05' },
   /*
-    The renderer and the invoice template now exist and are wired to
-    `/internal/documents/invoice/:id`, which renders on demand and streams.
-    This queued job is what *stores* a document at issue — the moment an
-    invoice stops being a view of editable rows and becomes a record — and it
-    waits on `FileStore`, which has no implementation yet.
+    Superseded rather than pending, and left here as a marker until the name is
+    retired from `JOBS`.
+
+    This job was to *store* a document at issue, and it was blocked on
+    `FileStore` having no implementation. `FileStore` shipped — `adapters/s3.ts`
+    signs its own SigV4 and `pdf/store.ts` writes the bytes, the `assets` row
+    and the versioned `documents` row inside one transaction, synchronously, at
+    the moment issue happens. Doing it again on a queue would produce a second
+    copy of a document whose whole point is that there is one.
   */
-  { name: JOBS.pdfRender, trigger: 'on issue', requirement: '§8 — needs FileStore' },
+  { name: JOBS.pdfRender, trigger: 'superseded', requirement: '§8 — done by pdf/store.ts' },
   { name: JOBS.complianceExpiry, trigger: 'nightly', requirement: 'FR-MD-05' },
   { name: JOBS.bulkImport, trigger: 'on upload', requirement: 'FR-MD-11, FR-RT-09' },
   { name: JOBS.scheduledReport, trigger: 'daily/weekly', requirement: 'FR-RP-07' },
@@ -53,6 +51,15 @@ const PENDING: { name: string; trigger: string; requirement: string }[] = [
 
 export async function registerWorkers(log: {
   info: (o: unknown, m: string) => void
+  /**
+   * One level above `info`, and there is exactly one thing that uses it.
+   *
+   * An extraction that proposed a field it may not speak to is a security
+   * event rather than a busy day — `admissible()` keeps the refused names for
+   * precisely this line, because silently filtering would lose the only
+   * evidence a prompt injection was attempted.
+   */
+  warn: (o: unknown, m: string) => void
 }): Promise<void> {
   const boss = await getBoss()
 
@@ -269,6 +276,80 @@ export async function registerWorkers(log: {
         log.info(
           { assetId: input.assetId, err: error instanceof Error ? error.message : String(error) },
           'supplier invoice extraction failed',
+        )
+      }
+    }
+  })
+
+  /*
+    The provider half of the enquiry front door — FR-EQ-02.
+
+    `/webhooks/email` has verified, recorded and queued since Release One with
+    nothing on the other end: the route answered 202, the provider stopped
+    retrying, and the enquiry never appeared. Failures rethrow here, unlike the
+    two extraction jobs below, because everything this job can fail on is worth
+    retrying — a database that blinked, storage that refused an attachment. The
+    one failure that is not is an unreadable payload, and that returns a reason
+    rather than throwing.
+  */
+  await work(JOBS.inboundEmail, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as InboundEmailWebhookInput
+      const result = await runInboundEmailWebhook(input)
+      log.info(
+        { eventId: input.eventId, outcome: result.outcome, enquiryId: result.enquiryId },
+        result.reason ? `inbound email webhook: ${result.reason}` : 'inbound email webhook handled',
+      )
+    }
+  })
+
+  /*
+    Reading an emailed enquiry — FR-EQ-02's twelve null columns.
+
+    Failures are logged and swallowed, like the invoice above and for a related
+    reason. This one has not necessarily spent money by the time it fails, so
+    the argument is different: the enquiry is already on the board with its SLA
+    clock running, and five retries against a mail the model cannot read would
+    spend five times to arrive at the same coordinator typing the same twelve
+    fields. What retrying *would* buy is a transient rate-limit clearing, which
+    is real — so a provider failure is left to pg-boss and only a refusal to
+    read this particular mail is swallowed.
+  */
+  await work(JOBS.enquiryExtract, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as ExtractEnquiryInput
+      try {
+        const result = await extractEnquiry(input)
+        log.info(
+          {
+            enquiryId: input.enquiryId,
+            invocationId: result.invocationId,
+            proposed: result.proposed,
+            occupied: result.occupied,
+            refused: result.refused,
+            skipped: result.skipped,
+          },
+          result.proposed > 0 ? 'enquiry read' : 'enquiry read, nothing proposed',
+        )
+        /*
+          A refusal is a security event, not a filter miss. `admissible()`
+          keeps the names for exactly this line — an extraction that tried to
+          set `customerId` is either a prompt bug or a mail that talked the
+          model into one, and both want somebody's attention.
+        */
+        if (result.refused.length > 0) {
+          log.warn(
+            { enquiryId: input.enquiryId, refused: result.refused },
+            'enquiry extraction proposed fields it may not speak to',
+          )
+        }
+      } catch (error) {
+        log.info(
+          {
+            enquiryId: input.enquiryId,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'enquiry extraction failed',
         )
       }
     }

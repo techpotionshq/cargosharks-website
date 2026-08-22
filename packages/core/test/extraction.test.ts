@@ -5,11 +5,15 @@ import {
   invoiceLinesGrid,
   invoiceTotal,
   isSelfConsistent,
+  ENQUIRY_EXTRACTION_SCHEMA,
+  ENQUIRY_FIELDS,
+  readExtractedEnquiry,
   readExtractedInvoice,
   reconcileInvoice,
   type RawExtractedInvoice,
   type RawInvoiceLine,
 } from '../src/extraction'
+import { EXTRACTABLE_FIELDS } from '../src/ai'
 import { SEED_CURRENCIES, toDb } from '../src/money'
 import type { ImportLookups } from '../src/import'
 
@@ -347,5 +351,79 @@ describe('the cross-check has to have something to check against', () => {
   it('accepts a multi-line invoice once a net is stated', () => {
     const checked = read({ subtotal: '1800.000', total: '1800.000', lines: [line(), line()] })
     expect(isSelfConsistent(checked, KWD, 0.8)).toBe(true)
+  })
+})
+
+describe('the emailed enquiry', () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    field: 'mode',
+    value: 'sea_fcl',
+    confidence: 0.9,
+    evidence: '2 x 40HC',
+    ...over,
+  })
+
+  const read = (over: Record<string, unknown> = {}) =>
+    readExtractedEnquiry({ fields: [entry()], confidence: 0.8, ...over })
+
+  it('reads a proposal per field, keeping the evidence span', () => {
+    const extracted = read()
+    expect(extracted.fields).toEqual([
+      { field: 'mode', value: 'sea_fcl', confidence: 0.9, evidence: '2 x 40HC' },
+    ])
+    expect(extracted.confidence).toBe(0.8)
+  })
+
+  /**
+   * The schema and the allowlist are two lists that must agree, and this is
+   * the test the duplication buys. `ENQUIRY_FIELDS` is what the provider is
+   * told; `EXTRACTABLE_FIELDS.enquiry_extract` is what the system will accept.
+   * A schema loosened without the allowlist following it is otherwise silent.
+   */
+  it('offers the model exactly the fields the surface will accept', () => {
+    expect([...ENQUIRY_FIELDS].sort()).toEqual([...EXTRACTABLE_FIELDS.enquiry_extract].sort())
+  })
+
+  it('names the enum in the schema, so the provider cannot invent a field', () => {
+    const fields = (ENQUIRY_EXTRACTION_SCHEMA.properties as Record<string, Record<string, never>>)
+      .fields as unknown as { items: { properties: { field: { enum: string[] } } } }
+    expect(fields.items.properties.field.enum).toEqual([...ENQUIRY_FIELDS])
+  })
+
+  /*
+    A field outside the twelve is kept and reported rather than dropped. An
+    extraction that answered `customerId` is either a prompt bug or a mail that
+    talked the model into one, and both want somebody's attention — dropping it
+    silently would lose the only evidence it happened.
+  */
+  it('reports a field it was never offered rather than discarding it quietly', () => {
+    const extracted = read({ fields: [entry({ field: 'customerId', value: 'cust-1' })] })
+    expect(extracted.fields).toEqual([])
+    expect(extracted.unknownFields).toEqual(['customerId'])
+  })
+
+  it('drops one malformed entry and keeps the rest', () => {
+    const extracted = read({
+      fields: [entry({ confidence: 'very sure' }), entry({ field: 'pieces', value: '240' })],
+    })
+    expect(extracted.fields.map((f) => f.field)).toEqual(['pieces'])
+  })
+
+  it('omits an empty value rather than proposing a blank', () => {
+    expect(read({ fields: [entry({ value: '   ' })] }).fields).toEqual([])
+  })
+
+  it('leaves evidence off entirely where the model would not name a span', () => {
+    const [proposal] = read({ fields: [entry({ evidence: null })] }).fields
+    expect(proposal).not.toHaveProperty('evidence')
+  })
+
+  it('clamps a confidence outside the range rather than losing the field', () => {
+    expect(read({ fields: [entry({ confidence: 1.4 })] }).fields[0]?.confidence).toBe(1)
+  })
+
+  it('refuses a response that is not the shape asked for', () => {
+    expect(() => readExtractedEnquiry({ confidence: 0.9 })).toThrow(/fields/)
+    expect(() => readExtractedEnquiry('nope')).toThrow(/JSON object/)
   })
 })

@@ -39,6 +39,17 @@ export const JOBS = {
     which is why `adapters/model.ts` deliberately has no retry loop of its own.
   */
   invoiceExtract: 'supplier-invoice-extract',
+  /*
+    Reading an emailed enquiry — FR-EQ-02's twelve null columns.
+
+    Queued for a stronger reason than the invoice above, and the ordering is
+    the whole design: `handleMessage` enqueues this *after* the enquiry is
+    committed, never before, so a model that is slow, rate-limited or
+    unconfigured cannot cost us the intake. An enquiry that never arrived is a
+    customer who went elsewhere; an enquiry a coordinator has to type out is
+    Tuesday.
+  */
+  enquiryExtract: 'enquiry-extract',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const

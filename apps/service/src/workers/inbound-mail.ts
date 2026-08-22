@@ -96,6 +96,7 @@ export interface InboundMailResult {
 export async function runInboundMailPoll(
   asOf = new Date(),
   injected?: readonly InboundMailSource[],
+  enqueue: EnqueueExtraction = enqueueExtraction,
 ): Promise<InboundMailResult> {
   const sources = injected ?? (await resolveInboundMail())
 
@@ -133,9 +134,9 @@ export async function runInboundMailPoll(
           )
         }
 
-        const outcome = await handleMessage(message, branch, asOf)
-        if (outcome === 'created') created++
-        else if (outcome === 'threaded') threaded++
+        const handled = await ingestMessage(message, branch, asOf, enqueue)
+        if (handled.outcome === 'created') created++
+        else if (handled.outcome === 'threaded') threaded++
         else duplicates++
       })
     } catch (error) {
@@ -157,7 +158,7 @@ export async function runInboundMailPoll(
   return { collected, created, threaded, duplicates, failed }
 }
 
-interface BranchRef {
+export interface BranchRef {
   readonly id: string
   readonly code: string
 }
@@ -174,7 +175,7 @@ interface BranchRef {
  * `InboundMessage`, and it is unique across the table by
  * `mailboxes_address_unique`.
  */
-async function resolveBranches(): Promise<Map<string, BranchRef>> {
+export async function resolveBranches(): Promise<Map<string, BranchRef>> {
   const rows = await withActor(systemActor(), async (tx) =>
     tx
       .select({
@@ -198,6 +199,44 @@ async function resolveBranches(): Promise<Map<string, BranchRef>> {
 type Outcome = 'created' | 'threaded' | 'duplicate'
 
 /**
+ * What `handleMessage` did, and what a model should read next.
+ *
+ * The ids come back rather than being acted on inside the transaction,
+ * because the enqueue must happen *after* the commit — see `enqueueExtraction`
+ * below, where the ordering is the whole design.
+ */
+interface Handled {
+  readonly outcome: Outcome
+  readonly enquiryId: string | null
+  readonly messageId: string | null
+}
+
+/**
+ * Ask a model to read the mail we just filed — FR-EQ-02's twelve null columns.
+ *
+ * Injected, with a default that resolves pg-boss lazily, for the reason every
+ * other boundary in this worker is injected: the suite proves what becomes an
+ * enquiry against a real database and has no queue, and a static import of
+ * `getBoss` here would make `inbound-mail.test.ts` require one.
+ *
+ * Failure is swallowed and logged. This is enrichment of a row that already
+ * exists, and the whole argument for extraction being a job rather than a step
+ * is that nothing about a model may cost us an intake — letting a failed
+ * enqueue throw here would put that back, one `await` at a time.
+ */
+export type EnqueueExtraction = (input: {
+  enquiryId: string
+  messageId: string
+  branchId: string
+}) => Promise<void>
+
+const enqueueExtraction: EnqueueExtraction = async (input) => {
+  const { JOBS, getBoss } = await import('../queue')
+  const boss = await getBoss()
+  await boss.send(JOBS.enquiryExtract, input)
+}
+
+/**
  * Claim, route, record.
  *
  * The attachment bytes are written to storage *before* the transaction opens,
@@ -206,13 +245,30 @@ type Outcome = 'created' | 'threaded' | 'duplicate'
  * while bytes with no row are an orphan that costs pennies and confuses
  * nobody. Storage first, rows second.
  */
-async function handleMessage(
+export async function ingestMessage(
   message: InboundMessage,
   branch: BranchRef,
   asOf: Date,
-): Promise<Outcome> {
-  const claim = await claimReceipt(message, branch.id)
-  if (claim === 'already_processed') return 'duplicate'
+  enqueue: EnqueueExtraction = enqueueExtraction,
+  /**
+   * A receipt this message already holds, where the caller claimed it.
+   *
+   * The webhook half of `InboundMailSource` arrives having *already* inserted
+   * its `inbound_webhook_events` row — that insert is what makes a provider's
+   * redelivery a no-op, and it happens in the route before anything is queued.
+   * Claiming a second one here under a different provider would leave the
+   * first row permanently unprocessed and give one mail two receipts.
+   *
+   * So the poll claims and the webhook passes; both then run the identical
+   * rules about what becomes an enquiry, which is the entire reason
+   * `InboundMessage` exists as a port shape rather than an IMAP detail.
+   */
+  claimed?: { readonly id: string },
+): Promise<Handled> {
+  const claim = claimed ?? (await claimReceipt(message, branch.id))
+  if (claim === 'already_processed') {
+    return { outcome: 'duplicate', enquiryId: null, messageId: null }
+  }
 
   const stored = await storeAttachments(message, branch)
 
@@ -292,8 +348,46 @@ async function handleMessage(
         .set({ processedAt: asOf, error: null, updatedAt: asOf })
         .where(eq(inboundWebhookEvents.id, claim.id))
 
-      return context.created ? ('created' as const) : ('threaded' as const)
+      return {
+        outcome: context.created ? ('created' as const) : ('threaded' as const),
+        enquiryId: context.enquiryId,
+        messageId: row!.id,
+      }
     })
+
+    /*
+      The model is asked *after* the commit, and only for an enquiry this mail
+      opened — `AI-05`.
+
+      After, because an enquiry that never arrived is a customer who went
+      elsewhere: extraction is an enrichment of a row that already exists, and
+      nothing about a model may sit between a mail and the board.
+
+      Only for a new enquiry, because a reply threaded onto an existing one had
+      its cargo facts proposed when the first mail arrived, and re-reading every
+      "any update?" would spend money to propose the same twelve values against
+      columns a coordinator has since filled.
+
+      Wrapped rather than awaited bare, for the same reason once more: a queue
+      that is down costs this deployment a slower coordinator, never an intake.
+    */
+    if (outcome.outcome === 'created' && outcome.enquiryId && outcome.messageId) {
+      try {
+        await enqueue({
+          enquiryId: outcome.enquiryId,
+          messageId: outcome.messageId,
+          branchId: branch.id,
+        })
+      } catch (error) {
+        console.error(
+          {
+            enquiryId: outcome.enquiryId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'inbound mail: could not queue the enquiry for reading',
+        )
+      }
+    }
 
     return outcome
   } catch (error) {

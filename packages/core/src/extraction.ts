@@ -66,7 +66,7 @@ import {
   type CurrencySpec,
   type Money,
 } from './money'
-import { AiError } from './ai'
+import { AiError, confidence, type Confidence, type FieldProposal } from './ai'
 
 /* -------------------------------------------------------------------------
  * What we ask the model for
@@ -646,4 +646,163 @@ export function driftMagnitude(findings: readonly ArithmeticFinding[], spec: Cur
     ),
     spec,
   )
+}
+
+/* -------------------------------------------------------------------------
+ * The enquiry — FR-EQ-02's twelve null columns
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The fields an enquiry extraction may speak to, in the order a form asks them.
+ *
+ * The same twelve as `EXTRACTABLE_FIELDS.enquiry_extract` in `ai.ts`, and that
+ * duplication is deliberate: this list is what the *provider* is told, the
+ * other is what the *system* will accept, and `extraction.test.ts` asserts
+ * they agree. One list would be tidier and would remove the only check that
+ * catches a schema loosened without the allowlist following it.
+ */
+export const ENQUIRY_FIELDS = [
+  'mode',
+  'tradeDirection',
+  'origin',
+  'destination',
+  'commodity',
+  'incoterm',
+  'readyOn',
+  'grossWeightKg',
+  'volumeCbm',
+  'pieces',
+  'dimensions',
+  'isDangerous',
+] as const
+
+export type EnquiryField = (typeof ENQUIRY_FIELDS)[number]
+
+/**
+ * What we ask for when reading an emailed enquiry.
+ *
+ * An array of proposals rather than an object of twelve nullable fields, and
+ * the shape is doing real work. A model asked for `{mode: null, origin: null,
+ * …}` answers with twelve keys whatever the mail said, and every one of those
+ * nulls then has to be filtered back out; a model asked for a list answers
+ * with what it found. More importantly the array element *is* `FieldProposal`
+ * — field, value, confidence, evidence — so nothing between here and
+ * `extraction_proposals` has to reshape it, and there is no second place where
+ * a confidence could be attached to the wrong field.
+ *
+ * `evidence` is required-but-nullable for the reason the invoice schema
+ * documents at length: `required` is the list of keys the model must emit, and
+ * a key outside it may simply be declined. Evidence is the whole difference
+ * between a coordinator confirming *"2 × 40HC, from line 3"* and re-reading
+ * the mail, so it has to be a thing the model states it could not find rather
+ * than a thing it can quietly omit.
+ *
+ * Every value is a **string**, including the weights and the piece count, for
+ * the same reason the invoice schema gives: a JSON number is a double, and
+ * these land in `numeric` columns through the same `decimal()` parser a
+ * spreadsheet goes through. `isDangerous` is `"true"` / `"false"`.
+ */
+export const ENQUIRY_EXTRACTION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['fields', 'confidence'],
+  properties: {
+    fields: {
+      type: 'array',
+      description: 'One entry per fact found in the mail. Omit a field entirely if absent.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['field', 'value', 'confidence', 'evidence'],
+        properties: {
+          field: { type: 'string', enum: [...ENQUIRY_FIELDS] },
+          value: { type: 'string', description: 'The value as text. Never null — omit instead.' },
+          confidence: { type: 'number', description: 'Your own estimate, 0 to 1.' },
+          evidence: {
+            type: ['string', 'null'],
+            description: 'The span of the mail this was read from, quoted. Null if none.',
+          },
+        },
+      },
+    },
+    confidence: { type: 'number', description: 'Your confidence in the extraction as a whole.' },
+  },
+}
+
+export interface ExtractedEnquiry {
+  readonly fields: readonly FieldProposal[]
+  readonly confidence: Confidence
+  /**
+   * Fields the model named that are not on the list.
+   *
+   * Kept rather than dropped, and handed to `admissible()` by the caller. A
+   * model that answered `customerId` is either a prompt bug or a mail that
+   * talked it into one, and both want a row somebody can find — `ai.ts` argues
+   * this at its own refusal path and the argument is the same here.
+   */
+  readonly unknownFields: readonly string[]
+}
+
+/**
+ * Read the model's answer into proposals.
+ *
+ * Refuses the response as a whole only when it is not the shape asked for.
+ * A single malformed entry is dropped and the rest kept, because the failure
+ * this guards against is *one* field arriving with a confidence of `"high"` —
+ * and throwing away eleven good facts over the twelfth is a worse outcome than
+ * the coordinator typing one of them.
+ */
+export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new AiError('extraction.not_an_object', 'The extraction was not a JSON object.')
+  }
+
+  const body = raw as Record<string, unknown>
+  if (!Array.isArray(body.fields)) {
+    throw new AiError('extraction.no_fields', 'The extraction carried no `fields` array.')
+  }
+
+  const permitted = new Set<string>(ENQUIRY_FIELDS)
+  const fields: FieldProposal[] = []
+  const unknownFields: string[] = []
+
+  for (const entry of body.fields) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const cell = entry as Record<string, unknown>
+
+    const field = typeof cell.field === 'string' ? cell.field.trim() : ''
+    if (field === '') continue
+    if (!permitted.has(field)) {
+      unknownFields.push(field)
+      continue
+    }
+
+    /*
+      A value is text and it is trimmed, and nothing else is done to it here.
+
+      Normalisation belongs to `import.ts` — Arabic-Indic digits, thousands
+      separators, the lot — because that is where every other untrusted row in
+      this system is normalised and a second implementation would drift from
+      it. What this loop decides is only whether there is a proposal at all.
+    */
+    const value = typeof cell.value === 'string' ? cell.value.trim() : ''
+    if (value === '') continue
+
+    let scored: Confidence
+    try {
+      scored = confidence(cell.confidence)
+    } catch {
+      // One unreadable score is not a reason to lose eleven readable facts.
+      continue
+    }
+
+    const evidence = typeof cell.evidence === 'string' ? cell.evidence.trim() : ''
+    fields.push({ field, value, confidence: scored, ...(evidence === '' ? {} : { evidence }) })
+  }
+
+  return {
+    fields,
+    confidence: confidence(body.confidence ?? 0),
+    unknownFields,
+  }
 }
