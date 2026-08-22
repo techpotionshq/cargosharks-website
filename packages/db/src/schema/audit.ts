@@ -57,5 +57,3 @@ export const auditLog = systemTable(
     index('audit_log_at_idx').on(t.at),
   ],
 )
-
-export type AuditEntry = typeof auditLog.$inferSelect

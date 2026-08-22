@@ -132,6 +132,10 @@ const PUBLIC_READ = new Set([
   'incoterms',
   'locations',
   'milestone_templates',
+  // Both halves of FR-NT-03: the wording, and the switches that say whether
+  // a channel sends at all. `0034` reads them as configuration, like the
+  // templates, because the dispatcher resolves them for every audience.
+  'notification_channel_settings',
   'notification_templates',
   'role_permissions',
   'roles',

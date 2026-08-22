@@ -217,6 +217,22 @@ export interface InboundMessage {
   readonly inReplyTo?: string
   readonly references: readonly string[]
   readonly attachments: readonly InboundAttachment[]
+  /**
+   * Whether a machine sent this, by its own admission.
+   *
+   * Set by the adapter from the headers that say so — `Auto-Submitted`
+   * (RFC 3834), `X-Auto-Response-Suppress`, a bulk `Precedence`, the empty
+   * reverse path a bounce carries, or a `multipart/report` body — because the
+   * adapter is the only thing that still has the headers. The worker adds
+   * the sender and subject heuristics on top; see `isAutomaticMail`.
+   *
+   * It exists because of an afternoon in which a branch mailbox received a
+   * bounce, filed it as an enquiry, notified the "customer" — the mail
+   * daemon — and received the bounce of that notification as the next
+   * enquiry. One hundred and eighty-nine times, each with an SLA clock and a
+   * model call, in twenty-four minutes.
+   */
+  readonly automatic?: boolean
 }
 
 /**

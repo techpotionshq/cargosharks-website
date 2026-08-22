@@ -3151,5 +3151,33 @@
       "dimensions": "الأبعاد",
       "isDangerous": "بضائع خطرة"
     }
+  },
+  "unbilled": {
+    "title": "مستحق ولم يُفوتر",
+    "description": "{count} شحنة تحمل {total} من الإيراد لم يصل إلى فاتورة قط.",
+    "shipment": "الشحنة",
+    "customer": "العميل",
+    "lines": "البنود",
+    "amount": "غير مفوتر",
+    "oldest": "أقدم بند",
+    "bill": "إنشاء مسودة فاتورة",
+    "mixedCurrency": "عملات مختلفة — تُفوتر منفصلة"
+  },
+  "grouping": {
+    "title": "يمكن دمجها في حاوية",
+    "description": "{count} مجموعة من الشحنات المتفرقة على المسار والإبحار نفسه.",
+    "summary": "{shipments} شحنات · {customers} عملاء · {cbm} م³ · {kg} كجم",
+    "fit": "{code} بنسبة {percent}%",
+    "overflows": "أكثر من حاوية واحدة",
+    "undated": "بلا تاريخ إبحار",
+    "form": "ادمجها",
+    "limitedBy": {
+      "volume": "محدودة بالحجم",
+      "weight": "محدودة بالوزن"
+    },
+    "modes": {
+      "sea_lcl": "بحري مجمّع",
+      "air": "جوي"
+    }
   }
 }

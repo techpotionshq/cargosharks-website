@@ -1,9 +1,28 @@
-# Local development dependencies — Postgres, object storage, a mail sink.
+# Local development — dependencies, and optionally the apps themselves.
 #
 # Not a deployment. Every credential here is a known constant and every port is
 # published to the host, which is right on a laptop and catastrophic anywhere
-# else. Production is `compose.deploy.yml`: the two application containers,
-# nothing else, built from the root `Dockerfile`.
+# else. Production is `compose.prod.yaml`.
+#
+#   docker compose -f compose.dev.yaml up            Postgres, MinIO, Mailpit — then `pnpm dev`
+#                                      runs web and service from source, with
+#                                      hot reload. This is the normal loop.
+#
+#   docker compose -f compose.dev.yaml --profile app up
+#                                      the above plus web and service as
+#                                      containers, built from the real
+#                                      Dockerfile. Slower and no hot reload,
+#                                      but it is the only way to exercise what
+#                                      actually ships — the standalone Next
+#                                      output, the bundled service, Chromium
+#                                      and the Arabic fonts.
+#
+# The apps sit behind a profile so the first command keeps working exactly as
+# it did; nobody who wants a database should have to build Chromium to get one.
+#
+# Unlike `compose.prod.yaml`, this file states the whole environment inline —
+# there is no Coolify here writing a `.env`, and a fixed set of dev constants is
+# the point.
 
 services:
   db:
@@ -42,7 +61,23 @@ services:
     volumes:
       - qabandi-storage:/data
 
-  # Local SMTP sink so the notification dispatcher (§7.4) has somewhere to deliver.
+  # MinIO starts with no buckets, and the service does not create one — a file
+  # store that invents its own bucket would paper over a typo in production.
+  # So the bucket is made here, once, and the container exits.
+  storage-init:
+    image: minio/mc:latest
+    container_name: qabandi-storage-init
+    depends_on:
+      - storage
+    restart: 'no'
+    entrypoint: >
+      sh -c "until mc alias set local http://storage:9000 qabandi qabandi-dev-secret;
+             do sleep 1; done;
+             mc mb --ignore-existing local/qabandi;
+             mc anonymous set none local/qabandi"
+
+  # Local SMTP sink so the notification dispatcher (§7.4) has somewhere to
+  # deliver. Read what was sent at http://localhost:8025.
   mail:
     image: axllent/mailpit:latest
     container_name: qabandi-mail
@@ -50,6 +85,76 @@ services:
     ports:
       - '1025:1025'
       - '8025:8025'
+
+  # --- the apps, under `--profile app` -------------------------------------
+
+  # Migrations run here rather than by hand: this profile exists to reproduce a
+  # deployment, and on a deployment the web container is what applies them.
+  web:
+    profiles: ['app']
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qabandi-web
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgres://app_user:app_user@db:5432/qabandi
+      BETTER_AUTH_SECRET: dev-secret-not-for-anything-real
+      BETTER_AUTH_URL: http://localhost:3000
+      # A container name on this network, not localhost — `localhost` inside
+      # the web container is the web container.
+      SERVICE_URL: http://service:3001
+      INTERNAL_API_SECRET: dev-internal-secret
+      # Must decode to exactly 32 bytes (packages/db/src/secrets.ts) — a key
+      # one byte short is refused, and both containers need the same one or
+      # the web app seals a mailbox password the service cannot open.
+      MAILBOX_ENCRYPTION_KEY: cWFiYW5kaS1kZXYtbWFpbGJveC1rZXktMzJieXRlcyE=
+      QABANDI_PILOT_FIXTURES: 0
+      RUN_MIGRATIONS: 'true'
+      MIGRATION_DATABASE_URL: postgres://app_migrator:app_migrator@db:5432/qabandi
+
+  service:
+    profiles: ['app']
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: service
+    container_name: qabandi-service
+    depends_on:
+      db:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgres://app_user:app_user@db:5432/qabandi
+      INTERNAL_API_SECRET: dev-internal-secret
+      # The CORS origin, as the browser sees the web app — so localhost, not
+      # the container name.
+      WEB_URL: http://localhost:3000
+
+      FILE_STORE_DRIVER: s3
+      S3_ENDPOINT: http://storage:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: qabandi
+      S3_ACCESS_KEY_ID: qabandi
+      S3_SECRET_ACCESS_KEY: qabandi-dev-secret
+      # MinIO serves `endpoint/bucket/key`; virtual-host style needs DNS per
+      # bucket, which does not exist on a laptop.
+      S3_FORCE_PATH_STYLE: 'true'
+
+      MAIL_DRIVER: smtp
+      SMTP_HOST: mail
+      SMTP_PORT: 1025
+      SMTP_SECURE: 'false'
+      MAIL_FROM: no-reply@qabandi.local
+
+      MAILBOX_ENCRYPTION_KEY: cWFiYW5kaS1kZXYtbWFpbGJveC1rZXktMzJieXRlcyE=
 
 volumes:
   qabandi-pgdata:

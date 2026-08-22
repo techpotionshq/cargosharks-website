@@ -92,6 +92,3 @@ export const authTwoFactor = authTable('auth_two_factor', {
   secret: text('secret').notNull(),
   backupCodes: text('backup_codes').notNull(),
 })
-
-export type AuthUser = typeof authUser.$inferSelect
-export type AuthSession = typeof authSession.$inferSelect

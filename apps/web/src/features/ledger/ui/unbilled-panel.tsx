@@ -1,0 +1,105 @@
+/**
+ * Revenue earned and never asked for — the register that makes the leak loud.
+ *
+ * Every other number on the finance page is about money we *have* asked for:
+ * ageing, overdue, top debtors. Those are loud by construction — an invoice
+ * ages, appears in a bucket, and gets chased. This card is the opposite case
+ * and the reason it is worth its own space: an unbilled charge line never ages,
+ * because nothing was ever raised. The shipment closed at a margin nobody
+ * questioned, and there was no missing document to notice.
+ *
+ * ## Ordered by amount, and the age is shown beside it
+ *
+ * "What is worth doing first" is the question a finance person opens this with,
+ * and it is answered by size — a ninety-day-old 12 KWD line is not the answer.
+ * The age is shown because it is the argument for *why this exists*: a row that
+ * has been sitting for five weeks is the one that would have been lost.
+ *
+ * ## The button is one act, and its refusals are visible before the click
+ *
+ * A shipment billing in two currencies cannot become one invoice, and the row
+ * says so instead of letting somebody find out at the click. Everything else
+ * is a single button that drafts the invoice from the lines already on the
+ * job — the draft still has to be approved and issued exactly as before.
+ */
+
+import { getTranslations, getLocale } from 'next-intl/server'
+import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
+import { formatMoney, formatDate } from '@/lib/format'
+import { Card, CardHeader } from '@/ui/card'
+import { Badge } from '@/ui/status'
+import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { unbilledRevenue } from '../unbilled'
+import { BillJobButton } from './bill-job-button'
+
+export async function UnbilledPanel() {
+  const session = await requireSession()
+  const [summary, t, locale] = await Promise.all([
+    unbilledRevenue(session.actor),
+    getTranslations('unbilled'),
+    getLocale(),
+  ])
+
+  // Nothing to chase is worth saying once, not worth a table with no rows in it.
+  if (summary.jobCount === 0) return null
+
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const billable = can(session, 'invoice.approve')
+  const money = (amount: string, currency: string) =>
+    formatMoney({ amount: Number(amount), currency }, lang)
+
+  return (
+    <Card className="mb-4" padding="none">
+      <CardHeader
+        title={t('title')}
+        description={t('description', {
+          count: summary.jobCount,
+          total: money(summary.totalBase, summary.baseCurrency),
+        })}
+      />
+      <TableShell>
+        <THead>
+          <TR>
+            <TH>{t('shipment')}</TH>
+            <TH>{t('customer')}</TH>
+            <TH align="end">{t('lines')}</TH>
+            <TH align="end">{t('amount')}</TH>
+            <TH>{t('oldest')}</TH>
+            <TH />
+          </TR>
+        </THead>
+        <TBody>
+          {summary.jobs.map((row) => {
+            const mixed = row.currencies.length > 1
+
+            return (
+              <TR key={row.jobId}>
+                <TD className="ref">{row.reference}</TD>
+                <TD>{row.customerName ?? <span className="text-ink-subtle">—</span>}</TD>
+                <TD numeric align="end">{row.lines}</TD>
+                <TD numeric align="end">
+                  {money(row.amountBase, row.baseCurrency)}
+                  {mixed ? (
+                    <Badge tone="caution" className="ms-2">
+                      {row.currencies.join(' / ')}
+                    </Badge>
+                  ) : null}
+                </TD>
+                <TD>{formatDate(row.oldestAt, lang)}</TD>
+                <TD>
+                  {billable && !mixed ? (
+                    <BillJobButton jobId={row.jobId} label={t('bill')} />
+                  ) : mixed ? (
+                    <span className="text-[0.75rem] text-ink-subtle">{t('mixedCurrency')}</span>
+                  ) : null}
+                </TD>
+              </TR>
+            )
+          })}
+        </TBody>
+      </TableShell>
+    </Card>
+  )
+}

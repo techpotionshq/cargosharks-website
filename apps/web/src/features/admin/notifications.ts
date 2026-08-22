@@ -19,13 +19,8 @@ import 'server-only'
  * that is answered by seeing the pair.
  */
 
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
-import {
-  NOTIFICATION_EVENTS,
-  UNIVERSAL_MERGE_FIELDS,
-  unknownMergeFields,
-  type NotificationSwitch,
-} from '@qabandi/core'
+import { asc, eq, sql } from 'drizzle-orm'
+import { NOTIFICATION_EVENTS, UNIVERSAL_MERGE_FIELDS, type NotificationSwitch } from '@qabandi/core'
 import {
   branches,
   notificationChannelSettings,
@@ -114,52 +109,6 @@ export async function listTemplates(actor: Actor): Promise<TemplateEvent[]> {
     mergeFields: [...UNIVERSAL_MERGE_FIELDS, ...event.fields],
     templates: rows.filter((row) => row.eventKey === event.key) as TemplateRow[],
   }))
-}
-
-/**
- * A template's own `{{fields}}` that the event does not supply.
- *
- * The one check worth making before saving, and the reason it is worth it: a
- * merge field the dispatcher cannot fill renders as an empty string, so a
- * typo'd `{{referenceNo}}` sends "Your shipment  has arrived" to a customer,
- * successfully, for ever. `renderTemplate` is right to substitute silently —
- * it is delivering mail, not validating it — which is why the validation
- * belongs at the moment somebody types it.
- */
-export function unknownFieldsIn(eventKey: string, text: string): string[] {
-  return unknownMergeFields(eventKey, text)
-}
-
-/** The default template for an event and locale, to seed a branch override. */
-export async function defaultTemplate(
-  actor: Actor,
-  eventKey: string,
-  locale: 'en' | 'ar',
-): Promise<TemplateRow | undefined> {
-  const [row] = await withActor(actor, (tx) =>
-    tx
-      .select({
-        id: notificationTemplates.id,
-        eventKey: notificationTemplates.eventKey,
-        channel: notificationTemplates.channel,
-        locale: notificationTemplates.locale,
-        branchId: notificationTemplates.branchId,
-        branchCode: sql<string | null>`null`,
-        subject: notificationTemplates.subject,
-        body: notificationTemplates.body,
-        isActive: notificationTemplates.isActive,
-      })
-      .from(notificationTemplates)
-      .where(
-        and(
-          eq(notificationTemplates.eventKey, eventKey),
-          eq(notificationTemplates.locale, locale),
-          isNull(notificationTemplates.branchId),
-        ),
-      )
-      .limit(1),
-  )
-  return row as TemplateRow | undefined
 }
 
 export interface DeliveryRow {

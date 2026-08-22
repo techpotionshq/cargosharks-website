@@ -137,9 +137,6 @@ export const assistantMessages = pgTable(
   (t) => [index('assistant_messages_thread_idx').on(t.threadId, t.createdAt)],
 )
 
-export type AssistantThread = typeof assistantThreads.$inferSelect
-export type AssistantMessage = typeof assistantMessages.$inferSelect
-
 /**
  * How much of a conversation is replayed to the model.
  *

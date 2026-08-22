@@ -84,23 +84,6 @@ export const adminActor: Actor = {
   branchIds: [HOME_BRANCH, AWAY_BRANCH],
 }
 
-/** Everything the interface asks a session for, with a real role behind it. */
-export function sessionFor(actor: Actor, permissions: readonly string[]) {
-  return {
-    actor,
-    principal: {
-      id: PRINCIPAL,
-      nameEn: 'Fixture Principal',
-      nameAr: null,
-      email: 'fixtures@qabandi.test',
-      locale: 'en' as const,
-    },
-    permissions: new Set(permissions),
-    branchRoles: new Map(actor.branchIds.map((id) => [id, 'operations_manager'])),
-    requiresTwoFactor: false,
-  }
-}
-
 export interface World {
   readonly chargeTypeId: string
   readonly calendarId: string

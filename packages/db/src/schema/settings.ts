@@ -71,7 +71,10 @@ export const integrationSettings = pgTable('integration_settings', {
    */
   driver: text('driver'),
   /** Non-secret settings — hosts, paths, batch sizes, switches. */
-  settings: jsonb('settings').$type<Record<string, string | number | boolean>>().notNull().default({}),
+  settings: jsonb('settings')
+    .$type<Record<string, string | number | boolean>>()
+    .notNull()
+    .default({}),
   /** Credential name to `v1:<iv>:<tag>:<ciphertext>`. Never selected by the web app. */
   secrets: jsonb('secrets').$type<Record<string, string>>().notNull().default({}),
   isActive: boolean('is_active').notNull().default(true),
@@ -92,4 +95,3 @@ export const integrationSettings = pgTable('integration_settings', {
 })
 
 export type IntegrationSettings = typeof integrationSettings.$inferSelect
-export type NewIntegrationSettings = typeof integrationSettings.$inferInsert

@@ -38,6 +38,3 @@ export const assets = pgTable(
   },
   (t) => [index('assets_branch_idx').on(t.branchId, t.createdAt)],
 )
-
-export type Asset = typeof assets.$inferSelect
-export type NewAsset = typeof assets.$inferInsert

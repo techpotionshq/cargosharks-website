@@ -452,8 +452,7 @@ Scaffolded to the architecture and verified against a live PostgreSQL 18.6:
 - `web` builds, `service` bundles, and the schema shows no drift from the
   migrations.
 
-Not yet built, and marked as such in the code: the PDF renderer (the Chromium
-layer is in `infra/Dockerfile.service`), inbound email and WhatsApp workers,
-bulk import, scheduled reports, and the notification channel adapters. Each
-appears in `apps/service/src/workers/index.ts` with its trigger and requirement
-recorded, so nothing goes quietly missing.
+Not yet built, and marked as such in the code: inbound WhatsApp, compliance-
+expiry warnings, the queued bulk-import validation job, and scheduled reports.
+Each appears in the `PENDING` list in `apps/service/src/workers/index.ts` with
+its trigger and requirement recorded, so nothing goes quietly missing.

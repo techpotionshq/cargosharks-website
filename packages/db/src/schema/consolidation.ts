@@ -171,7 +171,3 @@ export const consolAllocationShares = pgTable(
   },
   (t) => [uniqueIndex('consol_allocation_shares_unique').on(t.consolChargeLineId, t.jobId)],
 )
-
-export type Consolidation = typeof consolidations.$inferSelect
-export type ConsolChargeLine = typeof consolChargeLines.$inferSelect
-export type ConsolAllocationShare = typeof consolAllocationShares.$inferSelect

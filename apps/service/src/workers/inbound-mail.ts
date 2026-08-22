@@ -52,6 +52,7 @@ import {
   customerContacts,
   mailboxes,
   enquiries,
+  partnerContacts,
   inboundWebhookEvents,
   jobs,
   messageAttachments,
@@ -64,7 +65,7 @@ import {
 import { slaDueAt, type WorkingCalendar } from '@qabandi/core'
 import { fileStore, resolveInboundMail } from '../adapters/index'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
-import { identifyingDomain, inboundStorageKey, referencesIn } from './inbound-routing'
+import { identifyingDomain, inboundStorageKey, isAutomaticMail, referencesIn } from './inbound-routing'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -77,6 +78,8 @@ export interface InboundMailResult {
   readonly created: number
   readonly threaded: number
   readonly duplicates: number
+  /** Bounces and auto-replies: claimed so they are never re-polled, filed nowhere. */
+  readonly ignored: number
   readonly failed: number
 }
 
@@ -97,11 +100,12 @@ export async function runInboundMailPoll(
   asOf = new Date(),
   injected?: readonly InboundMailSource[],
   enqueue: EnqueueExtraction = enqueueExtraction,
+  billEnqueue: EnqueueBill = enqueueBill,
 ): Promise<InboundMailResult> {
   const sources = injected ?? (await resolveInboundMail())
 
   if (sources.length === 0) {
-    return { collected: 0, created: 0, threaded: 0, duplicates: 0, failed: 0 }
+    return { collected: 0, created: 0, threaded: 0, duplicates: 0, ignored: 0, failed: 0 }
   }
 
   const branchByMailbox = await resolveBranches()
@@ -110,6 +114,7 @@ export async function runInboundMailPoll(
   let created = 0
   let threaded = 0
   let duplicates = 0
+  let ignored = 0
   let failed = 0
 
   for (const source of sources) {
@@ -134,9 +139,10 @@ export async function runInboundMailPoll(
           )
         }
 
-        const handled = await ingestMessage(message, branch, asOf, enqueue)
+        const handled = await ingestMessage(message, branch, asOf, enqueue, undefined, billEnqueue)
         if (handled.outcome === 'created') created++
         else if (handled.outcome === 'threaded') threaded++
+        else if (handled.outcome === 'ignored') ignored++
         else duplicates++
       })
     } catch (error) {
@@ -155,7 +161,7 @@ export async function runInboundMailPoll(
     }
   }
 
-  return { collected, created, threaded, duplicates, failed }
+  return { collected, created, threaded, duplicates, ignored, failed }
 }
 
 export interface BranchRef {
@@ -196,7 +202,7 @@ export async function resolveBranches(): Promise<Map<string, BranchRef>> {
   )
 }
 
-type Outcome = 'created' | 'threaded' | 'duplicate'
+type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored'
 
 /**
  * What `handleMessage` did, and what a model should read next.
@@ -209,6 +215,8 @@ interface Handled {
   readonly outcome: Outcome
   readonly enquiryId: string | null
   readonly messageId: string | null
+  /** The supplier this mail came from, where the sender resolved to exactly one. */
+  readonly partnerId: string | null
 }
 
 /**
@@ -235,6 +243,59 @@ const enqueueExtraction: EnqueueExtraction = async (input) => {
   const boss = await getBoss()
   await boss.send(JOBS.enquiryExtract, input)
 }
+
+/**
+ * Ask a model to read a bill that arrived as an attachment — FR-FN-09, `AI-10`.
+ *
+ * The other half of the same idea, and the one with the money in it.
+ * `invoice-extract.ts` has been able to read a supplier invoice since it was
+ * written, and `core/matching.ts` has been able to find the agent who billed
+ * 460 against a 400 accrual for longer than that. Neither ever ran unattended,
+ * because `JOBS.invoiceExtract` was registered as a worker and *nothing in the
+ * codebase ever enqueued it*. The handler was mounted and unreachable.
+ *
+ * This is the enqueuer. An agent's invoice arriving overnight is captured and
+ * sitting against its accrual before anybody opens the office.
+ */
+export type EnqueueBill = (input: {
+  branchId: string
+  assetId: string
+  partnerId: string
+}) => Promise<void>
+
+const enqueueBill: EnqueueBill = async (input) => {
+  const { JOBS, getBoss } = await import('../queue')
+  const boss = await getBoss()
+  await boss.send(JOBS.invoiceExtract, {
+    actor: systemActor([input.branchId]),
+    branchId: input.branchId,
+    assetId: input.assetId,
+    partnerId: input.partnerId,
+    jobId: null,
+    /*
+      Written, not merely reported.
+
+      The attended path pre-fills a form somebody is standing in front of, so
+      writing behind them would leave two records. Nobody is standing in front
+      of this one — and the bill lands in `received`, which is the draft gate
+      `supplier_invoices` has always had. Finance still approves before a fils
+      moves.
+    */
+    write: true,
+  })
+}
+
+/**
+ * What an attachment has to be before it is worth sending to a model.
+ *
+ * A deliberately loose filter, because the real one is arithmetic. Anything
+ * that is not an invoice — a packing list, a photograph of a seal — fails
+ * `isSelfConsistent` and writes nothing, so the cost of guessing wrong is one
+ * cheap call rather than a junk payable. Tightening this into "files whose
+ * name contains INV" would instead lose the agent whose system names every
+ * attachment `document.pdf`.
+ */
+const READABLE_BILL = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
 
 /**
  * Claim, route, record.
@@ -264,18 +325,55 @@ export async function ingestMessage(
    * `InboundMessage` exists as a port shape rather than an IMAP detail.
    */
   claimed?: { readonly id: string },
+  billEnqueue: EnqueueBill = enqueueBill,
 ): Promise<Handled> {
   const claim = claimed ?? (await claimReceipt(message, branch.id))
   if (claim === 'already_processed') {
-    return { outcome: 'duplicate', enquiryId: null, messageId: null }
+    return { outcome: 'duplicate', enquiryId: null, messageId: null, partnerId: null }
+  }
+
+  /*
+    A machine's mail is claimed and then ignored — in that order.
+
+    Claimed, because the receipt is what stops the next poll collecting the
+    same bounce again; an ignored message that was not claimed would be
+    ignored every minute forever. Ignored *after* claiming and *before*
+    anything else, because everything below — storage, an enquiry, an SLA
+    clock, a notification to the sender, a model call — is what turned one
+    bounce into a hundred and eighty-nine enquiries: the notification went to
+    the daemon, the daemon bounced it, the bounce was the next enquiry.
+
+    Stamped processed with the reason on the receipt rather than left blank,
+    so "why did this mail never appear" has an answer somebody can find.
+  */
+  if (isAutomaticMail(message)) {
+    await withActor(systemActor(), async (tx) => {
+      await tx
+        .update(inboundWebhookEvents)
+        .set({ processedAt: asOf, error: 'ignored: automatic mail', updatedAt: asOf })
+        .where(eq(inboundWebhookEvents.id, claim.id))
+    })
+    return { outcome: 'ignored', enquiryId: null, messageId: null, partnerId: null }
   }
 
   const stored = await storeAttachments(message, branch)
+
+  /** Asset ids worth reading as a supplier invoice, filled inside the transaction. */
+  const bills: string[] = []
 
   try {
     const outcome = await withActor(systemActor(), async (tx) => {
       const target = await findTarget(tx, message)
       const customerId = await matchCustomer(tx, message.from)
+      /*
+        The sender may be a supplier as well as — or instead of — a customer.
+
+        Both matches run because the two are not exclusive: an overseas agent
+        is a partner on our payables and, on their own imports, a customer on
+        our receivables. `matchPartner` decides only whose *bill* an attachment
+        is, and refuses two candidates exactly as `matchCustomer` does.
+      */
+      const partnerId = await matchPartner(tx, message.from)
 
       const context =
         target ??
@@ -341,6 +439,22 @@ export async function ingestMessage(
         await tx
           .insert(messageAttachments)
           .values({ messageId: row!.id, assetId: asset!.id })
+
+        /*
+          A readable attachment from a known supplier is a bill to read.
+
+          Collected inside the transaction and enqueued after it commits, for
+          the same reason the enquiry extraction is: a job that referred to an
+          asset row the transaction then rolled back would fail five times
+          against something that was never there.
+
+          `oversized` files are skipped. The adapter stores those as a stub
+          rather than the bytes — a 40MB scan past the mailbox's limit — and
+          asking a model to read a placeholder costs money to learn nothing.
+        */
+        if (partnerId && !file.oversized && READABLE_BILL.has(file.contentType)) {
+          bills.push(asset!.id)
+        }
       }
 
       await tx
@@ -352,6 +466,7 @@ export async function ingestMessage(
         outcome: context.created ? ('created' as const) : ('threaded' as const),
         enquiryId: context.enquiryId,
         messageId: row!.id,
+        partnerId,
       }
     })
 
@@ -385,6 +500,29 @@ export async function ingestMessage(
             error: error instanceof Error ? error.message : String(error),
           },
           'inbound mail: could not queue the enquiry for reading',
+        )
+      }
+    }
+
+    /*
+      The bills, after the commit and independently of the enquiry.
+
+      Independently, because the two are not the same event: an agent's invoice
+      usually arrives as a reply on a job — `threaded`, not `created` — and
+      gating it on a new enquiry would mean the only bills ever read were the
+      ones from suppliers who had never written to us before.
+
+      One failure does not stop the rest, and none of them stops the mail. A
+      bill nobody read is a bill somebody types, which is where they were
+      before this existed.
+    */
+    for (const assetId of bills) {
+      try {
+        await billEnqueue({ branchId: branch.id, assetId, partnerId: outcome.partnerId! })
+      } catch (error) {
+        console.error(
+          { assetId, error: error instanceof Error ? error.message : String(error) },
+          'inbound mail: could not queue the attachment for reading',
         )
       }
     }
@@ -554,6 +692,53 @@ async function findTarget(tx: any, message: InboundMessage): Promise<Target | nu
  * lead rather than a rejection (FR-EQ-02).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * The sender, matched to a *partner* — the supplier half of attribution.
+ *
+ * Deliberately the same shape as `matchCustomer` below, including the refusal:
+ * an exact contact address first, then a domain belonging to exactly one
+ * partner, and two candidates means none. The stakes are the same in a
+ * different direction — `matchCustomer` decides whose correspondence a
+ * customer can see, and this decides *whose bill we are about to capture*.
+ * Attributing an invoice to the wrong agent puts a payable on a party that
+ * never sent it, against accruals that belong to somebody else.
+ *
+ * `invoice-extract.ts` refuses to read the supplier off the letterhead for
+ * exactly this reason: the caller is supposed to know. On the attended path
+ * the caller is a coordinator standing on a screen; here it is the mailbox the
+ * bill arrived from, which is the only other evidence worth trusting.
+ */
+async function matchPartner(tx: any, from: string): Promise<string | null> {
+  const address = from.trim().toLowerCase()
+  if (!address.includes('@')) return null
+
+  const exact = await tx
+    .select({ partnerId: partnerContacts.partnerId })
+    .from(partnerContacts)
+    .where(
+      and(sql`lower(${partnerContacts.email}) = ${address}`, eq(partnerContacts.isActive, true)),
+    )
+    .limit(2)
+
+  if (exact.length === 1) return exact[0]!.partnerId
+
+  const domain = identifyingDomain(address)
+  if (!domain) return null
+
+  const byDomain = await tx
+    .selectDistinct({ partnerId: partnerContacts.partnerId })
+    .from(partnerContacts)
+    .where(
+      and(
+        sql`lower(${partnerContacts.email}) like ${'%@' + domain}`,
+        eq(partnerContacts.isActive, true),
+      ),
+    )
+    .limit(2)
+
+  return byDomain.length === 1 ? byDomain[0]!.partnerId : null
+}
+
 async function matchCustomer(tx: any, from: string): Promise<string | null> {
   const address = from.trim().toLowerCase()
   if (!address.includes('@')) return null

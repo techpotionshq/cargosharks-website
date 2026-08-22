@@ -84,8 +84,3 @@ export function CardHeader({
     </header>
   )
 }
-
-/** A hairline between a card's header and its body. */
-export function CardDivider({ className }: { className?: string }) {
-  return <hr className={['my-4 border-t border-line', className].filter(Boolean).join(' ')} />
-}

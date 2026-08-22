@@ -311,9 +311,3 @@ export const inboundWebhookEvents = systemTable(
   },
   (t) => [unique('inbound_webhook_events_unique').on(t.provider, t.externalId)],
 )
-
-export type Mailbox = typeof mailboxes.$inferSelect
-export type NewMailbox = typeof mailboxes.$inferInsert
-export type Message = typeof messages.$inferSelect
-export type NotificationOutbox = typeof notificationOutbox.$inferSelect
-export type NotificationDelivery = typeof notificationDeliveries.$inferSelect

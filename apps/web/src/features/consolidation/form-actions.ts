@@ -26,7 +26,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   SEED_CURRENCIES,
@@ -639,4 +639,137 @@ export async function reverseConsolAllocation(form: FormData): Promise<void> {
   })
 
   revalidatePath(`/consolidations/${consolidationId}`)
+}
+
+// --- forming one from a suggestion -----------------------------------------
+
+/**
+ * A suggested cluster, turned into a real consolidation with its houses on it.
+ *
+ * The shortest path between *noticing* that four shipments share a lane and a
+ * week, and *having* the master they should have been booked under. Every
+ * field on the new consolidation comes from the cluster itself — same branch,
+ * same mode, same trade direction, same origin and destination — because a
+ * cluster that did not agree on all five would not have been a cluster.
+ *
+ * ## The houses are attached under the same conditions a click would use
+ *
+ * Not a bulk update. Each job is attached with the `is null` guard `attachHouse`
+ * documents at length: a shipment that has been consolidated elsewhere since
+ * the screen was drawn simply does not move, rather than being pulled off the
+ * master whose costs have already been split across it. A stale suggestion is
+ * ordinary — this screen is a list of things nobody has done yet — so the
+ * action reports what it managed rather than refusing the lot.
+ *
+ * ## It creates an *open* master and nothing else
+ *
+ * No carrier, no booking number, no vessel, no ETD. Those are the things a
+ * coordinator negotiates after deciding to consolidate, and inventing them
+ * would put figures on a record that reads as agreed. The one act this
+ * performs is the one the screen is about: these shipments belong together.
+ */
+export async function consolidateCluster(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'consol.write')
+
+  const branchId = read(form, 'branchId')
+  const mode = read(form, 'mode')
+  const originId = read(form, 'originId')
+  const destinationId = read(form, 'destinationId')
+  const jobIds = form.getAll('jobId').filter((v): v is string => typeof v === 'string' && v !== '')
+
+  if (!branchId || !mode || !originId || !destinationId || jobIds.length < 2) {
+    return failWith('That suggestion is incomplete — nothing was created.')
+  }
+  assertInBranch(session, branchId)
+
+  const outcome = await withActor(session.actor, async (tx) => {
+    /*
+      The trade direction is read off the shipments rather than taken from the
+      form, because it is the one field of the five that the cluster key does
+      not carry — grouping is on mode and lane. Reading it here also means the
+      value on the master is one of the values on its houses, which is what a
+      customs broker will expect when they compare the two.
+    */
+    const houses = await tx
+      .select({
+        id: jobs.id,
+        tradeDirection: jobs.tradeDirection,
+        branchId: jobs.branchId,
+      })
+      .from(jobs)
+      .where(
+        and(
+          inArray(jobs.id, jobIds),
+          eq(jobs.branchId, branchId),
+          eq(jobs.mode, mode as 'sea_lcl'),
+          isNull(jobs.consolidationId),
+          isNull(jobs.closedAt),
+          isNull(jobs.cancelledAt),
+        ),
+      )
+
+    if (houses.length < 2) return { error: 'nothing_left' as const }
+
+    const [branch] = await tx
+      .select({ code: branches.code })
+      .from(branches)
+      .where(eq(branches.id, branchId))
+      .limit(1)
+    if (!branch) return { error: 'nothing_left' as const }
+
+    const seq = await tx.execute(sql`select nextval('consol_reference_seq')::text as seq`)
+    const number = (seq.rows[0] as { seq: string }).seq
+    const reference = `${branch.code}-CNS-${new Date().getUTCFullYear()}-${number.padStart(5, '0')}`
+
+    const [created] = await tx
+      .insert(consolidations)
+      .values({
+        branchId,
+        reference,
+        mode: mode as 'sea_lcl',
+        tradeDirection: houses[0]!.tradeDirection,
+        originId,
+        destinationId,
+        ownerId: session.principal.id,
+        notes: 'Formed from a suggested grouping.',
+      })
+      .returning({ id: consolidations.id, reference: consolidations.reference })
+
+    /*
+      One guarded update for the lot, not one per house.
+
+      The condition is `attachHouse`'s, applied to the set: a job that has been
+      consolidated since this screen was drawn is excluded by `is null` and
+      stays where its costs were allocated. `returning` is what makes the
+      difference visible, so the count below is what actually moved rather than
+      what was asked for.
+    */
+    const attached = await tx
+      .update(jobs)
+      .set({ consolidationId: created!.id, updatedAt: new Date() })
+      .where(and(inArray(jobs.id, houses.map((h) => h.id)), isNull(jobs.consolidationId)))
+      .returning({ id: jobs.id })
+
+    return {
+      ok: true as const,
+      consolidationId: created!.id,
+      reference: created!.reference,
+      attached: attached.length,
+      asked: jobIds.length,
+    }
+  })
+
+  if ('error' in outcome) {
+    return failWith(
+      'Those shipments have been consolidated or closed since this was suggested.',
+    )
+  }
+
+  revalidatePath('/consolidations')
+  revalidatePath(`/consolidations/${outcome.consolidationId}`)
+  return succeed(outcome.reference)
 }

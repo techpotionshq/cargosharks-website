@@ -129,6 +129,8 @@ interface ChatCompletion {
   readonly choices?: readonly {
     readonly message?: {
       readonly content?: string | null
+      /** Where `minimax/minimax-m3` sometimes puts the whole answer. See `reasoningText`. */
+      readonly reasoning?: string | null
       readonly tool_calls?: readonly {
         readonly id?: string
         readonly function?: { readonly name?: string; readonly arguments?: string }
@@ -339,14 +341,24 @@ export function readCompletion(payload: ChatCompletion, requested: string): Mode
     // What answered, falling back to what was asked for. Both are recorded.
     model: payload.model ?? requested,
     /*
-      Null content is normal, not an error.
+      Null content is normal, not an error — with one exception found live.
 
       A response that is entirely tool calls carries `content: null`, and a
       caller reading `.text` on that would get "null" as a string if this
       coerced. The empty string is the honest answer: the model said nothing
       in words.
+
+      The exception: `minimax/minimax-m3`, asked for structured output,
+      intermittently returns `content: null` with the *entire* JSON answer in
+      `message.reasoning` — nine "reasoning" tokens that are the answer, and
+      nothing else. Read as `''`, that became "The model returned nothing",
+      which looked like a transient provider fault, was retried five times at
+      full price, and failed identically each time. It was never transient. So
+      where there is no content and no tool call but there is reasoning text,
+      the reasoning *is* the reply. A model that genuinely reasoned and then
+      answered has content, and is unaffected.
     */
-    text: choice.message?.content ?? '',
+    text: choice.message?.content ?? (toolCalls.length === 0 ? reasoningText(choice.message) : ''),
     toolCalls,
     inputTokens: payload.usage?.prompt_tokens ?? 0,
     outputTokens: payload.usage?.completion_tokens ?? 0,
@@ -362,6 +374,17 @@ export function readCompletion(payload: ChatCompletion, requested: string): Mode
     finishReason: readFinishReason(choice.finish_reason),
     raw: payload,
   }
+}
+
+/**
+ * The reply, when a model put it in `reasoning` instead of `content`.
+ *
+ * Only consulted where `content` is null and no tool was called — a model
+ * that reasoned *and then* answered has content, and its reasoning stays
+ * where it belongs. See the comment at `text` in `toResponse`.
+ */
+function reasoningText(message: { readonly reasoning?: string | null } | undefined): string {
+  return typeof message?.reasoning === 'string' ? message.reasoning : ''
 }
 
 function readFinishReason(reason: string | undefined): ModelResponse['finishReason'] {
@@ -466,6 +489,8 @@ interface ChatChunk {
   readonly choices?: readonly {
     readonly delta?: {
       readonly content?: string | null
+      /** Where `minimax/minimax-m3` sometimes puts the whole answer. See `reasoningText`. */
+      readonly reasoning?: string | null
       readonly tool_calls?: readonly {
         readonly index?: number
         readonly id?: string
@@ -514,6 +539,7 @@ export async function* readStream(
 
   let buffered = ''
   let text = ''
+  let reasoning = ''
   let model = requested
   let finish: string | undefined
   let usage: ChatChunk['usage']
@@ -557,6 +583,13 @@ export async function* readStream(
             text += piece
             yield { type: 'text', text: piece }
           }
+          /*
+            Kept aside, never streamed. A model's reasoning is not the reply
+            and must not be shown as one — unless, at the end, it is all the
+            model sent. See `reasoningText`.
+          */
+          const thought = choice?.delta?.reasoning
+          if (typeof thought === 'string') reasoning += thought
 
           for (const partial of choice?.delta?.tool_calls ?? []) {
             const index = partial.index ?? 0
@@ -585,6 +618,9 @@ export async function* readStream(
       name: call.name,
       arguments: call.arguments || '{}',
     }))
+
+  // The same fallback the non-streaming path makes, at the same point.
+  if (text === '' && toolCalls.length === 0 && reasoning.trim() !== '') text = reasoning
 
   yield {
     type: 'final',

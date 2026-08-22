@@ -54,20 +54,32 @@ const bucket = vi.hoisted(() => ({
   fail: false,
 }))
 
+/**
+ * The stub bucket, offered under both names the code has used for it.
+ *
+ * `pdf/store.ts` reads storage as `await fileStore()` — the resolver became a
+ * query when object storage moved into `integration_settings`, so a key
+ * pasted at 09:05 works at 09:06. This mock still only answered the older
+ * synchronous `adapters().fileStore`, so every "storing what was issued" case
+ * called `undefined()` and reported it as a storage fault — eight failures
+ * whose names said nothing about a mock. `internal-handlers.test.ts` had the
+ * identical rot and the identical fix.
+ */
+const bucketStub = {
+  key: 'memory',
+  put: async (key: string, body: Buffer, contentType: string) => {
+    if (bucket.fail) throw new Error('bucket unreachable')
+    bucket.puts.push({ key, bytes: body.byteLength, contentType })
+    return { storageKey: key, byteSize: body.byteLength, checksum: `sha-${body.byteLength}` }
+  },
+  get: async () => Buffer.alloc(0),
+  signedUrl: async () => 'https://storage.test/x',
+  retire: async () => {},
+}
+
 vi.mock('../adapters/index', () => ({
-  adapters: () => ({
-    fileStore: {
-      key: 'memory',
-      put: async (key: string, body: Buffer, contentType: string) => {
-        if (bucket.fail) throw new Error('bucket unreachable')
-        bucket.puts.push({ key, bytes: body.byteLength, contentType })
-        return { storageKey: key, byteSize: body.byteLength, checksum: `sha-${body.byteLength}` }
-      },
-      get: async () => Buffer.alloc(0),
-      signedUrl: async () => 'https://storage.test/x',
-      retire: async () => {},
-    },
-  }),
+  fileStore: async () => bucketStub,
+  adapters: () => ({ fileStore: bucketStub }),
 }))
 
 const {

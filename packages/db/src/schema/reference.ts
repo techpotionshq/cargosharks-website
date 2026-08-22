@@ -426,9 +426,7 @@ export const notificationChannelSettings = pgTable(
     conflict target to land on.
   */
   (t) => [
-    unique('notification_channel_settings_unique')
-      .on(t.eventKey, t.channel)
-      .nullsNotDistinct(),
+    unique('notification_channel_settings_unique').on(t.eventKey, t.channel).nullsNotDistinct(),
   ],
 )
 
@@ -497,11 +495,3 @@ export const calendarHolidays = pgTable(
   },
   (t) => [unique('calendar_holidays_unique').on(t.calendarId, t.onDate)],
 )
-
-export type Currency = typeof currencies.$inferSelect
-export type ChargeType = typeof chargeTypes.$inferSelect
-export type MilestoneTemplate = typeof milestoneTemplates.$inferSelect
-export type WorkingCalendarRow = typeof workingCalendars.$inferSelect
-export type FreeTimeRule = typeof freeTimeRules.$inferSelect
-
-export type DutyRate = typeof dutyRates.$inferSelect

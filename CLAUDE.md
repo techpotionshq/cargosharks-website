@@ -63,6 +63,25 @@ no policy denies every row to everyone, silently.
 
 `CONTRIBUTING.md` has the full add-a-table walkthrough.
 
+## The dev environment is real
+
+There is no local database. Both `qabandi` and `qabandi_test` are on a remote
+server, the dev mailbox (`freight@techpotions.app`, bound to branch DXB) is a
+real inbox the running service polls every minute, and the model key is live.
+Three rules follow, each learned the expensive way:
+
+- **Run the web and service suites one at a time.** Concurrent runs against
+  `qabandi_test` fail a different test each time; CI is sequential.
+- **Anything that emails the sender of inbound mail needs a loop breaker.** A
+  bounce once became 195 enquiries in half an hour (`Operations_Findings.md`
+  §11).
+- **"The model returned nothing" is a claim to check against
+  `ai_invocations.response`,** not a diagnosis.
+
+[`docs/Dev_Environment.md`](docs/Dev_Environment.md) has where everything
+lives and the agreed automation roadmap — what shipped, what is next, what was
+excluded.
+
 ## Style
 
 Comments explain *why*, especially where the code looks odd — that is the

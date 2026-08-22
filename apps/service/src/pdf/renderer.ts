@@ -16,7 +16,7 @@
  * interface. `packages/brand` was built for exactly this — *"the same tokens
  * into PDF letterhead through Chromium. One source, two renderers."*
  *
- * `infra/Dockerfile.service` already installs Chromium and the Arabic fonts
+ * The service stage of the root `Dockerfile` already installs Chromium and the Arabic fonts
  * (`fonts-kacst`, `fonts-noto-core`) and sets `CHROMIUM_EXECUTABLE_PATH`, so
  * the heavyweight dependency was accepted and paid at the image layer. What
  * was missing was only the code that drives it.

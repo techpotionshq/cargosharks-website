@@ -19,16 +19,3 @@ import { resolveBrand, type Brand } from '@qabandi/brand'
 const resolved: Brand = resolveBrand()
 
 export const getBrand = cache((): Brand => resolved)
-
-/** The operator's name in the reader's language. */
-export function brandName(brand: Brand, locale: 'en' | 'ar'): string {
-  return locale === 'ar' ? brand.identity.nameAr : brand.identity.nameEn
-}
-
-export function brandTagline(brand: Brand, locale: 'en' | 'ar'): string {
-  return locale === 'ar' ? brand.identity.taglineAr : brand.identity.taglineEn
-}
-
-export function brandLegalName(brand: Brand, locale: 'en' | 'ar'): string {
-  return locale === 'ar' ? brand.identity.legalNameAr : brand.identity.legalNameEn
-}

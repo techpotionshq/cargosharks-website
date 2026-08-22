@@ -39,7 +39,7 @@
  * escalated by tolerance, never refused.
  */
 
-import { D, abs, compare, dec, isZero, money, round, subtract, sum, zero } from './money'
+import { D, abs, compare, dec, isZero, money, round, subtract, sum } from './money'
 import type { CurrencyCode, CurrencySpec, Money, Numeric } from './money'
 import { DomainError } from './errors'
 import type { Decimal } from 'decimal.js'
@@ -345,9 +345,4 @@ export function againstQuote(
 ): MatchOutcome | null {
   if (quoted === null) return null
   return compareToAccrual(quoted, billed, tol, spec)
-}
-
-/** Zero in the invoice's currency — the accrual for a line matched to nothing. */
-export function noAccrual(currency: CurrencyCode): Money {
-  return zero(currency)
 }

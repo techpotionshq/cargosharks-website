@@ -172,6 +172,12 @@ export async function extractSupplierInvoice(
       ],
       schema: INVOICE_EXTRACTION_SCHEMA,
     },
+    /*
+      The same scan read twice — attached to a second job, or retried after
+      the first reading scrolled away — is answered from the ledger rather
+      than billed again. A revised prompt changes the hash and misses.
+    */
+    { reuse: true },
   )
 
   const extracted = readExtractedInvoice(parseModelJson(response.text), reference.lookups)

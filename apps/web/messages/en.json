@@ -3151,5 +3151,33 @@
       "dimensions": "Dimensions",
       "isDangerous": "Dangerous goods"
     }
+  },
+  "unbilled": {
+    "title": "Earned, not yet billed",
+    "description": "{count} shipments carrying {total} of revenue that has never reached an invoice.",
+    "shipment": "Shipment",
+    "customer": "Customer",
+    "lines": "Lines",
+    "amount": "Unbilled",
+    "oldest": "Oldest line",
+    "bill": "Draft invoice",
+    "mixedCurrency": "Mixed currencies — bill separately"
+  },
+  "grouping": {
+    "title": "Could share a container",
+    "description": "{count} groups of loose shipments on the same lane and sailing.",
+    "summary": "{shipments} shipments · {customers} customers · {cbm} CBM · {kg} kg",
+    "fit": "{code} at {percent}%",
+    "overflows": "More than one container",
+    "undated": "no sailing date",
+    "form": "Consolidate",
+    "limitedBy": {
+      "volume": "limited by volume",
+      "weight": "limited by weight"
+    },
+    "modes": {
+      "sea_lcl": "Sea LCL",
+      "air": "Air"
+    }
   }
 }

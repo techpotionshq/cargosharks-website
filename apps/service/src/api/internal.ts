@@ -6,8 +6,8 @@
  *
  * ## Why the web app cannot render documents itself
  *
- * Chromium lives in `infra/Dockerfile.service`, not in the web image, and it
- * belongs there: a browser is a heavyweight, memory-hungry dependency and the
+ * Chromium lives in the service stage of the root `Dockerfile`, not in the web image, and
+ * it belongs there: a browser is a heavyweight, memory-hungry dependency and the
  * request path that serves the operations board should not carry it. So a
  * document request crosses one process boundary — which is also why this route
  * exists rather than the renderer being imported into a Next route handler.

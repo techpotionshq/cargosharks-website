@@ -676,15 +676,3 @@ export const podPhotos = pgTable(
   },
   (t) => [index('pod_photos_pod_idx').on(t.podId, t.sortOrder)],
 )
-
-export type Enquiry = typeof enquiries.$inferSelect
-export type Quote = typeof quotes.$inferSelect
-export type Job = typeof jobs.$inferSelect
-export type JobMilestone = typeof jobMilestones.$inferSelect
-export type FreeTimeClock = typeof freeTimeClocks.$inferSelect
-
-export type JobParty = typeof jobParties.$inferSelect
-export type JobCargoLine = typeof jobCargo.$inferSelect
-export type DocumentRow = typeof documents.$inferSelect
-export type ProofOfDelivery = typeof proofOfDelivery.$inferSelect
-export type PodPhoto = typeof podPhotos.$inferSelect

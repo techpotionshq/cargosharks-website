@@ -630,13 +630,6 @@ export function describeFinding(finding: ArithmeticFinding): string {
   return `${where}: the document says ${stated}, the figures give ${computed}`
 }
 
-/** Guard for a caller that reached for a total on an invoice with no lines. */
-export function assertUsable(extracted: ExtractedInvoice): void {
-  if (extracted.lines.rows.length === 0) {
-    throw new AiError('extraction.no_lines', 'The extraction produced no invoice lines.')
-  }
-}
-
 /** Total absolute drift, for ordering a review queue by how wrong it is. */
 export function driftMagnitude(findings: readonly ArithmeticFinding[], spec: CurrencySpec): Money {
   return round(

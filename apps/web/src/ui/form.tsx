@@ -25,23 +25,9 @@
  * forty-field job form stays as cheap to type into as a text box.
  */
 
-import { useActionState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Icon, type IconName } from './icon'
-
-/** The state every server action in the application returns. */
-export interface FormState {
-  /** Field-keyed messages, so each input renders its own. */
-  readonly errors?: Record<string, string>
-  /** Something that failed for a reason no single field owns. */
-  readonly message?: string
-  /** Set on success. Changing it is what closes a dialog. */
-  readonly ok?: string
-  /** Echoed back so a rejected form does not lose what was typed. */
-  readonly values?: Record<string, string>
-}
-
-export type ServerAction = (state: FormState, form: FormData) => Promise<FormState>
 
 // --- layout ----------------------------------------------------------------
 
@@ -556,40 +542,6 @@ export function Submit({
       {pending && pendingLabel ? pendingLabel : children}
     </button>
   )
-}
-
-/**
- * Binds a server action to a form and hands back the pieces a caller needs.
- *
- * The `value()` helper is the important part: it prefers what the failed
- * submission echoed back, falls back to the record being edited, and returns
- * `''` for absent — with `??` rather than `||`, so a field the user
- * deliberately *cleared* stays cleared instead of springing back to its old
- * value on the next render.
- */
-export function useEntityForm(action: ServerAction, defaults: Record<string, unknown> = {}) {
-  const [state, formAction] = useActionState<FormState, FormData>(action, {})
-
-  const value = (key: string, fallback?: string | number | null): string => {
-    const echoed = state.values?.[key]
-    if (echoed !== undefined) return echoed
-    const initial = defaults[key] ?? fallback
-    return initial === null || initial === undefined ? '' : String(initial)
-  }
-
-  const checked = (key: string, fallback = false): boolean => {
-    if (state.values) return state.values[key] !== undefined
-    const initial = defaults[key]
-    return initial === undefined ? fallback : Boolean(initial)
-  }
-
-  return {
-    state,
-    formAction,
-    value,
-    checked,
-    error: (key: string) => state.errors?.[key],
-  }
 }
 
 /**

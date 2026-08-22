@@ -260,8 +260,3 @@ export const accountingExports = pgTable(
   },
   (t) => [index('accounting_exports_period_idx').on(t.branchId, t.periodFrom)],
 )
-
-export type ChargeLine = typeof chargeLines.$inferSelect
-export type Invoice = typeof invoices.$inferSelect
-export type InvoiceLine = typeof invoiceLines.$inferSelect
-export type Payment = typeof payments.$inferSelect

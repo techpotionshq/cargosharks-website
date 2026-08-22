@@ -39,6 +39,7 @@ import { Panel, Readout } from '@/ui/panel'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Term } from '@/ui/term'
+import { UnbilledPanel } from '@/features/ledger/ui/unbilled-panel'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('finance')
@@ -99,6 +100,18 @@ export default async function FinancePage() {
           </>
         }
       />
+
+      {/*
+        Above the ageing, deliberately.
+
+        Everything below this line is money we have asked for and are waiting
+        on; this is money we have not asked for at all. It is the only figure
+        on the page that nothing else will surface — an overdue invoice chases
+        itself into a bucket, and an unbilled charge line ages silently because
+        no document was ever raised. It renders nothing when there is nothing
+        to chase, so a clean ledger keeps its usual page.
+      */}
+      <UnbilledPanel />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric

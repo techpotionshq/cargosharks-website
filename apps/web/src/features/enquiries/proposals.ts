@@ -106,8 +106,8 @@ export type Resolution =
   | { readonly ok: true; readonly column: string; readonly value: unknown }
   | { readonly ok: false; readonly failure: ResolutionFailure }
 
-const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']
-const DIRECTIONS = ['import', 'export', 'cross_trade']
+export const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']
+export const DIRECTIONS = ['import', 'export', 'cross_trade']
 
 /**
  * One proposal, turned into the column and value an update would write.

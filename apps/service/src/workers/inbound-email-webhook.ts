@@ -69,7 +69,7 @@ export interface InboundEmailWebhookInput {
 }
 
 export interface InboundEmailWebhookResult {
-  readonly outcome: 'created' | 'threaded' | 'duplicate' | 'skipped'
+  readonly outcome: 'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped'
   readonly enquiryId?: string | null
   /** Why nothing happened, where nothing did. */
   readonly reason?: string
@@ -210,6 +210,7 @@ function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
     receivedAt: date(str(p.Date), asOf),
     inReplyTo: headerOf(p.Headers, 'In-Reply-To') || undefined,
     references: splitReferences(headerOf(p.Headers, 'References')),
+    automatic: automaticByHeaders(p.Headers),
     attachments: asRecords(p.Attachments).map(
       (a): InboundAttachment => ({
         filename: str(a.Name) || 'attachment',
@@ -233,6 +234,9 @@ function fromNeutral(p: Record<string, unknown>, asOf: Date): InboundMessage {
     receivedAt: date(str(p.receivedAt), asOf),
     inReplyTo: str(p.inReplyTo) || undefined,
     references: strings(p.references),
+    // The neutral shape may say so outright; a provider adapter that parsed
+    // the headers itself has nowhere else to put the fact.
+    automatic: p.automatic === true,
     attachments: asRecords(p.attachments).map(
       (a): InboundAttachment => ({
         filename: str(a.filename) || 'attachment',
@@ -277,6 +281,22 @@ function firstAddress(value: string): string {
   const angled = /<([^>]+)>/.exec(value)
   if (angled) return angled[1]!.trim()
   return value.split(',')[0]!.trim()
+}
+
+/**
+ * The headers that mark mail as machine-sent, read the way the IMAP adapter
+ * reads them — so a bounce arriving through a provider is refused by the same
+ * rule as one arriving through a poll.
+ */
+function automaticByHeaders(headers: unknown): boolean {
+  const auto = headerOf(headers, 'Auto-Submitted').toLowerCase()
+  if (auto !== '' && auto !== 'no') return true
+  if (headerOf(headers, 'X-Auto-Response-Suppress') !== '') return true
+  const precedence = headerOf(headers, 'Precedence').toLowerCase()
+  if (precedence === 'bulk' || precedence === 'junk' || precedence === 'auto_reply') return true
+  // A bounce is sent from the null reverse path so it can never itself bounce.
+  if (/^<\s*>$/.test(headerOf(headers, 'Return-Path'))) return true
+  return false
 }
 
 function headerOf(headers: unknown, name: string): string {

@@ -124,6 +124,29 @@ describe('reading a provider receipt', () => {
         toInboundMessage(postmark({ To: '', ToFull: [], OriginalRecipient: '' }), AT),
       ).toThrow(/no recipient/)
     })
+
+    /**
+     * The headers that mark a bounce or an auto-reply cross the port as a
+     * flag, read here the same way the IMAP adapter reads them — so a bounce
+     * arriving through a provider is refused by the same rule as one polled.
+     */
+    it('flags mail whose headers say a machine sent it', () => {
+      const flagged = (Headers: { Name: string; Value: string }[]) =>
+        toInboundMessage(postmark({ Headers }), AT).automatic
+
+      expect(flagged([{ Name: 'Auto-Submitted', Value: 'auto-replied' }])).toBe(true)
+      expect(flagged([{ Name: 'X-Auto-Response-Suppress', Value: 'All' }])).toBe(true)
+      expect(flagged([{ Name: 'Precedence', Value: 'bulk' }])).toBe(true)
+      expect(flagged([{ Name: 'Return-Path', Value: '<>' }])).toBe(true)
+    })
+
+    it('does not flag ordinary mail', () => {
+      expect(toInboundMessage(postmark(), AT).automatic).toBe(false)
+      expect(
+        toInboundMessage(postmark({ Headers: [{ Name: 'Auto-Submitted', Value: 'no' }] }), AT)
+          .automatic,
+      ).toBe(false)
+    })
   })
 
   describe('the neutral shape', () => {

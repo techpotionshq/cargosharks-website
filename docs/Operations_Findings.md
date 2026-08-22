@@ -1,6 +1,6 @@
 # Operations Findings — What Broke, and What It Taught Us
 
-**Deployment, fleet and reliability notes · v1.1 · Internal**
+**Deployment, fleet and reliability notes · v1.2 · Internal**
 
 | | |
 |---|---|
@@ -10,6 +10,7 @@
 | **Relationship to the code** | Companion to `Qabandi_Architecture.md`. That describes the design; this records where the design met a real database and lost. |
 | **Status** | Every fault below is fixed unless marked **Open**. |
 | **v1.1** | Adds §10, the notification chain — four breaks in one path, and what finding them changed about how a feature is called finished. |
+| **v1.2** | Adds §11, the first day the inbound mailbox and the model ran against real services — a feedback loop, a provider quirk that impersonated flakiness, and what test databases nobody empties do to tests. |
 
 > **The finding in one line:** eleven faults were found in one day of running the system in anger, and nine of them were in the paths that stand a deployment up rather than in the product — which is exactly the half a second customer exercises first.
 
@@ -305,3 +306,83 @@ Before calling a deployment live:
 
 `OP-15` Steps 2 and 3 are the ones that were skipped, and step 3 would have
 caught step 2 in seconds.
+
+---
+
+## 11. The first day against real services — 22–23 August 2026
+
+Everything in §2–§10 was found standing a deployment up. These three were found
+the first time the inbound mailbox, the object store and the model provider
+were all real at once, with the service left running and nobody watching it.
+Each one was invisible to every test in the repository, because each one needs
+a second party to misbehave.
+
+`OP-30` **A bounce became an enquiry, and the enquiry's notification became
+the next bounce.** The dev mailbox received a delivery failure. `inbound-mail`
+filed it as a new enquiry — sender `MAILER-DAEMON`, subject *"Undelivered Mail
+Returned to Sender"* — started its SLA clock, queued a model call to read it,
+and wrote an `enquiry.created` notification to its "customer". The dispatcher
+emailed the daemon. The daemon bounced it. **One hundred and ninety-five
+enquiries in about thirty minutes**, at one model call each.
+
+No rule in the system could see it. A retry policy sees one job; an SLA clock
+sees one enquiry; idempotency sees one `Message-ID`, and every bounce had a
+fresh one. Each turn of the loop looked, to every guard we had, like a new
+customer writing in. The fix is `isAutomaticMail` in `inbound-routing.ts` plus
+an `automatic` flag both adapters set from the headers that only they can read
+(`Auto-Submitted`, `X-Auto-Response-Suppress`, `Precedence`, the null
+`Return-Path`, `multipart/report`). Automatic mail is *claimed* — so it is never
+re-polled — and then filed nowhere. It is deliberately not a spam filter: an
+unknown sender with an odd subject is an enquiry, which is the whole of
+FR-EQ-02.
+
+The lesson generalises: **any path that replies to the sender of inbound mail
+needs a loop breaker before it needs anything else.** Out-of-office replies
+would have done the same thing more slowly.
+
+`OP-31` **A provider quirk impersonated a transient fault, and the retry
+policy paid for it.** `minimax/minimax-m3`, asked for structured output,
+intermittently returns `content: null` with the entire JSON answer in
+`message.reasoning` — nine "reasoning" tokens that *are* the reply. The adapter
+read only `content`, so a correct answer arrived as the empty string,
+`parseModelJson` raised *"The model returned nothing"*, and the worker — which
+had just been taught to rethrow transient failures so pg-boss would retry —
+retried five times at full price and failed identically each time.
+
+It was never transient. The ledger showed it: every failed call was `ok` from
+the provider's view, fourteen tokens, a second's latency, no error — identical
+to the calls that succeeded. The tell was that the *same* tiny response
+sometimes parsed and sometimes did not. `model.ts` now reads `reasoning` as the
+reply where there is no content and no tool call; since it went live, zero
+empties against seven reads.
+
+Two rules came out of this. First, **"the provider returned nothing" is a claim
+to verify against the ledger, not a diagnosis** — `ai_invocations.response`
+holds the raw body for exactly this. Second, the split between failures worth
+retrying and failures that are settled is now explicit in both extraction
+workers: `ai.not_configured` and `ai.budget_exhausted` are swallowed, because
+five attempts cannot fix either; everything else goes back to the queue.
+
+`OP-32` **A test database nobody empties changes what a test can assert.**
+`DELETE` is revoked from `app_user` (§5.5), so `qabandi_test` only ever grows.
+Three tests that passed on the day they were written failed on the fourth run:
+a consolidation cluster on the shared fixture lane had accumulated more cargo
+than a 40HC takes; a `LIMIT 400` with no `ORDER BY` in the candidates query
+returned the oldest four hundred fixtures and never this week's bookings (a
+real product bug, found by the accumulation); and a web test that collided
+with the seed's `KWSWK` ran on a database where the seed had not yet run,
+succeeded, and made *"Shuwaikh Two"* — an inland depot with no Arabic name —
+that deployment's Shuwaikh for good, which a service-side document test then
+failed on.
+
+Separately, running the web and service suites **concurrently** against that
+one database produced a different single failure each run — consecutive
+invoice numbers, taxable lines — from the other suite's writes landing between
+a test's two steps. CI runs them sequentially; so must a developer.
+
+The rules: a test that asserts exact figures makes the rows it asserts about
+(`candidates.test.ts`, `freshLane()`); a test that needs a pre-existing row
+creates it rather than assuming a seed ran first; a query with a `LIMIT` says
+what it is limiting to; and one suite at a time. `docs/Dev_Environment.md`
+records where that database is.
+

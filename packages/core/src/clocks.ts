@@ -219,10 +219,6 @@ export function slaDueAt(from: Date, minutes: number, cal: WorkingCalendar): Dat
   throw new InvalidCalendarError('SLA due date did not converge within ten years')
 }
 
-export function isBreached(dueAt: Date, asOf: Date): boolean {
-  return asOf.getTime() > dueAt.getTime()
-}
-
 /**
  * Local wall-clock back to a UTC instant.
  *

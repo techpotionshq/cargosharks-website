@@ -295,20 +295,6 @@ export const apiKeys = pgTable(
 )
 
 /**
- * Rate-limit counters for the unauthenticated tracking page — FR-CP-05.
- *
- * Public tracking is unauthenticated by design, so it needs a second
- * identifier and a throttle: an enumeration control, not a session (§8).
- */
-export const rateLimitBuckets = systemTable(
-  'Throttle counters. Not business data; no audit value.',
-)('rate_limit_buckets', {
-  key: text('key').primaryKey(),
-  count: integer('count').notNull().default(0),
-  windowStartedAt: tsz('window_started_at').notNull().defaultNow(),
-})
-
-/**
  * A customer's grant of support access — the vendor side of a support
  * contract, made explicit in the customer's own database.
  *
@@ -404,12 +390,3 @@ export const supportAccessLog = systemTable(
   },
   (t) => [index('support_access_log_grant_idx').on(t.grantId, t.at)],
 )
-
-export type Branch = typeof branches.$inferSelect
-export type Principal = typeof principals.$inferSelect
-export type SupportGrant = typeof supportGrants.$inferSelect
-export type SupportAccessEntry = typeof supportAccessLog.$inferSelect
-export type Role = typeof roles.$inferSelect
-export type RolePermission = typeof rolePermissions.$inferSelect
-export type PrincipalBranchRole = typeof principalBranchRoles.$inferSelect
-export type ApiKey = typeof apiKeys.$inferSelect

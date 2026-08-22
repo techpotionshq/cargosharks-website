@@ -12,6 +12,7 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
+import { CandidatesPanel } from '@/features/consolidation/ui/candidates-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -39,6 +40,17 @@ export default async function ConsolidationsPage() {
         description={t('description')}
         actions={<ConsolidationDialog />}
       />
+
+      {/*
+        The suggestions above the masters, deliberately.
+
+        Everything in the table below is a consolidation somebody already
+        decided to make. This is the list of the ones nobody noticed — loose
+        LCL and air bookings sharing a lane and a sailing window — and it is
+        the only place in the product where the consolidation that *did not*
+        happen is visible at all. It renders nothing on a tidy week.
+      */}
+      <CandidatesPanel />
 
       <Card padding="none">
         {rows.length === 0 ? (

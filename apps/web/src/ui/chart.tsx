@@ -255,68 +255,6 @@ export function TrendColumns({
 }
 
 /**
- * A sparkline for a stat tile.
- *
- * Deliberately axis-less and label-less. Its job is direction and shape, not
- * value — the number above it carries the value, and adding a scale here would
- * compete with that number for the same glance.
- */
-export function Sparkline({
-  values,
-  className,
-  width = 120,
-  height = 32,
-  tone,
-}: {
-  readonly values: readonly number[]
-  readonly className?: string
-  readonly width?: number
-  readonly height?: number
-  /** Defaults to slot 1; a status tone is passed where the trend *is* a state. */
-  readonly tone?: string
-}) {
-  if (values.length < 2) return null
-
-  const max = Math.max(...values)
-  const min = Math.min(...values)
-  const span = max - min || 1
-  const stepX = width / (values.length - 1)
-  /** 2px inset top and bottom so the stroke is never clipped by the viewBox. */
-  const y = (v: number) => height - 2 - ((v - min) / span) * (height - 4)
-
-  const line = values
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * stepX).toFixed(1)} ${y(v).toFixed(1)}`)
-    .join(' ')
-  const area = `${line} L${width} ${height} L0 ${height} Z`
-  const color = tone ?? seriesColor(0)
-  const last = values[values.length - 1]!
-
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      className={className}
-      preserveAspectRatio="none"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d={area} fill={color} opacity="0.12" />
-      <path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      <circle cx={width} cy={y(last)} r="2.5" fill={color} />
-    </svg>
-  )
-}
-
-/**
  * A single proportion — free time consumed, SLA elapsed, capacity used.
  *
  * The tone is the caller's, because the same 80% is reassuring on a booking

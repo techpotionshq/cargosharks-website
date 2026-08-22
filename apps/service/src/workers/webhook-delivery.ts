@@ -45,7 +45,12 @@ export const DISABLE_AFTER_DAYS = 7
 const BATCH = 50
 
 /**
- * Backoff in seconds: 30s, 2m, 8m, 32m, 2h.
+ * Backoff in seconds after the first, second, … failure: 30s, 2m, 8m, 32m, 2h.
+ *
+ * Indexed from zero — the caller has already counted the failure it is
+ * scheduling the retry for, so it passes `attempts - 1`. Passing `attempts`
+ * skipped the first rung entirely and sat at the two-hour cap twice, which
+ * is what the file said and not what it did until the test below was written.
  *
  * Quadrupling rather than doubling, because the failure this retries through
  * is somebody else's deploy — and a deploy takes minutes, not seconds. Doubling
@@ -88,6 +93,9 @@ export async function expandWebhookDeliveries(): Promise<number> {
     let written = 0
 
     for (const event of events.rows as Record<string, unknown>[]) {
+      const customerId = (event.customerId as string | null) ?? null
+      const branchId = (event.branchId as string | null) ?? null
+
       const endpoints = await tx
         .select({ id: webhookEndpoints.id })
         .from(webhookEndpoints)
@@ -101,15 +109,23 @@ export async function expandWebhookDeliveries(): Promise<number> {
               shipment. `customer_id is null` is a deployment-wide subscriber —
               the operator's own systems — and is why the check is not simply
               an equality.
+
+              An event about no customer — an SLA breach, an internal reminder
+              — reaches only the deployment-wide subscribers. That case used
+              to be written as `customer_id = ''`, which Postgres refuses as a
+              uuid and which therefore failed the whole run the first time a
+              customer-less event reached the outbox. The test that found it
+              is the one this worker went a release without.
             */
-            or(
-              isNull(webhookEndpoints.customerId),
-              eq(webhookEndpoints.customerId, (event.customerId as string) ?? ''),
-            ),
-            or(
-              isNull(webhookEndpoints.branchId),
-              eq(webhookEndpoints.branchId, (event.branchId as string) ?? ''),
-            ),
+            customerId === null
+              ? isNull(webhookEndpoints.customerId)
+              : or(
+                  isNull(webhookEndpoints.customerId),
+                  eq(webhookEndpoints.customerId, customerId),
+                ),
+            branchId === null
+              ? isNull(webhookEndpoints.branchId)
+              : or(isNull(webhookEndpoints.branchId), eq(webhookEndpoints.branchId, branchId)),
             // Empty subscribes to everything; otherwise the key must be listed.
             sql`(jsonb_array_length(${webhookEndpoints.events}) = 0
                  or ${webhookEndpoints.events} ? ${event.eventKey as string})`,
@@ -268,7 +284,7 @@ async function recordFailure(
         // row stands as a record of what was never delivered.
         nextAttemptAt: exhausted
           ? null
-          : new Date(Date.now() + backoffSeconds(attempts) * 1000),
+          : new Date(Date.now() + backoffSeconds(attempts - 1) * 1000),
         updatedAt: new Date(),
       })
       .where(eq(webhookDeliveries.id, id)),

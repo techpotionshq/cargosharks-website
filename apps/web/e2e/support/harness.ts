@@ -249,15 +249,6 @@ export function collectPageErrors(page: Page): string[] {
   return errors
 }
 
-/** Sets the locale cookie the way the language switch does. */
-export async function useLocale(page: Page, locale: 'en' | 'ar'): Promise<void> {
-  await page
-    .context()
-    .addCookies([
-      { name: LOCALE_COOKIE, value: locale, url: page.url() || 'http://localhost:3100' },
-    ])
-}
-
 /**
  * Opens the first record on a register and asserts the detail page is healthy.
  *

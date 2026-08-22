@@ -27,6 +27,7 @@ export * from './notifications'
 export * from './integrations'
 export * from './ai'
 export * from './extraction'
+export * from './grouping'
 export * from './assistant'
 
 /**

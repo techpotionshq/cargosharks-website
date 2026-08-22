@@ -18,7 +18,7 @@
 #                     deployment that names no target is unchanged
 #   --target service  the service image, port 3001
 #
-# `compose.deploy.yml` names both, and that is how they are deployed: one
+# `compose.prod.yaml` names both, and that is how they are deployed: one
 # Coolify stack, one network, so `SERVICE_URL=http://service:3001` resolves
 # with nothing to configure. See `docs/Deployment_Coolify.md` — that URL being
 # internal is the one rule, because `/internal` impersonates principals.

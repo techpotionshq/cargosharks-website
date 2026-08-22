@@ -8,7 +8,7 @@
  * and would otherwise duplicate the same joins three ways.
  */
 
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import {
   customers,
   customsStages,
@@ -249,21 +249,5 @@ export async function documentCounts(
     const row = result.rows[0] as unknown as
       { total: number; released: number; draft: number } | undefined
     return { total: row?.total ?? 0, released: row?.released ?? 0, draft: row?.draft ?? 0 }
-  })
-}
-
-/** Document types with nothing filed against them — the paperwork gap. */
-export async function missingDocumentTypes(actor: Actor): Promise<number> {
-  return withActor(actor, async (tx) => {
-    const [row] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(documentTypes)
-      .where(
-        and(
-          eq(documentTypes.isRequiredForClearance, true),
-          sql`not exists (select 1 from documents d where d.document_type_id = "document_types"."id")`,
-        ),
-      )
-    return row?.count ?? 0
   })
 }

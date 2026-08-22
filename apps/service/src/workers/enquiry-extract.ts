@@ -64,7 +64,7 @@
  * in a millisecond against no infrastructure.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
   enquiries,
   extractionProposals,
@@ -97,8 +97,8 @@ import { ENQUIRY_PROMPT_VERSION, ENQUIRY_USER_PROMPT, enquirySystemPrompt } from
  * them from a hard-coded list therefore cannot drift the way a charge code
  * could, and `enquiry-extract.test.ts` pins them against the enum anyway.
  */
-const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
-const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
+export const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
+export const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
 
 /**
  * How much mail is worth sending, in characters.
@@ -237,9 +237,28 @@ export async function extractEnquiry(input: ExtractEnquiryInput): Promise<Extrac
   const occupied: string[] = []
   const writable: { proposal: FieldProposal; wasEmpty: boolean }[] = []
 
+  /*
+    Fields a coordinator is already looking at, skipped rather than duplicated.
+
+    This job is not run once. pg-boss retries a provider that returned nothing,
+    the same mail can be re-read after a prompt revision, and a backfill would
+    sweep the whole tail — and without this check each of those adds a second
+    identical row to somebody's review queue. A queue that shows `mode: air`
+    twice is a queue people stop reading carefully, which costs exactly the
+    attention the evidence span was added to buy.
+
+    Only *open* proposals are skipped. An applied one has filled its column, so
+    the emptiness check below discards it anyway; a rejected one was somebody
+    saying "not that", and re-proposing it after a prompt revision is a new
+    answer to a question they have already been asked once — which is worth
+    seeing, and is how a revision proves itself.
+  */
+  const alreadyOpen = new Set(context.openProposals)
+
   for (const proposal of allowed) {
     const column = COLUMN[proposal.field as EnquiryField]
     if (!column) continue
+    if (alreadyOpen.has(proposal.field)) continue
 
     const current = context.current[proposal.field as EnquiryField]
     const wasEmpty = current === null || current === undefined || current === ''
@@ -309,6 +328,8 @@ interface Loaded {
   readonly subject: string | null
   readonly body: string
   readonly incoterms: readonly string[]
+  /** Fields already sitting unanswered in the review queue for this enquiry. */
+  readonly openProposals: readonly string[]
   readonly current: Readonly<Record<EnquiryField, string | null>>
 }
 
@@ -322,7 +343,7 @@ interface Loaded {
  */
 async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | null> {
   return withActor(actor, async (tx) => {
-    const [enquiry, message, codes] = await inSeries([
+    const [enquiry, message, codes, open] = await inSeries([
       () =>
         tx
           .select({
@@ -352,6 +373,17 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
           .select({ code: incotermsTable.code })
           .from(incotermsTable)
           .where(eq(incotermsTable.isActive, true)),
+      () =>
+        tx
+          .select({ field: extractionProposals.field })
+          .from(extractionProposals)
+          .where(
+            and(
+              eq(extractionProposals.targetTable, 'enquiries'),
+              eq(extractionProposals.targetId, input.enquiryId),
+              eq(extractionProposals.status, 'proposed'),
+            ),
+          ),
     ])
 
     const row = enquiry[0]
@@ -365,6 +397,7 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
       subject: mail.subject,
       body: mail.body,
       incoterms: codes.map((c: { code: string }) => c.code),
+      openProposals: open.map((row: { field: string }) => row.field),
       current: {
         mode: asText(row.mode),
         tradeDirection: asText(row.tradeDirection),

@@ -35,13 +35,13 @@
  */
 
 import { createHash } from 'node:crypto'
-import { and, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { aiInvocations, systemActor, withActor, type Actor, type Tx } from '@qabandi/db'
 import type { AiSurface } from '@qabandi/core'
 import type { ModelRequest, ModelResponse } from '../ports/index'
 import { modelProvider } from '../adapters/index'
 import { integration } from '../settings'
-import { ModelError, monthlyBudgetUsd } from '../adapters/model'
+import { ModelError, monthlyBudgetUsd, readCompletion } from '../adapters/model'
 
 export class AiUnavailableError extends Error {
   readonly code: string
@@ -81,6 +81,19 @@ export interface Invocation {
   readonly response: ModelResponse
   /** The ledger row, so a caller can point a proposal at it. */
   readonly invocationId: string
+  /** True when the answer came from the ledger rather than the model — see `previousResponse`. */
+  readonly reused: boolean
+}
+
+export interface InvokeOptions {
+  /**
+   * Answer from the ledger when this exact question has been asked before.
+   *
+   * For the surfaces that re-read documents — the same scan attached to two
+   * jobs, a retry after a result scrolled away. Off by default; see
+   * `previousResponse` for why it is never automatic.
+   */
+  readonly reuse?: boolean
 }
 
 /**
@@ -173,7 +186,7 @@ export async function* invokeStream(
     })
     if (!failure && response) {
       // eslint-disable-next-line no-unsafe-finally
-      return { response, invocationId }
+      return { response, invocationId, reused: false }
     }
   }
 
@@ -193,6 +206,7 @@ export async function* invokeStream(
 export async function invoke(
   context: InvocationContext,
   request: ModelRequest,
+  options: InvokeOptions = {},
 ): Promise<Invocation> {
   const provider = await modelProvider()
 
@@ -212,28 +226,22 @@ export async function invoke(
     )
   }
 
-  const settings = await integration('ai')
-  const ceiling = monthlyBudgetUsd(settings)
-  if (ceiling > 0) {
-    const spent = await monthToDateUsd()
-    if (spent >= ceiling) {
-      throw new AiUnavailableError(
-        'ai.budget_exhausted',
-        `This month's model spend (${spent.toFixed(2)} USD) has reached the ceiling of ${ceiling.toFixed(2)} USD.`,
-      )
+  const requested = modelOf(provider)
+  const inputHash = fingerprint(request, requested, context.promptVersion)
+
+  /*
+    Answered from the ledger when asked to, and before the budget is checked:
+    a reused answer costs nothing, and refusing a free answer because the
+    month's paid ones are spent would be the wrong economy.
+  */
+  if (options.reuse) {
+    const previous = await previousResponse([context.branchId], context.surface, inputHash)
+    if (previous) {
+      return { response: previous.response, invocationId: previous.id, reused: true }
     }
   }
 
-  /*
-    The model name off the resolved provider rather than out of the settings
-    again. `key` is `openrouter:<model>`, and reading it here is what keeps the
-    ledger's `model_requested` in step with what was actually sent when a
-    surface override and a default disagree.
-  */
-  const requested = provider.key.includes(':')
-    ? provider.key.split(':').slice(1).join(':')
-    : provider.key
-  const inputHash = fingerprint(request, requested, context.promptVersion)
+  await assertWithinBudget()
 
   const startedAt = Date.now()
   let response: ModelResponse | undefined
@@ -258,7 +266,7 @@ export async function invoke(
   })
 
   if (failure) throw failure
-  return { response: response!, invocationId }
+  return { response: response!, invocationId, reused: false }
 }
 
 /**
@@ -392,29 +400,60 @@ export async function spendBySurface(
  * that actually happens: the same agent invoice attached to two jobs, or a
  * coordinator retrying an extraction because the first result scrolled away.
  *
- * Deliberately not automatic. `invoke` does not consult this, because a caller
- * that wants a fresh reading after a prompt change must be able to get one —
- * and because a cache that cannot be bypassed is a cache that hides a
- * regression. The callers that want it ask for it.
+ * Opt-in, never automatic: `invoke` consults this only when a caller passes
+ * `reuse`, because a caller that wants a fresh reading after a prompt change
+ * must be able to get one — and because a cache that cannot be bypassed is a
+ * cache that hides a regression. The hash already carries the prompt version,
+ * so a revised prompt is a different question and misses on its own.
+ *
+ * Scoped to the branches given, not the deployment: an answer recorded for
+ * one branch's document is that branch's data. The scope is in the query
+ * rather than left to RLS, because the lookup runs as the system actor and
+ * RLS lets the system actor see every branch — which is right for a ledger
+ * and wrong for a cache.
  */
 export async function previousResponse(
   branchIds: readonly string[],
   surface: AiSurface,
   inputHash: string,
-): Promise<{ id: string; response: unknown } | undefined> {
+): Promise<{ id: string; response: ModelResponse } | undefined> {
   const [row] = await withActor(systemActor([...branchIds]), (tx: Tx) =>
     tx
-      .select({ id: aiInvocations.id, response: aiInvocations.response })
+      .select({
+        id: aiInvocations.id,
+        response: aiInvocations.response,
+        modelRequested: aiInvocations.modelRequested,
+      })
       .from(aiInvocations)
       .where(
         and(
+          inArray(aiInvocations.branchId, [...branchIds]),
           eq(aiInvocations.inputHash, inputHash),
           eq(aiInvocations.surface, surface),
           sql`${aiInvocations.error} is null`,
+          sql`${aiInvocations.response} is not null`,
         ),
       )
+      .orderBy(desc(aiInvocations.createdAt))
       .limit(1),
   )
+  if (!row) return undefined
 
-  return row
+  /*
+    The row holds the provider's body as returned, so the reply is rebuilt the
+    same way it was read the first time. A body that can no longer be read —
+    a provider that changed shape, a row from before a parser fix — is a miss,
+    not a failure: the model is simply asked again.
+  */
+  try {
+    return {
+      id: row.id,
+      response: readCompletion(
+        row.response as Parameters<typeof readCompletion>[0],
+        row.modelRequested,
+      ),
+    }
+  } catch {
+    return undefined
+  }
 }

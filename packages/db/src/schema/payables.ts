@@ -380,11 +380,3 @@ export const partnerSettlementLines = pgTable(
     unique('partner_settlement_lines_bill_unique').on(t.settlementId, t.supplierInvoiceId),
   ],
 )
-
-export type SupplierInvoice = typeof supplierInvoices.$inferSelect
-export type SupplierInvoiceLine = typeof supplierInvoiceLines.$inferSelect
-export type SupplierInvoiceMatch = typeof supplierInvoiceMatches.$inferSelect
-export type SupplierPayment = typeof supplierPayments.$inferSelect
-export type SupplierPaymentAllocation = typeof supplierPaymentAllocations.$inferSelect
-export type PartnerSettlement = typeof partnerSettlements.$inferSelect
-export type PartnerSettlementLine = typeof partnerSettlementLines.$inferSelect

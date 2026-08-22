@@ -103,42 +103,6 @@ export async function listRateCards(actor: Actor, direction?: string): Promise<R
   })
 }
 
-export interface RateCardLineRow {
-  readonly id: string
-  readonly chargeKey: string
-  readonly chargeName: string
-  readonly category: string
-  readonly basis: string
-  readonly rate: string
-  readonly currency: string
-  readonly minimum: string | null
-  readonly containerType: string | null
-}
-
-export async function listRateCardLines(
-  actor: Actor,
-  rateCardId: string,
-): Promise<RateCardLineRow[]> {
-  return withActor(actor, async (tx) => {
-    const result = await tx.execute(sql`
-      select rcl.id,
-             ct.key       as "chargeKey",
-             ct.name_en   as "chargeName",
-             ct.category,
-             rcl.basis::text as basis,
-             rcl.rate::text  as rate,
-             rcl.currency,
-             rcl.minimum::text as minimum,
-             rcl.container_type as "containerType"
-        from rate_card_lines rcl
-        join charge_types ct on ct.id = rcl.charge_type_id
-       where rcl.rate_card_id = ${rateCardId}
-       order by rcl.sort_order, ct.key
-    `)
-    return result.rows as unknown as RateCardLineRow[]
-  })
-}
-
 /**
  * The four numbers above the register.
  *

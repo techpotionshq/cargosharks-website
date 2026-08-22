@@ -30,7 +30,7 @@
  * that is edited in place can only ever justify today's number.
  */
 
-import { D, dec, money, round, sum, zero } from './money'
+import { dec, money, round, sum, zero } from './money'
 import type { CurrencyCode, CurrencySpec, Money, Numeric } from './money'
 import { DomainError } from './errors'
 
@@ -308,20 +308,7 @@ export function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** Total of an estimate, for the screen that shows one number. */
-export function estimateTotal(estimate: DutyEstimate, spec: CurrencySpec): Money {
-  return round(
-    money(dec(estimate.customsValue.amount).plus(dec(estimate.duty.amount)), estimate.currency),
-    spec,
-  )
-}
-
 /** Has anything been left out? The check before an estimate is quoted. */
 export function isComplete(estimate: DutyEstimate): boolean {
   return estimate.unmatched.length === 0 && estimate.lines.length > 0
-}
-
-/** Rate as a fraction, where a caller needs it for its own arithmetic. */
-export function rateFraction(ratePercent: Numeric): ReturnType<typeof D> {
-  return dec(ratePercent).div(100)
 }

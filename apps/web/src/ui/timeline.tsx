@@ -18,7 +18,6 @@
  *      is what makes a list of dates read as a journey.
  */
 
-import type { ReactNode } from 'react'
 import { Icon } from './icon'
 
 export interface TimelineMilestone {
@@ -180,12 +179,5 @@ export function MilestoneDots({
         />
       ))}
     </span>
-  )
-}
-
-/** A key/value strip under a page title — reference, route, vessel. */
-export function FactStrip({ children }: { readonly children: ReactNode }) {
-  return (
-    <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.8125rem]">{children}</dl>
   )
 }

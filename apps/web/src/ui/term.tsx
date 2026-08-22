@@ -90,13 +90,3 @@ export function Term({
     </abbr>
   )
 }
-
-/**
- * A plain-language note attached to a panel.
- *
- * Every card on the board carries one. It is the difference between a chart
- * someone glances at and a chart someone can act on, and it costs one line.
- */
-export function Explain({ children }: { readonly children: ReactNode }) {
-  return <p className="mt-1 text-[0.8125rem] leading-snug text-ink-muted">{children}</p>
-}

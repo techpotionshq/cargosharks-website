@@ -273,10 +273,37 @@ export async function registerWorkers(log: {
           result.supplierInvoiceId ? 'supplier invoice extracted' : 'supplier invoice not written',
         )
       } catch (error) {
+        /*
+          The comment above holds for a scan that will not become readable. It
+          does not hold for a provider that answered with nothing.
+
+          Both were swallowed until a real bill arrived by email and the
+          provider returned an empty body — the identical request succeeded a
+          minute later, so five retries would have cost five more calls and
+          *worked*, rather than spending five times to learn the same thing.
+          "It has already spent money" argues against retrying a document; it
+          argues for retrying a hiccup.
+
+          So the split is the same one `enquiryExtract` makes below: a
+          deployment with no model and one that has spent its budget are
+          settled and swallowed; everything else goes back to the queue's
+          backoff. What is *not* retried either way is a bill that was read and
+          did not reconcile — that returns a refusal rather than throwing, and
+          is already handled above.
+        */
+        const code = (error as { code?: string }).code
+        const settled = code === 'ai.not_configured' || code === 'ai.budget_exhausted'
+
         log.info(
-          { assetId: input.assetId, err: error instanceof Error ? error.message : String(error) },
+          {
+            assetId: input.assetId,
+            err: error instanceof Error ? error.message : String(error),
+            retrying: !settled,
+          },
           'supplier invoice extraction failed',
         )
+
+        if (!settled) throw error
       }
     }
   })
@@ -344,13 +371,36 @@ export async function registerWorkers(log: {
           )
         }
       } catch (error) {
+        /*
+          Transient failures rethrow so pg-boss retries; settled ones do not.
+
+          Written this way after watching it happen: the provider returned an
+          empty body on one of two enquiries, the same request succeeded
+          untouched a minute later, and the twelve cargo facts on that mail
+          were lost to a `catch` that logged and moved on. An empty response, a
+          rate limit and a gateway error are all "ask again in thirty seconds",
+          which is exactly what the queue's backoff is for.
+
+          The two that must *not* retry are the ones five attempts cannot fix:
+          a deployment with no model configured, and one that has reached its
+          monthly ceiling. Retrying those spends the budget on discovering the
+          budget is spent, and the enquiry is on the board either way — a
+          coordinator types the fields, which is where they were before this
+          existed.
+        */
+        const code = (error as { code?: string }).code
+        const settled = code === 'ai.not_configured' || code === 'ai.budget_exhausted'
+
         log.info(
           {
             enquiryId: input.enquiryId,
             err: error instanceof Error ? error.message : String(error),
+            retrying: !settled,
           },
           'enquiry extraction failed',
         )
+
+        if (!settled) throw error
       }
     }
   })

@@ -19,7 +19,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { identifyingDomain, inboundStorageKey, referencesIn } from './inbound-routing'
+import { identifyingDomain, inboundStorageKey, isAutomaticMail, referencesIn } from './inbound-routing'
 
 // --- reference extraction ----------------------------------------------------
 
@@ -130,6 +130,73 @@ describe('identifyingDomain', () => {
   })
 })
 
+// --- mail a machine sent -----------------------------------------------------
+
+/**
+ * The rule that breaks the loop.
+ *
+ * A bounce filed as an enquiry notifies the daemon that bounced it, which
+ * bounces again, which is filed again. No retry policy or SLA clock can see a
+ * loop from inside it: every turn looked, to every other rule here, like a
+ * new customer — one hundred and eighty-nine of them in twenty-four minutes on
+ * the day this was written.
+ */
+describe('isAutomaticMail', () => {
+  const person = { from: 'fatima@shipper.com.kw', subject: 'RFQ 2x40HC Shanghai to Shuwaikh' }
+
+  it('lets a person through', () => {
+    expect(isAutomaticMail(person)).toBe(false)
+  })
+
+  it('trusts the adapter when the headers said so', () => {
+    expect(isAutomaticMail({ ...person, automatic: true })).toBe(true)
+  })
+
+  it('refuses the mail daemons by name, whatever the domain', () => {
+    for (const from of [
+      'MAILER-DAEMON@mail.spacemail.com',
+      'mailer-daemon@googlemail.com',
+      'postmaster@outlook.com',
+      'Postmaster@exchange.shipper.com.kw',
+    ]) {
+      expect(isAutomaticMail({ from, subject: 'anything' })).toBe(true)
+    }
+  })
+
+  it('refuses a delivery report by its subject, in each MTA’s wording', () => {
+    for (const subject of [
+      'Undelivered Mail Returned to Sender',
+      'Delivery Status Notification (Failure)',
+      'Undeliverable: RFQ 2x40HC',
+      'Mail delivery failed: returning message to sender',
+      'failure notice',
+    ]) {
+      expect(isAutomaticMail({ from: 'someone@somewhere.test', subject })).toBe(true)
+    }
+  })
+
+  it('refuses an auto-reply by its subject', () => {
+    for (const subject of [
+      'Automatic reply: RFQ 2x40HC',
+      'Auto-Reply: out of office',
+      'Out of Office: back Sunday',
+    ]) {
+      expect(isAutomaticMail({ from: 'someone@somewhere.test', subject })).toBe(true)
+    }
+  })
+
+  /**
+   * Not a spam filter. An unknown sender with an odd subject is an enquiry —
+   * that is the whole point of FR-EQ-02 — and a real enquiry refused here
+   * costs a customer, where a bounce let through costs one junk row.
+   */
+  it('does not refuse a stranger with an unusual subject', () => {
+    for (const subject of ['urgent!!!', 'Re: Re: Re: rates', 'RFQ — returned goods to sender', '']) {
+      expect(isAutomaticMail({ from: 'stranger@unknown-shipper.test', subject })).toBe(false)
+    }
+  })
+})
+
 // --- storage keys ------------------------------------------------------------
 
 describe('inboundStorageKey', () => {
@@ -217,6 +284,8 @@ const {
   messageAttachments,
   messages,
   notificationOutbox,
+  partnerContacts,
+  partners,
   principals,
   sealSecret,
   systemActor,
@@ -229,6 +298,7 @@ const { runInboundMailPoll } = await import('./inbound-mail')
 const BRANCH = '00000000-0000-7000-8000-0000000ab001'
 const CUSTOMER = '00000000-0000-7000-8000-0000000ab002'
 const PRINCIPAL = '00000000-0000-7000-8000-0000000ab003'
+const PARTNER = '00000000-0000-7000-8000-0000000ab004'
 
 const sys = systemActor()
 const RUN = process.hrtime.bigint().toString(36).toUpperCase().slice(-6)
@@ -353,6 +423,33 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
         .onConflictDoNothing()
 
       /*
+        An agent, so the bill half of attribution has somebody to resolve to.
+
+        Partners and customers are matched by the same rule against different
+        tables — an overseas agent is a supplier on our payables and, on their
+        own imports, a customer on our receivables, so both lookups run.
+      */
+      await tx
+        .insert(partners)
+        .values({
+          id: PARTNER,
+          code: 'AGT-INBOUND-MAIL',
+          type: 'agent',
+          legalNameEn: 'Inbound Mail Fixture Agent',
+        })
+        .onConflictDoNothing()
+
+      await tx
+        .insert(partnerContacts)
+        .values({
+          partnerId: PARTNER,
+          nameEn: 'Accounts, Al Madina',
+          email: 'accounts@fixture-agent.test',
+          isPrimary: true,
+        })
+        .onConflictDoNothing()
+
+      /*
         The mailbox row is the branch mapping now.
 
         `resolveBranches` joins `mailboxes` to `branches` on the username the
@@ -368,7 +465,27 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
           username: MAILBOX,
           passwordSealed: sealSecret('fixture-password'),
         })
-        .onConflictDoNothing()
+        /*
+          Reactivated on conflict, not left alone.
+
+          `afterAll` deactivates this row so a real poll on this database never
+          reaches for `imap.invalid`, which is right. With
+          `onConflictDoNothing` the pair meant the suite passed exactly once
+          per database and failed on every run after it: the row survived,
+          `is_active` stayed false, `resolveBranches()` filters on it, and
+          nine tests failed with "no active mailbox row matches" — which reads
+          like a routing bug and is really the previous run's tidy-up.
+
+          It is also why the development database had this mailbox sitting
+          deactivated. Setting the column here makes the fixture describe the
+          state it needs rather than assuming nobody has been here before.
+        */
+        .onConflictDoUpdate({
+          // `mailboxes_address_unique` is on (host, username), not username
+          // alone — one row per address *per host*.
+          target: [mailboxes.host, mailboxes.username],
+          set: { isActive: true, branchId: BRANCH },
+        })
     })
   })
 
@@ -404,6 +521,204 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
         .set({ isActive: false })
         .where(eq(mailboxes.branchId, BRANCH))
     })
+  })
+
+  /*
+    A bill that arrived by email — FR-FN-09, `AI-10`.
+
+    `JOBS.invoiceExtract` was registered as a worker from Release One and
+    *nothing in the codebase ever enqueued it*: the handler was mounted and
+    unreachable, so `core/matching.ts` — the engine that finds the agent who
+    billed 460 against a 400 accrual — only ever ran on rows somebody typed.
+    These cases pin the enqueuer, and the attribution refusal that guards it.
+  */
+  describe('bills arriving as attachments', () => {
+    const pdf = (filename = 'invoice.pdf') => ({
+      filename,
+      contentType: 'application/pdf',
+      content: Buffer.from('%PDF-1.4 fixture'),
+    })
+
+    /** Collects what would have been queued, instead of reaching for pg-boss. */
+    const collector = () => {
+      const queued: { branchId: string; assetId: string; partnerId: string }[] = []
+      return { queued, enqueue: async (input: typeof queued[number]) => void queued.push(input) }
+    }
+
+    it('queues an attachment from a known supplier for reading', async () => {
+      const bills = collector()
+
+      await runInboundMailPoll(
+        new Date('2026-08-18T07:30:00Z'),
+        sourceOf(
+          mail({
+            subject: `Invoice ${RUN}`,
+            from: 'accounts@fixture-agent.test',
+            attachments: [pdf()],
+          }),
+        ),
+        undefined,
+        bills.enqueue,
+      )
+
+      expect(bills.queued).toHaveLength(1)
+      expect(bills.queued[0]?.partnerId).toBe(PARTNER)
+      expect(bills.queued[0]?.branchId).toBe(BRANCH)
+      expect(bills.queued[0]?.assetId).toBeTruthy()
+    })
+
+    /**
+     * The refusal that matters.
+     *
+     * Attributing an invoice to the wrong agent puts a payable on a party that
+     * never sent it, against accruals belonging to somebody else. A sender who
+     * resolves to no partner is not guessed at.
+     */
+    it('reads nothing from a sender who is not a supplier', async () => {
+      const bills = collector()
+
+      await runInboundMailPoll(
+        new Date('2026-08-18T07:31:00Z'),
+        sourceOf(
+          mail({
+            subject: `Not a bill ${RUN}`,
+            from: 'stranger@unknown-shipper.test',
+            attachments: [pdf()],
+          }),
+        ),
+        undefined,
+        bills.enqueue,
+      )
+
+      expect(bills.queued).toEqual([])
+    })
+
+    it('ignores an attachment a model cannot read', async () => {
+      const bills = collector()
+
+      await runInboundMailPoll(
+        new Date('2026-08-18T07:32:00Z'),
+        sourceOf(
+          mail({
+            subject: `Spreadsheet ${RUN}`,
+            from: 'accounts@fixture-agent.test',
+            attachments: [
+              { filename: 'rates.csv', contentType: 'text/csv', content: Buffer.from('a,b') },
+            ],
+          }),
+        ),
+        undefined,
+        bills.enqueue,
+      )
+
+      expect(bills.queued).toEqual([])
+    })
+
+    /**
+     * A bill usually arrives as a *reply* on a job, not as a new enquiry — so
+     * gating this on `created` would mean the only invoices ever read came
+     * from suppliers who had never written to us before.
+     */
+    it('reads a bill on a reply, not only on a new enquiry', async () => {
+      const opened = await runInboundMailPoll(
+        new Date('2026-08-18T07:33:00Z'),
+        sourceOf(mail({ subject: `Bill thread ${RUN}` })),
+      )
+      expect(opened.created).toBe(1)
+      const enquiry = await enquiryNoted(`Bill thread ${RUN}`)
+
+      const bills = collector()
+      const threaded = await runInboundMailPoll(
+        new Date('2026-08-18T07:34:00Z'),
+        sourceOf(
+          mail({
+            subject: `Re: ${enquiry.reference} — our invoice`,
+            from: 'accounts@fixture-agent.test',
+            attachments: [pdf()],
+          }),
+        ),
+        undefined,
+        bills.enqueue,
+      )
+
+      expect(threaded.threaded).toBe(1)
+      expect(bills.queued).toHaveLength(1)
+    })
+
+    it('queues each readable attachment separately', async () => {
+      const bills = collector()
+
+      await runInboundMailPoll(
+        new Date('2026-08-18T07:35:00Z'),
+        sourceOf(
+          mail({
+            subject: `Two bills ${RUN}`,
+            from: 'accounts@fixture-agent.test',
+            attachments: [pdf('one.pdf'), pdf('two.pdf')],
+          }),
+        ),
+        undefined,
+        bills.enqueue,
+      )
+
+      expect(bills.queued).toHaveLength(2)
+      expect(new Set(bills.queued.map((b) => b.assetId)).size).toBe(2)
+    })
+
+    /** A queue that is down costs a slower coordinator, never the mail. */
+    it('still files the mail when the bill cannot be queued', async () => {
+      const result = await runInboundMailPoll(
+        new Date('2026-08-18T07:36:00Z'),
+        sourceOf(
+          mail({
+            subject: `Queue down ${RUN}`,
+            from: 'accounts@fixture-agent.test',
+            attachments: [pdf()],
+          }),
+        ),
+        undefined,
+        async () => {
+          throw new Error('queue unreachable')
+        },
+      )
+
+      expect(result.created).toBe(1)
+      expect(result.failed).toBe(0)
+      await enquiryNoted(`Queue down ${RUN}`)
+    })
+  })
+
+  /**
+   * A bounce is claimed, so the next poll does not collect it again, and then
+   * filed nowhere: no enquiry, no SLA clock, no notification to the daemon —
+   * which is the turn of the loop this exists to refuse.
+   */
+  it('claims a bounce and files nothing', async () => {
+    const before = (await enquiriesFromRun()).length
+    const bounce = mail({
+      subject: 'Undelivered Mail Returned to Sender',
+      from: 'MAILER-DAEMON@mail.spacemail.com',
+      body: 'This is the mail system at host mail.spacemail.com.',
+    })
+
+    const first = await runInboundMailPoll(new Date('2026-08-18T07:40:00Z'), sourceOf(bounce))
+    const second = await runInboundMailPoll(new Date('2026-08-18T07:41:00Z'), sourceOf(bounce))
+
+    expect(first.ignored).toBe(1)
+    expect(first.created).toBe(0)
+    expect(first.failed).toBe(0)
+    // Claimed the first time, so the second is a duplicate rather than ignored again.
+    expect(second.duplicates).toBe(1)
+    expect((await enquiriesFromRun()).length).toBe(before)
+
+    const [receipt] = await withActor(sys, (tx) =>
+      tx
+        .select({ processedAt: inboundWebhookEvents.processedAt, error: inboundWebhookEvents.error })
+        .from(inboundWebhookEvents)
+        .where(eq(inboundWebhookEvents.externalId, bounce.externalId)),
+    )
+    expect(receipt?.processedAt).toBeTruthy()
+    expect(receipt?.error).toMatch(/automatic/)
   })
 
   it('turns a cold email from an unknown sender into an enquiry', async () => {

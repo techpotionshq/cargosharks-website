@@ -429,9 +429,3 @@ export const creditOverrides = pgTable(
     index('credit_overrides_standing_idx').on(t.expiresOn),
   ],
 )
-
-export type Customer = typeof customers.$inferSelect
-export type Partner = typeof partners.$inferSelect
-export type RateCard = typeof rateCards.$inferSelect
-export type RateCardLine = typeof rateCardLines.$inferSelect
-export type CreditOverride = typeof creditOverrides.$inferSelect

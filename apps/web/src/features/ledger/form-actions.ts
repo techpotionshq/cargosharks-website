@@ -20,7 +20,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   assertTransition,
@@ -32,10 +32,12 @@ import {
   toScale,
 } from '@qabandi/core'
 import {
+  chargeLines,
   checkCredit,
   enquiries,
   invoiceLines,
   invoices,
+  jobs,
   notificationOutbox,
   paymentAllocations,
   payments,
@@ -867,4 +869,183 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
       updated_at = now()
     where id = ${invoiceId}
   `)
+}
+
+// --- billing what was earned ----------------------------------------------
+
+/**
+ * One shipment's unbilled revenue, as a draft invoice — in one act.
+ *
+ * The path this replaces is the whole problem. A coordinator reads the job's
+ * charge lines on one screen and retypes each of them into `addInvoiceLine` on
+ * another, which is slow, and slow is why it gets deferred, and deferred is
+ * why `unbilled.ts` exists at all. Nothing here is cleverer than that loop —
+ * it is the same insert the form does, run once per line, inside one
+ * transaction, from figures that are already on the shipment.
+ *
+ * ## It lands as a draft, and every gate after it is unchanged
+ *
+ * `draft` is where `createInvoice` puts a hand-typed invoice too. Approving,
+ * numbering and issuing remain exactly the acts they were, under exactly the
+ * permissions they were. This does not shorten the path to *sending a customer
+ * a bill*; it shortens the path to *having one to check*.
+ *
+ * ## Why the lines are stamped inside the same transaction
+ *
+ * `charge_lines.invoice_id` is what makes a line billed, and it is what stops
+ * the same revenue being invoiced twice. Setting it in the same transaction as
+ * the insert means the failure mode is "nothing happened" rather than "an
+ * invoice exists and the lines are still loose" — which would put the same
+ * money on a second invoice the next time anybody looked at this register.
+ *
+ * ## One currency, or none
+ *
+ * An invoice carries a single currency. A job billing in both USD and KWD is
+ * refused rather than converted, because converting here would invent an FX
+ * rate on the sell side that nobody agreed with the customer — and the ledger
+ * already holds the rate each line was booked at, which is a different number
+ * and the right one for the cost side only.
+ */
+export async function billJob(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'invoice.approve')
+
+  const jobId = read(form, 'jobId')
+  if (!jobId) return failWith('Nothing to do.')
+
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [job] = await tx
+      .select({
+        id: jobs.id,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+        reference: jobs.reference,
+      })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1)
+
+    if (!job) return { error: 'gone' as const }
+    if (!job.customerId) return { error: 'no_customer' as const }
+
+    const lines = await tx
+      .select({
+        id: chargeLines.id,
+        description: chargeLines.description,
+        chargeTypeId: chargeLines.chargeTypeId,
+        quantity: chargeLines.quantity,
+        rate: chargeLines.rate,
+        amount: chargeLines.amount,
+        currency: chargeLines.currency,
+      })
+      .from(chargeLines)
+      .where(
+        and(
+          eq(chargeLines.jobId, jobId),
+          eq(chargeLines.direction, 'revenue'),
+          eq(chargeLines.isAccrual, false),
+          isNull(chargeLines.invoiceId),
+        ),
+      )
+      .orderBy(chargeLines.createdAt)
+
+    if (lines.length === 0) return { error: 'nothing_to_bill' as const }
+
+    const currencies = [...new Set(lines.map((line) => line.currency))]
+    if (currencies.length > 1) {
+      return { error: 'mixed_currency' as const, currencies }
+    }
+
+    const currency = currencies[0]!
+
+    /*
+      Tax is out of scope until somebody says otherwise, which is the same
+      default `invoices` carries. Kuwait has no VAT today and the column exists
+      because Saudi and the UAE do; guessing a treatment here would put a tax
+      figure on a document from a branch that does not charge it.
+    */
+    const [invoice] = await tx
+      .insert(invoices)
+      .values({
+        branchId: job.branchId,
+        customerId: job.customerId,
+        status: 'draft',
+        currency,
+        subtotal: '0',
+        taxAmount: '0',
+        total: '0',
+        notes: `Billed from ${job.reference}`,
+      })
+      .returning({ id: invoices.id })
+
+    const invoiceId = invoice!.id
+
+    await tx.insert(invoiceLines).values(
+      lines.map((line, index) => ({
+        invoiceId,
+        chargeTypeId: line.chargeTypeId,
+        /*
+          The line's own description, or the shipment reference as a fallback.
+
+          `description` is nullable on `charge_lines` and `description_en` is
+          not on `invoice_lines`, which is the right way round: an internal
+          ledger line may be terse, and a document a customer reads may not be
+          blank.
+        */
+        descriptionEn: line.description ?? job.reference,
+        quantity: line.quantity,
+        unitPrice: line.rate,
+        amount: line.amount,
+        taxAmount: '0',
+        isTaxable: false,
+        sortOrder: index,
+      })),
+    )
+
+    await tx
+      .update(chargeLines)
+      .set({ invoiceId, updatedAt: new Date() })
+      .where(
+        inArray(
+          chargeLines.id,
+          lines.map((line) => line.id),
+        ),
+      )
+
+    // Recomputed from the lines, for the reason `addInvoiceLine` gives: a
+    // header summed by hand is a header that is eventually out by a correction.
+    await tx.execute(sql`
+      update invoices set
+        subtotal   = coalesce((select sum(amount)     from invoice_lines where invoice_id = ${invoiceId}), 0),
+        tax_amount = coalesce((select sum(tax_amount) from invoice_lines where invoice_id = ${invoiceId}), 0),
+        total      = coalesce((select sum(amount) + sum(tax_amount) from invoice_lines where invoice_id = ${invoiceId}), 0),
+        updated_at = now()
+      where id = ${invoiceId}
+    `)
+
+    return { ok: true as const, invoiceId, count: lines.length }
+  })
+
+  if ('error' in outcome) {
+    if (outcome.error === 'mixed_currency') {
+      return failWith(
+        `This shipment has revenue in ${outcome.currencies.join(' and ')}, and an invoice ` +
+          'carries one currency. Bill them separately rather than converting — the sell-side ' +
+          'rate is one the customer agreed, not one we hold.',
+      )
+    }
+    if (outcome.error === 'no_customer') {
+      return failWith('This shipment has no customer on it, so there is nobody to invoice.')
+    }
+    if (outcome.error === 'nothing_to_bill') {
+      return failWith('Nothing unbilled is left on this shipment.')
+    }
+    return failWith('That shipment is no longer there.')
+  }
+
+  revalidatePath('/finance')
+  revalidatePath('/invoices')
+  revalidatePath(`/invoices/${outcome.invoiceId}`)
+  revalidatePath(`/jobs/${jobId}`)
+  return succeed(outcome.invoiceId)
 }

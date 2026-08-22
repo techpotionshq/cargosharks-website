@@ -266,9 +266,24 @@ describe.skipIf(!enabled)('the network', () => {
       expect(state.errors?.unlocode).toBeDefined()
     })
 
+    /**
+     * Records its own port first, then collides with it.
+     *
+     * The first version collided with the seed's `KWSWK` — and on a database
+     * where this suite ran *before* `db:seed-demo`, there was no such row, the
+     * save succeeded, and "Shuwaikh Two" (an inland depot with no Arabic name)
+     * became the deployment's Shuwaikh for good: the seed found the code taken
+     * and did nothing, and a service-side document test later failed on a port
+     * with no Arabic name. A test that depends on what ran before it is a test
+     * that poisons a fresh database, so this one makes the row it needs.
+     */
     it('reports a UN/LOCODE already recorded rather than raising', async () => {
-      const state = await saveLocation({}, placeForm({ unlocode: 'KWSWK', nameEn: 'Shuwaikh Two' }))
-      expect(state.errors?.unlocode).toContain('already recorded')
+      const unlocode = `KW${(Date.now() + 1).toString(36).toUpperCase().slice(-3)}`
+      const first = await saveLocation({}, placeForm({ unlocode, nameEn: 'First Port', kind: 'seaport' }))
+      expect(first.errors).toBeUndefined()
+
+      const second = await saveLocation({}, placeForm({ unlocode, nameEn: 'Second Port', kind: 'seaport' }))
+      expect(second.errors?.unlocode).toContain('already recorded')
     })
 
     it('insists on a country', async () => {

@@ -69,51 +69,7 @@ import { resolveFileStore, unavailableFileStore } from './file-store'
 import { manualFxSource, resolveFxSource } from './fx'
 import { modelProviderFrom, noModel } from './model'
 
-export {
-  smtpChannel,
-  logChannel,
-  sendMail,
-  encodeHeader,
-  SmtpError,
-  type SmtpOptions,
-} from './smtp'
-export { manualFxSource, httpFxSource } from './fx'
-export { manualCarrierTracking, dcsaCredentials } from './carrier-tracking'
-export {
-  dcsaTracking,
-  fetchDcsaEvents,
-  DcsaError,
-  DCSA_CARRIERS,
-  type DcsaTracking,
-  type DcsaCarrierProfile,
-  type DcsaCredential,
-} from './dcsa-tracking'
-export {
-  readDcsaEvents,
-  type DcsaEvent,
-  type DcsaReading,
-  type CarrierEstimates,
-} from './dcsa-events'
-export { imapSource, flattenHtml, toInboundMessage, ImapError, type ImapOptions } from './imap'
-export { noTransmit, aspTransmit } from './einvoice'
-export { manualCustomsFiling } from './customs'
-export {
-  openRouterModel,
-  readCompletion,
-  modelProviderFrom,
-  monthlyBudgetUsd,
-  noModel,
-  ModelError,
-  type OpenRouterOptions,
-} from './model'
-export {
-  s3FileStore,
-  memoryFileStore,
-  parseStorageKey,
-  qualifyKey,
-  FileStoreError,
-  MAX_EXPIRY_SECONDS,
-} from './file-store'
+export { sendMail } from './smtp'
 
 /**
  * A resolver that must not be able to take the deployment down.

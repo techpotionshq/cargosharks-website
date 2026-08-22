@@ -129,3 +129,83 @@ export function inboundStorageKey(
 function dedupe(values: readonly string[]): string[] {
   return [...new Set(values)]
 }
+
+/* -------------------------------------------------------------------------
+   Mail that a machine sent
+   ------------------------------------------------------------------------- */
+
+/**
+ * Senders that are a mail system talking, not a person.
+ *
+ * `MAILER-DAEMON` and `postmaster` are the two every MTA uses; the rest are
+ * the auto-responder conventions of the large providers. Matched on the local
+ * part only, case-insensitively, because the domain is whichever server
+ * bounced it.
+ */
+const DAEMON_LOCAL_PARTS = new Set([
+  'mailer-daemon',
+  'postmaster',
+  'mail-daemon',
+  'maildaemon',
+  'bounce',
+  'bounces',
+  'auto-reply',
+  'autoreply',
+  'noreply-dmarc-support',
+])
+
+/**
+ * Subjects that are a delivery report or an auto-reply in any common MTA's
+ * wording. Anchored loosely on purpose — Exchange, Postfix, Gmail and Exim all
+ * phrase these differently, and a bounce that slipped past here costs one
+ * junk enquiry, while a real enquiry refused here costs a customer. So the
+ * list is the phrasings that are never a person asking for a rate.
+ */
+const AUTOMATIC_SUBJECTS: readonly RegExp[] = [
+  /^undeliverable\b/i,
+  /undelivered mail returned to sender/i,
+  /delivery status notification/i,
+  /^delivery (has )?failed/i,
+  /mail delivery (failed|failure|subsystem)/i,
+  /failure notice/i,
+  /returned mail/i,
+  /^(automatic|auto(matic)?[- ]?reply|autoreply)\b/i,
+  /^out of (the )?office\b/i,
+  /^read:/i,
+  /^(accepted|declined|tentative):/i,
+]
+
+/**
+ * Is this mail from a machine rather than a person?
+ *
+ * Three signals, any one sufficient:
+ *
+ *   1. the adapter said so, from headers only it can see — `automatic`;
+ *   2. the sender is a mail daemon by name;
+ *   3. the subject is a delivery report or an auto-reply.
+ *
+ * Pure, and kept beside the other attribution rules because it is one: it
+ * decides whether a message is *about* anything at all. The failure it
+ * prevents is a loop — a bounce filed as an enquiry notifies the daemon that
+ * bounced it, which bounces again, which files again — and a loop is not a
+ * thing a retry policy or an SLA clock can see from inside. Every turn of it
+ * looked, to every other rule in this system, like a new customer.
+ *
+ * What this must not become is a spam filter. A message from an unknown
+ * person with an odd subject is an enquiry; that is the whole point of
+ * FR-EQ-02. Only mail that *declares itself* automatic, by header, by sender
+ * name, or by a phrasing no person writes to ask for a quote, is refused.
+ */
+export function isAutomaticMail(message: {
+  readonly from: string
+  readonly subject: string
+  readonly automatic?: boolean
+}): boolean {
+  if (message.automatic) return true
+
+  const local = message.from.trim().toLowerCase().split('@')[0] ?? ''
+  if (DAEMON_LOCAL_PARTS.has(local)) return true
+
+  const subject = message.subject.trim()
+  return AUTOMATIC_SUBJECTS.some((pattern) => pattern.test(subject))
+}

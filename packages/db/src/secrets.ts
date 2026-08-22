@@ -171,10 +171,21 @@ export function open(sealed: string): string {
     */
     if (error instanceof SecretKeyError) throw error
 
+    /*
+      "Credential", not "mailbox password".
+
+      The variable is named for the mailboxes because they sealed first, but
+      this function opens every secret in the system — the OpenRouter key, the
+      carrier credentials, the SMTP password — and the old wording sent an
+      operator to the mailbox screen when the row that would not open was the
+      AI integration's. The caller logs which integration and which secret;
+      this sentence only has to be true for all of them.
+    */
     throw new SealedSecretError(
-      'This mailbox password could not be opened. Either MAILBOX_ENCRYPTION_KEY ' +
+      'This sealed credential could not be opened. Either MAILBOX_ENCRYPTION_KEY ' +
         'is not the key it was sealed with, or the stored value has been altered. ' +
-        'Re-enter the password on the mailbox to seal it again.',
+        'Re-enter the credential where it was set — the mailbox, or Settings › ' +
+        'Integrations — to seal it again under the current key.',
     )
   }
 }
