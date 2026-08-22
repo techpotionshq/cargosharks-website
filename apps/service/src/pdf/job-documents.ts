@@ -40,6 +40,7 @@ import {
   customsStages,
   dutyRates,
   equipment,
+  inSeries,
   jobCargo,
   jobParties,
   jobs,
@@ -144,28 +145,31 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
     */
     if (!row) throw new DocumentNotFoundError(jobId, 'job')
 
-    const [parties, cargo, containers, places] = await Promise.all([
-      tx
-        .select()
-        .from(jobParties)
-        .where(eq(jobParties.jobId, jobId))
-        .orderBy(asc(jobParties.role), asc(jobParties.sortOrder)),
-      tx.select().from(jobCargo).where(eq(jobCargo.jobId, jobId)).orderBy(asc(jobCargo.lineNo)),
-      tx.select().from(equipment).where(eq(equipment.jobId, jobId)),
-      tx
-        .select({
-          id: locations.id,
-          nameEn: locations.nameEn,
-          nameAr: locations.nameAr,
-          unlocode: locations.unlocode,
-        })
-        .from(locations)
-        .where(
-          inArray(
-            locations.id,
-            [row.originId, row.destinationId].filter((id): id is string => id !== null),
+    const [parties, cargo, containers, places] = await inSeries([
+      () =>
+        tx
+          .select()
+          .from(jobParties)
+          .where(eq(jobParties.jobId, jobId))
+          .orderBy(asc(jobParties.role), asc(jobParties.sortOrder)),
+      () =>
+        tx.select().from(jobCargo).where(eq(jobCargo.jobId, jobId)).orderBy(asc(jobCargo.lineNo)),
+      () => tx.select().from(equipment).where(eq(equipment.jobId, jobId)),
+      () =>
+        tx
+          .select({
+            id: locations.id,
+            nameEn: locations.nameEn,
+            nameAr: locations.nameAr,
+            unlocode: locations.unlocode,
+          })
+          .from(locations)
+          .where(
+            inArray(
+              locations.id,
+              [row.originId, row.destinationId].filter((id): id is string => id !== null),
+            ),
           ),
-        ),
     ])
 
     const place = (id: string | null) => {
@@ -476,35 +480,42 @@ export async function loadConsolidationDocumentView(
 
     const jobIds = houseRows.map((h) => h.id)
 
-    const [allParties, allCargo, allEquipment, places, partnerRows] = await Promise.all([
-      jobIds.length > 0
-        ? tx.select().from(jobParties).where(inArray(jobParties.jobId, jobIds))
-        : [],
-      jobIds.length > 0 ? tx.select().from(jobCargo).where(inArray(jobCargo.jobId, jobIds)) : [],
-      jobIds.length > 0 ? tx.select().from(equipment).where(inArray(equipment.jobId, jobIds)) : [],
-      tx
-        .select({
-          id: locations.id,
-          nameEn: locations.nameEn,
-          nameAr: locations.nameAr,
-          unlocode: locations.unlocode,
-        })
-        .from(locations)
-        .where(
-          inArray(
-            locations.id,
-            [row.originId, row.destinationId].filter((id): id is string => id !== null),
+    const [allParties, allCargo, allEquipment, places, partnerRows] = await inSeries([
+      () =>
+        jobIds.length > 0
+          ? tx.select().from(jobParties).where(inArray(jobParties.jobId, jobIds))
+          : [],
+      () =>
+        jobIds.length > 0 ? tx.select().from(jobCargo).where(inArray(jobCargo.jobId, jobIds)) : [],
+      () =>
+        jobIds.length > 0
+          ? tx.select().from(equipment).where(inArray(equipment.jobId, jobIds))
+          : [],
+      () =>
+        tx
+          .select({
+            id: locations.id,
+            nameEn: locations.nameEn,
+            nameAr: locations.nameAr,
+            unlocode: locations.unlocode,
+          })
+          .from(locations)
+          .where(
+            inArray(
+              locations.id,
+              [row.originId, row.destinationId].filter((id): id is string => id !== null),
+            ),
           ),
-        ),
-      tx
-        .select({ id: partners.id, nameEn: partners.legalNameEn })
-        .from(partners)
-        .where(
-          inArray(
-            partners.id,
-            [row.carrierPartnerId, row.coloadPartnerId].filter((id): id is string => id !== null),
+      () =>
+        tx
+          .select({ id: partners.id, nameEn: partners.legalNameEn })
+          .from(partners)
+          .where(
+            inArray(
+              partners.id,
+              [row.carrierPartnerId, row.coloadPartnerId].filter((id): id is string => id !== null),
+            ),
           ),
-        ),
     ])
 
     const place = (id: string | null) => {

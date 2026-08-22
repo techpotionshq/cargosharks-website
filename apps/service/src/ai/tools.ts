@@ -37,6 +37,7 @@ import {
   exceptionCodes,
   exceptions,
   freeTimeClocks,
+  inSeries,
   invoices,
   jobCargo,
   jobMilestones,
@@ -173,27 +174,31 @@ async function search(actor: Actor, args: ToolArgs): Promise<unknown> {
   const like = `%${query}%`
 
   return withActor(actor, async (tx: Tx) => {
-    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows] = await Promise.all([
-      tx
-        .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
-        .from(jobs)
-        .where(ilike(jobs.reference, like))
-        .limit(limit),
-      tx
-        .select({ reference: enquiries.reference, status: enquiries.status })
-        .from(enquiries)
-        .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
-        .limit(limit),
-      tx
-        .select({ code: customers.code, name: customers.legalNameEn })
-        .from(customers)
-        .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
-        .limit(limit),
-      tx
-        .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
-        .from(invoices)
-        .where(ilike(invoices.seriesNo, like))
-        .limit(limit),
+    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows] = await inSeries([
+      () =>
+        tx
+          .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
+          .from(jobs)
+          .where(ilike(jobs.reference, like))
+          .limit(limit),
+      () =>
+        tx
+          .select({ reference: enquiries.reference, status: enquiries.status })
+          .from(enquiries)
+          .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
+          .limit(limit),
+      () =>
+        tx
+          .select({ code: customers.code, name: customers.legalNameEn })
+          .from(customers)
+          .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
+          .limit(limit),
+      () =>
+        tx
+          .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
+          .from(invoices)
+          .where(ilike(invoices.seriesNo, like))
+          .limit(limit),
       /*
         Containers hang off `equipment`, not `job_cargo`.
 
@@ -201,12 +206,13 @@ async function search(actor: Actor, args: ToolArgs): Promise<unknown> {
         and `equipment` is the box. Searching the wrong one finds nothing and
         looks exactly like a container we are not handling.
       */
-      tx
-        .select({ container: equipment.containerNo, reference: jobs.reference })
-        .from(equipment)
-        .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-        .where(ilike(equipment.containerNo, like))
-        .limit(limit),
+      () =>
+        tx
+          .select({ container: equipment.containerNo, reference: jobs.reference })
+          .from(equipment)
+          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+          .where(ilike(equipment.containerNo, like))
+          .limit(limit),
     ])
 
     return {
@@ -254,72 +260,78 @@ async function getJob(actor: Actor, args: ToolArgs): Promise<unknown> {
     */
     if (!job) return { found: false, reference }
 
-    const [milestones, cargo, containers, openExceptions, customs, charges] = await Promise.all([
-      tx
-        .select({
-          code: jobMilestones.code,
-          name: jobMilestones.nameEn,
-          plannedAt: jobMilestones.plannedAt,
-          actualAt: jobMilestones.actualAt,
-        })
-        .from(jobMilestones)
-        .where(eq(jobMilestones.jobId, job.id))
-        .orderBy(jobMilestones.seq)
-        .limit(ASSISTANT_LIMITS.maxRows),
-      tx
-        .select({
-          description: jobCargo.descriptionEn,
-          packages: jobCargo.packageCount,
-          packageType: jobCargo.packageType,
-          grossWeightKg: jobCargo.grossWeightKg,
-          volumeCbm: jobCargo.volumeCbm,
-          hsCode: jobCargo.hsCode,
-        })
-        .from(jobCargo)
-        .where(eq(jobCargo.jobId, job.id))
-        .limit(ASSISTANT_LIMITS.maxRows),
-      tx
-        .select({
-          container: equipment.containerNo,
-          containerType: equipment.containerType,
-          sealNo: equipment.sealNo,
-          grossWeightKg: equipment.grossWeightKg,
-        })
-        .from(equipment)
-        .where(eq(equipment.jobId, job.id))
-        .limit(ASSISTANT_LIMITS.maxRows),
-      tx
-        .select({
-          code: exceptionCodes.code,
-          severity: exceptions.severity,
-          openedAt: exceptions.openedAt,
-          dueAt: exceptions.dueAt,
-          description: exceptions.description,
-        })
-        .from(exceptions)
-        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-        .where(and(eq(exceptions.jobId, job.id), isNull(exceptions.closedAt)))
-        .limit(ASSISTANT_LIMITS.maxRows),
-      tx
-        .select({
-          status: customsStages.status,
-          declarationNo: customsStages.declarationNo,
-          dutyAmount: customsStages.dutyAmount,
-          dutyCurrency: customsStages.dutyCurrency,
-        })
-        .from(customsStages)
-        .where(eq(customsStages.jobId, job.id))
-        .limit(5),
-      tx
-        .select({
-          description: chargeLines.description,
-          direction: chargeLines.direction,
-          amount: chargeLines.amount,
-          currency: chargeLines.currency,
-        })
-        .from(chargeLines)
-        .where(eq(chargeLines.jobId, job.id))
-        .limit(ASSISTANT_LIMITS.maxRows),
+    const [milestones, cargo, containers, openExceptions, customs, charges] = await inSeries([
+      () =>
+        tx
+          .select({
+            code: jobMilestones.code,
+            name: jobMilestones.nameEn,
+            plannedAt: jobMilestones.plannedAt,
+            actualAt: jobMilestones.actualAt,
+          })
+          .from(jobMilestones)
+          .where(eq(jobMilestones.jobId, job.id))
+          .orderBy(jobMilestones.seq)
+          .limit(ASSISTANT_LIMITS.maxRows),
+      () =>
+        tx
+          .select({
+            description: jobCargo.descriptionEn,
+            packages: jobCargo.packageCount,
+            packageType: jobCargo.packageType,
+            grossWeightKg: jobCargo.grossWeightKg,
+            volumeCbm: jobCargo.volumeCbm,
+            hsCode: jobCargo.hsCode,
+          })
+          .from(jobCargo)
+          .where(eq(jobCargo.jobId, job.id))
+          .limit(ASSISTANT_LIMITS.maxRows),
+      () =>
+        tx
+          .select({
+            container: equipment.containerNo,
+            containerType: equipment.containerType,
+            sealNo: equipment.sealNo,
+            grossWeightKg: equipment.grossWeightKg,
+          })
+          .from(equipment)
+          .where(eq(equipment.jobId, job.id))
+          .limit(ASSISTANT_LIMITS.maxRows),
+      () =>
+        tx
+          .select({
+            code: exceptionCodes.code,
+            severity: exceptions.severity,
+            openedAt: exceptions.openedAt,
+            dueAt: exceptions.dueAt,
+            description: exceptions.description,
+          })
+          .from(exceptions)
+          .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+          .where(and(eq(exceptions.jobId, job.id), isNull(exceptions.closedAt)))
+          .limit(ASSISTANT_LIMITS.maxRows),
+      () =>
+        tx
+          .select({
+            status: customsStages.status,
+            declarationNo: customsStages.declarationNo,
+            dutyAmount: customsStages.dutyAmount,
+            dutyCurrency: customsStages.dutyCurrency,
+          })
+          .from(customsStages)
+          .where(eq(customsStages.jobId, job.id))
+          .limit(5),
+      () =>
+        tx
+          .select({
+            description: chargeLines.description,
+            direction: chargeLines.direction,
+            amount: chargeLines.amount,
+            currency: chargeLines.currency,
+          })
+          .from(chargeLines)
+          .where(eq(chargeLines.jobId, job.id))
+          .limit(ASSISTANT_LIMITS.maxRows),
     ])
 
     return {
@@ -535,33 +547,35 @@ async function supplierVariance(actor: Actor, args: ToolArgs): Promise<unknown> 
 
     if (!job) return { found: false, reference }
 
-    const [billed, accrued] = await Promise.all([
-      tx
-        .select({
-          supplier: partners.legalNameEn,
-          invoice: supplierInvoices.reference,
-          description: supplierInvoiceLines.description,
-          amount: supplierInvoiceLines.amount,
-          currency: supplierInvoices.currency,
-          status: supplierInvoices.status,
-        })
-        .from(supplierInvoiceLines)
-        .innerJoin(
-          supplierInvoices,
-          eq(supplierInvoices.id, supplierInvoiceLines.supplierInvoiceId),
-        )
-        .innerJoin(partners, eq(partners.id, supplierInvoices.partnerId))
-        .where(eq(supplierInvoiceLines.jobId, job.id))
-        .limit(ASSISTANT_LIMITS.maxRows),
-      tx
-        .select({
-          description: chargeLines.description,
-          amount: chargeLines.amount,
-          currency: chargeLines.currency,
-        })
-        .from(chargeLines)
-        .where(and(eq(chargeLines.jobId, job.id), eq(chargeLines.direction, 'cost')))
-        .limit(ASSISTANT_LIMITS.maxRows),
+    const [billed, accrued] = await inSeries([
+      () =>
+        tx
+          .select({
+            supplier: partners.legalNameEn,
+            invoice: supplierInvoices.reference,
+            description: supplierInvoiceLines.description,
+            amount: supplierInvoiceLines.amount,
+            currency: supplierInvoices.currency,
+            status: supplierInvoices.status,
+          })
+          .from(supplierInvoiceLines)
+          .innerJoin(
+            supplierInvoices,
+            eq(supplierInvoices.id, supplierInvoiceLines.supplierInvoiceId),
+          )
+          .innerJoin(partners, eq(partners.id, supplierInvoices.partnerId))
+          .where(eq(supplierInvoiceLines.jobId, job.id))
+          .limit(ASSISTANT_LIMITS.maxRows),
+      () =>
+        tx
+          .select({
+            description: chargeLines.description,
+            amount: chargeLines.amount,
+            currency: chargeLines.currency,
+          })
+          .from(chargeLines)
+          .where(and(eq(chargeLines.jobId, job.id), eq(chargeLines.direction, 'cost')))
+          .limit(ASSISTANT_LIMITS.maxRows),
     ])
 
     return { found: true, reference, billed, accrued }

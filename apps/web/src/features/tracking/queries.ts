@@ -32,6 +32,7 @@ import {
   equipment,
   exceptionCodes,
   exceptions,
+  inSeries,
   jobMilestones,
   jobs,
   locations,
@@ -131,67 +132,71 @@ export async function trackShipment(
 
     if (!row) return undefined
 
-    const [milestoneRows, containerRows, documentRows, noticeRows] = await Promise.all([
-      tx
-        .select({
-          code: jobMilestones.code,
-          nameEn: jobMilestones.nameEn,
-          nameAr: jobMilestones.nameAr,
-          plannedAt: jobMilestones.plannedAt,
-          revisedAt: jobMilestones.revisedAt,
-          actualAt: jobMilestones.actualAt,
-        })
-        .from(jobMilestones)
-        // The flag is honoured here, not in the component (FR-DC-03).
-        .where(and(eq(jobMilestones.jobId, row.id), eq(jobMilestones.customerVisible, true)))
-        .orderBy(asc(jobMilestones.seq)),
-      tx
-        .select({
-          containerNo: equipment.containerNo,
-          type: equipment.containerType,
-          dischargedAt: equipment.dischargedAt,
-          gateOutAt: equipment.gateOutAt,
-          emptyReturnedAt: equipment.emptyReturnedAt,
-        })
-        .from(equipment)
-        .where(eq(equipment.jobId, row.id)),
-      tx
-        .select({
-          id: documents.id,
-          version: documents.version,
-          releasedAt: documents.releasedAt,
-          code: documentTypes.code,
-          nameEn: documentTypes.nameEn,
-          nameAr: documentTypes.nameAr,
-          byteSize: assets.byteSize,
-        })
-        .from(documents)
-        .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
-        .innerJoin(assets, eq(assets.id, documents.assetId))
-        .where(
-          and(
-            eq(documents.jobId, row.id),
-            // Released, current, and of a type marked customer-visible.
-            sql`${documents.releasedAt} is not null`,
-            isNull(documents.supersededById),
-            eq(documentTypes.isCustomerVisible, true),
+    const [milestoneRows, containerRows, documentRows, noticeRows] = await inSeries([
+      () =>
+        tx
+          .select({
+            code: jobMilestones.code,
+            nameEn: jobMilestones.nameEn,
+            nameAr: jobMilestones.nameAr,
+            plannedAt: jobMilestones.plannedAt,
+            revisedAt: jobMilestones.revisedAt,
+            actualAt: jobMilestones.actualAt,
+          })
+          .from(jobMilestones)
+          // The flag is honoured here, not in the component (FR-DC-03).
+          .where(and(eq(jobMilestones.jobId, row.id), eq(jobMilestones.customerVisible, true)))
+          .orderBy(asc(jobMilestones.seq)),
+      () =>
+        tx
+          .select({
+            containerNo: equipment.containerNo,
+            type: equipment.containerType,
+            dischargedAt: equipment.dischargedAt,
+            gateOutAt: equipment.gateOutAt,
+            emptyReturnedAt: equipment.emptyReturnedAt,
+          })
+          .from(equipment)
+          .where(eq(equipment.jobId, row.id)),
+      () =>
+        tx
+          .select({
+            id: documents.id,
+            version: documents.version,
+            releasedAt: documents.releasedAt,
+            code: documentTypes.code,
+            nameEn: documentTypes.nameEn,
+            nameAr: documentTypes.nameAr,
+            byteSize: assets.byteSize,
+          })
+          .from(documents)
+          .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
+          .innerJoin(assets, eq(assets.id, documents.assetId))
+          .where(
+            and(
+              eq(documents.jobId, row.id),
+              // Released, current, and of a type marked customer-visible.
+              sql`${documents.releasedAt} is not null`,
+              isNull(documents.supersededById),
+              eq(documentTypes.isCustomerVisible, true),
+            ),
           ),
-        ),
-      tx
-        .select({
-          code: exceptionCodes.code,
-          nameEn: exceptionCodes.nameEn,
-          nameAr: exceptionCodes.nameAr,
-        })
-        .from(exceptions)
-        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-        .where(
-          and(
-            eq(exceptions.jobId, row.id),
-            isNull(exceptions.closedAt),
-            eq(exceptions.customerVisible, true),
+      () =>
+        tx
+          .select({
+            code: exceptionCodes.code,
+            nameEn: exceptionCodes.nameEn,
+            nameAr: exceptionCodes.nameAr,
+          })
+          .from(exceptions)
+          .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+          .where(
+            and(
+              eq(exceptions.jobId, row.id),
+              isNull(exceptions.closedAt),
+              eq(exceptions.customerVisible, true),
+            ),
           ),
-        ),
     ])
 
     return {

@@ -234,6 +234,18 @@ export function Input({
       id={field.name}
       name={field.name}
       type={type}
+      /*
+        The field takes its direction from what is in it, not from the page.
+
+        Half these forms carry a matched pair — legal name and legal name in
+        Arabic, an English notification template beside its Arabic one — and
+        under an English interface the Arabic one rendered as a left-to-right
+        paragraph: the full stop jumped to the head of the line and a
+        `{{placeholder}}` landed on the wrong side of the sentence it belonged
+        to. `auto` is the platform's answer, resolved per field from the first
+        strong character, and it is inert for the numeric and date types.
+      */
+      dir="auto"
       defaultValue={defaultValue ?? ''}
       placeholder={placeholder}
       step={step}
@@ -344,6 +356,8 @@ export function Textarea({
         id={field.name}
         name={field.name}
         rows={rows}
+        /* Per-field direction — see the same attribute on `Input`. */
+        dir="auto"
         defaultValue={defaultValue ?? ''}
         placeholder={placeholder}
         required={field.required}
@@ -503,16 +517,29 @@ export function Submit({
   pendingLabel,
   icon = 'check',
   variant = 'primary',
+  form,
+  pending: reported,
 }: {
   readonly children: ReactNode
   readonly pendingLabel?: ReactNode
   readonly icon?: IconName
   readonly variant?: 'primary' | 'danger'
+  /**
+   * The id of a form this button is *not* inside — a dialog footer, which is a
+   * sibling of the form so that it does not scroll with the fields.
+   *
+   * `useFormStatus` cannot see across that boundary, so a caller passing
+   * `form` must pass `pending` too. `useActionState` returns it.
+   */
+  readonly form?: string
+  readonly pending?: boolean
 }) {
-  const { pending } = useFormStatus()
+  const status = useFormStatus()
+  const pending = reported ?? status.pending
   return (
     <button
       type="submit"
+      form={form}
       disabled={pending}
       className={[
         'inline-flex h-9 items-center gap-1.5 rounded-sm px-4 text-[0.875rem] font-semibold transition-colors disabled:opacity-60',

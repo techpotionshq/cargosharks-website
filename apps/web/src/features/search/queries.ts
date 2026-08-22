@@ -21,14 +21,7 @@
 import 'server-only'
 import { asc, desc, eq, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import {
-  customers,
-  equipment,
-  jobs,
-  locations,
-  withActor,
-  type Actor,
-} from '@qabandi/db'
+import { customers, equipment, inSeries, jobs, locations, withActor, type Actor } from '@qabandi/db'
 import type { Mode } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
@@ -44,12 +37,7 @@ const destination = alias(locations, 'destination')
  * reads as a wrong answer rather than a right one.
  */
 export type JobMatch =
-  | 'reference'
-  | 'masterBill'
-  | 'houseBill'
-  | 'booking'
-  | 'customerReference'
-  | 'customer'
+  'reference' | 'masterBill' | 'houseBill' | 'booking' | 'customerReference' | 'customer'
 
 export interface JobHit {
   readonly id: string
@@ -143,80 +131,83 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
     perceived cost of the box.
   */
   return withActor(actor, async (tx) => {
-    const [jobRows, containerRows, customerRows] = await Promise.all([
-      tx
-        .select({
-          id: jobs.id,
-          reference: jobs.reference,
-          status: jobs.status,
-          mode: jobs.mode,
-          eta: jobs.eta,
-          masterBillNumber: jobs.masterBillNumber,
-          houseBillNumber: jobs.houseBillNumber,
-          bookingNumber: jobs.bookingNumber,
-          customerReference: jobs.customerReference,
-          customerName: customers.legalNameEn,
-          customerNameAr: customers.legalNameAr,
-          originName: origin.nameEn,
-          originNameAr: origin.nameAr,
-          destinationName: destination.nameEn,
-          destinationNameAr: destination.nameAr,
-        })
-        .from(jobs)
-        .leftJoin(customers, eq(customers.id, jobs.customerId))
-        .leftJoin(origin, eq(origin.id, jobs.originId))
-        .leftJoin(destination, eq(destination.id, jobs.destinationId))
-        .where(
-          or(
-            sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
-            sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
-            sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
-            sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
-            sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
-            sql`${customers.legalNameEn} ilike ${loose}`,
-            sql`${customers.legalNameAr} ilike ${loose}`,
-          ),
-        )
-        // The live board's order: what is arriving soonest, then what moved last.
-        .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
-        .limit(LIMIT),
+    const [jobRows, containerRows, customerRows] = await inSeries([
+      () =>
+        tx
+          .select({
+            id: jobs.id,
+            reference: jobs.reference,
+            status: jobs.status,
+            mode: jobs.mode,
+            eta: jobs.eta,
+            masterBillNumber: jobs.masterBillNumber,
+            houseBillNumber: jobs.houseBillNumber,
+            bookingNumber: jobs.bookingNumber,
+            customerReference: jobs.customerReference,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            originName: origin.nameEn,
+            originNameAr: origin.nameAr,
+            destinationName: destination.nameEn,
+            destinationNameAr: destination.nameAr,
+          })
+          .from(jobs)
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .where(
+            or(
+              sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
+              sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
+              sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
+              sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
+              sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
+              sql`${customers.legalNameEn} ilike ${loose}`,
+              sql`${customers.legalNameAr} ilike ${loose}`,
+            ),
+          )
+          // The live board's order: what is arriving soonest, then what moved last.
+          .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
+          .limit(LIMIT),
 
-      tx
-        .select({
-          containerNo: equipment.containerNo,
-          type: equipment.containerType,
-          jobId: jobs.id,
-          jobReference: jobs.reference,
-          jobStatus: jobs.status,
-        })
-        .from(equipment)
-        .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-        .where(sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`)
-        .orderBy(asc(equipment.containerNo))
-        .limit(LIMIT),
+      () =>
+        tx
+          .select({
+            containerNo: equipment.containerNo,
+            type: equipment.containerType,
+            jobId: jobs.id,
+            jobReference: jobs.reference,
+            jobStatus: jobs.status,
+          })
+          .from(equipment)
+          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+          .where(sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`)
+          .orderBy(asc(equipment.containerNo))
+          .limit(LIMIT),
 
-      tx
-        .select({
-          id: customers.id,
-          code: customers.code,
-          legalNameEn: customers.legalNameEn,
-          legalNameAr: customers.legalNameAr,
-          openJobs: sql<number>`(
+      () =>
+        tx
+          .select({
+            id: customers.id,
+            code: customers.code,
+            legalNameEn: customers.legalNameEn,
+            legalNameAr: customers.legalNameAr,
+            openJobs: sql<number>`(
             select count(*)::int from jobs j
              where j.customer_id = "customers"."id"
                and j.status not in ('closed', 'cancelled')
           )`,
-        })
-        .from(customers)
-        .where(
-          or(
-            sql`${customers.legalNameEn} ilike ${loose}`,
-            sql`${customers.legalNameAr} ilike ${loose}`,
-            sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
-          ),
-        )
-        .orderBy(asc(customers.legalNameEn))
-        .limit(LIMIT),
+          })
+          .from(customers)
+          .where(
+            or(
+              sql`${customers.legalNameEn} ilike ${loose}`,
+              sql`${customers.legalNameAr} ilike ${loose}`,
+              sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
+            ),
+          )
+          .orderBy(asc(customers.legalNameEn))
+          .limit(LIMIT),
     ])
 
     return {
@@ -342,8 +333,7 @@ function searchFixtures(term: string): SearchResults {
       matchesTight(identifiers.houseBill) ||
       matchesTight(identifiers.booking) ||
       matchesTight(identifiers.customerReference)
-    const hitByCustomer =
-      matchesLoose(summary.customerName) || matchesLoose(summary.customerNameAr)
+    const hitByCustomer = matchesLoose(summary.customerName) || matchesLoose(summary.customerNameAr)
 
     if (hitByIdentifier || hitByCustomer) {
       jobHits.push({

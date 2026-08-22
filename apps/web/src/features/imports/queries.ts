@@ -15,6 +15,7 @@ import {
   currencies,
   customers,
   incoterms,
+  inSeries,
   invoices,
   jobs,
   locations,
@@ -59,9 +60,9 @@ export async function loadReference(actor: Actor, kind: ImportKind): Promise<Imp
     }
 
     if (kind === 'rate-cards') {
-      const [places, charges] = await Promise.all([
-        tx.select({ unlocode: locations.unlocode }).from(locations),
-        tx.select({ key: chargeTypes.key }).from(chargeTypes),
+      const [places, charges] = await inSeries([
+        () => tx.select({ unlocode: locations.unlocode }).from(locations),
+        () => tx.select({ key: chargeTypes.key }).from(chargeTypes),
       ])
       lookups.locations = new Set(
         places
@@ -104,10 +105,10 @@ export async function loadReference(actor: Actor, kind: ImportKind): Promise<Imp
       created rather than producing a duplicate board.
     */
     if (kind === 'open-jobs') {
-      const [places, terms, references] = await Promise.all([
-        tx.select({ unlocode: locations.unlocode }).from(locations),
-        tx.select({ code: incoterms.code }).from(incoterms),
-        tx.select({ reference: jobs.reference }).from(jobs),
+      const [places, terms, references] = await inSeries([
+        () => tx.select({ unlocode: locations.unlocode }).from(locations),
+        () => tx.select({ code: incoterms.code }).from(incoterms),
+        () => tx.select({ reference: jobs.reference }).from(jobs),
       ])
       lookups.locations = new Set(
         places

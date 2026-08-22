@@ -26,6 +26,7 @@ import {
   exceptionCodes,
   exceptions,
   freeTimeClocks,
+  inSeries,
   jobMilestones,
   jobPartners,
   jobs,
@@ -338,40 +339,37 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
 
     if (!row) return undefined
 
-    const [
-      milestoneRows,
-      containerRows,
-      clockRows,
-      documentRows,
-      exceptionRows,
-      partnerRows,
-    ] = await Promise.all([
-        tx
-          .select()
-          .from(jobMilestones)
-          .where(eq(jobMilestones.jobId, id))
-          .orderBy(asc(jobMilestones.seq)),
-        tx.select().from(equipment).where(eq(equipment.jobId, id)),
-        tx
-          .select()
-          .from(freeTimeClocks)
-          .where(eq(freeTimeClocks.jobId, id))
-          .orderBy(desc(freeTimeClocks.accruedAmount)),
-        tx
-          .select({
-            id: documents.id,
-            version: documents.version,
-            releasedAt: documents.releasedAt,
-            code: documentTypes.code,
-            nameEn: documentTypes.nameEn,
-            nameAr: documentTypes.nameAr,
-            byteSize: assets.byteSize,
-          })
-          .from(documents)
-          .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
-          .innerJoin(assets, eq(assets.id, documents.assetId))
-          .where(and(eq(documents.jobId, id), isNull(documents.supersededById))),
-        listExceptionRows(tx, id),
+    const [milestoneRows, containerRows, clockRows, documentRows, exceptionRows, partnerRows] =
+      await inSeries([
+        () =>
+          tx
+            .select()
+            .from(jobMilestones)
+            .where(eq(jobMilestones.jobId, id))
+            .orderBy(asc(jobMilestones.seq)),
+        () => tx.select().from(equipment).where(eq(equipment.jobId, id)),
+        () =>
+          tx
+            .select()
+            .from(freeTimeClocks)
+            .where(eq(freeTimeClocks.jobId, id))
+            .orderBy(desc(freeTimeClocks.accruedAmount)),
+        () =>
+          tx
+            .select({
+              id: documents.id,
+              version: documents.version,
+              releasedAt: documents.releasedAt,
+              code: documentTypes.code,
+              nameEn: documentTypes.nameEn,
+              nameAr: documentTypes.nameAr,
+              byteSize: assets.byteSize,
+            })
+            .from(documents)
+            .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
+            .innerJoin(assets, eq(assets.id, documents.assetId))
+            .where(and(eq(documents.jobId, id), isNull(documents.supersededById))),
+        () => listExceptionRows(tx, id),
         /*
           Who we engaged, as against who is named on the bill.
 
@@ -380,18 +378,19 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
           the work with, which is a different list and the one that decides
           who gets settled with.
         */
-        tx
-          .select({
-            id: jobPartners.id,
-            partnerId: jobPartners.partnerId,
-            name: partners.legalNameEn,
-            role: jobPartners.role,
-            reference: jobPartners.reference,
-          })
-          .from(jobPartners)
-          .innerJoin(partners, eq(partners.id, jobPartners.partnerId))
-          .where(eq(jobPartners.jobId, id))
-          .orderBy(asc(jobPartners.role)),
+        () =>
+          tx
+            .select({
+              id: jobPartners.id,
+              partnerId: jobPartners.partnerId,
+              name: partners.legalNameEn,
+              role: jobPartners.role,
+              reference: jobPartners.reference,
+            })
+            .from(jobPartners)
+            .innerJoin(partners, eq(partners.id, jobPartners.partnerId))
+            .where(eq(jobPartners.jobId, id))
+            .orderBy(asc(jobPartners.role)),
       ])
 
     const summary = toJobSummary(row as JobRow)

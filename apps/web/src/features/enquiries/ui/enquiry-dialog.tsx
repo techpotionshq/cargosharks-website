@@ -19,7 +19,7 @@
  * how enquiries end up in someone's inbox instead.
  */
 
-import { useActionState } from 'react'
+import { useActionState, useId } from 'react'
 import { submitEnquiry } from '../form-actions'
 import type { Choice } from '@/lib/options'
 import type { ActionState } from '@/lib/form-state'
@@ -99,9 +99,10 @@ export function EnquiryDialog({
   readonly defaultBranchId?: string
   readonly variant?: 'primary' | 'secondary'
 }) {
-  const [state, formAction] = useActionState<ActionState, FormData>(submitEnquiry, {})
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(submitEnquiry, {})
   const error = (key: string) => state.errors?.[key]
   const value = (key: string) => state.values?.[key]
+  const formId = useId()
 
   return (
     <Modal
@@ -125,15 +126,26 @@ export function EnquiryDialog({
           {labels.open}
         </button>
       )}
+      /*
+        Cancel and Submit sit in the dialog's footer, which does not scroll —
+        this form runs to three sections and the way to send it used to be
+        below the fold on every screen smaller than a desktop.
+
+        The footer is a sibling of the `<form>`, so the button reaches it by
+        `form=` and `useFormStatus` cannot see across that boundary. Hence the
+        explicit `pending`: without it the button would never disable and a
+        second click would create a second enquiry.
+      */
+      footer={
+        <>
+          <ModalCancel>{labels.cancel}</ModalCancel>
+          <Submit form={formId} pending={pending} pendingLabel={labels.submitting} icon="plus">
+            {labels.submit}
+          </Submit>
+        </>
+      }
     >
-      {/*
-        The submit lives *inside* the form, at the end of the scrolling body,
-        rather than in the dialog's footer slot. `useFormStatus` only reports
-        the status of the form its component is rendered inside, so a footer
-        button outside the `<form>` would never show a pending state and would
-        happily accept a second click that creates a second enquiry.
-      */}
-      <form action={formAction}>
+      <form id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} />
 
@@ -319,12 +331,6 @@ export function EnquiryDialog({
             />
           </FormSection>
 
-          <div className="col-span-12 flex justify-end gap-2 border-t border-line pt-4">
-            <ModalCancel>{labels.cancel}</ModalCancel>
-            <Submit pendingLabel={labels.submitting} icon="plus">
-              {labels.submit}
-            </Submit>
-          </div>
         </FormGrid>
       </form>
     </Modal>

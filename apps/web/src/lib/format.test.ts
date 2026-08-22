@@ -74,14 +74,20 @@ describe('formatMoney', () => {
   })
 
   /**
-   * Lower-case `k`, because the application formats as `en-GB`.
+   * Case-insensitive, because the casing is CLDR's to choose and not ours.
    *
-   * `intlLocale` maps every non-Arabic locale to `en-GB`, and CLDR's British
-   * English compact notation is `25k` where American English is `25K`. The
-   * assertion was written against the latter and had never matched.
+   * This assertion has now been wrong twice in opposite directions. It was
+   * first written against `25K`, then "fixed" to `25k` on the reasoning that
+   * `intlLocale` maps every non-Arabic locale to `en-GB` and British English
+   * compacts to a lower-case `k`. That reasoning is wrong for currency: both
+   * `en-GB` and `en-US` produce `KWD 25K` under a full-ICU Node.
+   *
+   * What this test is actually for is that the threshold works — that 25,000
+   * comes back compacted where 9,999 does not. Pinning the letter's case makes
+   * a CLDR revision look like a regression in our formatting, so match either.
    */
   it('compacts at and above ten thousand', () => {
-    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(/25k/)
+    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(/25k/i)
   })
 
   /**

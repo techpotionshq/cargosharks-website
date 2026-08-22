@@ -162,6 +162,8 @@ describe('settings areas', () => {
       'support',
       'notifications',
       'apiKeys',
+      'mailboxes',
+      'integrations',
       'brand',
     ])
   })

@@ -19,9 +19,24 @@ export default defineConfig({
     setupFiles: ['test/setup.ts'],
     environment: 'node',
     fileParallelism: false,
-    testTimeout: 30_000,
+    /*
+      Sixty rather than thirty, for the reason `apps/web` already documents.
+
+      Thirty was chosen against a database on localhost. Against one across a
+      network a fixture-heavy worker test — seed a clock, accrue it, read the
+      ledger back — is a dozen round trips and reaches half a minute without
+      anything being wrong. Against the shared development server the suite
+      failed twenty-two tests, every one of them reporting exactly 30000ms.
+      That the number never varies is the tell: it is the timeout firing, not
+      the code hanging.
+
+      Still a backstop against a query that has genuinely stopped, not a
+      performance assertion. If these need to be fast, the fix is a database on
+      localhost, not a smaller number here.
+    */
+    testTimeout: 60_000,
     // Fixtures are inserted over the same link as the assertions; the default
     // ten seconds is a timeout on the network, not on the code under test.
-    hookTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 })

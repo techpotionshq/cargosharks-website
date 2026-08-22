@@ -164,6 +164,33 @@
     font-family: var(--qb-font-arabic);
   }
 
+  /**
+   * A dialog takes its direction from the document, never from its trigger.
+   *
+   * `<dialog>` paints in the top layer but stays a *DOM child* of whatever
+   * opened it, so it inherits that element's `text-align` and `direction`.
+   * Every row-level edit dialog in the product opens from a table's actions
+   * cell, and that cell carries `text-end` — which handed the entire dialog
+   * right-aligned labels, hints and headings while the interface was in
+   * English, and left-aligned ones in Arabic. It read as a mirrored screen and
+   * it was really one inherited declaration.
+   *
+   * `direction` is pinned from the root rather than left to inherit for the
+   * same reason: a preview block marked `dir="rtl"` (the Arabic notification
+   * templates) must not flip a dialog opened from inside it.
+   */
+  dialog {
+    text-align: start;
+  }
+
+  :root[dir='ltr'] dialog {
+    direction: ltr;
+  }
+
+  :root[dir='rtl'] dialog {
+    direction: rtl;
+  }
+
   /** One visible focus treatment, brand-coloured, on every interactive thing. */
   :focus-visible {
     outline: 2px solid var(--qb-focus);

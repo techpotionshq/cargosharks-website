@@ -22,6 +22,7 @@ import {
   exceptionCodes,
   exceptions,
   freeTimeClocks,
+  inSeries,
   jobs,
   locations,
   principals,
@@ -62,33 +63,36 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       slaWatch,
       arrivals,
       topLanes,
-    ] = await Promise.all([
-      tx
-        .select({
-          open: sql<number>`count(*) filter (where ${OPEN_ENQUIRY})::int`,
-          unassigned: sql<number>`count(*) filter (where ${OPEN_ENQUIRY} and ${enquiries.ownerId} is null)::int`,
-          breached: sql<number>`count(*) filter (
+    ] = await inSeries([
+      () =>
+        tx
+          .select({
+            open: sql<number>`count(*) filter (where ${OPEN_ENQUIRY})::int`,
+            unassigned: sql<number>`count(*) filter (where ${OPEN_ENQUIRY} and ${enquiries.ownerId} is null)::int`,
+            breached: sql<number>`count(*) filter (
             where ${OPEN_ENQUIRY}
               and ${enquiries.firstRespondedAt} is null
               and ${enquiries.slaDueAt} < now()
           )::int`,
-          dueToday: sql<number>`count(*) filter (
+            dueToday: sql<number>`count(*) filter (
             where ${OPEN_ENQUIRY}
               and ${enquiries.firstRespondedAt} is null
               and ${enquiries.slaDueAt} between now() and ${dayAhead}
           )::int`,
-        })
-        .from(enquiries),
+          })
+          .from(enquiries),
 
-      tx
-        .select({ status: enquiries.status, count: sql<number>`count(*)::int` })
-        .from(enquiries)
-        .where(OPEN_ENQUIRY)
-        .groupBy(enquiries.status),
+      () =>
+        tx
+          .select({ status: enquiries.status, count: sql<number>`count(*)::int` })
+          .from(enquiries)
+          .where(OPEN_ENQUIRY)
+          .groupBy(enquiries.status),
 
       // Fourteen days of intake, zero-filled by the generated series so a
       // quiet weekend renders as a gap rather than vanishing from the axis.
-      tx.execute(sql`
+      () =>
+        tx.execute(sql`
         select to_char(d.day, 'DD Mon') as label,
                count(${enquiries.id})::int as value
           from generate_series(${fortnightAgo}::date, ${now}::date, interval '1 day') as d(day)
@@ -99,153 +103,162 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
          order by d.day
       `),
 
-      tx
-        .select({
-          live: sql<number>`count(*) filter (where ${LIVE})::int`,
-          arriving: sql<number>`count(*) filter (
+      () =>
+        tx
+          .select({
+            live: sql<number>`count(*) filter (where ${LIVE})::int`,
+            arriving: sql<number>`count(*) filter (
             where ${LIVE} and ${jobs.eta} between now() and ${weekAhead}
           )::int`,
-          onHold: sql<number>`count(*) filter (where ${jobs.status} = 'on_hold')::int`,
-        })
-        .from(jobs),
+            onHold: sql<number>`count(*) filter (where ${jobs.status} = 'on_hold')::int`,
+          })
+          .from(jobs),
 
-      tx
-        .select({ status: jobs.status, count: sql<number>`count(*)::int` })
-        .from(jobs)
-        .where(LIVE)
-        .groupBy(jobs.status),
+      () =>
+        tx
+          .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+          .from(jobs)
+          .where(LIVE)
+          .groupBy(jobs.status),
 
-      tx
-        .select({ mode: jobs.mode, count: sql<number>`count(*)::int` })
-        .from(jobs)
-        .where(LIVE)
-        .groupBy(jobs.mode),
+      () =>
+        tx
+          .select({ mode: jobs.mode, count: sql<number>`count(*)::int` })
+          .from(jobs)
+          .where(LIVE)
+          .groupBy(jobs.mode),
 
-      tx
-        .select({
-          sent: sql<number>`count(*) filter (where ${quotes.sentAt} >= ${monthStart})::int`,
-          won: sql<number>`count(*) filter (where ${quotes.status} = 'accepted')::int`,
-          decided: sql<number>`count(*) filter (where ${quotes.status} in ('accepted','rejected'))::int`,
-          value: sql<
-            string | null
-          >`sum(${quotes.totalSell}) filter (where ${quotes.sentAt} >= ${monthStart})`,
-          // Margin from the frozen snapshot, never recomputed from today's
-          // rate card — that is the whole point of `priced_snapshot` (§6.3).
-          margin: sql<string | null>`avg(
+      () =>
+        tx
+          .select({
+            sent: sql<number>`count(*) filter (where ${quotes.sentAt} >= ${monthStart})::int`,
+            won: sql<number>`count(*) filter (where ${quotes.status} = 'accepted')::int`,
+            decided: sql<number>`count(*) filter (where ${quotes.status} in ('accepted','rejected'))::int`,
+            value: sql<
+              string | null
+            >`sum(${quotes.totalSell}) filter (where ${quotes.sentAt} >= ${monthStart})`,
+            // Margin from the frozen snapshot, never recomputed from today's
+            // rate card — that is the whole point of `priced_snapshot` (§6.3).
+            margin: sql<string | null>`avg(
             nullif(${quotes.totalSell}, 0) - coalesce(${quotes.totalCost}, 0)
           ) / nullif(avg(nullif(${quotes.totalSell}, 0)), 0) * 100`,
-          medianMinutes: sql<string | null>`percentile_cont(0.5) within group (
+            medianMinutes: sql<string | null>`percentile_cont(0.5) within group (
             order by extract(epoch from (${quotes.sentAt} - ${quotes.createdAt})) / 60
           )`,
-        })
-        .from(quotes),
+          })
+          .from(quotes),
 
-      tx
-        .select({
-          running: sql<number>`count(*)::int`,
-          accrued: sql<string | null>`sum(${freeTimeClocks.accruedAmount})`,
-          atRisk: sql<number>`count(*) filter (where ${freeTimeClocks.accruedDays} > 0)::int`,
-        })
-        .from(freeTimeClocks)
-        .where(isNull(freeTimeClocks.endsOn)),
+      () =>
+        tx
+          .select({
+            running: sql<number>`count(*)::int`,
+            accrued: sql<string | null>`sum(${freeTimeClocks.accruedAmount})`,
+            atRisk: sql<number>`count(*) filter (where ${freeTimeClocks.accruedDays} > 0)::int`,
+          })
+          .from(freeTimeClocks)
+          .where(isNull(freeTimeClocks.endsOn)),
 
-      tx
-        .select({
-          id: exceptions.id,
-          jobId: exceptions.jobId,
-          jobReference: jobs.reference,
-          severity: exceptions.severity,
-          openedAt: exceptions.openedAt,
-          dueAt: exceptions.dueAt,
-          description: exceptions.description,
-          code: exceptionCodes.code,
-          nameEn: exceptionCodes.nameEn,
-          nameAr: exceptionCodes.nameAr,
-          owner: principals.nameEn,
-          customerName: customers.legalNameEn,
-        })
-        .from(exceptions)
-        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-        .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
-        .leftJoin(customers, eq(customers.id, jobs.customerId))
-        .leftJoin(principals, eq(principals.id, exceptions.ownerId))
-        .where(isNull(exceptions.closedAt))
-        .orderBy(asc(exceptions.openedAt))
-        .limit(8),
+      () =>
+        tx
+          .select({
+            id: exceptions.id,
+            jobId: exceptions.jobId,
+            jobReference: jobs.reference,
+            severity: exceptions.severity,
+            openedAt: exceptions.openedAt,
+            dueAt: exceptions.dueAt,
+            description: exceptions.description,
+            code: exceptionCodes.code,
+            nameEn: exceptionCodes.nameEn,
+            nameAr: exceptionCodes.nameAr,
+            owner: principals.nameEn,
+            customerName: customers.legalNameEn,
+          })
+          .from(exceptions)
+          .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+          .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(principals, eq(principals.id, exceptions.ownerId))
+          .where(isNull(exceptions.closedAt))
+          .orderBy(asc(exceptions.openedAt))
+          .limit(8),
 
-      tx
-        .select({
-          id: enquiries.id,
-          reference: enquiries.reference,
-          status: enquiries.status,
-          channel: enquiries.channel,
-          mode: enquiries.mode,
-          createdAt: enquiries.createdAt,
-          slaDueAt: enquiries.slaDueAt,
-          firstRespondedAt: enquiries.firstRespondedAt,
-          customerName: customers.legalNameEn,
-          customerNameAr: customers.legalNameAr,
-          contactName: enquiries.contactName,
-          contactEmail: enquiries.contactEmail,
-          owner: principals.nameEn,
-          originName: origin.nameEn,
-          destinationName: destination.nameEn,
-        })
-        .from(enquiries)
-        .leftJoin(customers, eq(customers.id, enquiries.customerId))
-        .leftJoin(principals, eq(principals.id, enquiries.ownerId))
-        .leftJoin(origin, eq(origin.id, enquiries.originId))
-        .leftJoin(destination, eq(destination.id, enquiries.destinationId))
-        .where(and(OPEN_ENQUIRY, isNull(enquiries.firstRespondedAt)))
-        .orderBy(asc(enquiries.slaDueAt))
-        .limit(6),
+      () =>
+        tx
+          .select({
+            id: enquiries.id,
+            reference: enquiries.reference,
+            status: enquiries.status,
+            channel: enquiries.channel,
+            mode: enquiries.mode,
+            createdAt: enquiries.createdAt,
+            slaDueAt: enquiries.slaDueAt,
+            firstRespondedAt: enquiries.firstRespondedAt,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            contactName: enquiries.contactName,
+            contactEmail: enquiries.contactEmail,
+            owner: principals.nameEn,
+            originName: origin.nameEn,
+            destinationName: destination.nameEn,
+          })
+          .from(enquiries)
+          .leftJoin(customers, eq(customers.id, enquiries.customerId))
+          .leftJoin(principals, eq(principals.id, enquiries.ownerId))
+          .leftJoin(origin, eq(origin.id, enquiries.originId))
+          .leftJoin(destination, eq(destination.id, enquiries.destinationId))
+          .where(and(OPEN_ENQUIRY, isNull(enquiries.firstRespondedAt)))
+          .orderBy(asc(enquiries.slaDueAt))
+          .limit(6),
 
-      tx
-        .select({
-          id: jobs.id,
-          reference: jobs.reference,
-          status: jobs.status,
-          mode: jobs.mode,
-          direction: jobs.tradeDirection,
-          eta: jobs.eta,
-          etd: jobs.etd,
-          ata: jobs.ata,
-          vesselName: jobs.vesselName,
-          voyageNumber: jobs.voyageNumber,
-          flightNumber: jobs.flightNumber,
-          updatedAt: jobs.updatedAt,
-          customerName: customers.legalNameEn,
-          customerNameAr: customers.legalNameAr,
-          originName: origin.nameEn,
-          originNameAr: origin.nameAr,
-          originCode: origin.unlocode,
-          destinationName: destination.nameEn,
-          destinationNameAr: destination.nameAr,
-          destinationCode: destination.unlocode,
-          owner: principals.nameEn,
-          customsStatus: customsStages.status,
-        })
-        .from(jobs)
-        .leftJoin(customers, eq(customers.id, jobs.customerId))
-        .leftJoin(principals, eq(principals.id, jobs.ownerId))
-        .leftJoin(origin, eq(origin.id, jobs.originId))
-        .leftJoin(destination, eq(destination.id, jobs.destinationId))
-        .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
-        .where(and(LIVE, gt(jobs.eta, now), lt(jobs.eta, weekAhead)))
-        .orderBy(asc(jobs.eta))
-        .limit(6),
+      () =>
+        tx
+          .select({
+            id: jobs.id,
+            reference: jobs.reference,
+            status: jobs.status,
+            mode: jobs.mode,
+            direction: jobs.tradeDirection,
+            eta: jobs.eta,
+            etd: jobs.etd,
+            ata: jobs.ata,
+            vesselName: jobs.vesselName,
+            voyageNumber: jobs.voyageNumber,
+            flightNumber: jobs.flightNumber,
+            updatedAt: jobs.updatedAt,
+            customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
+            originName: origin.nameEn,
+            originNameAr: origin.nameAr,
+            originCode: origin.unlocode,
+            destinationName: destination.nameEn,
+            destinationNameAr: destination.nameAr,
+            destinationCode: destination.unlocode,
+            owner: principals.nameEn,
+            customsStatus: customsStages.status,
+          })
+          .from(jobs)
+          .leftJoin(customers, eq(customers.id, jobs.customerId))
+          .leftJoin(principals, eq(principals.id, jobs.ownerId))
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
+          .where(and(LIVE, gt(jobs.eta, now), lt(jobs.eta, weekAhead)))
+          .orderBy(asc(jobs.eta))
+          .limit(6),
 
-      tx
-        .select({
-          lane: sql<string>`coalesce(${origin.nameEn}, '—') || ' → ' || coalesce(${destination.nameEn}, '—')`,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(jobs)
-        .leftJoin(origin, eq(origin.id, jobs.originId))
-        .leftJoin(destination, eq(destination.id, jobs.destinationId))
-        .groupBy(origin.nameEn, destination.nameEn)
-        .orderBy(desc(sql`count(*)`))
-        .limit(5),
+      () =>
+        tx
+          .select({
+            lane: sql<string>`coalesce(${origin.nameEn}, '—') || ' → ' || coalesce(${destination.nameEn}, '—')`,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(jobs)
+          .leftJoin(origin, eq(origin.id, jobs.originId))
+          .leftJoin(destination, eq(destination.id, jobs.destinationId))
+          .groupBy(origin.nameEn, destination.nameEn)
+          .orderBy(desc(sql`count(*)`))
+          .limit(5),
     ])
 
     const enquiryRow = enquiryTotals[0]

@@ -238,3 +238,33 @@ export async function withoutActor<T>(
 ): Promise<T> {
   return database.transaction(async (tx) => fn(tx as Tx))
 }
+
+/**
+ * Runs queries one after another on the transaction's single connection.
+ *
+ * `Promise.all([tx.select(…), tx.select(…)])` looks like a way to overlap
+ * round trips and is not. A transaction is one connection, one connection is
+ * one `pg` client, and a client executes one statement at a time — the second
+ * query is queued behind the first regardless. `node-postgres` deprecated
+ * issuing it at all — it becomes an error in pg 9 — and says so as the
+ * "client is already executing a query" warning, which it raises once a third
+ * query stacks up behind the one in flight. Two overlapping queries are just
+ * as wrong and merely quieter about it.
+ *
+ * So this buys back nothing in latency and costs nothing either. It takes
+ * thunks rather than query builders because an array of builders is only
+ * *mostly* lazy: anything in it that is a plain `async` call — `listRows(tx,
+ * id)` — has already fired by the time the array literal is built, and would
+ * overlap the first awaited query. A thunk cannot start early.
+ *
+ * Genuinely concurrent reads want separate `withActor` calls, which take
+ * separate connections from the pool.
+ */
+export async function inSeries<T extends readonly (() => unknown)[] | []>(
+  steps: T,
+): Promise<{ -readonly [K in keyof T]: Awaited<ReturnType<Extract<T[K], () => unknown>>> }> {
+  const results: unknown[] = []
+  for (const step of steps) results.push(await step())
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return results as any
+}

@@ -40,6 +40,7 @@ import {
   assets,
   chargeTypes,
   currencies,
+  inSeries,
   supplierInvoiceLines,
   supplierInvoices,
   withActor,
@@ -377,12 +378,13 @@ async function loadAsset(actor: Actor, assetId: string): Promise<AssetRow> {
  */
 async function loadReference(actor: Actor): Promise<Reference> {
   return withActor(actor, async (tx: Tx) => {
-    const [codes, money] = await Promise.all([
-      tx
-        .select({ id: chargeTypes.id, key: chargeTypes.key })
-        .from(chargeTypes)
-        .where(eq(chargeTypes.isActive, true)),
-      tx.select({ code: currencies.code }).from(currencies),
+    const [codes, money] = await inSeries([
+      () =>
+        tx
+          .select({ id: chargeTypes.id, key: chargeTypes.key })
+          .from(chargeTypes)
+          .where(eq(chargeTypes.isActive, true)),
+      () => tx.select({ code: currencies.code }).from(currencies),
     ])
 
     /*

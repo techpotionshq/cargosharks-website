@@ -121,14 +121,28 @@ export function Modal({
     }
   }, [closeOn, open, close])
 
-  // The page behind a modal must not scroll under it — on a phone that is the
-  // difference between a dialog and a confusing overlay.
+  /*
+    The page behind a modal must not scroll under it — on a phone that is the
+    difference between a dialog and a confusing overlay.
+
+    Locking it costs the viewport its scrollbar, and on a desktop that is a
+    fifteen-pixel jump of everything behind the scrim at the moment the dialog
+    arrives, then back again when it leaves. The gutter is measured before the
+    lock and handed to the body as padding, so the page underneath does not
+    move at all. Both properties are captured and restored rather than cleared,
+    because clearing them would silently drop whatever a caller had set.
+  */
   useEffect(() => {
     if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const { style } = document.body
+    const previousOverflow = style.overflow
+    const previousPadding = style.paddingInlineEnd
+    const gutter = window.innerWidth - document.documentElement.clientWidth
+    style.overflow = 'hidden'
+    if (gutter > 0) style.paddingInlineEnd = `${gutter}px`
     return () => {
-      document.body.style.overflow = previous
+      style.overflow = previousOverflow
+      style.paddingInlineEnd = previousPadding
     }
   }, [open])
 
@@ -145,9 +159,23 @@ export function Modal({
         onClick={(event) => {
           if (event.target === ref.current) close()
         }}
-        className={`m-auto w-[calc(100vw-2rem)] ${SIZE[size]} rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:animate-[qb-modal-in_140ms_ease-out]`}
+        /*
+          The height cap and the flex column live on the *element*, and that is
+          the whole reason there is one scrollbar in here instead of two.
+
+          A `<dialog>` scrolls itself: the UA gives it `overflow: auto`. With
+          the cap a rung lower — on the panel inside — the dialog box measured
+          the taller content, grew a scrollbar of its own, and parked it beside
+          the body's. Two nested scrollbars, each moving a different amount,
+          and the one under the cursor was rarely the one the reader wanted.
+
+          `open:flex` rather than a bare `flex`: `display` on a plain `dialog`
+          selector beats the user-agent's `display: none` for a closed one, and
+          every dialog on the page would render inline, permanently.
+        */
+        className={`m-auto max-h-[85dvh] w-[calc(100vw-2rem)] ${SIZE[size]} overflow-hidden rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:flex open:animate-[qb-modal-in_140ms_ease-out]`}
       >
-        <div className="flex max-h-[85dvh] flex-col">
+        <div className="flex min-h-0 w-full flex-1 flex-col">
           <header className="flex items-start gap-3 border-b border-line px-5 py-4">
             {icon ? (
               <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink">

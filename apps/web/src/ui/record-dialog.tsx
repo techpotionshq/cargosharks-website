@@ -30,7 +30,7 @@
  * product without anyone having to remember to make it so.
  */
 
-import { useActionState, type ReactNode } from 'react'
+import { useActionState, useId, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
@@ -179,7 +179,22 @@ export function RecordDialog({
   iconOnly = false,
   trigger,
 }: RecordDialogProps) {
-  const [state, formAction] = useActionState<ActionState, FormData>(action, {})
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {})
+  /*
+    The form's id, so the submit button can sit outside it.
+
+    Cancel and Submit used to be the last row *of the field grid*, which put
+    them inside the dialog's scrolling body: open the outbound-mail dialog and
+    the way to save it was two screens below the fold, under a dozen fields
+    nobody had to change. They belong in the footer, which does not scroll —
+    and the footer is a sibling of the form, not a descendant, so the button is
+    associated by `form=` the way HTML has always allowed.
+
+    That association is also why `pending` is threaded through by hand:
+    `useFormStatus` reports on a form the button is *rendered inside*, and this
+    one no longer is. `useActionState` already knows, so it is the source.
+  */
+  const formId = useId()
 
   return (
     <Modal
@@ -189,6 +204,20 @@ export function RecordDialog({
       size={size}
       closeOn={state.ok}
       closeLabel={labels.cancel}
+      footer={
+        <>
+          <ModalCancel>{labels.cancel}</ModalCancel>
+          <Submit
+            form={formId}
+            pending={pending}
+            pendingLabel={labels.submitting}
+            icon={submitIcon}
+            variant={variant === 'danger' ? 'danger' : 'primary'}
+          >
+            {labels.submit}
+          </Submit>
+        </>
+      }
       trigger={
         trigger ??
         (({ onClick }) => (
@@ -209,23 +238,12 @@ export function RecordDialog({
         ))
       }
     >
-      <form action={formAction}>
+      <form id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} />
           {fields.map((field, index) => (
             <RenderField key={fieldKey(field, index)} field={field} state={state} />
           ))}
-
-          <div className="col-span-12 flex justify-end gap-2 border-t border-line pt-4">
-            <ModalCancel>{labels.cancel}</ModalCancel>
-            <Submit
-              pendingLabel={labels.submitting}
-              icon={submitIcon}
-              variant={variant === 'danger' ? 'danger' : 'primary'}
-            >
-              {labels.submit}
-            </Submit>
-          </div>
         </FormGrid>
       </form>
     </Modal>

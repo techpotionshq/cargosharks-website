@@ -40,6 +40,16 @@ export default defineConfig({
     exclude: ['e2e/**', 'node_modules/**', '.next/**'],
     environment: 'node',
     /*
+      Puts `.env.local` into `process.env` before any suite reads it.
+
+      Vitest is not Next and loads no env file of its own, so without this every
+      `describe.skipIf(!TEST_DATABASE_URL)` block in this package skipped on a
+      machine where the variable was configured correctly — 627 of 868 tests,
+      reported as a pass. `packages/db` and `apps/service` both already do this;
+      see the comment in `test/setup.ts`.
+    */
+    setupFiles: ['test/setup.ts'],
+    /*
       Long enough for a real database on the other end of a network.
 
       Most suites in this package are `describe.skipIf(!enabled)` blocks that
