@@ -1128,3 +1128,185 @@ export async function setPartnerTolerance(
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
 }
+
+// --- reading a bill --------------------------------------------------------
+
+/**
+ * A supplier's scan, read into a captured bill — FR-FN-09, `AI-10`.
+ *
+ * This is the shortest path between a PDF and `core/matching.ts`, and that is
+ * the whole justification for it. The matching engine is written, argued and
+ * tested: it compares quoted against accrued against billed, applies a
+ * two-limit tolerance so a rounding difference on a documentation fee does not
+ * flag while a real drift on ocean freight does, and surfaces the agent who
+ * billed 460 for something quoted at 400. It has been idle since it was
+ * written, for want of rows that somebody types by hand.
+ *
+ * ## It lands in `received`, which is not a concession
+ *
+ * `received` is the draft gate this table already had. A bill is payable only
+ * once `approved_at` is stamped, and that has been a separate act by finance
+ * since the table existed — *anyone in operations can enter what arrived;
+ * releasing it for payment is finance's*. A model is another thing that can
+ * enter what arrived. It cannot approve, and nothing here gives it a way to.
+ *
+ * ## The supplier is chosen, never read off the letterhead
+ *
+ * `partnerId` comes from the form. Attribution decides whose money moves, and
+ * `invoice-extract.ts` makes the same refusal in its own header: the caller
+ * knows the supplier from the screen they are standing on, and that is better
+ * evidence than a letterhead a model read.
+ *
+ * ## Nothing is invented on failure
+ *
+ * A scan that does not reconcile writes no bill and says why, in figures — so
+ * a coordinator reads *"line 3 says 450.000, the figures give 451.500"* and
+ * captures it by hand, which is exactly where they were before this existed.
+ * The upload still happened, so the scan is on file either way.
+ */
+export async function readSupplierBill(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'payable.record')
+
+  const branchId = read(form, 'branchId')
+  const partnerId = read(form, 'partnerId')
+  const jobId = read(form, 'jobId')
+  const file = form.get('scan')
+
+  if (!branchId || !partnerId) {
+    return fail(
+      {
+        ...(branchId ? {} : { branchId: 'Choose a branch' }),
+        ...(partnerId ? {} : { partnerId: 'Choose the supplier' }),
+      },
+      echo(form),
+    )
+  }
+  assertInBranch(session, branchId)
+
+  if (!(file instanceof File) || file.size === 0) {
+    return fail({ scan: 'Choose the supplier’s invoice' }, echo(form))
+  }
+  if (!READABLE_TYPES.includes(file.type)) {
+    return fail({ scan: 'A PDF or a photograph of the bill' }, echo(form))
+  }
+
+  const serviceUrl = process.env.SERVICE_URL
+  const secret = process.env.INTERNAL_API_SECRET
+  if (!serviceUrl || !secret) {
+    return failWith(
+      'Reading a bill needs the service. Set SERVICE_URL and INTERNAL_API_SECRET; ' +
+        'bills can still be captured by hand.',
+      echo(form),
+    )
+  }
+  const base = serviceUrl.replace(/\/$/, '')
+
+  let assetId: string
+  try {
+    assetId = await uploadScan(base, secret, session.actor, branchId, file)
+  } catch {
+    return failWith('The scan could not be stored, so nothing was read.', echo(form))
+  }
+
+  try {
+    /*
+      Generous, because this is a model reading a multi-page scan and the
+      alternative to waiting is the coordinator typing it. `invoke` runs no
+      retry loop of its own by design, so this timeout is the only ceiling.
+    */
+    const response = await fetch(`${base}/internal/ai/supplier-invoice`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({
+        actor: session.actor,
+        branchId,
+        assetId,
+        partnerId,
+        jobId: jobId ?? null,
+        // The unattended path: write the bill and its lines, in `received`.
+        write: true,
+      }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(120_000),
+    })
+
+    if (!response.ok) {
+      return failWith(
+        response.status === 503
+          ? 'No model is configured, so bills cannot be read yet. Add a key at Settings › Integrations.'
+          : 'The bill could not be read. Capture it by hand — the scan is on file.',
+        echo(form),
+      )
+    }
+
+    const body = (await response.json()) as {
+      supplierInvoiceId?: string | null
+      refusal?: string | null
+      findings?: string[]
+    }
+
+    if (!body.supplierInvoiceId) {
+      /*
+        The refusal is shown as the service worded it.
+
+        `refusalFor` already writes a sentence naming the figures that did not
+        reconcile, and rephrasing it here would put a second, vaguer
+        explanation in front of the person who has the document open.
+      */
+      return failWith(
+        body.refusal ?? 'Nothing on that scan could be read as an invoice.',
+        echo(form),
+      )
+    }
+
+    revalidatePath('/payables')
+    revalidatePath(`/payables/${body.supplierInvoiceId}`)
+    return succeed(body.supplierInvoiceId)
+  } catch {
+    return failWith('Reading the bill timed out. Capture it by hand — the scan is on file.', echo(form))
+  }
+}
+
+/** What a bill may arrive as. The service holds the same list and decides. */
+const READABLE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+
+/**
+ * Bytes to the service, which owns the storage credentials.
+ *
+ * `apps/web` never holds the object-store secret — the same boundary the
+ * signed-URL route keeps for downloads, and the reason `pod/form-actions.ts`
+ * uploads the same way rather than reaching for the bucket directly.
+ */
+async function uploadScan(
+  base: string,
+  secret: string,
+  actor: Awaited<ReturnType<typeof requireSession>>['actor'],
+  branchId: string,
+  file: File,
+): Promise<string> {
+  const bytes = Buffer.from(await file.arrayBuffer())
+
+  const response = await fetch(`${base}/internal/files/upload`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+    body: JSON.stringify({
+      actor,
+      branchId,
+      fileName: file.name || 'supplier-invoice',
+      contentType: file.type,
+      data: bytes.toString('base64'),
+      purpose: 'supplier-invoice',
+      meta: { source: 'payables-capture' },
+    }),
+    signal: AbortSignal.timeout(60_000),
+  })
+
+  if (!response.ok) throw new Error(`upload_failed_${response.status}`)
+  const body = (await response.json()) as { assetId?: string }
+  if (!body.assetId) throw new Error('upload_failed_no_asset')
+  return body.assetId
+}

@@ -65,21 +65,36 @@ vi.mock('../config', () => ({
 
 vi.mock('../adapters/file-store', () => ({ FileStoreError: StubFileStoreError }))
 
+/**
+ * The stub store, offered under both names the handlers have used.
+ *
+ * `internal.ts` reads it as `await fileStore()` now — the resolver became a
+ * query when object storage moved into `integration_settings`, so that a key
+ * pasted at 09:05 works at 09:06 rather than at the next restart. This mock
+ * still only answered the older synchronous `adapters().fileStore`, so every
+ * upload and signing test called `undefined()` and asserted 200 against a 500.
+ *
+ * Five tests failed that way, and none of their names suggested a stale mock —
+ * "stores the bytes and records the asset" reads like a storage bug. Both
+ * shapes are exported here so the file cannot fail that way again for whichever
+ * one a handler reaches for.
+ */
+const stubFileStore = {
+  key: 'memory',
+  put: async (storageKey: string, bytes: Buffer) => {
+    if (harness.storePutThrows) throw new StubFileStoreError('bucket unreachable')
+    harness.stored.push({ storageKey, bytes: bytes.byteLength })
+    return { storageKey, byteSize: bytes.byteLength, checksum: 'sum' }
+  },
+  signedUrl: async (key: string) => {
+    if (harness.signedUrlThrows) throw new StubFileStoreError('no such object')
+    return `https://storage.test/${key}?signed`
+  },
+}
+
 vi.mock('../adapters/index', () => ({
-  adapters: () => ({
-    fileStore: {
-      key: 'memory',
-      put: async (storageKey: string, bytes: Buffer) => {
-        if (harness.storePutThrows) throw new StubFileStoreError('bucket unreachable')
-        harness.stored.push({ storageKey, bytes: bytes.byteLength })
-        return { storageKey, byteSize: bytes.byteLength, checksum: 'sum' }
-      },
-      signedUrl: async (key: string) => {
-        if (harness.signedUrlThrows) throw new StubFileStoreError('no such object')
-        return `https://storage.test/${key}?signed`
-      },
-    },
-  }),
+  fileStore: async () => stubFileStore,
+  adapters: () => ({ fileStore: stubFileStore }),
   sendMail: async (_options: unknown, message: Record<string, string>) => {
     if (harness.mailThrows) throw new Error('relay refused: 550 mailbox unavailable')
     harness.mailed.push(message as never)
@@ -602,6 +617,48 @@ describe('the internal API’s handlers', () => {
 
       expect(response.statusCode).toBe(200)
       expect(harness.stored[0]?.bytes).toBe(4 * 1024 * 1024)
+    })
+
+    /*
+      The purpose decides the allow-list, and proof of delivery does not widen.
+
+      A bill is a PDF far more often than it is a photograph, and proof of
+      delivery must stay photographs only — an HTML or SVG upload would be a
+      stored, signed-URL-served document with script in it. One shared
+      allow-list would have to be the union of the two, which is the loosest
+      rule applied to the case that matters most.
+    */
+    it('takes a PDF for a supplier invoice', async () => {
+      const response = await upload({
+        purpose: 'supplier-invoice',
+        contentType: 'application/pdf',
+        fileName: 'agent-bill.pdf',
+      })
+
+      expect(response.statusCode).toBe(200)
+      expect(harness.stored[0]?.storageKey).toMatch(/^bills\//)
+    })
+
+    it('still refuses a PDF as proof of delivery', async () => {
+      const response = await upload({ purpose: 'pod', contentType: 'application/pdf' })
+
+      expect(response.statusCode).toBe(415)
+      expect(response.json().allowed).not.toContain('application/pdf')
+    })
+
+    /** Bills and photographs get their own prefixes, so a lifecycle rule can
+        speak about one without the other. */
+    it('files proof of delivery under its own prefix by default', async () => {
+      await upload()
+
+      expect(harness.stored[0]?.storageKey).toMatch(/^pod\//)
+    })
+
+    it('refuses a purpose it does not know', async () => {
+      const response = await upload({ purpose: 'whatever' })
+
+      expect(response.statusCode).toBe(400)
+      expect(response.json().error).toBe('unknown_purpose')
     })
 
     /** Storage being down is not the caller's fault, and 502 says so. */

@@ -19,6 +19,7 @@ import { revalidatePath } from 'next/cache'
 import { and, eq, sql } from 'drizzle-orm'
 import {
   assertTransition,
+  decideProposal,
   enquiryMachine,
   entryPermission,
   slaDueAt,
@@ -28,6 +29,7 @@ import {
   branches,
   calendarHolidays,
   enquiries,
+  extractionProposals,
   notificationOutbox,
   withActor,
   workingCalendars,
@@ -36,6 +38,11 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 import { createEnquirySchema } from './schema'
+import {
+  enquiryColumn,
+  resolveProposal,
+  type ResolutionFailure,
+} from './proposals'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -362,4 +369,171 @@ export async function advanceEnquiry(
   revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(enquiryId)
+}
+
+// --- what a model read -----------------------------------------------------
+
+/**
+ * Accepting one proposal — `AI-05`.
+ *
+ * The write is ordinary. It updates the column under the coordinator's own
+ * actor, through the same RLS and the same audit trigger as the enquiry form,
+ * and then closes the proposal. Nothing about it is an "AI write", which is
+ * the point: the audit trail answers *who put this on the shipment* without a
+ * new concept to answer it.
+ *
+ * ## `decideProposal` runs again, here, against the row as it is now
+ *
+ * Not against the row as it was when the model was asked. A coordinator may
+ * have typed the value in the twenty minutes since, and a person's answer
+ * wins — so a column that has filled up in the meantime discards the proposal
+ * rather than overwriting it. `target_was_empty` records what was true then,
+ * which is what makes the drift visible; this check decides what happens now.
+ *
+ * ## Resolution happens inside the transaction
+ *
+ * `origin`, `destination` and `commodity` arrive as text a stranger emailed
+ * us. Resolving them outside this transaction would resolve them under
+ * different visibility than the update runs under, and refusing ambiguity is
+ * the whole safeguard — two matches is refused as firmly as none.
+ */
+export async function acceptProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'enquiry.assign')
+
+  const proposalId = readField(form, 'proposalId')
+  const enquiryId = readField(form, 'enquiryId')
+  if (!proposalId || !enquiryId) return failWith('Nothing to do.')
+
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [proposal] = await tx
+      .select({
+        id: extractionProposals.id,
+        field: extractionProposals.field,
+        value: extractionProposals.value,
+        confidence: extractionProposals.confidence,
+        targetId: extractionProposals.targetId,
+        status: extractionProposals.status,
+      })
+      .from(extractionProposals)
+      .where(eq(extractionProposals.id, proposalId))
+      .limit(1)
+
+    if (!proposal || proposal.targetId !== enquiryId) return { error: 'gone' as const }
+    if (proposal.status !== 'proposed') return { error: 'settled' as const }
+
+    const resolution = await resolveProposal(tx, proposal.field, proposal.value)
+    if (!resolution.ok) return { error: 'unresolved' as const, failure: resolution.failure }
+
+    /*
+      The never-overwrite rule, re-applied at the moment of the write.
+
+      Thresholds at zero for the same reason the worker sets them there: this
+      surface proposes and a person accepts, so filtering by score here would
+      only hide from the coordinator a proposal they are already looking at and
+      have just clicked. What `decideProposal` is being asked is the one
+      question that still matters — is the column still empty?
+    */
+    const current = await enquiryColumn(tx, enquiryId, resolution.column)
+    const verdict = decideProposal(
+      {
+        field: proposal.field,
+        value: proposal.value,
+        confidence: Number(proposal.confidence ?? 0),
+      },
+      { current, humanAuthored: current !== null, applyThreshold: 0, reviewThreshold: 0 },
+    )
+    if (verdict === 'discard') return { error: 'occupied' as const }
+
+    await tx
+      .update(enquiries)
+      .set({ [resolution.column]: resolution.value, updatedAt: new Date() })
+      .where(eq(enquiries.id, enquiryId))
+
+    await tx
+      .update(extractionProposals)
+      .set({
+        status: 'applied',
+        decidedById: session.actor.principalId,
+        decidedAt: new Date(),
+        closedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(extractionProposals.id, proposalId))
+
+    return { ok: true as const }
+  })
+
+  if ('error' in outcome) {
+    if (outcome.error === 'unresolved') {
+      return failWith(describeFailure(outcome.failure))
+    }
+    if (outcome.error === 'gone') return failWith('That suggestion is no longer there.')
+    if (outcome.error === 'settled') return failWith('Somebody has already decided that one.')
+    if (outcome.error === 'occupied') {
+      return failWith('That field has been filled in since, so the suggestion was not applied.')
+    }
+    return failWith('That did not work.')
+  }
+
+  revalidatePath(`/enquiries/${enquiryId}`)
+  return succeed(enquiryId)
+}
+
+/**
+ * Rejecting one, which is a decision and is recorded as one.
+ *
+ * Not a delete. Nothing is deleted (§5.5), and a rejected proposal is the most
+ * useful row in the table: it is the evaluation set. A surface whose wrong
+ * answers are thrown away cannot be measured, and `AI-19`'s golden set is
+ * assembled from exactly these.
+ */
+export async function rejectProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'enquiry.assign')
+
+  const proposalId = readField(form, 'proposalId')
+  const enquiryId = readField(form, 'enquiryId')
+  if (!proposalId || !enquiryId) return failWith('Nothing to do.')
+
+  await withActor(session.actor, async (tx) => {
+    await tx
+      .update(extractionProposals)
+      .set({
+        status: 'rejected',
+        decidedById: session.actor.principalId,
+        decidedAt: new Date(),
+        closedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(extractionProposals.id, proposalId),
+          eq(extractionProposals.targetId, enquiryId),
+          eq(extractionProposals.status, 'proposed'),
+        ),
+      )
+  })
+
+  revalidatePath(`/enquiries/${enquiryId}`)
+  return succeed(enquiryId)
+}
+
+function readField(form: FormData, key: string): string | undefined {
+  const value = form.get(key)
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+/** A refusal, as a sentence the coordinator can act on. */
+function describeFailure(failure: ResolutionFailure): string {
+  switch (failure.kind) {
+    case 'not_found':
+      return `“${failure.value}” is not a place or commodity on file, so it was not applied. Add it, or set the field by hand.`
+    case 'ambiguous':
+      return `“${failure.value}” matches ${failure.count} records, and guessing between them is how the wrong one gets written. Set the field by hand.`
+    case 'invalid':
+      return `“${failure.value}” is not a valid value — expected ${failure.expected}.`
+    default:
+      return 'That suggestion names a field this screen cannot set.'
+  }
 }

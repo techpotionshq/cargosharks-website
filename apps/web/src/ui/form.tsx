@@ -591,3 +591,43 @@ export function useEntityForm(action: ServerAction, defaults: Record<string, unk
     error: (key: string) => state.errors?.[key],
   }
 }
+
+/**
+ * A file chooser, styled to sit in the same grid as everything else.
+ *
+ * The native control is left in place rather than replaced by a button and a
+ * hidden input. A custom chooser has to re-implement keyboard focus, the
+ * drag-and-drop target and the selected-file name, and gets one of them wrong;
+ * `::file-selector-button` styles the half that actually looks foreign.
+ *
+ * No `defaultValue`, because a browser will not let a page set one — a page
+ * that could would be a page that can read any path it can name. So a rejected
+ * submission comes back with the chooser empty and the person picks the file
+ * again, which is how every upload form on the web behaves.
+ */
+export function FileInput({
+  accept,
+  ...field
+}: Omit<FieldProps, 'children'> & { readonly accept?: string }) {
+  const invalid = Boolean(field.error)
+
+  return (
+    <Field {...field}>
+      <input
+        id={field.name}
+        name={field.name}
+        type="file"
+        accept={accept}
+        required={field.required}
+        aria-invalid={invalid || undefined}
+        aria-describedby={field.error ? `${field.name}-error` : undefined}
+        className={controlClass(
+          invalid,
+          'py-1.5 file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken ' +
+            'file:px-3 file:py-1.5 file:text-[0.75rem] file:font-semibold file:text-ink-muted ' +
+            'hover:file:bg-line file:cursor-pointer',
+        )}
+      />
+    </Field>
+  )
+}

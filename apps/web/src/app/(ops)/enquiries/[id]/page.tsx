@@ -31,6 +31,7 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
+import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 
@@ -119,6 +120,17 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         }
         actionsAfter={<QuoteDialog enquiryId={id} variant="secondary" />}
       />
+
+      {/*
+        What a model read off the mail, above the pricing comparison.
+
+        Placed here because it is the one thing on this page that is *waiting
+        on the reader*: the cargo facts are what everything below prices, and a
+        coordinator who scrolls past them to the rate comparison is pricing a
+        shipment whose weight is still null. It renders nothing when nothing is
+        pending, so it costs a settled enquiry no vertical space.
+      */}
+      <ProposalsPanel enquiryId={id} />
 
       {/*
         Moment 2's punchline, stated as a comparison rather than a boast: the

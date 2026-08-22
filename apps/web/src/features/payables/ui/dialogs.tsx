@@ -19,6 +19,7 @@ import {
   draftSettlement,
   linkPartnerAccount,
   matchSupplierLine,
+  readSupplierBill,
   recordSupplierPayment,
   saveSupplierInvoice,
   setSupplierInvoiceStatus,
@@ -190,6 +191,91 @@ export async function SupplierInvoiceDialog({
         description: t('captureHint'),
         submit: tc('save'),
         submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Reading a supplier's scan instead of typing it — `AI-10`.
+ *
+ * The shortest path between a PDF and `core/matching.ts`, which has been
+ * written, argued and tested since before there were rows for it to run on.
+ * The lines are what the engine needs; this is how they arrive without
+ * somebody keying them.
+ *
+ * Three fields and no more. The supplier is *chosen*, never read off the
+ * letterhead — attribution decides whose money moves, and the person standing
+ * on this screen knows the answer better than a model reading a header. The
+ * job is optional because a statement covering four shipments has no single
+ * one, and `AI-10` is worth having on those too.
+ */
+export async function ReadBillDialog({
+  defaults,
+  variant = 'secondary',
+}: {
+  readonly defaults?: { readonly branchId?: string; readonly partnerId?: string; readonly jobId?: string }
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'payable.record')) return null
+
+  const [options, t, tc] = await Promise.all([
+    loadOptions(session.actor),
+    getTranslations('payableForm'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    {
+      kind: 'select',
+      name: 'branchId',
+      label: t('branch'),
+      span: 6,
+      required: true,
+      options: options.branches,
+      defaultValue: defaults?.branchId ?? [...session.branchRoles.keys()][0],
+    },
+    {
+      kind: 'select',
+      name: 'partnerId',
+      label: t('supplier'),
+      span: 6,
+      required: true,
+      options: options.partners,
+      defaultValue: defaults?.partnerId,
+    },
+    {
+      kind: 'file',
+      name: 'scan',
+      label: t('scan'),
+      span: 12,
+      required: true,
+      accept: 'application/pdf,image/jpeg,image/png,image/webp',
+      hint: t('scanHint'),
+    },
+    ...(defaults?.jobId ? [{ kind: 'hidden' as const, name: 'jobId', value: defaults.jobId }] : []),
+    {
+      kind: 'note',
+      tone: 'info' as const,
+      text: t('readBillNote'),
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={readSupplierBill}
+      fields={fields}
+      icon="assistant"
+      size="md"
+      variant={variant}
+      labels={{
+        open: t('readBill'),
+        title: t('readBillTitle'),
+        description: t('readBillHint'),
+        submit: t('readBillSubmit'),
+        submitting: t('readBillSubmitting'),
         cancel: tc('cancel'),
       }}
     />

@@ -20,6 +20,7 @@ import {
 } from '@/features/payables/queries'
 import {
   AllocatePaymentDialog,
+  ReadBillDialog,
   SupplierInvoiceDialog,
   SupplierPaymentDialog,
 } from '@/features/payables/ui/dialogs'
@@ -96,6 +97,7 @@ export default async function PayablesPage({
         actions={
           <span className="flex flex-wrap items-center gap-2">
             <SupplierPaymentDialog variant="secondary" />
+            <ReadBillDialog />
             <SupplierInvoiceDialog />
           </span>
         }

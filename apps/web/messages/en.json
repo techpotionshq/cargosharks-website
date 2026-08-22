@@ -2228,6 +2228,14 @@
     "capture": "Capture bill",
     "captureTitle": "Capture a supplier invoice",
     "captureHint": "Enter it as it arrived. Matching it against the job's costs comes next.",
+    "readBill": "Read a bill",
+    "readBillTitle": "Read a supplier’s invoice",
+    "readBillHint": "Upload the scan and its lines are captured for you.",
+    "readBillSubmit": "Read it",
+    "readBillSubmitting": "Reading…",
+    "readBillNote": "It lands as received, like anything typed in — finance still approves it before it can be paid. If the figures do not add up, nothing is written and the scan is kept on file.",
+    "scan": "The bill",
+    "scanHint": "A PDF, or a photograph of the printout",
     "editTitle": "Edit supplier invoice",
     "branch": "Branch",
     "supplier": "Supplier",
@@ -3118,6 +3126,30 @@
       "clearance": "What is sitting in customs clearance?",
       "freeTime": "Whose free time runs out this week?",
       "exceptions": "What should I look at today?"
+    }
+  },
+  "proposals": {
+    "title": "Read from the email",
+    "description": "Check each one against the quoted line and accept it, or set the field by hand.",
+    "readOnly": "Read from the email by the assistant. Deciding needs the assign permission.",
+    "accept": "Accept",
+    "reject": "Dismiss",
+    "wasFilled": "Already filled",
+    "noEvidence": "No line quoted — check the mail before accepting.",
+    "provenance": "{model} · {prompt} · confidence {confidence}",
+    "fields": {
+      "mode": "Mode",
+      "tradeDirection": "Direction",
+      "origin": "Origin",
+      "destination": "Destination",
+      "commodity": "Commodity",
+      "incoterm": "Incoterm",
+      "readyOn": "Cargo ready",
+      "grossWeightKg": "Gross weight",
+      "volumeCbm": "Volume",
+      "pieces": "Pieces",
+      "dimensions": "Dimensions",
+      "isDangerous": "Dangerous goods"
     }
   }
 }

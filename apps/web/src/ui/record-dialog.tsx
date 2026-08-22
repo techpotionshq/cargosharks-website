@@ -34,6 +34,7 @@ import { useActionState, useId, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
+  FileInput,
   FormError,
   FormGrid,
   FormSection,
@@ -100,6 +101,24 @@ export type FieldSpec =
   | (BaseField & {
       readonly kind: 'switch'
       readonly defaultChecked?: boolean
+    })
+  /**
+   * A file the form posts as part of its `FormData`.
+   *
+   * No `defaultValue` and never echoed, and that is a property of file inputs
+   * rather than an omission: a browser refuses to let a page set one, for the
+   * obvious reason that a page which could would be a page that can read any
+   * path it can name. So a rejected submission re-renders with the chooser
+   * empty and the person picks the file again — which is the behaviour every
+   * upload form on the web has, and worth stating because it looks like the
+   * echo bug the comment above `echoed` describes.
+   *
+   * `accept` is a hint to the file picker and nothing more. The server decides
+   * what it will store; see `ALLOWED_UPLOAD_TYPES` in the service.
+   */
+  | (BaseField & {
+      readonly kind: 'file'
+      readonly accept?: string
     })
   | (BaseField & {
       readonly kind: 'choices'
@@ -366,6 +385,9 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
           defaultValue={echoed ?? field.defaultValue}
         />
       )
+    case 'file':
+      return <FileInput {...common} accept={field.accept} />
+
     default:
       return (
         <Input

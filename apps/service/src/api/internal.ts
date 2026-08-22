@@ -133,7 +133,20 @@ interface UploadRequest {
   readonly data: string
   /** Recorded on the asset, so a photograph can say what it was taken for. */
   readonly meta?: Record<string, unknown>
+  /**
+   * What the file is for, which decides what may be uploaded and where it lands.
+   *
+   * Defaults to `pod`, so every existing caller keeps the rules it was written
+   * against. The distinction is not decoration: proof of delivery is a phone
+   * photograph and must never accept a PDF-with-JavaScript, while a supplier
+   * bill is a PDF far more often than it is an image. One allow-list for both
+   * would have to be the union, which is the loosest of the two applied to the
+   * one that matters most.
+   */
+  readonly purpose?: UploadPurpose
 }
+
+type UploadPurpose = 'pod' | 'supplier-invoice'
 
 interface SignedUrlRequest {
   readonly storageKey: string
@@ -151,10 +164,34 @@ interface SignedUrlRequest {
  */
 const ALLOWED_UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
+/**
+ * What each purpose accepts, and where it lands.
+ *
+ * Per purpose rather than one union, because the union is the loosest rule
+ * applied to the strictest case. Proof of delivery stays photographs only: an
+ * HTML or SVG upload would be a stored, signed-URL-served document with script
+ * in it, and that reasoning does not weaken because bills arrive as PDFs.
+ *
+ * The prefix is part of the contract too. `pod/` and `bills/` are separate so
+ * a bucket lifecycle rule, an audit or a retention policy can speak about one
+ * without the other — and so nobody has to infer what a key holds from its
+ * content type.
+ */
+const UPLOAD_PURPOSES: Readonly<
+  Record<UploadPurpose, { readonly types: readonly string[]; readonly prefix: string }>
+> = {
+  pod: { types: ALLOWED_UPLOAD_TYPES, prefix: 'pod' },
+  'supplier-invoice': {
+    types: [...ALLOWED_UPLOAD_TYPES, 'application/pdf'],
+    prefix: 'bills',
+  },
+}
+
 const EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  'application/pdf': 'pdf',
 }
 
 /**
@@ -901,11 +938,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     '/files/upload',
     { bodyLimit: MAX_UPLOAD_BODY_BYTES },
     async (request, reply) => {
-      const { actor, branchId, fileName, contentType, data, meta } = request.body ?? {}
+      const { actor, branchId, fileName, contentType, data, meta, purpose } = request.body ?? {}
 
       if (!actor || !branchId || !fileName || !contentType || !data) {
         return reply.code(400).send({ error: 'incomplete_request' })
       }
+
+      const rules = UPLOAD_PURPOSES[purpose ?? 'pod']
+      if (!rules) return reply.code(400).send({ error: 'unknown_purpose' })
 
       /*
       The allow-list is on the server, not the form.
@@ -915,8 +955,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       signature bitmap, so that is what this takes — an HTML or SVG upload
       would be a stored, signed-URL-served document with script in it.
     */
-      if (!ALLOWED_UPLOAD_TYPES.includes(contentType)) {
-        return reply.code(415).send({ error: 'unsupported_type', allowed: ALLOWED_UPLOAD_TYPES })
+      if (!rules.types.includes(contentType)) {
+        return reply.code(415).send({ error: 'unsupported_type', allowed: rules.types })
       }
 
       const bytes = Buffer.from(data, 'base64')
@@ -936,7 +976,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       an operator typed, so a filename with a slash in it cannot escape the
       prefix.
     */
-      const storageKey = `pod/${branchId}/${checksum}.${extension}`
+      const storageKey = `${rules.prefix}/${branchId}/${checksum}.${extension}`
 
       try {
         const stored = await (await fileStore()).put(storageKey, bytes, contentType)
