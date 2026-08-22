@@ -103,10 +103,13 @@ Coolify-specific.
 DATABASE_URL=postgres://app_user:…@db-host:5432/qabandi
 BETTER_AUTH_SECRET=…
 BETTER_AUTH_URL=https://app.example.com
-SERVICE_URL=http://service:3001          # internal, see §1
 INTERNAL_API_SECRET=…                    # identical to the service's
-QABANDI_PILOT_FIXTURES=0
 ```
+
+Do **not** add `SERVICE_URL` or `QABANDI_PILOT_FIXTURES` on a compose stack.
+The first is hard-coded in `compose.deploy.yml` so it cannot be pointed at a
+public domain from the UI (§1); the second is `ENV`-set in the Dockerfile's web
+stage. Both are settings that should not be one checkbox away from wrong.
 
 Set `RUN_MIGRATIONS=true` and `MIGRATION_DATABASE_URL` on **one** deployment
 only, and leave both unset everywhere else. The entrypoint explains why: the
@@ -131,7 +134,23 @@ Add `SMTP_*` for notifications, `FX_*` for the rate feed, and
 `CARRIER_TRACKING_*` when a tracking feed is bought. All have defaults that
 degrade honestly.
 
-## 5. Two things that catch people
+## 5. Four things that catch people
+
+**Press "Load Compose File" after choosing the compose build pack.** Coolify
+does not read the file on its own. Until it has, it does not know `web` and
+`service` exist — no per-service domain fields appear, the API refuses to set
+one (*"Cannot set docker_compose_domains without docker_compose_raw"*), and a
+deploy in that state comes up with no Traefik router at all. The site then
+answers nothing, which reads like a crashed container rather than a missing
+button. Nothing in `compose.deploy.yml` can warn you about this.
+
+**Do not restate the environment in `compose.deploy.yml`.** Coolify writes the
+application's runtime variables to a `.env` and loads it into every service in
+the stack through `env_file`, so everything set in the UI already reaches both
+containers. A compose `environment:` entry *overrides* `env_file` — which means
+a well-meaning `SMTP_HOST: ${SMTP_HOST:-}` overwrites the delivered value with
+an empty string. The file declares `SERVICE_URL` and nothing else, on purpose:
+that is the one value the file must decide and the operator must not.
 
 **Leave `SERVICE_URL` a runtime variable, not a build variable.** It is read in
 server actions and route handlers, so a change needs a restart rather than a

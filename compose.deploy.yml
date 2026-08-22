@@ -7,31 +7,65 @@
 # each other up either — `docker compose up` at the root still gets the dev
 # stack, because this filename is not one Compose looks for on its own.
 #
-# ## Why a stack rather than two applications
+# ## Why this file is nearly empty
 #
-# `SERVICE_URL` must be an internal address (docs/Deployment_Coolify.md §1) and
-# in one stack that is true by construction: Coolify puts both containers on
-# one bridge network and Docker DNS resolves the service by its name here. Two
-# separate Coolify applications need "Connect to Predefined Network" enabled on
-# both and the uuid-suffixed container name looked up by hand — a setting to
-# remember and a hostname that moves.
+# It used to restate the whole environment — `S3_BUCKET: ${S3_BUCKET}`,
+# `SMTP_HOST: ${SMTP_HOST:-}`, thirty more like them — and every one of those
+# lines was worse than useless.
 #
-# The shared secrets are also declared once. Two applications means
-# INTERNAL_API_SECRET typed into two places, and the failure when they drift is
-# a 401 the web app reports as "the document could not be generated".
+# Coolify writes the application's runtime variables to a `.env` and loads it
+# into **every service in the stack** through `env_file`. So anything set in
+# the UI already reaches both containers, and `apps/service/src/config.ts` and
+# the web app read it straight from `process.env`. Restating it here changes
+# nothing when it works — and `environment:` takes precedence over `env_file`,
+# so a line like `SMTP_HOST: ${SMTP_HOST:-}` *overwrites* the value Coolify
+# delivered with an empty string the moment nobody also defined SMTP_HOST as a
+# compose-interpolation variable. The file was quietly deleting configuration
+# it appeared to be forwarding.
+#
+# So the rule here: declare a variable only if this file must decide it and the
+# operator must not. Today that is exactly one.
+#
+# ## What the operator sets, in Coolify
+#
+# Required — the containers exit at boot without them:
+#
+#   DATABASE_URL           both
+#   INTERNAL_API_SECRET    both, and identical; a mismatch is a 401 the web app
+#                          reports as "the document could not be generated"
+#   BETTER_AUTH_SECRET     web
+#   BETTER_AUTH_URL        web
+#   WEB_URL                service — the CORS origin and the base for links in
+#                          outgoing mail. This file used to derive it from
+#                          BETTER_AUTH_URL; it no longer does, and the config
+#                          default is `http://localhost:3000`, which fails as a
+#                          CORS origin without saying so. Set it.
+#
+# Everything else degrades honestly against the defaults in `config.ts` —
+# `MAIL_DRIVER` logs instead of sending, `FX_SOURCE` and
+# `CARRIER_TRACKING_DRIVER` leave a person typing the milestone. Add
+# `S3_*` for documents, `MAILBOX_ENCRYPTION_KEY` for mailboxes (the same value
+# on both, or the web app seals a password the service cannot open),
+# `RUN_MIGRATIONS` + `MIGRATION_DATABASE_URL` on exactly one deployment.
 #
 # ## In Coolify
 #
-#   Build pack             Docker Compose
+#   Build pack               Docker Compose
 #   Docker Compose Location  /compose.deploy.yml
 #
-# Then set a domain on `web`, and on `service` only if carrier webhooks or the
-# public tracking API are in use (§2 — `/internal` refuses proxied requests, so
-# a domain on the service does not expose it).
+# Then press **Load Compose File** before saving. Coolify does not read the
+# file on its own, and until it has, it does not know `web` and `service`
+# exist — no per-service domain fields appear, the stack deploys with no
+# Traefik router, and the site answers nothing at all. Skipping that button is
+# not a misconfiguration you can see anywhere in this file.
 #
-# No `container_name`, `restart` or `networks` keys anywhere below: Coolify
-# manages all three, and a custom network in particular puts containers on two
-# networks at once, which Traefik then routes to non-deterministically.
+# Then set a domain on `web`, and on `service` only if carrier webhooks or the
+# public tracking API are in use — `/internal` refuses proxied requests, so a
+# domain on the service does not expose it.
+#
+# No `container_name`, `restart` or `networks` keys below: Coolify manages all
+# three, and a custom network in particular puts containers on two networks at
+# once, which Traefik then routes to non-deterministically.
 
 services:
   # The interface. Also the migration runner, on exactly one deployment.
@@ -41,69 +75,25 @@ services:
       dockerfile: Dockerfile
       # No target — the web image is the last stage in the file.
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
-
-      # Internal. A container name on this stack's network, plain HTTP. The
-      # name is the service key below, so this line and that key move together.
+      # The one value this file decides.
+      #
+      # Hard-coded rather than `${SERVICE_URL}` so it cannot be set to the
+      # service's public domain from the UI. `/internal` authenticates the
+      # caller with a shared secret and then lets that caller *name the
+      # principal to act as* — routing it through Traefik would put an
+      # impersonation endpoint on the internet, protected by one string, to
+      # save a virtual network hop.
+      #
+      # `service` is the key below, so this line and that key move together.
       SERVICE_URL: http://service:3001
-      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
-
-      # Pinned off: a deployment that lost its connection string should fail
-      # at boot naming itself, not come up serving seeded demo data.
-      QABANDI_PILOT_FIXTURES: 0
-
-      # Migrations are opt-in — the runner connects as app_migrator, which owns
-      # every object and can drop a policy. Set both on production only, and
-      # leave them unset on every preview and staging stack that shares this
-      # file. See infra/web-entrypoint.sh.
-      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-false}
-      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
 
   # Documents, storage, the public API, and every scheduled worker — free-time
   # accrual, SLA escalation, notification dispatch, the FX feed. Without this
-  # container the product has no clock running on anything.
+  # container the product has no clock running on anything, and a document
+  # download answers 503: the web app never holds the storage credentials, it
+  # asks this container to sign a link.
   service:
     build:
       context: .
       dockerfile: Dockerfile
       target: service
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
-
-      # The CORS origin, and the base for links in outgoing mail. Public.
-      WEB_URL: ${BETTER_AUTH_URL}
-
-      # Storage credentials are the service's alone; the web app never signs
-      # anything, it asks for a link.
-      FILE_STORE_DRIVER: ${FILE_STORE_DRIVER:-s3}
-      S3_ENDPOINT: ${S3_ENDPOINT}
-      S3_REGION: ${S3_REGION:-auto}
-      S3_BUCKET: ${S3_BUCKET}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
-
-      # `log` writes each message to the service log instead of sending, which
-      # is the honest setting for the first hour of a deployment whose relay
-      # credentials have not arrived. The boot line says which is in force.
-      MAIL_DRIVER: ${MAIL_DRIVER:-log}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@qabandi.local}
-
-      # Off unless the thing behind them has been bought. Each defaults to the
-      # Release One behaviour, which is a person typing the milestone.
-      FX_SOURCE: ${FX_SOURCE:-manual}
-      FX_API_URL: ${FX_API_URL:-}
-      FX_API_KEY: ${FX_API_KEY:-}
-      CARRIER_TRACKING_DRIVER: ${CARRIER_TRACKING_DRIVER:-manual}
-
-      # Leave false. It disables the refusal that keeps principal
-      # impersonation off the internet when a proxy rule is wrong.
-      INTERNAL_API_TRUST_PROXY: ${INTERNAL_API_TRUST_PROXY:-false}
