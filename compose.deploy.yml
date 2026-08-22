@@ -50,6 +50,12 @@ services:
       SERVICE_URL: http://service:3001
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
 
+      # The web app seals a mailbox password when an administrator types it;
+      # the service opens it to read the mailbox. The same key, in both
+      # containers, or the mailbox saves and then cannot be read — a failure
+      # that surfaces an hour later in a worker log rather than in the form.
+      MAILBOX_ENCRYPTION_KEY: ${MAILBOX_ENCRYPTION_KEY:-}
+
       # Pinned off: a deployment that lost its connection string should fail
       # at boot naming itself, not come up serving seeded demo data.
       QABANDI_PILOT_FIXTURES: 0
@@ -96,6 +102,23 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-no-reply@qabandi.local}
+      SMTP_TLS_REJECT_UNAUTHORIZED: ${SMTP_TLS_REJECT_UNAUTHORIZED:-true}
+
+      # Reading mail, as opposed to sending it. The key is the web app's — see
+      # the note there. Unset means the mailbox poller starts and reports every
+      # configured mailbox as unreadable, which is the honest degradation.
+      MAILBOX_ENCRYPTION_KEY: ${MAILBOX_ENCRYPTION_KEY:-}
+
+      # The HMAC on `/webhooks/inbound-mail`. Unset refuses every delivery, so
+      # set it whenever a relay is posting mail in rather than IMAP polling.
+      INBOUND_EMAIL_WEBHOOK_SECRET: ${INBOUND_EMAIL_WEBHOOK_SECRET:-}
+
+      # Enquiry extraction and bill reading. Unset leaves both off and a person
+      # keys the enquiry, which is the Release One behaviour. The budget is a
+      # ceiling in dollars per month, not a rate limit — 0 means no ceiling.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_MONTHLY_BUDGET_USD: ${AI_MONTHLY_BUDGET_USD:-0}
 
       # Off unless the thing behind them has been bought. Each defaults to the
       # Release One behaviour, which is a person typing the milestone.
@@ -103,6 +126,16 @@ services:
       FX_API_URL: ${FX_API_URL:-}
       FX_API_KEY: ${FX_API_KEY:-}
       CARRIER_TRACKING_DRIVER: ${CARRIER_TRACKING_DRIVER:-manual}
+
+      # `dcsa` above is inert without at least one carrier's credentials below,
+      # and the failure is silent — the poller runs, finds no configured
+      # carrier, and logs nothing anybody reads. Set the pair for each carrier
+      # bought; the base URLs default to the carrier's production host.
+      DCSA_MAERSK_CONSUMER_KEY: ${DCSA_MAERSK_CONSUMER_KEY:-}
+      DCSA_MAERSK_CLIENT_SECRET: ${DCSA_MAERSK_CLIENT_SECRET:-}
+      DCSA_HAPAG_CLIENT_ID: ${DCSA_HAPAG_CLIENT_ID:-}
+      DCSA_HAPAG_CLIENT_SECRET: ${DCSA_HAPAG_CLIENT_SECRET:-}
+      DCSA_CMACGM_API_KEY: ${DCSA_CMACGM_API_KEY:-}
 
       # Leave false. It disables the refusal that keeps principal
       # impersonation off the internet when a proxy rule is wrong.
