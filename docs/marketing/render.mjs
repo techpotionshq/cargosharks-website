@@ -32,8 +32,8 @@ const PW = join(REPO, 'node_modules/.pnpm/playwright-core@1.62.1/node_modules/pl
 const DOCS = [
   { src: 'README.md', out: 'Marketing-Set-Overview.pdf', title: 'Marketing and Documentation Set' },
 
-  { src: 'sales/one-pager.md', out: 'sales/01-One-Pager.pdf', title: 'Cargolane — One-Pager' },
-  { src: 'sales/deck.md', out: 'sales/02-Deck-and-Script.pdf', title: 'The Deck — Slides and Script' },
+  { src: 'sales/one-pager.md', out: 'sales/01-One-Pager.pdf', title: 'Cargolane — One-Pager', subtitle: 'The freight platform that answers in minutes, in both languages' },
+  { src: 'sales/deck.md', out: 'sales/02-Deck-and-Script.pdf', title: 'The Deck — Slides and Script', subtitle: 'Three moments, told from the screen' },
   {
     src: 'sales/battlecard.md',
     out: 'sales/03-Battlecard.pdf',
@@ -54,7 +54,7 @@ const DOCS = [
     note: 'DRAFT — confirm every figure before this is signed',
   },
 
-  { src: 'manual/README.md', out: 'manual/00-Manual-Contents.pdf', title: 'User Manual — Contents' },
+  { src: 'manual/README.md', out: 'manual/00-Manual-Contents.pdf', title: 'User Manual — Contents', subtitle: 'A chapter per role — read yours, skim the rest' },
   { src: 'manual/00-orientation.md', out: 'manual/01-Getting-Started.pdf', title: 'Getting Started' },
   { src: 'manual/01-coordinator.md', out: 'manual/02-Coordinator.pdf', title: 'Coordinator' },
   {
@@ -84,6 +84,7 @@ const DOCS = [
 const BUNDLE = {
   out: 'User-Manual-Complete.pdf',
   title: 'User Manual',
+  subtitle: 'Every role, one book — from first sign-in to who can do what',
   parts: [
     'manual/README.md',
     'manual/00-orientation.md',
@@ -129,23 +130,64 @@ body {
   print-color-adjust: exact;
 }
 
-/* ---- title block ------------------------------------------------------- */
+/* ---- title band --------------------------------------------------------- */
 
 .doc-title {
-  border-bottom: 2.5pt solid var(--accent);
-  padding-bottom: 7pt;
+  background: linear-gradient(120deg, #0b3846 0%, var(--accent) 62%, #14606f 100%);
+  color: #ffffff;
+  border-radius: 5pt;
+  padding: 15pt 17pt 14pt;
   margin-bottom: 20pt;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12pt;
 }
 .doc-title .eyebrow {
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 7.5pt;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: rgba(255, 255, 255, 0.82);
   font-weight: 600;
-  margin-bottom: 4pt;
+  margin-bottom: 5pt;
 }
-.doc-title h1 { font-size: 20pt; margin: 0; border: 0; padding: 0; }
+.doc-title h1 { font-size: 21pt; margin: 0; border: 0; padding: 0; color: #ffffff; }
+.doc-title .subtitle {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 9.5pt;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 5pt;
+}
+.doc-mark { width: 46pt; height: 29pt; flex: none; }
+
+/* ---- figures ------------------------------------------------------------ */
+
+figure {
+  margin: 13pt 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  text-align: center;
+}
+figure img { max-width: 100%; }
+
+/* A screenshot is a raster and gets a frame; drawn artwork sits on the page.
+   Height is capped so one screen never swallows a page of prose. */
+figure img[src$=".png"] {
+  border: 0.75pt solid var(--rule);
+  border-radius: 4pt;
+  box-shadow: 0 1.5pt 5pt rgba(22, 25, 29, 0.10);
+  max-height: 88mm;
+  width: auto;
+}
+
+figcaption {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 8pt;
+  color: var(--ink-soft);
+  letter-spacing: 0.03em;
+  margin-top: 6pt;
+}
 
 /* ---- headings ---------------------------------------------------------- */
 
@@ -289,7 +331,7 @@ const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, 
 
 /** Markdown to an HTML fragment, through pandoc's GFM reader. */
 const toHtml = (abs) =>
-  execFileSync('pandoc', [abs, '-f', 'gfm', '-t', 'html5', '--wrap=none'], {
+  execFileSync('pandoc', [abs, '-f', 'gfm+implicit_figures', '-t', 'html5', '--wrap=none'], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   })
@@ -302,11 +344,40 @@ const toHtml = (abs) =>
  */
 const dropLeadingH1 = (html) => html.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/, '')
 
-const shell = (title, eyebrow, body) =>
+/*
+  The assembled HTML lives in a temp directory, so a relative image path in the
+  Markdown would resolve against the wrong place. `base` points Chrome back at
+  the *source* file's directory, and the paths resolve exactly as the author
+  wrote them.
+*/
+const shell = (title, eyebrow, body, baseDir, subtitle) =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<base href="${pathToFileURL(baseDir + '/').href}">
 <style>${CSS}</style></head><body>
-<div class="doc-title">${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}<h1>${esc(title)}</h1></div>
+<div class="doc-title">
+  <div class="doc-title-text">
+    ${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}
+    <h1>${esc(title)}</h1>
+    ${subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ''}
+  </div>
+  ${WAVES}
+</div>
 ${body}</body></html>`
+
+/*
+  The mark on the title band: three route lines arriving, each at its dot.
+  Decorative, so it is hidden from assistive technology.
+*/
+const WAVES = `<svg class="doc-mark" viewBox="0 0 64 40" aria-hidden="true">
+  <g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round">
+    <path d="M4 10 C 22 10, 34 6, 57 8"/>
+    <path d="M4 20 C 24 20, 38 16, 57 19"/>
+    <path d="M4 30 C 20 30, 40 27, 57 30"/>
+  </g>
+  <circle cx="59" cy="8" r="3" fill="#ffffff"/>
+  <circle cx="59" cy="19" r="3" fill="#ffffff"/>
+  <circle cx="59" cy="30" r="3" fill="#ffffff"/>
+</svg>`
 
 const eyebrowFor = (src) =>
   src.startsWith('sales/')
@@ -351,7 +422,11 @@ async function main() {
     for (const doc of wanted) {
       const body = dropLeadingH1(toHtml(join(SRC, doc.src)))
       const html = join(tmp, doc.out.replace(/[\\/]/g, '_') + '.html')
-      writeFileSync(html, shell(doc.title, eyebrowFor(doc.src), body), 'utf8')
+      writeFileSync(
+        html,
+        shell(doc.title, eyebrowFor(doc.src), body, join(SRC, dirname(doc.src)), doc.subtitle),
+        'utf8',
+      )
       await render(html, join(OUT, doc.out), doc.title, doc.note)
       console.log('  ' + doc.out)
     }
@@ -365,7 +440,11 @@ async function main() {
       })
       .join('\n')
     const html = join(tmp, 'bundle.html')
-    writeFileSync(html, shell(BUNDLE.title, 'Cargolane · User Manual', parts), 'utf8')
+    writeFileSync(
+      html,
+      shell(BUNDLE.title, 'Cargolane · User Manual', parts, join(SRC, 'manual'), BUNDLE.subtitle),
+      'utf8',
+    )
     await render(html, join(OUT, BUNDLE.out), BUNDLE.title)
     console.log('  ' + BUNDLE.out)
   } finally {

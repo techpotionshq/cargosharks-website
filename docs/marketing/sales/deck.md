@@ -22,7 +22,7 @@ speak during slides 5–9 except to answer a direct question.
 Three things prepared in advance, without which this deck does not work:
 
 1. **Their own data in the system.** Not a demo dataset. Their lane, their
-   customers, their rate card. If you are running on generic seed data, cut
+   customers, their rate card. If you are running on generic sample data, cut
    slides 5–9 entirely and run a shorter conversation — a product tour on
    fictional data teaches them nothing about themselves.
 2. **One enquiry they answered recently**, and the honest turnaround time.
@@ -104,6 +104,8 @@ Ten seconds. Move.
 
 ## Slide 5 — **Moment 1: the phone** · *live*
 
+![What the coordinator sees: the enquiry priced from the rate card, buy, sell and margin side by side.](../assets/screens/enquiry.png)
+
 **Not a slide.** Hand them the phone with the public tracking page open.
 
 **What you say:**
@@ -124,14 +126,14 @@ Hand the phone across the table to whoever has not held it yet.
 > "That is your shipment [reference]. Nobody was called. There is no login —
 > a reference and a container number is all your customer needs."
 
-**Watch for:** them typing a *second* reference you did not seed. That is the
+**Watch for:** them typing a *second* reference you did not load. That is the
 strongest buying signal in the whole meeting. If it happens, stop and let them.
 
 ---
 
 ## Slide 6 — The portal · *live*
 
-**What you do:** sign in as one of their seeded customers.
+**What you do:** sign in as one of the customers you loaded for them.
 
 **What you say:**
 
@@ -172,6 +174,8 @@ it in front of them — which sells better than being right.
 
 ## Slide 8 — **Moment 2b: the one for the owner** · *live*
 
+![The shipment file: milestones, the house bill, and a demurrage clock writing its own charges.](../assets/screens/job-file.png)
+
 **What you do:** switch to the internal comparison view. Buy, sell and margin
 side by side on every option.
 
@@ -187,6 +191,8 @@ seconds.
 ---
 
 ## Slide 9 — **Moment 3: the board** · *live*
+
+![Receivables: what you are owed, how late it is, and who to ring first.](../assets/screens/finance.png)
 
 **What you do, in this order:**
 
@@ -209,6 +215,8 @@ immediately.
 ---
 
 ## Slide 10 — Why it is not a translated product
+
+![The dashboard in Arabic. Navigation, tables, charts and dates all follow the reading direction.](../assets/screens/dashboard-ar.png)
 
 **On the slide:** the same screen twice, English and Arabic, side by side.
 
@@ -234,15 +242,14 @@ talking. This slide either survives that or it does not, and you want to know.
 > anywhere. The operator is a setting. So this is your software, on your domain,
 > and there is no supplier logo on anything your customer sees.
 >
-> And it is your database. One deployment per customer — your own PostgreSQL
-> instance, in the region you choose. Not a shared table with a customer column.
+> And it is your database. One deployment per customer — your own
+> database, in the region you choose. Not a shared table with a customer column.
 > You can have a full export any day you ask, and if you ever leave, there is
 > nothing to disentangle."
 
 **Why this slide matters more than it looks:** for a prospect weighing a
 port-operator's software, independence is the entire counter-position. Say
-*"your landlord's software"* only if they raise CARGOES Runner first — see the
-battlecard.
+*"your landlord's software"* only if they raise CARGOES Runner first.
 
 ---
 
@@ -250,7 +257,7 @@ battlecard.
 
 **On the slide:** three lines.
 
-> 197 database policies across 82 tables.
+> Separation enforced by the database itself, on every record.
 > An audit trail nobody can edit — including us.
 > Nothing is ever deleted.
 
@@ -355,4 +362,4 @@ it is a boundary that protects them as much as you.
 | They ask who else can see it | They are thinking about *their* customers | You have won. Move to the pilot. |
 | Only the ops manager engages, the owner is on their phone | Slide 8 came too late or was rushed | Next time, do margin before the board. |
 | They ask about test coverage and deployment history | They have a technical reviewer | Good sign. Offer the security and coverage summary in writing. |
-| "We already have CargoWise" | Not an objection, an opening | Battlecard, §CargoWise. Ask what they pay now. |
+| "We already have CargoWise" | Not an objection, an opening | Ask what they pay now. |

@@ -38,6 +38,8 @@ than emailing it.
 
 ## 2. Finding your way around
 
+![Home: what needs you today, where the cargo is, and the numbers behind the day.](../assets/screens/dashboard.png)
+
 The screen has three parts and they do not move.
 
 **Down the left, the navigation**, in four groups. The groups match how a
@@ -57,8 +59,7 @@ internal role, and what your role permits shows up on the screen itself — a
 button you do not hold the permission for is not offered, and a screen that is
 wholly somebody else's says which permission it needs. This is not a limitation
 on you personally — it is how the separation of duties works, and every role's
-exact permissions are listed in
-[`09-permissions-reference.md`](09-permissions-reference.md).
+exact permissions are listed in [**Who can do what**](09-permissions-reference.md).
 
 **Across the top**, the search box — references, container numbers, master and
 house bill numbers, customers — the appearance switch and the language switch.
@@ -105,6 +106,8 @@ without an account.
 ---
 
 ## 5. Five things about how this system behaves
+
+![A shipment is one record from enquiry to invoice. Each stage writes to the same file.](../assets/art/loop.svg)
 
 These are unusual enough to be worth knowing on day one, because each of them
 will otherwise surprise you.
@@ -206,7 +209,7 @@ Said here once so that nobody spends an afternoon looking for it:
 | **Email notifications** | Live once *Outbound mail* is configured under *Settings → Integrations*. The wording of each message is edited under *Settings → Notification wording*, in both languages. |
 | **Scheduled reports by email** | In delivery. Every screen exports today. |
 | **Accounting-package integration** | A journal export per period, from *Finance → Overview*; direct connectors later. |
-| **The agent portal** | The route exists and is correctly scoped, but the screens are not built. Do not give an agent a login yet — see [`08-agent-portal.md`](08-agent-portal.md). |
+| **The agent portal** | The portal exists and is correctly scoped, but the screens are not built. Do not give an agent a login yet — see [**Agents and partners**](08-agent-portal.md). |
 
 ---
 
@@ -214,9 +217,9 @@ Said here once so that nobody spends an afternoon looking for it:
 
 | Role | Chapter |
 |---|---|
-| Coordinator | [`01-coordinator.md`](01-coordinator.md) |
-| Operations Manager | [`02-operations-manager.md`](02-operations-manager.md) |
-| Sales | [`03-sales.md`](03-sales.md) |
-| Finance | [`04-finance.md`](04-finance.md) |
-| Customs Broker | [`05-customs-broker.md`](05-customs-broker.md) |
-| Administrator | [`06-administrator.md`](06-administrator.md) |
+| Coordinator | [**Chapter 1**](01-coordinator.md) |
+| Operations Manager | [**Chapter 2**](02-operations-manager.md) |
+| Sales | [**Chapter 3**](03-sales.md) |
+| Finance | [**Chapter 4**](04-finance.md) |
+| Customs Broker | [**Chapter 5**](05-customs-broker.md) |
+| Administrator | [**Chapter 6**](06-administrator.md) |

@@ -18,6 +18,8 @@ None of that is a technology problem. It is a *system of record* problem, and it
 
 ### What Cargolane does about it
 
+![One record carries a shipment from enquiry to invoice — nothing is retyped along the way.](../assets/art/loop.svg)
+
 | | |
 |---|---|
 | **Quote in seconds, not days** | Load your carrier contracts once. An enquiry prices itself off your own buy and sell cards — sea FCL, sea LCL, air, land and courier — with chargeable weight, accessorials and the margin shown before you send it. |
@@ -29,9 +31,11 @@ None of that is a technology problem. It is a *system of record* problem, and it
 | **Enquiries read from the inbox** | An enquiry emailed to a branch mailbox is read into a proposal — parties, lane, cargo — that the coordinator accepts or rejects. Nothing becomes an enquiry without a person saying so. |
 | **Supplier bills read, not re-keyed** | An uploaded scan or a bill emailed by a known partner is read into lines and matched against what the job accrued, with the variance shown before anything is approved. Agent accounts are netted per period, one balance rather than two; supplier payments are recorded against the bills they settle. |
 | **Money you are owed, on one screen** | Invoices in three jurisdictions and three currencies, receipts, ageing buckets, credit standing against the limit, and who to ring about the oldest debt. Every charge line stores its own FX rate and the moment it was taken. |
-| **An audit trail nobody can edit** | Written by the database, not the application. `UPDATE` and `DELETE` on it are revoked from every role — including ours. |
+| **An audit trail nobody can edit** | Written by the database, not the application. Editing or deleting an entry is impossible for every role — including ours. |
 
 ---
+
+![The operations room: what needs you today, where the cargo is, and the money it is earning — one screen.](../assets/screens/dashboard.png)
 
 ### Why it is different from what you have been shown
 
@@ -39,11 +43,13 @@ None of that is a technology problem. It is a *system of record* problem, and it
 
 **It is your brand everywhere.** Logo, colours, domain — on every screen and every page your customer sees; every document issued under your own entity's name, in both languages. There is no supplier logo anywhere in the product, because there is no company name or colour written into a single component.
 
-**It is your database.** One deployment per customer. Your data sits in your own PostgreSQL instance, in the region you choose, and you can have a full export of it any day you ask. There is no shared tenant, no pooled table, and nothing to disentangle if you leave.
+**It is your database.** One deployment per customer. Your data sits in its own dedicated database, in the region you choose, and you can have a full export of it any day you ask. There is no shared tenant, no pooled table, and nothing to disentangle if you leave.
 
-**Separation is enforced below the application.** Branch scoping, immutability and audit are enforced by database policies — 197 of them across 82 tables — not by application code that can forget. A request for another branch's shipment returns *not found*, because the row is not visible to the query at all.
+**Separation is enforced below the application.** Branch scoping, immutability and audit are enforced by the database itself, on every record — not by application code that can forget. A request for another branch's shipment returns *not found*, because the row is not visible to the query at all.
 
 ---
+
+![The same operations room in Arabic — laid out right-to-left, not mirrored by a plugin.](../assets/screens/dashboard-ar.png)
 
 ### What it costs you to try
 
@@ -60,4 +66,4 @@ Carrier tracking is built for Maersk, Hapag-Lloyd and CMA CGM but runs on your o
 ---
 
 **techpotions** · Built with AL-QABANDI & PARTNERS Co. (Shipping & Forwarding), Kuwait
-`hello@cargolane.com` · `cargolane.com`
+hello@cargolane.com · cargolane.com

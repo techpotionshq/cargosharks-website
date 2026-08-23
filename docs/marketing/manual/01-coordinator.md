@@ -2,7 +2,7 @@
 
 **You move shipments. This chapter is the whole of your day.**
 
-> Read [`00-orientation.md`](00-orientation.md) first if you have not. It covers
+> Read [**Getting started**](00-orientation.md) first if you have not. It covers
 > signing in, branches and the five behaviours that will otherwise surprise you.
 
 ---
@@ -26,6 +26,8 @@ Everything below is how to handle each of those.
 ---
 
 ## Enquiries
+
+![The enquiry queue: every request, its owner, and the clock it is answering against.](../assets/screens/enquiries.png)
 
 ### Taking an enquiry
 
@@ -108,6 +110,8 @@ rate wrong.
 ---
 
 ## Shipments
+
+![A shipment file: milestones on the left, the shipment and its free-time clocks on the right.](../assets/screens/job-file.png)
 
 ### Booking
 
@@ -251,7 +255,7 @@ You cannot record the duty **payment**; that is Finance's, and the separation is
 deliberate.
 
 If you are not the person who does clearance, that is your customs broker's
-chapter and you can leave it to them. See [`05-customs-broker.md`](05-customs-broker.md).
+chapter and you can leave it to them. See the [**Customs Broker**](05-customs-broker.md) chapter.
 
 ---
 
@@ -368,7 +372,7 @@ scan is kept on file; if no model key is configured, it says so and you capture
 the bill by hand.
 
 Nothing you do here releases money. Approving a bill for payment, and paying
-it, are Finance's — see [`04-finance.md`](04-finance.md#payables).
+it, are Finance's — see the [**Finance**](04-finance.md#payables) chapter.
 
 ---
 
@@ -378,7 +382,7 @@ If you have arrived with a spreadsheet of customers, contacts, agents, ports or
 rates, use **Network → Bulk import** rather than typing them in. It checks every
 row before writing anything and imports nothing at all if any row fails.
 
-Full instructions are in the administrator chapter, [§Bulk import](06-administrator.md#bulk-import),
+Full instructions are in the [**Administrator**](06-administrator.md#bulk-import) chapter, under **Bulk import**,
 and the same rules apply to you.
 
 ---

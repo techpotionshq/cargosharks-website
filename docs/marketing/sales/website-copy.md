@@ -6,9 +6,9 @@ Notes to the person building the page are in blockquotes and are **not** copy.
 > **Arabic.** Every page here needs an Arabic counterpart, and the Arabic is not
 > a translation pass at the end — it is a rewrite by someone who sells freight in
 > Arabic. Nothing on this site may ship in Arabic that a native speaker has not
-> read aloud. Set `dir="rtl"` on the document and use logical CSS properties
-> (`margin-inline-start`, never `margin-left`), which is the same rule the product
-> itself follows. A mirrored English site reads as an insult in Riyadh.
+> read aloud. Build the page right-to-left from the start — the direction set
+> on the document, spacing that follows the reading direction rather than fixed
+> left and right margins — which is the same rule the product itself follows. A mirrored English site reads as an insult in Riyadh.
 >
 > **Tone.** Declarative, specific, no superlatives. The product's own interface
 > copy is the style guide: *"Everything wrong across live shipments, oldest first
@@ -106,7 +106,7 @@ issues, and there is no supplier badge on anything your customer ever sees.
 
 ### `H2` Your database, in your region
 
-One deployment per customer. Your own PostgreSQL instance, in Kuwait, the UAE,
+One deployment per customer. Your own database, in Kuwait, the UAE,
 Saudi Arabia or the EU — you choose. Not a shared table with a customer column
 in it.
 
@@ -117,8 +117,8 @@ leave, there is nothing to disentangle, because none of it was entangled.
 
 ### `H2` What holds when people are careless
 
-Branch separation is enforced by the database — 197 policies across 82 tables —
-not by application code that can forget one query. Ask for another branch's
+Branch separation is enforced by the database itself, on every record — not by
+application code that can forget one query. Ask for another branch's
 shipment and it comes back *not found*, because the row is not visible to your
 request at all.
 
@@ -312,8 +312,8 @@ what it took, so nothing is exported twice.
 
 # Tracking page
 
-> **Copy already lives in the product** — `apps/web/messages/{en,ar}.json`, under
-> `track`. Do not rewrite it for the website; take it verbatim so that the page a
+> **Copy already lives in the product** — it is the tracking page's own wording,
+> in both languages. Do not rewrite it for the website; take it verbatim so that the page a
 > prospect sees on the marketing site is the page their customer will see. If the
 > two drift, one of them is a lie.
 

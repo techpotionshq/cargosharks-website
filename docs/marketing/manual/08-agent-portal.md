@@ -9,7 +9,7 @@
 
 ## What exists today
 
-**The route exists and is correctly scoped.** An agent contact who signs in sees
+**The portal exists and is correctly scoped.** An agent contact who signs in sees
 only jobs where their own partner record is named on the shipment — and that
 scoping is enforced by the database, as one arm of the same policy that separates
 your branches. It is not an application that was bolted on and then filtered.
@@ -96,14 +96,14 @@ and pays it.
 
 Where the same agent also pays you, link them on their partner page to the
 customer record they invoice you as — *Current account* — and **Finance →
-Settlements** nets both sides of the period into one figure. See
-[`04-finance.md`](04-finance.md#settlements).
+Settlements** nets both sides of the period into one figure. See the
+[**Finance**](04-finance.md#settlements) chapter.
 
 ### Milestones and documents from the far end
 
 Your coordinator enters them. When an agent emails a milestone date or a
-document, it gets entered against the shipment the same day — see
-[`01-coordinator.md`](01-coordinator.md). Mail that quotes your own shipment
+document, it gets entered against the shipment the same day — see the
+[**Coordinator**](01-coordinator.md) chapter. Mail that quotes your own shipment
 reference joins that shipment's thread on arrival, if the mailbox it reached is
 one your administrator has connected.
 

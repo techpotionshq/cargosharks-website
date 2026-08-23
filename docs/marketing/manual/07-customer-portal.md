@@ -22,6 +22,8 @@ though you are always welcome to.
 
 ## Tracking one shipment — no account
 
+![The tracking page: a reference and one more identifier, and no account needed.](../assets/screens/track-empty.png)
+
 Go to **[track URL]**.
 
 You need two things, both of which are on your booking confirmation:

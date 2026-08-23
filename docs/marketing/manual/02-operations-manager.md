@@ -3,8 +3,8 @@
 **You hold everything a coordinator holds, plus the reversals, the rate cards
 and the reference data. This chapter covers the difference.**
 
-> Read [`00-orientation.md`](00-orientation.md) and then
-> [`01-coordinator.md`](01-coordinator.md) — everything in the coordinator's
+> Read [**Getting started**](00-orientation.md) and then
+> the [**Coordinator**](01-coordinator.md) chapter — everything in the coordinator's
 > chapter is yours too, and it is not repeated here.
 
 ---
@@ -29,7 +29,7 @@ the accountant:
 |---|---|
 | **Split a consolidation's master cost** | Decides what every house under the master cost, and therefore every margin. A coordinator builds the master; splitting it is yours — see below. |
 | **Let a customer trade past their credit limit** | Booking checks credit. A credit override is recorded on the customer, with a reason, and it is yours or Finance's — see below. |
-| **Run a set-off with an agent** | Netting what an agent owes you against what you owe them. **Finance → Settlements**; the mechanics are in [`04-finance.md`](04-finance.md#settlements). |
+| **Run a set-off with an agent** | Netting what an agent owes you against what you owe them. **Finance → Settlements**; the mechanics are in the [**Finance**](04-finance.md#settlements) chapter. |
 
 **You cannot touch invoices.** Approving, issuing, voiding or crediting an
 invoice is Finance's alone, and an operations manager who could issue invoices
@@ -84,6 +84,8 @@ finding out late is demurrage.
 
 ## Rate cards
 
+![Rate cards: what covers which lane, and what is about to lapse.](../assets/screens/rates.png)
+
 **Network → Rate cards.** This screen is the most valuable one you own, and the
 subtitle states the case: *a lane with no live buying rate is a lane you are
 quoting blind.*
@@ -121,7 +123,7 @@ prices in the same week.
 ### Loading a card
 
 Small changes by hand. A carrier contract arriving as a spreadsheet goes through
-**Network → Bulk import** — see [`06-administrator.md`](06-administrator.md#bulk-import).
+**Network → Bulk import** — see the [**Administrator**](06-administrator.md#bulk-import) chapter.
 It checks every line before writing anything, and if a single line fails, nothing
 is written.
 
@@ -193,7 +195,7 @@ job, and the register is only worth having if the dates in it are true.
 ## Consolidations — splitting the master cost
 
 A coordinator opens the master and attaches the houses; the mechanics are in
-[`01-coordinator.md`](01-coordinator.md#consolidations). What is yours is
+the [**Coordinator**](01-coordinator.md#consolidations) chapter. What is yours is
 **Split**: dividing each master-level cost across the houses under it, by
 volume, chargeable weight, gross weight, packages, equally, or stated by hand.
 

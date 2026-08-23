@@ -2,7 +2,7 @@
 
 **You own the enquiry from the moment it arrives until it is won or lost.**
 
-> Read [`00-orientation.md`](00-orientation.md) first.
+> Read [**Getting started**](00-orientation.md) first.
 
 ---
 
@@ -71,6 +71,8 @@ nothing.
 ---
 
 ## Pricing
+
+![Rate comparison on an enquiry: buy, sell and margin side by side. The customer never sees the buy side.](../assets/screens/enquiry.png)
 
 Open the enquiry and press **Price it**. The system finds a live rate card for
 the lane, mode and date, calculates chargeable weight for the mode, and applies

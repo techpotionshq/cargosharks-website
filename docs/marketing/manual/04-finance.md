@@ -2,7 +2,7 @@
 
 **Invoicing, receipts and receivables. Yours alone, and deliberately so.**
 
-> Read [`00-orientation.md`](00-orientation.md) first.
+> Read [**Getting started**](00-orientation.md) first.
 
 ---
 
@@ -32,6 +32,8 @@ and the invoice gets credited by you. Neither of you fixes the other's record.
 ---
 
 ## The receivables screen
+
+![Receivables: owed, overdue, received, and who owes the most.](../assets/screens/finance.png)
 
 **Finance → Overview.** The subtitle is the whole job: *what you are owed, how
 late it is, and who to ring about it.*
@@ -189,6 +191,8 @@ Two consequences for you:
 ---
 
 ## Payables
+
+![Payables: what suppliers have billed, where it disagrees with the job, and the bills a scan or an email brought in.](../assets/screens/payables.png)
 
 **Finance → Payables.** What suppliers have billed, and where it disagrees with
 what the job accrued. The subtitle is the job, and the four counters at the top

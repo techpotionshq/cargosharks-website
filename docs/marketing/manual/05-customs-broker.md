@@ -2,7 +2,7 @@
 
 **A narrow role, on purpose. Declarations, and the shipment fields clearance depends on.**
 
-> Read [`00-orientation.md`](00-orientation.md) first.
+> Read [**Getting started**](00-orientation.md) first.
 
 ---
 
@@ -23,6 +23,8 @@ wrong under your account.
 ---
 
 ## The customs screen
+
+![The customs board: every declaration, its stage, and the clock it is running against.](../assets/screens/customs.png)
 
 **Operations → Customs.** Declarations in clearance, **ordered by the window that
 closes first**.

@@ -60,13 +60,13 @@ Collected in one place so nobody spends an afternoon looking:
 | Direct customs filing, Kuwait | **Not planned.** Declarations are tracked, not filed. A duty *estimate* is available; the assessment is still recorded by hand. |
 | UAE MPCI filing | Roadmap |
 | Saudi ZATCA e-invoicing | Roadmap. *Settings → Integrations → E-invoice transmission* exists, but no accredited provider is connected. |
-| Agent portal — RFQ response, agent posting | In delivery. Route scoped, screens not built. |
+| Agent portal — RFQ response, agent posting | In delivery. Scaffolded, screens not built. |
 | Email notifications | **Live** once *Outbound mail* is configured under *Settings → Integrations*. Wording is edited under *Settings → Notification wording*. |
 | WhatsApp notifications | Not in this release. |
 | Scheduled email reports | In delivery. Every screen exports today; the margin report exports CSV. |
 | Accounting-package connectors | Journal export per period from *Finance → Overview* today; direct connectors later. |
-| Self-service password reset | **Available** — *Forgotten your password?* on the sign-in page — once *Outbound mail* is configured. Otherwise the administrator resets from a shell. |
-| A user-invitation screen | *Settings → Users & roles → Invite someone* creates the person and their branch roles. The sign-in credential is still created from a shell. |
+| Self-service password reset | **Available** — *Forgotten your password?* on the sign-in page — once *Outbound mail* is configured. Otherwise the administrator resets it from the server. |
+| A user-invitation screen | *Settings → Users & roles → Invite someone* creates the person and their branch roles. The sign-in credential is still created on the server. |
 
 **If your supplier tells you one of these has shipped, ask to see it on your own
 deployment.** This table is maintained against the working software rather than

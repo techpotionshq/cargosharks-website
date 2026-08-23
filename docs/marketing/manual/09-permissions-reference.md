@@ -4,7 +4,7 @@
 administrator deciding which role to grant, or an auditor asking how separation
 of duties is enforced.
 
-> This is the seeded matrix. It is editable without a software release, so if
+> This is the matrix as delivered. It is editable without a software release, so if
 > your deployment has been changed, this page describes the starting point rather
 > than your current state. Your administrator can confirm.
 
@@ -125,7 +125,7 @@ without the other, which is a distinction with no meaning.
 
 **It is not the security boundary.** It decides what the interface *offers*. The
 real boundary is in the database: branch separation, immutability and audit are
-enforced by 197 policies across 82 tables, plus the state machines that
+enforced by the database itself, on every record, plus the state machines that
 reject an invalid transition regardless of who asked.
 
 The asymmetry is deliberate. A permission check that is forgotten hides a button.
@@ -159,4 +159,4 @@ another branch, and every grant is in the audit log.
 | Can a user grant themselves access? | No. Only `admin.users.write` can, and every grant is recorded. |
 | Can the supplier see our data? | Not by default and not without a grant from your administrator — scoped to branches, read or write, time-limited, against a ticket, revocable, and permanently recorded. |
 | Is anything ever deleted? | No. Records are superseded, closed, cancelled or deactivated. Delete is revoked from the application's own account on every table. |
-| Who can change the permission matrix itself? | An administrator, through the seed. It is editable without a software release, and the change is audited. |
+| Who can change the permission matrix itself? | An administrator. It is editable without a software release, and the change is audited. |

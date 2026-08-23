@@ -3,7 +3,7 @@
 **You own the deployment. This chapter is what only you can do, and the four
 things that will hurt if you do them carelessly.**
 
-> Read [`00-orientation.md`](00-orientation.md) first. You hold every permission
+> Read [**Getting started**](00-orientation.md) first. You hold every permission
 > in the system, including any added by a future release — so every other
 > chapter in this manual also describes something you can do.
 
@@ -11,7 +11,7 @@ things that will hurt if you do them carelessly.**
 
 ## Settings
 
-**Settings** sits apart from the operations navigation and has its own shell.
+**Settings** sits apart from the operations navigation and has its own frame.
 The reason is stated in the product: *nothing here moves a shipment.* These
 screens configure the operator — who may sign in, what a branch invoices as, what
 the product is called.
@@ -22,20 +22,20 @@ the product is called.
 | **Branches** | Currency, invoice series, working calendar, trading conditions, chart of accounts, per entity |
 | **Audit log** | Every write, by whom, from where |
 | **Vendor access** | What your supplier's support can see, and for how long |
-| **Notification wording** | What the product says when it writes to somebody — shared with the operations manager, see [`02-operations-manager.md`](02-operations-manager.md#notification-wording) |
+| **Notification wording** | What the product says when it writes to somebody — shared with the operations manager, see the [**Operations Manager**](02-operations-manager.md#notification-wording) chapter |
 | **API keys** | Read-only keys a customer's systems pull their shipments with, and the webhooks that push events to them |
 | **Mailboxes** | The addresses the system reads for incoming enquiries, per branch |
 | **Integrations** | The relay that sends the mail, the carrier registrations, the file store, the model key, and the provider that will transmit invoices |
-| **Brand** | Colours, name and mark, and the variable behind each |
+| **Brand** | Colours, name and mark, and the setting behind each |
 
-They appear in that order, and `/settings` opens on the first one your role can
+They appear in that order, and **Settings** opens on the first one your role can
 see.
 
 **Reference data deliberately stayed in operations.** Ports, charge types,
 milestone templates and exception codes are daily operational work, and putting
 them behind an administrative wall is how a system grows a free-text "Other"
 field that swallows the data it was meant to structure. Your operations manager
-owns them — see [`02-operations-manager.md`](02-operations-manager.md#reference-data--and-why-it-is-yours).
+owns them — see the [**Operations Manager**](02-operations-manager.md#reference-data--and-why-it-is-yours) chapter.
 
 ---
 
@@ -56,28 +56,16 @@ route to every branch.
 **The dialog deliberately has no password field**, and it does not create a
 sign-in. An administrator who can type a colleague's password can sign in as
 them, and the audit log would say it was the colleague. The credential is
-created from a shell on the server, against the same email, and the two rows
-are linked:
+created on the server itself — by whoever operates your deployment — against
+the same email, and the two records are linked.
 
-```bash
-pnpm db:create-user --email ops@yourcompany.com --name "Operations" \
-                    --role operations_manager
-```
+Provisioning creates everything an account needs in one step, including **a
+role per branch**. Without a branch role the account signs in and sees
+nothing — which is the most common way a new user's first day goes wrong. By
+default the role is granted in every active branch; it can be scoped to one.
 
-That writes, in one transaction, the four rows an account needs: the auth user,
-the hashed credential, the domain principal, and **a role per branch**. Without
-the branch role the account signs in and sees nothing — which is the most common
-way a new user's first day goes wrong.
-
-By default it grants the role in every active branch. To scope it to one:
-
-```bash
-pnpm db:create-user --email kwi@yourcompany.com --name "Kuwait Desk" \
-                    --role coordinator --branch KWI
-```
-
-The generated password prints once. Give it to the person directly. Do not email
-it.
+The generated password is shown once, to whoever provisions the account. Give
+it to the person directly. Do not email it.
 
 ### Suspending someone
 
@@ -91,8 +79,8 @@ marked inactive, and **Restore** gives it back with the same branches and roles.
 Two paths. **Forgotten your password?** on the sign-in page sends the person a
 link that expires in an hour — it needs *Outbound mail* configured under
 **Settings → Integrations**, and a deployment without it logs the failure rather
-than appearing to work. Or re-run `db:create-user` for the existing email: it
-resets that password and changes nothing else, and it is the path when mail is
+than appearing to work. Or have the account re-provisioned on the server for the existing email: that
+resets the password and changes nothing else, and it is the path when mail is
 not yet configured.
 
 ### Roles are per branch
@@ -114,7 +102,7 @@ permissions each role holds, and a person's badge carries the same mark.
 
 ### Choosing a role
 
-Seven roles, described in full in [`09-permissions-reference.md`](09-permissions-reference.md).
+Seven roles, described in full in [**Who can do what**](09-permissions-reference.md).
 Three rules of thumb:
 
 **Grant the narrowest role that lets someone do their job.** The customs broker
@@ -142,7 +130,7 @@ working calendar**. **Add branch** and **Edit branch** on **Settings → Branche
 | **Invoice prefix** | Numbering is per branch, and gaps are questions at audit. Voided invoices keep their number for exactly this reason. Defaults to the branch code, and **cannot be changed once invoices have been issued**. |
 | **House B/L series** | Numbers the house bills the branch issues. Leave blank to number them by hand. |
 | **Working calendar** | **Every SLA clock and ageing rule counts against this.** Kuwait, Qatar and the UAE share neither a weekend nor a holiday list. |
-| **Time zone**, **tax registration** | Per entity — `Asia/Kuwait` and `Asia/Dubai` are not the same hour |
+| **Time zone**, **tax registration** | Per entity — Kuwait and Dubai are not the same hour |
 | **Trading conditions** and **Not included** | Printed at the foot of, and beside the charges on, every quotation this entity issues — in both languages. Each entity trades under its own law; Kuwait and Dubai do not share a footer. |
 | **Sends from** | Who notifications from this entity come from. Blank uses the deployment's own address. |
 | **Quiet hours** | No customer notification leaves between these hours, in the branch's local time. Internal alerts are never held. |
@@ -219,8 +207,8 @@ quotes by reference. The service checks every connected mailbox once a minute,
 and a new enquiry is on the board within that.
 
 **Connect a mailbox**: the branch whose enquiries arrive there, the address,
-the IMAP server and port, TLS, the password, the folder (usually `INBOX`), and
-optionally a folder to move handled mail to — leave it blank and mail is marked
+the incoming-mail server and port, TLS, the password, the folder (usually the
+inbox), and optionally a folder to move handled mail to — leave it blank and mail is marked
 read where it is. The password is stored encrypted and is never shown again;
 when editing, leave it blank to keep the one stored.
 
@@ -234,9 +222,9 @@ most failures here are a credential that changed. **Stop reading** pauses one
 without losing anything; **Start reading** resumes, and anything unread that
 accumulated in the meantime arrives as enquiries.
 
-**Before connecting a real mailbox:** the deployment needs
-`MAILBOX_ENCRYPTION_KEY` set, or the form cannot be saved — it says so. And you
-hold no branch you cannot connect a mailbox for; an administrator with no
+**Before connecting a real mailbox:** the deployment needs its mailbox
+encryption key configured — done once, by whoever operates the deployment — or
+the form cannot be saved; it says so. And you hold no branch you cannot connect a mailbox for; an administrator with no
 branch role is told to get one first.
 
 ---
@@ -245,9 +233,9 @@ branch role is told to get one first.
 
 **Settings → Integrations.** The accounts this deployment reaches the outside
 world with. A credential saved here takes effect within a minute, with no
-release, and takes precedence over the deployment's environment variables —
-**Stop using these settings** falls back to the environment without losing what
-was typed, which is how a change is rolled back.
+release, and takes precedence over the deployment's own configuration —
+**Stop using these settings** falls back to that configuration without losing
+what was typed, which is how a change is rolled back.
 
 Credentials are sealed on the way in and never shown again; leave a field blank
 to keep the one stored. The first option in each mode list is the one that
@@ -291,28 +279,23 @@ did it stop working* always has an answer.
 
 **Webhooks** are the other direction: where the system posts an event the
 moment it happens, so a customer's system does not have to poll. **Subscribe**
-with an `https` URL and, optionally, the events wanted — empty means
-everything. Each delivery is signed with HMAC-SHA256 in `x-qabandi-signature`
-using a secret shown once at subscription; give it to whoever receives the
-events, because they verify the signature with it. Each endpoint shows its last
-delivery and how many are failing, and can be turned off without being removed.
+with a secure (https) address and, optionally, the events wanted — empty means
+everything. Each delivery is signed with a secret shown once at subscription;
+give it to whoever receives the events, because they verify the signature with
+it. Each endpoint shows its last delivery and how many are failing, and can be turned off without being removed.
 
 ---
 
 ## Brand
 
 **Settings → Brand** shows every colour, name and mark the product resolves at
-runtime — and the environment variable behind each one.
+runtime — and the named setting behind each one.
 
-The whole product is re-skinned by setting variables. No rebuild, no code change:
-
-```bash
-BRAND_NAME_EN="Meridian Logistics" BRAND_MONOGRAM=M \
-BRAND_PRIMARY_HUE=155 BRAND_ACCENT_HUE=25 BRAND_RADIUS=4
-```
+The whole product is re-skinned by changing a handful of deployment settings —
+a name, a monogram, two hues, a corner radius. No rebuild, no code change.
 
 Both themes, every tonal ramp, every semantic colour and the chart series derive
-from those tokens. The screen renders the resolved values so the claim is
+from those few values. The screen renders the resolved values so the claim is
 inspectable rather than asserted.
 
 **Two things deliberately do not follow your brand, and should not be made to:**
@@ -394,28 +377,29 @@ correction path is editing records, not re-running the file.
 ## Operating the deployment
 
 If your supplier operates the deployment, this section is theirs. If you operate
-it yourself, this is the whole of the job.
+it yourself, this is the whole of the job. Each task is a single step in the
+operator runbook that comes with the deployment.
 
-| Command | What it does |
+| Task | What it does |
 |---|---|
-| `pnpm db:migrate` | Apply schema migrations. Forward-only. |
-| `pnpm db:seed` | Reference rows and the role/permission matrix |
-| `pnpm db:create-user` | Provision an account that can sign in |
-| `pnpm fleet:status` | What schema version each deployment is on, and whether it is reachable |
-| `pnpm fleet:migrate` | Migrate across deployments, sequentially, with a report |
-| `pnpm fleet:backup` | Dump every deployment |
-| `pnpm fleet:restore-drill` | Dump, restore into a scratch database, verify, drop |
+| **Apply updates** | Bring the deployment to the current release. Forward-only. |
+| **Refresh reference data** | The delivered reference rows and the role and permission matrix |
+| **Provision an account** | Create an account that can sign in |
+| **Fleet status** | What version each deployment is on, and whether it is reachable |
+| **Fleet update** | Update every deployment, one at a time, with a report |
+| **Back up** | Take a full copy of every deployment |
+| **Restore drill** | Back up, restore into a scratch copy, verify, discard |
 
-**`fleet:restore-drill` is the one to schedule.** A backup nobody has restored is
-a hypothesis. The drill restores into a scratch database and checks the
-*content*, not the exit status — including that the security policies survived,
-because a restore that drops them produces a database that looks perfect and
-enforces nothing.
+**The restore drill is the one to schedule.** A backup nobody has restored is
+a hypothesis. The drill restores into a scratch copy and checks the *content*,
+not merely that the process finished — including that the security policies
+survived, because a restore that drops them produces a system that looks
+perfect and enforces nothing.
 
-**Dumps must be taken through the admin connection.** The application account
-cannot read outside its own branches, so a dump taken as the application role is
-silently partial — the most dangerous artefact in this whole area, because it
-looks like a backup.
+**Backups must be taken with the administrative connection.** The application's
+own account cannot read outside its branches, so a backup taken as the
+application is silently partial — the most dangerous artefact in this whole
+area, because it looks like a backup.
 
 ---
 
@@ -440,9 +424,9 @@ dump is good because the command exited zero.
 
 | | |
 |---|---|
-| **A sign-in created from a screen** | *Invite someone* creates the person and their branch roles; the credential is still created from a shell, against the same email. |
-| **Self-service password reset without mail** | *Forgotten your password?* works once *Outbound mail* is configured. Until then, `db:create-user` is the reset path. |
-| **Editing the role matrix from the interface** | The matrix is seeded and editable without a release, but not from a screen today. The *Roles* table on Users & roles shows it. |
+| **A sign-in created from a screen** | *Invite someone* creates the person and their branch roles; the credential is still created on the server, against the same email. |
+| **Self-service password reset without mail** | *Forgotten your password?* works once *Outbound mail* is configured. Until then, re-provisioning on the server is the reset path. |
+| **Editing the role matrix from the interface** | The matrix is editable without a software release, but not from a screen today. The *Roles* table on Users & roles shows it. |
 | **WhatsApp notifications** | Not in this release. Email is the channel, once *Outbound mail* is configured. |
 | **Carrier tracking without registering** | The feeds are carrier-direct and need each carrier's own credentials under *Integrations*. Until they are entered, milestones are typed. |
 | **Scheduled reports** | In delivery. Every screen exports today. |

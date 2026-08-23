@@ -60,10 +60,12 @@ Rebuilds every PDF from the Markdown. **The Markdown is the source; the PDFs are
 output.** Never edit a PDF — edit the chapter and re-render, or the two drift and
 the one you sent is the one you cannot reproduce.
 
-Last rendered 23 August 2026, after the whole set was revised against the code
-(the generated documents, email intake, payables, the assistant, the corrected
-policy and string counts). If a chapter's date is later than that, re-render
-before sending.
+Last rendered 24 August 2026. The customer-facing set now carries product
+screenshots and drawn figures from `assets/` — `assets/screens/` holds real
+captures of the running product (1440×900 at 2×; retake them there when the
+interface changes) and `assets/art/` the drawn pieces. The same revision
+removed code references and internal jargon from every customer-facing page.
+If a chapter's date is later than the render, re-render before sending.
 
 Needs `pandoc` on `PATH` and Google Chrome installed. pandoc parses; Chrome
 paginates, driven through the `playwright-core` the end-to-end run already
