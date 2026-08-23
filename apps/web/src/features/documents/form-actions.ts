@@ -363,3 +363,61 @@ export async function issueDocument(form: FormData): Promise<void> {
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/documents')
 }
+
+// --- telex release ---------------------------------------------------------
+
+/**
+ * Surrender the house bill — a telex release.
+ *
+ * The shipper hands the originals back at origin and the destination agent
+ * releases the cargo without them. Once recorded, the bill prints no original
+ * sheets and every copy carries the SURRENDERED stamp with this date, and the
+ * delivery order stops asking the terminal for an original nobody holds.
+ *
+ * Behind `document.release` rather than `job.update`: releasing cargo against
+ * nothing but our word is the same class of act as releasing a document to
+ * the customer — one click, consequential, and not something every
+ * coordinator should be able to do on the way past.
+ *
+ * Set once. `where surrendered_at is null` makes a double submit a no-op
+ * rather than a later date overwriting the one the agent was told, and there
+ * is no un-surrender: the originals cannot be un-collected. A bill that was
+ * surrendered by mistake is re-issued, which is a new version in `documents`
+ * and the audit trail that goes with it.
+ */
+export async function surrenderHouseBill(form: FormData): Promise<void> {
+  const session = await requireSession()
+  assertCan(session, 'document.release')
+
+  const jobId = read(form, 'jobId')
+  if (!jobId) throw new Error('Nothing to surrender')
+
+  await withActor(session.actor, async (tx) => {
+    const [job] = await tx
+      .select({ houseBillNumber: jobs.houseBillNumber, mode: jobs.mode })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1)
+
+    if (!job) throw new Error('No such shipment')
+    /*
+      Only a numbered sea bill can be surrendered. An unnumbered one was never
+      issued, and an air waybill is not a document of title — there are no
+      originals to hand back, so "surrendered" would be a stamp with no
+      meaning on it.
+    */
+    if (!job.houseBillNumber) throw new Error('Issue the bill of lading before surrendering it')
+    if (job.mode === 'air') throw new Error('An air waybill is not surrendered')
+
+    await tx
+      .update(jobs)
+      .set({
+        houseBillSurrenderedAt: new Date(),
+        houseBillSurrenderedById: session.actor.principalId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(jobs.id, jobId), sql`${jobs.houseBillSurrenderedAt} is null`))
+  })
+
+  revalidatePath(`/jobs/${jobId}`)
+}

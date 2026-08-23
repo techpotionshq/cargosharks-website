@@ -59,6 +59,11 @@ const STRINGS = {
       'issued subject to payment in full of all freight, duties and charges due to us, and against ' +
       'surrender of the original bill of lading where one has been issued. It is valid until the date ' +
       'shown and confers no right of delivery thereafter.',
+    instructionSurrendered:
+      'Please deliver the undermentioned consignment to the party named above. This delivery order is ' +
+      'issued subject to payment in full of all freight, duties and charges due to us. The original ' +
+      'bills of lading were surrendered at origin on {date} (telex release) and no original is to be ' +
+      'called for. It is valid until the date shown and confers no right of delivery thereafter.',
     authorised: 'Authorised signatory',
     received: 'Received in good condition',
   },
@@ -83,6 +88,11 @@ const STRINGS = {
       'يُرجى تسليم الإرسالية المذكورة أدناه إلى الطرف المسمّى أعلاه. صدر أمر التسليم هذا مشروطاً بسداد ' +
       'كامل أجور الشحن والرسوم والمصاريف المستحقة لنا، ومقابل تسليم النسخة الأصلية من بوليصة الشحن إن ' +
       'صدرت. وهو صالح حتى التاريخ المبيّن ولا يخوّل التسليم بعده.',
+    instructionSurrendered:
+      'يُرجى تسليم الإرسالية المذكورة أدناه إلى الطرف المسمّى أعلاه. صدر أمر التسليم هذا مشروطاً بسداد ' +
+      'كامل أجور الشحن والرسوم والمصاريف المستحقة لنا. وقد سُلّمت النسخ الأصلية من بوليصة الشحن في بلد ' +
+      'المنشأ بتاريخ {date} (إفراج بالتلكس) فلا تُطلب أي نسخة أصلية. وهو صالح حتى التاريخ المبيّن ولا ' +
+      'يخوّل التسليم بعده.',
     authorised: 'التوقيع المعتمد',
     received: 'استُلمت بحالة جيدة',
   },
@@ -116,6 +126,22 @@ export function renderDeliveryOrderHtml(
 
   const consignee = partyOf(view, 'consignee')
   const agent = partyOf(view, 'delivery_agent')
+
+  /*
+    A surrendered bill changes what the terminal is told.
+
+    "Against surrender of the original bill of lading" on a shipment whose
+    originals were handed back at origin is an instruction nobody can comply
+    with — the consignee does not hold one and never will — and a terminal
+    that reads it literally holds the cargo. The telex-released wording says
+    so, with the date, so the release is traceable to the surrender.
+  */
+  const instruction = view.houseBillSurrenderedAt
+    ? t.instructionSurrendered.replace(
+        '{date}',
+        formatDate(view.houseBillSurrenderedAt, locale),
+      )
+    : t.instruction
 
   const rows = view.cargo
     .map(
@@ -173,7 +199,7 @@ ${containers ? `<div class="row">${field(t.containers, containers)}</div>` : ''}
   </tr></tfoot>
 </table>
 
-<div class="terms">${esc(t.instruction)}</div>
+<div class="terms">${esc(instruction)}</div>
 
 <div class="sign">
   <div>${esc(t.authorised)}</div>

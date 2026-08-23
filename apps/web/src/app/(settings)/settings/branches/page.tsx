@@ -156,6 +156,8 @@ export default async function BranchesPage() {
                     roundingAccountCode: row.roundingAccountCode,
                     tradingConditionsEn: row.tradingConditionsEn,
                     tradingConditionsAr: row.tradingConditionsAr,
+                    billOfLadingTermsEn: row.billOfLadingTermsEn,
+                    billOfLadingTermsAr: row.billOfLadingTermsAr,
                     defaultExclusionsEn: row.defaultExclusionsEn,
                     defaultExclusionsAr: row.defaultExclusionsAr,
                     isActive: row.isActive,

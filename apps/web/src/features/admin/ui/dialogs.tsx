@@ -198,6 +198,8 @@ export interface BranchDefaults {
   readonly roundingAccountCode?: string | null
   readonly tradingConditionsEn?: string | null
   readonly tradingConditionsAr?: string | null
+  readonly billOfLadingTermsEn?: string | null
+  readonly billOfLadingTermsAr?: string | null
   readonly defaultExclusionsEn?: string | null
   readonly defaultExclusionsAr?: string | null
   readonly isActive?: boolean
@@ -498,6 +500,33 @@ export async function BranchDialog({
           span: 6,
           rows: 4,
           defaultValue: defaults?.defaultExclusionsAr,
+        },
+        /*
+          The reverse side of the house bill of lading.
+
+          A different document from the quotation footer above, and a heavier
+          one: these are the conditions of *carriage*, the clauses a claim is
+          argued under, and which set a forwarder prints is a legal decision
+          — a FIATA member prints the FBL conditions, a non-member cannot.
+          Blank lines separate clauses and print as paragraphs. Empty prints
+          the bill with no back page, and its face stops citing one.
+        */
+        {
+          kind: 'textarea',
+          name: 'billOfLadingTermsEn',
+          label: t('billTermsEn'),
+          span: 12,
+          rows: 8,
+          hint: t('billTermsHint'),
+          defaultValue: defaults?.billOfLadingTermsEn,
+        },
+        {
+          kind: 'textarea',
+          name: 'billOfLadingTermsAr',
+          label: t('billTermsAr'),
+          span: 12,
+          rows: 8,
+          defaultValue: defaults?.billOfLadingTermsAr,
         },
       ],
     },

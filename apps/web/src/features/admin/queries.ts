@@ -154,6 +154,8 @@ export interface BranchRow {
   readonly roundingAccountCode: string | null
   readonly tradingConditionsEn: string | null
   readonly tradingConditionsAr: string | null
+  readonly billOfLadingTermsEn: string | null
+  readonly billOfLadingTermsAr: string | null
   readonly defaultExclusionsEn: string | null
   readonly defaultExclusionsAr: string | null
   readonly isActive: boolean
@@ -190,6 +192,8 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         roundingAccountCode: branches.roundingAccountCode,
         tradingConditionsEn: branches.tradingConditionsEn,
         tradingConditionsAr: branches.tradingConditionsAr,
+        billOfLadingTermsEn: branches.billOfLadingTermsEn,
+        billOfLadingTermsAr: branches.billOfLadingTermsAr,
         defaultExclusionsEn: branches.defaultExclusionsEn,
         defaultExclusionsAr: branches.defaultExclusionsAr,
         isActive: branches.isActive,

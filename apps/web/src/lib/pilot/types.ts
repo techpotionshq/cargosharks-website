@@ -162,7 +162,12 @@ export interface JobDetail extends JobSummary {
   readonly customerReference: string | null
   readonly masterBillNumber: string | null
   readonly houseBillNumber: string | null
+  /** Telex release — set once, never cleared. Null until surrendered. */
+  readonly houseBillSurrenderedAt: Date | null
   readonly bookingNumber: string | null
+  /** The combined-transport boxes on the bill. Free text, printed as given. */
+  readonly placeOfReceipt: string | null
+  readonly placeOfDelivery: string | null
   readonly incoterm: string | null
   readonly commodity: string
   readonly grossWeightKg: number | null

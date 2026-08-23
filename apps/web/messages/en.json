@@ -1354,6 +1354,9 @@
     "voyage": "Voyage",
     "flight": "Flight",
     "flightHint": "For air shipments",
+    "placeOfReceipt": "Place of receipt",
+    "placeOfReceiptHint": "Only for a door-to-door bill — the inland place the goods were taken over, as it should print.",
+    "placeOfDelivery": "Place of delivery",
     "etd": "Departs",
     "etdHint": "Estimated, until it actually sails",
     "eta": "Arrives",
@@ -1429,6 +1432,9 @@
     "exclusionsEn": "Not included (English)",
     "exclusionsAr": "Not included (Arabic)",
     "exclusionsHint": "One per line. Prints beside the charges on every quotation — duties, taxes, examination charges.",
+    "billTermsEn": "Bill of lading terms (English)",
+    "billTermsAr": "Bill of lading terms (Arabic)",
+    "billTermsHint": "Printed on the back of every sheet of the house bill. Blank lines separate clauses. Leave empty and the bill prints with no reverse side.",
     "mailFrom": "Sends from",
     "mailFromHint": "Who notifications from this entity come from. Leave blank to use the deployment’s own address.",
     "quietHours": "Quiet hours",
@@ -1965,6 +1971,9 @@
     "previewAr": "Preview in Arabic",
     "needsCargo": "Add cargo lines first — every document below reads from them.",
     "dutyPrompt": "Landed cost, before it ships",
+    "surrenderHint": "Telex release: the shipper has handed the originals back and the agent releases without them.",
+    "surrender": "Surrender bill",
+    "surrenderedOn": "Surrendered {date} — telex release. Copies print stamped; no originals.",
     "issueNote": "Preview renders and stores nothing. Issue keeps the copy that was handed over and supersedes the previous version — regenerating never replaces.",
     "kinds": {
       "house_bill": "House bill of lading",
@@ -1974,7 +1983,7 @@
       "air_waybill": "House air waybill"
     },
     "hints": {
-      "house_bill": "Contract of carriage. Watermarked until numbered.",
+      "house_bill": "Contract of carriage. Three originals and copies; watermarked until numbered.",
       "delivery_order": "Expires seven days after issue.",
       "packing_list": "Grouped by container, with net weight.",
       "customs_pack": "What the broker would otherwise retype.",

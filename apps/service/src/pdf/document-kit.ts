@@ -68,6 +68,50 @@ export function ltr(value: string): string {
   return value === '' ? '' : `<span dir="ltr">${value}</span>`
 }
 
+/**
+ * Isolates a run whose direction is whatever its first letter says it is.
+ *
+ * The second bidi fault, found after the first one was fixed: on the Arabic
+ * face of a bill, `Shanghai Everbright Ltd.` printed as `.Shanghai Everbright
+ * Ltd` — the full stop is neutral, it sits at the edge of the run, and at the
+ * edge it resolves to the paragraph's direction, which is right-to-left. `ltr`
+ * is the wrong tool here because the same box on the next bill holds an
+ * Arabic name that must run the other way. `<bdi>` decides per run from its
+ * own first strong character and keeps the trailing punctuation with the run.
+ *
+ * Every name, address line and description that may be in either language
+ * gets this. Codes and numbers still get `ltr`: a container number has no
+ * letters to decide by.
+ */
+export function bdi(value: string): string {
+  return value === '' ? '' : `<bdi>${value}</bdi>`
+}
+
+/** `escBlock`, with every line isolated on its own — an address, marks. */
+export function bdiBlock(value: string | null | undefined): string {
+  return String(value ?? '')
+    .split(/\r?\n/)
+    .map((line) => bdi(esc(line)))
+    .join('<br>')
+}
+
+/**
+ * Prose typed as paragraphs, printed as paragraphs.
+ *
+ * The reverse-side terms of a bill are clauses separated by blank lines, and
+ * a `<br>` chain renders them as one wall of text that a court has to find a
+ * clause in. A blank line is a paragraph; a single newline stays a line break
+ * within one.
+ */
+export function paragraphs(value: string | null | undefined): string {
+  return String(value ?? '')
+    .split(/\r?\n\s*\r?\n/)
+    .map((p) => p.trim())
+    .filter((p) => p !== '')
+    .map((p) => `<p>${escBlock(p)}</p>`)
+    .join('')
+}
+
 export function formatMoney(value: string, currency: string, locale: DocumentLocale): string {
   return new Intl.NumberFormat(intlLocale(locale), { style: 'currency', currency }).format(
     Number(value),
@@ -200,8 +244,33 @@ export interface JobDocumentView {
     readonly legalNameAr: string
     readonly taxRegistration: string | null
     readonly country: string
+    /** The reverse side of the bill of lading, or null for no back page. */
+    readonly billOfLadingTermsEn: string | null
+    readonly billOfLadingTermsAr: string | null
   }
   readonly customer: { readonly nameEn: string; readonly nameAr: string | null }
+  /**
+   * The combined-transport boxes — where the goods were taken over and where
+   * they are to be delivered, as against the ports the carrier runs between.
+   * Free text, printed as given; null leaves the box empty, which is correct
+   * for a port-to-port movement.
+   */
+  readonly placeOfReceipt: string | null
+  readonly placeOfDelivery: string | null
+  /**
+   * When the goods went on board the vessel — the on-board notation.
+   *
+   * UCP 600 article 20 is why this is a separate date from `issuedAt`: a bank
+   * examining a bill under a letter of credit takes the date of issue as the
+   * date of shipment *unless* the bill carries an on-board notation with its
+   * own date, and a bill without one is refused against a credit that calls
+   * for a shipped bill — which is nearly all of them. Null prints a received-
+   * for-shipment bill rather than inventing a date; the loader says where the
+   * date comes from.
+   */
+  readonly shippedOnBoardAt: Date | null
+  /** Telex release — the originals were surrendered on this date. */
+  readonly houseBillSurrenderedAt: Date | null
   readonly parties: readonly PartyView[]
   readonly cargo: readonly CargoView[]
   readonly equipment: readonly EquipmentView[]
@@ -277,19 +346,39 @@ export const DOCUMENT_CSS = `
   tfoot td { font-weight: 600; border-top: 1.5px solid var(--ink); border-bottom: none; }
   .row { display: flex; gap: 6mm; flex-wrap: wrap; margin-bottom: 3mm; }
   .field { min-width: 32mm; }
+  .row.even { flex-wrap: nowrap; }
+  .row.even .field { flex: 1 1 0; min-width: 0; }
   .field .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em;
                   color: var(--muted); display: block; }
   .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center;
            font-size: 34pt; color: rgba(140,29,24,.12); font-weight: 700;
            transform: rotate(-18deg); }
-  .terms { margin-top: 6mm; padding-top: 3mm; border-top: 1px solid var(--line);
+  .terms { margin-top: 4mm; padding-top: 3mm; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 7.5pt; line-height: 1.4; }
-  .sign { margin-top: 10mm; display: flex; gap: 12mm; }
+  .sign { margin-top: 6mm; display: flex; gap: 12mm; }
   .sign div { flex: 1; border-top: 1px solid var(--ink); padding-top: 1.5mm; font-size: 8pt;
               color: var(--muted); }
   .stamp { display: inline-block; padding: 1mm 2.5mm; border: 1px solid var(--brand);
            color: var(--brand); font-size: 8pt; text-transform: uppercase;
            letter-spacing: .06em; border-radius: 1mm; }
+  .sheet { position: relative; break-after: page; }
+  .sheet:last-child { break-after: auto; }
+  .sheet.face .head .entity { padding-block-start: 7mm; }
+  .counterpart { position: absolute; inset-block-start: 0; inset-inline-end: 0;
+                 font-size: 8pt; font-weight: 700; letter-spacing: .1em;
+                 text-transform: uppercase; padding: 1mm 3mm; border: 1.5px solid var(--ink); }
+  .counterpart.copy { color: var(--muted); border-color: var(--muted); font-weight: 600; }
+  .surrendered { position: absolute; inset-block-start: 36%; inset-inline: 0; text-align: center;
+                 transform: rotate(-14deg); pointer-events: none; }
+  .surrendered span { display: inline-block; padding: 3mm 8mm; border: 2.5px solid var(--brand);
+                      color: var(--brand); font-size: 22pt; font-weight: 700;
+                      letter-spacing: .12em; text-transform: uppercase; opacity: .55;
+                      background: rgba(255,255,255,.6); }
+  .surrendered small { display: block; font-size: 10pt; letter-spacing: .06em; }
+  .back h1 { font-size: 12pt; }
+  .back .clauses { column-count: 2; column-gap: 6mm; font-size: 6.5pt; line-height: 1.35;
+                   text-align: justify; margin-top: 3mm; }
+  .back .clauses p { margin: 0 0 1.5mm; break-inside: avoid; }
 `
 
 /**
@@ -351,20 +440,22 @@ export function partyBlock(
   locale: DocumentLocale,
   fallback = '—',
 ): string {
-  if (!party) return `<div class="cell"><h2>${esc(heading)}</h2><div>${esc(fallback)}</div></div>`
+  if (!party) {
+    return `<div class="cell"><h2>${esc(heading)}</h2><div>${bdi(esc(fallback))}</div></div>`
+  }
 
   const name = localised(party.nameEn, party.nameAr, locale)
   const lines = [
-    party.address ? escBlock(party.address) : '',
-    [party.city, party.country].filter(Boolean).map(esc).join(', '),
-    party.contactName ? esc(party.contactName) : '',
+    party.address ? bdiBlock(party.address) : '',
+    bdi([party.city, party.country].filter(Boolean).map(esc).join(', ')),
+    party.contactName ? bdi(esc(party.contactName)) : '',
     [party.phone, party.email].filter(Boolean).map((v) => ltr(esc(v))).join(' · '),
     party.taxId ? ltr(esc(party.taxId)) : '',
   ].filter((l) => l !== '')
 
   return `<div class="cell">
   <h2>${esc(heading)}</h2>
-  <strong>${esc(name)}</strong>
+  <strong>${bdi(esc(name))}</strong>
   <div class="addr muted">${lines.join('<br>')}</div>
 </div>`
 }

@@ -42,8 +42,14 @@ const base: JobDocumentView = {
     legalNameAr: 'شركة القبندي وشركاه',
     taxRegistration: 'KW-TRN-4471',
     country: 'KW',
+    billOfLadingTermsEn: null,
+    billOfLadingTermsAr: null,
   },
   customer: { nameEn: 'Gulf Trading Co.', nameAr: 'شركة الخليج للتجارة' },
+  placeOfReceipt: null,
+  placeOfDelivery: null,
+  shippedOnBoardAt: new Date('2026-06-01T14:00:00Z'),
+  houseBillSurrenderedAt: null,
   parties: [
     {
       role: 'shipper',
@@ -140,7 +146,9 @@ describe('house bill of lading', () => {
   it('preserves the line breaks in marks and numbers', () => {
     // The marks match what is stencilled on the carton. Collapsing them into a
     // paragraph is a discrepancy somebody argues about at the port.
-    expect(renderBillOfLadingHtml(base, 'en')).toContain('GTC/KWI/1-120<br>MADE IN CHINA')
+    expect(renderBillOfLadingHtml(base, 'en')).toContain(
+      '<bdi>GTC/KWI/1-120</bdi><br><bdi>MADE IN CHINA</bdi>',
+    )
   })
 
   it('totals the packages, weight and measurement across the cargo lines', () => {
@@ -207,6 +215,158 @@ describe('house bill of lading', () => {
 
   it('prints the container and seal where the cargo is stuffed', () => {
     expect(renderBillOfLadingHtml(base, 'en')).toContain('MSCU7654321 / 40HC / SL-441982')
+  })
+
+  // --- what a bank reads: UCP 600 art. 20 ---------------------------------
+
+  it('carries a dated on-board notation naming the vessel', () => {
+    // Without it the bank takes the issue date as the shipment date and
+    // refuses the bill against a credit that calls for a shipped one.
+    const html = renderBillOfLadingHtml(base, 'en')
+    expect(html).toContain('On-board notation')
+    expect(html).toContain('Shipped on board')
+    expect(html).toMatch(/Shipped on board[\s\S]*?MSC ISTANBUL \/ 214W[\s\S]*?01 Jun 2026/)
+  })
+
+  it('says "received for shipment" rather than inventing an on-board date', () => {
+    const html = renderBillOfLadingHtml(view({ shippedOnBoardAt: null }), 'en')
+    expect(html).toContain('Received for shipment')
+    expect(html).not.toContain('Shipped on board')
+  })
+
+  it('prints each original as its own sheet, numbered within the set', () => {
+    const html = renderBillOfLadingHtml(base, 'en')
+    expect(html).toContain('Original 1 of 3')
+    expect(html).toContain('Original 2 of 3')
+    expect(html).toContain('Original 3 of 3')
+    expect(html).not.toContain('Original 4 of 3')
+    expect(html.match(/class="sheet face"/g)).toHaveLength(6)
+  })
+
+  it('marks every copy non-negotiable on its face', () => {
+    const html = renderBillOfLadingHtml(base, 'en', { copies: 2 })
+    expect(html.match(/Copy — non-negotiable/g)).toHaveLength(2)
+    expect(html.match(/class="sheet face"/g)).toHaveLength(5)
+  })
+
+  it('honours a different number of originals on every sheet', () => {
+    const html = renderBillOfLadingHtml(base, 'en', { originals: 1, copies: 0 })
+    expect(html).toContain('Original 1 of 1')
+    expect(html.match(/class="sheet face"/g)).toHaveLength(1)
+  })
+
+  it('prints the branch terms as the back of every sheet, face then back', () => {
+    // Duplex printing takes pages in pairs. Terms once at the end would put
+    // the second original's terms on the first original's reverse.
+    const html = renderBillOfLadingHtml(
+      view({
+        branch: {
+          ...base.branch,
+          billOfLadingTermsEn: '1. Definitions. "Carrier" means the issuer.\n\n2. Clause paramount.',
+        },
+      }),
+      'en',
+      { originals: 2, copies: 1 },
+    )
+    const order = [...html.matchAll(/class="sheet (face|back)"/g)].map((m) => m[1])
+    expect(order).toEqual(['face', 'back', 'face', 'back', 'face', 'back'])
+    expect(html).toContain('<p>1. Definitions. &quot;Carrier&quot; means the issuer.</p>')
+    expect(html).toContain('<p>2. Clause paramount.</p>')
+    expect(html).toContain('printed on the reverse side form part of this bill of lading')
+  })
+
+  it('prints no back page, and does not cite one, where the branch has no terms', () => {
+    const html = renderBillOfLadingHtml(base, 'en')
+    expect(html).not.toContain('class="sheet back"')
+    expect(html).not.toContain('reverse side')
+  })
+
+  it('prints the Arabic terms on the Arabic bill', () => {
+    const html = renderBillOfLadingHtml(
+      view({
+        branch: {
+          ...base.branch,
+          billOfLadingTermsEn: 'English clauses',
+          billOfLadingTermsAr: 'البنود العربية',
+        },
+      }),
+      'ar',
+    )
+    expect(html).toContain('البنود العربية')
+    expect(html).not.toContain('English clauses')
+  })
+
+  it('prints no originals once the bill has been surrendered, and stamps every copy', () => {
+    // Telex release: the originals were handed back, so there are none to
+    // print. Three original sheets with SURRENDERED across them would be three
+    // pages that say ORIGINAL first.
+    const html = renderBillOfLadingHtml(
+      view({ houseBillSurrenderedAt: new Date('2026-06-09T09:00:00Z') }),
+      'en',
+    )
+    expect(html).not.toContain('Original 1 of 3')
+    expect(html.match(/class="sheet face"/g)).toHaveLength(3)
+    expect(html.match(/class="surrendered"/g)).toHaveLength(3)
+    expect(html).toContain('Surrendered')
+    expect(html).toMatch(/Telex release · 09 Jun 2026/)
+  })
+
+  it('still prints one stamped copy of a surrendered bill when no copies were asked for', () => {
+    const html = renderBillOfLadingHtml(
+      view({ houseBillSurrenderedAt: new Date('2026-06-09T09:00:00Z') }),
+      'en',
+      { copies: 0 },
+    )
+    expect(html.match(/class="sheet face"/g)).toHaveLength(1)
+  })
+
+  it('does not stamp a bill that has not been surrendered', () => {
+    expect(renderBillOfLadingHtml(base, 'en')).not.toContain('class="surrendered"')
+  })
+
+  it('watermarks every sheet of a draft', () => {
+    // `.draft` is position: fixed, which Chromium repeats on every printed
+    // page — one element, six watermarks.
+    const html = renderBillOfLadingHtml(view({ houseBillNumber: null }), 'en')
+    expect(html.match(/class="draft"/g)).toHaveLength(1)
+    expect(html.indexOf('class="draft"')).toBeLessThan(html.indexOf('class="sheet face"'))
+  })
+
+  // --- the boxes a document checker ticks ----------------------------------
+
+  it('prints place of receipt and delivery where the movement is door-to-door', () => {
+    const html = renderBillOfLadingHtml(
+      view({ placeOfReceipt: 'Shanghai CFS, Waigaoqiao', placeOfDelivery: 'Shuwaikh, Block 4' }),
+      'en',
+    )
+    expect(html).toContain('Place of receipt')
+    expect(html).toContain('Shanghai CFS, Waigaoqiao')
+    expect(html).toContain('Place of delivery')
+    expect(html).toContain('Shuwaikh, Block 4')
+  })
+
+  it('says where the freight is payable, derived from the term', () => {
+    // Prepaid is paid at loading, collect at discharge. Derived so the box
+    // cannot disagree with the stamp beside it.
+    expect(renderBillOfLadingHtml(base, 'en')).toMatch(/Freight payable at[\s\S]*?Jebel Ali/)
+    expect(renderBillOfLadingHtml(view({ freightTerm: 'collect' }), 'en')).toMatch(
+      /Freight payable at[\s\S]*?Shuwaikh/,
+    )
+  })
+
+  it('isolates a Latin party name on the Arabic face so its full stop stays put', () => {
+    // `Shanghai Everbright Ltd.` printed as `.Shanghai Everbright Ltd` — the
+    // trailing full stop resolved to the paragraph's direction.
+    const html = renderBillOfLadingHtml(base, 'ar')
+    expect(html).toContain('<bdi>Shanghai Everbright Ltd.</bdi>')
+    expect(html).toContain('<bdi>No. 88 Pudong Avenue</bdi><br><bdi>Building C, Floor 12</bdi>')
+  })
+
+  it('isolates the vessel, booking and container codes as left-to-right runs', () => {
+    const html = renderBillOfLadingHtml(base, 'ar')
+    expect(html).toContain('<span dir="ltr">MSC ISTANBUL / 214W</span>')
+    expect(html).toContain('<span dir="ltr">BK-99812</span>')
+    expect(html).toContain('<span dir="ltr">MSCU7654321 / 40HC / SL-441982</span>')
   })
 })
 
@@ -349,6 +509,24 @@ describe('delivery order', () => {
       validUntil: new Date('2026-06-30T00:00:00Z'),
     })
     expect(html).toContain('30 Jun 2026')
+  })
+
+  it('stops demanding an original once the bill has been surrendered', () => {
+    // "Against surrender of the original" on a telex-released shipment is an
+    // instruction nobody can comply with, and a terminal that reads it
+    // literally holds the cargo.
+    const html = renderDeliveryOrderHtml(
+      view({ houseBillSurrenderedAt: new Date('2026-06-09T09:00:00Z') }),
+      'en',
+    )
+    expect(html).toContain('surrendered at origin on 09 Jun 2026 (telex release)')
+    expect(html).not.toContain('against surrender of the original bill of lading')
+  })
+
+  it('demands the original where the bill has not been surrendered', () => {
+    expect(renderDeliveryOrderHtml(base, 'en')).toContain(
+      'against surrender of the original bill of lading',
+    )
   })
 
   it('addresses the terminal it is handed to', () => {

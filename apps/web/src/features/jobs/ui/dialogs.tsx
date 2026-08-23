@@ -68,6 +68,8 @@ export interface JobDefaults {
   readonly bookingNumber?: string | null
   readonly vesselName?: string | null
   readonly voyageNumber?: string | null
+  readonly placeOfReceipt?: string | null
+  readonly placeOfDelivery?: string | null
   readonly flightNumber?: string | null
   readonly customerReference?: string | null
   readonly etd?: string | null
@@ -285,6 +287,30 @@ export async function JobDialog({
           mono: true,
           hint: t('flightHint'),
           defaultValue: defaults?.flightNumber,
+        },
+        /*
+          The combined-transport boxes on the bill of lading.
+
+          Origin and destination above are ports — where the carrier's
+          liability runs between. These are the inland places a door-to-door
+          bill names, and a bank reads them against the credit. Free text,
+          because "Jebel Ali Free Zone, Gate 4" is not a row in `locations`
+          and should not have to become one to print on a bill.
+        */
+        {
+          kind: 'text',
+          name: 'placeOfReceipt',
+          label: t('placeOfReceipt'),
+          span: 6,
+          hint: t('placeOfReceiptHint'),
+          defaultValue: defaults?.placeOfReceipt,
+        },
+        {
+          kind: 'text',
+          name: 'placeOfDelivery',
+          label: t('placeOfDelivery'),
+          span: 6,
+          defaultValue: defaults?.placeOfDelivery,
         },
         {
           kind: 'datetime-local',

@@ -14,15 +14,17 @@
  */
 
 import type { ReactNode } from 'react'
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { formatDate } from '@/lib/format'
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { can } from '@/lib/permissions'
 import { Card, CardHeader } from '@/ui/card'
 import { Button, EmptyState } from '@/ui/layout'
 import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { CargoDialog, PartyDialog } from './dialogs'
-import { issueDocument } from '../form-actions'
+import { issueDocument, surrenderHouseBill } from '../form-actions'
 import type { CargoRow, PartyRow } from '../queries'
 
 export async function PartiesCard({
@@ -211,11 +213,23 @@ export async function DocumentActionsCard({
   jobId,
   hasCargo,
   mode,
+  houseBillNumber,
+  houseBillSurrenderedAt,
   dutyAction,
   className,
 }: {
   readonly jobId: string
   readonly hasCargo: boolean
+  /**
+   * Whether there is a bill to surrender, and whether it already was.
+   *
+   * A telex release is offered only on a numbered sea bill: an unnumbered one
+   * was never issued, and an air waybill has no originals to hand back. Once
+   * surrendered the button gives way to the date, because there is no way
+   * back — see `surrenderHouseBill`.
+   */
+  readonly houseBillNumber: string | null
+  readonly houseBillSurrenderedAt: Date | null
   /**
    * The shipment's mode, for the label only.
    *
@@ -237,8 +251,11 @@ export async function DocumentActionsCard({
   readonly className?: string
 }) {
   const session = await requireSession()
-  const t = await getTranslations('documentActions')
+  const [t, locale] = await Promise.all([getTranslations('documentActions'), getLocale()])
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const mayIssue = can(session, 'document.generate')
+  const mayRelease = can(session, 'document.release')
+  const surrenderable = mode !== 'air' && houseBillNumber !== null
 
   return (
     <Card className={className}>
@@ -321,6 +338,31 @@ export async function DocumentActionsCard({
                   </form>
                 ) : null}
               </div>
+
+              {/*
+                The telex release sits under the bill it applies to, not in
+                the list of documents — it is not a document, it is a fact
+                about this one. The date replaces the button once recorded,
+                because the act is not reversible and a button that fails
+                silently is worse than none.
+              */}
+              {kind === 'house_bill' && surrenderable ? (
+                <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-1.5">
+                  <span className="text-[0.75rem] text-ink-muted">
+                    {houseBillSurrenderedAt
+                      ? t('surrenderedOn', { date: formatDate(houseBillSurrenderedAt, lang) })
+                      : t('surrenderHint')}
+                  </span>
+                  {!houseBillSurrenderedAt && mayRelease ? (
+                    <form action={surrenderHouseBill}>
+                      <input type="hidden" name="jobId" value={jobId} />
+                      <Button size="sm" variant="ghost" type="submit">
+                        {t('surrender')}
+                      </Button>
+                    </form>
+                  ) : null}
+                </div>
+              ) : null}
             </li>
           )
         })}

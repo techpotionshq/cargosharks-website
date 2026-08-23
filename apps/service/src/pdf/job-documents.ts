@@ -42,6 +42,7 @@ import {
   equipment,
   inSeries,
   jobCargo,
+  jobMilestones,
   jobParties,
   jobs,
   locations,
@@ -119,6 +120,10 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
         chargeableWeightKg: jobs.chargeableWeightKg,
         etd: jobs.etd,
         eta: jobs.eta,
+        atd: jobs.atd,
+        placeOfReceipt: jobs.placeOfReceipt,
+        placeOfDelivery: jobs.placeOfDelivery,
+        houseBillSurrenderedAt: jobs.houseBillSurrenderedAt,
         originId: jobs.originId,
         destinationId: jobs.destinationId,
         consolidationId: jobs.consolidationId,
@@ -131,6 +136,8 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
         branchCountry: branches.country,
         branchCode: branches.code,
         taxRegistration: branches.taxRegistration,
+        billOfLadingTermsEn: branches.billOfLadingTermsEn,
+        billOfLadingTermsAr: branches.billOfLadingTermsAr,
       })
       .from(jobs)
       .innerJoin(customers, eq(customers.id, jobs.customerId))
@@ -145,7 +152,7 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
     */
     if (!row) throw new DocumentNotFoundError(jobId, 'job')
 
-    const [parties, cargo, containers, places] = await inSeries([
+    const [parties, cargo, containers, places, onBoard] = await inSeries([
       () =>
         tx
           .select()
@@ -170,6 +177,30 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
               [row.originId, row.destinationId].filter((id): id is string => id !== null),
             ),
           ),
+      /*
+        The on-board date, from the milestones rather than from a column.
+
+        `jobs.atd` exists and nothing in the application writes it — the
+        departure that actually gets recorded is the `vessel_departed`
+        milestone, completed by a coordinator or by the carrier's DCSA feed.
+        And the date a bank wants is not even departure: under UCP 600 art. 20
+        the on-board notation dates the *loading* onto the named vessel, which
+        is the `loaded` milestone (`EQUIPMENT/LOAD`) where the carrier sent
+        one. So: loaded first, departure second, and `atd` last for a row the
+        demo seed or an import filled by hand. Only actual dates — a planned or
+        revised one is a forecast, and a notation with a forecast date on it
+        is a false statement on a document of title.
+      */
+      () =>
+        tx
+          .select({ code: jobMilestones.code, actualAt: jobMilestones.actualAt })
+          .from(jobMilestones)
+          .where(
+            and(
+              eq(jobMilestones.jobId, jobId),
+              inArray(jobMilestones.code, ['loaded', 'vessel_departed']),
+            ),
+          ),
     ])
 
     const place = (id: string | null) => {
@@ -179,6 +210,10 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
     }
 
     const equipmentById = new Map(containers.map((c) => [c.id, c]))
+
+    const actualOf = (code: string): Date | null =>
+      onBoard.find((m) => m.code === code && m.actualAt !== null)?.actualAt ?? null
+    const shippedOnBoardAt = actualOf('loaded') ?? actualOf('vessel_departed') ?? row.atd ?? null
 
     /*
       Freight term from the charge lines, not from a column.
@@ -258,8 +293,14 @@ export async function loadJobDocumentView(actor: Actor, jobId: string): Promise<
         legalNameAr: row.branchAr,
         taxRegistration: row.taxRegistration,
         country: row.branchCountry,
+        billOfLadingTermsEn: row.billOfLadingTermsEn,
+        billOfLadingTermsAr: row.billOfLadingTermsAr,
       },
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
+      placeOfReceipt: row.placeOfReceipt,
+      placeOfDelivery: row.placeOfDelivery,
+      shippedOnBoardAt,
+      houseBillSurrenderedAt: row.houseBillSurrenderedAt,
       parties: parties.map((p): PartyView => ({
         role: p.role,
         nameEn: p.nameEn,

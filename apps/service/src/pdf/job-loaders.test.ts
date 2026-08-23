@@ -96,6 +96,7 @@ const {
   dutyRates,
   equipment,
   jobCargo,
+  jobMilestones,
   jobParties,
   jobs,
   locations,
@@ -234,6 +235,14 @@ const cost = (jobId: string) =>
       amountBase: '27.630',
       baseCurrency: 'KWD',
     }),
+  )
+
+/** A milestone, with the dates it was given and nothing inferred. */
+const milestone = (jobId: string, code: string, values: Record<string, unknown> = {}) =>
+  withActor(systemActor, (tx) =>
+    tx
+      .insert(jobMilestones)
+      .values({ jobId, code, nameEn: code, nameAr: code, seq: next(), ...values } as never),
   )
 
 const declaration = (jobId: string, values: Record<string, unknown> = {}) =>
@@ -515,6 +524,66 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
       expect(view.cargo.find((c) => c.descriptionEn === 'Loose')?.containerNo).toBeNull()
       expect(view.equipment[0]?.sealNo).toBe('SEAL-991')
       expect(view.equipment[0]?.containerType).toBe('40HC')
+    })
+
+    describe('the on-board date', () => {
+      /**
+       * UCP 600 art. 20: the notation dates the *loading* onto the vessel, so
+       * the `loaded` milestone wins; departure is the fallback; and `jobs.atd`
+       * — which nothing in the application writes — is last. Only actual
+       * dates: a planned one is a forecast, and a forecast on a document of
+       * title is a false statement.
+       */
+      it('takes the loaded milestone over the departure', async () => {
+        const id = await job({ atd: new Date('2026-06-03T00:00:00Z') })
+        await milestone(id, 'loaded', { actualAt: new Date('2026-06-01T14:00:00Z') })
+        await milestone(id, 'vessel_departed', { actualAt: new Date('2026-06-02T06:00:00Z') })
+
+        const view = await loadJobDocumentView(actor, id)
+        expect(view.shippedOnBoardAt?.toISOString()).toBe('2026-06-01T14:00:00.000Z')
+      })
+
+      it('falls back to the departure where loading was never recorded', async () => {
+        const id = await job({ atd: new Date('2026-06-03T00:00:00Z') })
+        await milestone(id, 'vessel_departed', { actualAt: new Date('2026-06-02T06:00:00Z') })
+
+        const view = await loadJobDocumentView(actor, id)
+        expect(view.shippedOnBoardAt?.toISOString()).toBe('2026-06-02T06:00:00.000Z')
+      })
+
+      it('falls back to atd where no milestone was completed', async () => {
+        const id = await job({ atd: new Date('2026-06-03T00:00:00Z') })
+        await milestone(id, 'loaded', { plannedAt: new Date('2026-06-01T14:00:00Z') })
+
+        const view = await loadJobDocumentView(actor, id)
+        expect(view.shippedOnBoardAt?.toISOString()).toBe('2026-06-03T00:00:00.000Z')
+      })
+
+      it('is null, not a forecast, where nothing has actually happened', async () => {
+        const id = await job()
+        await milestone(id, 'loaded', { plannedAt: new Date('2026-06-01T14:00:00Z') })
+        await milestone(id, 'vessel_departed', { revisedAt: new Date('2026-06-02T06:00:00Z') })
+
+        const view = await loadJobDocumentView(actor, id)
+        expect(view.shippedOnBoardAt).toBeNull()
+      })
+    })
+
+    it('carries the surrender, the delivery boxes and the branch terms', async () => {
+      const id = await job({
+        placeOfReceipt: 'Shanghai CFS',
+        placeOfDelivery: 'Shuwaikh, Block 4',
+        houseBillSurrenderedAt: new Date('2026-06-09T09:00:00Z'),
+      })
+
+      const view = await loadJobDocumentView(actor, id)
+      expect(view.placeOfReceipt).toBe('Shanghai CFS')
+      expect(view.placeOfDelivery).toBe('Shuwaikh, Block 4')
+      expect(view.houseBillSurrenderedAt?.toISOString()).toBe('2026-06-09T09:00:00.000Z')
+      // The fixture branch has none; the point is that the view carries the
+      // columns at all, so a template can print a back page from them.
+      expect(view.branch).toHaveProperty('billOfLadingTermsEn')
+      expect(view.branch).toHaveProperty('billOfLadingTermsAr')
     })
 
     describe('prepaid or collect', () => {

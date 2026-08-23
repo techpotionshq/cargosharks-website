@@ -679,7 +679,14 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
         ? `176-${String(seed.seq * 7).padStart(8, '0')}`
         : `${CARRIERS[seed.seq % CARRIERS.length]!.replace(/[^A-Z]/g, '').slice(0, 4) || 'ONEY'}KWI${seed.seq}00`,
     houseBillNumber: `AQP${seed.branch}${String(seed.seq).padStart(6, '0')}`,
+    // Every third sea import is telex-released, which is about the Gulf ratio.
+    houseBillSurrenderedAt:
+      seed.mode !== 'air' && seed.direction === 'import' && seed.seq % 3 === 0
+        ? at(now, seed.etaOffset - 4, 10)
+        : null,
     bookingNumber: `BKG${String(seed.seq * 11).padStart(7, '0')}`,
+    placeOfReceipt: null,
+    placeOfDelivery: null,
     incoterm: seed.direction === 'import' ? 'CFR' : 'FOB',
     commodity:
       seed.customer === 0

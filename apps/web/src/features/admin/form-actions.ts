@@ -323,6 +323,13 @@ const branchSchema = z.object({
    */
   tradingConditionsEn: optional(8000),
   tradingConditionsAr: optional(8000),
+  /*
+    Large, because the back of a bill is large: a full set of conditions of
+    carriage runs to thirty clauses and twenty thousand characters, and a cap
+    that fits a quotation footer would cut a clause in half.
+  */
+  billOfLadingTermsEn: optional(60000),
+  billOfLadingTermsAr: optional(60000),
   /** One exclusion per line — see the column comment. */
   defaultExclusionsEn: optional(4000),
   defaultExclusionsAr: optional(4000),
@@ -366,6 +373,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     roundingAccountCode: read(form, 'roundingAccountCode'),
     tradingConditionsEn: read(form, 'tradingConditionsEn'),
     tradingConditionsAr: read(form, 'tradingConditionsAr'),
+    billOfLadingTermsEn: read(form, 'billOfLadingTermsEn'),
+    billOfLadingTermsAr: read(form, 'billOfLadingTermsAr'),
     defaultExclusionsEn: read(form, 'defaultExclusionsEn'),
     defaultExclusionsAr: read(form, 'defaultExclusionsAr'),
     isActive: form.get('isActive') !== null,
@@ -419,6 +428,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
             roundingAccountCode: data.roundingAccountCode,
             tradingConditionsEn: data.tradingConditionsEn,
             tradingConditionsAr: data.tradingConditionsAr,
+            billOfLadingTermsEn: data.billOfLadingTermsEn,
+            billOfLadingTermsAr: data.billOfLadingTermsAr,
             defaultExclusionsEn: data.defaultExclusionsEn,
             defaultExclusionsAr: data.defaultExclusionsAr,
             isActive: data.isActive,
@@ -449,6 +460,8 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
           roundingAccountCode: data.roundingAccountCode,
           tradingConditionsEn: data.tradingConditionsEn,
           tradingConditionsAr: data.tradingConditionsAr,
+          billOfLadingTermsEn: data.billOfLadingTermsEn,
+          billOfLadingTermsAr: data.billOfLadingTermsAr,
           defaultExclusionsEn: data.defaultExclusionsEn,
           defaultExclusionsAr: data.defaultExclusionsAr,
           isActive: data.isActive,

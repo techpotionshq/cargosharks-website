@@ -165,6 +165,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 masterBillNumber: job.masterBillNumber,
                 houseBillNumber: job.houseBillNumber,
                 vesselName: job.vesselOrFlight,
+                placeOfReceipt: job.placeOfReceipt,
+                placeOfDelivery: job.placeOfDelivery,
                 customerReference: job.customerReference,
                 grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
                 volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
@@ -631,6 +633,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           hasCargo={cargo.length > 0}
           mode={job.mode}
+          houseBillNumber={job.houseBillNumber}
+          houseBillSurrenderedAt={job.houseBillSurrenderedAt}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
           className="lg:col-span-5"
         />

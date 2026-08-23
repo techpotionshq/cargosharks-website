@@ -221,6 +221,31 @@ export const jobs = pgTable(
      * stated here it would make `jobs` and `consolidations` import each other.
      */
     consolidationId: ref('consolidation_id'),
+    /**
+     * The combined-transport boxes on the bill of lading.
+     *
+     * `origin_id` and `destination_id` are ports, and a port is where the
+     * carrier's liability starts and stops — but a house bill issued for a
+     * door-to-door movement names the inland place it was received at and the
+     * place it is to be delivered, and those are the boxes a bank reads
+     * against the letter of credit. Free text, printed as given, for the same
+     * reason `job_parties.address` is one block: "Jebel Ali Free Zone, Gate 4"
+     * is not a row in `locations` and should not have to become one.
+     */
+    placeOfReceipt: text('place_of_receipt'),
+    placeOfDelivery: text('place_of_delivery'),
+    /**
+     * Telex release — the originals were handed back and the bill is void as
+     * a document of title.
+     *
+     * A fact about the *bill*, recorded on the job because the job carries the
+     * bill's number. Once set, the bill prints no original pages, every page
+     * is stamped SURRENDERED with this date, and the delivery order stops
+     * demanding an original nobody holds. Set once and never cleared: the
+     * originals cannot be un-collected any more than they can be un-issued.
+     */
+    houseBillSurrenderedAt: tsz('house_bill_surrendered_at'),
+    houseBillSurrenderedById: ref('house_bill_surrendered_by_id').references(() => principals.id),
     closedAt: tsz('closed_at'),
     cancelledAt: tsz('cancelled_at'),
     cancelledReason: text('cancelled_reason'),

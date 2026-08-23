@@ -20,12 +20,33 @@
  * allocated the document is a draft, and a draft that looks like an original
  * is how a consignee ends up holding something a bank will not accept.
  *
- * ## Originals
+ * ## What a bank reads
  *
- * Three originals is the convention, and the count prints on the face because
- * the carrier releases against *any one* of them and the other two become
- * void. A bill that does not say how many originals exist cannot be safely
- * surrendered.
+ * Most house bills are presented under a letter of credit, and the bank
+ * examines them against UCP 600 article 20. Four things on this page exist
+ * because of that article and would look like decoration without it:
+ *
+ * - **The on-board notation.** The date of issue is taken as the date of
+ *   shipment *unless* the bill says when the goods went on board, and a credit
+ *   that calls for a shipped bill — nearly all of them — rejects one that only
+ *   says "received". The date is the `loaded` milestone where there is one and
+ *   the vessel's departure where there is not; the loader says so. Where
+ *   neither is known the bill says "received for shipment" in that box, which
+ *   is a true statement a bank can act on, rather than a date we invented.
+ * - **Originals and copies as separate sheets.** The carrier releases against
+ *   *any one* original and the others become void, so each original says
+ *   which of the set it is, and a copy says on its face that it is not one of
+ *   them. One sheet that says "3 originals" and is printed three times is
+ *   three documents that each claim to be all of them.
+ * - **The terms on the reverse.** The face says the merchant "agrees to all
+ *   its terms whether printed, stamped or written". The printed terms are the
+ *   branch's `bill_of_lading_terms`, and they follow every face sheet so that
+ *   a duplex print puts them on its back.
+ * - **The surrender stamp.** A telex release is the originals handed back at
+ *   origin so the destination agent releases without them — common enough in
+ *   Gulf trade to be the normal case on some lanes. A surrendered bill prints
+ *   no original pages at all, because there are none any more, and every copy
+ *   carries the stamp and the date.
  *
  * ## Ocean only
  *
@@ -38,15 +59,18 @@
  */
 
 import {
+  bdi,
+  bdiBlock,
   cargoTotals,
   esc,
-  escBlock,
   field,
   formatDate,
   formatQuantity,
   letterhead,
   localised,
+  ltr,
   page,
+  paragraphs,
   partiesOf,
   partyBlock,
   partyOf,
@@ -62,8 +86,10 @@ const STRINGS = {
     notify: 'Notify party',
     agent: 'Delivery agent',
     carrier: 'Vessel / Voyage',
+    placeReceipt: 'Place of receipt',
     portLoad: 'Port of loading',
     portDischarge: 'Port of discharge',
+    placeDelivery: 'Place of delivery',
     booking: 'Booking',
     masterBill: 'Master B/L',
     marks: 'Marks and numbers',
@@ -75,9 +101,18 @@ const STRINGS = {
     freight: 'Freight',
     prepaid: 'Prepaid',
     collect: 'Collect',
+    freightPayableAt: 'Freight payable at',
     originals: 'Number of original B/L',
     place: 'Place and date of issue',
     containers: 'Container / Seal',
+    onBoard: 'On-board notation',
+    shippedOnBoard: 'Shipped on board',
+    receivedForShipment: 'Received for shipment — not yet on board',
+    original: 'Original',
+    of: 'of',
+    copy: 'Copy — non-negotiable',
+    surrendered: 'Surrendered',
+    telexRelease: 'Telex release',
     draft: 'DRAFT — not a valid bill of lading',
     condition:
       'Received in apparent good order and condition, unless otherwise stated, the goods described above, ' +
@@ -86,8 +121,11 @@ const STRINGS = {
       'bill of lading the merchant expressly accepts and agrees to all its terms whether printed, stamped ' +
       'or written. In witness whereof the number of original bills of lading stated above has been signed, ' +
       'one of which being accomplished the others to stand void.',
+    reverse: 'The terms and conditions printed on the reverse side form part of this bill of lading.',
     signedFor: 'Signed for the carrier',
     signedShipper: 'Shipper or agent',
+    termsTitle: 'Terms and conditions of carriage',
+    termsSubtitle: 'Reverse side of house bill of lading',
   },
   ar: {
     title: 'بوليصة شحن فرعية',
@@ -96,8 +134,10 @@ const STRINGS = {
     notify: 'الطرف المُخطَر',
     agent: 'وكيل التسليم',
     carrier: 'الباخرة / الرحلة',
+    placeReceipt: 'مكان الاستلام',
     portLoad: 'ميناء الشحن',
     portDischarge: 'ميناء التفريغ',
+    placeDelivery: 'مكان التسليم',
     booking: 'رقم الحجز',
     masterBill: 'البوليصة الرئيسية',
     marks: 'العلامات والأرقام',
@@ -109,24 +149,44 @@ const STRINGS = {
     freight: 'أجرة الشحن',
     prepaid: 'مدفوعة مقدماً',
     collect: 'تحصّل عند الوصول',
+    freightPayableAt: 'أجرة الشحن تُدفع في',
     originals: 'عدد النسخ الأصلية',
     place: 'مكان وتاريخ الإصدار',
     containers: 'الحاوية / الرصاص',
+    onBoard: 'إشعار الشحن على متن الباخرة',
+    shippedOnBoard: 'شُحنت على متن الباخرة',
+    receivedForShipment: 'استُلمت للشحن — لم تُشحن على المتن بعد',
+    original: 'نسخة أصلية',
+    of: 'من',
+    copy: 'نسخة — غير قابلة للتداول',
+    surrendered: 'مُسلَّمة',
+    telexRelease: 'إفراج بالتلكس',
     draft: 'مسودة — ليست بوليصة شحن صالحة',
     condition:
       'استُلمت البضاعة الموصوفة أعلاه بحالة ظاهرية جيدة ما لم يُذكر خلاف ذلك، والوزن والقياس والعلامات ' +
       'والأرقام والنوع والمحتويات والقيمة غير معلومة، لنقلها إلى ميناء التفريغ. وبقبول هذه البوليصة يوافق ' +
       'التاجر صراحةً على جميع شروطها المطبوعة أو المختومة أو المكتوبة. وقد وُقّع العدد المذكور أعلاه من ' +
       'النسخ الأصلية، ومتى نُفّذت إحداها سقطت البقية.',
+    reverse: 'تُعدّ الشروط والأحكام المدوّنة على ظهر هذه البوليصة جزءاً لا يتجزأ منها.',
     signedFor: 'التوقيع عن الناقل',
     signedShipper: 'الشاحن أو وكيله',
+    termsTitle: 'شروط وأحكام النقل',
+    termsSubtitle: 'ظهر بوليصة الشحن الفرعية',
   },
 } as const
 
 export interface BillOfLadingOptions {
-  /** Three is the convention. Printed on the face because it has to be. */
+  /**
+   * Three is the convention. Printed on the face because it has to be, and
+   * each original sheet says which of the set it is.
+   */
   readonly originals?: number
+  /** Non-negotiable copies, for the file, the agent and the broker. */
+  readonly copies?: number
 }
+
+/** One face sheet of the set — which counterpart it is. */
+type Counterpart = { readonly kind: 'original'; readonly index: number } | { readonly kind: 'copy' }
 
 export function renderBillOfLadingHtml(
   view: JobDocumentView,
@@ -135,6 +195,73 @@ export function renderBillOfLadingHtml(
 ): string {
   const t = STRINGS[locale]
   const originals = options.originals ?? 3
+  const copies = options.copies ?? 3
+  const surrendered = view.houseBillSurrenderedAt !== null
+
+  /*
+    The set.
+
+    A surrendered bill has no originals — they were collected, which is the
+    whole meaning of the word — so it prints copies only, each carrying the
+    stamp. Printing the original sheets with a stamp across them would hand a
+    consignee three pages that say ORIGINAL and SURRENDERED at once, and a
+    bank reads the first word.
+  */
+  const counterparts: Counterpart[] = surrendered
+    ? Array.from({ length: Math.max(1, copies) }, () => ({ kind: 'copy' }) as const)
+    : [
+        ...Array.from(
+          { length: originals },
+          (_, i) => ({ kind: 'original', index: i + 1 }) as const,
+        ),
+        ...Array.from({ length: copies }, () => ({ kind: 'copy' }) as const),
+      ]
+
+  const terms = localised(view.branch.billOfLadingTermsEn, view.branch.billOfLadingTermsAr, locale)
+
+  const face = renderFace(view, locale, originals, terms !== '')
+  const back = terms ? renderBack(view, locale, terms) : ''
+
+  const sheets = counterparts
+    .map((counterpart) => {
+      const label =
+        counterpart.kind === 'original'
+          ? `<div class="counterpart">${esc(t.original)} ${counterpart.index} ${esc(t.of)} ${originals}</div>`
+          : `<div class="counterpart copy">${esc(t.copy)}</div>`
+
+      const stamp = surrendered
+        ? `<div class="surrendered"><span>${esc(t.surrendered)}<small>${esc(t.telexRelease)} · ${esc(formatDate(view.houseBillSurrenderedAt, locale))}</small></span></div>`
+        : ''
+
+      /*
+        Face, then back, for every sheet.
+
+        Duplex printing takes pages in pairs, so the terms have to follow each
+        face rather than appear once at the end of the set — otherwise the
+        first original gets the terms of the second on its reverse and the
+        last copy gets a blank.
+      */
+      return `<div class="sheet face">${label}${stamp}${face}</div>${back}`
+    })
+    .join('')
+
+  /*
+    `.draft` is `position: fixed`, and Chromium repeats a fixed element on
+    every printed page — which is the behaviour wanted here, since a draft is
+    a draft on each of its six sheets.
+  */
+  const draft = view.houseBillNumber ? '' : `<div class="draft">${t.draft}</div>`
+
+  return page(locale, `${draft}${sheets}`)
+}
+
+function renderFace(
+  view: JobDocumentView,
+  locale: DocumentLocale,
+  originals: number,
+  hasReverse: boolean,
+): string {
+  const t = STRINGS[locale]
   const totals = cargoTotals(view.cargo)
 
   const shipper = partyOf(view, 'shipper')
@@ -143,21 +270,25 @@ export function renderBillOfLadingHtml(
   const agent = partyOf(view, 'delivery_agent')
 
   const place = (p: JobDocumentView['origin']): string =>
-    p ? esc(`${localised(p.nameEn, p.nameAr, locale)}${p.unlocode ? ` (${p.unlocode})` : ''}`) : '—'
+    p
+      ? bdi(esc(localised(p.nameEn, p.nameAr, locale))) + (p.unlocode ? ` ${ltr(esc(p.unlocode))}` : '')
+      : '—'
 
   /*
     The cargo block, printed verbatim.
 
-    `escBlock` rather than `esc` on the marks: line breaks in marks and numbers
-    are what match the stencilling on the carton, and collapsing them into a
-    paragraph is a discrepancy somebody argues about at the port.
+    `bdiBlock` rather than `esc` on the marks: line breaks in marks and
+    numbers are what match the stencilling on the carton, and collapsing them
+    into a paragraph is a discrepancy somebody argues about at the port. Each
+    line is isolated on its own because marks are Latin on an Arabic face as
+    often as not.
   */
   const rows = view.cargo
     .map(
       (line) => `<tr>
-    <td>${escBlock(line.marksAndNumbers) || '—'}${line.containerNo ? `<br><span class="muted">${esc(line.containerNo)}</span>` : ''}</td>
-    <td class="n">${line.packageCount ?? '—'}${line.packageType ? `<br><span class="muted">${esc(line.packageType)}</span>` : ''}</td>
-    <td>${escBlock(localised(line.descriptionEn, line.descriptionAr, locale))}</td>
+    <td>${bdiBlock(line.marksAndNumbers) || '—'}${line.containerNo ? `<br><span class="muted">${ltr(esc(line.containerNo))}</span>` : ''}</td>
+    <td class="n">${line.packageCount ?? '—'}${line.packageType ? `<br><span class="muted">${bdi(esc(line.packageType))}</span>` : ''}</td>
+    <td>${bdiBlock(localised(line.descriptionEn, line.descriptionAr, locale))}</td>
     <td class="n">${formatQuantity(line.grossWeightKg, locale)}</td>
     <td class="n">${formatQuantity(line.volumeCbm, locale)}</td>
   </tr>`,
@@ -166,19 +297,36 @@ export function renderBillOfLadingHtml(
 
   const containers = view.equipment
     .filter((e) => e.containerNo)
-    .map(
-      (e) =>
+    .map((e) =>
+      ltr(
         `${esc(e.containerNo)}${e.containerType ? ` / ${esc(e.containerType)}` : ''}${e.sealNo ? ` / ${esc(e.sealNo)}` : ''}`,
+      ),
     )
     .join('<br>')
 
-  const draft = view.houseBillNumber ? '' : `<div class="draft">${t.draft}</div>`
+  const vessel = [view.vesselName, view.voyageNumber].filter(Boolean).join(' / ')
 
-  return page(
-    locale,
-    `
-${draft}
+  /*
+    The on-board notation — see the file comment for why a bank cares.
 
+    The vessel is named in the notation as well as in its own box. Article 20
+    only demands it where the box says "intended vessel", which ours never
+    does, but a notation that names the ship is what every carrier's form
+    prints and what a document checker expects to find in that position.
+  */
+  const onBoard = view.shippedOnBoardAt
+    ? `<span class="stamp">${esc(t.shippedOnBoard)}</span> ${vessel ? `${ltr(esc(vessel))} · ` : ''}${esc(formatDate(view.shippedOnBoardAt, locale))}`
+    : `<span class="muted">${esc(t.receivedForShipment)}</span>`
+
+  /*
+    Where the freight is paid is the same fact as whether it is prepaid: at
+    the port of loading if so, at the port of discharge if collect. Derived,
+    because a typed box that disagreed with the stamp beside it would be the
+    bill arguing with itself.
+  */
+  const freightPayableAt = place(view.freightTerm === 'prepaid' ? view.origin : view.destination)
+
+  return `
 ${letterhead(view, t.title, view.houseBillNumber ?? view.reference, locale)}
 
 <div class="grid">
@@ -188,15 +336,19 @@ ${letterhead(view, t.title, view.houseBillNumber ?? view.reference, locale)}
   ${partyBlock(notify[1] ?? agent, notify[1] ? t.notify : t.agent, locale)}
 </div>
 
-<div class="row" style="margin-top:4mm">
-  ${field(t.carrier, esc([view.vesselName, view.voyageNumber].filter(Boolean).join(' / ') || '—'))}
+<div class="row even" style="margin-top:4mm">
+  ${field(t.placeReceipt, view.placeOfReceipt ? bdiBlock(view.placeOfReceipt) : '—')}
   ${field(t.portLoad, place(view.origin))}
+  ${field(t.carrier, vessel ? ltr(esc(vessel)) : '—')}
   ${field(t.portDischarge, place(view.destination))}
-  ${field(t.booking, esc(view.bookingNumber ?? '—'))}
-  ${field(t.masterBill, esc(view.masterBillNumber ?? '—'))}
+  ${field(t.placeDelivery, view.placeOfDelivery ? bdiBlock(view.placeOfDelivery) : '—')}
 </div>
 
-${containers ? `<div class="row">${field(t.containers, containers)}</div>` : ''}
+<div class="row">
+  ${field(t.booking, view.bookingNumber ? ltr(esc(view.bookingNumber)) : '—')}
+  ${field(t.masterBill, view.masterBillNumber ? ltr(esc(view.masterBillNumber)) : '—')}
+  ${containers ? field(t.containers, containers) : ''}
+</div>
 
 <table>
   <thead><tr>
@@ -216,18 +368,44 @@ ${containers ? `<div class="row">${field(t.containers, containers)}</div>` : ''}
   </tr></tfoot>
 </table>
 
-<div class="row" style="margin-top:4mm">
+<div class="row even" style="margin-top:4mm">
   ${field(t.freight, `<span class="stamp">${view.freightTerm === 'prepaid' ? t.prepaid : t.collect}</span>`)}
+  ${field(t.freightPayableAt, freightPayableAt)}
   ${field(t.originals, esc(String(originals)))}
-  ${field(t.place, `${esc(view.placeOfIssue)} · ${esc(formatDate(view.issuedAt, locale))}`)}
+  ${field(t.place, `${ltr(esc(view.placeOfIssue))} · ${esc(formatDate(view.issuedAt, locale))}`)}
 </div>
 
-<div class="terms">${esc(t.condition)}</div>
+<div class="row">
+  ${field(t.onBoard, onBoard)}
+</div>
+
+<div class="terms">${esc(t.condition)}${hasReverse ? ` ${esc(t.reverse)}` : ''}</div>
 
 <div class="sign">
   <div>${esc(t.signedShipper)}</div>
   <div>${esc(t.signedFor)}</div>
 </div>
-`,
-  )
+`
+}
+
+/**
+ * The reverse side.
+ *
+ * Two columns at a small size, because that is what the back of a bill looks
+ * like and because the clauses have to fit one sheet for the duplex pairing
+ * above to hold. The bill's number is repeated at the top so a back separated
+ * from its face can be matched to it.
+ */
+function renderBack(view: JobDocumentView, locale: DocumentLocale, terms: string): string {
+  const t = STRINGS[locale]
+  return `<div class="sheet back">
+  <div class="head">
+    <div>
+      <h1>${esc(t.termsTitle)}</h1>
+      <div class="muted">${esc(t.termsSubtitle)} · ${ltr(esc(view.houseBillNumber ?? view.reference))}</div>
+    </div>
+    <div class="entity"><strong>${esc(locale === 'ar' ? view.branch.legalNameAr : view.branch.legalNameEn)}</strong></div>
+  </div>
+  <div class="clauses">${paragraphs(terms)}</div>
+</div>`
 }

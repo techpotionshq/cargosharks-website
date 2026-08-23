@@ -116,6 +116,20 @@ export const branches = pgTable(
      */
     defaultExclusionsEn: text('default_exclusions_en'),
     defaultExclusionsAr: text('default_exclusions_ar'),
+    /**
+     * The reverse side of the house bill of lading.
+     *
+     * The face of the bill says the merchant "agrees to all its terms whether
+     * printed, stamped or written", and for that sentence to mean anything the
+     * terms have to be printed somewhere. They are printed here — on the back
+     * of every sheet, originals and copies alike — and they are rows rather
+     * than code for the reason `trading_conditions_en` is: which clauses a
+     * forwarder trades under is a legal decision that changes without a
+     * release, and a FIATA member prints the FBL conditions where a
+     * non-member cannot. Null prints no back page; the face is unchanged.
+     */
+    billOfLadingTermsEn: text('bill_of_lading_terms_en'),
+    billOfLadingTermsAr: text('bill_of_lading_terms_ar'),
     calendarId: ref('calendar_id').notNull(),
     timeZone: text('time_zone').notNull().default('Asia/Kuwait'),
     /**
