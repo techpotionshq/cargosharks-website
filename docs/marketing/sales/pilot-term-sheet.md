@@ -52,7 +52,7 @@ proceed to production within 30 days of the pilot ending.
 - Migration of your customers, contacts, agents, hauliers, ports and places
 - Your branding applied end to end — screens, portal, documents, letterhead
 - One rate card imported; milestone templates matched to your vocabulary
-- Document templates: invoice, quotation, delivery order, packing list, manifest
+- Document templates: invoice, quotation, house bill of lading and air waybill, delivery order, packing list, customs pack, manifest
 - Public tracking page and customer portal, both bilingual
 - Training: two sessions per role
 - Support throughout, from a named person, not a ticket queue
@@ -70,14 +70,18 @@ proceed to production within 30 days of the pilot ending.
 | Migration of open jobs and open receivables | A cutover, not an installation. Quoted separately. |
 | On-site presence outside `[Kuwait]` | At cost |
 
-Two capabilities are **deliberately not in this release** and are not being sold
-to you as though they were:
+Three capabilities are **deliberately not in this release** and are not being
+sold to you as though they were:
 
-- **Automatic intake from email and WhatsApp.** Enquiries are keyed in during
-  the pilot. This is the largest gap in the product today and we would rather
-  say so than have you discover it in week two.
+- **Intake from WhatsApp.** Enquiries emailed to a branch mailbox are read into
+  a proposal your coordinator accepts or rejects; anything that arrives on
+  WhatsApp is keyed in. We would rather say so than have you discover it in
+  week two.
+- **Live carrier tracking.** The connection to Maersk, Hapag-Lloyd and CMA CGM
+  is built but runs on your own carrier API credentials. Until you hold them,
+  milestones are entered by hand.
 - **Direct customs filing.** Declaration references, dates, duty and SLA are
-  tracked. The broker still files.
+  tracked and the customs pack is generated. The broker still files.
 
 ---
 

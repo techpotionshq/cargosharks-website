@@ -156,7 +156,8 @@ Price it. The system reads their own rate card.
 
 > "That is your rate card. Not ours, not a sample — the one you sent us."
 
-Produce the quotation on their letterhead.
+Produce the quotation — their company name at the top, their trading
+conditions at the bottom, in either language.
 
 Then the punchline, delivered flat:
 
@@ -213,7 +214,7 @@ immediately.
 
 **What you say:**
 
-> "1,407 strings, both languages, in sync. Right-to-left is in the layout, not
+> "2,700 strings, both languages, in sync. Right-to-left is in the layout, not
 > bolted on — which is why the Arabic quotation reads correctly instead of
 > reading like a mirror. Every product you have been shown was built in English
 > and had Arabic added. This one had both from the first commit."
@@ -249,7 +250,7 @@ battlecard.
 
 **On the slide:** three lines.
 
-> 75 database policies across 57 tables.
+> 197 database policies across 82 tables.
 > An audit trail nobody can edit — including us.
 > Nothing is ever deleted.
 
@@ -278,20 +279,31 @@ It is written to be repeated accurately by someone who is not technical.
 
 | Not built | Status |
 |---|---|
-| Live container tracking feed from carriers | roadmap, commercial decision on provider |
+| Live container tracking feed from carriers | built for Maersk, Hapag-Lloyd and CMA CGM; runs on the customer's own carrier API credentials, so not live until they hold them |
 | Direct customs filing, Kuwait | **not planned** — access is concessionaire-controlled |
 | UAE MPCI filing | roadmap, dated |
-| Saudi ZATCA e-invoicing | roadmap, dated |
+| Saudi ZATCA e-invoicing | roadmap, dated — the invoice data is ready, the accredited transmission is not |
 | Agent portal — agents responding to RFQs, posting milestones | in delivery — the route is scoped, the screens are not built |
-| WhatsApp and email notifications | in delivery |
+| WhatsApp — notifications or intake | not in this release |
 | Scheduled email reports | in delivery |
-| Direct accounting-package integration | export today, connectors later |
+| Direct accounting-package integration | file export today, connectors later |
 
 **What you say:**
 
 > "I would rather you heard this now than in week three. Everything on the left
 > is real and everything on the right is honest. If one of these is the reason
 > you would buy, tell me now and I will tell you whether we can date it."
+
+**Not on the slide, because it is built — have it ready if they ask:** house
+bill of lading and air waybill, delivery order, packing list, customs pack and
+consolidation manifest generated as bilingual PDFs from the job file; enquiries
+emailed to a branch mailbox read into a proposal the coordinator accepts or
+rejects; supplier bills read from a scan or a partner's email and matched
+against what the job accrued; consolidation with cost apportionment; credit
+standing and holds; email notifications; two-factor sign-in; a read API and
+outbound webhooks; and an assistant that answers questions over their own data
+and sees only what the person asking may see. Show any of these only if the
+question is asked — the three moments are the demo.
 
 **Why:** this slide closes more deals than slide 7. A vendor who volunteers
 their gaps is the only kind a forwarder who has been burned will trust.

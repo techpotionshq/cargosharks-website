@@ -113,16 +113,25 @@ forwarder reads a matrix of crossed boxes as a warning.
 
 - All five modes: sea FCL, sea LCL, air, land, courier
 - Enquiry queue with SLA clocks · quotation and award · buy/sell/margin
+- Enquiries emailed to a branch mailbox read into a proposal the coordinator accepts or rejects
 - Rate cards, buy and sell, with temporal validity and the accessorial catalogue
-- Job file, milestones, containers, exceptions, tasks, operations board
+- Job file, milestones, containers, exceptions, operations board
+- Consolidation — master and houses, manifest, cost apportionment across the houses
 - Free-time clocks — demurrage, detention, storage — writing their own charge lines
-- Customs stage tracking with declaration references, duty and SLA
+- Customs stage tracking with declaration references, duty estimate, broker and SLA
 - Document vault with versioning and per-document release control
+- Generated documents — invoice, quotation, house bill of lading or air waybill, delivery order, packing list, customs pack, consolidation manifest — bilingual, numbered per branch, previewed before issue and versioned after
 - Public tracking page and branded customer portal, both bilingual
-- Job costing, invoicing, receipts, ageing, statements
-- Immutable audit trail · configurable reference data · full data export
+- Job costing, invoicing, receipts, ageing, statements, unbilled-revenue register
+- Credit standing against limit and ageing, checked at booking, with recorded overrides
+- Payables — supplier bills read from a scan or a known partner's email, matched to the job's cost lines with variances; partner settlements with netting; supplier payments
+- Accounting export — a journal of the period, posted once
+- Email notifications to customers and staff, templated in both languages
+- An assistant over the operator's own data, scoped by the same permissions as the screens
+- Two-factor sign-in · vendor-access grants
+- Immutable audit trail · configurable reference data · a database that is the operator's own, backed up per tenant
 - Bulk import of customers, contacts, partners, locations, rate cards, open jobs, open receivables
-- Whitelabel — logo, palette, typography, letterhead, domain
+- Whitelabel — logo, palette, typography, domain; documents issued under the operator's own entity name
 - Arabic and English throughout
 
 **Not counted as a named user:** customer-portal logins and agent-portal logins.
@@ -197,6 +206,7 @@ liability into a demonstration.
 | 5 | Discount authority: what a salesperson may give without asking | commercial | Every negotiation |
 | 6 | Multi-year terms — is there a 2- or 3-year price, and what does it lock | commercial | Renewal risk |
 | 7 | Whether resale is permitted at all under the Al-Qabandi engagement (`Q1`) | legal | **Everything** |
+| 8 | Who carries the model cost. Email intake, bill reading and the assistant each call a hosted model per use; the cost is small per call (`Dev_Environment.md` records under a cent per bill) but it is metered, and it is either inside the subscription, passed through on the operator's own key, or capped | commercial | The three model-backed lines in §4 |
 
 ---
 

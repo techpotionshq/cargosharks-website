@@ -1,13 +1,14 @@
 # Qabandi Digital Freight Platform — Release One
 
-**Software Requirements Specification · v1.0 · Internal**
+**Software Requirements Specification · v1.1 · Internal**
 
 | | |
 |---|---|
 | **Client** | AL-QABANDI & PARTNERS Co. (Shipping & Forwarding), Kuwait |
 | **Prepared by** | techpotions |
 | **Date** | August 2026 |
-| **Status** | Draft for discovery review |
+| **Status** | Specification as proposed. Section 11 revised against the build on 23 August 2026. |
+| **Revisions** | v1.1 (23 Aug 2026) leaves §2–§10 as written — the acceptance conditions are the ones agreed — and rewrites §11 against the code: which deferrals have since shipped (§11), what was built that this document never asked for (§11.1), and which of the 126 requirements are still open (§11.2). §8 carries the same status per interface. |
 | **Scope** | 126 functional requirements · 18 non-functional · 12 modules · 16 weeks |
 
 > **Release One in one line:** the smallest system that runs a job from enquiry to invoice without ever leaving it.
@@ -40,6 +41,8 @@
 Release One is not a trimmed-down version of everything in the proposal deck. It is a deliberately chosen spine: **one job record that carries an enquiry through quoting, award, execution, documents and invoicing**, with a customer portal on one side and an agent portal on the other. Everything that does not touch that spine is moved to a later release and listed openly in [Section 11](#11-out-of-scope-for-release-one), with the reason.
 
 The test applied to every candidate feature: *if this is missing, does a job have to leave the system to get finished?* If yes, it is in Release One. If no, it waits.
+
+> **Reading v1.1.** Sections 2–10 describe the system as it was specified before a line was written, and are left alone so that "done" stays measurable against what was agreed. Section 11 is the part that has been revised: the build moved faster than the deferral list, and several things this document put in Release Two turned out to be cheaper to build than to work around. Where the specification and the code disagree, the code is the record — and §11.2 says so, requirement by requirement.
 
 ### 1.2 Requirement numbering
 
@@ -454,16 +457,16 @@ The requirements that make the platform Al-Qabandi's rather than ours.
 | Interface | Direction | Purpose and notes | Release |
 |---|---|---|---|
 | **Email — outbound** | Out | Quotes, notifications, statements and reports, sent from Al-Qabandi's own domain with correct sender authentication. | R1 |
-| **Email — inbound** | In | A per-branch forwarding address turns an email into an enquiry, or threads a reply onto its job, preserving attachments. | R1 |
-| **WhatsApp Business** | Both | Template notifications outbound; inbound messages threaded to the job. Requires a Business API number and template approval — an Al-Qabandi account, billed direct. | R1 |
+| **Email — inbound** | In | A per-branch mailbox, polled over IMAP or fed by a provider webhook, turns an email into an enquiry or threads a reply onto its job, attachments preserved. A model reads the body into a proposal the coordinator accepts; a known partner's bill is read into its lines. | R1 — built |
+| **WhatsApp Business** | Both | Template notifications outbound; inbound messages threaded to the job. Requires a Business API number and template approval — an Al-Qabandi account, billed direct. **Not built:** the inbound webhook verifies and queues, nothing consumes the queue, and there is no outbound sender. Excluded by decision until the number exists (`Dev_Environment.md` §4). | Deferred |
 | **Document storage** | Both | Encrypted object storage for the vault, with signed time-limited download links. | R1 |
-| **PDF generation** | Out | Quotations, invoices, delivery orders and job packs, per entity, in both languages including right-to-left. | R1 |
-| **Exchange rates** | In | A daily rate feed with manual override, stored per transaction. | R1 |
-| **Accounting export** | Out | File-based export of invoices, credit notes and payments. Direct integration awaits confirmation of which package is in use. | R1 |
-| **Customer ERP** | Out | Read-only REST API plus outbound webhooks, so a customer's systems consume status without asking. | R1 |
-| **Carrier and vessel tracking** | In | Automatic milestone and arrival updates from a container-tracking provider. Deferred: provider selection and per-container cost are a commercial decision for Al-Qabandi. | R2 |
-| **Kuwait Customs Single Window** | Both | Direct filing and status retrieval. Deferred: requires technical access from the General Administration of Customs. R1 captures declaration references and states manually. | R2 |
-| **UAE e-invoicing transmission** | Out | Accredited service-provider transmission. Deferred: R1 produces compliant, complete invoice data; transmission is added once the accredited provider is appointed. | R2 |
+| **PDF generation** | Out | Quotations, invoices, house bills of lading, house air waybills, delivery orders, packing lists, customs packs and consolidation manifests, per entity, in both languages including right-to-left. Chromium renders them, because Arabic shaping is the hard part. | R1 — built |
+| **Exchange rates** | In | A daily rate feed with manual override, stored per transaction. | R1 — built |
+| **Accounting export** | Out | File-based export of invoices, credit notes and payments, with a re-export guard. Direct integration awaits confirmation of which package is in use. | R1 — built |
+| **Customer ERP** | Out | Read-only REST API under `/api/v1` with per-customer keys, plus outbound webhooks with retry and a delivery log. | R1 — built |
+| **Carrier and vessel tracking** | In | Automatic milestone and arrival updates, carrier-direct on the DCSA standard — Maersk, Hapag-Lloyd and CMA CGM — polled hourly. No aggregator and no per-container fee, so the commercial decision this row deferred never had to be made. Live the day Al-Qabandi's carrier API credentials are entered under Settings → Integrations. | R1 — awaiting credentials |
+| **Kuwait Customs Single Window** | Both | Direct filing and status retrieval. Stays manual, and now by decision rather than timing: Kuwait clearance runs through MicroClear, which is not an API a forwarder can buy (`Gulf_Market_Analysis.md` MK-03). R1 captures declaration references and states, estimates duty from a tariff table, and prints a customs pack for the broker. | Manual |
+| **UAE e-invoicing transmission** | Out | Accredited service-provider transmission. The port and the hand-off exist (`adapters/einvoice.ts`); the PINT AE document and the provider appointment do not. R1 produces complete invoice data; transmission is added once the provider is appointed. | R2 |
 
 ---
 
@@ -518,23 +521,77 @@ The deck placed Arabic and right-to-left in Phase 6, after the portals. We have 
 
 ---
 
-## 11. Out of scope for Release One
+## 11. Out of scope for Release One — and what happened since
 
-Listed rather than quietly omitted. Each has a reason and a target release.
+Listed rather than quietly omitted. Each has a reason and a target release. The first three columns are as written in v1.0; the fourth was added on 23 August 2026 and records what the build did with each deferral. Several shipped inside Release One after all — not because the reasons were wrong, but because once the job spine existed the deferred thing was cheaper to build than to keep working around.
 
-| Excluded | Why it waits | Target |
+| Excluded | Why it waited | Target | Status, 23 Aug 2026 |
+|---|---|---|---|
+| **AI intake and automatic replies** | Parsing an emailed booking into structured fields, and drafting grounded status replies, needs a body of real Al-Qabandi messages to train and evaluate against. Release One creates that body. Building it first would be guessing. | R2 | **Intake shipped.** An emailed enquiry is read into a proposal (`extraction_proposals`) that the coordinator accepts or rejects on the enquiry page; a known partner's emailed bill is read into its lines and matched to the job's cost lines; an assistant answers questions over the operator's own data under that user's row-level security. Every model call is recorded in `ai_invocations` with its response. Automatic replies and model-drafted quotes remain deferred, and the evaluation harness that `Qabandi_AI_Surface.md` puts before any further surface is not built. |
+| **Carrier and vessel tracking feeds** | Automatic milestones depend on a paid third-party provider whose selection and per-container cost are Al-Qabandi's commercial decision. R1 takes milestones from operations and agents. | R2 | **Built, blocked on credentials.** Carrier-direct on the DCSA standard for Maersk, Hapag-Lloyd and CMA CGM, polled hourly into the job's milestones, so there is no provider to select and no per-container fee. It runs the day Al-Qabandi's carrier API credentials are entered under Settings → Integrations. |
+| **Air waybill and bill of lading generation** | Print-ready IATA and carrier-specific stock templates are a body of work in themselves, and depend on which carrier programmes Al-Qabandi wants covered first. | R2 | **Shipped 18 August 2026.** House bill of lading and house air waybill, with delivery order, packing list, customs pack and consolidation manifest — bilingual PDFs from the job's parties and cargo lines, a per-branch house-bill numbering series, a DRAFT watermark until a number is allocated, preview without storing and issue with versioning. Carrier-specific *master* stock stays out: a master is the carrier's document. The items a bank examines under UCP 600 article 20 followed on 23 August (migration `0036`): an on-board notation from the loaded milestone or the departure, separate original and non-negotiable copy sheets, the branch's terms printed on the reverse, place of receipt and delivery, and a telex-release stamp once the originals are surrendered. |
+| **Direct customs single-window filing** | Requires technical access and credentials from the General Administration of Customs. R1 tracks declaration references, dates and states; it does not file them. | R2 | **Stays manual, now by decision.** Kuwait clearance runs through MicroClear, which is not an API a forwarder can buy (`Gulf_Market_Analysis.md` MK-03). R1 additionally estimates duty from a per-country tariff table, keeps the estimate beside the assessed figure, and prints a customs pack for the broker. |
+| **Accredited e-invoicing transmission** | UAE transmission runs through an accredited service provider that Al-Qabandi appoints. R1 makes the invoice data complete and compliant so that connection is a plug, not a rebuild. | R2 | **Port built, transmission not.** The `EInvoiceTransmit` port and the hand-off to a provider exist; the PINT AE document and the appointment do not. The UAE timetable is unchanged: provider appointment due 30 October 2026, go-live 1 January 2027 for the largest filers. |
+| **Direct accounting integration** | Depends entirely on which package is in use — unknown to us today. R1 exports a file that imports cleanly. | R2 | **File export shipped**, with a journal that posts invoices, credit notes and payments and a guard against exporting a period twice (`accounting_exports`). Direct integration still waits on the package name. |
+| **Weighted agent scoring** | A score combining price, punctuality, responsiveness and claims needs a period of real data before its weights mean anything. R1 measures the inputs. | R2 | **Unchanged.** The agent portal answers rate requests and nothing else yet, so the inputs beyond response time are not being measured either — see `FR-AP-03…08` in §11.2. |
+| **Automated credit control** | Dunning ladders and automatic credit holds need Al-Qabandi's actual credit policy, which we have not seen. R1 shows the ageing and stops there. | R2 | **Partly.** Each customer has a credit standing with recorded overrides, and invoice-overdue and quote-expiring reminders go out from the notification outbox on a daily schedule. Dunning ladders and automatic holds still wait on the policy. |
+| **Warehouse management** | Inventory, locations, stock movements, pick and pack for the two owned 3PL centres is a product in its own right, not a module. It deserves its own specification. | R3 | Unchanged. |
+| **Supply-chain and purchase-order management** | Vendor management, PO milestone tracking and origin consolidation programmes sit on top of a working job platform, not beside it. | R3 | Unchanged. Consolidation itself (`FR-JB-15`) shipped, with a candidates engine — §11.1. |
+| **Native mobile applications** | R1's mobile browser experience covers field capture. Native apps with offline queues are justified only once field volume proves it. | R3 | Unchanged. Proof of delivery from a phone browser shipped as specified (`FR-DC-09`): signature, photographs, recipient and location. |
+
+### 11.1 Built beyond this specification
+
+Things the build produced that none of the 126 requirements asked for. Each is here because the work it replaces was the expensive kind — somebody's afternoon, every week — and because a later reader should not have to discover them from the code.
+
+| Capability | What it does | Where |
 |---|---|---|
-| **AI intake and automatic replies** | Parsing an emailed booking into structured fields, and drafting grounded status replies, needs a body of real Al-Qabandi messages to train and evaluate against. Release One creates that body. Building it first would be guessing. | R2 |
-| **Carrier and vessel tracking feeds** | Automatic milestones depend on a paid third-party provider whose selection and per-container cost are Al-Qabandi's commercial decision. R1 takes milestones from operations and agents. | R2 |
-| **Air waybill and bill of lading generation** | Print-ready IATA and carrier-specific stock templates are a body of work in themselves, and depend on which carrier programmes Al-Qabandi wants covered first. | R2 |
-| **Direct customs single-window filing** | Requires technical access and credentials from the General Administration of Customs. R1 tracks declaration references, dates and states; it does not file them. | R2 |
-| **Accredited e-invoicing transmission** | UAE transmission runs through an accredited service provider that Al-Qabandi appoints. R1 makes the invoice data complete and compliant so that connection is a plug, not a rebuild. | R2 |
-| **Direct accounting integration** | Depends entirely on which package is in use — unknown to us today. R1 exports a file that imports cleanly. | R2 |
-| **Weighted agent scoring** | A score combining price, punctuality, responsiveness and claims needs a period of real data before its weights mean anything. R1 measures the inputs. | R2 |
-| **Automated credit control** | Dunning ladders and automatic credit holds need Al-Qabandi's actual credit policy, which we have not seen. R1 shows the ageing and stops there. | R2 |
-| **Warehouse management** | Inventory, locations, stock movements, pick and pack for the two owned 3PL centres is a product in its own right, not a module. It deserves its own specification. | R3 |
-| **Supply-chain and purchase-order management** | Vendor management, PO milestone tracking and origin consolidation programmes sit on top of a working job platform, not beside it. | R3 |
-| **Native mobile applications** | R1's mobile browser experience covers field capture. Native apps with offline queues are justified only once field volume proves it. | R3 |
+| **Payables and partner settlement** | Supplier invoices captured from an upload or an emailed bill, read into lines, matched to the job's cost lines with the variance shown; supplier payments; and partner settlements that net what is owed each way with an agent. `FR-FN-09` asked for capture and matching; settlement and netting were not asked for. | `/payables`, `/settlements`, `core/matching.ts`, `core/netting.ts` |
+| **Consolidation candidates** | Beside master–house grouping and cost apportionment (`FR-JB-15`), a rule-based panel proposing which open houses share a lane and a sailing window. No model; the rules are in `core/grouping.ts`. | `/consolidations` |
+| **Duty estimation** | A duty estimate from a per-country tariff table, stored beside the assessed figure rather than overwritten by it, so the estimate's accuracy can be asked about later. | `core/duty.ts`, the customs stage |
+| **Unbilled-revenue register** | Completed work with no invoice against it, as a list with a one-click draft invoice. `FR-RP-03` asked for a count. | `/finance` |
+| **Assistant** | Question-answering over jobs, enquiries, exceptions, free-time clocks, overdue invoices and supplier variance, with threads kept per user and every tool call executed under that user's own row-level security. | `/assistant` |
+| **Inbound mailboxes as rows** | Per-branch IMAP mailboxes an administrator configures in the interface, passwords sealed with AES-256-GCM under a key the database never sees; a bounce guard so a bounce cannot become an enquiry. | `/settings/mailboxes` |
+| **Support access grants** | Time-boxed, recorded access for the supplier's support staff, visible to the customer as a banner while it is open. | `/settings/support` |
+| **Cutover importers** | Customers, partners, locations, rate cards and open jobs from spreadsheets with a row-level validation report and downloadable templates. `FR-MD-11` and `FR-RT-09` asked for the first two. | `/imports` |
+| **Fixture mode** | The whole interface runs on fixtures with no database (`QABANDI_PILOT_FIXTURES=1`), so a demonstration never depends on a connection. | `apps/web/src/lib/pilot` |
+
+### 11.2 Requirements still open
+
+Of the 126 functional requirements, these are not met, or only partly met, by the build as of 23 August 2026. Listed so each gap is a decision rather than a discovery. The list was compiled by checking each module against the code; a requirement absent from it is believed met, and a reader who finds otherwise should add it here rather than argue with the code.
+
+| ID | In short | State |
+|---|---|---|
+| `FR-EQ-10` `FR-NT-02` `FR-NT-05` | WhatsApp — sending, the channel, inbound threading | Not built; excluded by decision until a Business API number exists. Email is built; in-app is a channel value with no adapter behind it yet, so a notification to a user with no email goes nowhere. |
+| `FR-ID-03` | Editable permission matrix | Permissions are rows (`role_permissions`) read on every request, so a change needs no release — but there is no screen for it; an administrator edits the rows. |
+| `FR-ID-05` | Lockout after repeated failures | Password policy and self-service reset are built; the lockout is not. |
+| `FR-MD-03` | Per-contact portal access | Portal and agent users are created by an administrator against a customer or partner. Granting access contact by contact, with per-contact permissions, is not built. |
+| `FR-MD-05` | Compliance expiry warnings at 60, 30 and 7 days | The register, the documents and days-remaining on the partner record are built. The warnings are not sent. |
+| `FR-EQ-11` | Quote acceptance with evidence | Operations records acceptance; the portal cannot, and manual acceptance does not require an attachment. |
+| `FR-JB-04` | Milestones by agent portal or CSV | Operations and the carrier feed update milestones. Agents cannot, and there is no CSV upload. |
+| `FR-JB-05` | Reason on every arrival change | A revised arrival notifies the customer; the reason is not captured. |
+| `FR-JB-11` | Close blocked by open exceptions or missing documents | The state machine allows the transition; nothing checks exceptions or documents first. |
+| `FR-NT-07` | Quiet hours and digests | Quiet hours are enforced by the dispatcher, which defers rather than drops. Batching into a digest is not built. |
+| `FR-JB-07` | Container check digit | Container numbers are free text; the ISO 6346 check digit is not validated. |
+| `FR-JB-12` | Dangerous-goods gating | A dangerous-goods flag exists on the enquiry and the commodity. UN number, class, packing group and the gate past booking are not built. |
+| `FR-JB-13` | Tasks per job | Not built. |
+| `FR-JB-14` | Saved views on the operations board | The board filters by status; saved views per user are not built. |
+| `FR-JB-16` | Copy a job | Not built. |
+| `FR-DC-03` | Release control overridable per customer | Per-type default and per-document release are built; a per-customer override is not. |
+| `FR-DC-04` | Mandatory-document checklist and gate | Document types are rows; the per-mode checklist and the gate on progress are not built. |
+| `FR-DC-06` | Document search | The search box finds jobs, containers and customers, and the Documents screen lists by job. A document is not found by its own filename or type. |
+| `FR-DC-07` | Job pack as one archive | Not built. Documents download individually; the customs pack is one generated PDF, not the released set. |
+| `FR-MD-06` | Haulier permitted countries | Not built. |
+| `FR-MD-10` `FR-EQ-15` | Duplicate detection | Not built. |
+| `FR-CP-03` `FR-CP-06…13` | Customer portal beyond shipments | The portal shows active shipments, arrivals and released documents, and public tracking works as specified. Quote request and acceptance, invoices and statements, messaging, notification preferences, entity switching and bulk booking are not in it. |
+| `FR-AP-03…08` | Agent portal beyond rate requests | Agents see and answer the rate requests addressed to them. Rate-card upload with approval, the awarded-jobs view, milestone and document posting, compliance self-service, the lapsed-document award block and the performance view are not built. Compliance documents with expiry warnings are maintained by Al-Qabandi on the partner record. |
+| `FR-FN-13` | Invoice gate on departure and open exceptions | Not built. The credit check gates billing instead. |
+| `FR-RP-04` | Group view in one reporting currency | Branch figures are shown in their own currencies; normalisation to a single reporting currency at a stated rate is not built. |
+| `FR-RP-06` | Every list exports to CSV | The margin report exports; other lists do not. |
+| `FR-RP-07` | Scheduled reports | Registered as a job name with no handler and no schedule. |
+| `FR-RP-08` | KPI dictionary | Not built. |
+| `FR-AD-02` | Audit search and export | The audit screen filters by table. Search by job, user or date range, and export, are not built. |
+| `FR-AD-04` | Full data export as one action | Not built as one action. The accounting export and the import templates exist, and the database is Al-Qabandi's (`NFR-17`). |
+| `NFR-04` | Hijri dates beside Gregorian | Not built. |
 
 ---
 

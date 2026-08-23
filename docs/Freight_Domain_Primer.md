@@ -614,7 +614,7 @@ The **Harmonised System** code classifies goods. 6 digits internationally, exten
 - Import licences are required for a long list of goods; holders must be Kuwaiti citizens or Kuwait-based brokers.
 - Documents typically need **chamber of commerce legalisation** — a real cost and a real delay.
 
-> **Dev implication:** `FR-JB-06` models customs as a **first-class stage with its own SLA clock**, not a milestone. Filing date, reference, assessed amount, inspection flag, release date, owner. The reason is visible in §9.5: a container held in customs is a container accruing demurrage, and today nobody sees it until someone asks. Direct filing into the Single Window is explicitly Release Two — we capture states, we do not submit them.
+> **Dev implication:** `FR-JB-06` models customs as a **first-class stage with its own SLA clock**, not a milestone. Filing date, reference, assessed amount, inspection flag, release date, owner. The reason is visible in §9.5: a container held in customs is a container accruing demurrage, and today nobody sees it until someone asks. Direct filing into the Single Window is not built, and as of August 2026 is a decision rather than a deferral: Kuwait clearance runs through MicroClear, which is not an API a forwarder can buy (`Gulf_Market_Analysis.md` MK-03). We capture states and estimate duty from a tariff table; we do not submit.
 
 ---
 

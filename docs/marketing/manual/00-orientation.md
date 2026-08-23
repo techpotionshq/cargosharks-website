@@ -28,8 +28,11 @@ change who has access and can issue money documents.
 
 ### If you have forgotten your password
 
-There is no self-service reset. Ask your administrator — they can reset it, and
-they will give you the new one directly rather than emailing it.
+**Forgotten your password?** on the sign-in page sends a link to set a new one.
+The link expires in one hour, and it only arrives if your deployment's outbound
+mail has been configured. If nothing arrives, ask your administrator — they can
+reset it from the server, and they will give you the new one directly rather
+than emailing it.
 
 ---
 
@@ -43,20 +46,29 @@ forwarding office is actually organised, rather than how the software is built:
 | Group | What is in it |
 |---|---|
 | **Commercial** | Dashboard · Enquiries · Quotations · Customers · Rate cards |
-| **Operations** | Shipments · Exceptions · Customs · Documents |
+| **Operations** | Shipments · Exceptions · Consolidations · Customs · Documents · Assistant |
 | **Network** | Partners & agents · Ports & places · Reference data · Bulk import |
-| **Finance** | Overview · Invoices · Payments |
+| **Finance** | Overview · Invoices · Payments · Payables · Settlements · Reports |
 
-**You will not see all of it.** The navigation shows what your role permits. A
-coordinator does not see the finance group; a customs broker sees a narrow slice.
-This is not a limitation on you personally — it is how the separation of duties
-works, and every role's exact permissions are listed in
+**You will not be able to do all of it.** Two entries are hidden outright:
+**Reports** needs `report.read`, and **Assistant** appears only once your
+administrator has configured a model key. Every other screen is listed for every
+internal role, and what your role permits shows up on the screen itself — a
+button you do not hold the permission for is not offered, and a screen that is
+wholly somebody else's says which permission it needs. This is not a limitation
+on you personally — it is how the separation of duties works, and every role's
+exact permissions are listed in
 [`09-permissions-reference.md`](09-permissions-reference.md).
 
-**Across the top**, your branch, your name, the language switch, and — if your
-role includes it — a link to **Settings**.
+**Across the top**, the search box — references, container numbers, master and
+house bill numbers, customers — the appearance switch and the language switch.
 
-**In the middle**, the screen you are on.
+**At the foot of the navigation**, your name, your role and how many branches
+you hold; the **Customer tracking** link; and — if your role includes it —
+**Settings**.
+
+**In the middle**, the screen you are on. Once a model key is configured, a
+floating **Assistant** button sits in the bottom corner of every screen as well.
 
 ---
 
@@ -157,7 +169,9 @@ being handled.
 | | |
 |---|---|
 | **Customer tracking** | Opens the public tracking page — the same page your customer sees. Useful for checking what a customer is actually looking at before you ring them back. |
-| **Settings** | Only if your role includes it. Users, branches, the audit log, vendor access and branding. |
+| **Search** | The box at the top of every screen. A reference, a container number, a master or house bill number, a booking number, a customer's own reference or a customer name — across every shipment you can see. |
+| **Assistant** | The floating button in the bottom corner, once a model key is configured. Ask it about your shipments, enquiries and invoices; it reads only what you can see and changes nothing — where an action makes sense it offers you the record to confirm on. **Operations → Assistant** is the same thing full-screen, with your past conversations kept. |
+| **Settings** | Only if your role includes it. Users, branches, the audit log, vendor access, notification wording, API keys, mailboxes, integrations and branding. |
 
 ---
 
@@ -186,11 +200,12 @@ Said here once so that nobody spends an afternoon looking for it:
 
 | | |
 |---|---|
-| **Automatic carrier tracking** | Milestones are entered by your team or posted by your agent. There is no live feed from the shipping line. |
+| **Automatic carrier tracking** | Off unless your administrator switches it on. Carrier-direct feeds from Maersk, Hapag-Lloyd and CMA CGM are configured under *Settings → Integrations → Container tracking*, and each needs the carrier's own registration. Until then, milestones are entered by your team. |
 | **Direct customs filing** | Declarations are tracked, not filed. You file where you file today and record the reference here. |
-| **WhatsApp and email notifications** | In delivery. Templates exist; the sending channels are being finished. |
+| **WhatsApp notifications** | Not in this release. |
+| **Email notifications** | Live once *Outbound mail* is configured under *Settings → Integrations*. The wording of each message is edited under *Settings → Notification wording*, in both languages. |
 | **Scheduled reports by email** | In delivery. Every screen exports today. |
-| **Accounting-package integration** | Export today; direct connectors later. |
+| **Accounting-package integration** | A journal export per period, from *Finance → Overview*; direct connectors later. |
 | **The agent portal** | The route exists and is correctly scoped, but the screens are not built. Do not give an agent a login yet — see [`08-agent-portal.md`](08-agent-portal.md). |
 
 ---

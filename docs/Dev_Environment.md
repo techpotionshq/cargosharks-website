@@ -94,15 +94,21 @@ leaking, not on feature count. The user wants the whole list done, quickly.
    arithmetic. Drafting is the feature; sending is not.
 2. Assistant tools — `list_unbilled`, `get_margin`, `get_customer_credit`,
    `list_quotes_expiring`, `list_consolidation_candidates`. The engines exist;
-   the assistant cannot see them.
+   the assistant cannot see them. (What it *can* see, `ai/tools.ts`: `search`,
+   `get_job`, `list_jobs`, `list_enquiries`, `list_exceptions`,
+   `list_free_time`, `list_overdue_invoices`, `get_supplier_variance` — all
+   reads, all under the asker's actor — plus `propose_transition`, which
+   offers a confirm button and changes nothing. None of the five above is
+   among them.)
 3. Credit control on a schedule, with dunning through the outbox.
 4. Document classification on upload — the lowest-stakes model call, and every
    correction is labelled data.
 5. Exception triage — free text into a code and a severity.
 6. Rate-card column mapping — still the cheapest useful AI feature.
 7. **The evaluation harness, before any further model surface.** The AI design
-   document puts it first; two surfaces shipped without it. The corpus is
-   accumulating in `ai_invocations` and in rejected proposals meanwhile.
+   document puts it first; three surfaces shipped without it — the two
+   extractions and the assistant. The corpus is accumulating in
+   `ai_invocations` and in rejected proposals meanwhile.
 
 **Excluded, by decision:** WhatsApp inbound (still a dead letter; leave it) and
 backfilling historical enquiries (not needed in a dev environment).

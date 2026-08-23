@@ -19,10 +19,17 @@ the product is called.
 | Screen | What it is for |
 |---|---|
 | **Users & roles** | Who can sign in, and what they hold in each branch |
-| **Branches** | Currency, invoice series, working calendar, per entity |
+| **Branches** | Currency, invoice series, working calendar, trading conditions, chart of accounts, per entity |
 | **Audit log** | Every write, by whom, from where |
 | **Vendor access** | What your supplier's support can see, and for how long |
+| **Notification wording** | What the product says when it writes to somebody — shared with the operations manager, see [`02-operations-manager.md`](02-operations-manager.md#notification-wording) |
+| **API keys** | Read-only keys a customer's systems pull their shipments with, and the webhooks that push events to them |
+| **Mailboxes** | The addresses the system reads for incoming enquiries, per branch |
+| **Integrations** | The relay that sends the mail, the carrier registrations, the file store, the model key, and the provider that will transmit invoices |
 | **Brand** | Colours, name and mark, and the variable behind each |
+
+They appear in that order, and `/settings` opens on the first one your role can
+see.
 
 **Reference data deliberately stayed in operations.** Ports, charge types,
 milestone templates and exception codes are daily operational work, and putting
@@ -39,7 +46,18 @@ owns them — see [`02-operations-manager.md`](02-operations-manager.md#referenc
 **The product is invitation-only. There is no sign-up form**, so there is nothing
 to bootstrap from and nothing for a stranger to find.
 
-Accounts are created from a shell on the server:
+**Settings → Users & roles** lists everyone: name, email, their branch and role
+badges, whether they have a sign-in, when they were last seen, and whether they
+are active. **Invite someone** creates a person — both names, email, phone,
+language, role, and the branches they work in, ticked one by one. You can only
+grant branches you hold yourself; `admin.users.write` in one branch is not a
+route to every branch.
+
+**The dialog deliberately has no password field**, and it does not create a
+sign-in. An administrator who can type a colleague's password can sign in as
+them, and the audit log would say it was the colleague. The credential is
+created from a shell on the server, against the same email, and the two rows
+are linked:
 
 ```bash
 pnpm db:create-user --email ops@yourcompany.com --name "Operations" \
@@ -61,11 +79,21 @@ pnpm db:create-user --email kwi@yourcompany.com --name "Kuwait Desk" \
 The generated password prints once. Give it to the person directly. Do not email
 it.
 
+### Suspending someone
+
+**Suspend**, on their row. It takes their access away on their next request;
+everything they wrote stays exactly as it is, and their name keeps appearing on
+the records they created. Nothing is deleted — the account stays on the list,
+marked inactive, and **Restore** gives it back with the same branches and roles.
+
 ### Resetting a password
 
-Re-run the same command for an existing email. It resets that password and
-changes nothing else. **This is the password-reset path** until a mail transport
-is configured, and it is why there is no "forgot password" link.
+Two paths. **Forgotten your password?** on the sign-in page sends the person a
+link that expires in an hour — it needs *Outbound mail* configured under
+**Settings → Integrations**, and a deployment without it logs the failure rather
+than appearing to work. Or re-run `db:create-user` for the existing email: it
+resets that password and changes nothing else, and it is the path when mail is
+not yet configured.
 
 ### Roles are per branch
 
@@ -80,6 +108,9 @@ is no "all branches" toggle, and there should not be.
 
 **Administrator and Finance must enrol.** They are the two roles that can change
 who has access and can issue money documents. Nobody can opt out, including you.
+The requirement is a flag on the role, not on the person: the **Roles** table on
+this screen shows *Two-factor: Required* against those two, with the number of
+permissions each role holds, and a person's badge carries the same mark.
 
 ### Choosing a role
 
@@ -101,13 +132,21 @@ their first fortnight, or an accountant who needs to see and not touch.
 ## Branches
 
 Each branch carries **its own base currency, its own invoice series and its own
-working calendar**.
+working calendar**. **Add branch** and **Edit branch** on **Settings → Branches**:
 
 | | Why it matters |
 |---|---|
-| **Currency** | What the entity invoices in |
-| **Invoice series** | Numbering is per branch, and gaps are questions at audit. Voided invoices keep their number for exactly this reason. |
+| **Code** | Short, and it prefixes every reference this branch creates |
+| **Currency** | What the entity reports and invoices in |
+| **Legal name**, in both languages | The Arabic one is required — it appears on Arabic invoices |
+| **Invoice prefix** | Numbering is per branch, and gaps are questions at audit. Voided invoices keep their number for exactly this reason. Defaults to the branch code, and **cannot be changed once invoices have been issued**. |
+| **House B/L series** | Numbers the house bills the branch issues. Leave blank to number them by hand. |
 | **Working calendar** | **Every SLA clock and ageing rule counts against this.** Kuwait, Qatar and the UAE share neither a weekend nor a holiday list. |
+| **Time zone**, **tax registration** | Per entity — `Asia/Kuwait` and `Asia/Dubai` are not the same hour |
+| **Trading conditions** and **Not included** | Printed at the foot of, and beside the charges on, every quotation this entity issues — in both languages. Each entity trades under its own law; Kuwait and Dubai do not share a footer. |
+| **Sends from** | Who notifications from this entity come from. Blank uses the deployment's own address. |
+| **Quiet hours** | No customer notification leaves between these hours, in the branch's local time. Internal alerts are never held. |
+| **Chart of accounts** | Receivables, payables, bank, output tax, FX variance, rounding — where this entity posts. Leave blank until you have the codes; the accounting export names what is missing. |
 
 **Load next year's public holidays before January.** If you do not, every
 deadline over the break is wrong, in the same direction, for every branch — and
@@ -169,6 +208,94 @@ question "what did they look at" always has an answer.
 - Grant the branch in question, not all of them
 - Revoke when the call ends rather than waiting for expiry
 - Read the vendor-access screen once a month even when nothing is open
+
+---
+
+## Mailboxes
+
+**Settings → Mailboxes.** The addresses this system reads. Mail arriving in one
+becomes an enquiry for that branch, or joins the thread of the enquiry or job it
+quotes by reference. The service checks every connected mailbox once a minute,
+and a new enquiry is on the board within that.
+
+**Connect a mailbox**: the branch whose enquiries arrive there, the address,
+the IMAP server and port, TLS, the password, the folder (usually `INBOX`), and
+optionally a folder to move handled mail to — leave it blank and mail is marked
+read where it is. The password is stored encrypted and is never shown again;
+when editing, leave it blank to keep the one stored.
+
+**This is your key, not the operations manager's**, and the reason is stated in
+the matrix: a charge type is a business rule, and this row is the password to a
+mailbox that in an office this size is usually somebody's whole account.
+
+Each row shows when it was last checked and when mail last arrived. A mailbox
+marked **Not reading** collects no enquiries — check the password first, because
+most failures here are a credential that changed. **Stop reading** pauses one
+without losing anything; **Start reading** resumes, and anything unread that
+accumulated in the meantime arrives as enquiries.
+
+**Before connecting a real mailbox:** the deployment needs
+`MAILBOX_ENCRYPTION_KEY` set, or the form cannot be saved — it says so. And you
+hold no branch you cannot connect a mailbox for; an administrator with no
+branch role is told to get one first.
+
+---
+
+## Integrations
+
+**Settings → Integrations.** The accounts this deployment reaches the outside
+world with. A credential saved here takes effect within a minute, with no
+release, and takes precedence over the deployment's environment variables —
+**Stop using these settings** falls back to the environment without losing what
+was typed, which is how a change is rolled back.
+
+Credentials are sealed on the way in and never shown again; leave a field blank
+to keep the one stored. The first option in each mode list is the one that
+costs nothing and asks nobody.
+
+| Group | Card | What it does |
+|---|---|---|
+| **Platform** | **Outbound mail** | The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset. *Sending*, or *Written to the log, not sent*. |
+| | **Object storage** | Where every stored document lives — issued bills, invoices, scans. Without it documents render but cannot be kept. |
+| | **Inbound mail webhook** | The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes above. |
+| **Carriers** | **Container tracking** | *Typed by an operator*, or *Carrier-direct (free)*. The driver only; the credentials live on the three carrier cards. |
+| | **Maersk**, **Hapag-Lloyd**, **CMA CGM** | One self-serve registration each, at the carrier's own developer portal. Each card says which carrier codes it covers and what is still needed before it can be switched on. |
+| | **Carrier poll budget** | How often the poll asks and how many shipments each run covers. The card works out calls per hour, which has to stay under the carrier's cap. |
+| **Finance** | **Exchange rates** | *Typed by hand*, or *Daily from a feed*. Nothing prices from the feed — a charge line keeps the rate it was struck at. |
+| | **E-invoice transmission** | The accredited provider that files an invoice with the tax authority. *Not transmitted* until somebody has bought one. |
+| **Document extraction** | **Document extraction** | The model key. It switches on the assistant, reading enquiries off emails, and reading supplier bills from scans — billed per document, with a monthly ceiling set here. An unread bill is simply one that gets typed. |
+
+A card marked **Not working** is one the service could not resolve on its last
+run; the reason is on the card, and correcting it here takes effect within a
+minute.
+
+**Carrier tracking is built but off until you register.** With the driver on
+*Carrier-direct* and a carrier's credentials entered, container milestones on
+that carrier's shipments arrive from the carrier's own events. Until then,
+every milestone is typed — and a WhatsApp Business card on this screen
+notwithstanding, WhatsApp is not a channel in this release.
+
+---
+
+## API keys
+
+**Settings → API keys.** Read-only keys a customer's own systems use to pull
+their shipments, milestones and released documents from the read API, without
+a login.
+
+**Issue a key** — a name (*their ERP, their portal…*), the customer it reads
+for, the branch, and an optional expiry. **The key is shown once and is not
+stored.** If it is lost, revoke it and issue another. Each row shows when it was
+last used; **Revoke** ends it, and keys are revoked, never deleted, so *when
+did it stop working* always has an answer.
+
+**Webhooks** are the other direction: where the system posts an event the
+moment it happens, so a customer's system does not have to poll. **Subscribe**
+with an `https` URL and, optionally, the events wanted — empty means
+everything. Each delivery is signed with HMAC-SHA256 in `x-qabandi-signature`
+using a secret shown once at subscription; give it to whoever receives the
+events, because they verify the signature with it. Each endpoint shows its last
+delivery and how many are failing, and can be turned off without being removed.
 
 ---
 
@@ -313,8 +440,9 @@ dump is good because the command exited zero.
 
 | | |
 |---|---|
-| **A user-invitation screen** | Accounts are created from a shell. It is also the password-reset path. |
-| **Self-service password reset** | Needs a mail transport configured. |
-| **Editing the role matrix from the interface** | The matrix is seeded and editable without a release, but not from a screen today. |
-| **Email and WhatsApp notifications** | In delivery. Templates exist; the sending channels are being finished. |
+| **A sign-in created from a screen** | *Invite someone* creates the person and their branch roles; the credential is still created from a shell, against the same email. |
+| **Self-service password reset without mail** | *Forgotten your password?* works once *Outbound mail* is configured. Until then, `db:create-user` is the reset path. |
+| **Editing the role matrix from the interface** | The matrix is seeded and editable without a release, but not from a screen today. The *Roles* table on Users & roles shows it. |
+| **WhatsApp notifications** | Not in this release. Email is the channel, once *Outbound mail* is configured. |
+| **Carrier tracking without registering** | The feeds are carrier-direct and need each carrier's own credentials under *Integrations*. Until they are entered, milestones are typed. |
 | **Scheduled reports** | In delivery. Every screen exports today. |

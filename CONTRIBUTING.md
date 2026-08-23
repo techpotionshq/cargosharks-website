@@ -27,7 +27,10 @@ QABANDI_PILOT_FIXTURES=1 pnpm dev     # web on :3000
 ```
 
 Twenty jobs at varied stages, a live customs hold, a demurrage clock that has
-already written its own charge line. Read [the parts worth reading
+already written its own charge line. It is a subset — the registers that still
+want a database are listed as `NEEDS_DATABASE` in
+`apps/web/e2e/support/harness.ts`, and `pnpm db:seed-demo` is the full
+instance. Read [the parts worth reading
 first](README.md#the-parts-worth-reading-first) with the screens open next to
 them; the domain makes far more sense that way round.
 
@@ -108,7 +111,10 @@ triggers and grants that enforce tenancy.
    tables fall into four scoping shapes (branch-scoped, job-derived,
    group-shared, config) and yours is almost certainly one of them. Enabling RLS
    without writing a policy denies every row to everyone: the table is simply
-   empty from the application's point of view, and nothing says why.
+   empty from the application's point of view, and nothing says why. In the
+   same file, `select app.attach_audit('<table>')` — the loop in `0003` ran
+   once, over the tables that existed then, and does not run again
+   ([`0008`](packages/db/migrations/0008_support_access.sql) says why).
 
 4. **Apply and seed:** `pnpm db:migrate`, then `pnpm db:seed`.
 
@@ -146,8 +152,10 @@ The four that cause real bugs when forgotten:
 ```
 packages/core      pure domain — no I/O, no database, no framework
 packages/db        schema, migrations, the actor transaction, RLS
+packages/brand     the whitelabel contract — palette, logo, typography
 apps/web           Next.js: app/ routes, features/ slices, ui/ components
-apps/service       workers, adapters, PDF rendering, internal API
+apps/service       workers, adapters, PDF rendering, the AI surfaces,
+                   the internal API and the public read API
 ```
 
 Feature slices in `apps/web/src/features/` do not import each other. Shared

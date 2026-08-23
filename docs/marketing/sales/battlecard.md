@@ -61,8 +61,9 @@ to look.
 
 **If they say "we are already deep in CargoWise":** believe them and go for
 coexistence rather than replacement — the customer portal, tracking and the
-Arabic quotation surface, alongside what they run. That is a real sale and it is
-how you get invited back when the next renewal lands.
+Arabic quotation surface, alongside what they run; the read API and the
+outbound webhooks exist so what they run can be fed from ours. That is a real
+sale and it is how you get invited back when the next renewal lands.
 
 ---
 
@@ -87,7 +88,7 @@ and come back when the roadmap item ships.
 
 | | |
 |---|---|
-| **Their headline is our floor** | "One platform, entities in different countries side by side" is their lead capability. Ours is enforced in ~15 database policies rather than in application code — it is structurally stronger, and it is demonstrable: ask for another branch's shipment and the row does not exist to the query. |
+| **Their headline is our floor** | "One platform, entities in different countries side by side" is their lead capability. Ours is enforced in database policies — 197 of them, across 82 tables — rather than in application code; it is structurally stronger, and it is demonstrable: ask for another branch's shipment and the row does not exist to the query. |
 | **Data ownership** | We deploy per customer, into the customer's own database, in their region. Ask what happens to their data on their platform, and whether they can have it all back on any given Tuesday. |
 | **Whitelabel** | Ours is a parameter — no colour literal or company name in any component. Theirs is a product with a logo slot. For a forwarder whose customers are their asset, that difference is worth money. |
 | **Arabic depth** | Both credible here. Do not claim an advantage you cannot demonstrate in ten seconds on a phone. |
@@ -220,8 +221,10 @@ data, which is the part that actually matters.
 |---|---|---|
 | **"You are too small."** | "Will you exist in three years?" | Concede immediately — it is true. Then: the deployment is their own database, the schema is documented, the export is complete and available any day, and there is a source-escrow conversation available on request. The risk is real and it is bounded. Never bluff scale. |
 | **"Who else uses it?"** | "Who has been burned before me?" | Name Al-Qabandi *only with written permission*. Otherwise: "one Kuwaiti forwarder live, and I would rather you spoke to them than took my word — let me ask them." Then actually ask. |
-| **"What about Kuwait customs filing?"** | Often a genuine requirement | Straight answer: we do not do it and we are not planning to. Access runs through a 25-year concession held by a joint venture in which a major regional logistics group is the majority shareholder, to 2030. They have no commercial reason to enable a competitor's vendor. We capture declaration references, status, duty and the SLA clock. If direct filing is their buying reason, we are not the product. |
-| **"What about VAT?"** | Usually Kuwait; sometimes GCC-wide | Kuwait has no VAT law and the government's own plan rules it out before 2028. The data model already carries tax treatment, rate and per-line taxability, so when it arrives it is configuration rather than a rebuild. For Saudi, ZATCA is on the roadmap and not shipped. |
+| **"What about Kuwait customs filing?"** | Often a genuine requirement | Straight answer: we do not do it and we are not planning to. Access runs through a 25-year concession held by a joint venture in which a major regional logistics group is the majority shareholder, to 2030. They have no commercial reason to enable a competitor's vendor. We capture declaration references, status, duty and the SLA clock, estimate the duty from the tariff table, and generate the customs pack the broker files from. If direct filing is their buying reason, we are not the product. |
+| **"What about VAT?"** | Usually Kuwait; sometimes GCC-wide | Kuwait has no VAT law and the government's own plan rules it out before 2028. The data model already carries tax treatment, rate and per-line taxability, so when it arrives it is configuration rather than a rebuild. For Saudi, ZATCA is on the roadmap and not shipped — the hand-off to an accredited provider is built as a plug, the mandated document and the provider are not. |
+| **"Can it read our email / WhatsApp?"** | Often the real pain | Email, yes: an enquiry sent to a branch mailbox is read into a proposal the coordinator accepts or rejects, and a supplier's bill from a known partner is read into lines and matched against the job. WhatsApp, no — not in this release, and do not hint at a date. |
+| **"Does it track containers?"** | Usually "will I still be phoning the line?" | The carrier connection is built for Maersk, Hapag-Lloyd and CMA CGM and runs on *their* carrier API credentials, not ours. Until they hold those, milestones are entered by hand. Say it before they ask whether it is live. |
 | **"Can it do [feature]?"** | Testing whether you will bluff | If it is built, show it. If it is on the roadmap, say which release. If it is not planned, say so. Never answer a capability question with "yes, with some configuration." |
 | **"Send me a proposal."** | Frequently a polite exit | "I will, and it will be one page. Before I write it — what would have to be true for you to sign it?" |
 | **"It is too expensive."** | Almost never about the absolute number | Ask what they are comparing it to. If CargoWise: compare implementation totals, not licence lines. If nothing: the pilot fee is the answer, and it is credited. |

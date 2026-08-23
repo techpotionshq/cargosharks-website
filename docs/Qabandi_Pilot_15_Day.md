@@ -1,6 +1,6 @@
 # Qabandi Digital Freight Platform — The 15-Day Pilot
 
-**Scope for a working proof of value · v1.0 · Internal**
+**Scope for a working proof of value · v1.1 · Internal**
 
 | | |
 |---|---|
@@ -9,6 +9,7 @@
 | **Date** | August 2026 |
 | **Duration** | 15 working days (3 calendar weeks) |
 | **Relationship to the SRS** | A deliberate slice of `Qabandi_Release_One_SRS.md`. Same system, ~15% of the scope. |
+| **Revisions** | v1.1 (23 Aug 2026) — §3.2, the demo script and §8 refreshed against the working tree. The finance module, email notifications, mobile POD, the customer API, webhooks, the audit screen and the AI surfaces have shipped since v1.0, so the exclusions that were gaps are now choices. The pilot scope itself is unchanged. |
 
 > **The pitch in one line:** in three weeks we put Al-Qabandi's own lanes, own rate card and own job history into a working platform, and let them watch a shipment track itself.
 
@@ -83,17 +84,17 @@ Naming these in the room is a credibility move, not a weakness. It proves we kno
 
 | Excluded | Why it is not in a 15-day pilot |
 |---|---|
-| **Invoicing, credit notes, receivables** | The whole finance module. Needs three jurisdictions and their accounting package. Demoed as a roadmap slide, not as software. |
+| **Invoicing, credit notes, receivables** | The whole finance module. It exists in the build now — invoices, payments, payables, settlements, the accounting export — but demoing it honestly needs each entity's tax treatment and their accounting package, which Days 1–2 do not collect. Shown on request, not as a moment. |
 | **Agent portal, agent RFQ dispatch** | Requires real agents to log in and respond. Cannot be faked convincingly and is not needed for the three moments. |
-| **Notifications and WhatsApp** | WhatsApp Business API provisioning and template approval alone take longer than this pilot. |
+| **Notifications and WhatsApp** | Email notifications exist in the build and add nothing to the three moments. WhatsApp has no sender at all — inbound is a dead letter, excluded by decision (`Dev_Environment.md`). |
 | **The other three offices** | Doha, Abu Dhabi and DWC. Two entities prove the model. |
 | **Customs stage in full** | One seeded hold demonstrates the concept. The full declaration lifecycle is Release One. |
 | **Accessorials engine, margin floors, versioning** | The rate engine runs, but on one card. Rate versioning and the full accessorial catalogue are Release One. |
 | **Dashboards and reporting** | Numbers need volume to be interesting. Twenty jobs make a bad chart. |
-| **Mobile POD, API, webhooks, audit UI, AI** | All Release One or later. |
+| **Mobile POD, API, webhooks, audit UI, AI** | All built since v1.0 — phone POD capture, the `/api/v1` customer API on per-customer keys, outbound webhooks, the audit screen, AI enquiry extraction and the assistant. None serves one of the three moments, and each needs a room of its own to land. |
 | **Anything production** | No real customers, no real money, no real load. This is a copy of their data in a private environment. |
 
-> **Script for the room:** "This is fifteen days. Invoicing, the agent network, WhatsApp and the other three branches are not in it — they are in the sixteen-week build. What you are looking at is the spine, running on your lanes."
+> **Script for the room:** "This is fifteen days. Invoicing, the agent network and the other three branches are not in it — they are in Release One, and we are not showing them today. WhatsApp is not in the product at all. What you are looking at is the spine, running on your lanes."
 
 ---
 
@@ -147,7 +148,7 @@ Twenty minutes. Ordered so that the least explainable thing happens first.
 | 8–13 | **Moment 2** | Enter their real enquiry. Instant price. Branded PDF. Then reveal how long the real one took. | "This is your rate card. Twenty seconds. The real one took a day and a half." |
 | 13–16 | **Moment 2b — for the owner** | Switch to the internal comparison. Buy, sell, margin on every option. | "You knew your margin before you sent it, not at month-end." |
 | 16–19 | **Moment 3** | Enquiry queue with clocks. Ops board. The customs hold. The demurrage counter and the charge line it wrote by itself. | "That charge line appeared on its own. Nobody had to remember." |
-| 19–20 | **Close** | Name what is deliberately missing. Hand over the SRS. | "Invoicing, the agent network and WhatsApp are in the sixteen-week build. This was fifteen days on your own data." |
+| 19–20 | **Close** | Name what is deliberately missing. Hand over the SRS. | "Invoicing and the agent network are in Release One; WhatsApp is not, and we say so. This was fifteen days on your own data." |
 
 **Rules for the room:** one person drives, one person watches faces. Do not narrate features while they are reading a screen. When they interrupt with "can it do X" — if X is in the SRS, say which section and move on; if it is not, write it down.
 
@@ -175,7 +176,7 @@ Recommended shape, to be confirmed before this goes out:
 | **Arabic is rushed** and a native speaker in the room spots it. | Medium | Restrict Arabic to the two surfaces we can review properly. Better two perfect screens than ten approximate ones. |
 | **They ask for something out of scope mid-demo** and we improvise a yes. | Medium | Anything not in the SRS gets written down, not agreed. The SRS is the boundary. |
 | **No internet in the meeting room.** | Low | Day 15 fallback recording. Always. |
-| **They love it and want it in production next week.** | Low | Good problem. The answer is Release One §10 — and the pilot foundation means week one is already done. |
+| **They love it and want it in production next week.** | Low | Good problem. The answer is now a deployment rather than a plan — `pnpm tenant:new` and `Deployment_Coolify.md`. |
 
 ---
 
@@ -192,4 +193,4 @@ It has not worked if the conversation stays on features and price. That means th
 
 ---
 
-*Document ends. Pilot scope v1.0 · techpotions · August 2026 · Internal. Full specification: `Qabandi_Release_One_SRS.md`.*
+*Document ends. Pilot scope v1.1 · techpotions · August 2026 · Internal. Full specification: `Qabandi_Release_One_SRS.md`.*

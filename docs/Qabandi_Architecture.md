@@ -58,13 +58,13 @@ Three rules govern every choice below.
 | **Validation** | Zod, generated from the Drizzle schema via `drizzle-zod` | One column definition becomes DB constraint, TS type, server validation, form validation, API contract and import validation. |
 | **Web** | Next.js (App Router), React Server Components, Server Actions | One application serving four audiences as route groups. |
 | **Service** | Fastify (Node 22 LTS), containerised | Exists for work Next.js cannot do: long-running workers, Chromium PDF rendering, inbound webhooks, the public read API. |
-| **Queue / scheduler** | pg-boss | Postgres-backed, with a Drizzle adapter. Jobs enqueue *inside* the business transaction — a transactional outbox with no extra component. Rejected Redis/BullMQ: it buys throughput we will never need and adds a stateful service to hand over. |
+| **Queue / scheduler** | pg-boss | Postgres-backed, in its own `pgboss` schema owned by `app_user`. The business write and its outbox row share a transaction; the service's per-minute schedules pick the row up — a transactional outbox with no extra component. Rejected Redis/BullMQ: it buys throughput we will never need and adds a stateful service to hand over. |
 | **Auth** | Better Auth — core only | See [§8](#8-identity-and-access). Credentials and sessions only; authorization is ours. |
-| **Files** | S3-compatible object storage behind a `FileStore` port | Supabase Storage for the pilot, S3 for R1, one interface. |
+| **Files** | S3-compatible object storage behind a `FileStore` port | Cloudflare R2 today, MinIO in the local compose stack, S3 for Release One — one interface. `adapters/s3.ts` signs SigV4 itself rather than carrying a vendor SDK, so the adapter is protocol-shaped, not AWS-shaped. |
 | **PDF** | Headless Chromium rendering HTML templates | The only renderer with dependable Arabic shaping and RTL. `NFR-01`, `§8`. |
 | **i18n** | `next-intl`, CSS logical properties, `dir` on `<html>` | Bilingual from the first commit. See [§11](#11-money-language-and-time). |
-| **Realtime** | SSE over Postgres `LISTEN/NOTIFY` | The ops board and milestone updates are low-frequency. Rejected WebSockets: nothing in the SRS needs bidirectional push. |
-| **Testing** | Vitest (core, unit) · Playwright (flows) · `pgTAP` or SQL fixtures (RLS policies) | RLS is a security control and gets its own tests. |
+| **Realtime** | None for the board; SSE for the assistant | The ops board and milestone updates are low-frequency, so screens render on navigation and nothing pushes. The one streamed surface is the assistant (`/api/assistant` passes the service's `text/event-stream` through). `LISTEN/NOTIFY` was the plan and has not been needed. Rejected WebSockets: nothing in the SRS needs bidirectional push. |
+| **Testing** | Vitest (core, unit) · Playwright (flows) · Vitest against a real Postgres 18 (`packages/db/test/rls-matrix.test.ts`, the RLS negative matrix) | RLS is a security control and gets its own tests. |
 
 **Deliberately absent:** an ORM-agnostic repository layer. Drizzle *is* the data access layer, and Postgres is not swappable here by design — wrapping it to enable a migration that will never happen adds indirection with no payoff.
 
@@ -81,31 +81,31 @@ Two deployables, one database.
                  └──────────────┬───────────────┘
                                 │
                  ┌──────────────▼───────────────┐
-                 │  PostgreSQL 16               │
+                 │  PostgreSQL 18               │
                  │  RLS · audit triggers        │
                  │  pg-boss queue tables        │
                  └──────────────▲───────────────┘
                                 │
    webhooks  ───► ┌─────────────┴────────────────┐
-   (WhatsApp,     │  apps/service    (Fastify)   │ ───► email · WhatsApp
-    email, FX)    │  workers · PDF · read API    │      webhooks · storage
+   (WhatsApp,     │  apps/service    (Fastify)   │ ───► email · storage · carriers
+    email)        │  workers · PDF · read API    │      model · outbound webhooks
                  └──────────────────────────────┘
 ```
 
-`apps/web` never sends an email, renders a PDF or calls a third party inline. It writes a row and enqueues a job. Everything outward-facing is the service's, which is what makes retry, delivery logging (`FR-NT-06`) and rate limiting (`FR-NT-07`) a single implementation rather than a per-caller concern.
+`apps/web` never sends an email, renders a PDF or calls a third party inline. It writes a row and enqueues a job — or, for work somebody is waiting on (a document preview, an assistant answer, a signed download link), asks the service over its `/internal` prefix, which authenticates the web container with a shared secret and acts under the principal it names. Everything outward-facing is the service's, which is what makes retry, delivery logging (`FR-NT-06`) and rate limiting (`FR-NT-07`) a single implementation rather than a per-caller concern. The service has no public domain: `/api/v1` and `/webhooks` are forwarded through the web container (`apps/web/src/lib/service-proxy.ts`), so `/internal` is unreachable from outside because no route leads there.
 
 ### 3.1 Hosting — pilot and Release One differ deliberately
 
 | | Pilot (15 days) | Release One |
 |---|---|---|
-| **Web** | Vercel | Container on the client's cloud |
-| **Database** | Managed Supabase | Postgres in a Gulf region — RDS or self-hosted |
-| **Service** | Fly.io / Railway container | Container alongside web |
-| **Files** | Supabase Storage | S3-compatible, same region |
+| **Web** | Container on Coolify — `compose.prod.yaml`, one domain | Container on the client's cloud |
+| **Database** | PostgreSQL 18 on the dev server, outside the stack | Postgres in a Gulf region — RDS or self-hosted |
+| **Service** | Container in the same stack, no public domain (`§3`) | Container alongside web |
+| **Files** | Cloudflare R2 | S3-compatible, same region |
 
-The pilot is explicitly *"a copy of their data in a private environment"* (`Pilot §3.2`), so it carries no residency obligation and should optimise for setup speed. Release One carries `NFR-12` (Gulf region, with ministry-contract obligations considered) and `NFR-17` (their cloud account, no lock-in).
+The pilot is explicitly *"a copy of their data in a private environment"* (`Pilot §3.2`), so it carries no residency obligation and should optimise for setup speed. Release One carries `NFR-12` (Gulf region, with ministry-contract obligations considered) and `NFR-17` (their cloud account, no lock-in). The pilot shape was originally Vercel, managed Supabase and a Fly.io container; it became two containers from one `Dockerfile` because that is also the Release One shape, and a pilot that deploys the way the product deploys finds the deployment faults first (`Operations_Findings.md`, `Deployment_Coolify.md`).
 
-**What makes that move cheap:** Drizzle over a plain Postgres connection rather than PostgREST; auth in our own tables; storage behind a port. No Supabase-specific API appears in application code. The migration is a connection string, a storage adapter and a DNS change.
+**What makes that move cheap:** Drizzle over a plain Postgres connection rather than PostgREST; auth in our own tables; storage behind a port. No provider-specific API appears in application code. The migration is a connection string, a storage endpoint and a DNS change.
 
 ---
 
@@ -119,29 +119,43 @@ packages/
     rating.ts         rate basis per mode, accessorial calculation, margin rules
     clocks.ts         free-time accrual, SLA ageing, working calendars
     states.ts         allowed transitions for enquiry, job, customs, invoice
+    …                 and the engines the last mile needed — matching, allocation,
+                      netting, grouping, credit, duty, margin, accounting, import,
+                      extraction, notifications, assistant
 
   db/                 the only place a field is defined
-    schema/           drizzle tables
-    policies/         RLS policies, as migrations
-    triggers/         audit trigger, updated_at
+    schema/           drizzle tables — declared through schema/table.ts, which
+                      registers them for the RLS and audit coverage tests
+    migrations/       DDL derived from the schema, plus the hand-written SQL —
+                      policies, triggers, grants — that db:generate:custom creates
     actor.ts          withActor() — the transaction wrapper
     client.ts         pool configuration
 
 apps/
   web/                next.js
     app/
-      (ops)/          internal — enquiries, jobs, rates, finance, admin
+      (ops)/          internal — enquiries, quotes, jobs, consolidations, rates,
+                      finance, payables, reports, assistant
+      (settings)/     users, branches, brand, integrations, mailboxes,
+                      notifications, api keys, audit, support access
       (portal)/       customer
       (agent)/        agent and partner
-      (public)/       tracking, quote request
-    features/<slice>/ schema.ts · queries.ts · actions.ts · ui/
+      (public)/       tracking
+      (auth)/         sign-in (password, then TOTP), password reset
+      api/            route handlers — documents, PDFs, the assistant stream,
+                      and the proxy that fronts the service's public prefixes
+    features/<slice>/ queries.ts · form-actions.ts · ui/
     lib/              session resolution, permission checks, i18n
 
   service/            fastify
+    ports/            the nine interfaces (§10)
+    adapters/         one implementation per port
     workers/          one file per job type
-    webhooks/         whatsapp · email · fx
+    webhooks/         whatsapp · email
     pdf/              templates + chromium renderer
-    api/              public read API (FR-AD-05)
+    ai/               the assistant, prompts, the invocation ledger
+    accounting/       the file export
+    api/              public read API (FR-AD-05) · /internal for the web container
 ```
 
 **One dependency direction:** `core ← db ← {web, service}`. Core never points outward, which is what lets `FR-RT-03`'s worked examples run as millisecond unit tests with no database.
@@ -173,7 +187,8 @@ export async function withActor<T>(actor: Actor, fn: (tx: Tx) => Promise<T>) {
         set_config('app.branch_ids',     ${actor.branchIds.join(',')},    true),
         set_config('app.customer_id',    ${actor.customerId ?? ''},       true),
         set_config('app.partner_id',     ${actor.partnerId  ?? ''},       true),
-        set_config('app.ip',             ${actor.ip ?? ''},               true)
+        set_config('app.ip',             ${actor.ip ?? ''},               true),
+        set_config('app.support_grant_id', ${actor.supportGrantId ?? ''}, true)
     `)
     return fn(tx)
   })
@@ -220,7 +235,7 @@ create policy jobs_scope on jobs using (
 
 `FR-ID-04` is satisfied literally: an unauthorised request for another branch's job returns **not-found**, because the row is not visible to the query at all — not filtered in the interface.
 
-Around fifteen policies cover the whole system. Tables fall into four scoping shapes: branch-scoped (jobs, enquiries, invoices), group-shared (customers, partners, locations, commodities), config (reference data, read-all / write-admin), and audit (insert-only).
+Roughly one policy per table — eighty business tables today, most of them covered by a migration loop over the tables that share a shape rather than by hand. Tables fall into four scoping shapes: branch-scoped (jobs, enquiries, invoices), group-shared (customers, partners, locations, commodities), config (reference data, read-all / write-admin), and audit (insert-only). Two later additions sit outside the four: support access (`0008` — a fifth principal type, admitted by `for select` policies only, inside a grant the operator writes and that expires in the policy itself, with one `support_access_log` row per transaction opened), and `integration_settings`, which is scoped by permission rather than by branch ([§10](#10-integrations-and-ports)). `packages/db/test/rls.test.ts` checks that every registered business table has RLS forced, a policy and the audit trigger; `rls-matrix.test.ts` checks that no principal type reaches another's rows through any verb.
 
 ### 5.4 Audit
 
@@ -380,7 +395,7 @@ The SRS appears to demand dozens of implementations. It does not. Each engine be
 | Milestone sets per mode | 1 template engine + template rows | `FR-JB-01…05` |
 | Demurrage, detention, storage | 1 clock + 3 config rows | `PP-07`, `FR-JB-08` |
 | Enquiry SLA, customs SLA, exception ageing | 1 working-calendar duration function | `NFR-03` |
-| 9 events × 3 channels × 2 languages | 1 dispatcher + 3 adapters + template rows | `FR-NT-01…03` |
+| 13 events × 3 channels × 2 languages | 1 dispatcher + 1 adapter (email) + template rows | `FR-NT-01…03` |
 | 5 entities × tax and numbering rules | 1 invoice model + branch config rows | `FR-ID-01`, `FR-FN` |
 
 ### 7.1 Charge calculation
@@ -426,7 +441,7 @@ domain event → outbox row (same transaction) → pg-boss → dispatcher
    → adapter.send() → delivery record
 ```
 
-Three adapters implement one two-method port. Adding a channel later is one adapter and a column value. `FR-NT-06`'s delivery states and `FR-NT-07`'s quiet hours live in the dispatcher, once — not in nine event handlers.
+One adapter — SMTP, with a `log` driver for a deployment without a relay — implements one two-method port today; `whatsapp` and `in_app` exist as column values and as nothing else, and the dispatcher fans out only to the channels actually registered, so nothing is recorded against a channel that cannot send. Adding a channel later is one adapter and a column value. `FR-NT-06`'s delivery states and `FR-NT-07`'s quiet hours live in the dispatcher, once — not in thirteen event handlers. The catalogue itself is `core/notifications.ts`: nine events the SRS requires plus four the build found it needed, each declaring its audience, so a raiser, a template row and the dispatcher are checked against one vocabulary rather than agreeing by luck.
 
 ---
 
@@ -459,42 +474,50 @@ Everything below runs in `apps/service` on pg-boss. Jobs enqueue inside the busi
 
 | Job | Trigger | Requirement |
 |---|---|---|
-| Inbound mail poll → enquiry | Every minute | `FR-EQ-02` — IMAP over the branch mailboxes, attachments preserved |
-| Inbound email → enquiry | Webhook | `FR-EQ-02` — the provider half; the route verifies and enqueues, the conversion is unbuilt |
-| Inbound WhatsApp → job thread | Webhook | `FR-NT-05` |
-| Notification dispatch | Outbox | `FR-NT-01…07` |
-| PDF render — quote, invoice, DO, job pack | On demand | `§8`, bilingual, per-entity letterhead |
-| Free-time accrual | Nightly | `FR-JB-08` |
+| Inbound mail poll → enquiry | Every minute — a settings row, `* * * * *` by default | `FR-EQ-02` — IMAP over the `mailboxes` rows, attachments preserved. Automatic mail (bounces, auto-replies) is claimed and filed nowhere; a known partner's PDF queues a supplier-bill read |
+| Inbound email → enquiry | Webhook | `FR-EQ-02` — the provider half; the route verifies and enqueues, `inbound-email-webhook` converts through the same routing rules as the poll |
+| Inbound WhatsApp → job thread | Webhook | `FR-NT-05` — the route verifies and enqueues; nothing consumes the queue, by decision |
+| Enquiry extraction | After the enquiry is committed | `FR-EQ-02` — the model proposes the unfilled columns into `extraction_proposals`; a coordinator accepts or rejects on the enquiry page |
+| Supplier invoice extraction | Inbound PDF from a known partner; the *Read a bill* dialog calls it synchronously | `FR-FN-09` — lines and matches against the job's charge lines |
+| Notification dispatch | Outbox, polled every minute | `FR-NT-01…07` |
+| Outbound webhook delivery | Outbox, polled every minute | `FR-AD-06` — retry with backoff, delivery log |
+| Free-time accrual | Nightly, midnight Kuwait | `FR-JB-08` |
+| Free-time warning | 07:00 Kuwait | `FR-JB-08` — raised while there is a working day left to book a haulier |
 | SLA escalation | Every 15 min | `FR-EQ-01` |
-| Compliance expiry warnings — 60/30/7 days | Nightly | `FR-MD-05` |
+| Quote expiry warning · invoice overdue notice | 08:00 Kuwait | `FR-NT-01` — the two events that fire because time passed |
 | Rate card expiry digest | Nightly | `FR-RT-11` |
-| FX rate ingest | Daily | `§8` |
-| Bulk import validation | On upload | `FR-MD-11`, `FR-RT-09` — validate wholly, then commit |
-| Outbound webhook delivery | Event | `FR-AD-06` — retry with backoff, delivery log |
-| Scheduled reports | Daily / weekly | `FR-RP-07` |
+| FX rate ingest | Daily | `§8` — `manual` unless a feed is configured |
+| Carrier poll | Hourly by default — a settings row | `FR-JB-06` — DCSA carrier-direct; `manual` until credentials exist |
+| Compliance expiry warnings — 60/30/7 days | Nightly | `FR-MD-05` — registered, **not built**: the audience needs a partner arm first, so the cron is deliberately off |
+| Scheduled reports | Daily / weekly | `FR-RP-07` — registered, **not built** |
 
-Bulk import runs as a job precisely because `FR-MD-11` requires that a file with errors **imports nothing** and returns a row-by-row report: validate the whole file, report, then commit in one transaction on confirmation.
+Two things the first draft of this table listed as jobs are not jobs. **PDF rendering** is synchronous: the web container asks the service over `/internal`, a preview streams back, and *issue* writes the bytes to storage, an `assets` row and a versioned `documents` row inside one transaction (`pdf/store.ts`) — doing it again on a queue would make a second copy of a document whose whole point is that there is one. **Bulk import** is a server action with two intents, `check` and `commit`, because `FR-MD-11` requires that a file with errors **imports nothing** and returns a row-by-row report: validate the whole file, report, validate *again* on confirmation, and write inside one `withActor` transaction so the acceptance criterion holds at the only level that matters.
+
+`workers/index.ts` keeps the unbuilt jobs in a `PENDING` list with their trigger and requirement, and `pnpm lint` compares the schedule against the handlers — two crons had fired nightly into nothing before that check existed.
 
 ---
 
 ## 10. Integrations and ports
 
-Eight interfaces in the entire system. Each has a real first implementation today and a named second one in the SRS.
+Nine interfaces in the entire system (`apps/service/src/ports/index.ts`). Each has a real first implementation today and a named second one in the SRS.
 
-| Port | R1 implementation | Named second | Source |
+| Port | Implementation today | Named second | Source |
 |---|---|---|---|
-| `NotificationChannel` | email · WhatsApp · in-app | further channels | `FR-NT-02` |
-| `FileStore` | Supabase Storage | S3 | pilot → R1 move |
+| `NotificationChannel` | email over SMTP (`log` without a relay); `whatsapp` and `in_app` are column values with no sender | further channels | `FR-NT-02` |
+| `FileStore` | S3-compatible, SigV4 signed in-house — Cloudflare R2 today, MinIO locally, `memory` for tests | S3 in region | pilot → R1 move |
 | `AuthProvider` | Better Auth | replaceable | `§8` |
-| `FxRateSource` | daily feed + manual override | provider change | `§8` |
-| `CarrierTracking` | manual milestone entry | carrier-direct (DCSA) | `§8`, R2 |
-| `CustomsFiling` | manual reference capture | Kuwait Single Window | `§8`, R2 |
-| `EInvoiceTransmit` | compliant data, no transmission | accredited provider | `§8`, R2 |
-| `InboundMailSource` | IMAP poll of the mailboxes in `mailboxes` | provider webhook (Resend · Postmark · SES) | `FR-EQ-02`, `§9` |
+| `FxRateSource` | manual, or a daily HTTP feed | provider change | `§8` |
+| `CarrierTracking` | manual entry, and DCSA carrier-direct (Maersk, Hapag-Lloyd, CMA CGM) — written, blocked on carrier credentials | a tracking aggregator — one was built and removed, see below | `§8` |
+| `CustomsFiling` | manual reference capture — deliberately, see `adapters/customs.ts` | Kuwait Single Window, if access is ever purchasable | `§8`, R2 |
+| `EInvoiceTransmit` | compliant data, no transmission; the hand-off to an accredited provider is written, none is appointed | accredited provider (PINT AE) | `§8`, R2 |
+| `InboundMailSource` | IMAP poll of the mailboxes in `mailboxes` | provider webhook (Resend · Postmark · SES) — the route and its consumer exist | `FR-EQ-02`, `§9` |
+| `ModelProvider` | OpenRouter, so the model is a configuration value; `none` is a real driver that refuses politely | a model hosted in region | `Qabandi_AI_Surface.md` |
 
 The last three of the original seven are not speculative: R1 has a genuine first implementation (manual capture), and `SRS §8` states the intent that R2's connection be *"a plug, not a rebuild."* Everything else in the system is concrete.
 
-`InboundMailSource` is the eighth and it was added rather than assumed. Al-Qabandi's front door is five mailboxes — `SRS §3` calls that *"the single most telling finding"* — so the first implementation reads those five over IMAP rather than asking anybody to move: no MX change, no new vendor, and the existing mail host's spam filtering inherited for free. The named second is the provider webhook `§9` already lists as an integration, and the route for it exists. Both produce the same `InboundMessage`, which is the point: `FR-EQ-02`'s rules about what becomes an enquiry, what threads onto a job, and which sender may be identified as a customer are the hard part, and they are written once.
+`ModelProvider` is the ninth and the newest. It earns the rule rather than bending it: the first implementation is a router, which makes *which model* a settings value rather than a code change; the named second is a regionally hosted model, because GCC data residency is a live question for a client whose customs declarations are the payload. Three surfaces run behind it today — enquiry extraction, supplier-invoice extraction and the operator assistant — and every call is a row in `ai_invocations` with the provider's raw response, which is what makes "the model returned nothing" a claim to check rather than a diagnosis (`Operations_Findings.md` §11).
+
+`InboundMailSource` is the eighth and it was added rather than assumed. Al-Qabandi's front door is five mailboxes — `SRS §3` calls that *"the single most telling finding"* — so the first implementation reads those five over IMAP rather than asking anybody to move: no MX change, no new vendor, and the existing mail host's spam filtering inherited for free. The named second is the provider webhook `§9` already lists as an integration; the route and its consumer both exist. Both produce the same `InboundMessage`, which is the point: `FR-EQ-02`'s rules about what becomes an enquiry, what threads onto a job, and which sender may be identified as a customer are the hard part, and they are written once.
 
 **Which mailboxes, and the one thing that stayed in the environment.** The mailbox list is `mailboxes` rows edited at Settings → Mailboxes, not configuration — `FR-AD-03` again, and the difference between onboarding an office in a minute and onboarding it in a sprint. The exception is `MAILBOX_ENCRYPTION_KEY`, which seals the passwords on those rows with AES-256-GCM. It stays in the environment deliberately: `mailboxes` is in every backup, restore drill and replica, and a key stored beside the ciphertext it protects is encoding rather than encryption. The database enforces the shape with a check constraint, so a plaintext password cannot be written by a script, a seed, or a fix applied against `psql` at 2am — the failure mode that would otherwise work perfectly and be invisible until somebody read a dump.
 
@@ -542,9 +565,9 @@ Three areas where a wrong default is expensive to unwind, so they are settled be
 
 ## 13. Environments, delivery and handover
 
-**Two environments** — staging and production (`FR-AD-07`), identical in shape, production released from tagged commits only. Migrations are forward-only, versioned in the repository, applied by `app_migrator` in CI.
+**Two environments** — staging and production, identical in shape — is what `FR-AD-07` asks for. Today there is one: a single Coolify stack built from `compose.prod.yaml` (`docs/Deployment_Coolify.md`), released from `main`. A staging copy is the same compose file pointed at a second database and nothing else, which is why it has not been needed yet and why it will be cheap when it is. Migrations are forward-only, versioned in the repository, applied by `app_migrator` — in CI against a throwaway database, in production by the one container that holds `RUN_MIGRATIONS`.
 
-**Pipeline:** typecheck → lint → `core` unit tests → RLS policy tests → Playwright flows → migration dry-run → deploy. RLS policy tests are non-negotiable: they are the enforcement mechanism for `FR-ID-04` and `NFR-09`, and an untested policy is an untested access control.
+**Pipeline** (`.github/workflows/ci.yml`, ordered by how fast it fails): formatting, lint and the repository invariants, types → unit tests for `core`, web and service → migrations, seed and the RLS matrix on a real Postgres 18 → Playwright over every screen in both languages, once on fixtures and once on a seeded database → the production build. Deploying is Coolify's, not CI's: the stack rebuilds from `compose.prod.yaml`, and exactly one deployment runs `db:migrate` at boot (`RUN_MIGRATIONS` in `infra/web-entrypoint.sh`). RLS policy tests are non-negotiable: they are the enforcement mechanism for `FR-ID-04` and `NFR-09`, and an untested policy is an untested access control.
 
 **Handover (`NFR-17`, `NFR-18`).** The client's repository, the client's cloud account, no supplier-hosted component in the runtime path. The runbook covers backup and restore drills (`NFR-11`), monitoring and alerting, the migration procedure — and one obligation worth naming explicitly in the hypercare knowledge transfer: **dependency patching, specifically subscription to Better Auth security advisories.** Self-hosting auth trades a subscription fee for a patching duty, and after handover that duty is Al-Qabandi's. Better it appears in the runbook than in an incident.
 
@@ -556,7 +579,7 @@ Three areas where a wrong default is expensive to unwind, so they are settled be
 |---|---|---|---|
 | 1 | Which cloud and which region? Does any ministry contract constrain data residency? | Hosting, `NFR-12` | Their MoD track record makes this a real constraint, not a formality. Decides whether managed services are available at all, and whether PostgreSQL 18 is offered there — Aurora and RDS carry it in all commercial regions; other providers should be checked before committing. |
 | 2 | Is there any customer who will require SSO into the portal? | `§8` | Nothing in the SRS asks for it. If one appears, federation is added on top of `principals` — worth knowing before, not after. |
-| 3 | Which accounting package? | `FR-FN` export format | R1 exports a file; the shape depends on the answer. |
+| 3 | Which accounting package? | `FR-FN` export format | R1 exports a journal CSV per branch and period (`accounting/export.ts`, draft and posted as distinct acts, with a re-export guard in `accounting_exports`); the column shape still depends on the answer. |
 | 4 | Expected volumes — enquiries/day, jobs/month, documents/job | `NFR-07` sizing | Everything here assumes hundreds/day. An order of magnitude more changes the queue and index strategy, nothing else. |
 | 5 | WhatsApp Business API account ownership and template approval timeline | `FR-NT` | Provisioning is the long pole and is Al-Qabandi's to start. |
 | 6 | Who owns dependency patching after handover? | `§13` | Named person, not a team. |

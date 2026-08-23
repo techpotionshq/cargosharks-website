@@ -18,7 +18,7 @@ Everything from enquiry to award, and nothing operational.
 | **Close an enquiry won, lost or cancelled** | Add an agent, haulier or carrier |
 | Create and edit customers and contacts | Anything on an invoice or receipt |
 | Read shipments — see what you sold, running | |
-| Read the dashboards and export them | |
+| Read the dashboards, the margin report, and export them | |
 
 The two in bold are yours and not the coordinator's. You decide what was won and
 what was lost, because that is the number you are measured on and it is not a
@@ -28,8 +28,27 @@ number an administrator should be setting for you.
 
 ## The queue
 
-**Commercial → Enquiries.** Every enquiry in every branch you work in, from the
-web form, from email, from the phone.
+**Commercial → Enquiries.** Every enquiry in every branch you work in — by
+email, from the portal, by phone or walk-in. Mail to a mailbox your
+administrator has connected becomes an enquiry for that branch within a minute,
+already in the queue and marked unassigned; mail that quotes one of your own
+references joins that enquiry or job instead of opening a new one.
+
+### What the assistant read off the email
+
+If document extraction is switched on, an emailed enquiry opens with a panel
+headed **Read from the email**: mode, direction, origin, destination, commodity,
+Incoterm, cargo-ready date, gross weight, volume, pieces, dimensions and
+dangerous goods — each as the assistant read it, with the line of the mail it
+was read from quoted beside it, and the model's confidence.
+
+**Accept** writes the value onto the enquiry, under your own name in the audit
+trail. **Dismiss** discards it. Nothing touches the enquiry until you decide,
+and a person's typing always wins: a proposal flagged **Already filled** is one
+whose field somebody has since typed into, and accepting it is refused rather
+than overwriting them. A proposal with **No line quoted** has no evidence behind
+it — read the mail before accepting. Deciding needs the assign permission, so a
+coordinator can do this too.
 
 Two things matter about an enquiry beyond its content:
 
@@ -41,18 +60,21 @@ clock. The queue flags unassigned ones. Assign them — to yourself if nobody el
 dashboard shows what has breached and what is due today, and the SLA watch list
 is ordered by whichever breaches soonest.
 
-The clock stops when a quotation is sent. It does not stop because somebody
-opened the enquiry, and it does not stop because you replied by email outside the
-system — which is the most common way a good response time is recorded as a
-breach.
+The clock stops when a quotation is sent, or when you press **Mark replied**.
+It does not stop because somebody opened the enquiry, and it does not stop on
+its own because you replied by email outside the system — which is the most
+common way a good response time is recorded as a breach. If you did answer
+outside the system, **Mark replied** records the time of that first reply; it
+cannot be undone. **Start rating** tells the queue somebody is on it and stops
+nothing.
 
 ---
 
 ## Pricing
 
-Open the enquiry and rate it. The system finds a live rate card for the lane,
-mode and date, calculates chargeable weight for the mode, and applies the
-accessorials from the catalogue.
+Open the enquiry and press **Price it**. The system finds a live rate card for
+the lane, mode and date, calculates chargeable weight for the mode, and applies
+the accessorials from the catalogue.
 
 ### The internal comparison
 
@@ -82,7 +104,15 @@ gets a contract negotiated.
 ## The quotation
 
 Sent on your letterhead, in Arabic or English, with your terms and a validity
-date.
+date. **PDF (EN)** and **PDF (AR)** on the quotation page render it; the
+branch's trading conditions print at the foot and its list of what is not
+included — duties, taxes, examination charges — prints beside the charges. Both
+are set per entity by your administrator, because Kuwait and Dubai do not share
+a footer.
+
+**Send it** moves a draft to *Sent*; the margin is frozen at that moment and a
+later rate change does not alter it. **Accept** and **Reject** record the
+customer's answer.
 
 **Revising supersedes.** The previous version is marked superseded and stays
 readable — so when a customer says "your first price was lower", the first price
@@ -96,12 +126,14 @@ price in September.
 
 ## Closing
 
-You close the enquiry, and how you close it is the data.
+You close the enquiry, and how you close it is the data. **Close** asks how it
+ended; **Cancel it** is a separate button, for one that will not be quoted at
+all.
 
 | Close it as | When |
 |---|---|
 | **Won** | The customer accepted. Accept the quotation too — that is what carries the agreed rates onto the job file, so what was sold is what gets costed. |
-| **Lost** | They went elsewhere, or did not proceed. |
+| **Lost** | They went elsewhere, or did not proceed. The reason is required — it is the only place this answer gets recorded, and it is what tells you why you lose. |
 | **Cancelled** | The cargo does not exist, it was a duplicate, or it was never real. |
 
 **Lost and cancelled are not the same thing and the difference is worth
@@ -144,6 +176,10 @@ the portal is the thing that stops them ringing your coordinators.
 falling margin means the team is buying work. Falling win rate with rising margin
 may be exactly right. Either number alone will mislead you, and the dashboard puts
 them next to each other for that reason.
+
+**Finance → Reports** is the margin report: shipments by the date they sailed,
+cut by branch, customer, trade lane, mode or salesperson, with revenue, cost,
+gross profit and margin. **Export CSV** takes it out whole.
 
 ---
 

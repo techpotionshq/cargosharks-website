@@ -30,6 +30,13 @@ written against documentation rather than a live service.
 where the next ones are, and it is the layer that runs the customer's actual
 business.
 
+**Since (23 August).** The slices have tests now — forty `*.test.ts` files
+beside them, run against `qabandi_test` — and the root `vitest.config.ts`
+carries a coverage floor (lines 84, branches 73) set just under what the suite
+achieves, so the gate catches a regression rather than blocking the day it
+lands. The layer is nearer 34,000 lines; the claim that the next faults are in
+it still stands, and one of the three in §11 was.
+
 `OP-02` **A clean-room test proves less than it appears to.** Three separate
 faults passed every from-scratch run and failed on a database that already
 existed. If a check only ever runs against a fresh install, it is not testing
@@ -208,6 +215,14 @@ Terminal49 endpoint that does not exist, and a milestone vocabulary
 are lower snake case. The second would have looked wired up, logged cleanly,
 and delivered nothing.
 
+**Since.** The Terminal49 adapter was removed rather than repaired: carrier-direct
+DCSA (`adapters/dcsa-tracking.ts`) replaced the aggregator, and
+`pnpm --filter @qabandi/service verify:tracking` asks a real carrier about a
+real booking before anything depends on the key. It remains blocked on carrier
+credentials (`Dev_Environment.md` §1). The milestone vocabulary is now looked
+up in `milestone_templates` by `carrier-milestone.ts`, so an event with no
+template is reported rather than invented.
+
 ---
 
 ---
@@ -306,6 +321,15 @@ Before calling a deployment live:
 
 `OP-15` Steps 2 and 3 are the ones that were skipped, and step 3 would have
 caught step 2 in seconds.
+
+**Since.** The deployment is two containers on Coolify, and step 2 is done by
+the one container that holds `RUN_MIGRATIONS` (`infra/web-entrypoint.sh`)
+rather than by hand; `Deployment_Coolify.md` §6 has the checks that are
+specific to that shape — the three `curl`s that prove `/internal` is
+unreachable and the two public prefixes cross the private network.
+`verify:notifications` has company — `verify:storage`, `verify:model`,
+`verify:tracking` and `verify:last-mile`, each of which speaks to the real
+service it names.
 
 ---
 

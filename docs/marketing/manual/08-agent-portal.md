@@ -37,11 +37,15 @@ Everything below is live, and it is the part that carries the operational weight
 ### The partner register
 
 **Network → Partners & agents.** Agents, hauliers and carriers, with their
-contacts.
+contacts (*People there*), the lanes they cover (*Where they go*), their papers,
+and their account with you.
 
-Keep two things true:
+Keep three things true:
 
 **Both names.** English and Arabic — they appear on documents.
+
+**The lanes they cover.** A partner with no lanes recorded is never suggested
+for a quote.
 
 **Compliance documents and their expiry dates.** Trade licence, insurance,
 whatever your jurisdiction requires. **An expiry date that is not maintained is
@@ -53,9 +57,10 @@ register monthly and chase what expires in the next sixty days.
 
 ### Naming an agent on a shipment
 
-Add the partner to the shipment. That is what makes the job visible to their
-contacts when the portal ships — and today it is what makes your own operations
-board show who is handling the other end.
+**Engage a partner** on the shipment — the role they play and their own
+reference. That is what makes the job visible to their contacts when the portal
+ships — and today it is what makes your own operations board show who is
+handling the other end, and what a supplier's bill is matched against.
 
 Do it at booking, not at the point something goes wrong. A shipment with no
 partner named is one where the answer to *"who is our agent at destination?"*
@@ -82,11 +87,25 @@ answer comes back, put it in as a buy rate card with the validity the agent
 quoted. That way the next quotation on that lane prices itself, and the request
 does not have to be repeated in six weeks.
 
+### The agent's bills, and the account between you
+
+When an agent bills you, the coordinator holding the file captures it under
+**Finance → Payables** — or reads it from the scan — and matches each line to
+the cost on the job. Finance approves it with the variance in front of them,
+and pays it.
+
+Where the same agent also pays you, link them on their partner page to the
+customer record they invoice you as — *Current account* — and **Finance →
+Settlements** nets both sides of the period into one figure. See
+[`04-finance.md`](04-finance.md#settlements).
+
 ### Milestones and documents from the far end
 
 Your coordinator enters them. When an agent emails a milestone date or a
 document, it gets entered against the shipment the same day — see
-[`01-coordinator.md`](01-coordinator.md).
+[`01-coordinator.md`](01-coordinator.md). Mail that quotes your own shipment
+reference joins that shipment's thread on arrival, if the mailbox it reached is
+one your administrator has connected.
 
 **The same day, not the same week.** Your customer's tracking page is only as
 current as the last date somebody entered, and an agent's update sitting in a

@@ -105,12 +105,25 @@ DATABASE_URL=postgres://app_user:…@db-host:5432/qabandi
 BETTER_AUTH_SECRET=…
 BETTER_AUTH_URL=https://app.example.com
 INTERNAL_API_SECRET=…                    # identical to the service's
+MAILBOX_ENCRYPTION_KEY=…                 # identical to the service's; base64 of 32 bytes
 ```
+
+`MAILBOX_ENCRYPTION_KEY` is on both containers because both use it: the web
+app seals a credential when an administrator saves a mailbox or an
+integration (`packages/db/src/secrets.ts`), and the service opens it when the
+worker runs. Two different keys means the web app seals a password the
+service cannot read, and that surfaces as "this sealed credential could not
+be opened" on the first poll, not at boot. It is base64 of 32 raw bytes, not
+a passphrase — a key of any other length is refused, and the service's boot
+line then reports mailboxes unreadable.
 
 Do **not** add `SERVICE_URL` or `QABANDI_PILOT_FIXTURES` on a compose stack.
 The first is hard-coded in `compose.prod.yaml` so it cannot be pointed at a
-public domain from the UI (§1); the second is `ENV`-set in the Dockerfile's web
-stage. Both are settings that should not be one checkbox away from wrong.
+public domain from the UI (§1); the second is `ENV`-set to `0` in the
+Dockerfile's web stage, so a deployment that loses its connection string fails
+by name instead of serving demo data. Both are settings that should not be one
+checkbox away from wrong. The one exception is a deliberately fixture-backed
+demo deployment, where `QABANDI_PILOT_FIXTURES=1` is the point.
 
 Set `RUN_MIGRATIONS=true` and `MIGRATION_DATABASE_URL` on **one** deployment
 only, and leave both unset everywhere else. The entrypoint explains why: the
@@ -123,17 +136,28 @@ ordinary restart should hold.
 DATABASE_URL=postgres://app_user:…@db-host:5432/qabandi
 INTERNAL_API_SECRET=…                    # identical to the web app's
 WEB_URL=https://app.example.com          # the address in outbound links; also the CORS origin
-FILE_STORE_DRIVER=s3
+MAILBOX_ENCRYPTION_KEY=…                 # identical to the web app's
+FILE_STORE_DRIVER=s3                     # bootstrap fallback — see below
 S3_ENDPOINT=… S3_REGION=… S3_BUCKET=… S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=…
 ```
 
-`CHROMIUM_EXECUTABLE_PATH` is already set in the image, so PDF rendering works
-with no configuration. The storage credentials are the **service's alone** —
-the web app never signs anything, it asks for a link.
+`WEB_URL` has a config default of `http://localhost:3000` and is not derived
+from `BETTER_AUTH_URL`, so leaving it unset on a deployment fails quietly
+rather than at boot — the service's CORS origin is then localhost.
+`CHROMIUM_EXECUTABLE_PATH` is already set in the image, so PDF
+rendering works with no configuration. The storage credentials are the
+**service's alone** — the web app never signs anything, it asks for a link.
 
-Add `SMTP_*` for notifications, `FX_*` for the rate feed, and
-`CARRIER_TRACKING_*` when a tracking feed is bought. All have defaults that
-degrade honestly.
+Storage, the mail relay, the FX feed, the carrier registrations, WhatsApp,
+the e-invoice provider and the model are **rows, not variables**:
+`integration_settings`, edited at Settings → Integrations, with credentials
+sealed under `MAILBOX_ENCRYPTION_KEY` (`FR-AD-03`). A row wins; the
+environment answers when there is no row, which is what lets mail work before
+anyone can sign in to configure mail. So `SMTP_*`, `FX_*`,
+`CARRIER_TRACKING_DRIVER` and the `DCSA_*` keys are bootstrap values here,
+not the place to manage them — the names are listed under "Integration
+settings" in `README.md`, and `pnpm doctor` prints the live list. Every one
+degrades honestly when absent.
 
 ## 5. Four things that catch people
 

@@ -82,7 +82,7 @@ was taken.
 
 ### `H2` Bilingual, not translated
 
-More than fourteen hundred interface strings in Arabic and English, kept in
+Two thousand seven hundred interface strings in Arabic and English, kept in
 sync, with right-to-left in the layout rather than bolted onto it. The quotation your
 customer opens in Arabic reads the way an Arabic document should, because it was
 built that way rather than mirrored.
@@ -99,8 +99,8 @@ afterwards. You can tell within about four seconds, and so can your customer.
 
 There is no colour, no logo and no company name written into this product
 anywhere — the operator is a setting, not a hard-coded value. So it runs on your
-domain, under your identity, with your letterhead on every document, and there is
-no supplier badge on anything your customer ever sees.
+domain, under your identity, with your own entity's name on every document it
+issues, and there is no supplier badge on anything your customer ever sees.
 
 ---
 
@@ -117,7 +117,7 @@ leave, there is nothing to disentangle, because none of it was entangled.
 
 ### `H2` What holds when people are careless
 
-Branch separation is enforced by the database — 75 policies across 57 tables —
+Branch separation is enforced by the database — 197 policies across 82 tables —
 not by application code that can forget one query. Ask for another branch's
 shipment and it comes back *not found*, because the row is not visible to your
 request at all.
@@ -155,10 +155,14 @@ in the pilot is thrown away; it is the foundation of the live system.
 > it: this is the section that makes the rest of the page believable, and the
 > buyers in this market have been oversold before.
 
-Live carrier tracking feeds, direct customs filing in Kuwait, and direct
-connectors to accounting packages are not in the current release. UAE MPCI
-filing and Saudi ZATCA e-invoicing are on the roadmap with dates. The agent
-portal, WhatsApp and email notifications, and scheduled reports are in delivery.
+Carrier tracking is built for Maersk, Hapag-Lloyd and CMA CGM, but it runs on
+your own carrier API credentials and is not live until you hold them. Direct
+customs filing in Kuwait is not planned, and direct connectors to accounting
+packages are not in the current release — there is a file export your
+accountant can import. UAE MPCI filing and Saudi ZATCA e-invoicing are on the
+roadmap with dates: the invoice data is ready, the accredited transmission is
+not. The agent portal and scheduled reports are in delivery. WhatsApp is not in
+this release.
 
 We would rather you read that here than find it out in week three.
 
@@ -178,6 +182,11 @@ one list across every branch. Each has an owner, a status and a response
 deadline. The dashboard tells you what has breached, what is due today, and how
 long you are actually taking — measured, not estimated.
 
+**The inbox.** An enquiry emailed to a branch mailbox is read into a proposal —
+parties, lane, cargo, what was asked for — which the coordinator accepts or
+rejects. Nothing becomes an enquiry without a person saying so, and what the
+reader proposed is kept beside what the person decided.
+
 **The pricing.** Your buy and sell rate cards, by lane, mode and carrier, with
 validity dates that make two overlapping cards on a lane impossible rather than
 merely unlikely. Chargeable weight is calculated per mode. Accessorials come
@@ -186,9 +195,9 @@ from a catalogue you control.
 **The margin.** Buy, sell and margin side by side on the internal comparison, on
 every option, before the quotation goes out. Not reconstructed at month-end.
 
-**The quotation.** On your letterhead, in Arabic or English, with your terms and
-a validity date. Revisions supersede rather than overwrite, so what the customer
-accepted is always recoverable.
+**The quotation.** Under your own entity's name, in Arabic or English, with your
+trading conditions, your exclusions and a validity date. Revisions supersede
+rather than overwrite, so what the customer accepted is always recoverable.
 
 **The award.** Accepting a quotation opens the job file with the rates already
 attached, so what you sold is what you cost.
@@ -218,8 +227,13 @@ nobody has looked at is the one the process missed.
 
 **Customs.** Declarations in clearance ordered by the window that closes first.
 Declaration type and number, status from documents-pending through to released,
-duty, broker and the clearance deadline. Holds and inspections are visible on the
-board, not buried in a file.
+duty, broker and the clearance deadline. A duty estimate from the tariff table
+before the declaration goes in. Holds and inspections are visible on the board,
+not buried in a file.
+
+**Consolidation.** A master with its houses under it, the manifest generated
+from them, and the master's costs apportioned across the houses so that the
+margin on each one is real rather than reconstructed.
 
 **Free time.** Demurrage, detention and storage clocks against the carrier's free
 days, per container. When free time runs out the clock writes its own charge
@@ -230,6 +244,18 @@ notice.
 release control — released documents appear to the customer, drafts do not.
 Superseded versions stay visible, because a system where a document can quietly
 change is not a system of record.
+
+**Documents the job file writes itself.** House bill of lading or air waybill,
+delivery order, packing list, customs pack with the duty estimate, consolidation
+manifest — bilingual PDFs generated from the job data, under the issuing
+branch's name, numbered from the branch's own series. Preview before issue;
+every issue is a version.
+
+**Ask it.** An assistant that answers questions over your own data — which
+shipments have an open exception, whose free time runs out this week, which
+enquiries are past their clock, which invoices are overdue, where a supplier
+billed more than the job accrued. It sees exactly what the person asking is
+allowed to see, and nothing else.
 
 ---
 
@@ -262,8 +288,25 @@ exposure first. Receipts recorded and matched to invoices — and an explicit
 warning about unmatched money, because until it is matched the customer still
 shows as owing what they have already paid.
 
+**Credit.** Each customer's standing against their limit and their ageing,
+checked at the moment a shipment is booked — and an override, when you choose
+to give one, that is recorded with who gave it and why.
+
+**Supplier bills.** An uploaded scan, or a bill emailed in by a partner you
+already know, is read into lines and matched against what the job accrued. The
+variance is on the screen before anyone approves it, which is where the
+argument with the agent belongs — not after the customer has been invoiced.
+Agent accounts are netted period by period — one balance, not a receivable and
+a payable that never meet; supplier payments are recorded against the bills
+they settle.
+
+**Unbilled revenue.** What has been earned and not yet invoiced, by shipment,
+with one act to draft the invoice for it.
+
 **Export.** A complete export of your financial data whenever you want it, in a
-form your accountant can use.
+form your accountant can use — a journal of the period's invoices, receipts,
+supplier bills and payments. Draft it as often as you like; posting it marks
+what it took, so nothing is exported twice.
 
 ---
 
@@ -319,13 +362,34 @@ connectors to specific packages are not in this release.
 
 **Do you file customs declarations?**
 We track them — type, number, status, duty, broker and clearance deadline —
-across the whole clearance lifecycle. We do not file directly to Kuwait customs
-and are not planning to; access there runs through a long-running concession we
-have no route into, and we would rather say so than imply otherwise.
+across the whole clearance lifecycle, and estimate the duty before the
+declaration goes in. We do not file directly to Kuwait customs and are not
+planning to; access there runs through a long-running concession we have no
+route into, and we would rather say so than imply otherwise.
 
 **What about UAE MPCI and Saudi e-invoicing?**
-Both on the roadmap with dates, neither shipped. Ask us where they are and you
-will get the real answer, in writing.
+Both on the roadmap with dates, neither shipped. Every invoice already carries
+tax treatment and rate per line, and the hand-off to an accredited provider is
+built as a plug; the mandated document format and the provider itself are what
+remain. Ask us where they are and you will get the real answer, in writing.
+
+**Does it read our email?**
+Only the mailboxes you connect, each bound to a branch. An enquiry that arrives there
+is read into a proposal your coordinator accepts or rejects; a bill from a
+partner you already know is read into lines and matched against the job. A
+person decides every time. WhatsApp is not connected in this release.
+
+**Do you track containers with the carriers?**
+The connection is built for Maersk, Hapag-Lloyd and CMA CGM, and it runs on
+your own carrier API credentials rather than ours. Until you hold them,
+milestones are entered by hand — and that is what we will tell you in the
+first meeting.
+
+**Can our other systems read from it?**
+Yes. A read-only API with a per-customer key — each key sees exactly what its
+owner is allowed to see, decided by the same database policies as the screens —
+and outbound webhooks, signed, with delivery retried and logged, for the events
+you subscribe to.
 
 **What happens if you go out of business?**
 Your deployment is your database in your instance, the schema is documented, the

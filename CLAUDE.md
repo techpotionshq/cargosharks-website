@@ -23,7 +23,9 @@ pnpm test:db       # migrations, seed, RLS matrix — needs a database
 pnpm test:e2e      # every screen, both languages, on fixtures
 ```
 
-`QABANDI_PILOT_FIXTURES=1 pnpm dev` runs the whole interface with no database.
+`QABANDI_PILOT_FIXTURES=1 pnpm dev` runs the pilot screens with no database.
+It is a subset: the routes that still need one are listed as `NEEDS_DATABASE`
+in `apps/web/e2e/support/harness.ts`, each naming the query responsible.
 
 ## Non-negotiables
 
@@ -59,7 +61,9 @@ nothing about the policies that enforce tenancy.
 Declare tables with `pgTable` imported from `./table`, never from
 `drizzle-orm/pg-core`: the wrapper registers them for the RLS and audit
 coverage tests. A new table needs a policy written by hand — RLS enabled with
-no policy denies every row to everyone, silently.
+no policy denies every row to everyone, silently — and a
+`select app.attach_audit('<table>')` in the same migration; the `0003` loop
+ran once and does not revisit.
 
 `CONTRIBUTING.md` has the full add-a-table walkthrough.
 

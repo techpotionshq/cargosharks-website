@@ -52,12 +52,21 @@ unreachable. That is why it is not a role to hand out freely.
 | `customs.file` | Record a declaration | ● | ○ | ● | ● | ○ | ● | ○ |
 | `customs.update` | Move it through its stages | ● | ○ | ● | ● | ○ | ● | ○ |
 | `customs.pay` | Record duty paid | ● | ● | ● | ○ | ○ | ● | ○ |
+| `document.generate` | Issue a generated document — house bill, delivery order, packing list, customs pack | ● | ○ | ● | ● | ○ | ○ | ○ |
+| `document.release` | Release a document to the customer | ● | ○ | ● | ● | ○ | ○ | ○ |
+| `consol.write` | Build a consolidation and attach houses | ● | ○ | ● | ● | ○ | ○ | ○ |
+| `consol.allocate` | Split the master cost across the houses | ● | ● | ● | ○ | ○ | ○ | ○ |
 | `invoice.approve` | Mark reviewed | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | `invoice.issue` | **Allocate the number. Irreversible.** | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | `invoice.void` | Cancel; the number stays used | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | `invoice.credit` | Raise a credit note | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | `payment.record` | Record and allocate a receipt | ● | ● | ○ | ○ | ○ | ○ | ○ |
 | `finance.export` | Export financial data | ● | ● | ○ | ○ | ○ | ○ | ○ |
+| `credit.override` | Let a shipment book past a credit hold, with a reason | ● | ● | ● | ○ | ○ | ○ | ○ |
+| `payable.record` | Capture a supplier bill | ● | ● | ● | ● | ○ | ○ | ○ |
+| `payable.approve` | Approve a matched bill for payment | ● | ● | ○ | ○ | ○ | ○ | ○ |
+| `payable.pay` | Record a supplier payment | ● | ● | ○ | ○ | ○ | ○ | ○ |
+| `settlement.run` | Run and agree a partner settlement | ● | ● | ● | ○ | ○ | ○ | ○ |
 | `rate.card.write` | Create or change a rate card | ● | ○ | ● | ○ | ○ | ○ | ○ |
 | `customer.write` | Create or edit customers | ● | ○ | ● | ● | ● | ○ | ○ |
 | `partner.write` | Agents, hauliers, carriers | ● | ○ | ● | ○ | ○ | ○ | ○ |
@@ -68,6 +77,8 @@ unreachable. That is why it is not a role to hand out freely.
 | `admin.audit.read` | The audit log | ● | ○ | ○ | ○ | ○ | ○ | ○ |
 | `admin.brand.read` | Branding tokens | ● | ○ | ○ | ○ | ○ | ○ | ○ |
 | `admin.api_keys.write` | API keys for the read API and webhooks | ● | ○ | ○ | ○ | ○ | ○ | ○ |
+| `admin.integrations.write` | Storage, mail, FX, carrier, model and e-invoice settings | ● | ○ | ○ | ○ | ○ | ○ | ○ |
+| `admin.mailboxes.write` | The inbound mailboxes, and their passwords | ● | ○ | ○ | ○ | ○ | ○ | ○ |
 
 ---
 
@@ -114,7 +125,7 @@ without the other, which is a distinction with no meaning.
 
 **It is not the security boundary.** It decides what the interface *offers*. The
 real boundary is in the database: branch separation, immutability and audit are
-enforced by around 75 policies across 57 tables, plus the state machines that
+enforced by 197 policies across 82 tables, plus the state machines that
 reject an invalid transition regardless of who asked.
 
 The asymmetry is deliberate. A permission check that is forgotten hides a button.

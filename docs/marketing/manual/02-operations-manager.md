@@ -19,12 +19,24 @@ and the reference data. This chapter covers the difference.**
 | **Write rate cards** | The pricing of every future quotation comes from here. |
 | **Add agents, hauliers and carriers** | Your partner network is a register, not a free-text field. |
 | **Add ports, places and reference data** | Deliberately operational, not administrative — see below. |
-| **Read reports** | The dashboards and every export. |
+| **Read reports** | The dashboards, **Finance → Reports**, and every export. |
+
+And three things you share with Finance, because each is a decision somebody
+has to own and the person who answers for the relationship is as often you as
+the accountant:
+
+| | What it is |
+|---|---|
+| **Split a consolidation's master cost** | Decides what every house under the master cost, and therefore every margin. A coordinator builds the master; splitting it is yours — see below. |
+| **Let a customer trade past their credit limit** | Booking checks credit. A credit override is recorded on the customer, with a reason, and it is yours or Finance's — see below. |
+| **Run a set-off with an agent** | Netting what an agent owes you against what you owe them. **Finance → Settlements**; the mechanics are in [`04-finance.md`](04-finance.md#settlements). |
 
 **You cannot touch invoices.** Approving, issuing, voiding or crediting an
 invoice is Finance's alone, and an operations manager who could issue invoices
 is the segregation-of-duties failure an auditor asks about first. This is not an
-oversight and it is not configurable in the shipped role matrix.
+oversight and it is not configurable in the shipped role matrix. The same line
+runs through payables: you can capture a supplier's bill and match it against
+the job, and you cannot approve it for payment.
 
 ---
 
@@ -117,8 +129,20 @@ is written.
 
 ## Reference data — and why it is yours
 
-Ports, places, commodities, exception codes, document types, charge types,
-milestone templates, working calendars.
+**Network → Reference data**, plus **Network → Ports & places** for the
+locations. The screen lists the tables the rating, milestone and clearance
+engines read — and warns at the top about any that are empty, because an empty
+one fails silently three screens away as "no rate found":
+
+| Table | What it drives |
+|---|---|
+| **Charge types** | What can appear as a line on a quotation or an invoice, and the revenue and cost account each posts to |
+| **Commodities**, **Container types**, **Incoterms**, **Document types**, **Exception codes** | The pickers everywhere else |
+| **Milestone plans** | The steps a job of each shape — mode and direction — is booked with |
+| **Working calendars** | Weekend, hours and closures, per branch — what every SLA, ageing and free-time clock counts against |
+| **Tariff** | Duty rates by HS prefix, for the duty estimate. Longest matching prefix wins; with none loaded, estimates fall back to the GCC common rate of 5%. |
+| **Volumetric rules** | The divisor each mode's chargeable weight is billed on, and what it rounds to |
+| **Free-time terms** | The days granted before demurrage starts, and the rate after — what a new clock is filled in from |
 
 **This sits with operations rather than administration on purpose.** A shipment
 routed through a depot nobody has recorded cannot be booked until somebody
@@ -149,7 +173,16 @@ January**, or every deadline over the break will be wrong in the same direction.
 
 ## Partners and agents
 
-Agents, hauliers, carriers — with their compliance documents and expiry dates.
+Agents, hauliers, carriers — with their people, the lanes they cover, their
+papers, and their account with you. Each partner's page carries:
+
+| | |
+|---|---|
+| **People there** | Who to call. Kept on the partner, not in somebody's phone. |
+| **Where they go** | The lanes this partner covers, by mode, with transit days. A partner with no lanes is never suggested for a quote. |
+| **Papers** | Licences and certificates, with the date each lapses. |
+| **Current account** | Link the partner to the customer record they invoice you as, and both directions of the relationship net into one balance. Needed before a set-off can be run. |
+| **Bill tolerance** | How far this partner's bills may drift from what a job accrued before Finance is asked to look — a percentage, an absolute amount, or both; whichever is more generous applies. Leave both at zero and the charge type's own tolerance is used. |
 
 **Keep the expiry dates real.** An agent whose trade licence expired four months
 ago is a compliance problem that surfaces during an audit rather than during the
@@ -157,14 +190,73 @@ job, and the register is only worth having if the dates in it are true.
 
 ---
 
+## Consolidations — splitting the master cost
+
+A coordinator opens the master and attaches the houses; the mechanics are in
+[`01-coordinator.md`](01-coordinator.md#consolidations). What is yours is
+**Split**: dividing each master-level cost across the houses under it, by
+volume, chargeable weight, gross weight, packages, equally, or stated by hand.
+
+A split writes an ordinary charge line onto every house, so job profitability,
+invoicing and the accounting export need to know nothing about consolidation.
+**Reverse** posts the negative rather than deleting, because the lines may
+already sit on an issued invoice.
+
+**Per-house margin is a fiction until the master cost is split.** A
+consolidation closed with its costs unsplit is twenty jobs whose margin is
+overstated by exactly the freight.
+
+---
+
+## Credit overrides
+
+Booking a shipment checks the customer's credit standing for the branch:
+outstanding against limit, and whether they are on hold. A booking that would
+take them past the limit is refused, and the message says so.
+
+The answer, when there is one, is **Record an override** on the customer's page
+— under *Standing and exceptions*, which shows the exposure, the limit, the
+headroom and every exception ever made. An override covers one shipment or one
+invoice, or everything for that customer until a date you give. The limit stays
+where it is; what is recorded is the exception, who made it, and why.
+
+**The reason is the record.** Write a sentence somebody reviewing this in a year
+can act on. Not "approved".
+
+---
+
+## Notification wording
+
+**Settings → Notification wording** is the one settings screen you hold, on the
+same permission as reference data, because it is the same kind of thing: what
+the product says when it writes to a customer or a colleague, editable without a
+release.
+
+Each event — a shipment is booked, a milestone is reached, the ETA moves, a
+document is released, an invoice is issued or goes overdue, a quotation is sent
+or about to expire, an enquiry arrives or misses its SLA, an exception is
+raised, free time is running out, a rate card is about to lapse — has a subject
+and a message in both languages. **Reword** it for every entity, or for one
+branch alone, which overrides the default beneath it. The available merge fields
+are listed on the dialog; anything else sends as blank.
+
+**What actually sends** is separate from the wording. Turning an event off there
+stops it being sent; the master switch, **Send notification email**, silences
+the whole channel, and every notification is still recorded, marked *Held back*.
+The **Delivery** log underneath shows every notification and what became of it,
+failures first.
+
+---
+
 ## The reversals
 
 ### Cancelling a shipment
 
-Available from draft, booked, in transit, on hold. It does not delete anything —
-the shipment stays, marked cancelled, with everything that happened to it intact.
+**Move it on** to *Cancelled* — available from draft, booked, in transit, on
+hold. It does not delete anything — the shipment stays, marked cancelled, with
+everything that happened to it intact.
 
-**Give the reason in the record, not in a WhatsApp message.** In six months the
+**The reason is required, and it stays on the record.** In six months the
 question will be why, and the record is the only place that will still know.
 
 ### Completing and closing

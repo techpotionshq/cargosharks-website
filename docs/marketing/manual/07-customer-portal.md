@@ -16,7 +16,7 @@ though you are always welcome to.
 | | For | Needs an account |
 |---|---|---|
 | **Track a shipment** | A quick check on one shipment | No |
-| **The portal** | Everything we are moving for you, and your documents | Yes |
+| **The portal** | Everything we are moving for you, at a glance | Yes |
 
 ---
 
@@ -39,11 +39,12 @@ details yours.
 | | |
 |---|---|
 | **Progress** | Each step of the journey, and how many are complete |
-| **Route** | Where it is going from and to |
-| **Vessel or flight** | What it is travelling on |
+| **Route** | Where it is going from and to, and how it is travelling |
+| **Vessel or flight** | What it is travelling on, and when it departed |
 | **Estimated arrival** | And the actual arrival once it lands |
-| **Containers** | Numbers and seals |
-| **Documents** | Those we have released to you |
+| **Notices** | Anything we have flagged on the shipment for you to know about |
+| **Containers** | Numbers and types |
+| **Documents** | Those we have released to you, listed by name and size. Ask us and we will send them over. |
 
 Steps are marked **completed**, **in progress**, **scheduled** or **revised**.
 *Revised* means a date has changed since the original plan — usually a vessel
@@ -75,14 +76,19 @@ have one.
 
 ### What is there
 
-**My shipments.** Everything we are moving for you right now, with the next step
-on each, and what is arriving this week.
+**My shipments.** Everything we are moving for you, with three counts at the
+top — active shipments, arriving this week, documents released — and a card for
+each shipment: the reference, where it stands, the route and how it is
+travelling, your own reference if you gave us one, the estimated arrival, the
+next step, and how far through its journey it is.
 
-**Each shipment in full.** The same detail as the tracking page, without typing a
-reference each time.
+**For the full detail on one shipment** — each step with its dates, the
+containers, the documents by name — use the tracking page with that shipment's
+reference and a container or bill number. The portal is the overview; the
+tracking page is the close-up.
 
-**Documents.** Everything we have released to you, ready to download — bills of
-lading, invoices, packing lists, certificates. Newest first.
+**Documents.** Each shipment shows how many documents we have released to you,
+and the tracking page lists them by name. Ask us and we will send them over.
 
 ### About documents
 
@@ -91,8 +97,8 @@ prepared, or one waiting on a correction, is not shown until it is final. This i
 so that you never work from a draft.
 
 If you expected a document and it is not there, ring us — it usually means it is
-still in preparation, and we would rather tell you that than have you download
-something we are about to change.
+still in preparation, and we would rather tell you that than send you something
+we are about to change.
 
 **A released document that is later corrected keeps both versions.** You will see
 the current one; the earlier one is not deleted, so if we ever need to agree what
@@ -106,16 +112,16 @@ was issued and when, the answer exists.
 phone, and you can forward the link to your own customer with the two
 identifiers.
 
-**The portal** is for *"what is happening across everything of ours?"* and for
-getting documents.
+**The portal** is for *"what is happening across everything of ours?"*
 
 ---
 
 ## Questions we get asked
 
 **Can I see shipments that are finished?**
-The portal shows what is active. Ask us for anything completed and we will send
-it.
+The portal lists your shipments in order of arrival, completed ones included,
+up to fifty at a time; the count at the top is the active ones. Ask us for
+anything beyond that and we will send it.
 
 **Can more than one person in my company have access?**
 Yes. Tell us who, and we will set them up.

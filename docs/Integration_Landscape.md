@@ -1,14 +1,14 @@
 # Integration Landscape — What We Can Connect To, and On What Terms
 
-**External-service research for the seven ports · v1.0 · Internal**
+**External-service research for the ports · v1.0 · Internal**
 
 | | |
 |---|---|
 | **Prepared by** | techpotions |
 | **Date** | 18 August 2026 |
 | **Question asked** | For each external service the SRS defers to R2 — tracking, e-invoicing, customs, FX, accounting — what exists, what does it cost, what do the terms permit, and what can we verify today? |
-| **Relationship to the code** | `apps/service/src/ports/index.ts` declares seven interfaces. This is the research behind the adapters in `apps/service/src/adapters/`. |
-| **Status** | Tracking and FX verified against live APIs; carrier-direct built against the DCSA spec and awaiting a live carrier key. E-invoicing and customs are desk research; both are blocked on commercial decisions rather than engineering. |
+| **Relationship to the code** | `apps/service/src/ports/index.ts` declared seven interfaces when this was written; it declares nine as of 23 August 2026. The two added since — `InboundMailSource` (IMAP over the `mailboxes` table, or a provider webhook) and `ModelProvider` (OpenRouter) — are documented in `Dev_Environment.md` and `Qabandi_AI_Surface.md` respectively, and §1 below says where every port stands. This is the research behind the adapters in `apps/service/src/adapters/`. |
+| **Status** | Tracking and FX verified against live APIs; carrier-direct built against the DCSA spec and awaiting a live carrier key. E-invoicing and customs are desk research; both are blocked on commercial decisions rather than engineering. **Revised 23 August 2026:** the findings stand; what changed is that every credential named here is now entered on Settings → Integrations (`integration_settings`, secrets sealed AES-256-GCM) with the environment variable as fallback, rather than being a redeploy. Carrier tracking remains blocked on a carrier key. |
 
 > **The finding in one line:** ocean carriers now publish free, standardised tracking APIs that make an aggregator optional for most of what we need — but the two events that drive detention billing are exactly the two nobody publishes reliably, and e-invoicing is a contract we have not started.
 
@@ -31,14 +31,34 @@ exist, and a milestone vocabulary that exists nowhere in our own seed. The tag
 is not bureaucracy; it is the difference between an integration and a guess
 with a type signature.
 
+**Where each port stands, 23 August 2026.** Added at revision so the sections
+below can be read against what the code does today rather than what it did on
+the 18th. Every live driver is chosen and credentialed on Settings →
+Integrations; the default for every metered one is the manual or `none`
+driver, so nothing is billed by accident.
+
+| Port | Adapter | State |
+|---|---|---|
+| `CarrierTracking` | `dcsa-tracking.ts`, `dcsa-events.ts`, `carrier-tracking.ts`; `workers/carrier-poll.ts` hourly | **Built, blocked on credentials.** Maersk verified against the live gateway; Hapag-Lloyd and CMA CGM documented. No carrier key held. §2 |
+| `EInvoiceTransmit` | `einvoice.ts` | ASP hand-off built; PINT AE document generation not built; no ASP appointed. §3 |
+| `CustomsFiling` | `customs.ts` | Deliberately manual — the adapter refuses. §4 |
+| `FxRateSource` | `fx.ts`; `workers/fx-refresh.ts` daily | **Verified, running.** §5 |
+| Accounting | `accounting/export.ts` | A posted file, not a connector; the package is still unnamed. §6 |
+| `FileStore` | `s3.ts` — SigV4 signed in-house, Cloudflare R2 in dev | **Verified, running.** Not in this document's scope; `pnpm --filter @qabandi/service verify:storage` |
+| `NotificationChannel` | `smtp.ts` (`smtp` or `log` driver) | **Running** for email. The `whatsapp` key exists on the port and on the settings screen, but there is no sender behind it, and `/webhooks/whatsapp` verifies, enqueues and is consumed by nothing — excluded by decision |
+| `InboundMailSource` | `imap.ts` over the `mailboxes` table (Settings → Mailboxes, passwords sealed); `/webhooks/email` as the second source | **Running** every minute against the dev mailbox. `Dev_Environment.md` |
+| `ModelProvider` | `model.ts` — OpenRouter | **Running**; three surfaces live. `Qabandi_AI_Surface.md` |
+
 ---
 
 ## 2. Container tracking
 
 ### 2.1 What we actually need
 
-Eight events, and only eight. Taken from `apps/service/src/adapters/carrier-events.ts`,
-which maps onto the codes `db:seed` writes into `milestone_templates`:
+Eight events, and only eight. Taken from `apps/service/src/adapters/dcsa-events.ts`
+(`carrier-events.ts` until the aggregator was removed — §2.2), which maps
+DCSA `eventType` / type-code pairs onto the codes `db:seed` writes into
+`milestone_templates`:
 
 | Our code | Meaning | Source |
 |---|---|---|
@@ -218,7 +238,15 @@ their credentials for their own cargo.**
 
 This maps exactly onto deployment-per-customer, where
 `DCSA_MAERSK_CONSUMER_KEY` and its siblings are per-deployment configuration
-and this repository holds none of them. It also
+and this repository holds none of them. Since 21 August 2026 they are not
+environment variables either, except as a fallback: an administrator pastes
+each carrier's key into its own card on Settings → Integrations
+(`carrierMaersk`, `carrierHapag`, `carrierCmacgm` in
+`packages/core/src/integrations.ts`), the secret is sealed into
+`integration_settings`, and the `carrierTracking` row's driver — `manual` by
+default — is switched to `dcsa`. The operator registers with the carrier and
+their own administrator enters the key: the clause above, done on a screen.
+It also
 inverts the Terminal49 objection: with carrier-direct the customer already has
 the carrier relationship commercially, so nobody new is inserted.
 
@@ -269,13 +297,23 @@ better answer than any feed, and nobody else is selling it.
 `IN-10` **Switching is one file.** The event map already accepts both
 Terminal49's namespaced `container.transport.vessel_departed` and the bare
 `vessel_departed` that polling providers send. That was deliberate.
+*Revised:* that dual map went with the aggregator on 21 August 2026. What
+holds the line now is the port itself — a further provider is a second
+`CarrierTracking` implementation returning the same eight `CarrierMilestone`
+codes, and `workers/carrier-milestone.ts` is the one place those are written
+onto a job, including the rule about not overruling a hand-entered date. A
+vendor adapter would be one file again; it would just be a new one.
 
 ### 2.8 Recommendation
 
 1. **Get Al-Qabandi's carrier split.** If 80% of volume is on four lines,
    carrier-direct covers 80% for free. One email, and it decides everything.
 2. **Build the DCSA adapter**, starting with Maersk — self-serve, conformant,
-   best documented, and verifiable against a sandbox.
+   best documented, and verifiable against a sandbox. *Done* — §2.4; the
+   hourly poll and the milestone writer are in `workers/`. What is missing is
+   a key on the operator's own registration (§2.5): the trial key proved the
+   gateway, no deployment holds a carrier credential as of 23 August 2026, so
+   every one runs the `manual` driver and milestones are still typed.
 3. **Buy terminal data only, if at all** — a much smaller purchase and a far
    better negotiating position than buying everything.
 4. **Quote Vizion in parallel** with wholesale/embedded licensing named
@@ -316,7 +354,7 @@ POST and it is theirs.**
 | ASP hand-off adapter | **Built** — `apps/service/src/adapters/einvoice.ts`. Generic, because the document is a Peppol standard and only the envelope differs. Invoice id travels as an idempotency key: a retry after a timeout would otherwise file the same invoice twice with a tax authority |
 | Rejection handling | **Built** — reported, not thrown. A rejection is information about the document; throwing would retry something that will be rejected identically forever |
 | **PINT AE / UBL document generation** | **Not built.** Substantial, pure, fully testable offline, no credentials needed |
-| ASP appointed | **No.** Longest lead time in this document |
+| ASP appointed | **No.** Longest lead time in this document. When one is, it is the `einvoice` card on Settings → Integrations — driver `asp`, an endpoint and a key — with no release needed |
 
 ### 3.4 Recommendation
 
@@ -376,10 +414,16 @@ from the feed rather than the clock — `fx_rates_unique` includes
 instead of being idempotent.
 
 `FX_API_URL` is a URL template, so a commercial feed later is configuration
-rather than code.
+rather than code — and since 21 August 2026 it is the `url` field on the `fx`
+card (Settings → Integrations, driver `api`), with the variable as fallback.
+Which currencies to fetch is not a setting at all: the bases are the active
+branches' `base_currency`, the quotes are `currencies.is_tracked`, and the two
+environment variables that once said otherwise were removed because they
+disagreed with the columns.
 
 `JOBS.fxIngest` had been scheduled `0 5 * * *` since Release One **with no
-handler**, so the job was enqueued daily and discarded. It now runs.
+handler**, so the job was enqueued daily and discarded. It now runs
+(`workers/fx-refresh.ts`).
 
 ---
 
@@ -391,6 +435,14 @@ still unanswered. It determines whether `FR-FN-12` is a file or an integration.
 `IN-16` **Pick exactly one package and ship a real connector; keep the file
 export for everyone else.** "We export a file" loses to "we integrate" in a
 demo, but building for every package loses to building for one.
+
+*Status, 23 August 2026:* the file half exists and the connector does not.
+`apps/service/src/accounting/export.ts` builds the period's journal through
+`core/accounting.ts`, stores the CSV, and records it in `accounting_exports`;
+a draft marks nothing and can be run twenty times, a post consumes its sources
+so the next export cannot pick them up again. There is no accounting entry in
+the integrations catalogue, because there is nothing to connect to until I6 is
+answered.
 
 ---
 

@@ -1,15 +1,15 @@
 # Gulf Market Analysis — Productising Beyond Al-Qabandi
 
-**Competitive and regulatory research for a second customer · v1.1 · Internal**
+**Competitive and regulatory research for a second customer · v1.2 · Internal**
 
 | | |
 |---|---|
 | **Prepared by** | techpotions |
 | **Date** | 17 August 2026 |
 | **Question asked** | Can the Qabandi platform be sold to other shipping and forwarding companies in Kuwait and the Gulf? |
-| **Relationship to the SRS** | Tests `Qabandi_Release_One_SRS.md` §11 (out of scope) against what the market actually pays for. Every R2 deferral in the SRS reappears here as a competitor's headline feature. |
+| **Relationship to the SRS** | Tests `Qabandi_Release_One_SRS.md` §11 (out of scope) against what the market actually pays for. When this was written, every R2 deferral in the SRS reappeared here as a competitor's headline feature; several have shipped since, and §5 records which. |
 | **Status** | Research complete. Recommendations not yet approved. Sources at §10. |
-| **Revisions** | v1.1 (18 Aug 2026) adds Shipmnts to §2 — a direct competitor the first pass missed. External-service research has moved to `Integration_Landscape.md`; deployment findings to `Operations_Findings.md`. |
+| **Revisions** | v1.1 (18 Aug 2026) adds Shipmnts to §2 — a direct competitor the first pass missed. External-service research has moved to `Integration_Landscape.md`; deployment findings to `Operations_Findings.md`. v1.2 (23 Aug 2026) refreshes our-side status only — §5, `MK-05`, Wedge 2, §8 and Q4 — against the working tree: document generation, carrier-tracking adapters, AI intake, payables and settlements, and the Playwright suite have shipped since v1.1. The research and the finding IDs are unchanged. |
 
 > **The finding in one line:** the incumbent has just raised prices 20–50% and the region has three dated compliance mandates in the next six months — but none of them are in Kuwait.
 
@@ -141,21 +141,24 @@ This is the finding that should change the plan.
 
 ## 5. Gap analysis against what we have built
 
-Verified against the working tree, not the documentation.
+Verified against the working tree, not the documentation. Re-verified 23 August 2026.
 
 ### Already built — and competitors charge for it
 
 | Capability | Where | Note |
 |---|---|---|
-| Multi-entity, multi-currency, multi-branch | `packages/db/migrations/0004_rls.sql` | Enforced in ~15 RLS policies, not app code. Logistaas's headline feature; ours is structurally stronger. |
-| Arabic + RTL, first-class | `apps/web/messages/{en,ar}.json` | 1,514 keys each, in sync. Competitors are English products with Arabic bolted on. |
+| Multi-entity, multi-currency, multi-branch | `packages/db/migrations/0004_rls.sql` onward | Enforced by RLS policies on all 80 tables, not app code. Logistaas's headline feature; ours is structurally stronger. |
+| Arabic + RTL, first-class | `apps/web/messages/{en,ar}.json` | 2,700 keys each, in sync, checked by `pnpm lint`. Competitors are English products with Arabic bolted on. |
 | Whitelabel | `packages/brand` | Operator is a parameter — palette, logo, letterhead, PDF. Built for resale. |
-| Customer portal / public tracking | `/(portal)`, `/(public)/track` | |
+| Customer portal / public tracking | `/(portal)`, `/(public)/track` | Plus an agent portal at `/(agent)` and a read-only customer API at `/api/v1` on per-customer keys. |
 | Audit and immutability | `0003_audit.sql` | Database-enforced, insert-only. |
 | All five transport modes | `modeEnum` | `sea_fcl`, `sea_lcl`, `air`, `land`, `courier` |
 | Shipment reference capture | `packages/db/src/schema/jobs.ts` | `master_bill_number`, `house_bill_number`, `booking_number`, vessel, voyage, flight, containers, seals |
-| Customs declaration tracking | `customs_stages` | Type, number, status, duty, SLA clock |
+| Customs declaration tracking | `customs_stages` | Type, number, status, duty estimate from `duty_rates`, SLA clock |
 | Tax data model | `packages/db/src/schema/finance.ts` | `tax_treatment`, `tax_rate_percent`, `tax_amount`, per-line `is_taxable` |
+| House B/L, house AWB, delivery order, packing list, customs pack, consolidation manifest | `apps/service/src/pdf/` | SRS R2, shipped since v1.1. Rendered through Chromium with Arabic shaping; an issued document is versioned, stored, and numbered from the branch's house-bill series. |
+| AI intake and an operator assistant | `apps/service/src/workers/enquiry-extract.ts`, `invoice-extract.ts`, `ai/assistant.ts` | SRS R2, shipped since v1.1. An emailed enquiry or a supplier's PDF becomes a proposal a person accepts or rejects; every model call is recorded in `ai_invocations`. The evaluation harness is not built. |
+| Payables, partner settlements, consolidation, credit standing | `packages/core/src/{matching,netting,grouping,credit}.ts` | Shipped since v1.1. Supplier bills matched to charge lines, master costs split across houses, net settlement per partner. This is the "finance" module Shipmnts lists (§2). |
 
 ### Not built — and every regional competitor sells it
 
@@ -163,15 +166,14 @@ Verified against the working tree, not the documentation.
 |---|---|---|
 | UAE MPCI filing | UAE, now | **Low** — narrow spec, published |
 | ZATCA Fatoora Phase 2 integration | Saudi | Medium |
-| PINT AE XML + ASP handoff | UAE, Jan 2027 | Medium |
+| PINT AE XML + ASP handoff | UAE, Jan 2027 | Medium for the document. The hand-off half exists: a generic accredited-provider adapter in `apps/service/src/adapters/einvoice.ts`, with nothing yet to send through it. |
 | Dubai / Oman customs connectors | UAE, Oman | Medium, relationship-gated |
 | FASAH integration | Saudi | Medium, relationship-gated |
-| Container tracking feed | all | Low technically, commercial decision on provider |
-| Direct accounting integration | all | Low per package, unbounded across packages |
-| AWB / B/L document generation | air especially | Medium — data is captured, only rendering is absent |
-| **End-to-end test coverage** | all | **CI names a Playwright stage that does not exist.** 43 unit tests + 1 RLS file is not enough to sell to a third party. |
+| Container tracking feed | all | Code complete — DCSA carrier-direct adapters for Maersk, Hapag-Lloyd and CMA CGM (`adapters/dcsa-tracking.ts`, hourly poll). Blocked on carrier API credentials, which the client registers for, so the commercial decision is theirs rather than ours. |
+| Direct accounting integration | all | Low per package, unbounded across packages. The file export ships (`accounting/export.ts`, journal CSV with a re-export guard); a package connector does not. |
+| **End-to-end test coverage** | all | Largely closed since v1.1: Playwright sweeps every screen in both languages (`apps/web/e2e`), on fixtures and against a database, and CI runs both stages; 104 test files across the workspace. What remains is deployment history, which only a live customer produces — the Coolify path itself is documented in `Deployment_Coolify.md`. |
 
-`MK-05` **The last row is the one that stops a sale, not a feature gap.** A second customer's IT reviewer will ask about test coverage and deployment history before they ask about MPCI.
+`MK-05` **The last row is the one that stops a sale, not a feature gap.** A second customer's IT reviewer will ask about test coverage and deployment history before they ask about MPCI. *(v1.2: the coverage half is answered; the deployment-history half only a live customer and time can answer.)*
 
 ---
 
@@ -190,7 +192,7 @@ Why this is the right first move:
 
 ### Wedge 2 — UAE e-invoicing · ASP appointment 30 October 2026, go-live 1 January 2027
 
-Follows naturally from wedge 1 and from `FR-FN-07`, which already requires UAE invoices to carry the full mandated field set. Ship PINT AE XML generation and an ASP adapter behind the existing `EInvoiceTransmit` port.
+Follows naturally from wedge 1 and from `FR-FN-07`, which already requires UAE invoices to carry the full mandated field set. Ship PINT AE XML generation behind the existing `EInvoiceTransmit` port; the ASP adapter is already there (`apps/service/src/adapters/einvoice.ts` — a URL, a bearer token, the invoice id as the idempotency key) and is waiting for a document to send.
 
 ---
 
@@ -209,11 +211,11 @@ Follows naturally from wedge 1 and from `FR-FN-07`, which already requires UAE i
 
 1. **Resolve the IP question.** Confirm the Al-Qabandi engagement permits resale of the platform. Everything below is void if it does not. *(Blocking.)*
 2. **Price a certified MPCI service provider** per filing. This number decides whether wedge 1 is a business or a give-away feature. *(Blocking on wedge 1.)*
-3. **Close the credibility gap** — real Playwright coverage, a security review, and Al-Qabandi live in production. Without a running deployment there is no second sale.
+3. **Close the credibility gap** — real Playwright coverage, a security review, and Al-Qabandi live in production. Without a running deployment there is no second sale. *(v1.2: the Playwright suite and the Coolify deployment path have shipped; nothing in the tree records a security review or a go-live.)*
 4. **Build MPCI filing.** Smallest scope, nearest deadline, opens Dubai.
 5. **ZATCA Fatoora** — opens Saudi, the highest-CAGR market in the region through 2033.
 6. **PINT AE + ASP adapter** — retains UAE customers through the January 2027 mandate.
-7. **Then** container tracking and accounting connectors, guided by what the first two non-Al-Qabandi customers actually ask for.
+7. **Then** container tracking and accounting connectors, guided by what the first two non-Al-Qabandi customers actually ask for. *(v1.2: the tracking adapters are written and wait on carrier credentials; accounting is a file export, and the connector question stands.)*
 
 Sell deployment-per-customer, whitelabelled, to mid-size UAE and Saudi forwarders — the ones too small for a $100k CargoWise implementation and too Arabic for its interface.
 
@@ -226,7 +228,7 @@ Sell deployment-per-customer, whitelabelled, to mid-size UAE and Saudi forwarder
 | Q1 | Does the Al-Qabandi contract permit resale of the platform? | techpotions / legal | Everything |
 | Q2 | Per-filing cost from a certified MPCI provider? | commercial | Wedge 1 pricing |
 | Q3 | Which accredited ASPs will white-label or resell? | commercial | Wedge 2 |
-| Q4 | Does deployment-per-customer or true multi-tenancy fit the sales motion? | architecture | Schema — `branch` is currently the top scoping unit, with no tenant above it |
+| Q4 | Does deployment-per-customer or true multi-tenancy fit the sales motion? | architecture | Schema — `branch` is still the top scoping unit, with no tenant above it. The tooling has since committed to a database per customer: `pnpm tenant:new`, `fleet:migrate` and `fleet:backup` over a `fleet.json` of tenants (`packages/db/src/fleet.ts`). Reversing that is now a schema decision, not a blank page. |
 | Q5 | Would Al-Qabandi act as a named reference for UAE prospects? | account | Sales credibility |
 | Q6 | Does Shipmnts render three-decimal currencies (KWD/BHD/OMR) correctly? | product | Whether `MK-07` is a demonstrable difference or only a claim |
 

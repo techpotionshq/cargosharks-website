@@ -20,7 +20,7 @@ surprise you. Twenty minutes, once.
 | Moving shipments day to day | [**Coordinator**](01-coordinator.md) | Dashboard, Shipments, Enquiries |
 | Running the operation | [**Operations Manager**](02-operations-manager.md) | Dashboard, Exceptions, Rate cards |
 | Answering enquiries and quoting | [**Sales**](03-sales.md) | Enquiries, Quotations |
-| Invoicing and chasing money | [**Finance**](04-finance.md) | Finance overview, Invoices, Payments |
+| Invoicing and chasing money | [**Finance**](04-finance.md) | Finance overview, Invoices, Payments, Payables |
 | Clearing cargo | [**Customs Broker**](05-customs-broker.md) | Customs |
 | Running the system itself | [**Administrator**](06-administrator.md) | Settings |
 
@@ -56,16 +56,17 @@ Collected in one place so nobody spends an afternoon looking:
 
 | | Status |
 |---|---|
-| Automatic carrier tracking feeds | Not in this release. Milestones are entered by your team. |
-| Direct customs filing, Kuwait | **Not planned.** Declarations are tracked, not filed. |
+| Automatic carrier tracking feeds | **Configurable, off by default.** Carrier-direct feeds (Maersk, Hapag-Lloyd, CMA CGM) are switched on under *Settings → Integrations → Container tracking*, each with the carrier's own registration. Until then, milestones are entered by your team. |
+| Direct customs filing, Kuwait | **Not planned.** Declarations are tracked, not filed. A duty *estimate* is available; the assessment is still recorded by hand. |
 | UAE MPCI filing | Roadmap |
-| Saudi ZATCA e-invoicing | Roadmap |
+| Saudi ZATCA e-invoicing | Roadmap. *Settings → Integrations → E-invoice transmission* exists, but no accredited provider is connected. |
 | Agent portal — RFQ response, agent posting | In delivery. Route scoped, screens not built. |
-| Email and WhatsApp notifications | In delivery |
-| Scheduled email reports | In delivery. Every screen exports today. |
-| Accounting-package connectors | Export today, connectors later |
-| Self-service password reset | Needs a mail transport. Administrator resets today. |
-| A user-invitation screen | Accounts are created from a shell. |
+| Email notifications | **Live** once *Outbound mail* is configured under *Settings → Integrations*. Wording is edited under *Settings → Notification wording*. |
+| WhatsApp notifications | Not in this release. |
+| Scheduled email reports | In delivery. Every screen exports today; the margin report exports CSV. |
+| Accounting-package connectors | Journal export per period from *Finance → Overview* today; direct connectors later. |
+| Self-service password reset | **Available** — *Forgotten your password?* on the sign-in page — once *Outbound mail* is configured. Otherwise the administrator resets from a shell. |
+| A user-invitation screen | *Settings → Users & roles → Invite someone* creates the person and their branch roles. The sign-in credential is still created from a shell. |
 
 **If your supplier tells you one of these has shipped, ask to see it on your own
 deployment.** This table is maintained against the working software rather than

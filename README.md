@@ -14,7 +14,8 @@ engines; application code stays thin enough to be boring.**
 pnpm install
 cp .env.example .env
 
-pnpm db:up          # PostgreSQL 18, MinIO and a mail sink
+pnpm db:up          # PostgreSQL 18 only; `docker compose -f compose.dev.yaml up`
+                    # adds MinIO and a mail sink
 pnpm db:migrate     # forward-only, applied as app_migrator
 pnpm db:seed        # currencies, charge types, milestones, calendars, roles
 
@@ -83,9 +84,11 @@ database. Everything behind it is the real query path, chosen one branch
 earlier in `apps/web/src/lib/pilot/source.ts`.
 
 **It is a subset, and the subset is enforced.** The fixtures were written for
-the screens the pilot needed. The register queries behind finance, network,
-operations and reference still go straight to `withActor`, so those routes want
-a database and error without one rather than degrading. The list lives in
+the screens the pilot needed. The register queries behind finance, payables,
+network, operations, reference and most of settings — and a secondary query on
+the dashboard, jobs and enquiries boards — still go straight to `withActor`,
+so those routes want a database and error without one rather than degrading.
+The list lives in
 `apps/web/e2e/support/harness.ts` as `NEEDS_DATABASE`, one entry per route
 naming the query responsible, and the end-to-end run reports each of them as
 skipped-with-a-reason — so the gap is visible in the pipeline rather than
@@ -135,11 +138,15 @@ packages/
   brand/     the whitelabel contract — palette, logo, typography, letterhead
   db/        the only place a field is defined — schema, RLS, triggers, actor
 apps/
-  web/       Next.js: ops · portal · agent · public, as route groups
+  web/       Next.js: ops · settings · portal · agent · public · auth route groups
   service/   Fastify: workers · PDF · webhooks · public read API
-infra/       container definitions and the Postgres role bootstrap
-scripts/     the dependency-direction check
+infra/       the Postgres role bootstrap and the web container's entrypoint
+scripts/     `doctor` and the six lint invariants, dependency direction among them
 ```
+
+The container definitions are at the root: one `Dockerfile` for both images,
+`compose.dev.yaml` for the laptop stack and `compose.prod.yaml` for Coolify
+([`docs/Deployment_Coolify.md`](docs/Deployment_Coolify.md)).
 
 Dependency direction is `core ← db ← {web, service}` and is enforced by
 `scripts/check-boundaries.mjs` in the pipeline, not by convention.
@@ -151,9 +158,9 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 | `pnpm doctor` | what is configured, what is missing, and what each missing thing disables |
 | `pnpm dev` | web and service together |
 | `pnpm typecheck` | every package |
-| `pnpm lint` | oxlint plus the dependency-direction, migration, message and link checks |
+| `pnpm lint` | oxlint plus the six invariants — dependency direction, migrations, messages, links, schedules, permissions |
 | `pnpm test` | every package |
-| `pnpm test:core` | domain engines only — no database, ~130ms |
+| `pnpm test:core` | domain engines only — no database, ~1.4s |
 | `pnpm db:generate` | regenerate the table migration from the schema |
 | `pnpm db:generate:custom` | an empty migration for hand-written SQL — policies, triggers, backfills |
 | `pnpm db:provision` | create the database and roles on an existing server |
@@ -232,6 +239,8 @@ this area.
 | [`Integration_Landscape.md`](docs/Integration_Landscape.md) | What the external services actually offer: tracking, e-invoicing, customs, FX. Every claim tagged verified, documented or reported |
 | [`Operations_Findings.md`](docs/Operations_Findings.md) | What broke in the first real deployment and what it taught us. Read before standing up customer number two |
 | [`Qabandi_AI_Surface.md`](docs/Qabandi_AI_Surface.md) | Where a language model earns its place — intake, rate cards, document extraction, an assistant — and where the honest answer is arithmetic |
+| [`Dev_Environment.md`](docs/Dev_Environment.md) | Where the development stack actually lives — the remote database, the real mailbox, the live model key — and the agreed automation order |
+| [`Deployment_Coolify.md`](docs/Deployment_Coolify.md) | The two containers on Coolify: `Dockerfile`, `compose.prod.yaml`, and what must never be exposed |
 
 ## The parts worth reading first
 
@@ -247,21 +256,23 @@ the acting principal into transaction-local settings. The third argument to
 it makes the setting transaction-local, which is what keeps this safe behind
 PgBouncer in transaction-pooling mode.
 
-**`packages/db/migrations/0004_rls.sql`** — around fifteen policies covering the
-whole system. Tables fall into four scoping shapes: branch-scoped, job-derived,
-group-shared and config. An unauthorised request for another branch's job
-returns *not found*, because the row is not visible to the query at all.
+**`packages/db/migrations/0004_rls.sql`** — the first twenty-five policies, and
+the shapes every later migration follows; there are 197 across the folder now.
+Tables fall into four scoping shapes: branch-scoped, job-derived, group-shared
+and config. An unauthorised request for another branch's job returns *not
+found*, because the row is not visible to the query at all.
 
-**`packages/db/migrations/0003_audit.sql`** — one trigger function attached to
-every business table by a loop, so adding a table adds its audit automatically.
-`UPDATE` and `DELETE` on `audit_log` are revoked from every role. FR-AD-01 says
-no administrator may edit an audit entry, and only the database can enforce
-that.
+**`packages/db/migrations/0003_audit.sql`** — one trigger function, attached to
+every business table that existed then by a loop. A table added since attaches
+its own with `select app.attach_audit('<table>')` in its migration (the helper
+is in `0008`), and `pnpm test:db` fails if it did not. `UPDATE` and `DELETE` on
+`audit_log` are revoked from every role. FR-AD-01 says no administrator may
+edit an audit entry, and only the database can enforce that.
 
 **`packages/core/`** — the engines. Six charge calculations behind eighteen
 accessorial rows; one clock behind demurrage, detention and storage; one
-working-calendar duration function behind every SLA and ageing rule. 43 tests,
-no database, 130ms.
+working-calendar duration function behind every SLA and ageing rule. 509
+tests, no database, ~1.4s.
 
 ## Conventions that are load-bearing
 
@@ -309,9 +320,9 @@ BRAND_PRIMARY_HUE=155 BRAND_ACCENT_HUE=25 BRAND_RADIUS=4 pnpm dev
 ```
 
 A second operator properly is one file under `packages/brand/src/brands/`,
-registered in `resolve.ts`, then `BRAND=<key>`. `/admin` renders the resolved
-tokens and the variable that overrides each one, so the claim is inspectable
-rather than asserted.
+registered in `resolve.ts`, then `BRAND=<key>`. `/settings/brand` renders the
+resolved tokens and the variable that overrides each one, so the claim is
+inspectable rather than asserted.
 
 Two things deliberately do *not* follow the brand:
 
@@ -418,7 +429,7 @@ classes, no CQRS, no event bus, no microservices, no Redis, no GraphQL, no
 client-side state manager. Each is argued in the section of the architecture
 where it would otherwise appear.
 
-Seven interfaces exist in the whole system, listed in
+Nine interfaces exist in the whole system, listed in
 `apps/service/src/ports/index.ts`. Each has a real first implementation today
 and a second one the SRS itself names.
 
@@ -437,18 +448,20 @@ and a second one the SRS itself names.
 
 Scaffolded to the architecture and verified against a live PostgreSQL 18.6:
 
-- **64 tables, 57 with RLS enabled *and* forced, 75 policies, 56 audit
-  triggers, 53 `uuidv7()` primary keys.** The seven tables without RLS are the
-  auth library's own plus the throttle and webhook-receipt tables, each opted
-  out in code with a stated reason.
+- **88 tables, 82 with RLS enabled *and* forced, 197 policies, 80 audit
+  triggers, 78 `uuidv7()` primary keys.** The six tables without RLS are the
+  auth library's five plus the webhook-receipt table, each opted out in code
+  with a stated reason. (The throttle table went in `0035`: nothing ever read
+  it.)
 - **The temporal constraint holds.** `UNIQUE NULLS NOT DISTINCT (direction,
   partner_id, customer_id, mode, origin_id, destination_id, validity WITHOUT
   OVERLAPS)` is live, so two overlapping rate cards for one lane are
   unrepresentable rather than merely unlikely.
-- **11 RLS policy tests pass against real fixtures** — two branches, two
-  customers, an agent partner and two jobs. Confirmed non-vacuous: weakening
+- **12 RLS policy tests pass against real fixtures** — two branches, two
+  customers, an agent partner and two jobs — and `rls-matrix.test.ts` walks
+  the negative matrix behind them. Confirmed non-vacuous: weakening
   `jobs_scope` to `using (true)` fails four of them.
-- **43 core tests, no database, 130ms.**
+- **509 core tests, no database, ~1.4s.**
 - `web` builds, `service` bundles, and the schema shows no drift from the
   migrations.
 
