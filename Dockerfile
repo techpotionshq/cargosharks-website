@@ -89,15 +89,25 @@ ENV CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 # `@qabandi/service...` with the ellipsis — the package *and its dependencies*.
 # Without it pnpm installs only what `apps/service/package.json` names, and the
 # bundle needs more than that: `build.mjs` inlines the workspace packages but
-# leaves everything from npm external, so `pg` and `drizzle-zod` (from
-# `@qabandi/db`) and `decimal.js` (from `@qabandi/core`) are imported at
+# leaves everything from npm external, so `pg`, `drizzle-zod` and `dotenv`
+# (from `@qabandi/db`) and `decimal.js` (from `@qabandi/core`) are imported at
 # runtime by code that no longer lives in a package declaring them. The
 # ellipsis is what puts them in the image.
+#
+# `--shamefully-hoist` is what makes them *reachable*. pnpm's default layout
+# links a package only under the project that declares it, so `pg` lands in
+# `packages/db/node_modules/` — and Node, resolving an import from
+# `apps/service/dist/index.js`, walks up through `apps/service/node_modules`
+# and `/app/node_modules` and never looks there. The container exited at boot
+# with `Cannot find package 'pg'` while the package sat two directories away.
+# Hoisting links every installed package into `/app/node_modules`, where code
+# anywhere under `/app` can see it. The lockfile is unaffected, so
+# `--frozen-lockfile` still holds.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
 COPY apps/service/package.json apps/service/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
-RUN pnpm install --frozen-lockfile --prod --filter @qabandi/service...
+RUN pnpm install --frozen-lockfile --prod --shamefully-hoist --filter @qabandi/service...
 
 # One file. `build.mjs` bundles the workspace source into it, so there is no
 # `packages/*/dist` to copy — only the npm packages installed above are needed
