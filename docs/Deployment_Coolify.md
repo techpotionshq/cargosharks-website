@@ -31,36 +31,37 @@ Routing that traffic through a public domain puts an impersonation endpoint on
 the internet, protected by one string, for no benefit — the two containers are
 a virtual network hop apart.
 
-## 2. But the service does need a domain
+## 2. The service has no domain
 
 It serves four prefixes and they do not have the same audience:
 
-| Prefix | Audience | Public? |
+| Prefix | Audience | Reached how |
 |---|---|---|
-| `/webhooks` | carrier and provider callbacks | **yes, required** |
-| `/api/v1` | the public read and tracking API | yes |
-| `/health` | the platform's health check | yes |
-| `/internal` | the web container, and nothing else | **never** |
+| `/webhooks` | carrier and provider callbacks | `https://<web>/webhooks/…`, through the web container |
+| `/api/v1` | the public read and tracking API | `https://<web>/api/v1/…`, through the web container |
+| `/health` | the platform's health check | the container `HEALTHCHECK`, on the private network |
+| `/internal` | the web container, and nothing else | `SERVICE_URL`, on the private network — **never** from outside |
 
-So "just don't expose the service" is not available. Give it a domain, keep
-`SERVICE_URL` internal, and make sure `/internal` cannot be reached through it.
+The two public prefixes are served by `apps/web` as catch-all route handlers
+(`app/api/v1/[[...path]]`, `app/webhooks/[[...path]]`) that forward the
+request to `SERVICE_URL` unchanged — body byte for byte, because both webhook
+handlers verify an HMAC over exactly what the provider signed. The helper
+behind them, `apps/web/src/lib/service-proxy.ts`, forwards those two prefixes
+and answers 404 to everything else.
 
-Two controls, and you want both:
+So one domain, on `web`. Configure WhatsApp and the mail provider with
+`https://app.example.com/webhooks/whatsapp` and `…/webhooks/email`; hand
+customers `https://app.example.com/api/v1`. `/internal` is unreachable from
+outside not because something refuses it but because no route leads there.
 
-1. **In the code, by default.** The service refuses any `/internal` request
-   carrying proxy forwarding headers (`X-Forwarded-For`, `X-Forwarded-Host`,
-   `X-Forwarded-Proto`, `Forwarded`) with a 404. A call from the web container
-   over the Docker network carries none of them; one through Traefik always
-   carries at least one. This needs no configuration and fails closed.
-2. **At the proxy, if you want defence in depth.** A Traefik middleware
-   blocking the path prefix. Coolify's label generation has a history of sharp
-   edges here, so check the router rule actually took effect rather than
-   assuming it did.
-
-`INTERNAL_API_TRUST_PROXY=true` disables the first control. It exists for a
+The in-code guard stays as defence in depth: the service refuses any
+`/internal` request carrying proxy forwarding headers (`X-Forwarded-For`,
+`X-Forwarded-Host`, `X-Forwarded-Proto`, `Forwarded`) with a 404, so a
+service that somebody later *does* give a domain still fails closed.
+`INTERNAL_API_TRUST_PROXY=true` disables that guard; it exists for a
 deployment where something on the *private* network legitimately adds
 forwarding headers — a service mesh, a sidecar. It is not a way to make a
-public route work.
+public route work, and there is no longer a reason to want one.
 
 ## 3. One stack, not two applications
 
@@ -121,7 +122,7 @@ ordinary restart should hold.
 ```
 DATABASE_URL=postgres://app_user:…@db-host:5432/qabandi
 INTERNAL_API_SECRET=…                    # identical to the web app's
-WEB_URL=https://app.example.com          # this is the CORS origin
+WEB_URL=https://app.example.com          # the address in outbound links; also the CORS origin
 FILE_STORE_DRIVER=s3
 S3_ENDPOINT=… S3_REGION=… S3_BUCKET=… S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=…
 ```
@@ -142,7 +143,10 @@ does not read the file on its own. Until it has, it does not know `web` and
 one (*"Cannot set docker_compose_domains without docker_compose_raw"*), and a
 deploy in that state comes up with no Traefik router at all. The site then
 answers nothing, which reads like a crashed container rather than a missing
-button. Nothing in `compose.prod.yaml` can warn you about this.
+button. Nothing in `compose.prod.yaml` can warn you about this. Once the
+fields appear, set a domain on `web` and leave `service` blank — it is
+reached through `web` (§2), and a domain on it is a second way in that
+nothing needs.
 
 **Do not restate the environment in `compose.prod.yaml`.** Coolify writes the
 application's runtime variables to a `.env` and loads it into every service in
@@ -178,12 +182,17 @@ journal — against the real database, cancelling its fixtures afterwards. Run i
 after `db:migrate` and `db:seed` on a new deployment, before the first real
 shipment is loaded.
 
-For the proxy control specifically, from outside:
+For the routing specifically, from outside, against the one domain:
 
 ```
-curl -i https://svc.example.com/internal/documents/invoice/whatever
+curl -i https://app.example.com/internal/documents/invoice/whatever
+curl -i -X POST https://app.example.com/webhooks/email -d '{}'
+curl -i https://app.example.com/api/v1/jobs
 ```
 
-A `404` is the guard working. Anything else — a `401`, a `400`, a hang — means
-the request reached the prefix without forwarding headers, and the deployment
-needs looking at before it carries a customer's data.
+The first is a `404` from the web app — there is no route, which is the
+point. The second is a `401 bad_signature` and the third a `401 unauthorized`,
+both *from the service*: proof the request crossed the private network and
+the service answered. A `503 service_not_configured` on either means the web
+container has no `SERVICE_URL`; a `502` means it has one and the service is
+not listening there.

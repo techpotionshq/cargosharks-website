@@ -29,16 +29,19 @@
 # per-service domain fields appear, and a stack deployed in that state gets no
 # Traefik router and answers nothing at all.
 #
-# Then set a domain on `web`. On `service` only if carrier webhooks or the
-# public tracking API are in use; `/internal` refuses proxied requests, so a
-# domain there does not expose it.
+# Then set a domain on `web`, and on `web` only. The service has no public
+# domain: its two public prefixes, `/api/v1` and `/webhooks`, are served
+# through the web container (`apps/web/src/lib/service-proxy.ts`), so carrier
+# and provider callbacks point at `https://<web>/webhooks/...` and `/internal`
+# is unreachable from outside because no route leads there.
 #
 # Required in the UI, or the containers exit at boot: DATABASE_URL and
 # INTERNAL_API_SECRET on both (identical — a mismatch is a 401 the web app
 # reports as "the document could not be generated"), BETTER_AUTH_SECRET and
-# BETTER_AUTH_URL for web, WEB_URL for the service. That last one is the CORS
-# origin; it is no longer derived from BETTER_AUTH_URL here, and its config
-# default of `http://localhost:3000` fails without saying so.
+# BETTER_AUTH_URL for web, WEB_URL for the service. That last one is the
+# address the service writes into outbound links (and its CORS origin); it is
+# no longer derived from BETTER_AUTH_URL here, and its config default of
+# `http://localhost:3000` fails without saying so.
 #
 # Everything else degrades honestly against the defaults in `config.ts`.
 #

@@ -245,11 +245,11 @@ function secretMatches(header: unknown): boolean {
  * then names the principal to act as. A leaked secret plus a publicly routable
  * `/internal` is every branch's data.
  *
- * The service needs a public domain regardless — `/webhooks` takes carrier
- * callbacks and `/api/v1` is the public tracking API — so "just don't expose
- * it" is not available. A proxy rule blocking this prefix is the right control
- * and it lives in somebody's deployment config, where it is one checkbox away
- * from being lost. This is the same control, expressed where it cannot be.
+ * The service is not meant to have a public domain at all: `/webhooks` and
+ * `/api/v1` are served through the web container, which forwards those two
+ * prefixes and nothing else (`apps/web/src/lib/service-proxy.ts`). But "no
+ * domain" lives in somebody's deployment UI, one text box away from being
+ * given one. This is the same control, expressed where it cannot be lost.
  */
 function viaProxy(headers: Record<string, unknown>): boolean {
   return (
