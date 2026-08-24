@@ -48,6 +48,13 @@ const DOCS = [
   },
   { src: 'sales/website-copy.md', out: 'sales/05-Website-Copy.pdf', title: 'Website Copy' },
   {
+    src: 'sales/kuwait-prospects.md',
+    out: 'sales/07-Kuwait-Prospects.pdf',
+    title: 'Kuwait Prospect Call Sheet',
+    subtitle: 'Fifteen forwarders, ranked — and the two things to settle first',
+    note: 'INTERNAL — do not circulate',
+  },
+  {
     src: 'sales/pilot-term-sheet.md',
     out: 'sales/06-Pilot-Term-Sheet.pdf',
     title: 'Pilot Term Sheet',
