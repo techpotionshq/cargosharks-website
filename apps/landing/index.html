@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CargoSharks — freight forwarding software for the Gulf</title>
+<meta name="description" content="Freight forwarding software built in the Gulf, for the Gulf. Enquiry to paid invoice in one record. Arabic and English from the first line of code.">
+<link rel="icon" href="cargosharks-logo/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="cargosharks-logo/png/cargosharks-app-icon-180.png">
+<meta property="og:title" content="CargoSharks — freight forwarding software for the Gulf">
+<meta property="og:description" content="One record, six states, no exits. Enquiry to paid invoice without re-keying.">
+<meta property="og:image" content="pic/photos/hero-port-dusk.jpg">
+<meta name="theme-color" content="#0B2545">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens. The four brand colours come from cargosharks-logo/README.txt and are
+   not reinterpreted here — everything else is derived from them so the page
+   cannot drift away from the mark. Amber is the one addition: status pills need
+   a third state that is neither "live" nor "absent", and no brand colour can
+   carry that meaning without also reading as a link.
+--------------------------------------------------------------------------- */
+:root{
+  --navy:#0B2545;
+  --blue:#1F6FEB;
+  --blue-light:#79B0FF;
+  --white:#FFFFFF;
+
+  --navy-900:#061729;          /* deeper than the mark, for the page floor  */
+  --navy-800:#0B2545;
+  --navy-raised:#12325C;
+  --navy-line:rgba(255,255,255,.11);
+  --navy-ink:#E8EFF9;
+  --navy-ink-muted:#9DB4D4;
+
+  --paper:#F4F7FC;
+  --paper-raised:#FFFFFF;
+  --ink:#0B2545;
+  --ink-muted:#4C617E;
+  --ink-subtle:#7186A3;
+  --line:#DCE5F1;
+  --line-strong:#C3D2E6;
+
+  --amber:#C8801B;
+  --amber-soft:#FBF1E1;
+
+  --shadow-sm:0 1px 2px rgba(11,37,69,.06), 0 4px 12px rgba(11,37,69,.05);
+  --shadow-md:0 2px 4px rgba(11,37,69,.06), 0 12px 32px rgba(11,37,69,.09);
+  --shadow-lg:0 8px 24px rgba(6,23,41,.18), 0 32px 64px rgba(6,23,41,.22);
+
+  --sans:"Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --shell:1200px;
+  --gutter:clamp(20px, 5vw, 56px);
+  --band:clamp(72px, 9vw, 132px);
+  --radius:14px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth; scroll-padding-top:84px}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.62;
+  font-weight:400; -webkit-font-smoothing:antialiased;
+}
+img,svg{max-width:100%; display:block}
+a{color:inherit}
+h1,h2,h3,h4{margin:0; font-weight:800; letter-spacing:-.022em; line-height:1.1}
+p{margin:0}
+ul{margin:0; padding:0; list-style:none}
+
+.shell{width:100%; max-width:var(--shell); margin-inline:auto; padding-inline:var(--gutter)}
+.band{padding-block:var(--band)}
+.band--paper{background:var(--paper)}
+.band--white{background:var(--paper-raised)}
+.band--navy{background:var(--navy-900); color:var(--navy-ink)}
+.band--navy h2,.band--navy h3{color:var(--white)}
+
+/* --- type scale ---------------------------------------------------------- */
+.display{font-size:clamp(2.4rem, 5.6vw, 4.35rem); letter-spacing:-.032em; line-height:1.03}
+.h2{font-size:clamp(1.85rem, 3.5vw, 2.9rem); letter-spacing:-.028em}
+.h3{font-size:clamp(1.15rem, 1.6vw, 1.35rem); letter-spacing:-.016em; font-weight:700}
+.lead{font-size:clamp(1.06rem, 1.5vw, 1.28rem); line-height:1.55; color:var(--ink-muted); font-weight:500}
+.band--navy .lead{color:var(--navy-ink-muted)}
+.small{font-size:.94rem; line-height:1.6}
+.muted{color:var(--ink-muted)}
+.band--navy .muted{color:var(--navy-ink-muted)}
+
+/* Eyebrow: mono, because every label in the product itself is data, and this
+   page borrows the product's own voice rather than inventing a louder one. */
+.eyebrow{
+  font-family:var(--mono); font-size:.735rem; font-weight:500;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--blue);
+  display:block; margin-bottom:20px;
+}
+.band--navy .eyebrow{color:var(--blue-light)}
+
+.section-head{max-width:760px; margin-bottom:clamp(40px,5vw,64px)}
+.section-head .lead{margin-top:18px}
+.h2 + .lead{margin-top:18px}
+
+/* --- fin motif: the three ascending sails from the mark, reused as a rule -- */
+.fins{display:flex; align-items:flex-end; gap:4px; height:18px}
+.fins i{display:block; background:var(--blue-light); border-radius:1px 3px 0 0;
+  clip-path:polygon(100% 0, 100% 100%, 0 100%)}
+.fins i:nth-child(1){width:7px; height:9px}
+.fins i:nth-child(2){width:9px; height:14px; background:var(--blue)}
+.fins i:nth-child(3){width:11px; height:18px; background:var(--navy)}
+.band--navy .fins i:nth-child(3){background:var(--white)}
+
+/* --- buttons ------------------------------------------------------------- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  font-family:var(--sans); font-weight:700; font-size:.97rem; letter-spacing:-.008em;
+  padding:14px 24px; border-radius:10px; border:1px solid transparent;
+  text-decoration:none; cursor:pointer; transition:transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  white-space:nowrap;
+}
+.btn:hover{transform:translateY(-1px)}
+.btn--primary{background:var(--blue); color:var(--white); box-shadow:0 6px 20px rgba(31,111,235,.32)}
+.btn--primary:hover{background:#1a61d2; box-shadow:0 10px 28px rgba(31,111,235,.4)}
+.btn--ghost{background:rgba(255,255,255,.06); color:var(--white); border-color:rgba(255,255,255,.28); backdrop-filter:blur(6px)}
+.btn--ghost:hover{background:rgba(255,255,255,.13); border-color:rgba(255,255,255,.5)}
+.btn--quiet{background:transparent; color:var(--blue); border-color:var(--line-strong)}
+.btn--quiet:hover{border-color:var(--blue); background:rgba(31,111,235,.05)}
+.btn--sm{padding:10px 18px; font-size:.9rem}
+
+/* --- header -------------------------------------------------------------- */
+.site-header{
+  position:fixed; inset-block-start:0; inset-inline:0; z-index:80;
+  transition:background .25s ease, border-color .25s ease, backdrop-filter .25s ease;
+  border-bottom:1px solid transparent;
+}
+.site-header.is-stuck{background:rgba(6,23,41,.9); backdrop-filter:blur(14px); border-bottom-color:var(--navy-line)}
+.site-header .shell{display:flex; align-items:center; gap:32px; height:72px}
+.brand{display:flex; align-items:center; text-decoration:none; flex:0 0 auto}
+.brand img{height:26px; width:auto}
+.nav{display:flex; gap:28px; margin-inline-start:auto; align-items:center}
+.nav a{
+  color:rgba(255,255,255,.82); text-decoration:none; font-size:.93rem; font-weight:600;
+  letter-spacing:-.008em; transition:color .16s ease;
+}
+.nav a:hover{color:var(--white)}
+/* Bordered, but squared off rather than a pill. */
+.nav-cta{margin-inline-start:4px; border-radius:4px}
+@media (max-width:900px){ .nav{display:none} }
+
+/* --- back to top --------------------------------------------------------- */
+/* Solid blue rather than the glass the header uses: this one floats over paper
+   bands and navy ones alike, and a translucent chip legible on one is invisible
+   on the other. It stays hidden until the hero is behind you — until then it has
+   nothing to undo, and the hero is already pointing the other way. */
+.to-top{
+  position:fixed; inset-block-end:26px; inset-inline-end:26px; z-index:70;
+  display:grid; place-items:center; width:46px; height:46px; border-radius:50%;
+  background:var(--blue); color:var(--white); text-decoration:none;
+  box-shadow:0 6px 20px rgba(6,23,41,.34);
+  opacity:0; visibility:hidden; transform:translateY(10px);
+  transition:opacity .22s ease, transform .22s ease, visibility .22s, background .16s ease, box-shadow .16s ease;
+}
+.to-top.is-on{opacity:1; visibility:visible; transform:none}
+.to-top:hover{background:#1a61d2; transform:translateY(-2px); box-shadow:0 10px 26px rgba(31,111,235,.42)}
+.to-top svg{display:block; width:18px; height:18px}
+@media (max-width:520px){ .to-top{inset-block-end:18px; inset-inline-end:18px} }
+
+/* --- hero ---------------------------------------------------------------- */
+/* Centred, not the copy-left / picture-right split every B2B site runs. The
+   photograph sits behind the whole column and is darkened symmetrically — a
+   radial vignette rather than a one-sided scrim — so it reads as a field the
+   type sits inside rather than as an image pushed to one side. */
+.hero{position:relative; min-height:100svh; display:grid; place-items:center;
+  background:var(--navy-900); overflow:hidden; text-align:center; padding-block:132px 96px}
+.hero__media{position:absolute; inset:0}
+.hero__media img{width:100%; height:100%; object-fit:cover; object-position:center 58%}
+.hero__media::after{
+  content:""; position:absolute; inset:0;
+  background:
+    radial-gradient(82% 66% at 50% 48%, rgba(6,23,41,.26) 0%, rgba(6,23,41,.62) 46%, rgba(6,23,41,.9) 100%),
+    linear-gradient(to bottom, rgba(6,23,41,.7) 0%, rgba(6,23,41,.06) 24%, rgba(6,23,41,.46) 76%, var(--navy-900) 100%);
+}
+.hero .shell{position:relative; z-index:2; display:flex; flex-direction:column; align-items:center}
+.hero h1{color:var(--white); max-width:17ch; text-wrap:balance; margin-inline:auto;
+  text-shadow:0 2px 40px rgba(6,23,41,.55)}
+.hero__sub{margin:28px auto 0; max-width:54ch; color:rgba(232,239,249,.88);
+  font-size:clamp(1.06rem,1.55vw,1.3rem); line-height:1.58; font-weight:500; text-wrap:pretty}
+/* One call to action. A second track would leave it sitting in the left column
+   rather than under the middle of the headline. */
+.hero__actions{margin-top:44px; display:grid; grid-template-columns:minmax(0,16rem);
+  gap:14px; justify-content:center}
+
+/* A thin cue that the page continues. It draws itself downward and repeats —
+   enough to read as an instruction, not enough to be a decoration. */
+.hero__cue{position:absolute; inset-inline:0; inset-block-end:38px; display:grid; place-items:center; gap:12px; z-index:2}
+.hero__cue span{font-family:var(--mono); font-size:.67rem; letter-spacing:.2em;
+  text-transform:uppercase; color:rgba(232,239,249,.42)}
+.hero__cue i{display:block; width:1px; height:46px; background:rgba(232,239,249,.18); position:relative; overflow:hidden}
+.hero__cue i::after{content:""; position:absolute; inset-inline:0; height:16px; background:var(--blue-light);
+  animation:cue 2.4s cubic-bezier(.6,0,.4,1) infinite}
+@keyframes cue{0%{transform:translateY(-18px)} 60%,100%{transform:translateY(46px)}}
+@media (max-height:680px){ .hero__cue{display:none} }
+
+/* --- generic cards ------------------------------------------------------- */
+.grid{display:grid; gap:clamp(16px,2vw,24px)}
+.grid--3{grid-template-columns:repeat(3,1fr)}
+.grid--2{grid-template-columns:repeat(2,1fr)}
+@media (max-width:960px){ .grid--3{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:680px){ .grid--3,.grid--2{grid-template-columns:1fr} }
+
+.card{
+  background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+  padding:28px 26px 30px; box-shadow:var(--shadow-sm);
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.card:hover{transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--line-strong)}
+.card h3{margin-bottom:12px}
+.card p{color:var(--ink-muted); font-size:.985rem; line-height:1.58}
+
+/* Leak cards sit on navy and carry a numeral rather than an icon: the product's
+   own copy rule is that a picture of a truck says nothing a number doesn't. */
+.leak{
+  background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.022));
+  border:1px solid var(--navy-line); border-radius:var(--radius);
+  padding:28px 26px 30px; transition:border-color .2s ease, transform .2s ease, background .2s ease;
+}
+.leak:hover{border-color:rgba(121,176,255,.42); transform:translateY(-3px);
+  background:linear-gradient(180deg, rgba(121,176,255,.1), rgba(255,255,255,.03))}
+.leak__n{font-family:var(--mono); font-size:.76rem; letter-spacing:.13em; color:var(--blue-light); display:block; margin-bottom:16px}
+.leak h3{font-size:1.1rem; color:var(--white); margin-bottom:11px; line-height:1.28}
+.leak p{color:var(--navy-ink-muted); font-size:.96rem; line-height:1.6}
+
+/* --- figures ------------------------------------------------------------- */
+.figure{margin-top:clamp(44px,5vw,68px)}
+.figure svg{width:100%; height:auto}
+.figure figcaption{
+  margin-top:22px; font-size:.96rem; line-height:1.6; color:var(--navy-ink-muted);
+  max-width:66ch; border-inline-start:2px solid var(--blue); padding-inline-start:18px;
+}
+.band--white .figure figcaption,.band--paper .figure figcaption{color:var(--ink-muted)}
+
+.pull{
+  margin-top:clamp(44px,5vw,64px);
+  font-size:clamp(1.15rem,2vw,1.6rem); font-weight:700; letter-spacing:-.022em;
+  line-height:1.36; color:var(--white); max-width:34ch;
+}
+.band--white .pull,.band--paper .pull{color:var(--ink)}
+
+/* --- the six-state rail -------------------------------------------------- */
+.rail{position:relative; display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-top:8px}
+.rail::before{
+  content:""; position:absolute; inset-block-start:21px; inset-inline:8%;
+  height:2px; background:linear-gradient(90deg,var(--blue-light),var(--blue),var(--navy));
+  opacity:.32;
+}
+.stage{position:relative; text-align:center; padding-top:0}
+.stage__dot{
+  width:44px; height:44px; border-radius:50%; margin:0 auto 18px;
+  display:grid; place-items:center; position:relative; z-index:2;
+  background:var(--navy); color:var(--white);
+  font-family:var(--mono); font-size:.86rem; font-weight:600;
+  box-shadow:0 0 0 6px var(--paper-raised), 0 0 0 7px var(--line-strong), 0 4px 12px rgba(11,37,69,.2);
+}
+.stage:nth-child(1) .stage__dot{background:var(--blue-light); color:var(--navy)}
+.stage:nth-child(2) .stage__dot{background:#4B8CF0}
+.stage:nth-child(3) .stage__dot{background:var(--blue)}
+.stage:nth-child(4) .stage__dot{background:#1856B4}
+.stage:nth-child(5) .stage__dot{background:#123E7C}
+.stage h3{font-size:1.02rem; margin-bottom:8px}
+.stage p{font-size:.9rem; color:var(--ink-muted); line-height:1.5}
+@media (max-width:860px){
+  .rail{grid-template-columns:1fr; gap:0}
+  .rail::before{inset-block:22px auto; inset-block-end:22px; inset-inline-start:21px; inset-inline-end:auto; width:2px; height:auto}
+  .stage{display:grid; grid-template-columns:44px 1fr; gap:0 20px; text-align:start; padding-bottom:26px}
+  .stage__dot{margin:0; box-shadow:0 0 0 6px var(--paper-raised), 0 0 0 7px var(--line-strong)}
+  .stage h3{grid-column:2; margin-top:9px}
+  .stage p{grid-column:2}
+}
+
+/* --- product blocks with screenshots ------------------------------------- */
+.split{display:grid; grid-template-columns:minmax(0,.52fr) minmax(0,1fr); gap:clamp(28px,3.4vw,52px); align-items:center}
+.split--flip{grid-template-columns:minmax(0,1fr) minmax(0,.52fr)}
+.split--flip .split__copy{order:2}
+@media (max-width:980px){
+  .split{grid-template-columns:1fr; gap:40px}
+  .split--flip .split__copy{order:0}
+}
+.split__copy .h2{margin-bottom:20px}
+.split__copy .lead{margin-bottom:26px}
+.feature-list{margin-top:22px; padding-inline-start:1.15em; list-style:disc; display:grid; gap:11px}
+.feature-list li{display:list-item; font-size:.93rem; line-height:1.52; color:var(--ink-muted)}
+.feature-list li::marker{color:var(--blue)}
+.feature-list b{color:var(--ink); font-weight:700}
+
+/* Browser chrome around a screenshot: it reads as "this is the running
+   product" rather than "this is a rendering of one". */
+.frame{
+  border-radius:12px; overflow:hidden; background:var(--paper-raised);
+  border:1px solid var(--line-strong); box-shadow:var(--shadow-lg);
+}
+.frame img{width:100%; height:auto}
+.stack{display:grid; gap:20px}
+.stack--offset{position:relative}
+.stack--offset .frame:last-child{margin-inline-start:clamp(24px,6%,64px)}
+
+/* --- bilingual pair ------------------------------------------------------ */
+/* Two identical cards — same size, same content, numbers and map — with the
+   Arabic one laid over the English at a diagonal offset. The offset is set so
+   the Arabic card's top edge clears the English stat row: both rows of numbers
+   stay readable, one above the other, and the Arabic card covers the middle of
+   the English map while its own map carries on below.
+   Side by side reads as a comparison you are asked to perform. Overlapped reads
+   as one product, twice — which is the actual claim. */
+#bilingual .shell{max-width:1800px; padding-inline:clamp(14px,1.6vw,30px)}
+
+/* Every offset below is a percentage of the container's WIDTH — including the
+   vertical ones, because percentage margins and padding resolve against width
+   even in the block direction. That is what keeps the two cards registered to
+   each other at every viewport instead of drifting apart as the page narrows. */
+.pair{position:relative; padding-block-end:24%}
+.pair figure{margin:0}
+.pair .frame{height:auto; overflow:hidden; background:var(--navy-raised); border-color:rgba(255,255,255,.16)}
+/* These two captures already have the sidebar cropped out, so the frame takes
+   them whole. */
+.pair .frame img{width:100%; height:auto; display:block}
+
+.pair__en{width:72%}
+.pair__ar{
+  position:absolute; inset-block-start:0; inset-inline-end:0; z-index:2;
+  width:72%; padding-block-start:20.2%;   /* clears the English stat row */
+}
+.pair__ar .frame{
+  box-shadow:0 28px 80px rgba(6,23,41,.66), 0 4px 16px rgba(6,23,41,.45);
+  border-color:rgba(121,176,255,.3);
+}
+
+@media (max-width:900px){
+  .pair{padding-block-end:0; display:grid; gap:clamp(22px,4vw,38px)}
+  .pair__en,.pair__ar{width:100%; position:static; padding-block-start:0}
+}
+
+.pair figcaption{
+  margin-top:16px; font-family:var(--mono); font-size:.76rem; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--navy-ink-muted); display:flex; align-items:center; gap:9px;
+}
+.pair figcaption::before{content:""; width:16px; height:1px; background:var(--blue-light)}
+.pair--rtl figcaption{direction:rtl; justify-content:flex-end}
+
+/* --- scope columns ------------------------------------------------------- */
+.scope{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(18px,2.4vw,28px); margin-top:8px}
+@media (max-width:900px){ .scope{grid-template-columns:1fr} }
+.scope__col{
+  background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+  padding:26px 24px 28px; transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  --accent:76,97,126; --accent-ink:var(--ink-muted);
+}
+/* In it / not in it / coming — green, red, blue. The column is neutral at rest
+   and takes its colour under the pointer, so the table reads as three equal
+   statements of fact rather than one recommendation and two disclaimers. */
+.scope__col--in{--accent:15,138,87;  --accent-ink:#0F8A57}
+.scope__col--not{--accent:192,57,47; --accent-ink:#C0392F}
+.scope__col--road{--accent:31,111,235; --accent-ink:#1F6FEB}
+.scope__col:hover{
+  border-color:rgba(var(--accent),.5);
+  box-shadow:0 0 0 1px rgba(var(--accent),.16), var(--shadow-md);
+  transform:translateY(-3px);
+}
+.scope__title{
+  font-family:var(--mono); font-size:.74rem; letter-spacing:.14em; text-transform:uppercase;
+  margin-bottom:20px; display:flex; align-items:center; gap:9px; color:var(--accent-ink);
+}
+.scope ul li{
+  padding:10px 0; border-bottom:1px solid var(--line); font-size:.95rem; line-height:1.5;
+  display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:baseline;
+}
+.scope ul li:last-child{border-bottom:0}
+.scope ul li::before{content:"—"; color:var(--ink-subtle); font-family:var(--mono); font-size:.8rem}
+.scope__col--in ul li::before{content:"✓"; color:var(--accent-ink); font-size:.85rem}
+.scope__col--not ul li::before{content:"✕"; color:rgba(var(--accent),.8); font-size:.8rem}
+.scope__col--road ul li::before{content:"→"; color:var(--accent-ink); font-size:.85rem}
+.scope small{display:block; color:var(--ink-subtle); font-size:.85rem; margin-top:3px}
+
+/* --- integration boxes --------------------------------------------------- */
+.pill{
+  display:inline-flex; align-items:center; gap:7px; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; font-weight:500;
+  padding:5px 11px; border-radius:100px; white-space:nowrap;
+}
+.pill::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+.pill--live{background:rgba(31,111,235,.1); color:var(--blue)}
+.pill--wait{background:var(--amber-soft); color:var(--amber)}
+.pill--none{background:#EEF2F8; color:var(--ink-subtle)}
+/* Six identical white boxes were saying three different things. The card now
+   carries its own state rather than leaving the whole job to the pill: a rail in
+   the pill's own colour, and — for the one thing that is not built — the dashed,
+   flat treatment the mailbox figure in section 02 already uses to mean "nothing
+   is here yet". The rail is a stub at rest and draws to full height on hover,
+   which is the only motion in the grid and belongs to the card you are reading. */
+.conn{display:flex; flex-direction:column; gap:14px; position:relative; overflow:hidden}
+.conn h3{font-size:1.04rem}
+.conn p{font-size:.94rem; color:var(--ink-muted); line-height:1.55}
+.conn::before{
+  content:""; position:absolute; inset-block-start:27px; inset-inline-start:0;
+  width:3px; height:30px; border-radius:0 3px 3px 0; background:var(--line-strong);
+  transition:height .32s cubic-bezier(.2,.7,.3,1), background .2s ease;
+}
+.conn:hover::before{height:calc(100% - 54px)}
+.conn--live::before{background:var(--blue)}
+.conn--wait::before{background:var(--amber)}
+/* Not built, so it does not get to sit forward with the ones that are. */
+.conn--none{background:transparent; border-style:dashed; border-color:var(--line-strong); box-shadow:none}
+.conn--none:hover{box-shadow:none; border-color:var(--ink-subtle); transform:translateY(-3px)}
+.conn--none h3{color:var(--ink-muted)}
+.conn--none::before{background:#B8C6DA}
+
+/* --- the 09 → 10 transition ---------------------------------------------- */
+/* The page goes from a white band to the darkest one on the site, which is a
+   hard join. A photograph blurred at both edges and sharp in the middle carries
+   it: the light end dissolves out of the paper, the dark end dissolves into the
+   navy, and the strip in between is the only part you actually read as an
+   image. Two blur layers rather than one — a real progressive blur needs a
+   ramp, and a single pass reads as a smear. */
+.fade{
+  position:relative; z-index:1; height:clamp(240px,30vw,420px); overflow:hidden;
+  background:var(--paper);
+  margin-block-start:calc(var(--band) * -0.5);
+  margin-block-end:calc(var(--band) * -0.5);
+}
+.fade > img{width:100%; height:100%; object-fit:cover; object-position:center 62%}
+.fade__blur{position:absolute; inset:0; pointer-events:none}
+.fade__blur--soft{
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,#000 12%,transparent 38%,transparent 60%,#000 88%,#000 100%);
+          mask-image:linear-gradient(180deg,#000 0%,#000 12%,transparent 38%,transparent 60%,#000 88%,#000 100%);
+}
+.fade__blur--hard{
+  backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,transparent 22%,transparent 76%,#000 100%);
+          mask-image:linear-gradient(180deg,#000 0%,transparent 22%,transparent 76%,#000 100%);
+}
+.fade::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg,
+    var(--paper) 0%, rgba(244,247,252,.7) 10%, rgba(244,247,252,.12) 27%,
+    rgba(6,23,41,.14) 57%, rgba(6,23,41,.66) 83%, var(--navy-900) 100%);
+}
+/* Safari and Firefox without backdrop-filter still get the gradient join, which
+   is the part that actually does the work. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .fade__blur{display:none}
+}
+
+/* --- the 09 → 10 seam ----------------------------------------------------- */
+/* No photograph here — the pilot band already carries one, and two images in a
+   row would compete. Just a blue that dissolves the white section into the
+   darkest one on the page. The glow is a blurred radial rather than another
+   gradient stop, because a gradient alone still leaves a readable edge where
+   its slope changes. */
+.seam{
+  position:relative; z-index:1; height:clamp(160px,18vw,300px); overflow:hidden;
+  margin-block-start:calc(var(--band) * -0.5);
+  margin-block-end:calc(var(--band) * -0.5);
+  background:linear-gradient(180deg,
+    var(--paper-raised) 0%, #EAF1FD 22%, #9FC0F2 48%, #2F5DA8 74%, var(--navy-900) 100%);
+}
+/* The glow is masked out before the seam's bottom edge. Left to itself it is
+   taller than the seam, and overflow:hidden cut its bright middle off against
+   the navy as a straight line — visible across the centre and not at the
+   corners, where the radial has already fallen away horizontally. */
+.seam i{
+  position:absolute; inset-inline:-10%; inset-block-start:34%; height:70%;
+  background:radial-gradient(60% 100% at 50% 30%, rgba(121,176,255,.85), rgba(31,111,235,.35) 55%, transparent 78%);
+  filter:blur(52px); opacity:.9;
+  -webkit-mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.55) 46%,transparent 82%);
+          mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.55) 46%,transparent 82%);
+}
+/* And the last hand's breadth of the seam is navy over navy, so whatever the
+   gradient and the glow leave behind lands on the pilot band without a step. */
+.seam::after{
+  content:""; position:absolute; inset-inline:0; inset-block-end:0; height:34%;
+  background:linear-gradient(180deg, rgba(6,23,41,0) 0%, rgba(6,23,41,.72) 58%, var(--navy-900) 100%);
+}
+
+/* --- the dev toggle ------------------------------------------------------- */
+/* Not part of the design. It is here so the copy can be read at two lengths
+   side by side before one of them is chosen. */
+.nav-dev{
+  font-family:var(--mono); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase;
+  color:rgba(255,255,255,.55); background:transparent; border:1px dashed rgba(255,255,255,.3);
+  border-radius:4px; padding:7px 11px; cursor:pointer; margin-inline-start:10px;
+  transition:color .16s ease, border-color .16s ease;
+}
+.nav-dev:hover{color:var(--white); border-color:rgba(255,255,255,.6)}
+.nav-dev[aria-pressed="true"]{color:var(--blue-light); border-color:var(--blue-light); border-style:solid}
+
+/* --- footer wave ---------------------------------------------------------- */
+.footer-wave{background:var(--paper); line-height:0; position:relative}
+.footer-wave svg{display:block; width:100%; height:clamp(64px,7.5vw,132px)}
+
+/* --- pilot band ---------------------------------------------------------- */
+.pilot{position:relative; overflow:hidden; background:var(--navy-900)}
+.pilot__media{position:absolute; inset:0}
+.pilot__media img{width:100%; height:100%; object-fit:cover; opacity:.42}
+.pilot__media::after{content:""; position:absolute; inset:0;
+  background:linear-gradient(100deg, rgba(6,23,41,.95) 8%, rgba(6,23,41,.78) 46%, rgba(6,23,41,.5) 100%)}
+.pilot .shell{position:relative; z-index:2}
+.pilot__grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,460px); gap:clamp(40px,5vw,76px); align-items:start}
+@media (max-width:980px){ .pilot__grid{grid-template-columns:1fr} }
+.steps{display:grid; gap:2px; margin-top:36px}
+.step{display:grid; grid-template-columns:auto 1fr; gap:20px; padding:20px 0; border-bottom:1px solid var(--navy-line)}
+.step:last-child{border-bottom:0}
+.step__n{font-family:var(--mono); font-size:.8rem; color:var(--blue-light); padding-top:4px; letter-spacing:.08em}
+.step h3{font-size:1.04rem; margin-bottom:7px; color:var(--white)}
+.step p{font-size:.94rem; color:var(--navy-ink-muted); line-height:1.55}
+
+/* --- form ---------------------------------------------------------------- */
+.form-card{background:rgba(255,255,255,.055); border:1px solid var(--navy-line); border-radius:var(--radius); padding:clamp(26px,3vw,34px); backdrop-filter:blur(10px)}
+/* .pilot is dark but is not .band--navy, so the white heading override does not
+   reach here — the ink default rendered this all but invisible on the navy. */
+.form-card h3{font-size:1.2rem; margin-bottom:8px; color:var(--white)}
+.form-card > p{font-size:.94rem; color:var(--navy-ink-muted); margin-bottom:24px}
+.field{display:grid; gap:7px; margin-bottom:15px}
+.field label{font-family:var(--mono); font-size:.71rem; letter-spacing:.12em; text-transform:uppercase; color:var(--navy-ink-muted)}
+.field input,.field select{
+  font-family:var(--sans); font-size:.97rem; color:var(--white);
+  background:rgba(0,0,0,.26); border:1px solid var(--navy-line); border-radius:9px;
+  padding:12px 14px; width:100%; transition:border-color .16s ease, background .16s ease;
+}
+.field input::placeholder{color:rgba(157,180,212,.55)}
+.field input:focus,.field select:focus{outline:none; border-color:var(--blue-light); background:rgba(0,0,0,.4)}
+.field select option{background:var(--navy); color:var(--white)}
+.field-row{display:grid; grid-template-columns:1fr 1fr; gap:15px}
+/* An even split is wrong for the last row: the select holds "7 or more" and no
+   more, while its neighbour has to show a placeholder of worked examples. Split
+   evenly, that placeholder clipped mid-word at every width the card is laid out
+   at. */
+.field-row--uneven{grid-template-columns:minmax(0,.52fr) minmax(0,1fr)}
+@media (max-width:520px){ .field-row{grid-template-columns:1fr} }
+.form-card .btn{width:100%; margin-top:10px}
+.form-note{margin-top:16px; font-size:.84rem; color:var(--navy-ink-muted); line-height:1.5}
+.form-sent{
+  display:none; margin-top:18px; padding:14px 16px; border-radius:9px;
+  background:rgba(121,176,255,.12); border:1px solid rgba(121,176,255,.3);
+  font-size:.92rem; line-height:1.55; color:var(--navy-ink);
+}
+.form-sent.is-on{display:block}
+
+/* --- FAQ ----------------------------------------------------------------- */
+.faq{max-width:860px; margin-top:8px}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{
+  cursor:pointer; list-style:none; padding:24px 44px 24px 0; position:relative;
+  font-weight:700; font-size:1.05rem; letter-spacing:-.014em; color:var(--ink);
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{
+  content:""; position:absolute; inset-inline-end:8px; inset-block-start:31px;
+  width:11px; height:11px; border-inline-end:2px solid var(--blue); border-block-end:2px solid var(--blue);
+  transform:rotate(45deg); transition:transform .2s ease;
+}
+.faq details[open] summary::after{transform:rotate(-135deg); inset-block-start:34px}
+.faq summary:hover{color:var(--blue)}
+.faq p{padding:0 44px 26px 0; color:var(--ink-muted); font-size:.99rem; line-height:1.65; max-width:72ch}
+
+/* --- divider photo ------------------------------------------------------- */
+.divider{height:clamp(200px,26vw,340px); position:relative; overflow:hidden; background:var(--navy-900)}
+.divider img{width:100%; height:100%; object-fit:cover}
+.divider::after{content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg,var(--paper) 0%, rgba(11,37,69,.35) 26%, rgba(11,37,69,.55) 74%, var(--navy-900) 100%)}
+
+/* --- footer -------------------------------------------------------------- */
+.site-footer{background:var(--navy-900); color:var(--navy-ink-muted); padding-block:0 40px}
+.footer-top{margin-block-start:clamp(40px,5vw,72px); display:grid; grid-template-columns:minmax(0,1.4fr) repeat(2,minmax(0,1fr)); gap:40px; padding-bottom:44px; border-bottom:1px solid var(--navy-line)}
+@media (max-width:820px){ .footer-top{grid-template-columns:1fr 1fr} .footer-brand{grid-column:1/-1} }
+.footer-brand img{height:30px; margin-bottom:22px}
+.footer-brand p{font-size:.95rem; line-height:1.62; max-width:40ch}
+.site-footer h4{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--blue-light); margin-bottom:18px; font-weight:500}
+.site-footer li{margin-bottom:11px}
+.site-footer a{color:var(--navy-ink-muted); text-decoration:none; font-size:.94rem; transition:color .16s ease}
+.site-footer a:hover{color:var(--white)}
+.footer-bottom{display:flex; flex-wrap:wrap; gap:14px 28px; justify-content:space-between; padding-top:28px; font-size:.85rem}
+
+
+/* ---------------------------------------------------------------------------
+   The stacked deck (sections 03–05)
+   Three sticky siblings in one tall wrapper. Each pins under the header; the
+   next slides up and covers it. The card underneath is scaled and dimmed from
+   JS as it is covered, which is what makes the stack read as depth rather than
+   as one panel replacing another.
+--------------------------------------------------------------------------- */
+.stackwrap{
+  background:var(--paper);
+  padding-block:var(--band) calc(var(--band) + 4vh);
+  padding-inline:var(--gutter);
+}
+.stack-card{
+  position:sticky; inset-block-start:84px;
+  max-width:1500px; margin-inline:auto;
+  margin-block-end:clamp(24px,4vh,52px);
+}
+.stack-card:last-child{margin-block-end:0}
+.stack-card .h2{font-size:clamp(1.55rem,2.35vw,2.1rem)}
+.stack-card .lead{font-size:clamp(.98rem,1.15vw,1.08rem); margin-top:14px}
+.stack-card .eyebrow{margin-bottom:14px}
+.stack-card__inner{
+  background:var(--paper-raised);
+  border:1px solid var(--line); border-radius:22px;
+  padding:clamp(24px,2.6vw,40px);
+  box-shadow:0 20px 56px rgba(11,37,69,.11), 0 3px 10px rgba(11,37,69,.05);
+  transform-origin:50% 0%;
+  will-change:transform, opacity;
+  overflow:hidden;
+}
+.stack-card--dark .stack-card__inner{
+  background:var(--navy-900); border-color:rgba(255,255,255,.1); color:var(--navy-ink);
+  box-shadow:0 24px 64px rgba(6,23,41,.34), 0 3px 10px rgba(6,23,41,.2);
+}
+.stack-card--dark .h2{color:var(--white)}
+.stack-card--dark .lead{color:var(--navy-ink-muted)}
+.stack-card--dark .eyebrow{color:var(--blue-light)}
+.stack-card--dark .feature-list li{color:var(--navy-ink-muted)}
+.stack-card--dark .feature-list b{color:var(--white)}
+.stack-card--dark .fins i:nth-child(3){background:var(--white)}
+.stack-card--dark .frame{border-color:rgba(255,255,255,.16)}
+/* Two screenshots, same width and same height, one above the other. The height
+   is clamped against the viewport rather than the image, because the card has
+   to finish inside one screen for the sticky stack to read at all — so the
+   frames crop from the top, which is the informative half of every screen. */
+.shot .frame{border-radius:12px; height:auto; max-height:calc(100vh - 210px); overflow:hidden}
+.shot .frame img{width:120.5%; max-width:none; height:auto; display:block;
+  margin-inline-start:-20.5%}   /* 17% of the rendered width — the sidebar */
+@media (max-width:980px){
+  .shot .frame{height:auto}
+  .shot .frame img{width:100%; margin-inline-start:0}
+}
+@media (max-width:820px){
+  .stack-card{position:static; inset-block-start:auto}
+  .stack-card__inner{transform:none !important; opacity:1 !important}
+}
+
+/* --- finish: grain, nav underline, focus ---------------------------------- */
+/* A single fixed grain layer over the whole page. At 3% it is invisible as
+   texture and visible as the absence of flatness on the large navy fields. */
+body::after{
+  content:""; position:fixed; inset:0; z-index:200; pointer-events:none; opacity:.032;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.nav a:not(.btn){position:relative}
+.nav a:not(.btn)::after{
+  content:""; position:absolute; inset-inline:0; inset-block-end:-6px; height:1px;
+  background:currentColor; transform:scaleX(0); transform-origin:100% 50%;
+  transition:transform .34s cubic-bezier(.4,0,.2,1);
+}
+.nav a:not(.btn):hover::after{transform:scaleX(1); transform-origin:0 50%}
+.hero__media img{transform:scale(1.08); will-change:transform}
+:focus-visible{outline:2px solid var(--blue-light); outline-offset:3px; border-radius:4px}
+::selection{background:rgba(31,111,235,.24)}
+
+/* --- motion -------------------------------------------------------------- */
+.rise{opacity:0; transform:translateY(18px); transition:opacity .6s cubic-bezier(.2,.7,.3,1), transform .6s cubic-bezier(.2,.7,.3,1)}
+.rise.is-in{opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .rise{opacity:1; transform:none; transition:none}
+  .btn:hover,.card:hover,.leak:hover,.to-top:hover,.conn--none:hover{transform:none}
+  .conn::before{transition:none}
+  .to-top{transform:none}
+}
+</style>
+</head>
+<body>
+
+<header class="site-header" id="siteHeader">
+  <div class="shell">
+    <a class="brand" href="#top" aria-label="CargoSharks — home">
+      <img src="cargosharks-logo/svg/cargosharks-logo-dark-transparent.svg" alt="CargoSharks">
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#leak">The problem</a>
+      <a href="#loop">The loop</a>
+      <a href="#commercial">Product</a>
+      <a href="#scope">Scope</a>
+      <a href="#pilot">Pilot</a>
+      <a class="btn btn--ghost btn--sm nav-cta" href="#pilot">Book the pilot</a>
+      <button class="nav-dev" id="shortToggle" type="button" aria-pressed="false">Shorter text</button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- 01 ─────────────────────────────────────────────────────── hero ───── -->
+<section class="hero">
+  <div class="hero__media">
+    <img src="pic/photos/hero-port-dusk.jpg" alt="Container terminal at dusk, ship-to-shore cranes working a vessel" fetchpriority="high">
+  </div>
+  <div class="shell">
+    <h1 class="display">Freight forwarding software built in the Gulf, for the Gulf.</h1>
+    <p class="hero__sub">Arabic and English from the first line of code. Your brand on it, your database under it, and the data inside it belongs to you.</p>
+    <div class="hero__actions">
+      <a class="btn btn--primary" href="#pilot">See it on your own data</a>
+    </div>
+  </div>
+  <div class="hero__cue" aria-hidden="true"><i></i><span>What it costs you</span></div>
+</section>
+
+<!-- 02 ─────────────────────────────────────────────────────── the leak ── -->
+<section class="band band--navy" id="leak">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">01 — What the status quo costs</p>
+      <h2 class="h2">Nothing here fails loudly. It leaks.</h2>
+      <p class="lead">Manual forwarding doesn’t collapse. It drains quietly, in six places at once, and every one of them is a system-of-record problem rather than a people problem.</p>
+    </div>
+
+    <div class="grid grid--3">
+      <article class="leak rise"><span class="leak__n">01</span>
+        <h3>The enquiry you answered in a day and a half</h3>
+        <p data-short="Rates live in spreadsheets. You lose the deal to whoever answered in minutes.">Rates live in spreadsheets and in people’s heads, so no lane can be priced without a person assembling it. You lose the deal to whoever answered in minutes, and your sales capacity is capped at the number of people who can price.</p>
+      </article>
+      <article class="leak rise"><span class="leak__n">02</span>
+        <h3>The enquiries you can’t count</h3>
+        <p data-short="Five mailboxes, a form, a phone and WhatsApp. No owner, no clock, no trace.">They arrive at five branch mailboxes, a web form, a phone line and WhatsApp. Nothing gives them an owner, a clock or a status. An enquiry nobody answered leaves no trace at all.</p>
+      </article>
+      <article class="leak rise"><span class="leak__n">03</span>
+        <h3>Free time nobody was counting</h3>
+        <p data-short="Clocks nobody runs. Money you already earned and did not collect.">Demurrage, detention and storage accrue per day against agreed free time. Without a counter they are remembered inconsistently and recovered partially. This is money you already earned and did not collect.</p>
+      </article>
+      <article class="leak rise"><span class="leak__n">04</span>
+        <h3>The container held before anyone looked</h3>
+        <p data-short="A hold is discovered, not watched. The demurrage started before anyone noticed.">Clearance is a core service under your own licence, but a hold is usually discovered rather than watched. Days go before anyone acts, and the demurrage clock started before anybody noticed it had.</p>
+      </article>
+      <article class="leak rise"><span class="leak__n">05</span>
+        <h3>The margin you find out about at month-end</h3>
+        <p data-short="Buy and sell meet at invoicing. A loss-making lane runs for months unseen.">Buy and sell only meet at invoicing, weeks after the cargo moved. A loss-making lane runs for months before it is visible, and every price is set without knowing how the last one turned out.</p>
+      </article>
+      <article class="leak rise"><span class="leak__n">06</span>
+        <h3>The work nobody bills</h3>
+        <p data-short="Every “where is my container” is a call someone answers by going to find out. Unbilled.">Every “where is my container” is a call answered by someone who first has to go and find out. Status chasing is the largest single consumer of operations time in most forwarding businesses — invisible, and billed to nobody.</p>
+      </article>
+    </div>
+
+    <figure class="figure rise">
+      <svg viewBox="0 0 1040 336" role="img" aria-label="Left: five branch mailboxes with no owner, clock or status. Right: one queue with an owner, an enquiry and a deadline on every row.">
+        <defs>
+          <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 1 L9 5 L0 9 z" fill="#79B0FF"/>
+          </marker>
+        </defs>
+
+        <!-- Left and right carry the same three column names. On the left every
+             one of them is missing, which is the whole argument of the figure. -->
+        <g font-family="IBM Plex Mono, monospace">
+          <text x="0" y="16" fill="#9DB4D4" font-size="12" letter-spacing="2.2">TODAY</text>
+          <text x="0" y="40" fill="#5C7797" font-size="11" letter-spacing="1.5">NO OWNER · NO CLOCK · NO STATUS</text>
+          <text x="596" y="16" fill="#79B0FF" font-size="12" letter-spacing="2.2">ONE QUEUE</text>
+          <text x="596" y="40" fill="#4E7CB8" font-size="11" letter-spacing="1.5">EVERY ROW HAS ALL THREE</text>
+        </g>
+
+        <!-- five mailboxes: unaligned, unconnected, nothing between them.
+             Two lines each — the branch, then what the mailbox is for — because
+             "cs@" and "ops@" mean something inside a forwarder and nothing to
+             the person reading this page. -->
+        <g>
+          <rect x="6" y="60" width="204" height="50" rx="8" fill="rgba(255,255,255,.04)" stroke="#405D82" stroke-dasharray="5 4"/>
+          <text x="23" y="82" font-family="Manrope, sans-serif" font-size="13.5" font-weight="600" fill="#C3D5EC">Kuwait</text>
+          <text x="23" y="100" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7189A8">sales mailbox</text>
+          <rect x="212" y="92" width="204" height="50" rx="8" fill="rgba(255,255,255,.04)" stroke="#405D82" stroke-dasharray="5 4"/>
+          <text x="229" y="114" font-family="Manrope, sans-serif" font-size="13.5" font-weight="600" fill="#C3D5EC">Doha</text>
+          <text x="229" y="132" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7189A8">operations mailbox</text>
+          <rect x="30" y="146" width="204" height="50" rx="8" fill="rgba(255,255,255,.04)" stroke="#405D82" stroke-dasharray="5 4"/>
+          <text x="47" y="168" font-family="Manrope, sans-serif" font-size="13.5" font-weight="600" fill="#C3D5EC">Dubai</text>
+          <text x="47" y="186" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7189A8">customer service mailbox</text>
+          <!-- Dropped clear of Dubai's row. The scatter is the point, but two boxes
+               crossing each other reads as a drawing mistake rather than as five
+               places an enquiry can land. -->
+          <rect x="224" y="204" width="204" height="50" rx="8" fill="rgba(255,255,255,.04)" stroke="#405D82" stroke-dasharray="5 4"/>
+          <text x="241" y="226" font-family="Manrope, sans-serif" font-size="13.5" font-weight="600" fill="#C3D5EC">Abu Dhabi</text>
+          <text x="241" y="244" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7189A8">customer service mailbox</text>
+          <rect x="10" y="236" width="204" height="50" rx="8" fill="rgba(255,255,255,.04)" stroke="#405D82" stroke-dasharray="5 4"/>
+          <text x="27" y="258" font-family="Manrope, sans-serif" font-size="13.5" font-weight="600" fill="#C3D5EC">Jebel Ali</text>
+          <text x="27" y="276" font-family="IBM Plex Mono, monospace" font-size="11" fill="#7189A8">customer service mailbox</text>
+        </g>
+        <!-- and the three doors nobody counts as doors -->
+        <rect x="6" y="298" width="424" height="30" rx="8" fill="none" stroke="#2F4A69" stroke-dasharray="4 5"/>
+        <text x="24" y="318" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="#4E6B8F">+ a web form, a phone line and WhatsApp</text>
+
+        <line x1="446" y1="176" x2="556" y2="176" stroke="#79B0FF" stroke-width="2" marker-end="url(#arrowhead)" opacity=".85"/>
+
+        <!-- one queue -->
+        <rect x="596" y="62" width="440" height="238" rx="12" fill="rgba(31,111,235,.09)" stroke="#1F6FEB"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="12" fill="#79B0FF" letter-spacing="1.4">
+          <text x="620" y="94">OWNER</text>
+          <text x="760" y="94">ENQUIRY</text>
+          <text x="946" y="94">DUE</text>
+        </g>
+        <line x1="620" y1="108" x2="1012" y2="108" stroke="rgba(121,176,255,.28)"/>
+        <g font-family="Manrope, sans-serif" font-size="14" fill="#E8EFF9">
+          <circle cx="628" cy="136" r="8" fill="#79B0FF"/><text x="648" y="141" font-size="13" fill="#9DB4D4">NA</text>
+          <text x="760" y="141">Jebel Ali → Shuwaikh</text>
+          <rect x="936" y="124" width="76" height="24" rx="12" fill="rgba(121,176,255,.16)"/>
+          <text x="952" y="141" font-size="12" fill="#79B0FF" font-family="IBM Plex Mono, monospace">2h 10m</text>
+
+          <circle cx="628" cy="192" r="8" fill="#1F6FEB"/><text x="648" y="197" font-size="13" fill="#9DB4D4">HS</text>
+          <text x="760" y="197">Doha → Dammam</text>
+          <rect x="936" y="180" width="76" height="24" rx="12" fill="rgba(121,176,255,.16)"/>
+          <text x="952" y="197" font-size="12" fill="#79B0FF" font-family="IBM Plex Mono, monospace">5h 48m</text>
+
+          <circle cx="628" cy="248" r="8" fill="#C8801B"/><text x="648" y="253" font-size="13" fill="#9DB4D4">MK</text>
+          <text x="760" y="253">Shanghai → Abu Dhabi</text>
+          <rect x="936" y="236" width="76" height="24" rx="12" fill="rgba(200,128,27,.2)"/>
+          <text x="946" y="253" font-size="12" fill="#E0A252" font-family="IBM Plex Mono, monospace">breached</text>
+        </g>
+      </svg>
+      <figcaption>A customer shipping Kuwait to Abu Dhabi is a conversation in two mailboxes, owned by two people, with no shared record between them.</figcaption>
+    </figure>
+
+    <p class="pull rise">It costs you the jobs you priced too slowly, and the ones you priced too cheaply.</p>
+  </div>
+</section>
+
+<!-- 03 ─────────────────────────────────────────────────────── the loop ── -->
+<section class="band band--white" id="loop">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">02 — How it works</p>
+      <h2 class="h2">One record. Six states. No exits.</h2>
+      <p class="lead">A job enters as an enquiry and leaves as a paid invoice without ever being re‑keyed into something else.</p>
+    </div>
+
+    <div class="rail rise">
+      <div class="stage"><div class="stage__dot">01</div><h3>Enquiry</h3><p>One queue, one owner, one clock.</p></div>
+      <div class="stage"><div class="stage__dot">02</div><h3>Quote</h3><p>Priced from your card where one covers the lane; sent to agents where it doesn’t.</p></div>
+      <div class="stage"><div class="stage__dot">03</div><h3>Award</h3><p>Acceptance converts the quote. Buy, sell and margin lock to the record.</p></div>
+      <div class="stage"><div class="stage__dot">04</div><h3>Execution</h3><p>Milestones, customs stage, containers, free-time clocks, exceptions.</p></div>
+      <div class="stage"><div class="stage__dot">05</div><h3>Documents</h3><p>Typed, versioned, attached — released to the customer where permitted.</p></div>
+      <div class="stage"><div class="stage__dot">06</div><h3>Invoice</h3><p>Raised from the job’s own cost ledger, in the right entity, currency and language.</p></div>
+    </div>
+
+    <p class="small muted rise" style="margin-top:clamp(36px,4vw,52px); max-width:70ch">
+      Sea FCL, sea LCL, air, land and courier. Chargeable weight, milestone sets and free-time rules are calculated per mode rather than approximated across them.
+    </p>
+  </div>
+</section>
+
+<!-- 03–05 ──────────────────────────── product, as a stacked deck ───── -->
+<!--
+  The three product sections are sticky siblings inside one tall wrapper, so each
+  pins under the header and the next one slides up over it. The scale-and-dim on
+  the card underneath is driven from scroll position in JS rather than CSS
+  scroll-timelines, because the effect has to survive Safari.
+-->
+<section class="stackwrap" id="commercial">
+
+  <article class="stack-card">
+    <div class="stack-card__inner">
+      <div class="split">
+        <div class="split__copy">
+          <p class="eyebrow">03 — Commercial</p>
+          <h2 class="h2">From enquiry to quotation, in one place</h2>
+          <p class="lead" data-short="Every enquiry with an owner and a clock, priced from your own contracts.">Every enquiry, wherever it came from, with an owner and a clock — and a price that comes from your own contracts.</p>
+          <ul class="feature-list">
+            <li data-short="&lt;b&gt;The queue.&lt;/b&gt; Every branch in one list, with a deadline on each."><b>The queue.</b> Web form, email and phone in one list across every branch — what breached, what is due today, and how long you actually take.</li>
+            <li data-short="&lt;b&gt;The pricing.&lt;/b&gt; Cards by lane, mode and carrier. Two overlapping on a lane are unrepresentable."><b>The pricing.</b> Buy and sell cards by lane, mode and carrier. Two overlapping cards on a lane are unrepresentable, not merely unlikely.</li>
+            <li data-short="&lt;b&gt;The margin.&lt;/b&gt; Buy, sell and margin before the quotation goes out."><b>The margin.</b> Buy, sell and margin side by side before the quotation goes out — and the rate screen names the lanes you are quoting blind.</li>
+          </ul>
+        </div>
+        <div class="shot">
+          <div class="frame">
+            <img src="pic/screens/enquiries.png" alt="The enquiry queue: every enquiry with an owner, a status and a response deadline" loading="lazy" decoding="async">
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <article class="stack-card stack-card--dark" id="operations">
+    <div class="stack-card__inner">
+      <div class="split split--flip">
+        <div class="split__copy">
+          <p class="eyebrow">04 — Operations</p>
+          <h2 class="h2">The board tells you what is wrong before the customer does</h2>
+          <p class="lead" data-short="Live shipments ordered by exception, oldest first.">Live shipments ordered by exception, oldest first — on the principle that the one nobody has looked at is the one the process missed.</p>
+          <ul class="feature-list">
+            <li data-short="&lt;b&gt;The job file.&lt;/b&gt; Milestones planned, revised and actual — all three kept."><b>The job file.</b> Milestones planned, revised and actual — all three kept, because the difference between them is the conversation.</li>
+            <li data-short="&lt;b&gt;Free time.&lt;/b&gt; Clocks per container that write their own charge line."><b>Free time.</b> Demurrage, detention and storage clocks per container. When free time runs out the clock writes its own charge line, at the right per-diem rate.</li>
+            <li data-short="&lt;b&gt;Customs and consolidation.&lt;/b&gt; Declarations by closing window; a master’s costs split across its houses."><b>Customs and consolidation.</b> Declarations ordered by the window that closes first, and a master’s costs apportioned across its houses so each margin is real.</li>
+          </ul>
+        </div>
+        <div class="shot">
+          <div class="frame">
+            <img src="pic/screens/jobs.png" alt="The operations board: live shipments ordered by exception, oldest first" loading="lazy" decoding="async">
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <article class="stack-card" id="finance">
+    <div class="stack-card__inner">
+      <div class="split">
+        <div class="split__copy">
+          <p class="eyebrow">05 — Finance and documents</p>
+          <h2 class="h2">What you are owed, how late it is, and who to ring</h2>
+          <p class="lead" data-short="Job costing, invoicing and receivables — and every document, versioned.">Job costing, invoicing and receivables across entities and currencies — and every document the job produces, versioned.</p>
+          <ul class="feature-list">
+            <li data-short="&lt;b&gt;Currency, handled properly.&lt;/b&gt; Decimal throughout, rounded per currency at the line."><b>Currency, handled properly.</b> Money is decimal and rounds per currency at the line. The dinar carries three decimal places; a system that rounds to two corrupts every Kuwaiti amount.</li>
+            <li data-short="&lt;b&gt;Supplier bills.&lt;/b&gt; Matched against what the job accrued, variance on screen before approval."><b>Supplier bills.</b> Read into lines and matched against what the job accrued. The variance is on screen before anyone approves it — where the argument with the agent belongs.</li>
+            <li data-short="&lt;b&gt;Documents.&lt;/b&gt; Typed, versioned, released per document, generated bilingual from the job."><b>Documents.</b> Typed, versioned and released per document — house bills, air waybills, delivery orders and customs packs, generated bilingual from the job.</li>
+          </ul>
+        </div>
+        <div class="shot">
+          <div class="frame">
+            <img src="pic/screens/finance.png" alt="Receivables grouped by how late they are, largest exposure first" loading="lazy" decoding="async">
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</section>
+
+<div class="divider" aria-hidden="true">
+  <img src="pic/photos/containers-aerial.jpg" alt="" loading="lazy" decoding="async">
+</div>
+
+<!-- 07 ─────────────────────────────────────────────────── bilingual ───── -->
+<section class="band band--navy" id="bilingual">
+  <div class="shell">
+    <div class="section-head rise" style="padding-inline:clamp(6px,2.4vw,42px)">
+      <p class="eyebrow">06 — Language</p>
+      <h2 class="h2">Bilingual, not translated</h2>
+      <p class="lead">2,709 interface strings in Arabic and English, kept in sync, with right-to-left in the layout rather than bolted onto it. The quotation your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored.</p>
+    </div>
+
+    <div class="pair rise">
+      <figure class="pair__en">
+        <div class="frame">
+          <img src="pic/screens/english.png" alt="The dashboard in English: the same four figures, the map, and the assistant, laid out left to right" loading="lazy" decoding="async">
+        </div>
+        <figcaption>English — left to right</figcaption>
+      </figure>
+      <figure class="pair__ar">
+        <div class="frame">
+          <img src="pic/screens/arabic.png" alt="The same dashboard in Arabic: the same four figures and the same map, laid out right to left" loading="lazy" decoding="async">
+        </div>
+        <figcaption class="pair--rtl">العربية — من اليمين إلى اليسار</figcaption>
+      </figure>
+    </div>
+
+    <p class="pull rise" style="margin-inline-start:clamp(6px,2.4vw,42px)">Every product in this market was built in English and had Arabic added afterwards. You can tell within about four seconds, and so can your customer.</p>
+  </div>
+</section>
+
+<!-- 08 ──────────────────────────────────────────────────────── scope ──── -->
+<section class="band band--paper" id="scope">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">07 — Scope</p>
+      <h2 class="h2">The whole of one job. Not a piece of everything.</h2>
+      <p class="lead">There is no warehouse module here. No purchase-order management, no landside transport network, no native mobile apps. We do not file your customs declarations and we are not planning to. What is here is the commercial and operational loop of a forwarding job — the whole of it, including the parts that usually fall out.</p>
+    </div>
+
+    <div class="scope rise">
+      <div class="scope__col scope__col--in">
+        <p class="scope__title">In it, today</p>
+        <ul>
+          <li><span>Enquiry queue, rate cards and the pricing engine</span></li>
+          <li><span>Quotation, revision and award</span></li>
+          <li><span>Job file, milestones, exceptions, containers</span></li>
+          <li><span>Free-time clocks that write their own charge lines</span></li>
+          <li><span>Customs tracking with duty estimation</span></li>
+          <li><span>Consolidation with cost apportionment</span></li>
+          <li><span>Documents, versioned, with release control</span></li>
+          <li><span>House bill, air waybill, delivery order, customs pack</span></li>
+          <li><span>Job costing, invoicing, receivables, credit</span></li>
+          <li><span>Payables, matching and partner netting</span></li>
+          <li><span>Customer portal and public tracking</span></li>
+          <li><span>An assistant over your own data</span></li>
+        </ul>
+      </div>
+      <div class="scope__col scope__col--not">
+        <p class="scope__title">Not in it, by decision</p>
+        <ul>
+          <li><span>Warehouse management<small>Inventory, locations, pick and pack. A product in its own right, not a module.</small></span></li>
+          <li><span>Purchase orders and vendor management<small>Sits on top of a working job platform, not beside it.</small></span></li>
+          <li><span>Native mobile apps<small>Proof of delivery works from a phone browser — signature, photographs, location.</small></span></li>
+          <li><span>Direct Kuwait customs filing<small>Clearance runs through MicroClear, which is not an API a forwarder can buy. We track declarations; we do not file them.</small></span></li>
+          <li><span>Master carrier documents<small>A master is the carrier’s document. House documents are ours.</small></span></li>
+        </ul>
+      </div>
+      <div class="scope__col scope__col--road">
+        <p class="scope__title">On the roadmap, with dates</p>
+        <ul>
+          <li><span>UAE e-invoicing transmission<small>The port and the hand-off are built. Accredited provider due 30 October 2026; go-live 1 January 2027.</small></span></li>
+          <li><span>Saudi ZATCA<small>Invoice data carries tax treatment and rate per line already. Accredited transmission does not.</small></span></li>
+          <li><span>Agent portal beyond rate requests<small>Agents answer rate requests today. Milestone posting, document upload and performance views are in delivery.</small></span></li>
+          <li><span>WhatsApp<small>The signed webhook is built and tested — messages arrive, are verified and are queued. The handler that turns one into a thread is not built, and nothing sends yet. Waiting on a Business API number.</small></span></li>
+          <li><span>Scheduled reports<small>Registered as a job with no handler yet.</small></span></li>
+          <li><span>Direct accounting connectors<small>A journal export ships today; a direct connector waits on the package name.</small></span></li>
+          <li><span>Carrier tracking, live<small>Built for Maersk, Hapag-Lloyd and CMA CGM. Runs the day your carrier API credentials are entered.</small></span></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="pull rise">A five-branch forwarder buying a global platform uses a fraction of it and pays for the rest. We would rather be the whole of the thing you use every day.</p>
+  </div>
+</section>
+
+<!-- 07 → 08 ──────────────────────── the blur transition, straddling ───── -->
+<div class="fade" aria-hidden="true">
+  <img src="pic/photos/containers-stack.jpg" alt="" loading="lazy" decoding="async">
+  <div class="fade__blur fade__blur--soft"></div>
+  <div class="fade__blur fade__blur--hard"></div>
+</div>
+
+<!-- 09 ─────────────────────────────────────── enforcement & ownership ─── -->
+<section class="band band--navy" id="holds">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">08 — Enforcement and ownership</p>
+      <h2 class="h2">What holds when people are careless</h2>
+      <p class="lead">Branch separation is enforced by the database itself, on every record — not by application code that can forget one query. Ask for another branch’s shipment and it comes back <em>not found</em>, because the row is not visible to your request at all.</p>
+    </div>
+
+    <figure class="figure rise" style="margin-top:0">
+      <svg viewBox="0 0 1040 300" role="img" aria-label="A query from a Kuwait coordinator crosses a row-level security boundary; Kuwait rows return, Dubai rows are not visible">
+        <text x="0" y="18" fill="#9DB4D4" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="2.2">THE REQUEST</text>
+        <text x="600" y="18" fill="#9DB4D4" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="2.2">WHAT COMES BACK</text>
+
+        <rect x="0" y="94" width="330" height="112" rx="12" fill="rgba(255,255,255,.05)" stroke="#405D82"/>
+        <text x="26" y="130" fill="#E8EFF9" font-family="Manrope, sans-serif" font-size="15" font-weight="700">A coordinator in Kuwait</text>
+        <text x="26" y="156" fill="#9DB4D4" font-family="Manrope, sans-serif" font-size="13.5">asks for every open job</text>
+        <text x="26" y="184" fill="#79B0FF" font-family="IBM Plex Mono, monospace" font-size="12.5">select * from jobs</text>
+
+        <line x1="348" y1="150" x2="492" y2="150" stroke="#79B0FF" stroke-width="2" marker-end="url(#arrowhead)" opacity=".85"/>
+
+        <!-- the boundary -->
+        <line x1="500" y1="40" x2="500" y2="286" stroke="#1F6FEB" stroke-width="2" stroke-dasharray="7 6"/>
+        <rect x="424" y="46" width="152" height="26" rx="13" fill="#0B2545" stroke="#1F6FEB"/>
+        <text x="446" y="64" fill="#79B0FF" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1">197 POLICIES</text>
+
+        <!-- returned rows -->
+        <g font-family="IBM Plex Mono, monospace" font-size="13">
+          <rect x="600" y="86" width="440" height="34" rx="7" fill="rgba(31,111,235,.14)" stroke="#1F6FEB"/>
+          <text x="618" y="108" fill="#E8EFF9">JOB-KWT-2481</text><text x="856" y="108" fill="#79B0FF">Shuwaikh</text>
+          <rect x="600" y="128" width="440" height="34" rx="7" fill="rgba(31,111,235,.14)" stroke="#1F6FEB"/>
+          <text x="618" y="150" fill="#E8EFF9">JOB-KWT-2490</text><text x="856" y="150" fill="#79B0FF">Shuaiba</text>
+          <rect x="600" y="170" width="440" height="34" rx="7" fill="rgba(31,111,235,.14)" stroke="#1F6FEB"/>
+          <text x="618" y="192" fill="#E8EFF9">JOB-KWT-2503</text><text x="856" y="192" fill="#79B0FF">Shuwaikh</text>
+
+          <rect x="600" y="212" width="440" height="34" rx="7" fill="none" stroke="#345273" stroke-dasharray="5 5"/>
+          <text x="618" y="234" fill="#4E6B8F">— — — — — —</text><text x="856" y="234" fill="#4E6B8F">not found</text>
+          <rect x="600" y="254" width="440" height="34" rx="7" fill="none" stroke="#345273" stroke-dasharray="5 5"/>
+          <text x="618" y="276" fill="#4E6B8F">— — — — — —</text><text x="856" y="276" fill="#4E6B8F">not found</text>
+        </g>
+      </svg>
+      <figcaption>Two Dubai jobs exist in the same table. They are not filtered out of the answer — they are never in it.</figcaption>
+    </figure>
+
+    <div class="grid grid--3" style="margin-top:clamp(44px,5vw,68px)">
+      <article class="leak rise">
+        <h3>The audit trail writes itself</h3>
+        <p data-short="Eighty database triggers. Editing the audit is revoked from every account, ours included.">Eighty audit triggers, written by the database, so a change that goes around the application is still recorded. Editing the audit is revoked from every account in the system — your administrator’s, and ours.</p>
+      </article>
+      <article class="leak rise">
+        <h3>Nothing is ever deleted</h3>
+        <p data-short="Superseded, closed or deactivated. The application has no permission to delete.">Records are superseded, closed or deactivated. The permission to delete does not exist on the account the application runs as, so a mistake is always recoverable and a history is always complete.</p>
+      </article>
+      <article class="leak rise">
+        <h3>Your database, in your region</h3>
+        <p data-short="One deployment per customer, in the region you pick. Complete export any day you ask.">One deployment per customer, in Kuwait, the UAE, Saudi Arabia or the EU — not a shared table with a customer column in it. A complete export any day you ask, with no charge and nothing to disentangle.</p>
+      </article>
+      <article class="leak rise">
+        <h3>Your brand. Nowhere ours.</h3>
+        <p data-short="No colour, logo or company name in the product. The operator is a setting.">No colour, no logo and no company name is written into the product anywhere — the operator is a setting, not a hard-coded value. Your domain, your identity, your entity’s name on every document it issues.</p>
+      </article>
+      <article class="leak rise">
+        <h3>Support cannot look without a grant</h3>
+        <p data-short="Scoped, ticket-referenced and self-expiring. A banner shows while it is open.">Access is granted by your administrator, scoped to named branches, against a ticket reference, and it expires on its own. A banner shows on every page while it is open, and you can revoke it in one click.</p>
+      </article>
+      <article class="leak rise">
+        <h3>Verified, not asserted</h3>
+        <p data-short="88 tables, 197 policies, 80 audit triggers — checked against a live PostgreSQL 18.6.">88 tables, 82 with row-level security enabled and forced, 197 policies and 80 audit triggers, checked against a live PostgreSQL 18.6. The policy tests are confirmed non-vacuous — weaken one and four of them fail.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 10 ────────────────────────────────────────────────── integrations ─── -->
+<section class="band band--white" id="connects">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">09 — Integrations</p>
+      <h2 class="h2">What it connects to, and what it doesn’t</h2>
+      <p class="lead">Every box carries its real state. A label that says “live” means it is running today; one that doesn’t say so, isn’t.</p>
+    </div>
+
+    <div class="grid grid--3">
+      <article class="card conn conn--wait rise">
+        <span class="pill pill--wait">Your credentials</span>
+        <h3>Carrier tracking</h3>
+        <p data-short="Maersk, Hapag-Lloyd and CMA CGM, polled hourly. Runs on your own credentials.">Carrier-direct on the DCSA standard for Maersk, Hapag-Lloyd and CMA CGM, polled hourly into the job’s milestones. No provider to select and no per-container fee — it runs the day your own carrier API credentials are entered.</p>
+      </article>
+      <article class="card conn conn--live rise">
+        <span class="pill pill--live">Live — a mailbox for each branch</span>
+        <h3>Branch mailboxes</h3>
+        <p data-short="IMAP per branch, passwords sealed. An email becomes a proposal a person accepts.">Per-branch IMAP mailboxes an administrator configures in the interface, passwords sealed with AES-256-GCM under a key the database never sees. An emailed enquiry becomes a proposal a coordinator accepts or rejects — a person decides every time.</p>
+      </article>
+      <article class="card conn conn--live rise">
+        <span class="pill pill--live">Live — a key for each customer</span>
+        <h3>Read API and webhooks</h3>
+        <p data-short="Per-customer keys, under the same policies as the screens. Signed webhooks, retried and logged.">A read-only API with a per-customer key — each key sees exactly what its owner is allowed to see, decided by the same database policies as the screens — and signed outbound webhooks, retried and logged.</p>
+      </article>
+      <article class="card conn conn--live rise">
+        <span class="pill pill--live">Export, not a connector</span>
+        <h3>Accounting</h3>
+        <p data-short="A journal your accountant can import, guarded against exporting a period twice.">A journal that posts invoices, credit notes and payments in a form your accountant can import, with a guard against exporting the same period twice. A direct connector waits on the package name.</p>
+      </article>
+      <article class="card conn conn--live rise">
+        <span class="pill pill--live">Live — six document types</span>
+        <h3>Document generation</h3>
+        <p data-short="House bill, air waybill, delivery order, customs pack, manifest. Bilingual, numbered per branch.">House bill of lading and air waybill, delivery order, packing list, customs pack and consolidation manifest — bilingual PDFs from the job’s own parties and cargo lines, with a per-branch numbering series and a draft watermark until a number is allocated.</p>
+      </article>
+      <article class="card conn conn--none rise">
+        <span class="pill pill--none">Port built, transmission not</span>
+        <h3>UAE e-invoicing</h3>
+        <p data-short="The port exists; the PINT AE document and the provider do not. Go-live 1 January 2027.">The transmission port and the hand-off to an accredited provider exist. The PINT AE document and the appointment do not. Provider appointment is due 30 October 2026 and go-live is 1 January 2027 for the largest filers.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 09 → 10 ─────────────────────── the blue seam, straddling ───── -->
+<div class="seam" aria-hidden="true"><i></i></div>
+
+<!-- 11 ──────────────────────────────────────────────── pilot and form ─── -->
+<section class="band pilot" id="pilot">
+  <div class="pilot__media" aria-hidden="true">
+    <img src="pic/photos/ship-aerial.jpg" alt="" loading="lazy" decoding="async">
+  </div>
+  <div class="shell">
+    <div class="pilot__grid">
+      <div class="rise">
+        <p class="eyebrow">10 — The pilot</p>
+        <h2 class="h2" style="color:#fff">Fifteen days, on your own data</h2>
+        <p class="lead">Not a demonstration on sample data. Your busiest lane, your rate card, your customers, twenty of your own completed job files — in a working system, in fifteen working days.</p>
+
+        <div class="steps">
+          <div class="step"><span class="step__n">01</span><div>
+            <h3>You send what you already have</h3>
+            <p data-short="A rate card, uncleaned. Fifteen to twenty-five job files. Customer and agent lists. Your logo.">A rate card in whatever form it currently exists — uncleaned, we want to see the mess. Fifteen to twenty-five completed job files in any format. Your customer and agent lists. Your logo and one existing quotation for the letterhead.</p>
+          </div></div>
+          <div class="step"><span class="step__n">02</span><div>
+            <h3>Ninety minutes with whoever runs operations</h3>
+            <p data-short="So the milestones are named the way your people actually name them.">So the milestones are named the way your people actually name them, rather than the way a specification imagined they would be.</p>
+          </div></div>
+          <div class="step"><span class="step__n">03</span><div>
+            <h3>We build it on your deployment</h3>
+            <p data-short="Your database, your region, your brand. Nothing built in the pilot is thrown away.">Your database, in the region you chose, under your own brand. Nothing built in the pilot is thrown away — it is the foundation of the live system.</p>
+          </div></div>
+          <div class="step"><span class="step__n">04</span><div>
+            <h3>You type your own reference into a phone</h3>
+            <p data-short="And watch it answer. Fixed fee, credited against the full build.">And watch it answer. Fixed fee, credited in full against the full build if you go ahead.</p>
+          </div></div>
+        </div>
+      </div>
+
+      <div class="form-card rise">
+        <h3>Start the conversation</h3>
+        <p>Six fields. We reply with a date, not a brochure.</p>
+        <form id="pilotForm" novalidate>
+          <div class="field">
+            <label for="f-name">Name</label>
+            <input id="f-name" name="name" type="text" autocomplete="name" placeholder="Your name" required>
+          </div>
+          <div class="field">
+            <label for="f-company">Company</label>
+            <input id="f-company" name="company" type="text" autocomplete="organization" placeholder="Company name" required>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="f-email">Email</label>
+              <input id="f-email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required>
+            </div>
+            <div class="field">
+              <label for="f-phone">Phone</label>
+              <input id="f-phone" name="phone" type="tel" autocomplete="tel" placeholder="+965 …">
+            </div>
+          </div>
+          <div class="field-row field-row--uneven">
+            <div class="field">
+              <label for="f-branches">Branches</label>
+              <select id="f-branches" name="branches">
+                <option>1</option><option>2 – 3</option><option>4 – 6</option><option>7 or more</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-current">What you use today</label>
+              <input id="f-current" name="current" type="text" placeholder="Spreadsheets, CargoWise…">
+            </div>
+          </div>
+          <button class="btn btn--primary" type="submit">Book the 15-day pilot</button>
+        </form>
+        <div class="form-sent" id="formSent" role="status"></div>
+        <p class="form-note">We do not sell or share what you send. A reply comes from a named person, not a ticket queue.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 ────────────────────────────────────────────────────────── FAQ ──── -->
+<section class="band band--paper" id="faq">
+  <div class="shell">
+    <div class="section-head rise">
+      <p class="eyebrow">11 — Questions</p>
+      <h2 class="h2">The ones buyers actually ask</h2>
+    </div>
+
+    <div class="faq rise">
+      <details>
+        <summary>Is my data shared with other customers?</summary>
+        <p data-short="No. Your own database in your own instance — separation is the boundary of the deployment, not a filter.">No. Each customer gets their own database in their own instance — not a shared table with a customer column. Separation is not a filter that could be forgotten in one query; it is the boundary of the deployment.</p>
+      </details>
+      <details>
+        <summary>Where is it hosted?</summary>
+        <p data-short="Kuwait, the UAE, Saudi Arabia or the EU. Written into the contract.">Kuwait, the UAE, Saudi Arabia or the EU. You choose, and it is written into the contract.</p>
+      </details>
+      <details>
+        <summary>Can I get my data out?</summary>
+        <p data-short="A complete export, open format, any day, no charge.">A complete export, in an open format, any day you ask. It is not a retention feature and there is no charge for it. If you ever leave there is nothing to disentangle, because none of it was entangled.</p>
+      </details>
+      <details>
+        <summary>Does it work in Arabic?</summary>
+        <p data-short="Throughout. 2,709 strings in sync, right-to-left in the layout rather than applied to it.">Throughout — interface, documents, portal and tracking page. Right-to-left is in the layout rather than applied to it, and the 2,709 interface strings are kept in sync between the two languages.</p>
+      </details>
+      <details>
+        <summary>How long does implementation take?</summary>
+        <p data-short="Fifteen working days for the pilot, from the day your data arrives. Fixed fee, not by the hour.">Fifteen working days for the pilot, counted from the day your data arrives rather than from signature. A full implementation depends on how many entities and how much history you are bringing — it is quoted as a fixed fee, not by the hour.</p>
+      </details>
+      <details>
+        <summary>Can we keep using our accounting package?</summary>
+        <p data-short="Yes. A journal your accountant can import. Direct connectors are not in this release.">Yes. Financial data exports as a journal your accountant can import — invoices, credit notes, receipts and supplier payments — with a guard against exporting a period twice. Direct connectors to specific packages are not in this release.</p>
+      </details>
+      <details>
+        <summary>Do you file customs declarations?</summary>
+        <p data-short="We track and estimate them. We do not file to Kuwait customs, and are not planning to.">We track them — type, number, status, duty, broker and clearance deadline — across the whole clearance lifecycle, and estimate the duty before the declaration goes in. We do not file directly to Kuwait customs and are not planning to: access there runs through a long-running concession we have no route into, and we would rather say so than imply otherwise.</p>
+      </details>
+      <details>
+        <summary>Can your support staff see our data?</summary>
+        <p data-short="Not unless you grant it — scoped, logged, self-expiring, revocable in one click.">Not unless you grant it. Access is granted by your administrator, scoped to named branches, read-only or read-write, against a ticket reference, and it expires on its own. Every session opened under that grant is recorded in a log neither you nor we can edit afterwards, and while it is live a banner shows on every page of your system. You can revoke it in one click.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="footer-wave" aria-hidden="true">
+    <svg viewBox="0 0 1440 130" preserveAspectRatio="none" role="presentation">
+      <!-- Two crests, the back one lighter, so the join has depth rather than
+           being a single cut-out curve. -->
+      <path d="M0,44 C220,104 400,4 640,40 C880,76 1060,120 1240,88 C1330,72 1390,52 1440,36 L1440,130 L0,130 Z"
+            fill="#12325C" opacity=".55"/>
+      <path d="M0,70 C200,26 380,110 620,84 C860,58 1040,10 1240,40 C1330,54 1392,74 1440,86 L1440,130 L0,130 Z"
+            fill="#061729"/>
+    </svg>
+  </div>
+  <div class="shell">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <img src="cargosharks-logo/svg/cargosharks-logo-dark-transparent.svg" alt="CargoSharks">
+        <p>Freight forwarding software for the Gulf. Built with a Kuwaiti forwarder, on their own operation.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#loop">The loop</a></li>
+          <li><a href="#commercial">Commercial</a></li>
+          <li><a href="#operations">Operations</a></li>
+          <li><a href="#finance">Finance and documents</a></li>
+          <li><a href="#connects">Integrations</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#scope">What is and isn’t in it</a></li>
+          <li><a href="#holds">Data and security</a></li>
+          <li><a href="#pilot">The 15-day pilot</a></li>
+          <li><a href="#faq">Questions</a></li>
+          <li><a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 CargoSharks. Kuwait City.</span>
+      <span>Arabic site, privacy policy, terms and data-processing addendum are required before launch.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- An anchor rather than a button: #top is a real destination, so it works
+     with the keyboard, opens in a new tab if someone insists, and the browser's
+     own smooth scroll already stands down under prefers-reduced-motion. -->
+<a class="to-top" id="toTop" href="#top" aria-label="Back to the top">
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12 19V5M6 11l6-6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</a>
+
+<script>
+// Header goes solid once the hero has scrolled under it.
+(function () {
+  var header = document.getElementById('siteHeader');
+  var onScroll = function () { header.classList.toggle('is-stuck', window.scrollY > 40); };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+})();
+
+// Back to top, once the hero has gone by. Hidden by default in CSS rather than
+// shown-then-hidden: it would otherwise sit over the hero on first paint, and a
+// visitor already at the top has nothing to go back to.
+(function () {
+  var btn = document.getElementById('toTop');
+  var hero = document.querySelector('.hero');
+  var onScroll = function () { btn.classList.toggle('is-on', window.scrollY > hero.offsetHeight - 120); };
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll, { passive: true });
+})();
+
+// Reveal on scroll. Everything is visible without JS — .rise only hides once
+// the observer confirms it can put things back.
+(function () {
+  var targets = document.querySelectorAll('.rise');
+  if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    targets.forEach(function (el) { el.classList.add('is-in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-in');
+      io.unobserve(entry.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  targets.forEach(function (el, i) {
+    el.style.transitionDelay = (Math.min(i % 6, 5) * 55) + 'ms';
+    io.observe(el);
+  });
+})();
+
+// The form has no backend yet. Say so plainly rather than swallowing the submit
+// and pretending it sent — see README.md.
+(function () {
+  var form = document.getElementById('pilotForm');
+  var out = document.getElementById('formSent');
+  if (!form) return;
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = (form.elements.name.value || '').trim();
+    var email = (form.elements.email.value || '').trim();
+    if (!name || !email) {
+      out.textContent = 'Name and email, at least — then we can reply.';
+      out.classList.add('is-on');
+      return;
+    }
+    out.innerHTML = 'This form is not wired to a backend yet. Email <a href="mailto:hello@cargosharks.com" style="color:#79B0FF">hello@cargosharks.com</a> and we will reply with a date.';
+    out.classList.add('is-on');
+  });
+})();
+
+// The stacked deck. Each card is scaled and dimmed in proportion to how much of
+// it the next card has covered, so the pile reads as depth. Position is read
+// once per frame inside rAF — never inside the scroll handler itself.
+(function () {
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.stack-card'));
+  if (cards.length < 2) return;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var ticking = false;
+
+  function paint() {
+    ticking = false;
+    if (reduced.matches || window.innerWidth <= 820) return;
+    for (var i = 0; i < cards.length - 1; i++) {
+      var inner = cards[i].firstElementChild;
+      var mine = cards[i].getBoundingClientRect();
+      var next = cards[i + 1].getBoundingClientRect();
+      // 0 while the next card is still below this one, 1 once it has covered it.
+      var p = (mine.bottom - next.top) / Math.max(mine.height, 1);
+      p = p < 0 ? 0 : p > 1 ? 1 : p;
+      inner.style.transform = 'scale(' + (1 - p * 0.055).toFixed(4) + ') translateY(' + (p * -12).toFixed(2) + 'px)';
+      inner.style.opacity = (1 - p * 0.28).toFixed(3);
+    }
+    var last = cards[cards.length - 1].firstElementChild;
+    last.style.transform = ''; last.style.opacity = '';
+  }
+  function request() { if (!ticking) { ticking = true; requestAnimationFrame(paint); } }
+
+  window.addEventListener('scroll', request, { passive: true });
+  window.addEventListener('resize', request);
+  request();
+})();
+
+// Hero parallax. The photograph is already scaled 1.08 so it never exposes an
+// edge as it drifts.
+(function () {
+  var img = document.querySelector('.hero__media img');
+  var hero = document.querySelector('.hero');
+  if (!img || !hero || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var ticking = false;
+  function paint() {
+    ticking = false;
+    var y = window.scrollY;
+    if (y > hero.offsetHeight) return;
+    img.style.transform = 'scale(1.08) translate3d(0,' + (y * 0.14).toFixed(1) + 'px,0)';
+  }
+  window.addEventListener('scroll', function () {
+    if (!ticking) { ticking = true; requestAnimationFrame(paint); }
+  }, { passive: true });
+})();
+
+// The "shorter text" toggle. A development aid, not a feature: it swaps every
+// block that carries a `data-short` for its short form, so the two lengths can
+// be read in place before one of them is chosen. The long copy is the source of
+// truth and is kept in memory rather than re-parsed, so toggling is lossless.
+(function () {
+  var button = document.getElementById('shortToggle')
+  if (!button) return
+  var nodes = Array.prototype.slice.call(document.querySelectorAll('[data-short]'))
+  var long = new Map()
+  nodes.forEach(function (n) { long.set(n, n.innerHTML) })
+  var short = false
+
+  button.addEventListener('click', function () {
+    short = !short
+    nodes.forEach(function (n) {
+      n.innerHTML = short ? n.getAttribute('data-short') : long.get(n)
+    })
+    button.setAttribute('aria-pressed', String(short))
+    button.textContent = short ? 'Full text' : 'Shorter text'
+  })
+})();
+</script>
+
+</body>
+</html>
