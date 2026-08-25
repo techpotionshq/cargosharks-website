@@ -389,3 +389,264 @@ export function darkTheme(spec: ThemeSpec): ThemeColors {
     statusSoft: statusAt(0.3, 0.5),
   }
 }
+
+// --- a client's hex, converted once ----------------------------------------
+
+/**
+ * The one question a brand manual always asks and this package could not
+ * answer: *the client's red is `#da2726` — what is that in OKLCH?*
+ *
+ * It was answered by hand for both registered brands, and the working is in
+ * the header of `brands/qabandi.ts`: measure the mark, convert, then lower the
+ * peak chroma until the dark stops stop clipping. That is fine twice and is a
+ * source of quiet error by the fifth client, because a ramp that clips does
+ * not look broken — it looks flat, exactly where the interface needed
+ * separation, and only at the stops nobody screenshots.
+ *
+ * `hexRamp('#da2726')` is that whole procedure. A generated brand file then
+ * carries the hex the client actually supplied, which can be checked against
+ * the brand manual, instead of three decimals which cannot.
+ */
+
+/** OKLCH as numbers, before `oklch()` renders it. */
+export interface OklchValue {
+  readonly lightness: number
+  readonly chroma: number
+  /** Degrees, 0–360. */
+  readonly hue: number
+}
+
+/** sRGB gamma decode — the piecewise transfer function, not the 2.2 shorthand. */
+function toLinear(channel: number): number {
+  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+/** Linear sRGB to OKLab, by Björn Ottosson's matrices. */
+function linearToOklab(
+  red: number,
+  green: number,
+  blue: number,
+): { lightness: number; a: number; b: number } {
+  const long = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue)
+  const medium = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue)
+  const short = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue)
+
+  return {
+    lightness: 0.2104542553 * long + 0.793617785 * medium - 0.0040720468 * short,
+    a: 1.9779984951 * long - 2.428592205 * medium + 0.4505937099 * short,
+    b: 0.0259040371 * long + 0.7827717662 * medium - 0.808675766 * short,
+  }
+}
+
+/**
+ * `#rrggbb` to OKLCH.
+ *
+ * Accepts `#rgb`, `#rrggbb` and either without the hash, because a brand
+ * manual writes it every one of those ways.
+ */
+export function oklchFromHex(hex: string): OklchValue {
+  const digits = hex.trim().replace(/^#/, '')
+  const expanded = digits.length === 3 ? digits.replace(/./g, (digit) => digit + digit) : digits
+
+  if (!/^[0-9a-fA-F]{6}$/.test(expanded)) {
+    throw new Error(`Not a hex colour: "${hex}". Expected #rgb or #rrggbb.`)
+  }
+
+  const value = Number.parseInt(expanded, 16)
+  const lab = linearToOklab(
+    toLinear(((value >> 16) & 0xff) / 255),
+    toLinear(((value >> 8) & 0xff) / 255),
+    toLinear((value & 0xff) / 255),
+  )
+
+  const hue = (Math.atan2(lab.b, lab.a) * 180) / Math.PI
+
+  return {
+    lightness: lab.lightness,
+    chroma: Math.hypot(lab.a, lab.b),
+    hue: hue < 0 ? hue + 360 : hue,
+  }
+}
+
+/**
+ * How far a colour moves when sRGB cannot hold it, as an OKLab distance.
+ *
+ * OKLCH can name colours no screen can show. CSS does not refuse those — it
+ * clips them, per channel, silently. Measuring the *displacement* rather than
+ * asking a yes-or-no gamut question is the whole difference between a usable
+ * clamp and a useless one: at the 950 stop the sRGB gamut is so narrow that
+ * "must not clip at all" costs a red brand more than half its chroma at 500,
+ * where the brand actually lives, to rescue a stop nobody can tell apart.
+ */
+function clipError(lightness: number, chroma: number, hue: number): number {
+  const radians = (hue * Math.PI) / 180
+  const a = chroma * Math.cos(radians)
+  const b = chroma * Math.sin(radians)
+
+  const long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const short = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3
+
+  const shown = linearToOklab(
+    clamp01(4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short),
+    clamp01(-1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short),
+    clamp01(-0.0041960863 * long - 0.7034186147 * medium + 1.707614701 * short),
+  )
+
+  return Math.hypot(lightness - shown.lightness, a - shown.a, b - shown.b)
+}
+
+/**
+ * How much displacement a ramp may carry at its worst stop.
+ *
+ * Not a guess. `brands/qabandi.ts` is the one ramp in this repository whose
+ * peak was set by eye — 0.19, chosen against a measured 0.213 by lowering it
+ * until the dark stops stopped going flat. This tolerance reproduces that
+ * decision at 0.1895, which is the same ramp to the precision `oklch()`
+ * prints. So the constant is calibrated against a designer, and the test that
+ * pins it is the guard against somebody later tidying it to a round number.
+ */
+const MAX_CLIP_ERROR = 0.03
+
+/**
+ * The largest peak chroma this ramp can carry before a stop visibly clips.
+ *
+ * The binding constraint is rarely the 500 stop the brand was measured at: for
+ * a warm hue it is the dark end, for a yellow the light end. Every stop is
+ * checked and the search returns the peak that satisfies all eleven.
+ */
+export function maxRampChroma(hue: number, hueShift = 0): number {
+  const stops = Object.keys(STOP_LIGHTNESS) as unknown as (keyof typeof STOP_LIGHTNESS)[]
+
+  const worstError = (peak: number): number =>
+    Math.max(
+      ...stops.map((stop, index) =>
+        clipError(
+          STOP_LIGHTNESS[stop],
+          peak * STOP_CHROMA_FACTOR[stop],
+          hue + hueShift * (index / (stops.length - 1)),
+        ),
+      ),
+    )
+
+  // Displacement rises monotonically with peak chroma, so a bisection finds
+  // the edge. 0.4 is beyond any sRGB colour; thirty halvings put the answer
+  // well inside the rounding `oklch()` applies anyway.
+  let low = 0
+  let high = 0.4
+  for (let step = 0; step < 30; step += 1) {
+    const mid = (low + high) / 2
+    if (worstError(mid) <= MAX_CLIP_ERROR) low = mid
+    else high = mid
+  }
+  return low
+}
+
+export interface HexRampOptions {
+  /** Hue drift from the 50 stop to the 950 stop, in degrees. */
+  readonly hueShift?: number
+  /**
+   * Peak chroma, overriding the one measured from the hex.
+   *
+   * For a brand whose corporate colour is more saturated than it wants its
+   * whole interface to be. Still clamped — this can lower the peak, never
+   * raise it past what the ramp can carry.
+   */
+  readonly chroma?: number
+}
+
+/**
+ * A `RampSpec` from the colour a client actually handed over.
+ *
+ * The clamp is the point. `#da2726` measures 0.213 and no eleven-stop ramp can
+ * hold that; this returns the peak that survives every stop, so a generated
+ * brand cannot ship the flat dark end that both hand-built brands had to be
+ * talked out of.
+ */
+export function hexRamp(hex: string, options: HexRampOptions = {}): RampSpec {
+  const measured = oklchFromHex(hex)
+  const hueShift = options.hueShift ?? 0
+  const ceiling = maxRampChroma(measured.hue, hueShift)
+
+  return {
+    hue: round(measured.hue, 2),
+    chroma: round(Math.min(options.chroma ?? measured.chroma, ceiling), 4),
+    ...(hueShift === 0 ? {} : { hueShift }),
+  }
+}
+
+/**
+ * How close a brand hue may come to a reserved status hue, in degrees.
+ *
+ * From the note in `.env.example`: *"A brand hue within ~15 degrees of one of
+ * those reads as that status."*
+ */
+const STATUS_CLEARANCE = 15
+
+/** Shortest angular distance between two hues, in degrees. */
+function hueDistance(a: number, b: number): number {
+  const delta = Math.abs((((a - b) % 360) + 360) % 360)
+  return Math.min(delta, 360 - delta)
+}
+
+/**
+ * The status colour a brand hue would be mistaken for, if any.
+ *
+ * Only `critical` and `positive` are tested, and the omissions are deliberate.
+ * `muted` sits at 250 with a chroma of 0.02, so its hue is invisible and
+ * constrains nothing — which is why the default blue at 261 has always been
+ * fine eleven degrees away. `caution` and `info` are not tested because
+ * neither has to *interrupt*: a brand that reads faintly informational costs
+ * nothing, and a brand that reads as a customs hold costs an operator the one
+ * colour that was supposed to stop them.
+ */
+export function collidesWithStatus(hue: number): 'critical' | 'positive' | null {
+  if (hueDistance(hue, STATUS_HUES.critical) <= STATUS_CLEARANCE) return 'critical'
+  if (hueDistance(hue, STATUS_HUES.positive) <= STATUS_CLEARANCE) return 'positive'
+  return null
+}
+
+/**
+ * Which ramp the navigation chrome should be cut from.
+ *
+ * Both hand-built brands reached for the accent independently, and the reason
+ * generalises: the chrome is four hundred pixels of permanent furniture, and a
+ * brand's second colour is almost always its calmer one.
+ *
+ * A brand that supplies only one colour keeps the chrome on it — unless that
+ * colour sits on a status hue, in which case the sidebar would be a wall of
+ * alarm colour and a real customs hold would have nothing left to jump off the
+ * board with. Then the neutrals carry the chrome instead.
+ *
+ * Worth knowing before trusting the result: **nothing reads the ramp this
+ * selects today.** `defineBrand` resolves it into `ThemeSpec.chrome`, and
+ * neither `lightTheme` nor `darkTheme` reads that field — both build the rail
+ * from `hue`, which is `neutralHue`. So this records an intention, and
+ * `neutralHueFor` is what actually tints the chrome. Both hand-written brands
+ * still state it, and it is the value a rewired rail would read.
+ */
+export function chromeRampFor(
+  primaryHue: number,
+  accentHue?: number,
+): 'primary' | 'accent' | 'neutral' {
+  if (accentHue !== undefined && collidesWithStatus(accentHue) === null) return 'accent'
+  return collidesWithStatus(primaryHue) === null ? 'primary' : 'neutral'
+}
+
+/**
+ * The hue that tints every neutral and every shadow.
+ *
+ * The accent when there is one, so the greys agree with the chrome they sit
+ * against rather than pulling the other way. Both hand-built brands do this:
+ * `qabandi` tints at 276 against a primary at 27, and `cargosharks` at 257
+ * against a primary at 261. Each of those is its own accent hue — 276.1 and
+ * 256 — written to the nearest degree, which at the neutral ramp's chroma of
+ * 0.018 is the same grey.
+ */
+export function neutralHueFor(primaryHue: number, accentHue?: number): number {
+  return accentHue ?? primaryHue
+}

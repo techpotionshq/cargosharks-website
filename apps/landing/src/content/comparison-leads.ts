@@ -33,6 +33,22 @@ export interface Lead {
   body: Bi
   /** `modes` only: the three moments, each with its own cost. */
   moments?: { when: Bi; what: Bi; instead: Bi }[]
+  /**
+   * The one screen this page's reader should open first, and what to look at.
+   *
+   * Four pages that argued entirely in prose and tables, on a site whose central
+   * claim is *open it and check* — and not one of them showed the thing they
+   * were asking somebody to open. A screenshot is not decoration here, it is the
+   * evidence: `file` is a real capture of the running build in
+   * `public/pic/screens/`, and the Arabic page appends `-ar` because the sidebar
+   * crop is a logical property and bites the wrong edge otherwise.
+   *
+   * `look` is the sentence that makes it worth a reader's attention — what to
+   * notice, tied to this page's own argument. A caption reading "the operations
+   * board" under a picture of the operations board is a caption that could have
+   * been left off.
+   */
+  shot: { file: string; alt: Bi; look: Bi }
 }
 
 export const leads: Record<string, Lead> = {
@@ -47,6 +63,17 @@ export const leads: Record<string, Lead> = {
       en: 'Almost every honest sentence on this page follows from one fact: the two are not the same size of thing. A platform that quotes 193 countries and a system built for a Kuwaiti forwarder are not competing to be more capable — they are aimed at different operations, and the overlap between them is where you have to decide.',
       ar: 'تنبع كل جملة صادقة في هذه الصفحة تقريباً من حقيقة واحدة: ليسا شيئاً واحداً في الحجم. فمنصة تذكر 193 دولة ونظام بُني لوكيل شحن كويتي لا يتنافسان على القدرة — بل هما موجَّهان إلى عمليتين مختلفتين، والتداخل بينهما هو موضع القرار.',
     },
+    shot: {
+      file: 'app-dashboard',
+      alt: {
+        en: 'The dashboard: four figures, a map of live shipments, and the assistant panel',
+        ar: 'لوحة المعلومات: أربعة أرقام وخريطة للشحنات الجارية ولوحة المساعد',
+      },
+      look: {
+        en: 'This is the whole of the software rather than a module of it, and that is the honest version of the size argument: a system built for one operation is one you can see the edges of on the first screen. Nothing here is configured on before it works.',
+        ar: 'هذه هي البرمجية كلها لا وحدة منها، وهذه هي الصيغة الصادقة لحجة الحجم: النظام المبني لعملية واحدة نظامٌ تُرى حدوده من أول شاشة. ولا شيء هنا يحتاج إعداداً قبل أن يعمل.',
+      },
+    },
   },
 
   logistaas: {
@@ -59,6 +86,17 @@ export const leads: Record<string, Lead> = {
     body: {
       en: 'Two cloud systems sold to forwarders the same size in the same region will do most of the same job, and pretending otherwise is how comparison pages lose the reader. Quoting, operations, documents and finance are table stakes and both of us clear them. So this page concedes the middle first, and then spends its length on the crescents — which are narrow, specific, and worth writing down properly.',
       ar: 'نظامان سحابيان يُباعان لوكلاء بالحجم نفسه في المنطقة نفسها سيؤديان معظم العمل نفسه، والتظاهر بغير ذلك هو ما يفقد صفحات المقارنة قارئها. التسعير والعمليات والمستندات والمالية أساسيات نجتازها كلانا. لذا تسلّم هذه الصفحة بالوسط أولاً، ثم تقضي طولها في الهلالين — وهما ضيّقان ومحددان ويستحقان الكتابة بدقة.',
+    },
+    shot: {
+      file: 'finance',
+      alt: {
+        en: 'Receivables grouped by how late they are, largest exposure first',
+        ar: 'الذمم المدينة مجمّعة حسب مدة التأخر، والأكبر تعرضاً أولاً',
+      },
+      look: {
+        en: 'The crescents are where a comparison between two peers is decided, and this is one of them: every charge line stores its own rate and the moment it was taken, money is decimal from the database to the page, and the ageing is grouped by exposure rather than by invoice date.',
+        ar: 'الهلالان هما موضع الحسم بين نظيرين، وهذا أحدهما: كل بند تكلفة يخزّن سعر صرفه ولحظة أخذه، والمال عشري من القاعدة إلى الشاشة، وتقادم الذمم مجمّع حسب حجم التعرض لا حسب تاريخ الفاتورة.',
+      },
     },
   },
 
@@ -73,6 +111,17 @@ export const leads: Record<string, Lead> = {
       en: 'DP World operates terminals and also sells software to the forwarders who book through them. Both parties publish that and it is not an accusation — for a forwarder whose volume runs through those terminals, the closeness is the whole reason to choose it. For a forwarder whose volume does not, it is a question worth asking out loud. That is the axis this comparison turns on, and no feature list touches it.',
       ar: 'تشغّل DP World محطات وتبيع أيضاً البرنامج لوكلاء الشحن الذين يحجزون عبرها. وكلا الطرفين ينشر ذلك، وليست تهمة — فالوكيل الذي يمرّ حجمه عبر تلك المحطات يجد في القرب سبب الاختيار كله. أما من لا يمرّ حجمه عبرها فالسؤال يستحق أن يُطرح صراحة. وهذا هو المحور الذي تدور عليه هذه المقارنة، ولا تلمسه قائمة مزايا.',
     },
+    shot: {
+      file: 'jobs',
+      alt: {
+        en: 'The operations board: live shipments ordered by exception, oldest first',
+        ar: 'لوحة العمليات: الشحنات الجارية مرتّبة حسب الاستثناء، الأقدم أولاً',
+      },
+      look: {
+        en: 'Everything on this board is there because somebody at your desk put it there. We operate no terminal, no vessel and no depot, so nothing here arrives from a party that is also selling you the software — which is a position with two sides to it, and the other side is that we have no privileged data feed either.',
+        ar: 'كل ما على هذه اللوحة موجود لأن أحداً من مكتبكم وضعه. نحن لا نشغّل محطة ولا سفينة ولا مستودعاً، فلا يصل إليها شيء من طرف يبيعكم البرنامج أيضاً — وهذا وضع له وجهان، وثانيهما أننا كذلك بلا تغذية بيانات ذات امتياز.',
+      },
+    },
   },
 
   spreadsheets: {
@@ -85,6 +134,17 @@ export const leads: Record<string, Lead> = {
     body: {
       en: 'A spreadsheet has no vendor, no roadmap and nothing to misrepresent, so this is the one page here that can be direct. It is also better than most software at several things, which is why it is still winning. What follows is not an argument that it is bad — it is the three moments at which it stops being the cheaper option, each one a thing that has already happened to somebody reading this.',
       ar: 'جدول البيانات بلا مورّد وبلا خارطة طريق وبلا ما يُساء تمثيله، ولذا فهذه الصفحة الوحيدة هنا التي يمكن أن تكون صريحة. وهو أيضاً أفضل من معظم البرمجيات في أمور عدة، ولهذا ما زال يفوز. وما يلي ليس حجة على سوئه — بل هي اللحظات الثلاث التي يكفّ عندها عن كونه الخيار الأرخص، وكل واحدة منها وقعت فعلاً لأحد قرّاء هذه الصفحة.',
+    },
+    shot: {
+      file: 'enquiries',
+      alt: {
+        en: 'The enquiry queue: every enquiry with an owner, a status and a response deadline',
+        ar: 'طابور الاستفسارات: لكل استفسار مالك وحالة وموعد للرد',
+      },
+      look: {
+        en: 'Three columns a shared workbook has no way to hold: an owner, a status, and a deadline that is measured rather than remembered. A file can have those headings. What it cannot have is anything that objects when they are left empty.',
+        ar: 'ثلاثة أعمدة لا يستطيع مصنّف مشترك أن يحملها: مالك، وحالة، وموعدٌ يُقاس لا يُتذكَّر. يستطيع الملف أن يحمل هذه العناوين، لكنه لا يملك ما يعترض حين تُترك فارغة.',
+      },
     },
     moments: [
       {

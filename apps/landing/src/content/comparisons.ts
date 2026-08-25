@@ -82,8 +82,8 @@ export interface Comparison {
 /** Shared by three of the four pages, so the wording cannot drift between them. */
 const OUR_POINTS: Bi[] = [
   {
-    en: 'Arabic and English are the same build, checked for parity on every commit — 2,709 interface strings in both, and every document the system issues exists in each.',
-    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل — 2,709 نص واجهة باللغتين، وكل مستند يصدره النظام موجود بكليهما.',
+    en: 'Arabic and English are the same build, checked for parity on every commit — 2,701 interface strings in both, and every document the system issues exists in each.',
+    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل — 2,701 نص واجهة باللغتين، وكل مستند يصدره النظام موجود بكليهما.',
   },
   {
     en: 'The dinar keeps three decimal places from the database to the printed invoice. Money is decimal end to end and never a floating-point number.',
@@ -182,7 +182,7 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
  *
  * This is the table §03 was missing. Everything else on a comparison page is
  * prose, and prose is where a reader stops being able to tell a mechanism from
- * an adjective — "fully bilingual" and "2,709 strings in both, and the build
+ * an adjective — "fully bilingual" and "2,701 strings in both, and the build
  * fails if one is missing" are the same sentence until one of them shows its
  * working.
  *
@@ -220,7 +220,7 @@ export const facts: { claim: Bi; figure: string; check: Bi }[] = [
   },
   {
     claim: { en: 'Interface strings, English and Arabic', ar: 'نصوص الواجهة بالإنجليزية والعربية' },
-    figure: '2,709',
+    figure: '2,701',
     check: {
       en: 'pnpm lint runs check-messages.mjs, which fails the build if a key exists in one catalogue and not the other.',
       ar: 'يشغّل pnpm lint ملف check-messages.mjs، الذي يُفشل البناء إن وُجد مفتاح في أحد الفهرسين دون الآخر.',

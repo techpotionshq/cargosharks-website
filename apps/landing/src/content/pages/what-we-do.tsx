@@ -1,3 +1,13 @@
+import {
+  AccrualStair,
+  ChargeableColumns,
+  DutyMatrix,
+  MilestoneStrips,
+  MinorUnits,
+  ScopeSpan,
+} from '@/content/pages/figures'
+import { LayeredRecord, OwnDatabase } from '@/content/pages/illustrations'
+
 /**
  * Converted, not written — and now the source.
  *
@@ -70,11 +80,27 @@ export function WhatWeDoContent() {
             <div className="stage"><div className="stage__dot">06</div><h3>Invoice</h3><p>Raised from the job&rsquo;s own cost ledger, in the right entity, currency and language.</p></div>
           </div>
 
+          {/*
+            The fourth state, drawn at the six lengths it actually has.
+
+            The rail above is one row of six states because that part is the
+            same for every shipment. Execution is not: a sea import is nine
+            milestones and a land import is five, and a page that says "job
+            file with milestones" and stops has said nothing a reader can
+            check. These are the seeded templates, at their real lengths.
+          */}
+          <MilestoneStrips lang="en" />
+
           <div className="prose rise" style={{ marginTop: 'clamp(44px,5vw,68px)' }}>
             <p>Two consequences follow from that shape, and they are the two things a forwarder notices first.</p>
             <p><strong>What you sold is what you costed.</strong> Accepting a quotation opens the job file with the buying and selling rates already attached to it, so the margin on the job is a live figure rather than one reconstructed at month-end from three sources that disagree.</p>
             <p><strong>Revisions supersede rather than overwrite.</strong> What the customer actually accepted stays recoverable, whatever has happened to the quotation since. That is a property of the database rather than a habit of the people using it &mdash; see <a href="/what-we-do/#parts">what holds when people are careless</a>.</p>
           </div>
+
+          {/* The paragraph above is the hardest one on this page to feel, because
+              "supersedes rather than overwrites" is a schema decision and reads
+              as a phrase. Drawn, it is three sheets and a trail. */}
+          <LayeredRecord lang="en" />
         </div>
       </section>
 
@@ -120,6 +146,11 @@ export function WhatWeDoContent() {
               <p className="modes__note">A 5,000&nbsp;cm&sup3;/kg divisor, rounded up to the next half kilo, floored at half a kilo.</p>
             </div>
           </div>
+
+          {/* The table above states the rules; this runs them. One pallet
+              through all five, so the six-fold spread between air and sea LCL
+              is a thing the reader sees rather than a thing we assert. */}
+          <ChargeableColumns lang="en" />
 
           <p className="small muted rise" style={{ marginTop: 'clamp(28px,3vw,40px)', maxWidth: '72ch' }}>
             Milestone sets and free-time rules are per mode in the same way. A sea import and an air import do not share a checklist here because they do not share one in the yard.
@@ -199,13 +230,50 @@ export function WhatWeDoContent() {
         </div>
       </section>
 
-      {/* 05 — bilingual ───────────────────────────────────────────────────────── */}
+      {/* 05 — the two that fall out ───────────────────────────────────────────── */}
+      {/*
+        A section that is two figures and four sentences, which is unusual for
+        this page and is the point of it.
+
+        Both of these are things every system in the category claims and few of
+        them do, and both are impossible to argue in prose without sounding like
+        every other vendor arguing the same thing. Drawn, they are checkable in
+        about a minute each: count the steps on the stair, count the decimal
+        places on an invoice in the demo.
+      */}
+      <section className="band band--paper" id="mechanisms">
+        <div className="shell">
+          <div className="section-head rise">
+            <p className="eyebrow">05 &mdash; The two that fall out</p>
+            <h2 className="h2">The clock nobody starts, and the decimal nobody keeps</h2>
+            <p className="lead">Everything in this category quotes, books and invoices. These two are what quietly does not survive the trip from a demo to a Kuwaiti operation &mdash; the first because it needs a scheduled job rather than a screen to look at, the second because it needs a currency the product was not designed around.</p>
+          </div>
+
+          <AccrualStair lang="en" />
+          <MinorUnits lang="en" />
+        </div>
+      </section>
+
+      {/*
+        A horizon, between the last paper band and the first navy one.
+
+        `.divider` has been in this stylesheet since the site was nine HTML
+        files and has had nothing using it since the conversion. It is a
+        photograph with a gradient over it that starts at `--paper` and ends at
+        `--navy-900`, which means it only works in one position: paper above,
+        navy below. Here, that is exactly the seam.
+      */}
+      <section className="divider" aria-hidden="true">
+        <img src="/pic/photos/containers-aerial.webp" alt="" loading="lazy" decoding="async" />
+      </section>
+
+      {/* 06 — bilingual ───────────────────────────────────────────────────────── */}
       <section className="band band--navy" id="bilingual">
         <div className="shell">
           <div className="section-head rise" style={{ paddingInline: 'clamp(6px,2.4vw,42px)' }}>
-            <p className="eyebrow">05 &mdash; Language</p>
+            <p className="eyebrow">06 &mdash; Language</p>
             <h2 className="h2">Bilingual, not translated</h2>
-            <p className="lead">2,709 interface strings in Arabic and English, kept in sync, with right-to-left in the layout rather than bolted onto it. The quotation your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored.</p>
+            <p className="lead">2,701 interface strings in Arabic and English, kept in sync, with right-to-left in the layout rather than bolted onto it. The quotation your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored.</p>
           </div>
 
           <div className="pair rise">
@@ -227,14 +295,20 @@ export function WhatWeDoContent() {
         </div>
       </section>
 
-      {/* 06 — ownership ───────────────────────────────────────────────────────── */}
+      {/* 07 — ownership ───────────────────────────────────────────────────────── */}
       <section className="band band--paper" id="ownership">
         <div className="shell">
           <div className="section-head rise">
-            <p className="eyebrow">06 &mdash; Ownership and enforcement</p>
+            <p className="eyebrow">07 &mdash; Ownership and enforcement</p>
             <h2 className="h2">Your database, your brand, your data</h2>
             <p className="lead">One deployment per customer &mdash; your own database in your own instance, not a shared table with a customer column in it. Inside that deployment, branch separation is enforced by the database rather than by application code that can forget one query: ask for another branch&rsquo;s shipment and it comes back <em>not found</em>, because the row is never in the answer.</p>
           </div>
+
+          {/* The sentence above contains the words "not a shared table with a
+              customer column in it", which is precise, correct, and means
+              nothing to a reader who has never had to write the query that
+              remembers the column. Both shapes, side by side. */}
+          <OwnDatabase lang="en" />
 
           <div className="grid grid--3">
             <article className="card rise">
@@ -263,20 +337,36 @@ export function WhatWeDoContent() {
             </article>
           </div>
 
+          {/*
+            Separation of duties, printed rather than promised.
+
+            The six cards above are about what we cannot do to your data. This is
+            about what your own people cannot do to each other's work, which is
+            the half an auditor actually asks about — and it is a table we can
+            publish because it is transcribed from the file the database is
+            seeded from rather than written from memory.
+          */}
+          <DutyMatrix lang="en" />
+
           <p className="small muted rise" style={{ marginTop: 'clamp(30px,3.4vw,44px)', maxWidth: '74ch' }}>
             How each of those is implemented, and what is still open, is written out in the <a href="/privacy/">privacy policy</a> and the <a href="/dpa/">data-processing addendum</a> &mdash; both drafts, both pending review by counsel, and both honest about where the code and a standard clause disagree.
           </p>
         </div>
       </section>
 
-      {/* 07 — boundaries ──────────────────────────────────────────────────────── */}
+      {/* 08 — boundaries ──────────────────────────────────────────────────────── */}
       <section className="band band--white" id="boundaries">
         <div className="shell">
           <div className="section-head rise">
-            <p className="eyebrow">07 &mdash; The boundary</p>
+            <p className="eyebrow">08 &mdash; The boundary</p>
             <h2 className="h2">The whole of one job. Not a piece of everything.</h2>
             <p className="lead">This is the section the instinct says to bury, and it is the one that makes the rest of the page believable. Five things are outside the product by decision rather than by accident, and none of them is coming.</p>
           </div>
+
+          {/* Scope and exclusions at the same weight, which is the whole honesty
+              of the drawing: a diagram showing only what is included is a logo
+              wall with rectangles. */}
+          <ScopeSpan lang="en" />
 
           {/*
             Deliberately the *stable* half of the home page's section 07. The roadmap

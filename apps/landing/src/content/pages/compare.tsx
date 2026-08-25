@@ -1,3 +1,6 @@
+import { ChargeWaffle, PilotGantt } from '@/content/pages/figures'
+import { QuayLine } from '@/content/pages/illustrations'
+
 /**
  * Converted, not written — and now the source.
  *
@@ -50,6 +53,16 @@ export function CompareContent() {
             <p><strong>The whole of one job</strong> is what we built. Narrower on purpose: the commercial and operational loop of a forwarding job, complete, including the parts that usually fall out of it &mdash; free-time clocks, consolidation cost apportionment, per-mode chargeable weight, bilingual documents. Nothing here manages a warehouse, and nothing is going to.</p>
           </div>
 
+          {/*
+            "Complete" is the word in that paragraph doing all the work, and it
+            is the one a reader has no way to test. The catalogue is the closest
+            thing to a test we can print: twenty-one charge types over six
+            rating functions, all of them rows an administrator edits. The
+            second and third shapes above both fail at exactly this point — a
+            spreadsheet has no catalogue, and a platform has one you configure.
+          */}
+          <ChargeWaffle lang="en" />
+
           <div className="tablewrap rise">
             <table className="compare-table">
               <thead>
@@ -77,7 +90,7 @@ export function CompareContent() {
                   <th scope="row">Arabic</th>
                   <td>Whatever the person typing writes. Documents are usually English.</td>
                   <td>Available as a localisation, added to a product designed in English. You can tell, and so can your customer.</td>
-                  <td className="is-ours">2,709 interface strings in both languages, kept in sync, with right-to-left in the layout rather than applied to it. Documents generate bilingual from the job.</td>
+                  <td className="is-ours">2,701 interface strings in both languages, kept in sync, with right-to-left in the layout rather than applied to it. Documents generate bilingual from the job.</td>
                 </tr>
                 <tr>
                   <th scope="row">Where your data sits</th>
@@ -161,6 +174,19 @@ export function CompareContent() {
         </div>
       </section>
 
+      {/*
+        A horizon between the honest half and the policy.
+
+        `.divider` is a photograph under a gradient that runs from `--paper` to
+        `--navy-900`, so it works in one position only: a light band above and
+        the dark band below. That seam is here, and it is also the one place on
+        this page where the reader has just finished five reasons not to buy
+        from us and could use somewhere for their eye to go.
+      */}
+      <section className="divider" aria-hidden="true">
+        <img src="/pic/photos/containers-stack.webp" alt="" loading="lazy" decoding="async" />
+      </section>
+
       {/* 03 — why no competitor comparison ───────────────────────────────────── */}
       <section className="band band--navy" id="named">
         <div className="shell">
@@ -210,9 +236,34 @@ export function CompareContent() {
           </div>
 
           <div className="sourced rise">
-            <p><b>Where the claims on this page come from.</b> The counts &mdash; 88 tables, 197 policies, 80 audit triggers, 2,709 interface strings &mdash; are asserted by the project&rsquo;s own test suite against a live PostgreSQL 18.6 and against the two message catalogues. The per-mode chargeable-weight arithmetic is the seeded rule set in the pricing engine. The scope statements and the UAE e-invoicing dates are read from the specification&rsquo;s build-status table. The export qualification in the last row of the table is from the same source, where a complete export as a single action is recorded as not implemented.</p>
+            <p><b>Where the claims on this page come from.</b> The counts &mdash; 88 tables, 197 policies, 80 audit triggers, 2,701 interface strings &mdash; are asserted by the project&rsquo;s own test suite against a live PostgreSQL 18.6 and against the two message catalogues. The per-mode chargeable-weight arithmetic is the seeded rule set in the pricing engine. The scope statements and the UAE e-invoicing dates are read from the specification&rsquo;s build-status table. The export qualification in the last row of the table is from the same source, where a complete export as a single action is recorded as not implemented.</p>
             <p><b>Claims about other companies&rsquo; products on this page: none.</b> The three product names in section 03 are named only as products a prospect may be evaluating, with no statement made about any of them. The &ldquo;global platform&rdquo; column describes the shape of that choice in general and is not a description of any particular vendor.</p>
           </div>
+        </div>
+      </section>
+
+      {/* 05 — the pilot, drawn ────────────────────────────────────────────────── */}
+      {/*
+        The site has offered a fifteen-day pilot in four places and has never
+        once shown what the fifteen days are.
+
+        That plan exists — `docs/Qabandi_Pilot_15_Day.md` §4 — it is specific,
+        and it is dull in the way a real plan is dull. Printing it is worth more
+        than another sentence promising that it exists, and it belongs on this
+        page rather than on `/what-we-do/`: a reader comparing three systems is
+        deciding what the next three weeks look like, not what the product does.
+      */}
+      <section className="band band--white" id="pilot">
+        <div className="shell">
+          <div className="section-head rise">
+            <p className="eyebrow">05 &mdash; What the fifteen days are</p>
+            <h2 className="h2">A pilot on your own data, with the days written down</h2>
+            <p className="lead">Fixed fee, fifteen working days, starting the day your data arrives rather than the day you sign. This is the plan we work to, block by block, with what each one has to produce before the next begins. Nothing built in it is thrown away.</p>
+          </div>
+
+          <PilotGantt lang="en" />
+
+          <QuayLine />
         </div>
       </section>
 

@@ -39,6 +39,7 @@
     "db:down": "docker compose -f compose.dev.yaml down",
     "db:reset": "docker compose -f compose.dev.yaml down -v && docker compose -f compose.dev.yaml up -d db",
     "check:messages": "node scripts/check-messages.mjs",
+    "brand:new": "node scripts/brand-new.mjs",
     "tenant:new": "pnpm --filter @qabandi/db tenant-new",
     "fleet:migrate": "pnpm --filter @qabandi/db fleet-migrate",
     "fleet:status": "pnpm --filter @qabandi/db fleet-migrate --status",

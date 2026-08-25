@@ -3,6 +3,8 @@ import { facts } from '@/content/comparisons'
 import type { Comparison } from '@/content/comparisons'
 import { CostShape, SurfaceTimeline } from '@/content/pages/comparison-figures'
 import { ChainPosition, OverlapSets, ScaleRuler } from '@/content/pages/comparison-leads'
+import { AccrualStair, AllocationSplit, MinorUnits } from '@/content/pages/figures'
+import { OwnDatabase } from '@/content/pages/illustrations'
 import { leads } from '@/content/comparison-leads'
 import { CONTACT_EMAIL, DEMO_URL, type Lang } from '@/content/copy'
 
@@ -121,6 +123,12 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
               ))}
             </ol>
           ) : null}
+
+          {/* The second moment, drawn. It is the one of the three that is
+              arithmetic rather than judgement, so it is the one a picture
+              settles: five free days, and then a charge line every day whether
+              or not anybody has opened the file. */}
+          {lead.shape === 'modes' ? <AccrualStair lang={lang} /> : null}
         </div>
       </section>
 
@@ -231,10 +239,73 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
             </table>
           </div>
 
-          {/* The one figure on this page that *is* a claim, and it is a claim
-              about our own software rather than about anybody's product — see
-              `comparison-figures.tsx`. */}
-          <SurfaceTimeline lang={lang} />
+          {/*
+            The mechanism figure, and it is different on every one of the four.
+
+            Everything above this line is shared on purpose — the same feature
+            list shape, the same facts table, the same promise. What was also
+            shared, and should not have been, was the drawing: one timeline
+            about free time on all four pages, which meant the page arguing
+            about *scale* and the page arguing about *who owns the software*
+            illustrated themselves with the same picture. Four identical
+            documents with the nouns swapped, again, one level down.
+
+            So each shape now gets the mechanism its own argument turns on, and
+            each of those is a claim about our software rather than about
+            anybody's product:
+
+              scale   the market this was built for, down to the third decimal
+              peer    the narrowest, most specific difference there is — a fils
+              chain   whose database it is, drawn beside the shape we did not build
+              modes   the clock, which is where a spreadsheet actually breaks
+          */}
+          {lead.shape === 'scale' ? <MinorUnits lang={lang} /> : null}
+          {lead.shape === 'peer' ? <AllocationSplit lang={lang} /> : null}
+          {lead.shape === 'chain' ? <OwnDatabase lang={lang} /> : null}
+          {lead.shape === 'modes' ? <SurfaceTimeline lang={lang} /> : null}
+        </div>
+      </section>
+
+      {/*
+        The screen the page has been asking you to open.
+
+        Four pages arguing entirely in prose and tables, on a site whose central
+        claim is *open it and check*, and not one of them showed the thing. The
+        capture is of the running build and the caption says what to look at —
+        both from `comparison-leads.ts`, so the screen differs per page for the
+        same reason the lead does.
+      */}
+      <section className="band band--white">
+        <div className="shell">
+          <div className="section-head">
+            <p className="eyebrow">
+              <b />
+              {lang === 'ar' ? 'على الشاشة' : 'On the screen'}
+            </p>
+            <h2 className="h2">
+              {lang === 'ar'
+                ? 'الشاشة التي تقوم عليها الحجة أعلاه'
+                : 'The screen the argument above is made on'}
+            </h2>
+          </div>
+
+          <figure className="cmp-figure">
+            <div className="frame">
+              <img
+                src={`/pic/screens/${lead.shot.file}${lang === 'ar' ? '-ar' : ''}.webp`}
+                alt={lead.shot.alt[lang]}
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+            <figcaption>
+              {lead.shot.look[lang]}{' '}
+              <a href={DEMO_URL}>
+                {lang === 'ar' ? 'افتحوها بأنفسكم' : 'Open it yourself'}
+              </a>
+              {lang === 'ar' ? ' — بلا تسجيل.' : ' — no sign-up.'}
+            </figcaption>
+          </figure>
         </div>
       </section>
 

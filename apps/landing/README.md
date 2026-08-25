@@ -255,7 +255,7 @@ issues.
 
 | Figure | Where | Verify with |
 |---|---|---|
-| **2,709 interface strings**, EN and AR in sync | proof strip | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
+| **2,701 interface strings**, EN and AR in sync | proof strip | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
 | **197 row-level policies, 80 audit triggers** | proof strip | `README.md` §Status — verified against a live PostgreSQL 18.6 |
 | **Five transport modes** | hero, proof strip, `/what-we-do/` §03 | `packages/db/src/schema/enums.ts` → `modeEnum` |
 | **Three decimals on every dinar** | proof strip | `CLAUDE.md` §Non-negotiables; `packages/core` money tests |

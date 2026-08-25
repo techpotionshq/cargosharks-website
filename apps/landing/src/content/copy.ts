@@ -356,7 +356,7 @@ export const proof: { value: string; label: Bi }[] = [
   { value: '5', label: { en: 'transport modes', ar: 'وسائل شحن' } },
   { value: '197', label: { en: 'row-level policies', ar: 'سياسة أمان على مستوى الصف' } },
   { value: '80', label: { en: 'audit triggers', ar: 'مُشغِّل تدقيق' } },
-  { value: '2,709', label: { en: 'strings, EN + AR', ar: 'نص واجهة بالعربية والإنجليزية' } },
+  { value: '2,701', label: { en: 'strings, EN + AR', ar: 'نص واجهة بالعربية والإنجليزية' } },
   { value: '3', label: { en: 'decimals on every dinar', ar: 'خانات عشرية لكل دينار' } },
 ]
 
