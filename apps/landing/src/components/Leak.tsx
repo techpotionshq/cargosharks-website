@@ -1,4 +1,5 @@
 import { Accrue } from '@/components/Accrue'
+import { Reveal } from '@/components/Reveal'
 import { type Lang, leak, yard } from '@/content/copy'
 
 /**
@@ -33,7 +34,7 @@ export function Leak({ lang }: { lang: Lang }) {
   const line = leak.line
 
   return (
-    <section className="relative isolate overflow-hidden py-band-sm lg:py-band">
+    <section data-tone="dark" className="relative isolate overflow-hidden py-band-sm lg:py-band">
       <img
         src="/pic/photos/containers-stack.webp"
         alt=""
@@ -48,7 +49,7 @@ export function Leak({ lang }: { lang: Lang }) {
       <div className="absolute inset-0 -z-10 bg-void/78" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void via-transparent to-void" />
 
-      <div className="shell flex flex-col items-center text-center">
+      <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-amber">{leak.eyebrow[lang]}</p>
 
         <h2 className="mt-6 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em] text-on-void">
@@ -62,9 +63,9 @@ export function Leak({ lang }: { lang: Lang }) {
         <p className="mt-6 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.7] text-on-void">
           {leak.answer[lang]}
         </p>
-      </div>
+      </Reveal>
 
-      <div className="shell mt-14">
+      <Reveal className="shell mt-14" delay={0.08}>
         {/* Narrower than the copy above it on purpose. A document is a fixed
             width and does not stretch to its container; letting this one run the
             full measure would be the detail that gives away that it is a web
@@ -110,7 +111,7 @@ export function Leak({ lang }: { lang: Lang }) {
             container yard directly on top of a photograph of a container yard.
             The photograph is better at it. */}
         <p className="mt-10 text-center text-[0.85rem] text-on-void-faint">{yard.quote[lang]}</p>
-      </div>
+      </Reveal>
     </section>
   )
 }

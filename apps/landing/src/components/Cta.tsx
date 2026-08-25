@@ -1,4 +1,5 @@
 import { ArrowRight } from '@phosphor-icons/react/dist/ssr'
+import { Reveal } from '@/components/Reveal'
 import { CONTACT_EMAIL, cta, DEMO_URL, type Lang } from '@/content/copy'
 
 /**
@@ -23,6 +24,7 @@ export function Cta({ lang }: { lang: Lang }) {
   return (
     <section
       id="demo"
+      data-tone="dark"
       className="relative isolate scroll-mt-28 overflow-hidden py-band-sm lg:py-band"
     >
       <img
@@ -36,7 +38,7 @@ export function Cta({ lang }: { lang: Lang }) {
       <div className="absolute inset-0 -z-10 bg-void/80" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void via-transparent to-void" />
 
-      <div className="shell relative flex flex-col items-center text-center">
+      <Reveal className="shell relative flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-blue-lit">{cta.eyebrow[lang]}</p>
 
         <h2 className="mt-6 max-w-[18ch] text-balance font-display text-[clamp(2.1rem,4.8vw,3.4rem)] font-medium leading-[1.08] tracking-[-0.02em] text-on-void">
@@ -65,7 +67,7 @@ export function Cta({ lang }: { lang: Lang }) {
             {cta.secondary[lang]}
           </a>
         </div>
-      </div>
+      </Reveal>
     </section>
   )
 }

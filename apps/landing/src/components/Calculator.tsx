@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Reveal } from '@/components/Reveal'
 import { calculator, type Lang } from '@/content/copy'
 
 /**
@@ -67,7 +68,7 @@ export function Calculator({ lang }: { lang: Lang }) {
 
   return (
     <section className="border-t border-line bg-paper-sunk py-band-sm lg:py-band">
-      <div className="shell flex flex-col items-center text-center">
+      <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-ink-faint">{calculator.eyebrow[lang]}</p>
         <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
           {calculator.title[lang]}
@@ -75,7 +76,7 @@ export function Calculator({ lang }: { lang: Lang }) {
         <p className="mt-5 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
           {calculator.sub[lang]}
         </p>
-      </div>
+      </Reveal>
 
       <div className="shell mt-12 grid items-start gap-6 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-7">
@@ -112,7 +113,7 @@ export function Calculator({ lang }: { lang: Lang }) {
                     onChange={(event) =>
                       setValues((was) => ({ ...was, [field.key]: Number(event.target.value) }))
                     }
-                    className="mt-3 h-1 w-full cursor-pointer appearance-none rounded-full bg-line-strong accent-blue"
+                    className="slider mt-3 h-1 w-full cursor-pointer appearance-none rounded-full bg-line-strong"
                   />
                 </div>
               )

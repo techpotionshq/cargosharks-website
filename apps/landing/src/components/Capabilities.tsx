@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   Table,
 } from '@phosphor-icons/react/dist/ssr'
+import { Reveal } from '@/components/Reveal'
 import { capabilities, type Lang } from '@/content/copy'
 
 /**
@@ -50,7 +51,7 @@ const CELL_ICONS: Record<string, ComponentType<{ weight?: 'thin'; className?: st
 export function Capabilities({ lang }: { lang: Lang }) {
   return (
     <section className="border-t border-line py-band-sm lg:py-band">
-      <div className="shell flex flex-col items-center text-center">
+      <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-ink-faint">{capabilities.eyebrow[lang]}</p>
         <h2 className="mt-5 max-w-[22ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
           {capabilities.title[lang]}
@@ -58,30 +59,35 @@ export function Capabilities({ lang }: { lang: Lang }) {
         <p className="mt-5 max-w-[56ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
           {capabilities.sub[lang]}
         </p>
-      </div>
+      </Reveal>
 
       {/*
-        `gap-px` over a line-coloured background is how the rules are drawn. The
-        alternative — a border on each cell — doubles every interior rule to two
-        pixels and leaves the outer edge inconsistent, which is the detail that
-        makes a grid look approximate.
+        `gap-px` over a line-coloured background is how the rules are drawn — the
+        alternative, a border on each cell, doubles every interior rule to two
+        pixels and leaves the outer edge inconsistent.
+
+        Two consequences. The background has to stop where the cells stop: on
+        the `.shell-wide` element itself it painted the gutter too and the grid
+        sat on a grey mat. And **the cell colour belongs on the reveal wrapper,
+        not on the `<article>`** — the wrapper is the grid item, the article
+        inside it slides up twelve pixels as it arrives, and a transparent
+        wrapper let the line colour show through underneath it while it moved.
       */}
-      {/* The rules are drawn by a line-coloured background showing through a
-          one-pixel gap, which means that background has to stop where the cells
-          stop. On the `.shell-wide` element itself it painted the gutter too,
-          and the grid appeared to sit on a grey mat. */}
       <div className="shell-wide mt-12">
       <div className="grid gap-px border-y border-line bg-line lg:grid-cols-6">
         {capabilities.cards.map((card, index) => {
           const Icon = CELL_ICONS[card.icon]
 
           return (
-            <article
+            <Reveal
               key={card.key}
-              className={`flex flex-col bg-paper px-7 py-9 lg:px-9 lg:py-11 ${
-                card.span === 'wide' ? 'lg:col-span-4' : 'lg:col-span-2'
-              }`}
+              // Capped so the last cell is not still arriving when the reader
+              // has finished the first. A stagger that outruns reading is a
+              // queue, not a reveal.
+              delay={Math.min(index, 3) * 0.05}
+              className={`bg-paper ${card.span === 'wide' ? 'lg:col-span-4' : 'lg:col-span-2'}`}
             >
+              <article className="group flex h-full flex-col px-7 py-9 transition-colors duration-300 hover:bg-paper-sunk lg:px-9 lg:py-11">
               {/* The number is the only ornament above the heading, and it is an
                   index rather than a decoration: it says how many of these there
                   are and where you are in them, which a glyph of a shield does
@@ -102,11 +108,12 @@ export function Capabilities({ lang }: { lang: Lang }) {
                   paragraph above it does — and the Arabic paragraph runs longer
                   than the English in four of these five. */}
               {Icon ? (
-                <p className="mt-auto pt-10 text-ink-faint/60">
+                <p className="mt-auto pt-10 text-ink-faint/60 transition-colors duration-300 group-hover:text-blue-ink">
                   <Icon weight="thin" className="size-7" />
                 </p>
               ) : null}
             </article>
+            </Reveal>
           )
         })}
       </div>

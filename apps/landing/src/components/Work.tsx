@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { Reveal } from '@/components/Reveal'
 import { type Lang, steps, work } from '@/content/copy'
 
 /** How long a stage holds before the section moves itself on. */
@@ -78,7 +79,7 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
 
   return (
     <section ref={section} id="work" className="scroll-mt-28 border-t border-line py-band-sm lg:py-band">
-      <div className="shell flex flex-col items-center text-center">
+      <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-ink-faint">{work.eyebrow[lang]}</p>
         <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">
           {work.title[lang]}
@@ -86,7 +87,7 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
         <p className="mt-5 max-w-[52ch] text-balance text-[1.0625rem] leading-[1.65] text-ink-dim">
           {work.sub[lang]}
         </p>
-      </div>
+      </Reveal>
 
       {/* The tab rail. Buttons rather than a `role="tablist"` with arrow-key
           handling: these swap a picture and a paragraph, not panels of
@@ -135,7 +136,7 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
 
       {/* Full centred measure, so the capture is legible — this is the fault the
           rewrite exists to fix. */}
-      <div className="shell-wide mt-10 lg:mt-12">
+      <Reveal className="shell-wide mt-10 lg:mt-12">
         <div className="overflow-hidden rounded-2xl border border-line shadow-xl">
           <div className="bg-paper-lift">
             {/* The container holds the aspect ratio so a cross-fade does not
@@ -160,7 +161,7 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
             </div>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       <div className="shell mt-12">
         <AnimatePresence mode="wait" initial={false}>

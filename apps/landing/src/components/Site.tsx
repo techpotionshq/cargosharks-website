@@ -45,10 +45,18 @@ export function Site({ lang }: { lang: Lang }) {
 
   return (
     <>
-      {/* The header floats over a dark hero and a dark footer alike and carries
-          its own dark surface everywhere in between, so the lockup is the
-          light-on-dark artwork at every scroll position. */}
-      <Header lang={lang} mark={<Wordmark tone="onDark" height={24} />} />
+      {/* The bar inverts against whatever band is behind it, so it needs both
+          inkings of the lockup and picks one — see `Header`. They are rendered
+          here rather than there because `Wordmark` calls `resolveBrand()`, and
+          a client component importing that would pull `@qabandi/brand` into the
+          browser bundle. */}
+      <Header
+        lang={lang}
+        marks={{
+          onPaper: <Wordmark tone="onPaper" height={24} />,
+          onDark: <Wordmark tone="onDark" height={24} />,
+        }}
+      />
       <main>
         <Hero lang={lang} shot={`app-dashboard${suffix}`} />
         <Modes lang={lang} />

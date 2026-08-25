@@ -1,3 +1,4 @@
+import { Reveal } from '@/components/Reveal'
 import { type Lang, modes, modesNote, proof } from '@/content/copy'
 
 /**
@@ -31,7 +32,7 @@ const MODE_GLYPH = {
 export function Modes({ lang }: { lang: Lang }) {
   return (
     <section className="mt-14 border-y border-line lg:mt-16">
-      <div className="shell flex flex-col items-center gap-6 py-8 text-center">
+      <Reveal className="shell flex flex-col items-center gap-6 py-8 text-center">
         <p className="tracked text-[0.6rem] text-ink-faint">{modesNote[lang]}</p>
 
         {/* The modes as words, divided by hairlines. They had a Phosphor glyph
@@ -42,7 +43,7 @@ export function Modes({ lang }: { lang: Lang }) {
             <li
               key={mode.key}
               data-glyph={MODE_GLYPH[mode.key as keyof typeof MODE_GLYPH]}
-              className={`px-5 text-[1rem] text-ink sm:px-7 ${
+              className={`px-5 text-[1rem] text-ink-dim transition-colors duration-200 hover:text-ink sm:px-7 ${
                 index > 0 ? 'border-s border-line' : ''
               }`}
             >
@@ -50,7 +51,7 @@ export function Modes({ lang }: { lang: Lang }) {
             </li>
           ))}
         </ul>
-      </div>
+      </Reveal>
 
       <div className="border-t border-line">
         <div className="shell flex flex-wrap items-baseline justify-center gap-x-8 gap-y-2 py-5 sm:gap-x-12">

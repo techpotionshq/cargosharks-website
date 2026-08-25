@@ -22,7 +22,7 @@ export function Footer({ lang, mark }: { lang: Lang; mark: ReactNode }) {
   const year = brand.identity.established
 
   return (
-    <footer className="border-t border-void-line bg-void-lift py-16">
+    <footer data-tone="dark" className="border-t border-void-line bg-void-lift py-16">
       <div className="shell grid gap-12 lg:grid-cols-12 lg:gap-x-14">
         <div className="lg:col-span-5">
           {mark}

@@ -49,7 +49,14 @@ export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
 
   return (
     <section className="relative">
-      <div className="relative isolate overflow-hidden bg-void pt-[9.5rem] pb-[13rem] lg:pt-[11rem] lg:pb-[15rem]">
+      {/* `data-tone="dark"` is read by `Header`, which inverts against whatever
+          band is behind it. It is on the photograph band and not on the section,
+          because the section also contains the product frame hanging down into
+          the paper — and a header over that frame is over paper. */}
+      <div
+        data-tone="dark"
+        className="relative isolate overflow-hidden bg-void pt-[9.5rem] pb-[13rem] lg:pt-[11rem] lg:pb-[15rem]"
+      >
         <img
           src="/pic/photos/hero-port-dusk.webp"
           alt=""
