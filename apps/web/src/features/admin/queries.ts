@@ -17,7 +17,7 @@
  * here goes through `withActor`, and the trigger records it.
  */
 
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, lt, or, sql } from 'drizzle-orm'
 import {
   auditLog,
   branches,
@@ -410,14 +410,69 @@ export interface AuditRow {
 }
 
 /**
+ * What a reader is allowed to narrow the audit trail by — `FR-AD-02`.
+ *
+ * Every field is optional and they compose with `and`, so the filters read the
+ * way somebody investigating actually thinks: this table, that person, last
+ * week. `q` is the free-text half and deliberately searches the columns a
+ * question arrives phrased in — a job reference somebody was handed, the name
+ * of the person they are asking about, an address from a security alert —
+ * rather than offering four boxes for a reader who does not yet know which one
+ * holds their answer.
+ */
+export interface AuditFilters {
+  readonly table?: string
+  readonly op?: string
+  /** Matched against the record id, the principal's name and the address. */
+  readonly q?: string
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly from?: string
+  /** `YYYY-MM-DD`, inclusive — the whole of that day, not midnight. */
+  readonly to?: string
+  readonly limit?: number
+}
+
+/**
  * The audit trail — `FR-AD-03`, §5.4.
  *
  * Written by a database trigger rather than by application code, which is the
  * only version worth having: a write that bypasses the application is still
  * recorded, and a developer cannot forget to log one.
  */
-export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[]> {
-  if (usePilotFixtures()) return pilotAudit(Date.now(), table)
+export async function listAudit(actor: Actor, filters: AuditFilters = {}): Promise<AuditRow[]> {
+  const limit = filters.limit ?? 150
+  if (usePilotFixtures()) return pilotAudit(Date.now(), filters)
+
+  /*
+    `to` is exclusive of the day *after* rather than inclusive of `to`.
+
+    `at` is a timestamp, so `at <= '2026-08-25'` compares against midnight and
+    silently drops everything that happened during the day the reader asked
+    for — which on the audit trail means an investigation concludes the action
+    never happened. Adding a day and using `<` keeps the whole of the closing
+    day without needing the column truncated, so the index still applies.
+  */
+  const dayAfter = (date: string) => {
+    const next = new Date(`${date}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    return next
+  }
+
+  const term = filters.q?.trim()
+  const conditions = [
+    filters.table ? eq(auditLog.tableName, filters.table) : undefined,
+    filters.op ? eq(auditLog.op, filters.op) : undefined,
+    filters.from ? gte(auditLog.at, new Date(`${filters.from}T00:00:00Z`)) : undefined,
+    filters.to ? lt(auditLog.at, dayAfter(filters.to)) : undefined,
+    term
+      ? or(
+          ilike(auditLog.rowId, `%${term}%`),
+          ilike(principals.nameEn, `%${term}%`),
+          ilike(principals.nameAr, `%${term}%`),
+          sql`${auditLog.ip}::text ilike ${`%${term}%`}`,
+        )
+      : undefined,
+  ].filter(Boolean)
 
   return withActor(actor, async (tx) =>
     tx
@@ -435,9 +490,9 @@ export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[
       .from(auditLog)
       .leftJoin(principals, eq(principals.id, auditLog.principalId))
       .leftJoin(branches, eq(branches.id, auditLog.branchId))
-      .where(table ? eq(auditLog.tableName, table) : undefined)
+      .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(auditLog.at))
-      .limit(150),
+      .limit(limit),
   )
 }
 

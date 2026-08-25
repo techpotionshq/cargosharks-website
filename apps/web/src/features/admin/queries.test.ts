@@ -133,12 +133,51 @@ describe.skipIf(!enabled)('administration reads', () => {
       expect(counts.length).toBeGreaterThan(0)
 
       const table = counts[0]!.tableName
-      const rows = await listAudit(adminActor, table)
+      const rows = await listAudit(adminActor, { table })
       expect(rows.every((r) => r.tableName === table)).toBe(true)
     })
 
     it('returns nothing for a table nobody has touched', async () => {
-      expect(await listAudit(adminActor, 'no_such_table')).toEqual([])
+      expect(await listAudit(adminActor, { table: 'no_such_table' })).toEqual([])
+    })
+
+    /*
+      The filters `FR-AD-02` asks for, checked against real rows.
+
+      The free-text case is the one worth pinning: it searches three columns at
+      once, so the risk is not that it finds too little but that a term meant
+      for one column silently matches another and the reader draws a conclusion
+      from a row that has nothing to do with their question.
+    */
+    it('narrows to one operation', async () => {
+      const rows = await listAudit(adminActor, { op: 'INSERT' })
+      expect(rows.length).toBeGreaterThan(0)
+      expect(rows.every((r) => r.op === 'INSERT')).toBe(true)
+    })
+
+    it('finds an entry by its record id', async () => {
+      const [sample] = await listAudit(adminActor, { limit: 1 })
+      expect(sample).toBeDefined()
+
+      const rows = await listAudit(adminActor, { q: sample!.rowId })
+      expect(rows.some((r) => r.rowId === sample!.rowId)).toBe(true)
+    })
+
+    it('keeps the whole of the closing day rather than stopping at its midnight', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      const rows = await listAudit(adminActor, { from: today, to: today })
+
+      // Everything the seed wrote happened today, so a `to` that compared
+      // against midnight would return nothing at all here.
+      expect(rows.length).toBeGreaterThan(0)
+    })
+
+    it('returns nothing for a period before anything was written', async () => {
+      expect(await listAudit(adminActor, { from: '2000-01-01', to: '2000-01-02' })).toEqual([])
+    })
+
+    it('honours the row cap the export relies on', async () => {
+      expect((await listAudit(adminActor, { limit: 3 })).length).toBeLessThanOrEqual(3)
     })
   })
 })

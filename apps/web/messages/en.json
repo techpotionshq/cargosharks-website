@@ -1052,7 +1052,14 @@
     "noneYet": "Nothing recorded yet",
     "noneYetHint": "Entries appear as soon as anything is written.",
     "forbidden": "You cannot view the audit log",
-    "forbiddenHint": "Your role does not include admin.audit.read."
+    "forbiddenHint": "Your role does not include admin.audit.read.",
+    "searchPlaceholder": "Record, person or address",
+    "exportCsv": "Export CSV",
+    "noMatch": "Nothing matches that search",
+    "noMatchHint": "Change the term, or widen the period.",
+    "last7": "Last 7 days",
+    "last30": "Last 30 days",
+    "entries": "Entries"
   },
   "enquiryForm": {
     "open": "New enquiry",

@@ -60,6 +60,7 @@ import type {
   AgeableBill,
   ApiKeyRowLike,
   AgeingBucket,
+  AuditFilters,
   AuditRow,
   BranchRow,
   CalendarRow,
@@ -5199,9 +5200,21 @@ const AUDIT_SEEDS = [
   },
 ] as const
 
-export function pilotAudit(now = Date.now(), table?: string): AuditRow[] {
-  return AUDIT_SEEDS.filter((seed) => !table || seed.table === table)
-    .map((seed, index): AuditRow => ({
+export function pilotAudit(now = Date.now(), filters: AuditFilters = {}): AuditRow[] {
+  /*
+    The fixtures filter the same way the query does, not approximately.
+
+    A demonstration where the search box draws itself and then ignores what is
+    typed into it is worse than one with no search box, and `check-fixtures`
+    only asserts that a screen renders — it cannot tell that a control is
+    inert. So the predicate below mirrors `listAudit`: same fields, same
+    case-insensitive contains, same inclusive closing day.
+  */
+  const term = filters.q?.trim().toLowerCase()
+  const from = filters.from ? new Date(`${filters.from}T00:00:00Z`).getTime() : undefined
+  const to = filters.to ? new Date(`${filters.to}T23:59:59.999Z`).getTime() : undefined
+
+  return AUDIT_SEEDS.map((seed, index): AuditRow => ({
       id: BigInt(900_000 + AUDIT_SEEDS.length - index),
       at: new Date(now - seed.minutesAgo * 60 * 1000),
       op: seed.op,
@@ -5218,7 +5231,18 @@ export function pilotAudit(now = Date.now(), table?: string): AuditRow[] {
       branchCode: seed.branch,
       ip: seed.person === null ? null : '10.20.30.40',
     }))
-    .slice(0, 150)
+    .filter((row) => {
+      if (filters.table && row.tableName !== filters.table) return false
+      if (filters.op && row.op !== filters.op) return false
+      const at = row.at.getTime()
+      if (from !== undefined && at < from) return false
+      if (to !== undefined && at > to) return false
+      if (!term) return true
+      return [row.rowId, row.principalName, row.ip].some((field) =>
+        (field ?? '').toLowerCase().includes(term),
+      )
+    })
+    .slice(0, filters.limit ?? 150)
 }
 
 export function pilotAuditTableCounts(now = Date.now()): { tableName: string; count: number }[] {

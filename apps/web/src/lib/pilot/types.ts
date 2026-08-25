@@ -997,6 +997,23 @@ export interface EngineRuleRow {
 }
 
 /**
+ * Mirrors `AuditFilters`.
+ *
+ * Mirrored rather than imported, like everything else in this file: the pilot
+ * layer states the shape it is asked for so a change to the query's signature
+ * shows up here as a type error rather than as a fixture that quietly ignores
+ * a filter it was never told about.
+ */
+export interface AuditFilters {
+  readonly table?: string
+  readonly op?: string
+  readonly q?: string
+  readonly from?: string
+  readonly to?: string
+  readonly limit?: number
+}
+
+/**
  * Mirrors `AuditRow`.
  *
  * `id` is a `bigint` because the audit table is append-only and long, so the

@@ -1052,7 +1052,14 @@
     "noneYet": "لا يوجد تسجيل بعد",
     "noneYetHint": "تظهر السجلات فور كتابة أي شيء.",
     "forbidden": "لا يمكنك عرض سجل التدقيق",
-    "forbiddenHint": "دورك لا يتضمن صلاحية admin.audit.read."
+    "forbiddenHint": "دورك لا يتضمن صلاحية admin.audit.read.",
+    "searchPlaceholder": "سجل أو شخص أو عنوان",
+    "exportCsv": "تصدير CSV",
+    "noMatch": "لا شيء يطابق هذا البحث",
+    "noMatchHint": "غيّروا الكلمة، أو وسّعوا المدة.",
+    "last7": "آخر 7 أيام",
+    "last30": "آخر 30 يوماً",
+    "entries": "إدخالات"
   },
   "enquiryForm": {
     "open": "استفسار جديد",

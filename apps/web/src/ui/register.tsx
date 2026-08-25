@@ -36,6 +36,17 @@ export interface RegisterProps {
     readonly value?: string
     readonly placeholder: string
     readonly label: string
+    /**
+     * Query parameters the search form has to carry with it.
+     *
+     * The box is a GET form of its own, so submitting it replaces the whole
+     * query string — and everything the filter strip had put there goes with
+     * it. On a register whose filters are links that is a real loss: filter to
+     * one table, type a term, and the table filter silently disappears while
+     * the strip still draws it as active. Anything named here is re-submitted
+     * as a hidden field, so the two controls compose instead of fighting.
+     */
+    readonly hidden?: Readonly<Record<string, string | undefined>>
   }
   readonly filters?: readonly RegisterFilter[]
   /** Small figures above the table — "of which 4 overdue". */
@@ -94,6 +105,11 @@ export function Register({
                 aria-label={search.label}
                 className="h-9 w-full rounded-md border border-line bg-surface ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none"
               />
+              {Object.entries(search.hidden ?? {}).map(([name, value]) =>
+                value === undefined || value === '' ? null : (
+                  <input key={name} type="hidden" name={name} value={value} />
+                ),
+              )}
             </form>
           ) : null}
 
