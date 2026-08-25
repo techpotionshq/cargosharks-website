@@ -32,10 +32,7 @@ import { INTEGRATION_GROUPS } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
-import {
-  IntegrationDialog,
-  ToggleIntegrationButton,
-} from '@/features/admin/ui/integration-dialogs'
+import { IntegrationDialog, ToggleIntegrationButton } from '@/features/admin/ui/integration-dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -265,7 +262,9 @@ export default async function IntegrationsPage() {
                             emptiness.
                           */
                           <p className="text-[0.8125rem] text-ink-muted">
-                            {driverLabel ? t('offHint', { driver: driverLabel }) : t('offHintPlain')}
+                            {driverLabel
+                              ? t('offHint', { driver: driverLabel })
+                              : t('offHintPlain')}
                           </p>
                         )}
 

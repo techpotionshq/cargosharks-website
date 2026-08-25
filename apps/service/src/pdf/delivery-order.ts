@@ -137,10 +137,7 @@ export function renderDeliveryOrderHtml(
     so, with the date, so the release is traceable to the surrender.
   */
   const instruction = view.houseBillSurrenderedAt
-    ? t.instructionSurrendered.replace(
-        '{date}',
-        formatDate(view.houseBillSurrenderedAt, locale),
-      )
+    ? t.instructionSurrendered.replace('{date}', formatDate(view.houseBillSurrenderedAt, locale))
     : t.instruction
 
   const rows = view.cargo

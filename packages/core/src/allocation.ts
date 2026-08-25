@@ -50,12 +50,7 @@ import type { Decimal } from 'decimal.js'
  * which is what makes an allocation auditable rather than negotiable.
  */
 export type AllocationBasis =
-  | 'chargeable_weight'
-  | 'volume'
-  | 'gross_weight'
-  | 'packages'
-  | 'equal'
-  | 'manual'
+  'chargeable_weight' | 'volume' | 'gross_weight' | 'packages' | 'equal' | 'manual'
 
 /** One house, and the figures any basis might read from it. */
 export interface AllocationTarget {
@@ -220,8 +215,7 @@ function largestRemainder(
   const order = exact
     .map((e, i) => ({ i, remainder: e.minus(e.floor()), driver: drivers[i]! }))
     .sort(
-      (a, b) =>
-        b.remainder.comparedTo(a.remainder) || b.driver.comparedTo(a.driver) || a.i - b.i,
+      (a, b) => b.remainder.comparedTo(a.remainder) || b.driver.comparedTo(a.driver) || a.i - b.i,
     )
 
   const units = [...floors]

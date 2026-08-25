@@ -262,7 +262,8 @@ describe('house bill of lading', () => {
       view({
         branch: {
           ...base.branch,
-          billOfLadingTermsEn: '1. Definitions. "Carrier" means the issuer.\n\n2. Clause paramount.',
+          billOfLadingTermsEn:
+            '1. Definitions. "Carrier" means the issuer.\n\n2. Clause paramount.',
         },
       }),
       'en',

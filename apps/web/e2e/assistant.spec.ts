@@ -23,9 +23,7 @@ const ARABIC = /[؀-ۿ]/
 
 /** The dock's own question box, in either language. */
 const questionBox = (page: import('@playwright/test').Page) =>
-  page
-    .getByRole('region', { name: /assistant|المساعد/i })
-    .getByRole('textbox')
+  page.getByRole('region', { name: /assistant|المساعد/i }).getByRole('textbox')
 
 test.describe('the assistant panel', () => {
   test('is offered on the board, and opens', async ({ page }) => {

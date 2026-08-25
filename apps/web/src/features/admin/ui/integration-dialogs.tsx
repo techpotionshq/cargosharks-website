@@ -54,10 +54,7 @@ export async function IntegrationDialog({
   const spec = integrationSpec(integration.key)
   if (!spec) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('integrations'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('integrations'), getTranslations('common')])
 
   const label = (path: string): string => t(path as 'keys.smtp')
 
@@ -161,7 +158,9 @@ export async function IntegrationDialog({
                 // Never required at the input layer: "already stored" is a
                 // valid way to satisfy a required credential, and only the
                 // action can know whether that is the case.
-                hint: stored?.isSet ? t('secretKeepHint') : t('secretHint', { variable: secret.env }),
+                hint: stored?.isSet
+                  ? t('secretKeepHint')
+                  : t('secretHint', { variable: secret.env }),
               }
             }),
           },
@@ -207,10 +206,7 @@ export async function ToggleIntegrationButton({
   const session = await requireSession()
   if (!can(session, 'admin.integrations.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('integrations'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('integrations'), getTranslations('common')])
 
   return (
     <RecordDialog

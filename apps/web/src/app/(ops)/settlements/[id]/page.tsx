@@ -104,7 +104,8 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
               </Badge>
             </Field>
             <Field label={t('period')}>
-              {formatDate(settlement.periodFrom, locale)} — {formatDate(settlement.periodTo, locale)}
+              {formatDate(settlement.periodFrom, locale)} —{' '}
+              {formatDate(settlement.periodTo, locale)}
             </Field>
             <Field label={t('theyOweUs')}>{money(settlement.receivableTotal)}</Field>
             <Field label={t('weOweThem')}>{money(settlement.payableTotal)}</Field>
@@ -145,7 +146,11 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
           </div>
 
           {settlement.lines.length === 0 ? (
-            <EmptyState icon="invoices" title={t('noDocuments')} description={t('noDocumentsHint')} />
+            <EmptyState
+              icon="invoices"
+              title={t('noDocuments')}
+              description={t('noDocumentsHint')}
+            />
           ) : (
             <TableShell className="border-t border-line" minWidth="none">
               <THead>

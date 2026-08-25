@@ -99,7 +99,10 @@ const warnings = () =>
       .select()
       .from(notificationOutbox)
       .where(
-        and(eq(notificationOutbox.jobId, JOB), eq(notificationOutbox.eventKey, 'free_time.expiring')),
+        and(
+          eq(notificationOutbox.jobId, JOB),
+          eq(notificationOutbox.eventKey, 'free_time.expiring'),
+        ),
       ),
   )
 

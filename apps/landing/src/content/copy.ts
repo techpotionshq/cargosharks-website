@@ -67,7 +67,10 @@ export const nav: {
     label: { en: 'Product', ar: 'المنتج' },
     image: {
       src: '/pic/photos/menu-port.webp',
-      alt: { en: 'A container terminal from the air, ships alongside and cranes working', ar: 'محطة حاويات من الجو، والسفن راسية والرافعات تعمل' },
+      alt: {
+        en: 'A container terminal from the air, ships alongside and cranes working',
+        ar: 'محطة حاويات من الجو، والسفن راسية والرافعات تعمل',
+      },
     },
     intro: {
       en: 'One file from enquiry to paid invoice, in Arabic and English, on a database that belongs to you.',
@@ -131,7 +134,10 @@ export const nav: {
     label: { en: 'Inside it', ar: 'داخله' },
     image: {
       src: '/pic/photos/menu-loading.webp',
-      alt: { en: 'A reach stacker and quay cranes working a container yard', ar: 'رافعة حاويات ورافعات رصيف تعمل في ساحة حاويات' },
+      alt: {
+        en: 'A reach stacker and quay cranes working a container yard',
+        ar: 'رافعة حاويات ورافعات رصيف تعمل في ساحة حاويات',
+      },
     },
     intro: {
       en: 'The parts a forwarder opens every day. Every link here goes to a section that describes a mechanism rather than a feature — something the database enforces, which means you can check it.',
@@ -149,7 +155,10 @@ export const nav: {
           {
             href: '/what-we-do/#modes',
             label: { en: 'Five transport modes', ar: 'خمس وسائل شحن' },
-            blurb: { en: 'Sea, air, road, rail and courier on one file', ar: 'بحري وجوي وبري وسككي وبريد سريع على سجل واحد' },
+            blurb: {
+              en: 'Sea, air, road, rail and courier on one file',
+              ar: 'بحري وجوي وبري وسككي وبريد سريع على سجل واحد',
+            },
           },
           {
             href: '/what-we-do/#parts',
@@ -164,17 +173,26 @@ export const nav: {
           {
             href: '/privacy/#nodelete',
             label: { en: 'Nothing is deleted', ar: 'لا يُحذف شيء' },
-            blurb: { en: 'Superseded rows stay, and say who moved them', ar: 'الصفوف المستبدَلة تبقى، وتقول من غيّرها' },
+            blurb: {
+              en: 'Superseded rows stay, and say who moved them',
+              ar: 'الصفوف المستبدَلة تبقى، وتقول من غيّرها',
+            },
           },
           {
             href: '/what-we-do/#ownership',
             label: { en: 'Whose database it is', ar: 'قاعدة البيانات لمن' },
-            blurb: { en: 'Yours, and you can have a copy today', ar: 'لكم، ويمكنكم أخذ نسخة اليوم' },
+            blurb: {
+              en: 'Yours, and you can have a copy today',
+              ar: 'لكم، ويمكنكم أخذ نسخة اليوم',
+            },
           },
           {
             href: '/what-we-do/#boundaries',
             label: { en: 'What we do not do', ar: 'ما لا نفعله' },
-            blurb: { en: 'The boundary, published rather than discovered', ar: 'الحدود، منشورة لا مُكتشَفة' },
+            blurb: {
+              en: 'The boundary, published rather than discovered',
+              ar: 'الحدود، منشورة لا مُكتشَفة',
+            },
           },
         ],
       },
@@ -185,7 +203,10 @@ export const nav: {
     label: { en: 'Compare', ar: 'المقارنات' },
     image: {
       src: '/pic/photos/menu-stack.webp',
-      alt: { en: 'Stacked containers and lanes in a working terminal', ar: 'حاويات مرصوفة وممرات في محطة عاملة' },
+      alt: {
+        en: 'Stacked containers and lanes in a working terminal',
+        ar: 'حاويات مرصوفة وممرات في محطة عاملة',
+      },
     },
     intro: {
       en: 'No tick-and-cross grids. Each page says what the other vendor states about itself, where they are the better answer, and the questions worth asking both of us.',
@@ -198,7 +219,10 @@ export const nav: {
           {
             href: '/compare/cargowise/',
             label: { en: 'vs CargoWise', ar: 'مقابل CargoWise' },
-            blurb: { en: 'The enterprise platform, and when it wins', ar: 'المنصة المؤسسية، ومتى تفوز' },
+            blurb: {
+              en: 'The enterprise platform, and when it wins',
+              ar: 'المنصة المؤسسية، ومتى تفوز',
+            },
           },
           {
             href: '/compare/logistaas/',
@@ -208,7 +232,10 @@ export const nav: {
           {
             href: '/compare/cargoes-runner/',
             label: { en: 'vs CARGOES Runner', ar: 'مقابل CARGOES Runner' },
-            blurb: { en: 'DP World’s platform for smaller forwarders', ar: 'منصة DP World للوكلاء الأصغر' },
+            blurb: {
+              en: 'DP World’s platform for smaller forwarders',
+              ar: 'منصة DP World للوكلاء الأصغر',
+            },
           },
         ],
       },
@@ -218,12 +245,18 @@ export const nav: {
           {
             href: '/compare/spreadsheets/',
             label: { en: 'vs spreadsheets', ar: 'مقابل جداول البيانات' },
-            blurb: { en: 'The real incumbent, and where it breaks', ar: 'المنافس الحقيقي، وأين ينكسر' },
+            blurb: {
+              en: 'The real incumbent, and where it breaks',
+              ar: 'المنافس الحقيقي، وأين ينكسر',
+            },
           },
           {
             href: '/compare/',
             label: { en: 'How we compare', ar: 'كيف نقارن' },
-            blurb: { en: 'Three ways to run an operation, and who we are not for', ar: 'ثلاث طرق لإدارة العمل، ومن لسنا لهم' },
+            blurb: {
+              en: 'Three ways to run an operation, and who we are not for',
+              ar: 'ثلاث طرق لإدارة العمل، ومن لسنا لهم',
+            },
           },
         ],
       },
@@ -234,7 +267,10 @@ export const nav: {
     label: { en: 'Trust', ar: 'الثقة' },
     image: {
       src: '/pic/photos/containers-aerial.webp',
-      alt: { en: 'Containers stacked in rows, seen from above', ar: 'حاويات مرصوفة صفوفاً، من الأعلى' },
+      alt: {
+        en: 'Containers stacked in rows, seen from above',
+        ar: 'حاويات مرصوفة صفوفاً، من الأعلى',
+      },
     },
     intro: {
       en: 'Where your rows live, who can read them, and what we commit to in writing. The three legal documents are drafts under review and say so at the top of each.',
@@ -247,7 +283,10 @@ export const nav: {
           {
             href: '/privacy/#roles',
             label: { en: 'Roles and access', ar: 'الأدوار والصلاحيات' },
-            blurb: { en: 'Who sees which branch, enforced in the schema', ar: 'من يرى أي فرع، مفروضاً في بنية القاعدة' },
+            blurb: {
+              en: 'Who sees which branch, enforced in the schema',
+              ar: 'من يرى أي فرع، مفروضاً في بنية القاعدة',
+            },
           },
           {
             href: '/privacy/#audit',
@@ -262,17 +301,26 @@ export const nav: {
           {
             href: '/dpa/',
             label: { en: 'Data processing', ar: 'معالجة البيانات' },
-            blurb: { en: 'What we process, where, and for how long', ar: 'ما نعالجه، وأين، وإلى متى' },
+            blurb: {
+              en: 'What we process, where, and for how long',
+              ar: 'ما نعالجه، وأين، وإلى متى',
+            },
           },
           {
             href: '/privacy/',
             label: { en: 'Privacy', ar: 'الخصوصية' },
-            blurb: { en: 'What leaves a visitor’s browser, enumerated', ar: 'ما يغادر متصفح الزائر، مُعدَّداً' },
+            blurb: {
+              en: 'What leaves a visitor’s browser, enumerated',
+              ar: 'ما يغادر متصفح الزائر، مُعدَّداً',
+            },
           },
           {
             href: '/terms/',
             label: { en: 'Terms', ar: 'الشروط' },
-            blurb: { en: 'The agreement, including what is not in it', ar: 'الاتفاق، بما في ذلك ما ليس فيه' },
+            blurb: {
+              en: 'The agreement, including what is not in it',
+              ar: 'الاتفاق، بما في ذلك ما ليس فيه',
+            },
           },
         ],
       },
@@ -339,8 +387,14 @@ export const hero = {
    * The caption under the product frame — one live figure, in mono, in small
    * type. See `Hero.tsx` for why it is a caption rather than the chip it was.
    */
-  tickerLabel: { en: 'Accruing right now on one box in Shuwaikh:', ar: 'يجري الآن على حاوية واحدة في الشويخ:' },
-  tickerRef: { en: '· MSKU 704 118 2 · 131 days past free time', ar: '· MSKU 704 118 2 · 131 يوماً بعد وقت السماح' },
+  tickerLabel: {
+    en: 'Accruing right now on one box in Shuwaikh:',
+    ar: 'يجري الآن على حاوية واحدة في الشويخ:',
+  },
+  tickerRef: {
+    en: '· MSKU 704 118 2 · 131 days past free time',
+    ar: '· MSKU 704 118 2 · 131 يوماً بعد وقت السماح',
+  },
 }
 
 /**
@@ -406,9 +460,18 @@ export const steps: {
       ar: 'يصل البريد إلى صندوق مشترك، فيُقرأ ويصير استفساراً منظَّماً له شاحن ومسار ووسيلة. يُسعَّر من بطاقات أسعاركم متى غطّت المسار، ويُرسل إلى الوكلاء متى لم تغطّه.',
     },
     points: [
-      { en: 'One queue for every branch, one owner and one deadline per line.', ar: 'قائمة واحدة لكل الفروع، ولكل سطر مسؤول ومهلة.' },
-      { en: 'Rate cards by lane, mode and carrier. Two cannot overlap on one route.', ar: 'بطاقات حسب المسار والوسيلة والناقل. والتداخل على مسار واحد غير ممكن.' },
-      { en: 'Buy, sell and margin are on the screen before the quote goes out.', ar: 'الشراء والبيع والهامش على الشاشة قبل خروج العرض.' },
+      {
+        en: 'One queue for every branch, one owner and one deadline per line.',
+        ar: 'قائمة واحدة لكل الفروع، ولكل سطر مسؤول ومهلة.',
+      },
+      {
+        en: 'Rate cards by lane, mode and carrier. Two cannot overlap on one route.',
+        ar: 'بطاقات حسب المسار والوسيلة والناقل. والتداخل على مسار واحد غير ممكن.',
+      },
+      {
+        en: 'Buy, sell and margin are on the screen before the quote goes out.',
+        ar: 'الشراء والبيع والهامش على الشاشة قبل خروج العرض.',
+      },
     ],
   },
   {
@@ -425,9 +488,18 @@ export const steps: {
       ar: 'الحجز والحاويات والمراحل وحالة التخليص والمستندات والحالات الاستثنائية على السجل نفسه. كل تغيير مختوم بمن أجراه ومتى، ولا يُحذف شيء — بل يُعلَّم السطر المستبدَل بأنه مستبدَل ويبقى.',
     },
     points: [
-      { en: 'Planned, revised and actual are all three kept, not overwritten.', ar: 'المخطط والمعدّل والفعلي — الثلاثة محفوظة، لا يُكتب أحدها فوق الآخر.' },
-      { en: 'A free-time clock per container, writing its own cost line.', ar: 'عدّاد وقت سماح لكل حاوية، يكتب بند تكلفته بنفسه.' },
-      { en: 'The board sorts by exception, oldest first, before the customer calls.', ar: 'اللوحة ترتِّب حسب الحالات الاستثنائية، الأقدم أولاً، قبل أن يتصل العميل.' },
+      {
+        en: 'Planned, revised and actual are all three kept, not overwritten.',
+        ar: 'المخطط والمعدّل والفعلي — الثلاثة محفوظة، لا يُكتب أحدها فوق الآخر.',
+      },
+      {
+        en: 'A free-time clock per container, writing its own cost line.',
+        ar: 'عدّاد وقت سماح لكل حاوية، يكتب بند تكلفته بنفسه.',
+      },
+      {
+        en: 'The board sorts by exception, oldest first, before the customer calls.',
+        ar: 'اللوحة ترتِّب حسب الحالات الاستثنائية، الأقدم أولاً، قبل أن يتصل العميل.',
+      },
     ],
   },
   {
@@ -444,9 +516,18 @@ export const steps: {
       ar: 'ما استحق على الشحنة وما فوتره المورّد فعلاً يُطابَقان بنداً ببند، والفرق رقم على الشاشة قبل أن يعتمده أحد. الحساب عشري من طرف إلى طرف، والدينار يحتفظ بخاناته الثلاث.',
     },
     points: [
-      { en: 'Supplier invoices matched to the accrual, variance shown before approval.', ar: 'فواتير المورّدين تُطابَق مع المستحق، والفرق يظهر قبل الاعتماد.' },
-      { en: 'Receivables by age, with the credit limit that was actually set.', ar: 'الذمم المدينة حسب التقادم، مع الحد الائتماني المعتمد فعلاً.' },
-      { en: 'Documents issued in both languages from the shipment’s own data.', ar: 'المستندات تصدر باللغتين من بيانات الشحنة نفسها.' },
+      {
+        en: 'Supplier invoices matched to the accrual, variance shown before approval.',
+        ar: 'فواتير المورّدين تُطابَق مع المستحق، والفرق يظهر قبل الاعتماد.',
+      },
+      {
+        en: 'Receivables by age, with the credit limit that was actually set.',
+        ar: 'الذمم المدينة حسب التقادم، مع الحد الائتماني المعتمد فعلاً.',
+      },
+      {
+        en: 'Documents issued in both languages from the shipment’s own data.',
+        ar: 'المستندات تصدر باللغتين من بيانات الشحنة نفسها.',
+      },
     ],
   },
 ]
@@ -771,8 +852,14 @@ export const footer = {
       links: [
         { href: '/compare/cargowise/', label: { en: 'vs CargoWise', ar: 'مقابل CargoWise' } },
         { href: '/compare/logistaas/', label: { en: 'vs Logistaas', ar: 'مقابل Logistaas' } },
-        { href: '/compare/cargoes-runner/', label: { en: 'vs CARGOES Runner', ar: 'مقابل CARGOES Runner' } },
-        { href: '/compare/spreadsheets/', label: { en: 'vs spreadsheets', ar: 'مقابل جداول البيانات' } },
+        {
+          href: '/compare/cargoes-runner/',
+          label: { en: 'vs CARGOES Runner', ar: 'مقابل CARGOES Runner' },
+        },
+        {
+          href: '/compare/spreadsheets/',
+          label: { en: 'vs spreadsheets', ar: 'مقابل جداول البيانات' },
+        },
       ],
     },
     {

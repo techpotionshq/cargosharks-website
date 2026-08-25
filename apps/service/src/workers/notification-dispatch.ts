@@ -342,7 +342,10 @@ async function expand(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function markDispatched(tx: any, id: string, asOf: Date): Promise<void> {
-  await tx.update(notificationOutbox).set({ dispatchedAt: asOf }).where(eq(notificationOutbox.id, id))
+  await tx
+    .update(notificationOutbox)
+    .set({ dispatchedAt: asOf })
+    .where(eq(notificationOutbox.id, id))
 }
 
 /**
@@ -379,7 +382,7 @@ async function customerRecipients(tx: any, customerId: string | null): Promise<R
       const locale = ((row.locale as 'en' | 'ar' | null) ?? 'en') as 'en' | 'ar'
       return {
         principalId: (row.principalId as string | null) ?? null,
-        email: ((row.contactEmail as string | null) ?? (row.principalEmail as string | null)) ?? '',
+        email: (row.contactEmail as string | null) ?? (row.principalEmail as string | null) ?? '',
         name:
           (locale === 'ar' ? (row.nameAr as string | null) : null) ?? (row.nameEn as string) ?? '',
         locale,
@@ -638,8 +641,12 @@ async function claim(asOf: Date): Promise<ClaimedDelivery[]> {
         subject: notificationTemplates.subject,
         body: notificationTemplates.body,
         payload: notificationOutbox.payload,
-        recipientNameEn: sql<string | null>`coalesce(${customerContacts.nameEn}, ${principals.nameEn})`,
-        recipientNameAr: sql<string | null>`coalesce(${customerContacts.nameAr}, ${principals.nameAr})`,
+        recipientNameEn: sql<
+          string | null
+        >`coalesce(${customerContacts.nameEn}, ${principals.nameEn})`,
+        recipientNameAr: sql<
+          string | null
+        >`coalesce(${customerContacts.nameAr}, ${principals.nameAr})`,
         senderNameEn: branches.legalNameEn,
         senderNameAr: branches.legalNameAr,
         /*

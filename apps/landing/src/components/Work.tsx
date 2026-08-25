@@ -54,16 +54,20 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
     let timer: ReturnType<typeof setInterval> | null = null
 
     const start = () => {
-      if (timer === null) timer = setInterval(() => setActive((n) => (n + 1) % steps.length), DWELL_MS)
+      if (timer === null)
+        timer = setInterval(() => setActive((n) => (n + 1) % steps.length), DWELL_MS)
     }
     const stop = () => {
       if (timer !== null) clearInterval(timer)
       timer = null
     }
 
-    const observer = new IntersectionObserver(([entry]) => (entry?.isIntersecting ? start() : stop()), {
-      threshold: 0.3,
-    })
+    const observer = new IntersectionObserver(
+      ([entry]) => (entry?.isIntersecting ? start() : stop()),
+      {
+        threshold: 0.3,
+      },
+    )
     observer.observe(node)
 
     return () => {
@@ -78,7 +82,11 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
   if (!current) return null
 
   return (
-    <section ref={section} id="work" className="scroll-mt-28 border-t border-line py-band-sm lg:py-band">
+    <section
+      ref={section}
+      id="work"
+      className="scroll-mt-28 border-t border-line py-band-sm lg:py-band"
+    >
       <Reveal className="shell flex flex-col items-center text-center">
         <p className="tracked text-[0.62rem] text-ink-faint">{work.eyebrow[lang]}</p>
         <h2 className="mt-5 max-w-[20ch] text-balance font-display text-[clamp(1.9rem,4vw,3rem)] font-medium leading-[1.1] tracking-[-0.02em]">

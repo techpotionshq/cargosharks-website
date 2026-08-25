@@ -224,9 +224,7 @@ export async function carrierTracking(
 }
 
 /** The e-invoice transmitter. `none` until a deployment appoints a provider. */
-async function eInvoiceTransmit(
-  log?: (o: unknown, m: string) => void,
-): Promise<EInvoiceTransmit> {
+async function eInvoiceTransmit(log?: (o: unknown, m: string) => void): Promise<EInvoiceTransmit> {
   const settings = await integration('einvoice')
   return safely('einvoice', noTransmit, () => resolveEInvoiceTransmit(settings), log)
 }

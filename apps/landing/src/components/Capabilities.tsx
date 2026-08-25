@@ -74,49 +74,49 @@ export function Capabilities({ lang }: { lang: Lang }) {
         wrapper let the line colour show through underneath it while it moved.
       */}
       <div className="shell-wide mt-12">
-      <div className="grid gap-px border-y border-line bg-line lg:grid-cols-6">
-        {capabilities.cards.map((card, index) => {
-          const Icon = CELL_ICONS[card.icon]
+        <div className="grid gap-px border-y border-line bg-line lg:grid-cols-6">
+          {capabilities.cards.map((card, index) => {
+            const Icon = CELL_ICONS[card.icon]
 
-          return (
-            <Reveal
-              key={card.key}
-              // Capped so the last cell is not still arriving when the reader
-              // has finished the first. A stagger that outruns reading is a
-              // queue, not a reveal.
-              delay={Math.min(index, 3) * 0.05}
-              className={`bg-paper ${card.span === 'wide' ? 'lg:col-span-4' : 'lg:col-span-2'}`}
-            >
-              <article className="group flex h-full flex-col px-7 py-9 transition-colors duration-300 hover:bg-paper-sunk lg:px-9 lg:py-11">
-              {/* The number is the only ornament above the heading, and it is an
+            return (
+              <Reveal
+                key={card.key}
+                // Capped so the last cell is not still arriving when the reader
+                // has finished the first. A stagger that outruns reading is a
+                // queue, not a reveal.
+                delay={Math.min(index, 3) * 0.05}
+                className={`bg-paper ${card.span === 'wide' ? 'lg:col-span-4' : 'lg:col-span-2'}`}
+              >
+                <article className="group flex h-full flex-col px-7 py-9 transition-colors duration-300 hover:bg-paper-sunk lg:px-9 lg:py-11">
+                  {/* The number is the only ornament above the heading, and it is an
                   index rather than a decoration: it says how many of these there
                   are and where you are in them, which a glyph of a shield does
                   not. */}
-              <p className="tracked text-[0.58rem] text-ink-faint">
-                {String(index + 1).padStart(2, '0')}
-              </p>
+                  <p className="tracked text-[0.58rem] text-ink-faint">
+                    {String(index + 1).padStart(2, '0')}
+                  </p>
 
-              <h3 className="mt-6 max-w-[24ch] font-display text-[clamp(1.15rem,1.8vw,1.4rem)] font-medium leading-[1.28] tracking-[-0.015em]">
-                {card.title[lang]}
-              </h3>
+                  <h3 className="mt-6 max-w-[24ch] font-display text-[clamp(1.15rem,1.8vw,1.4rem)] font-medium leading-[1.28] tracking-[-0.015em]">
+                    {card.title[lang]}
+                  </h3>
 
-              <p className="mt-4 max-w-[48ch] text-[0.9375rem] leading-[1.7] text-ink-dim">
-                {card.body[lang]}
-              </p>
+                  <p className="mt-4 max-w-[48ch] text-[0.9375rem] leading-[1.7] text-ink-dim">
+                    {card.body[lang]}
+                  </p>
 
-              {/* `mt-auto` so the glyph sits on the cell's floor whatever the
+                  {/* `mt-auto` so the glyph sits on the cell's floor whatever the
                   paragraph above it does — and the Arabic paragraph runs longer
                   than the English in four of these five. */}
-              {Icon ? (
-                <p className="mt-auto pt-10 text-ink-faint/60 transition-colors duration-300 group-hover:text-blue-ink">
-                  <Icon weight="thin" className="size-7" />
-                </p>
-              ) : null}
-            </article>
-            </Reveal>
-          )
-        })}
-      </div>
+                  {Icon ? (
+                    <p className="mt-auto pt-10 text-ink-faint/60 transition-colors duration-300 group-hover:text-blue-ink">
+                      <Icon weight="thin" className="size-7" />
+                    </p>
+                  ) : null}
+                </article>
+              </Reveal>
+            )
+          })}
+        </div>
       </div>
     </section>
   )

@@ -81,8 +81,7 @@ import { failWith, succeed, type ActionState } from '@/lib/form-state'
 type Refusal = 'not_found' | 'no_mode' | 'no_cover' | 'no_margin' | 'cannot_price'
 
 type PriceOutcome =
-  | { readonly reference: string }
-  | { readonly error: Refusal; readonly detail?: string }
+  { readonly reference: string } | { readonly error: Refusal; readonly detail?: string }
 
 /** How long an instant quotation stands. Beyond this it expires by itself. */
 const VALIDITY_DAYS = 14
@@ -208,18 +207,19 @@ const inputsFor = (
  * covers this lane" is an answer a coordinator acts on by raising an RFQ, not
  * a fault.
  */
-export async function priceEnquiry(
-  _previous: ActionState,
-  form: FormData,
-): Promise<ActionState> {
+export async function priceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
 
   const enquiryId = read(form, 'enquiryId')
   if (!enquiryId) return failWith('Nothing to price.')
 
-  const outcome: PriceOutcome = await withActor(session.actor, async (tx): Promise<PriceOutcome> => {
-    const [enquiry] = await tx.execute(sql`
+  const outcome: PriceOutcome = await withActor(
+    session.actor,
+    async (tx): Promise<PriceOutcome> => {
+      const [enquiry] = await tx
+        .execute(
+          sql`
       select e.id, e.branch_id as "branchId", e.customer_id as "customerId",
              e.mode::text as mode, e.origin_id as "originId",
              e.destination_id as "destinationId", e.ready_on::text as "readyOn",
@@ -236,30 +236,32 @@ export async function priceEnquiry(
                on t.customer_id = e.customer_id and t.branch_id = e.branch_id
        where e.id = ${enquiryId}
        limit 1
-    `).then((r) => r.rows as unknown as EnquiryRow[])
+    `,
+        )
+        .then((r) => r.rows as unknown as EnquiryRow[])
 
-    if (!enquiry) return { error: 'not_found' as const }
-    assertInBranch(session, enquiry.branchId)
-    if (!enquiry.mode) return { error: 'no_mode' as const }
+      if (!enquiry) return { error: 'not_found' as const }
+      assertInBranch(session, enquiry.branchId)
+      if (!enquiry.mode) return { error: 'no_mode' as const }
 
-    /*
+      /*
       Cover is asked for on the readiness date, not today.
 
       A shipment ready in six weeks is priced against the card that will be
       live then — quoting it off today's tariff and watching it lapse before
       the booking is the exact failure `validity` exists to prevent.
     */
-    const on = enquiry.readyOn ?? new Date().toISOString().slice(0, 10)
+      const on = enquiry.readyOn ?? new Date().toISOString().slice(0, 10)
 
-    const lane = {
-      mode: enquiry.mode,
-      originId: enquiry.originId,
-      destinationId: enquiry.destinationId,
-      on,
-      customerId: enquiry.customerId,
-    }
+      const lane = {
+        mode: enquiry.mode,
+        originId: enquiry.originId,
+        destinationId: enquiry.destinationId,
+        on,
+        customerId: enquiry.customerId,
+      }
 
-    /*
+      /*
       Sequential, and on the caller's transaction.
 
       Both were once `Promise.all` over lookups that each opened a transaction
@@ -269,12 +271,12 @@ export async function priceEnquiry(
       isolation: the card that priced it is the card as it stood at that
       instant.
     */
-    const sellCard = await findCoveringRateCard(tx, { ...lane, direction: 'sell' })
-    const buyCard = await findCoveringRateCard(tx, { ...lane, direction: 'buy' })
+      const sellCard = await findCoveringRateCard(tx, { ...lane, direction: 'sell' })
+      const buyCard = await findCoveringRateCard(tx, { ...lane, direction: 'buy' })
 
-    if (!sellCard && !buyCard) return { error: 'no_cover' as const }
+      if (!sellCard && !buyCard) return { error: 'no_cover' as const }
 
-    /*
+      /*
       The chargeable weight, and the rule that produced it.
 
       Both go into the snapshot. "Why is this 200kg when the shipment weighs
@@ -283,35 +285,36 @@ export async function priceEnquiry(
       change (FR-AD-03), so recording the number without the rule that made it
       answers the question with a number nobody can check.
     */
-    const rule = await chargeableRuleFor(tx, enquiry.mode, enquiry.branchId)
-    const derived =
-      rule && (enquiry.grossWeightKg || enquiry.volumeCbm)
-        ? chargeableWeight(
-            {
-              grossWeightKg: enquiry.grossWeightKg ?? 0,
-              volumeCbm: enquiry.volumeCbm ?? 0,
-            },
-            rule,
-          )
-        : null
-    const chargeableKg = derived ? derived.chargeableKg.toString() : null
+      const rule = await chargeableRuleFor(tx, enquiry.mode, enquiry.branchId)
+      const derived =
+        rule && (enquiry.grossWeightKg || enquiry.volumeCbm)
+          ? chargeableWeight(
+              {
+                grossWeightKg: enquiry.grossWeightKg ?? 0,
+                volumeCbm: enquiry.volumeCbm ?? 0,
+              },
+              rule,
+            )
+          : null
+      const chargeableKg = derived ? derived.chargeableKg.toString() : null
 
-    const ctx = contextFor(enquiry.mode, enquiry, chargeableKg)
+      const ctx = contextFor(enquiry.mode, enquiry, chargeableKg)
 
-    const currencies = await tx
-      .execute(sql`select code, minor_units as "minorUnits" from currencies`)
-      .then((r) => r.rows as unknown as { code: string; minorUnits: number }[])
-    const lookup = currencyLookup(currencies)
+      const currencies = await tx
+        .execute(sql`select code, minor_units as "minorUnits" from currencies`)
+        .then((r) => r.rows as unknown as { code: string; minorUnits: number }[])
+      const lookup = currencyLookup(currencies)
 
-    /*
+      /*
       One FX rate per currency, resolved once and stamped on every line.
 
       The newest rate on or before the pricing date, never a later one: a quote
       priced in March must not silently re-rate when April's feed lands, which
       is the whole of FR-RT-06.
     */
-    const rates = await tx
-      .execute(sql`
+      const rates = await tx
+        .execute(
+          sql`
         select distinct on (from_currency)
                from_currency as "from", to_currency as "to", rate::text as rate,
                effective_on::text as "effectiveOn"
@@ -319,65 +322,68 @@ export async function priceEnquiry(
          where to_currency = ${enquiry.baseCurrency}
            and effective_on <= ${on}::date
          order by from_currency, effective_on desc
-      `)
-      .then((r) => r.rows as unknown as { from: string; to: string; rate: string }[])
+      `,
+        )
+        .then((r) => r.rows as unknown as { from: string; to: string; rate: string }[])
 
-    const pricedAt = new Date()
-    const opts: PricingOptions = {
-      baseCurrency: enquiry.baseCurrency,
-      fxRates: rates.map((r) => fxRate(r.from, r.to, dec(r.rate), pricedAt)),
-      currencies: lookup,
-      pricedAt,
-    }
-
-    let priced: PricedLine[]
-    let marginRule: MarginRule | null = null
-
-    try {
-      const cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
-
-      if (sellCard) {
-        // A sell card is the price. Nothing is added to it — somebody has
-        // already decided what this customer pays for this lane.
-        priced = [...cost, ...priceLines(inputsFor(sellCard, 'revenue', chargeableKg, ctx), opts)]
-      } else {
-        marginRule = houseMargin(enquiry, opts.baseCurrency)
-        if (!marginRule) return { error: 'no_margin' as const }
-        // Buy card plus the house rule: every cost line becomes a revenue line
-        // at the marked-up amount, so the customer sees the same breakdown
-        // rather than one opaque total.
-        priced = [
-          ...cost,
-          ...cost.map((line) => ({
-            ...line,
-            direction: 'revenue' as const,
-            amount: applyMargin(line.amount, marginRule!),
-            amountInBase: applyMargin(line.amountInBase, marginRule!),
-          })),
-        ]
+      const pricedAt = new Date()
+      const opts: PricingOptions = {
+        baseCurrency: enquiry.baseCurrency,
+        fxRates: rates.map((r) => fxRate(r.from, r.to, dec(r.rate), pricedAt)),
+        currencies: lookup,
+        pricedAt,
       }
-    } catch (error) {
-      // `MissingChargeContextError` and `UnknownCurrencyError` are both the
-      // operator's to fix — a card line billing per container against an
-      // enquiry with no count, or a currency with no rate to base.
-      return { error: 'cannot_price' as const, detail: (error as Error).message }
-    }
 
-    const revenue = priced.filter((line) => line.direction === 'revenue')
-    if (revenue.length === 0) return { error: 'no_cover' as const }
+      let priced: PricedLine[]
+      let marginRule: MarginRule | null = null
 
-    const totals = summariseMargin(priced, opts.baseCurrency)
-    const sellCurrency = revenue[0]!.amount.currency
+      try {
+        const cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
 
-    const validUntil = new Date(pricedAt)
-    validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
+        if (sellCard) {
+          // A sell card is the price. Nothing is added to it — somebody has
+          // already decided what this customer pays for this lane.
+          priced = [...cost, ...priceLines(inputsFor(sellCard, 'revenue', chargeableKg, ctx), opts)]
+        } else {
+          marginRule = houseMargin(enquiry, opts.baseCurrency)
+          if (!marginRule) return { error: 'no_margin' as const }
+          // Buy card plus the house rule: every cost line becomes a revenue line
+          // at the marked-up amount, so the customer sees the same breakdown
+          // rather than one opaque total.
+          priced = [
+            ...cost,
+            ...cost.map((line) => ({
+              ...line,
+              direction: 'revenue' as const,
+              amount: applyMargin(line.amount, marginRule!),
+              amountInBase: applyMargin(line.amountInBase, marginRule!),
+            })),
+          ]
+        }
+      } catch (error) {
+        // `MissingChargeContextError` and `UnknownCurrencyError` are both the
+        // operator's to fix — a card line billing per container against an
+        // enquiry with no count, or a currency with no rate to base.
+        return { error: 'cannot_price' as const, detail: (error as Error).message }
+      }
 
-    const reference = await writeQuote(tx, {
-      enquiryId,
-      branchId: enquiry.branchId,
-      preparedById: session.principal.id,
-      currency: sellCurrency,
-      /*
+      const revenue = priced.filter((line) => line.direction === 'revenue')
+      if (revenue.length === 0) return { error: 'no_cover' as const }
+
+      const totals = summariseMargin(priced, opts.baseCurrency)
+      const sellCurrency = revenue[0]!.amount.currency
+
+      const validUntil = new Date(pricedAt)
+      validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
+
+      const reference = await writeQuote(
+        tx,
+        {
+          enquiryId,
+          branchId: enquiry.branchId,
+          preparedById: session.principal.id,
+          currency: sellCurrency,
+          /*
         Scaled by the currency table, not `toScale`'s seeded default.
 
         A deployment that added a currency by hand has it in `currencies` and
@@ -385,42 +391,45 @@ export async function priceEnquiry(
         after the quotation had been priced. KWD's third decimal is the same
         argument from the other end.
       */
-      totalSell: toScale(totals.revenue, lookup),
-      totalCost: toScale(totals.cost, lookup),
-      validUntil: validUntil.toISOString().slice(0, 10),
-      snapshot: {
-        pricedAt: pricedAt.toISOString(),
-        marginPct: totals.grossPercent ? Number(totals.grossPercent.toFixed(2)) : 0,
-        source: sellCard ? 'sell_card' : 'buy_card_plus_margin',
-        sellCardId: sellCard?.id ?? null,
-        buyCardId: buyCard?.id ?? null,
-        marginRule: marginRule
-          ? { kind: marginRule.kind, value: marginRule.value.toString() }
-          : null,
-        chargeableKg,
-        chargeableBasis: derived?.basis ?? null,
-        divisorCm3PerKg: rule?.divisorCm3PerKg?.toString() ?? null,
-        baseCurrency: opts.baseCurrency,
-        fx: opts.fxRates.map((r) => ({ from: r.from, to: r.to, rate: r.rate.toString() })),
-        // Derived from what was actually priced, so the block on the PDF can
-        // never disagree with the table above it.
-        inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
-        exclusions: splitLines(enquiry.exclusionsEn),
-        exclusionsAr: splitLines(enquiry.exclusionsAr),
-      },
-      lines: revenue.map((line, index) => ({
-        chargeTypeId: chargeTypeIdFor(line.chargeTypeKey, sellCard ?? buyCard!),
-        basis: line.basis,
-        quantity: line.quantity.toString(),
-        rate: line.rate.toString(),
-        amount: toScale(line.amount, lookup),
-        currency: line.amount.currency,
-        sortOrder: index,
-      })),
-    }, () => assertCan(session, 'quote.revise'))
+          totalSell: toScale(totals.revenue, lookup),
+          totalCost: toScale(totals.cost, lookup),
+          validUntil: validUntil.toISOString().slice(0, 10),
+          snapshot: {
+            pricedAt: pricedAt.toISOString(),
+            marginPct: totals.grossPercent ? Number(totals.grossPercent.toFixed(2)) : 0,
+            source: sellCard ? 'sell_card' : 'buy_card_plus_margin',
+            sellCardId: sellCard?.id ?? null,
+            buyCardId: buyCard?.id ?? null,
+            marginRule: marginRule
+              ? { kind: marginRule.kind, value: marginRule.value.toString() }
+              : null,
+            chargeableKg,
+            chargeableBasis: derived?.basis ?? null,
+            divisorCm3PerKg: rule?.divisorCm3PerKg?.toString() ?? null,
+            baseCurrency: opts.baseCurrency,
+            fx: opts.fxRates.map((r) => ({ from: r.from, to: r.to, rate: r.rate.toString() })),
+            // Derived from what was actually priced, so the block on the PDF can
+            // never disagree with the table above it.
+            inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
+            exclusions: splitLines(enquiry.exclusionsEn),
+            exclusionsAr: splitLines(enquiry.exclusionsAr),
+          },
+          lines: revenue.map((line, index) => ({
+            chargeTypeId: chargeTypeIdFor(line.chargeTypeKey, sellCard ?? buyCard!),
+            basis: line.basis,
+            quantity: line.quantity.toString(),
+            rate: line.rate.toString(),
+            amount: toScale(line.amount, lookup),
+            currency: line.amount.currency,
+            sortOrder: index,
+          })),
+        },
+        () => assertCan(session, 'quote.revise'),
+      )
 
-    return { reference }
-  })
+      return { reference }
+    },
+  )
 
   if ('error' in outcome) return failWith(REFUSALS[outcome.error])
 
@@ -524,11 +533,17 @@ async function writeQuote(
   /** Called before superseding, so the permission check happens once. */
   assertRevise: () => void,
 ): Promise<string> {
-  const [latest] = await tx.execute(sql`
+  const [latest] = await tx
+    .execute(
+      sql`
     select id, version, reference from quotes
      where enquiry_id = ${write.enquiryId}
      order by version desc limit 1
-  `).then((r: { rows: unknown[] }) => r.rows as { id: string; version: number; reference: string }[])
+  `,
+    )
+    .then(
+      (r: { rows: unknown[] }) => r.rows as { id: string; version: number; reference: string }[],
+    )
 
   /*
     Superseding an existing quotation is a revision, and needs its own key.
@@ -546,7 +561,9 @@ async function writeQuote(
   const year = new Date().getUTCFullYear()
   const stem = latest?.reference?.replace(/-v\d+$/, '') ?? `QUO-${year}-${seq.padStart(5, '0')}`
 
-  const inserted = await tx.execute(sql`
+  const inserted = await tx
+    .execute(
+      sql`
     insert into quotes (reference, enquiry_id, branch_id, version, status, currency,
                         total_sell, total_cost, valid_until, priced_snapshot,
                         rate_card_version_id, prepared_by_id)
@@ -556,7 +573,9 @@ async function writeQuote(
             ${JSON.stringify(write.snapshot)}::jsonb,
             ${(write.snapshot.sellCardId as string | null) ?? null}, ${write.preparedById})
     returning id, reference
-  `).then((r: { rows: unknown[] }) => r.rows[0] as { id: string; reference: string })
+  `,
+    )
+    .then((r: { rows: unknown[] }) => r.rows[0] as { id: string; reference: string })
 
   for (const line of write.lines) {
     await tx.execute(sql`

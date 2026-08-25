@@ -55,8 +55,7 @@ export async function SupplierInvoiceLinesCard({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const mayMatch =
-    can(session, 'payable.record') && ['received', 'disputed'].includes(bill.status)
+  const mayMatch = can(session, 'payable.record') && ['received', 'disputed'].includes(bill.status)
 
   return (
     <Card className={className} padding="none">
@@ -234,7 +233,11 @@ export async function PartnerAccountCard({
           </dl>
 
           {statement.lines.length === 0 ? (
-            <EmptyState icon="finance" title={t('nothingOpen')} description={t('nothingOpenHint')} />
+            <EmptyState
+              icon="finance"
+              title={t('nothingOpen')}
+              description={t('nothingOpenHint')}
+            />
           ) : (
             <TableShell minWidth="none">
               <THead>

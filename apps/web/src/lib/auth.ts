@@ -134,12 +134,15 @@ export const auth = betterAuth({
       }
 
       try {
-        const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
-          body: JSON.stringify({ email: user.email, url }),
-          signal: AbortSignal.timeout(20_000),
-        })
+        const response = await fetch(
+          `${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+            body: JSON.stringify({ email: user.email, url }),
+            signal: AbortSignal.timeout(20_000),
+          },
+        )
 
         if (!response.ok) {
           console.error(`password reset mail refused: ${response.status} ${response.statusText}`)

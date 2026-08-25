@@ -78,7 +78,9 @@ export async function UnbilledPanel() {
               <TR key={row.jobId}>
                 <TD className="ref">{row.reference}</TD>
                 <TD>{row.customerName ?? <span className="text-ink-subtle">—</span>}</TD>
-                <TD numeric align="end">{row.lines}</TD>
+                <TD numeric align="end">
+                  {row.lines}
+                </TD>
                 <TD numeric align="end">
                   {money(row.amountBase, row.baseCurrency)}
                   {mixed ? (

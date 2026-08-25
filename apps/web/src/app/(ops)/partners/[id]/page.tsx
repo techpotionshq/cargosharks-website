@@ -60,7 +60,10 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   /** Live certificates, as options for a renewal to point back at. */
   const renewable = credentials.compliance
     .filter((row) => row.supersededById === null)
-    .map((row) => ({ value: row.id, label: `${row.documentType}${row.reference ? ` · ${row.reference}` : ''}` }))
+    .map((row) => ({
+      value: row.id,
+      label: `${row.documentType}${row.reference ? ` · ${row.reference}` : ''}`,
+    }))
 
   const t = await getTranslations('partnerDetail')
   const tc = await getTranslations('common')

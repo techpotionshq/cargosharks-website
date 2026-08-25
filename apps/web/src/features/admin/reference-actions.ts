@@ -300,12 +300,7 @@ const dutySchema = z.object({
     .trim()
     .length(2, 'A two-letter country code')
     .transform((v) => v.toUpperCase()),
-  hsPrefix: z
-    .string()
-    .trim()
-    .min(2, 'At least two digits')
-    .max(10)
-    .regex(/^\d+$/, 'Digits only'),
+  hsPrefix: z.string().trim().min(2, 'At least two digits').max(10).regex(/^\d+$/, 'Digits only'),
   ratePercent: z
     .string()
     .trim()
@@ -368,10 +363,7 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail(
-        { hsPrefix: 'That prefix already has a rate starting on that date.' },
-        echo(form),
-      )
+      return fail({ hsPrefix: 'That prefix already has a rate starting on that date.' }, echo(form))
     }
     throw error
   }
@@ -388,11 +380,23 @@ const chargeableSchema = z.object({
   mode: z.enum(MODES),
   branchId: z.union([z.uuid(), z.literal('')]).optional(),
   divisorCm3PerKg: z
-    .union([z.string().trim().regex(/^\d+(\.\d{1,6})?$/, 'A divisor, for example 6000'), z.literal('')])
+    .union([
+      z
+        .string()
+        .trim()
+        .regex(/^\d+(\.\d{1,6})?$/, 'A divisor, for example 6000'),
+      z.literal(''),
+    ])
     .optional()
     .transform((v) => v || null),
-  roundUpToKg: z.string().trim().regex(/^\d+(\.\d{1,6})?$/, 'An increment, for example 0.5'),
-  minimumKg: z.string().trim().regex(/^\d+(\.\d{1,6})?$/, 'A floor, or 0'),
+  roundUpToKg: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,6})?$/, 'An increment, for example 0.5'),
+  minimumKg: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,6})?$/, 'A floor, or 0'),
   isActive: z.coerce.boolean(),
 })
 
@@ -465,7 +469,10 @@ const freeTimeSchema = z.object({
   mode: z.union([z.enum(MODES), z.literal('')]).optional(),
   containerType: optional(20),
   freeDays: z.coerce.number().int().min(0).max(365),
-  perDiem: z.string().trim().regex(/^\d+(\.\d{1,6})?$/, 'An amount per day'),
+  perDiem: z
+    .string()
+    .trim()
+    .regex(/^\d+(\.\d{1,6})?$/, 'An amount per day'),
   currency: z
     .string()
     .trim()

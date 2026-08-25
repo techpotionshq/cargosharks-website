@@ -111,7 +111,9 @@ export function OverlapSets({ lang }: { lang: Lang }) {
             {lang === 'ar' ? 'معظم العمل' : 'most of the job'}
           </text>
           <text x="500" y="156" textAnchor="middle" className="cmp-axis-label">
-            {lang === 'ar' ? 'تسعير وعمليات ومستندات ومالية' : 'quoting, operations, documents, finance'}
+            {lang === 'ar'
+              ? 'تسعير وعمليات ومستندات ومالية'
+              : 'quoting, operations, documents, finance'}
           </text>
 
           <text x="272" y="146" textAnchor="middle" className="cmp-key cmp-key--flat">

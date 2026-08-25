@@ -86,8 +86,7 @@ export const getNavCounts = cache(async (actor: Actor): Promise<NavCounts> => {
     `)
 
     const row = result.rows[0] as unknown as
-      | { open_enquiries: number; open_exceptions: number; payables_to_review: number }
-      | undefined
+      { open_enquiries: number; open_exceptions: number; payables_to_review: number } | undefined
 
     return {
       openEnquiries: row?.open_enquiries ?? 0,

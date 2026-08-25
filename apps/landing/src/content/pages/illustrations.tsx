@@ -69,10 +69,26 @@ export function LayeredRecord({ lang }: { lang: Lang }) {
   ]
 
   const trail = [
-    { when: '18 Aug 09:12', who: { en: 'N. Al-Failakawi', ar: 'ن. الفيلكاوي' }, what: { en: 'quote.send', ar: 'quote.send' } },
-    { when: '19 Aug 14:40', who: { en: 'N. Al-Failakawi', ar: 'ن. الفيلكاوي' }, what: { en: 'quote.revise', ar: 'quote.revise' } },
-    { when: '21 Aug 11:05', who: { en: 'M. Haddad', ar: 'م. حداد' }, what: { en: 'quote.accept', ar: 'quote.accept' } },
-    { when: '21 Aug 11:05', who: { en: 'system', ar: 'النظام' }, what: { en: 'job.book', ar: 'job.book' } },
+    {
+      when: '18 Aug 09:12',
+      who: { en: 'N. Al-Failakawi', ar: 'ن. الفيلكاوي' },
+      what: { en: 'quote.send', ar: 'quote.send' },
+    },
+    {
+      when: '19 Aug 14:40',
+      who: { en: 'N. Al-Failakawi', ar: 'ن. الفيلكاوي' },
+      what: { en: 'quote.revise', ar: 'quote.revise' },
+    },
+    {
+      when: '21 Aug 11:05',
+      who: { en: 'M. Haddad', ar: 'م. حداد' },
+      what: { en: 'quote.accept', ar: 'quote.accept' },
+    },
+    {
+      when: '21 Aug 11:05',
+      who: { en: 'system', ar: 'النظام' },
+      what: { en: 'job.book', ar: 'job.book' },
+    },
   ]
 
   return (
@@ -312,14 +328,25 @@ export function QuayLine() {
               className="illo-quay__crane"
               fill="none"
             />
-            <path d={`M${x + 30} 74 V 104 M${x + 18} 104 H ${x + 42}`} className="illo-quay__crane" fill="none" />
+            <path
+              d={`M${x + 30} 74 V 104 M${x + 18} 104 H ${x + 42}`}
+              className="illo-quay__crane"
+              fill="none"
+            />
           </g>
         ))}
 
         {/* A hull, with a deck load on it. */}
         <path d="M628 168 h 250 l -22 -34 h -206 Z" className="illo-quay__hull" />
         {[0, 1, 2, 3, 4, 5].map((n) => (
-          <rect key={n} x={660 + n * 34} y="108" width="28" height="22" className="illo-quay__box" />
+          <rect
+            key={n}
+            x={660 + n * 34}
+            y="108"
+            width="28"
+            height="22"
+            className="illo-quay__box"
+          />
         ))}
 
         {/* Yard stacks. Each box is one box: the count is not meaningful and

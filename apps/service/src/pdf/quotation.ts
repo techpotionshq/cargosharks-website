@@ -326,11 +326,7 @@ ${lines}
 
 ${terms ? `<div class="cols">${terms}</div>` : ''}
 ${quote.notes ? `<div class="terms"><h2>${esc(t.notes)}</h2>${escBlock(quote.notes)}</div>` : ''}
-${
-  conditions
-    ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(conditions)}</div>`
-    : ''
-}
+${conditions ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(conditions)}</div>` : ''}
 </body>`,
     QUOTATION_CSS,
   )

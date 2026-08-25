@@ -466,7 +466,13 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         discovered after it is running. Like that one, it is registered with
         pg-boss and so needs a reconciler rather than only a cache expiry.
       */
-      { name: 'cron', kind: 'text', env: 'INBOUND_MAIL_CRON', mono: true, placeholder: '* * * * *' },
+      {
+        name: 'cron',
+        kind: 'text',
+        env: 'INBOUND_MAIL_CRON',
+        mono: true,
+        placeholder: '* * * * *',
+      },
     ],
     secrets: [{ name: 'webhookSecret', env: 'INBOUND_EMAIL_WEBHOOK_SECRET', keepOnBlank: true }],
   },

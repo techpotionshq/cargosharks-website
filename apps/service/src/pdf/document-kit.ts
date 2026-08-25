@@ -161,12 +161,7 @@ export function localised(
 
 export interface PartyView {
   readonly role:
-    | 'shipper'
-    | 'consignee'
-    | 'notify'
-    | 'second_notify'
-    | 'delivery_agent'
-    | 'forwarding_agent'
+    'shipper' | 'consignee' | 'notify' | 'second_notify' | 'delivery_agent' | 'forwarding_agent'
   readonly nameEn: string
   readonly nameAr: string | null
   readonly address: string | null
@@ -460,7 +455,10 @@ export function partyBlock(
     party.address ? bdiBlock(party.address) : '',
     bdi([party.city, party.country].filter(Boolean).map(esc).join(', ')),
     party.contactName ? bdi(esc(party.contactName)) : '',
-    [party.phone, party.email].filter(Boolean).map((v) => ltr(esc(v))).join(' · '),
+    [party.phone, party.email]
+      .filter(Boolean)
+      .map((v) => ltr(esc(v)))
+      .join(' · '),
     party.taxId ? ltr(esc(party.taxId)) : '',
   ].filter((l) => l !== '')
 

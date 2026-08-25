@@ -29,8 +29,5 @@ export {
   SecretKeyError,
   SealedSecretError,
 } from './secrets'
-export {
-  NOTIFICATION_TEMPLATES,
-  type NotificationTemplateSeed,
-} from './notification-templates'
+export { NOTIFICATION_TEMPLATES, type NotificationTemplateSeed } from './notification-templates'
 export { loadEnv, workspaceRoot } from './env'

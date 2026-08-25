@@ -168,7 +168,9 @@ export async function estimateJobDuty(
       currency,
       on,
       spec: currencySpec,
-      ...(data.useGeneralRate ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' } : {}),
+      ...(data.useGeneralRate
+        ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' }
+        : {}),
     })
 
     const basis = {

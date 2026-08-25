@@ -54,7 +54,14 @@ export async function DutyEstimateDialog({
       options: options.currencies,
       defaultValue: 'KWD',
     },
-    { kind: 'text', name: 'freightValue', label: t('freight'), span: 6, mono: true, hint: t('freightHint') },
+    {
+      kind: 'text',
+      name: 'freightValue',
+      label: t('freight'),
+      span: 6,
+      mono: true,
+      hint: t('freightHint'),
+    },
     { kind: 'text', name: 'insuranceValue', label: t('insurance'), span: 6, mono: true },
     {
       kind: 'switch',

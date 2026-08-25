@@ -172,9 +172,9 @@ describe.skipIf(!enabled)('resolving a session', () => {
       await tx.update(principals).set({ isActive: true }).where(eq(principals.id, PRINCIPAL))
       await tx.update(principals).set({ isActive: false }).where(eq(principals.id, RETIRED))
 
-      const [calendar] = await tx.execute(
-        `select id from working_calendars where key = 'kuwait' limit 1`,
-      ).then((r) => r.rows as { id: string }[])
+      const [calendar] = await tx
+        .execute(`select id from working_calendars where key = 'kuwait' limit 1`)
+        .then((r) => r.rows as { id: string }[])
 
       for (const [id, code] of [
         [BRANCH_A, 'SEA'],

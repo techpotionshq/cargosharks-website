@@ -88,11 +88,7 @@ describe('resolving an integration', () => {
 
   describe('a row over the environment', () => {
     it('lets a stored value win', () => {
-      const resolved = resolveIntegration(
-        smtp,
-        row({ settings: { host: 'relay.row.test' } }),
-        ENV,
-      )
+      const resolved = resolveIntegration(smtp, row({ settings: { host: 'relay.row.test' } }), ENV)
 
       expect(resolved.settings.host).toBe('relay.row.test')
       expect(resolved.sources.host).toBe('row')
@@ -138,11 +134,10 @@ describe('resolving an integration', () => {
      * saving a host name has not asked for mail to start going out.
      */
     it('does not take over the driver by existing', () => {
-      const resolved = resolveIntegration(
-        smtp,
-        row({ settings: { host: 'relay.row.test' } }),
-        { ...ENV, MAIL_DRIVER: 'log' },
-      )
+      const resolved = resolveIntegration(smtp, row({ settings: { host: 'relay.row.test' } }), {
+        ...ENV,
+        MAIL_DRIVER: 'log',
+      })
 
       expect(resolved.driver).toBe('log')
       expect(resolved.driverSource).toBe('env')
@@ -201,9 +196,9 @@ describe('resolving an integration', () => {
     it('counts a required credential as missing only when neither layer has one', () => {
       const einvoice = integrationSpec('einvoice')!
 
-      expect(resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'asp' }), {}).missing).toContain(
-        'apiKey',
-      )
+      expect(
+        resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'asp' }), {}).missing,
+      ).toContain('apiKey')
       expect(
         resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'none' }), {}).missing,
       ).toEqual([])

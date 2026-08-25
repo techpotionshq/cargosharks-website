@@ -72,7 +72,10 @@ export async function MilestoneTemplateDialog({
       label: t('direction'),
       span: 4,
       required: true,
-      options: DIRECTIONS.map((d) => ({ value: d, label: t(`directions.${d}` as 'directions.import') })),
+      options: DIRECTIONS.map((d) => ({
+        value: d,
+        label: t(`directions.${d}` as 'directions.import'),
+      })),
       defaultValue: defaults?.direction ?? 'import',
     },
     {
@@ -187,10 +190,7 @@ export async function WorkingCalendarDialog({
   const session = await requireSession()
   if (!can(session, 'admin.reference.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('calendarForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('calendarForm'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     ...(defaults?.id ? [{ kind: 'hidden' as const, name: 'calendarId', value: defaults.id }] : []),
@@ -428,7 +428,13 @@ export async function DutyRateDialog({
       hint: t('effectiveToHint'),
       defaultValue: defaults?.effectiveTo ?? undefined,
     },
-    { kind: 'text', name: 'notes', label: t('notes'), span: 12, defaultValue: defaults?.notes ?? undefined },
+    {
+      kind: 'text',
+      name: 'notes',
+      label: t('notes'),
+      span: 12,
+      defaultValue: defaults?.notes ?? undefined,
+    },
     {
       kind: 'switch',
       name: 'isActive',

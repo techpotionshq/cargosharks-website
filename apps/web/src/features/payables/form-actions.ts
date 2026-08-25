@@ -1267,7 +1267,10 @@ export async function readSupplierBill(
     revalidatePath(`/payables/${body.supplierInvoiceId}`)
     return succeed(body.supplierInvoiceId)
   } catch {
-    return failWith('Reading the bill timed out. Capture it by hand — the scan is on file.', echo(form))
+    return failWith(
+      'Reading the bill timed out. Capture it by hand — the scan is on file.',
+      echo(form),
+    )
   }
 }
 

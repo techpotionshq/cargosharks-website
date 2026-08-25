@@ -52,8 +52,13 @@ const {
   workingCalendars,
 } = await import('@qabandi/db')
 
-const { draftSettlement, setSettlementStatus, advanceSettlement, linkPartnerAccount, setPartnerTolerance } =
-  await import('./form-actions')
+const {
+  draftSettlement,
+  setSettlementStatus,
+  advanceSettlement,
+  linkPartnerAccount,
+  setPartnerTolerance,
+} = await import('./form-actions')
 
 /* A world of this suite's own: the agent has to be linked to a customer
    record, and the shared fixture agent is read by half a dozen other files. */
@@ -302,10 +307,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
         .update(partners)
         .set({ settlementCustomerId: CUSTOMER, settlementCurrency: 'KWD' })
         .where(eq(partners.id, PARTNER))
-      await tx
-        .update(partners)
-        .set({ settlementCustomerId: null })
-        .where(eq(partners.id, UNLINKED))
+      await tx.update(partners).set({ settlementCustomerId: null }).where(eq(partners.id, UNLINKED))
     })
   })
 
@@ -638,10 +640,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     })
 
     it('unlinks when nothing was chosen', async () => {
-      await linkPartnerAccount(
-        {},
-        form({ partnerId: UNLINKED, settlementCustomerId: CUSTOMER }),
-      )
+      await linkPartnerAccount({}, form({ partnerId: UNLINKED, settlementCustomerId: CUSTOMER }))
       await linkPartnerAccount({}, form({ partnerId: UNLINKED }))
 
       const [row] = await withActor(actor, (tx) =>
@@ -705,9 +704,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     it('refuses a caller who may not write partners', async () => {
       harness.session = sessionWith(['settlement.run'])
       try {
-        await expect(
-          setPartnerTolerance({}, form({ partnerId: PARTNER })),
-        ).rejects.toThrow('partner.write')
+        await expect(setPartnerTolerance({}, form({ partnerId: PARTNER }))).rejects.toThrow(
+          'partner.write',
+        )
       } finally {
         harness.session = sessionWith(ALL)
       }

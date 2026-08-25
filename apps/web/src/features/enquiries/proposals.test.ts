@@ -142,7 +142,10 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
   const readProposal = async (id: string) =>
     withActor(bothBranchesActor, async (tx) => {
       const [row] = await tx
-        .select({ status: extractionProposals.status, decidedById: extractionProposals.decidedById })
+        .select({
+          status: extractionProposals.status,
+          decidedById: extractionProposals.decidedById,
+        })
         .from(extractionProposals)
         .where(eq(extractionProposals.id, id))
         .limit(1)
@@ -177,7 +180,11 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
   it('resolves a place name to the location we hold', async () => {
     const enquiryId = await anEnquiry()
     const [place] = await withActor(bothBranchesActor, (tx) =>
-      tx.select({ name: locations.nameEn }).from(locations).where(eq(locations.id, ORIGIN)).limit(1),
+      tx
+        .select({ name: locations.nameEn })
+        .from(locations)
+        .where(eq(locations.id, ORIGIN))
+        .limit(1),
     )
     const proposalId = await aProposal(enquiryId, 'origin', place!.name)
 

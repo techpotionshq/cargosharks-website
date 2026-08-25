@@ -32,8 +32,18 @@ const PW = join(REPO, 'node_modules/.pnpm/playwright-core@1.62.1/node_modules/pl
 const DOCS = [
   { src: 'README.md', out: 'Marketing-Set-Overview.pdf', title: 'Marketing and Documentation Set' },
 
-  { src: 'sales/one-pager.md', out: 'sales/01-One-Pager.pdf', title: 'CargoSharks — One-Pager', subtitle: 'The freight platform that answers in minutes, in both languages' },
-  { src: 'sales/deck.md', out: 'sales/02-Deck-and-Script.pdf', title: 'The Deck — Slides and Script', subtitle: 'Three moments, told from the screen' },
+  {
+    src: 'sales/one-pager.md',
+    out: 'sales/01-One-Pager.pdf',
+    title: 'CargoSharks — One-Pager',
+    subtitle: 'The freight platform that answers in minutes, in both languages',
+  },
+  {
+    src: 'sales/deck.md',
+    out: 'sales/02-Deck-and-Script.pdf',
+    title: 'The Deck — Slides and Script',
+    subtitle: 'Three moments, told from the screen',
+  },
   {
     src: 'sales/battlecard.md',
     out: 'sales/03-Battlecard.pdf',
@@ -61,8 +71,17 @@ const DOCS = [
     note: 'DRAFT — confirm every figure before this is signed',
   },
 
-  { src: 'manual/README.md', out: 'manual/00-Manual-Contents.pdf', title: 'User Manual — Contents', subtitle: 'A chapter per role — read yours, skim the rest' },
-  { src: 'manual/00-orientation.md', out: 'manual/01-Getting-Started.pdf', title: 'Getting Started' },
+  {
+    src: 'manual/README.md',
+    out: 'manual/00-Manual-Contents.pdf',
+    title: 'User Manual — Contents',
+    subtitle: 'A chapter per role — read yours, skim the rest',
+  },
+  {
+    src: 'manual/00-orientation.md',
+    out: 'manual/01-Getting-Started.pdf',
+    title: 'Getting Started',
+  },
   { src: 'manual/01-coordinator.md', out: 'manual/02-Coordinator.pdf', title: 'Coordinator' },
   {
     src: 'manual/02-operations-manager.md',
@@ -71,7 +90,11 @@ const DOCS = [
   },
   { src: 'manual/03-sales.md', out: 'manual/04-Sales.pdf', title: 'Sales' },
   { src: 'manual/04-finance.md', out: 'manual/05-Finance.pdf', title: 'Finance' },
-  { src: 'manual/05-customs-broker.md', out: 'manual/06-Customs-Broker.pdf', title: 'Customs Broker' },
+  {
+    src: 'manual/05-customs-broker.md',
+    out: 'manual/06-Customs-Broker.pdf',
+    title: 'Customs Broker',
+  },
   { src: 'manual/06-administrator.md', out: 'manual/07-Administrator.pdf', title: 'Administrator' },
   {
     src: 'manual/07-customer-portal.md',
@@ -79,7 +102,11 @@ const DOCS = [
     title: 'Tracking Your Shipments',
     note: 'For your customers — replace the bracketed tokens first',
   },
-  { src: 'manual/08-agent-portal.md', out: 'manual/09-Agents-and-Partners.pdf', title: 'Agents and Partners' },
+  {
+    src: 'manual/08-agent-portal.md',
+    out: 'manual/09-Agents-and-Partners.pdf',
+    title: 'Agents and Partners',
+  },
   {
     src: 'manual/09-permissions-reference.md',
     out: 'manual/10-Who-Can-Do-What.pdf',

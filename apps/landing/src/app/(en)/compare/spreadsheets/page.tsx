@@ -21,7 +21,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'article',
     title: 'CargoSharks vs spreadsheets — the three places Excel breaks',
-    description: 'The real incumbent in Gulf freight forwarding. When a spreadsheet is still the right answer, and the three specific places it stops being one: the clock nobody starts, overlapping rate cards, and no history.',
+    description:
+      'The real incumbent in Gulf freight forwarding. When a spreadsheet is still the right answer, and the three specific places it stops being one: the clock nobody starts, overlapping rate cards, and no history.',
     url: '/compare/spreadsheets/',
   },
 }

@@ -54,10 +54,7 @@ export interface LedgerMargin extends MarginSummary {
   readonly billedCost: Money
 }
 
-export function jobMargin(
-  lines: readonly LedgerLine[],
-  baseCurrency: CurrencyCode,
-): LedgerMargin {
+export function jobMargin(lines: readonly LedgerLine[], baseCurrency: CurrencyCode): LedgerMargin {
   const summary = summariseMargin(
     lines.map((l) => ({ direction: l.direction, amountInBase: money(l.amountBase, baseCurrency) })),
     baseCurrency,

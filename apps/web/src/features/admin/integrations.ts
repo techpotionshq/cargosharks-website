@@ -163,8 +163,7 @@ export async function listIntegrations(): Promise<IntegrationView[]> {
       lastCheckedAt: row?.lastCheckedAt ?? null,
       lastOkAt: row?.lastOkAt ?? null,
       lastError: row?.lastError ?? null,
-      callsPerHour:
-        spec.key === 'carrierPoll' ? callsPerHour(resolved.settings) : null,
+      callsPerHour: spec.key === 'carrierPoll' ? callsPerHour(resolved.settings) : null,
     }
   })
 }
@@ -429,7 +428,10 @@ export async function saveIntegration(
     }
 
     if (existing) {
-      await tx.update(integrationSettings).set(values).where(eq(integrationSettings.id, existing.id))
+      await tx
+        .update(integrationSettings)
+        .set(values)
+        .where(eq(integrationSettings.id, existing.id))
     } else {
       await tx.insert(integrationSettings).values(values)
     }
@@ -459,7 +461,8 @@ export async function setIntegrationActive(
 
   const key = read(form, 'key')
   const isActive = form.get('isActive') === 'true'
-  if (!key || !integrationSpec(key)) return failWith('That is not an integration this deployment has.')
+  if (!key || !integrationSpec(key))
+    return failWith('That is not an integration this deployment has.')
 
   await withActor(session.actor, async (tx) => {
     await tx

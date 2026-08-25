@@ -58,7 +58,7 @@ describe('the lookup', () => {
     expect(findRate(tariff, 'KW', '3004901000', on)?.ratePercent).toBe('0')
   })
 
-  it('does not read another country\'s schedule', () => {
+  it("does not read another country's schedule", () => {
     expect(findRate(tariff, 'AE', '8703239000', on)?.descriptionEn).toBe('Motor cars — UAE')
   })
 

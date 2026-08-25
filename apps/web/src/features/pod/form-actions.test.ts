@@ -251,9 +251,9 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
     it('refuses a caller who may not touch the shipment', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(
-          captureProofOfDelivery({}, capture(await freshJob())),
-        ).rejects.toThrow('job.update')
+        await expect(captureProofOfDelivery({}, capture(await freshJob()))).rejects.toThrow(
+          'job.update',
+        )
       } finally {
         harness.session = sessionWith(['job.update'])
       }
@@ -450,7 +450,10 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
 
     it('refuses a supersedes that is not an identifier', async () => {
       const jobId = await freshJob()
-      const state = await captureProofOfDelivery({}, capture(jobId, { supersedesId: 'the-old-one' }))
+      const state = await captureProofOfDelivery(
+        {},
+        capture(jobId, { supersedesId: 'the-old-one' }),
+      )
       expect(state.errors).toBeDefined()
     })
   })

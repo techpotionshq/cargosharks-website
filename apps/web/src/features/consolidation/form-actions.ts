@@ -751,7 +751,15 @@ export async function consolidateCluster(
     const attached = await tx
       .update(jobs)
       .set({ consolidationId: created!.id, updatedAt: new Date() })
-      .where(and(inArray(jobs.id, houses.map((h) => h.id)), isNull(jobs.consolidationId)))
+      .where(
+        and(
+          inArray(
+            jobs.id,
+            houses.map((h) => h.id),
+          ),
+          isNull(jobs.consolidationId),
+        ),
+      )
       .returning({ id: jobs.id })
 
     return {
@@ -764,9 +772,7 @@ export async function consolidateCluster(
   })
 
   if ('error' in outcome) {
-    return failWith(
-      'Those shipments have been consolidated or closed since this was suggested.',
-    )
+    return failWith('Those shipments have been consolidated or closed since this was suggested.')
   }
 
   revalidatePath('/consolidations')

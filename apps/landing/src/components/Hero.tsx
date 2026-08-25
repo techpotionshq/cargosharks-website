@@ -83,7 +83,10 @@ export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
             {hero.body[lang]}
           </motion.p>
 
-          <motion.div {...enter(0.26)} className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <motion.div
+            {...enter(0.26)}
+            className="mt-10 flex flex-wrap items-center justify-center gap-3"
+          >
             <a
               href={DEMO_URL}
               className="tracked group flex items-center gap-2.5 rounded-lg bg-blue px-6 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90"

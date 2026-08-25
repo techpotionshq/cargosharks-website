@@ -44,15 +44,8 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 */
 process.env.FILE_STORE_DRIVER = 'memory'
 
-const {
-  accountingExports,
-  branches,
-  chargeTypes,
-  customers,
-  invoiceLines,
-  invoices,
-  withActor,
-} = await import('@qabandi/db')
+const { accountingExports, branches, chargeTypes, customers, invoiceLines, invoices, withActor } =
+  await import('@qabandi/db')
 
 const { buildAccountingExport, voidAccountingExport, ExportError } = await import('./export')
 

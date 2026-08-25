@@ -181,7 +181,12 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
           }}
         />
 
-        <svg viewBox="0 0 1000 360" role="img" aria-labelledby="chargeable-title" className="cmp-svg">
+        <svg
+          viewBox="0 0 1000 360"
+          role="img"
+          aria-labelledby="chargeable-title"
+          className="cmp-svg"
+        >
           <title id="chargeable-title">
             {lang === 'ar'
               ? 'أعمدة تبيّن الوزن الخاضع للتسعير للمنصة نفسها في خمس وسائل شحن'
@@ -201,7 +206,13 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
 
           {/* What the scale says. Every bar that clears it is the difference
               between weighing a shipment and billing one. */}
-          <line x1="84" y1={y(PALLET.grossKg)} x2="960" y2={y(PALLET.grossKg)} className="fig-rule" />
+          <line
+            x1="84"
+            y1={y(PALLET.grossKg)}
+            x2="960"
+            y2={y(PALLET.grossKg)}
+            className="fig-rule"
+          />
           <text x="960" y={y(PALLET.grossKg) - 12} textAnchor="end" className="cmp-note">
             {lang === 'ar' ? '180 كجم — ما يقوله الميزان' : '180 kg — what the scale says'}
           </text>
@@ -1042,7 +1053,9 @@ export function MinorUnits({ lang }: { lang: Lang }) {
           </div>
           <div className="fig-place__side fig-place__side--lost">
             <p className="fig-place__label">
-              {lang === 'ar' ? 'ما يخزّنه نظامٌ بُني للدولار' : 'What a system built for dollars stores'}
+              {lang === 'ar'
+                ? 'ما يخزّنه نظامٌ بُني للدولار'
+                : 'What a system built for dollars stores'}
             </p>
             <p className="fig-place__amount">
               <span className="fig-place__cur">KWD</span> 12.35
@@ -1238,7 +1251,10 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
     from: 8,
     to: 9,
     block: { en: 'Enquiry queue', ar: 'طابور الاستفسارات' },
-    done: { en: 'owner, status and an SLA clock on every enquiry', ar: 'مالك وحالة وعدّاد لكل استفسار' },
+    done: {
+      en: 'owner, status and an SLA clock on every enquiry',
+      ar: 'مالك وحالة وعدّاد لكل استفسار',
+    },
   },
   {
     from: 10,
@@ -1256,13 +1272,19 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
     from: 13,
     to: 13,
     block: { en: 'The details that sell', ar: 'التفاصيل التي تُقنع' },
-    done: { en: 'a customs hold and a demurrage clock, live', ar: 'تعليق جمركي وعدّاد أرضيات يعملان' },
+    done: {
+      en: 'a customs hold and a demurrage clock, live',
+      ar: 'تعليق جمركي وعدّاد أرضيات يعملان',
+    },
   },
   {
     from: 14,
     to: 14,
     block: { en: 'Arabic', ar: 'العربية' },
-    done: { en: 'native RTL, reviewed by a native speaker', ar: 'اتجاه عربي أصيل يراجعه ناطق بالعربية' },
+    done: {
+      en: 'native RTL, reviewed by a native speaker',
+      ar: 'اتجاه عربي أصيل يراجعه ناطق بالعربية',
+    },
   },
   {
     from: 15,

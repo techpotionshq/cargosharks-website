@@ -139,7 +139,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
 
       expect(state.errors).toBeUndefined()
       const [row] = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ nameEn: jobParties.nameEn }).from(jobParties).where(eq(jobParties.jobId, jobId)),
+        tx
+          .select({ nameEn: jobParties.nameEn })
+          .from(jobParties)
+          .where(eq(jobParties.jobId, jobId)),
       )
       expect(row?.nameEn).toBe('TO ORDER')
     })
@@ -157,7 +160,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
       )
 
       const rows = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ nameEn: jobParties.nameEn }).from(jobParties).where(eq(jobParties.jobId, jobId)),
+        tx
+          .select({ nameEn: jobParties.nameEn })
+          .from(jobParties)
+          .where(eq(jobParties.jobId, jobId)),
       )
       expect(rows).toHaveLength(1)
       expect(rows[0]?.nameEn).toBe('Corrected Name')
@@ -183,7 +189,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
     it('allows more than one notify party', async () => {
       const jobId = await freshJob()
       await saveJobParty({}, form({ jobId, role: 'notify', nameEn: 'Bank of Kuwait' }))
-      const second = await saveJobParty({}, form({ jobId, role: 'notify', nameEn: 'Customs Broker' }))
+      const second = await saveJobParty(
+        {},
+        form({ jobId, role: 'notify', nameEn: 'Customs Broker' }),
+      )
 
       expect(second.message).toBeUndefined()
       const rows = await withActor(bothBranchesActor, (tx) =>
@@ -407,10 +416,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
         is a choice rather than a failure, and the away branch numbers its own.
       */
       return withActor(systemActor, (tx) =>
-        tx
-          .update(branches)
-          .set({ houseBillSeries: 'FXA' })
-          .where(eq(branches.id, AWAY_BRANCH)),
+        tx.update(branches).set({ houseBillSeries: 'FXA' }).where(eq(branches.id, AWAY_BRANCH)),
       )
     })
 
@@ -533,7 +539,9 @@ describe.skipIf(!enabled)('shipment documents', () => {
     })
 
     it('refuses when no shipment was named', async () => {
-      await expect(issueDocument(form({ kind: 'packing_list' }))).rejects.toThrow('Nothing to issue')
+      await expect(issueDocument(form({ kind: 'packing_list' }))).rejects.toThrow(
+        'Nothing to issue',
+      )
     })
 
     /**

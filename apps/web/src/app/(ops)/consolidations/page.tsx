@@ -111,7 +111,9 @@ export default async function ConsolidationsPage() {
                         than buried on the detail page.
                       */}
                       {row.unallocatedCount > 0 ? (
-                        <Badge tone="caution">{t('unallocated', { n: row.unallocatedCount })}</Badge>
+                        <Badge tone="caution">
+                          {t('unallocated', { n: row.unallocatedCount })}
+                        </Badge>
                       ) : null}
                       <Badge tone={row.status === 'open' ? 'info' : 'muted'}>
                         {t(`statuses.${row.status}` as 'statuses.open')}

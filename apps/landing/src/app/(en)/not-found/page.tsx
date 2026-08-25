@@ -67,8 +67,8 @@ export default function NotFound() {
         </div>
 
         <p className="mt-8 max-w-[46ch] text-[1.0625rem] leading-[1.7] text-ink-dim">
-          The address was wrong, or what was here has moved. Nothing on this site is deleted
-          without a redirect, so a link that used to work still does.
+          The address was wrong, or what was here has moved. Nothing on this site is deleted without
+          a redirect, so a link that used to work still does.
         </p>
         <div className="arabic-block mt-4">
           <p lang="ar" dir="rtl" className="arabic text-[1.0625rem] leading-[1.9] text-ink-faint">

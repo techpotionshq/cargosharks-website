@@ -21,7 +21,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'article',
     title: 'CargoSharks vs CargoWise — an honest comparison for Gulf forwarders',
-    description: 'What CargoWise says about itself, where it is the better answer, where a Kuwait-built bilingual system is, and the five questions worth asking both vendors. No tick-and-cross grid.',
+    description:
+      'What CargoWise says about itself, where it is the better answer, where a Kuwait-built bilingual system is, and the five questions worth asking both vendors. No tick-and-cross grid.',
     url: '/compare/cargowise/',
   },
 }

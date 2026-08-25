@@ -138,10 +138,7 @@ const customerSheet = (code: string) =>
  */
 const countCodes = async (...codes: string[]): Promise<number> => {
   const result = await withActor(bothBranchesActor, (tx) =>
-    tx
-      .select({ code: customers.code })
-      .from(customers)
-      .where(inArray(customers.code, codes)),
+    tx.select({ code: customers.code }).from(customers).where(inArray(customers.code, codes)),
   )
   return result.length
 }
@@ -305,17 +302,10 @@ describe.skipIf(!enabled)('bulk import', () => {
     it('honours an explicit mapping over the headings', async () => {
       const state = await runImport(
         {},
-        upload(
-          'customers',
-          sheet(
-            ['A', 'B', 'C'],
-            [[unique('MP'), 'Mapped Trading', 'KW']],
-          ),
-          {
-            branchId: HOME_BRANCH,
-            mapping: JSON.stringify({ code: 0, legalNameEn: 1, countryCode: 2 }),
-          },
-        ),
+        upload('customers', sheet(['A', 'B', 'C'], [[unique('MP'), 'Mapped Trading', 'KW']]), {
+          branchId: HOME_BRANCH,
+          mapping: JSON.stringify({ code: 0, legalNameEn: 1, countryCode: 2 }),
+        }),
       )
 
       expect(state.ok).toBe(true)
@@ -549,10 +539,7 @@ describe.skipIf(!enabled)('bulk import', () => {
 
       expect(state.committed?.records).toBe(1)
       const [row] = await withActor(bothBranchesActor, (tx) =>
-        tx
-          .select({ kind: locations.kind })
-          .from(locations)
-          .where(eq(locations.unlocode, unlocode)),
+        tx.select({ kind: locations.kind }).from(locations).where(eq(locations.unlocode, unlocode)),
       )
       expect(row?.kind).toBe('seaport')
     })
@@ -709,17 +696,7 @@ describe.skipIf(!enabled)('bulk import', () => {
     const arRow = (
       seriesNo: string,
       { net = '100.000', tax = '0.000', total = '100.000', paid = '0.000' } = {},
-    ) => [
-      seriesNo,
-      'CUST-FIXTURE-HOME',
-      'KWD',
-      '2026-01-15',
-      '2026-02-15',
-      net,
-      tax,
-      total,
-      paid,
-    ]
+    ) => [seriesNo, 'CUST-FIXTURE-HOME', 'KWD', '2026-01-15', '2026-02-15', net, tax, total, paid]
 
     it('writes a wholly unpaid balance as issued', async () => {
       const seriesNo = unique('AR-')
@@ -749,11 +726,10 @@ describe.skipIf(!enabled)('bulk import', () => {
       const seriesNo = unique('AP-')
       await runImport(
         {},
-        upload(
-          'open-receivables',
-          sheet(AR_HEADER, [arRow(seriesNo, { paid: '40.000' })]),
-          { branchId: HOME_BRANCH, intent: 'commit' },
-        ),
+        upload('open-receivables', sheet(AR_HEADER, [arRow(seriesNo, { paid: '40.000' })]), {
+          branchId: HOME_BRANCH,
+          intent: 'commit',
+        }),
       )
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
@@ -787,11 +763,9 @@ describe.skipIf(!enabled)('bulk import', () => {
     it('refuses a settled invoice, which is not an open receivable', async () => {
       const state = await runImport(
         {},
-        upload(
-          'open-receivables',
-          sheet(AR_HEADER, [arRow(unique('AS-'), { paid: '100.000' })]),
-          { branchId: HOME_BRANCH },
-        ),
+        upload('open-receivables', sheet(AR_HEADER, [arRow(unique('AS-'), { paid: '100.000' })]), {
+          branchId: HOME_BRANCH,
+        }),
       )
       expect(state.ok).toBe(false)
       expect(state.issues?.[0]?.message).toContain('Nothing outstanding')
@@ -800,11 +774,9 @@ describe.skipIf(!enabled)('bulk import', () => {
     it('refuses an overpayment rather than importing a negative balance', async () => {
       const state = await runImport(
         {},
-        upload(
-          'open-receivables',
-          sheet(AR_HEADER, [arRow(unique('AO-'), { paid: '150.000' })]),
-          { branchId: HOME_BRANCH },
-        ),
+        upload('open-receivables', sheet(AR_HEADER, [arRow(unique('AO-'), { paid: '150.000' })]), {
+          branchId: HOME_BRANCH,
+        }),
       )
       expect(state.ok).toBe(false)
       expect(state.issues?.[0]?.message).toContain('credit note')
@@ -1008,11 +980,10 @@ describe.skipIf(!enabled)('bulk import', () => {
     it('reads the basis names a real tariff actually uses', async () => {
       const state = await runImport(
         {},
-        upload(
-          'rate-cards',
-          sheet(RATE_HEADER, [rateRow('ocean_freight', '850.000', LUMP_SUM)]),
-          { branchId: HOME_BRANCH, direction: 'sell' },
-        ),
+        upload('rate-cards', sheet(RATE_HEADER, [rateRow('ocean_freight', '850.000', LUMP_SUM)]), {
+          branchId: HOME_BRANCH,
+          direction: 'sell',
+        }),
       )
       expect(state.ok).toBe(true)
     })

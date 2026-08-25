@@ -65,7 +65,9 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
           <h1 className="display">{item.title[lang]}</h1>
           <p className="hero__sub">{item.lede[lang]}</p>
           <p className="hero__ways">
-            <a href={DEMO_URL}>{lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}</a>
+            <a href={DEMO_URL}>
+              {lang === 'ar' ? 'افتحوا النسخة التجريبية' : 'Open the live demo'}
+            </a>
             <a href="/compare/">{lang === 'ar' ? 'كل المقارنات' : 'All comparisons'}</a>
             <a href="/what-we-do/">{lang === 'ar' ? 'ماذا نفعل' : 'What we do'}</a>
             <a href="/">{lang === 'ar' ? 'الصفحة الرئيسية' : 'The home page'}</a>
@@ -160,7 +162,10 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
               {lang === 'ar' ? 'قُرئ من ' : 'Read from '}
               <a href={item.source} rel="nofollow noopener" target="_blank">
                 {item.source.replace(/^https?:\/\//, '').replace(/\/$/, '')}
-                <ArrowUpRight weight="bold" style={{ display: 'inline', width: '0.8em', height: '0.8em' }} />
+                <ArrowUpRight
+                  weight="bold"
+                  style={{ display: 'inline', width: '0.8em', height: '0.8em' }}
+                />
               </a>
               {lang === 'ar' ? ' بتاريخ ' : ' on '}
               {item.checked}
@@ -300,9 +305,7 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
             </div>
             <figcaption>
               {lead.shot.look[lang]}{' '}
-              <a href={DEMO_URL}>
-                {lang === 'ar' ? 'افتحوها بأنفسكم' : 'Open it yourself'}
-              </a>
+              <a href={DEMO_URL}>{lang === 'ar' ? 'افتحوها بأنفسكم' : 'Open it yourself'}</a>
               {lang === 'ar' ? ' — بلا تسجيل.' : ' — no sign-up.'}
             </figcaption>
           </figure>
@@ -317,7 +320,9 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
               {lang === 'ar' ? '04 — الأسئلة' : '04 — The questions'}
             </p>
             <h2 className="h2">
-              {lang === 'ar' ? 'اسألوا كلينا هذه، وقارنوا الأجوبة' : 'Ask both of us these, and compare the answers'}
+              {lang === 'ar'
+                ? 'اسألوا كلينا هذه، وقارنوا الأجوبة'
+                : 'Ask both of us these, and compare the answers'}
             </h2>
             <p className="lead">
               {lang === 'ar'

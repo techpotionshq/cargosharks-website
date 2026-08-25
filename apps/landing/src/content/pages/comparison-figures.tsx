@@ -44,7 +44,12 @@ export function CostShape({ lang }: { lang: Lang }) {
   return (
     <figure className="cmp-figure">
       <div className="cmp-panel">
-        <svg viewBox="0 0 1000 300" role="img" aria-labelledby="cost-shape-title" className="cmp-svg">
+        <svg
+          viewBox="0 0 1000 300"
+          role="img"
+          aria-labelledby="cost-shape-title"
+          className="cmp-svg"
+        >
           <title id="cost-shape-title">
             {lang === 'ar'
               ? 'رسم يقارن شكل الفاتورة الثابتة بشكل الفاتورة لكل شحنة مع نمو الحجم'

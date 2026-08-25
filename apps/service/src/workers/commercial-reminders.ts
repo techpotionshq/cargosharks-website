@@ -192,7 +192,11 @@ export async function runInvoiceOverdueNotices(asOf = new Date()): Promise<Remin
  * by running the worker twice in a row, which is the only way it could have
  * been: once looks perfect.
  */
-function notAlreadyAnnounced(eventKey: string, payloadKey: 'reference' | 'seriesNo', value: unknown) {
+function notAlreadyAnnounced(
+  eventKey: string,
+  payloadKey: 'reference' | 'seriesNo',
+  value: unknown,
+) {
   return sql`not exists (
     select 1
       from ${notificationOutbox} o

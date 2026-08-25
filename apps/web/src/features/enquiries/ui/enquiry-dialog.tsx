@@ -330,7 +330,6 @@ export function EnquiryDialog({
               error={error('notes')}
             />
           </FormSection>
-
         </FormGrid>
       </form>
     </Modal>

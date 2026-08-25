@@ -65,11 +65,7 @@ export default async function NotificationsPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow={t('eyebrow')}
-        title={t('pageTitle')}
-        description={t('pageSubtitle')}
-      />
+      <PageHeader eyebrow={t('eyebrow')} title={t('pageTitle')} description={t('pageSubtitle')} />
 
       {/*
         What sends at all, above the wording of what is sent.
@@ -188,9 +184,7 @@ export default async function NotificationsPage() {
                             {t('allBranches')}
                           </span>
                         )}
-                        {template.isActive ? null : (
-                          <Badge tone="muted">{tc('inactive')}</Badge>
-                        )}
+                        {template.isActive ? null : <Badge tone="muted">{tc('inactive')}</Badge>}
                       </span>
                       {template.subject ? (
                         <span className="mt-1 block text-[0.875rem] font-medium text-ink">
@@ -313,7 +307,7 @@ export default async function NotificationsPage() {
                       </span>
                       {/* The reason, where there is one — that is the whole
                           value of a delivery log. */}
-                      {row.lastError ?? row.suppressedReason ? (
+                      {(row.lastError ?? row.suppressedReason) ? (
                         <span className="text-[0.6875rem] text-ink-subtle">
                           {row.lastError ?? row.suppressedReason}
                         </span>

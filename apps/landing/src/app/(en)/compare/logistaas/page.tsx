@@ -21,7 +21,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'article',
     title: 'CargoSharks vs Logistaas — the closest comparison, written straight',
-    description: 'Two cloud freight systems sold to forwarders the same size in the same region. Where Logistaas is the better answer, where we are, and the questions to put to both.',
+    description:
+      'Two cloud freight systems sold to forwarders the same size in the same region. Where Logistaas is the better answer, where we are, and the questions to put to both.',
     url: '/compare/logistaas/',
   },
 }

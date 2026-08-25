@@ -197,9 +197,12 @@ export function Header({
     closing.current = setTimeout(() => setPanel(null), 160)
   }
 
-  useEffect(() => () => {
-    if (closing.current) clearTimeout(closing.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (closing.current) clearTimeout(closing.current)
+    },
+    [],
+  )
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 pt-3 sm:pt-4">
@@ -347,7 +350,11 @@ export function Header({
                   transition={{ duration: 0.18 }}
                   className="flex"
                 >
-                  {open ? <X weight="bold" className="size-4" /> : <List weight="bold" className="size-4" />}
+                  {open ? (
+                    <X weight="bold" className="size-4" />
+                  ) : (
+                    <List weight="bold" className="size-4" />
+                  )}
                 </motion.span>
               </AnimatePresence>
             </button>
@@ -496,24 +503,26 @@ export function Header({
                       {group.label[lang]}
                     </p>
 
-                    {(group.columns ?? []).flatMap((column) => column.links).map((link) => (
-                      <a
-                        key={link.href}
-                        href={link.href}
-                        onClick={() => setOpen(false)}
-                        aria-current={here(link.href) ? 'page' : undefined}
-                        className={`mt-1 block rounded-lg px-3 py-2.5 ${
-                          here(link.href) ? 'bar-pill' : ''
-                        }`}
-                      >
-                        <span className="block text-on-void text-[0.95rem] font-medium">
-                          {link.label[lang]}
-                        </span>
-                        <span className="mt-0.5 block text-on-void-dim text-[0.8rem] leading-[1.5] opacity-80">
-                          {link.blurb[lang]}
-                        </span>
-                      </a>
-                    ))}
+                    {(group.columns ?? [])
+                      .flatMap((column) => column.links)
+                      .map((link) => (
+                        <a
+                          key={link.href}
+                          href={link.href}
+                          onClick={() => setOpen(false)}
+                          aria-current={here(link.href) ? 'page' : undefined}
+                          className={`mt-1 block rounded-lg px-3 py-2.5 ${
+                            here(link.href) ? 'bar-pill' : ''
+                          }`}
+                        >
+                          <span className="block text-on-void text-[0.95rem] font-medium">
+                            {link.label[lang]}
+                          </span>
+                          <span className="mt-0.5 block text-on-void-dim text-[0.8rem] leading-[1.5] opacity-80">
+                            {link.blurb[lang]}
+                          </span>
+                        </a>
+                      ))}
                   </motion.div>
                 ))}
                 <a

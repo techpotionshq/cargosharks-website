@@ -94,7 +94,9 @@ export function Calculator({ lang }: { lang: Lang }) {
                     <span className="figures font-mono text-[1.05rem] text-ink">
                       {value}
                       {'unit' in field && field.unit ? (
-                        <span className="ms-1 text-[0.75rem] text-ink-faint">{field.unit[lang]}</span>
+                        <span className="ms-1 text-[0.75rem] text-ink-faint">
+                          {field.unit[lang]}
+                        </span>
                       ) : null}
                     </span>
                   </label>
@@ -136,7 +138,9 @@ export function Calculator({ lang }: { lang: Lang }) {
           <p className="tracked text-[0.6rem] text-on-void-faint">{calculator.resultLabel[lang]}</p>
 
           <p className="figures mt-5 flex flex-wrap items-baseline gap-x-2.5 font-mono leading-none text-on-void">
-            <span className="tracked text-[0.7rem] text-on-void-faint">{calculator.currency[lang]}</span>
+            <span className="tracked text-[0.7rem] text-on-void-faint">
+              {calculator.currency[lang]}
+            </span>
             <span className={`font-medium tracking-[-0.02em] text-amber ${size}`}>{headline}</span>
           </p>
 

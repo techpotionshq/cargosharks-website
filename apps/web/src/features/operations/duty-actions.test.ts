@@ -116,10 +116,7 @@ const stageFor = async (jobId: string) => {
 }
 
 const estimate = (jobId: string, extra: Record<string, string> = {}) =>
-  estimateJobDuty(
-    {},
-    form({ jobId, goodsValue: '1000.000', currency: 'KWD', ...extra }),
-  )
+  estimateJobDuty({}, form({ jobId, goodsValue: '1000.000', currency: 'KWD', ...extra }))
 
 describe.skipIf(!enabled)('estimating duty', () => {
   beforeAll(async () => {
@@ -317,7 +314,10 @@ describe.skipIf(!enabled)('estimating duty', () => {
       await estimate(jobId, { goodsValue: '2000.000' })
 
       const rows = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ id: customsStages.id }).from(customsStages).where(eq(customsStages.jobId, jobId)),
+        tx
+          .select({ id: customsStages.id })
+          .from(customsStages)
+          .where(eq(customsStages.jobId, jobId)),
       )
       expect(rows).toHaveLength(1)
       expect(Number((await stageFor(jobId))?.customsValue)).toBeCloseTo(2000, 3)

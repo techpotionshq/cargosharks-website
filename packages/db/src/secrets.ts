@@ -155,10 +155,9 @@ export function open(sealed: string): string {
   try {
     const decipher = createDecipheriv(ALGORITHM, key(), Buffer.from(iv, 'base64'))
     decipher.setAuthTag(Buffer.from(tag, 'base64'))
-    return Buffer.concat([
-      decipher.update(Buffer.from(body, 'base64')),
-      decipher.final(),
-    ]).toString('utf8')
+    return Buffer.concat([decipher.update(Buffer.from(body, 'base64')), decipher.final()]).toString(
+      'utf8',
+    )
   } catch (error) {
     /*
       A key error passes through; anything else becomes one sentence.

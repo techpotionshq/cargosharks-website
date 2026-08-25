@@ -281,7 +281,10 @@ function partyBox(
     party.address ? escBlock(party.address) : '',
     [party.city, party.country].filter(Boolean).map(esc).join(', '),
     party.contactName ? esc(party.contactName) : '',
-    [party.phone, party.email].filter(Boolean).map((v) => ltr(esc(v))).join(' · '),
+    [party.phone, party.email]
+      .filter(Boolean)
+      .map((v) => ltr(esc(v)))
+      .join(' · '),
   ].filter((l) => l !== '')
 
   return box(

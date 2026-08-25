@@ -149,7 +149,15 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     audience: 'internal',
     requirement: 'FR-JB-08',
     summary: 'A container is about to start accruing demurrage, detention or storage.',
-    fields: ['reference', 'kind', 'containerNo', 'daysRemaining', 'expiresOn', 'perDiem', 'currency'],
+    fields: [
+      'reference',
+      'kind',
+      'containerNo',
+      'daysRemaining',
+      'expiresOn',
+      'perDiem',
+      'currency',
+    ],
   }),
 
   /*

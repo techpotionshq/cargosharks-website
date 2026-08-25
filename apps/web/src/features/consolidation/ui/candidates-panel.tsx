@@ -97,7 +97,10 @@ export async function CandidatesPanel() {
                       : ''}
                   </>
                 ) : (
-                  <>{' · '}{t('undated')}</>
+                  <>
+                    {' · '}
+                    {t('undated')}
+                  </>
                 )}
               </p>
 

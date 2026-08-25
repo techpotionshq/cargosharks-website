@@ -48,8 +48,13 @@ export function Bilingual({ lang }: { lang: Lang }) {
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
-          <span className="tracked text-[0.58rem] text-ink-faint">{bilingual.toggleHint[lang]}</span>
-          <div role="group" className="inline-flex rounded-lg border border-line-strong bg-paper p-1">
+          <span className="tracked text-[0.58rem] text-ink-faint">
+            {bilingual.toggleHint[lang]}
+          </span>
+          <div
+            role="group"
+            className="inline-flex rounded-lg border border-line-strong bg-paper p-1"
+          >
             {options.map((option) => (
               <button
                 key={option.key}

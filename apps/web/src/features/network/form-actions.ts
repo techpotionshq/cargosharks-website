@@ -409,10 +409,7 @@ export async function savePartnerCoverage(
     later — the RFQ would go to this agent for every enquiry in the system.
   */
   if (!data.originId && !data.destinationId && !data.originCountry && !data.destinationCountry) {
-    return fail(
-      { originId: 'Name at least one end — a port, or a country.' },
-      echo(form),
-    )
+    return fail({ originId: 'Name at least one end — a port, or a country.' }, echo(form))
   }
 
   await withActor(session.actor, async (tx) => {
@@ -422,9 +419,7 @@ export async function savePartnerCoverage(
       originId: data.originId || null,
       destinationId: data.destinationId || null,
       originCountry: data.originCountry ? data.originCountry.toUpperCase() : null,
-      destinationCountry: data.destinationCountry
-        ? data.destinationCountry.toUpperCase()
-        : null,
+      destinationCountry: data.destinationCountry ? data.destinationCountry.toUpperCase() : null,
       transitDays: data.transitDays,
       isActive: data.isActive,
     }

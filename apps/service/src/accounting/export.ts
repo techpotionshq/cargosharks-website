@@ -343,7 +343,6 @@ async function collect(actor: Actor, request: ExportRequest) {
         })),
     }))
 
-
     /*
       Approved supplier bills in the window, by *their* invoice date.
 

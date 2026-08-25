@@ -65,7 +65,12 @@ import {
 import { slaDueAt, type WorkingCalendar } from '@qabandi/core'
 import { fileStore, resolveInboundMail } from '../adapters/index'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
-import { identifyingDomain, inboundStorageKey, isAutomaticMail, referencesIn } from './inbound-routing'
+import {
+  identifyingDomain,
+  inboundStorageKey,
+  isAutomaticMail,
+  referencesIn,
+} from './inbound-routing'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -375,9 +380,7 @@ export async function ingestMessage(
       */
       const partnerId = await matchPartner(tx, message.from)
 
-      const context =
-        target ??
-        (await createEnquiry(tx, message, branch, customerId, asOf))
+      const context = target ?? (await createEnquiry(tx, message, branch, customerId, asOf))
 
       const [row] = await tx
         .insert(messages)
@@ -436,9 +439,7 @@ export async function ingestMessage(
           })
           .returning({ id: assets.id })
 
-        await tx
-          .insert(messageAttachments)
-          .values({ messageId: row!.id, assetId: asset!.id })
+        await tx.insert(messageAttachments).values({ messageId: row!.id, assetId: asset!.id })
 
         /*
           A readable attachment from a known supplier is a bill to read.
@@ -747,10 +748,7 @@ async function matchCustomer(tx: any, from: string): Promise<string | null> {
     .select({ customerId: customerContacts.customerId })
     .from(customerContacts)
     .where(
-      and(
-        sql`lower(${customerContacts.email}) = ${address}`,
-        eq(customerContacts.isActive, true),
-      ),
+      and(sql`lower(${customerContacts.email}) = ${address}`, eq(customerContacts.isActive, true)),
     )
     .limit(2)
 
@@ -888,7 +886,13 @@ async function storeAttachments(
   const out: StoredAttachment[] = []
 
   for (const [index, part] of message.attachments.entries()) {
-    const key = inboundStorageKey(branch.code, message.receivedAt, message.externalId, part.filename, index)
+    const key = inboundStorageKey(
+      branch.code,
+      message.receivedAt,
+      message.externalId,
+      part.filename,
+      index,
+    )
 
     /*
       An oversized part was emptied by the adapter and is recorded, not stored.

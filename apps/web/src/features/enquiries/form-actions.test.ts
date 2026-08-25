@@ -284,10 +284,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     it('assigns a new enquiry and moves it on', async () => {
       const row = await raise()
 
-      const state = await assignEnquiryAction(
-        {},
-        form({ enquiryId: row.id, ownerId: PRINCIPAL }),
-      )
+      const state = await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
 
       expect(state.errors).toBeUndefined()
       const after = await readEnquiry(row.id)
@@ -304,10 +301,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       const row = await raise()
       await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
 
-      const again = await assignEnquiryAction(
-        {},
-        form({ enquiryId: row.id, ownerId: PRINCIPAL }),
-      )
+      const again = await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
 
       expect(again.errors).toBeUndefined()
       expect((await readEnquiry(row.id)).status).toBe('assigned')

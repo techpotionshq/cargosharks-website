@@ -122,7 +122,10 @@ const track = async (codes: readonly string[]) =>
   withActor(actor, async (tx) => {
     await tx.update(currencies).set({ isTracked: false }).where(eq(currencies.isTracked, true))
     if (codes.length > 0) {
-      await tx.update(currencies).set({ isTracked: true }).where(inArray(currencies.code, [...codes]))
+      await tx
+        .update(currencies)
+        .set({ isTracked: true })
+        .where(inArray(currencies.code, [...codes]))
     }
   })
 

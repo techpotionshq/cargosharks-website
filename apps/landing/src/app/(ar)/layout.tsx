@@ -19,7 +19,8 @@ export const metadata: Metadata = {
     alternateLocale: 'en',
     siteName: 'CargoSharks',
     title: 'CargoSharks — نظام لشركات الشحن والتخليص في الخليج',
-    description: 'عرض السعر والترسية والمراحل والتخليص والمستندات والتكاليف والفاتورة على سجل واحد.',
+    description:
+      'عرض السعر والترسية والمراحل والتخليص والمستندات والتكاليف والفاتورة على سجل واحد.',
     images: [{ url: '/pic/screens/app-dashboard-ar.webp', width: 2360, height: 1476 }],
   },
   robots: { index: true, follow: true },

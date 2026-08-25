@@ -43,4 +43,3 @@ export const createEnquirySchema = insertEnquiry
       path: ['destinationId'],
     },
   )
-
