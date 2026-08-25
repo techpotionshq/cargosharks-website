@@ -12,3 +12,22 @@ allowBuilds:
   # in the exporter's runtime path needs it, and leaving it undeclared makes
   # `pnpm install` exit non-zero and take CI with it.
   protobufjs: false
+
+# Transitive advisories, forced up. Both are reported by `pnpm audit`, which
+# the `supply-chain` job now fails on — so these are the alternative to
+# switching that gate off, and each names why it is here rather than waiting
+# for its parent to bump.
+#
+# `deepmerge-ts` is the one that mattered. It is reached through
+# `mailparser -> html-to-text`, and mailparser reads a real inbox that anyone
+# on the internet can write to (`docs/Dev_Environment.md`). Stack exhaustion
+# in a recursive merge is therefore a crash a stranger can post, not a paper
+# finding. 8.x is API-compatible for the single call html-to-text makes.
+#
+# `esbuild` arrives under `drizzle-kit -> @esbuild-kit/esm-loader`, which is
+# tooling and ships in neither runtime image; the advisory is against its dev
+# server, which nothing here starts. Overridden anyway, because an audit gate
+# carrying a standing exception is one somebody eventually stops reading.
+overrides:
+  deepmerge-ts: '>=8.0.0'
+  esbuild: '>=0.25.0'

@@ -587,14 +587,16 @@
     "resetDone": "Your password has been changed. Sign in with the new one.",
     "demo": {
       "title": "Demo access",
-      "body": "A live demo on sample data. Choose whose view to sign in as \u2014 the same system, seen from three sides.",
+      "body": "A live demo on sample data. Choose whose view to sign in as — the same system, seen from three sides.",
       "password": "Password",
       "personas": {
         "operations": "The operations board",
         "customer": "The customer portal",
         "agent": "The agent view"
       }
-    }
+    },
+    "errorThrottled": "Too many sign-in attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+    "errorLocked": "Too many failed attempts. This account is locked. Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "forgotPassword": {
     "title": "Forgotten password",
@@ -3183,6 +3185,34 @@
     "modes": {
       "sea_lcl": "Sea LCL",
       "air": "Air"
+    }
+  },
+  "twoFactor": {
+    "errorMissing": "Enter the 6-digit code from your authenticator app.",
+    "errorInvalid": "That code is not correct. Check your authenticator app and try again.",
+    "errorPasswordMissing": "Enter your password.",
+    "errorPasswordWrong": "That password is not correct.",
+    "title": "Two-factor authentication",
+    "subtitle": "Enter the 6-digit code from your authenticator app.",
+    "code": "Authentication code",
+    "submit": "Verify",
+    "submitting": "Verifying…",
+    "backupHint": "If you cannot use your authenticator app, enter one of your backup codes.",
+    "back": "Back to sign in",
+    "enrol": {
+      "title": "Set up two-factor authentication",
+      "subtitle": "Your role needs a second factor. Set it up now to continue.",
+      "password": "Password",
+      "passwordHint": "Enter your password again. This makes sure that the account is yours.",
+      "begin": "Continue",
+      "beginning": "Please wait…",
+      "scan": "Scan this code with your authenticator app. Then enter the 6-digit code that it shows.",
+      "manual": "Cannot scan? Enter this key by hand",
+      "backupTitle": "Backup codes",
+      "backupHint": "Keep these codes in a safe place. Each code works one time. You see them one time only.",
+      "code": "Authentication code",
+      "submit": "Turn on two-factor",
+      "submitting": "Turning on…"
     }
   }
 }

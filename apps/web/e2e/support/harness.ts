@@ -180,6 +180,19 @@ const NOT_SWEPT = [
   '/forgot-password',
   '/portal',
   '/agent',
+  /*
+    Both halves of the second factor — FR-ID-06.
+
+    Not swept for the same reason `/sign-in` is not: they are reachable only
+    from a state the sweep does not hold. `/two-factor` needs the short-lived
+    challenge cookie Better Auth issues to an account that has TOTP, and the
+    sweep signs in as one that does not. `/two-factor/enrol` needs a principal
+    whose role demands a second factor *and* who has not enrolled — and in
+    fixture mode there is no `auth_user` at all, so both redirect rather than
+    render. Listing them here says that plainly instead of leaving a screen the
+    manifest knows about and the sweep has never heard of.
+  */
+  '/two-factor',
   '/', // redirects to /dashboard
 ] as const
 

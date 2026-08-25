@@ -1,0 +1,194 @@
+# The supply chain — the half of the build nobody writes.
+#
+# `ci.yml` proves the code in this repository behaves. It says nothing at all
+# about the 651 packages underneath it, and that is where a platform sold with
+# support gets compromised: not in a feature, in a transitive dependency of a
+# mail parser.
+#
+# Separate from `ci.yml` for one reason, and it is the reason this file exists
+# rather than a sixth job over there: **an advisory is published on a day
+# nobody commits.** A scan that only runs on push reports "clean" for as long
+# as the repository is quiet, which is exactly when it is least true. So this
+# runs on every change *and* every Monday, and the schedule is the half that
+# does the work.
+#
+# Four checks, each answering a different question:
+#
+#   audit        do our dependencies have known advisories today
+#   secrets      did a credential ever reach a commit, anywhere in history
+#   image        does the runtime image carry a vulnerable OS package
+#   sbom         what, exactly, did we ship — an artifact a customer can ask for
+#
+# NFR-18 (operability) and the handover obligation in Architecture §13: after
+# handover the patching duty is Al-Qabandi's, and a duty with no alarm attached
+# is a sentence in a runbook.
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Monday 04:00 UTC — 07:00 in Kuwait, before the working week starts.
+    # Sunday-to-Thursday is the week here, so Monday morning is the second day
+    # of it and somebody is already at a desk to read a failure.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.5.2'
+
+jobs:
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `high` and above fails the build; `moderate` is reported and does not.
+      #
+      # The split is deliberate. A gate that fails on every moderate advisory
+      # in a 651-package tree fails most weeks for something unreachable, and a
+      # gate that fails most weeks is one somebody adds `|| true` to. The two
+      # advisories this repository started with are pinned out in
+      # `pnpm-workspace.yaml`, each with a note on why.
+      - name: Advisories, high and above
+        run: pnpm audit --audit-level high
+
+      - name: Advisories, everything else
+        if: always()
+        run: pnpm audit --audit-level moderate || true
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Whole history, not the default single commit. A credential that was
+          # committed and then removed is still a credential — the commit is
+          # what leaked it, and `git log -p` is a public API on any repository
+          # somebody is given.
+          fetch-depth: 0
+
+      # TruffleHog rather than gitleaks: the gitleaks action requires a paid
+      # licence key for organisation-owned repositories, and a scan that is off
+      # because a key expired is worse than one that was never added.
+      #
+      # `--only-verified` means it reports credentials it has confirmed are
+      # live against the issuing service, not strings that look like keys. The
+      # false-positive rate is what decides whether anyone reads this job.
+      - name: Verified credentials in history
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  image:
+    name: Runtime image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image is what runs, and `pnpm audit` cannot see any of it: the base
+      # layer's OpenSSL is not in the lockfile. Both apps ship from one
+      # Dockerfile, so one build covers them.
+      - name: Build
+        run: docker build -t qabandi:scan .
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: qabandi:scan
+          format: table
+          # OS packages and language dependencies both. `exit-code: 1` on
+          # CRITICAL only — the base image carries HIGH findings with no fix
+          # available for weeks at a time, and failing on those means pinning
+          # to a stale digest to keep the build green, which is backwards.
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+
+  sast:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      # Semgrep, not CodeQL, and the reason is billing rather than preference.
+      #
+      # CodeQL is the better engine and it is free only on public repositories:
+      # on a private one it needs GitHub Advanced Security, which is priced per
+      # committer and is not worth it for a team this size. Semgrep's OSS rules
+      # run anywhere, need no account and no token, and cover what matters here
+      # — injection, XSS sinks, weak crypto, hard-coded secrets.
+      #
+      # If this repository is ever made public, or GHAS is bought for another
+      # reason, replace this job with `github/codeql-action` and delete the
+      # note. Until then, an engine that runs beats a better one that does not.
+      - name: Scan
+        run: >-
+          semgrep scan
+          --config p/typescript
+          --config p/react
+          --config p/nodejs
+          --config p/secrets
+          --config p/owasp-top-ten
+          --config p/sql-injection
+          --error
+          --skip-unknown-extensions
+          --exclude apps/landing/out
+          --exclude '**/dist/**'
+          --exclude '**/.next/**'
+
+  sbom:
+    name: Bill of materials
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Not a gate. An artifact.
+      #
+      # "Send us your SBOM" is on every enterprise security questionnaire and
+      # in the CAIQ (`docs/compliance/CAIQ.md`, SEF and AIS domains). Producing
+      # one on demand means someone reconstructing the tree by hand under
+      # deadline; producing one every build means answering with a link.
+      - name: Generate
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          artifact-name: qabandi-sbom.cyclonedx.json
+          output-file: qabandi-sbom.cyclonedx.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: qabandi-sbom.cyclonedx.json
+          retention-days: 90
