@@ -198,11 +198,24 @@ clock starts rather than six weeks later on a supplier invoice. That is a claim
 about the code and it is true, which is the rule `docs/marketing/README.md` sets
 for the whole document set.
 
-**No colour literals.** Every value in both stylesheets resolves to a `--qb-*`
-custom property emitted by `@qabandi/brand`, and `scripts/check-brand.mjs` fails
-the build on a hex, an `oklch(` or a chromatic `rgb()` anywhere under `src/`.
-The near-black navy the dark sections need is not a stop on the brand ramp, so
-it is derived with `color-mix` from the stop that is. Mix, never pick.
+**Colour lives in `src/app/palette.css`, and only there.** This site used to
+derive every value from `@qabandi/brand`'s `--qb-*` ramps, so that an operator
+re-skinning the product would not find the marketing page in somebody else's
+blue. That is still the rule in `apps/web` and the PDF renderer and it is still
+enforced there. It was the wrong rule here: every colour ended up two or three
+`color-mix()` calls deep, so "make the header brighter" meant reasoning about
+what `neutral-50` mixed 35% into white then 78% into transparent lands at, and
+the answer kept being mid-grey. A palette you cannot see is a palette you cannot
+tune.
+
+`scripts/check-brand.mjs` allows that one file by name — not the app — so a hex
+in a component still fails the build. The trade is written at the top of
+`palette.css`: if the product is ever re-skinned, that file is the work.
+
+Typefaces did *not* move. They are still `@qabandi/brand`, because the supplied
+wordmark is Manrope ExtraBold converted to outlines and `apps/web` sets Arabic
+in the same IBM Plex Sans Arabic — a palette is a look, a typeface here is a
+fact about an asset that ships.
 
 Type is Manrope, because the supplied wordmark is Manrope ExtraBold converted to
 outlines. IBM Plex Mono carries every label, eyebrow, figure and status pill,

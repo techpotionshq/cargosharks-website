@@ -47,18 +47,12 @@ export function Site({ lang }: { lang: Lang }) {
   return (
     <>
       <SiteSchema lang={lang} />
-      {/* The bar inverts against whatever band is behind it, so it needs both
-          inkings of the lockup and picks one — see `Header`. They are rendered
-          here rather than there because `Wordmark` calls `resolveBrand()`, and
-          a client component importing that would pull `@qabandi/brand` into the
-          browser bundle. */}
-      <Header
-        lang={lang}
-        marks={{
-          onPaper: <Wordmark tone="onPaper" height={24} />,
-          onDark: <Wordmark tone="onDark" height={24} />,
-        }}
-      />
+      {/* The bar is dark at every scroll position, so it takes the light-on-dark
+          lockup and only that one. It is rendered here rather than inside
+          `Header` because `Wordmark` calls `resolveBrand()`, and a client
+          component importing that would pull `@qabandi/brand` into the browser
+          bundle. */}
+      <Header lang={lang} mark={<Wordmark tone="onDark" height={24} />} />
       <main>
         <Hero lang={lang} shot={`app-dashboard${suffix}`} />
         <Modes lang={lang} />

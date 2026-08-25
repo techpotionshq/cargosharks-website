@@ -24,19 +24,9 @@ import '@/app/pages.css'
 export function DocPage({ lang, children }: { lang: Lang; children: ReactNode }) {
   return (
     <>
-      {/* The same bar as the home page, and it needs the same two lockups.
-          These five documents open on a dark hero and punctuate with dark
-          bands, so the header inverts here exactly as it does on `/` — see
-          `DARK_SELECTOR` in `Header`, which matches `.doc-page .hero` and
-          `.doc-page .band--navy` rather than asking five converted documents to
-          grow a new attribute each. */}
-      <Header
-        lang={lang}
-        marks={{
-          onPaper: <Wordmark tone="onPaper" height={24} />,
-          onDark: <Wordmark tone="onDark" height={24} />,
-        }}
-      />
+      {/* The same bar as the home page, and the same lockup. `Site` passes the
+          identical pair; the two callers must agree, because it is one bar. */}
+      <Header lang={lang} mark={<Wordmark tone="onDark" height={24} />} />
       <main id="top" className="doc-page">
         {children}
       </main>

@@ -72,7 +72,24 @@ const SOURCES = [
  * own SVG, whose fills are theirs and not ours to tokenise). Flagging this
  * directory would mean flagging the answer.
  */
-const DEFINES_COLOUR = [/^packages\/brand\//]
+const DEFINES_COLOUR = [
+  /^packages\/brand\//,
+  /**
+   * The marketing site's palette, and the one exception outside `packages/brand`.
+   *
+   * `apps/landing` is not a whitelabelled surface. It is the front door of one
+   * brand, it ships as static files, and nothing an operator re-skins reaches
+   * it — so deriving its every value from the product ramps bought nothing and
+   * cost a great deal: each colour was two or three `color-mix()` calls deep,
+   * which made the site unreasonable to tune and quietly pushed it toward grey.
+   *
+   * The exemption is one file by name rather than the app, on purpose. A
+   * component in `apps/landing/src/components` that writes a hex still fails
+   * this check; the only place a literal may live is the palette itself, which
+   * is where somebody looking for a colour would go anyway.
+   */
+  /^apps\/landing\/src\/app\/palette\.css$/,
+]
 
 /**
  * Tier 2 — a literal is unavoidable, but it must be **neutral**.

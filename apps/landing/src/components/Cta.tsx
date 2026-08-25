@@ -24,7 +24,6 @@ export function Cta({ lang }: { lang: Lang }) {
   return (
     <section
       id="demo"
-      data-tone="dark"
       className="relative isolate scroll-mt-28 overflow-hidden py-band-sm lg:py-band"
     >
       <img

@@ -47,11 +47,28 @@ export const nav: {
   /** A group opens a panel; a plain `href` is a link and opens nothing. */
   href?: string
   intro?: Bi
+  /**
+   * The panel's left column.
+   *
+   * Photographs, not product captures. The site already shows the software in
+   * five places and a sixth thumbnail of the same dashboard in a menu is
+   * wallpaper — it tells a reader nothing they have not seen two screens up.
+   * A picture of the trade does a different job: it says what the group is
+   * about at a glance, in the one part of the panel where there is room.
+   *
+   * A photograph also has no language, which is why there is no `-ar` variant
+   * to reach for here the way the captures need one.
+   */
+  image?: { src: string; alt: Bi }
   columns?: { heading: Bi; links: { href: string; label: Bi; blurb: Bi }[] }[]
 }[] = [
   {
     id: 'product',
     label: { en: 'Product', ar: 'المنتج' },
+    image: {
+      src: '/pic/photos/menu-port.webp',
+      alt: { en: 'A container terminal from the air, ships alongside and cranes working', ar: 'محطة حاويات من الجو، والسفن راسية والرافعات تعمل' },
+    },
     intro: {
       en: 'One file from enquiry to paid invoice, in Arabic and English, on a database that belongs to you.',
       ar: 'سجل واحد من الاستفسار إلى الفاتورة المسدَّدة، بالعربية والإنجليزية، على قاعدة بيانات تملكونها.',
@@ -110,8 +127,66 @@ export const nav: {
     ],
   },
   {
+    id: 'inside',
+    label: { en: 'Inside it', ar: 'داخله' },
+    image: {
+      src: '/pic/photos/menu-loading.webp',
+      alt: { en: 'A reach stacker and quay cranes working a container yard', ar: 'رافعة حاويات ورافعات رصيف تعمل في ساحة حاويات' },
+    },
+    intro: {
+      en: 'The parts a forwarder opens every day. Every link here goes to a section that describes a mechanism rather than a feature — something the database enforces, which means you can check it.',
+      ar: 'الأجزاء التي يفتحها الوكيل كل يوم. كل رابط هنا يقود إلى قسم يصف آلية لا ميزة — شيئاً تفرضه قاعدة البيانات، أي أنه قابل للتحقق.',
+    },
+    columns: [
+      {
+        heading: { en: 'The work', ar: 'العمل' },
+        links: [
+          {
+            href: '/what-we-do/#loop',
+            label: { en: 'Enquiry to invoice', ar: 'من الاستفسار إلى الفاتورة' },
+            blurb: { en: 'The whole loop, stage by stage', ar: 'الدورة كاملة، مرحلة مرحلة' },
+          },
+          {
+            href: '/what-we-do/#modes',
+            label: { en: 'Five transport modes', ar: 'خمس وسائل شحن' },
+            blurb: { en: 'Sea, air, road, rail and courier on one file', ar: 'بحري وجوي وبري وسككي وبريد سريع على سجل واحد' },
+          },
+          {
+            href: '/what-we-do/#parts',
+            label: { en: 'What is in the box', ar: 'ما في المنتج' },
+            blurb: { en: 'Every module, and what each one does', ar: 'كل وحدة، وما تفعله' },
+          },
+        ],
+      },
+      {
+        heading: { en: 'What it guarantees', ar: 'ما يضمنه' },
+        links: [
+          {
+            href: '/privacy/#nodelete',
+            label: { en: 'Nothing is deleted', ar: 'لا يُحذف شيء' },
+            blurb: { en: 'Superseded rows stay, and say who moved them', ar: 'الصفوف المستبدَلة تبقى، وتقول من غيّرها' },
+          },
+          {
+            href: '/what-we-do/#ownership',
+            label: { en: 'Whose database it is', ar: 'قاعدة البيانات لمن' },
+            blurb: { en: 'Yours, and you can have a copy today', ar: 'لكم، ويمكنكم أخذ نسخة اليوم' },
+          },
+          {
+            href: '/what-we-do/#boundaries',
+            label: { en: 'What we do not do', ar: 'ما لا نفعله' },
+            blurb: { en: 'The boundary, published rather than discovered', ar: 'الحدود، منشورة لا مُكتشَفة' },
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: 'compare',
     label: { en: 'Compare', ar: 'المقارنات' },
+    image: {
+      src: '/pic/photos/menu-stack.webp',
+      alt: { en: 'Stacked containers and lanes in a working terminal', ar: 'حاويات مرصوفة وممرات في محطة عاملة' },
+    },
     intro: {
       en: 'No tick-and-cross grids. Each page says what the other vendor states about itself, where they are the better answer, and the questions worth asking both of us.',
       ar: 'بلا جداول علامات. كل صفحة تقول ما يذكره المورّد الآخر عن نفسه، وأين يكون هو الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
@@ -153,6 +228,62 @@ export const nav: {
         ],
       },
     ],
+  },
+  {
+    id: 'trust',
+    label: { en: 'Trust', ar: 'الثقة' },
+    image: {
+      src: '/pic/photos/containers-aerial.webp',
+      alt: { en: 'Containers stacked in rows, seen from above', ar: 'حاويات مرصوفة صفوفاً، من الأعلى' },
+    },
+    intro: {
+      en: 'Where your rows live, who can read them, and what we commit to in writing. The three legal documents are drafts under review and say so at the top of each.',
+      ar: 'أين تعيش صفوفكم، ومن يستطيع قراءتها، وما نلتزم به كتابةً. الوثائق القانونية الثلاث مسوّدات قيد المراجعة، وتقول ذلك في صدر كل منها.',
+    },
+    columns: [
+      {
+        heading: { en: 'How it is secured', ar: 'كيف يُؤمَّن' },
+        links: [
+          {
+            href: '/privacy/#roles',
+            label: { en: 'Roles and access', ar: 'الأدوار والصلاحيات' },
+            blurb: { en: 'Who sees which branch, enforced in the schema', ar: 'من يرى أي فرع، مفروضاً في بنية القاعدة' },
+          },
+          {
+            href: '/privacy/#audit',
+            label: { en: 'The audit trail', ar: 'أثر التدقيق' },
+            blurb: { en: 'Every change stamped with who and when', ar: 'كل تغيير مختوم بمن ومتى' },
+          },
+        ],
+      },
+      {
+        heading: { en: 'In writing', ar: 'كتابةً' },
+        links: [
+          {
+            href: '/dpa/',
+            label: { en: 'Data processing', ar: 'معالجة البيانات' },
+            blurb: { en: 'What we process, where, and for how long', ar: 'ما نعالجه، وأين، وإلى متى' },
+          },
+          {
+            href: '/privacy/',
+            label: { en: 'Privacy', ar: 'الخصوصية' },
+            blurb: { en: 'What leaves a visitor’s browser, enumerated', ar: 'ما يغادر متصفح الزائر، مُعدَّداً' },
+          },
+          {
+            href: '/terms/',
+            label: { en: 'Terms', ar: 'الشروط' },
+            blurb: { en: 'The agreement, including what is not in it', ar: 'الاتفاق، بما في ذلك ما ليس فيه' },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    // A plain link, so the bar is not four dropdowns in a row — and because
+    // the demo is the one thing on this site with nothing to explain.
+    id: 'demo',
+    href: '/#demo',
+    label: { en: 'Demo', ar: 'النسخة التجريبية' },
   },
 ]
 

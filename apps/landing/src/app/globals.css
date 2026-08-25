@@ -1,16 +1,20 @@
 @import 'tailwindcss';
+@import './palette.css';
 
 /**
  * The marketing site's stylesheet.
  *
- * Two rules, inherited from `apps/web/src/app/globals.css` and enforced by
- * `scripts/check-brand.mjs`, which scans this directory:
+ * Two rules, and the first one changed.
  *
- * **1. No colour literals.** Every value resolves to a `--qb-*` custom
- * property emitted by `@qabandi/brand` at build time. The page is a
- * whitelabelled product's front door, so an operator who re-skins the software
- * and finds the marketing site still in someone else's blue has been given the
- * worst version of the feature.
+ * **1. Colour lives in `palette.css`, and only there.** This site used to
+ * derive every value from `@qabandi/brand`'s `--qb-*` ramps, so that an
+ * operator re-skinning the product would not find the marketing page in
+ * somebody else's blue. That is the right rule for `apps/web` and the PDF
+ * renderer, and it is still enforced there. It was the wrong rule here: every
+ * colour ended up two or three `color-mix()` calls deep, and a palette you
+ * cannot see is a palette you cannot tune. `scripts/check-brand.mjs` allows
+ * `palette.css` by name and nothing else, so a literal in a component still
+ * fails the build.
  *
  * **2. Logical properties only.** `ms-`, `me-`, `ps-`, `pe-`, `start-`,
  * `end-`, `text-start`. The Arabic page is the same components with `dir="rtl"`
@@ -69,9 +73,9 @@
   --color-blue: var(--pg-blue);
   --color-blue-ink: var(--pg-blue-ink);
   --color-blue-lit: var(--pg-blue-lit);
-  --color-amber: var(--qb-caution);
-  --color-positive: var(--qb-positive);
-  --color-on-brand: var(--qb-on-brand);
+  --color-amber: var(--pg-amber);
+  --color-positive: var(--pg-positive);
+  --color-on-brand: var(--pg-on-brand);
 
   --font-display: var(--pg-font-display);
   --font-sans: var(--pg-font-sans);
@@ -83,41 +87,16 @@
   --spacing-band-sm: 4.5rem;
 }
 
+/**
+ * Faces stay with the brand even though colour no longer does.
+ *
+ * `@qabandi/brand` is still the right home for these: the supplied wordmark is
+ * Manrope ExtraBold converted to outlines, so the page and the mark are the
+ * same typeface rather than a near match, and `apps/web` sets Arabic in the
+ * same IBM Plex Sans Arabic. A palette is a look; a typeface here is a fact
+ * about an asset that ships.
+ */
 :root {
-  --pg-paper: var(--qb-neutral-50);
-  --pg-paper-sunk: var(--qb-neutral-100);
-  /* Above the ground rather than below it — the one surface that is whiter
-     than the page, for a document lying on it. */
-  --pg-paper-lift: color-mix(in oklab, var(--qb-neutral-50) 35%, white);
-
-  /* Near-black rather than the ramp's darkest stop. `neutral-950` sits at 0.226
-     lightness, which is a dark grey; a headline set in it on near-white paper
-     reads as soft rather than as printed. */
-  --pg-ink: color-mix(in oklab, var(--qb-neutral-950) 74%, black);
-  --pg-ink-dim: var(--qb-neutral-700);
-  --pg-ink-faint: var(--qb-neutral-500);
-
-  --pg-line: var(--qb-neutral-200);
-  --pg-line-strong: var(--qb-neutral-300);
-
-  /* Darker than the ramp's darkest stop, because a band that is merely dark
-     navy makes a light product screenshot read as a sticker rather than as a
-     screen with depth behind it. */
-  --pg-void: color-mix(in oklab, var(--qb-primary-950) 42%, black);
-  --pg-void-lift: color-mix(in oklab, var(--qb-primary-950) 68%, black);
-  --pg-on-void: var(--qb-neutral-50);
-  --pg-on-void-dim: color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
-  --pg-on-void-faint: color-mix(in oklab, var(--qb-primary-300) 30%, var(--qb-neutral-600));
-  --pg-void-line: color-mix(in oklab, var(--qb-primary-200) 16%, transparent);
-
-  --pg-blue: var(--qb-primary-500);
-  /* Blue as *text on paper* needs to be a darker stop than blue as a fill.
-     `primary-500` on near-white is about 3:1, which is a link nobody with
-     ordinary eyesight enjoys reading. */
-  --pg-blue-ink: var(--qb-primary-700);
-  /* And blue on a dark band needs a lighter one, for the same reason inverted. */
-  --pg-blue-lit: var(--qb-primary-300);
-
   --pg-font-display: var(--font-manrope), var(--qb-font-display);
   --pg-font-sans: var(--font-manrope), var(--qb-font-sans);
   --pg-font-mono: var(--font-plex-mono), var(--qb-font-mono);
@@ -174,7 +153,7 @@ body {
 
 ::selection {
   background: var(--pg-blue);
-  color: var(--qb-on-brand);
+  color: var(--pg-on-brand);
 }
 
 :focus-visible {
@@ -280,127 +259,40 @@ body {
 }
 
 /**
- * The header's inversion, as one animatable number.
+ * The header, in one colour.
  *
- * The bar flips between a light surface over the dark bands and a dark surface
- * over the paper. The obvious way to build that is to swap two sets of Tailwind
- * classes on a state change, which is what it did, and it snapped — because
- * `transition-colors` can only tween a property between two values of *that
- * property*, and swapping `text-ink-dim` for `text-on-void-dim` replaces the
- * declaration wholesale. Half the bar cross-faded and the type changed between
- * one frame and the next, which is worse than no transition at all: the eye
- * reads the mismatch as a glitch.
+ * It used to inspect what was behind it and invert — a white panel over the
+ * dark bands, a dark one over the paper — driven by a registered `--tone`
+ * custom property so the surface, the borders, the type and both lockups moved
+ * together. It worked, and it was wrong: a bar that changes colour twice on the
+ * way down a page draws attention to itself at four moments that have nothing
+ * to do with what the reader is doing, and the crossing is unavoidably ugly
+ * because every path from white to near-black goes through the grey where the
+ * type has no contrast against its own panel.
  *
- * `@property` fixes it properly. `--tone` is registered as a `<number>`, which
- * makes it *interpolable* — the browser can animate it — and `inherits: true`,
- * so every element inside the bar sees the animating value. One transition on
- * one custom property therefore moves the background, both borders, three text
- * colours and the nav pill together, in lockstep, at one easing. The component
- * sets `--tone: 0` or `--tone: 1` and stops thinking about colour.
+ * Dark everywhere is not a compromise for that problem, it is the better
+ * answer. The bar is the one piece of chrome on the site; chrome that stays put
+ * is chrome you stop noticing, which is the whole job. It also deletes the
+ * scroll listener that measured band rectangles, the `data-tone` attributes the
+ * sections carried for it, the second lockup, and about eighty lines of
+ * `color-mix()` — none of which the page misses.
  *
- * 0 is the bar over paper (so the bar is dark); 1 is the bar over a dark band
- * (so the bar is light). Read it as "how light is the bar".
+ * What is left is one translucent dark panel. The blur is doing the work that
+ * the inversion was: the photograph moves under it at the top of the page and
+ * the product screenshot moves under it further down, so it still reads as
+ * being *on* the page rather than bolted over it.
  */
-@property --tone {
-  syntax: '<number>';
-  inherits: true;
-  initial-value: 0;
-}
-
 .bar {
-  --tone: 0;
-  transition: --tone 450ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/**
- * Glass, not a panel.
- *
- * The surfaces are mixed to 78% and the blur does the rest, so the photograph
- * moves under the bar at the top of the page and the product screenshot moves
- * under it further down. A solid pill reads as a toolbar bolted over the page;
- * a translucent one reads as being *on* the page, which is the whole point of
- * detaching it from the top edge in the first place.
- *
- * **The light state is white rather than paper, and it is the brighter of the
- * two on purpose.** `--pg-paper-lift` at half opacity over a night photograph
- * lands as mid-grey: the bar took so much colour from the backdrop that both
- * states converged, the inversion stopped being visible, and the nav sat at
- * roughly 2:1 against its own surface in each. White at 88% reads as a lit
- * panel laid on the photograph — which is what it should be, since it is the
- * one piece of chrome on the page — and still passes enough of the backdrop
- * through to move with it.
- *
- * `srgb` rather than `oklab` for these mixes: the second operand is
- * `transparent`, and oklab interpolation toward a fully transparent colour
- * drags the hue through a channel nobody asked for.
- */
-.bar-surface {
-  background: color-mix(
-    in srgb,
-    color-mix(in srgb, white 88%, transparent) calc(var(--tone) * 100%),
-    color-mix(in srgb, var(--pg-void) 82%, transparent)
-  );
-  border-color: color-mix(
-    in srgb,
-    color-mix(in srgb, var(--pg-line) 80%, transparent) calc(var(--tone) * 100%),
-    var(--pg-void-line)
-  );
-}
-
-.bar-ink {
-  color: color-mix(in srgb, var(--pg-ink) calc(var(--tone) * 100%), var(--pg-on-void));
-}
-
-.bar-dim {
-  color: color-mix(in srgb, var(--pg-ink-dim) calc(var(--tone) * 100%), var(--pg-on-void-dim));
-}
-
-.bar-edge {
-  border-color: color-mix(
-    in srgb,
-    color-mix(in srgb, var(--pg-line) 80%, transparent) calc(var(--tone) * 100%),
-    var(--pg-void-line)
-  );
-}
-
-/** The nav pill and every hover tint, so the two never disagree. */
-.bar-pill {
-  background: color-mix(
-    in srgb,
-    color-mix(in srgb, var(--pg-ink) 8%, transparent) calc(var(--tone) * 100%),
-    color-mix(in srgb, var(--pg-on-void) 12%, transparent)
-  );
+  background: color-mix(in srgb, var(--pg-void) 82%, transparent);
+  border-color: var(--pg-void-line);
 }
 
 .bar-hover:hover {
-  background: color-mix(
-    in srgb,
-    color-mix(in srgb, var(--pg-ink) 6%, transparent) calc(var(--tone) * 100%),
-    color-mix(in srgb, var(--pg-on-void) 9%, transparent)
-  );
+  background: color-mix(in srgb, var(--pg-on-void) 9%, transparent);
 }
 
-/**
- * The lockup cross-fades on the same clock.
- *
- * Both inkings are in the DOM; swapping the `src` would flash, because the
- * second file is not decoded until it is asked for and the mark would vanish
- * for a frame at exactly the moment the bar is drawing attention to itself.
- * `--tone` drives the opacities so the artwork turns over with the surface
- * under it rather than a beat behind.
- */
-.bar-mark-paper {
-  opacity: var(--tone);
-}
-
-.bar-mark-dark {
-  opacity: calc(1 - var(--tone));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bar {
-    transition: none;
-  }
+.bar-pill {
+  background: color-mix(in srgb, var(--pg-on-void) 12%, transparent);
 }
 
 /**
@@ -424,7 +316,7 @@ body {
   border-radius: 9999px;
   background: var(--pg-blue);
   border: 3px solid var(--pg-paper);
-  box-shadow: 0 1px 4px color-mix(in oklab, var(--qb-neutral-950) 30%, transparent);
+  box-shadow: 0 1px 4px color-mix(in oklab, var(--pg-ink) 30%, transparent);
   cursor: grab;
   transition:
     transform 0.15s ease,

@@ -22,3 +22,27 @@ W and Q differ per file, because only one of these is looked at:
   containers-aerial    1600  62   a divider strip, cropped to a band
   containers-stack     1600  58   sits under two blur layers
   ship-aerial          1600  62   sits under the pilot section's dark scrim
+
+── Mega-menu photography, added 25 August 2026 ──────────────────────────────────
+
+Same Unsplash Licence as above (free for commercial use, no attribution
+required; credited here as a courtesy and to record provenance).
+
+menu-port.webp       Haris Illahi   unsplash.com/photos/ip0yX8W1veE
+menu-loading.webp    Haris Illahi   unsplash.com/photos/Dzh-udFZXrA
+menu-stack.webp      雙 film        unsplash.com/photos/1gveplodu04
+
+Fetched straight from the Unsplash CDN as WebP rather than downloaded and
+re-encoded, which is what the four above needed:
+
+  https://images.unsplash.com/<photo-id>?w=1000&q=68&fm=webp&fit=crop
+
+1000px because the panel renders them at about 370 CSS pixels, so this is
+already 2x for a retina screen and there is nothing for sharp to do.
+
+A fourth was downloaded and then deleted rather than used: a warehouse
+interior with a forklift (Bernd Dittrich, unsplash.com/photos/F2C_mSrb6iM).
+It is a good photograph and it would have been a false promise — the product
+has no warehouse module, and `/what-we-do/` §07 says so in as many words. The
+"Trust" panel uses containers-aerial.webp instead, which had been sitting
+unused since August.

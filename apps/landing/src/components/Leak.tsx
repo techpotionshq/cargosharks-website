@@ -34,7 +34,7 @@ export function Leak({ lang }: { lang: Lang }) {
   const line = leak.line
 
   return (
-    <section data-tone="dark" className="relative isolate overflow-hidden py-band-sm lg:py-band">
+    <section className="relative isolate overflow-hidden py-band-sm lg:py-band">
       <img
         src="/pic/photos/containers-stack.webp"
         alt=""
