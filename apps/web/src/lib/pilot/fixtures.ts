@@ -5215,22 +5215,22 @@ export function pilotAudit(now = Date.now(), filters: AuditFilters = {}): AuditR
   const to = filters.to ? new Date(`${filters.to}T23:59:59.999Z`).getTime() : undefined
 
   return AUDIT_SEEDS.map((seed, index): AuditRow => ({
-      id: BigInt(900_000 + AUDIT_SEEDS.length - index),
-      at: new Date(now - seed.minutesAgo * 60 * 1000),
-      op: seed.op,
-      tableName: seed.table,
-      rowId: seed.row,
-      principalName: seed.person === null ? null : PEOPLE[seed.person]!.en,
-      /*
+    id: BigInt(900_000 + AUDIT_SEEDS.length - index),
+    at: new Date(now - seed.minutesAgo * 60 * 1000),
+    op: seed.op,
+    tableName: seed.table,
+    rowId: seed.row,
+    principalName: seed.person === null ? null : PEOPLE[seed.person]!.en,
+    /*
         Null principal is the *system* writing — the free-time sweep raising a
         clock and the charge line it wrote by itself. That pair is the audit
         proof of the demo's best beat, and dressing it up as a person would
         undo the point of the beat.
       */
-      principalType: seed.person === null ? 'system' : 'internal',
-      branchCode: seed.branch,
-      ip: seed.person === null ? null : '10.20.30.40',
-    }))
+    principalType: seed.person === null ? 'system' : 'internal',
+    branchCode: seed.branch,
+    ip: seed.person === null ? null : '10.20.30.40',
+  }))
     .filter((row) => {
       if (filters.table && row.tableName !== filters.table) return false
       if (filters.op && row.op !== filters.op) return false
