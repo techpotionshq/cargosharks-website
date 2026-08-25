@@ -114,6 +114,27 @@ RUN pnpm install --frozen-lockfile --prod --shamefully-hoist --filter @qabandi/s
 # beside it.
 COPY --from=service-build --chown=node:node /app/apps/service/dist apps/service/dist
 
+# The package managers go, for the same reason they go from the web image, and
+# this stage is the one that actually proved the point.
+#
+# The first scan this job ever completed found four of them here: a CRITICAL in
+# `tar` (`CVE-2026-59873`) present in *two* copies, plus `sigstore`, `undici`
+# and a path traversal in pnpm itself. None is a dependency of the service. They
+# are what npm and corepack carry inside them, and they were shipping to
+# production because this stage installs with pnpm and then keeps it.
+#
+# It only needs pnpm for the `pnpm install` above; `CMD` is `node
+# apps/service/dist/index.js` and the healthcheck is `node -e`. So the installed
+# `node_modules` stay and the tools that placed them do not — which fixes these
+# four and every future advisory against a package manager nobody runs.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack \
+    "$PNPM_HOME" \
+    /root/.cache/node/corepack
+
 USER node
 ENV NODE_ENV=production
 ENV SERVICE_PORT=3001
