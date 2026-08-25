@@ -50,7 +50,10 @@ describe('cell', () => {
 
 describe('csvDocument', () => {
   it('opens with a byte-order mark, so Excel reads Arabic as Arabic', () => {
-    expect(csvDocument(['a'], [])).toMatch(/^﻿/)
+    // `\uFEFF` rather than the character itself: a literal byte-order mark is
+    // invisible in an editor, so an assertion written with one can be silently
+    // mangled by a copy-paste and still pass against a different character.
+    expect(csvDocument(['a'], []).charCodeAt(0)).toBe(0xfeff)
   })
 
   it('ends every line with CRLF, including the last', () => {
