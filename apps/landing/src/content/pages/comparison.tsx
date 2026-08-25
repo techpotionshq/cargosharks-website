@@ -2,6 +2,8 @@ import { ArrowUpRight } from '@phosphor-icons/react/dist/ssr'
 import { facts } from '@/content/comparisons'
 import type { Comparison } from '@/content/comparisons'
 import { CostShape, SurfaceTimeline } from '@/content/pages/comparison-figures'
+import { ChainPosition, OverlapSets, ScaleRuler } from '@/content/pages/comparison-leads'
+import { leads } from '@/content/comparison-leads'
 import { CONTACT_EMAIL, DEMO_URL, type Lang } from '@/content/copy'
 
 /**
@@ -33,6 +35,10 @@ import { CONTACT_EMAIL, DEMO_URL, type Lang } from '@/content/copy'
  * visual seam.
  */
 export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang }) {
+  // Every slug has a lead; the `!` is the type system agreeing rather than
+  // a shortcut — `comparison-leads.ts` is keyed by the same slugs.
+  const lead = leads[item.slug]!
+
   return (
     <>
       {/*
@@ -65,60 +71,98 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
         </div>
       </section>
 
+      {/*
+        §01 is different on every page, and that is the point of `LeadShape`.
+
+        These four were one component and a table, so they could not differ and
+        did not — four identical documents reading as a template with the nouns
+        swapped. What stays shared below is shared on purpose: the questions
+        table, the facts table and the policy note are the promise this site
+        makes on all of them, and a promise that changes shape per page is not
+        one. The opening is what changes, because the reason somebody compares
+        us to CargoWise is not the reason they compare us to a spreadsheet.
+      */}
       <section className="band band--paper">
         <div className="shell">
           <div className="section-head">
-            {/* A spreadsheet has no vendor, so it cannot say anything about
-                itself and the section is a description rather than a quotation.
-                Keyed off `source` — the same field that decides whether there is
-                a link and a read-on date to print below. */}
             <p className="eyebrow">
               <b />
-              {item.source
-                ? lang === 'ar'
-                  ? '01 — بكلماتهم'
-                  : '01 — In their words'
-                : lang === 'ar'
-                  ? '01 — ما هو'
-                  : '01 — What it is'}
+              {lead.eyebrow[lang]}
             </p>
-            <h2 className="h2">
-              {item.source
-                ? lang === 'ar'
-                  ? 'ما يقولونه عن أنفسهم'
-                  : 'What they say about themselves'
-                : lang === 'ar'
-                  ? 'ما تستخدمونه اليوم فعلاً'
-                  : 'What you are actually using today'}
-            </h2>
-            <p className="lead">{item.theirPitch[lang]}</p>
+            <h2 className="h2">{lead.heading[lang]}</h2>
+            <p className="lead">{lead.body[lang]}</p>
           </div>
 
-          {/*
-            The source and the date it was read, printed rather than buried.
+          {lead.shape === 'scale' ? <ScaleRuler lang={lang} /> : null}
+          {lead.shape === 'peer' ? <OverlapSets lang={lang} /> : null}
+          {lead.shape === 'chain' ? <ChainPosition lang={lang} /> : null}
 
-            This is the mechanism that makes writing about somebody else's
-            product defensible at all. A claim with a date on it is a claim the
-            reader can discount for themselves — and when it goes stale, it goes
-            stale *visibly*, which is precisely the failure `/compare/` §03 says
-            a tick-and-cross grid hides.
+          {/*
+            The three moments, and the only place on these pages where a
+            narrative beats a list.
+
+            `modes` also has no vendor block after it — a spreadsheet publishes
+            nothing about itself, and running it through a template that expects
+            positioning is how the first version printed the heading "What they
+            say about themselves" over a paragraph about Excel.
           */}
-          {item.source ? (
+          {lead.shape === 'modes' ? (
+            <ol className="cmp-moments">
+              {(lead.moments ?? []).map((moment, index) => (
+                <li key={moment.when.en}>
+                  <p className="cmp-moments__n">{String(index + 1).padStart(2, '0')}</p>
+                  <h3 className="h3">{moment.when[lang]}</h3>
+                  <p>{moment.what[lang]}</p>
+                  <p className="cmp-moments__then">
+                    <b>{lang === 'ar' ? 'على السجل: ' : 'On a file: '}</b>
+                    {moment.instead[lang]}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      </section>
+
+      {/* What the vendor says about itself — only where there is a vendor. */}
+      {item.source ? (
+        <section className="band band--white">
+          <div className="shell">
+            <div className="section-head">
+              <p className="eyebrow">
+                <b />
+                {lang === 'ar' ? '02 — بكلماتهم' : '02 — In their words'}
+              </p>
+              <h2 className="h2">
+                {lang === 'ar' ? 'ما يقولونه عن أنفسهم' : 'What they say about themselves'}
+              </h2>
+              <p className="lead">{item.theirPitch[lang]}</p>
+            </div>
+
+            {/*
+              The source and the date it was read, printed rather than buried.
+
+              This is what makes writing about somebody else's product
+              defensible at all. A claim with a date on it is a claim the reader
+              can discount for themselves — and when it goes stale it goes stale
+              *visibly*, which is precisely the failure `/compare/` §03 says a
+              tick-and-cross grid hides.
+            */}
             <p className="small muted">
-              {lang === 'ar' ? 'المصدر: ' : 'Read from '}
+              {lang === 'ar' ? 'قُرئ من ' : 'Read from '}
               <a href={item.source} rel="nofollow noopener" target="_blank">
                 {item.source.replace(/^https?:\/\//, '').replace(/\/$/, '')}
                 <ArrowUpRight weight="bold" style={{ display: 'inline', width: '0.8em', height: '0.8em' }} />
               </a>
-              {lang === 'ar' ? ' — قُرئ في ' : ' on '}
+              {lang === 'ar' ? ' بتاريخ ' : ' on '}
               {item.checked}
               {lang === 'ar'
                 ? '. إن كان هذا قد تقادم، أخبرونا ونصححه.'
                 : '. If this has gone out of date, tell us and we will correct it.'}
             </p>
-          ) : null}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : null}
 
       <section className="band band--white">
         <div className="shell">
