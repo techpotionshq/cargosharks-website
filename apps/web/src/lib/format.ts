@@ -38,8 +38,21 @@ export function formatMoney(
     style: showCurrency ? 'currency' : 'decimal',
     currency: value.currency,
     notation: compact && Math.abs(value.amount) >= 10_000 ? 'compact' : 'standard',
-    // Compact notation and three-decimal currencies do not mix legibly.
-    ...(compact && Math.abs(value.amount) >= 10_000 ? { maximumFractionDigits: 1 } : {}),
+    /*
+      Compact notation and three-decimal currencies do not mix legibly.
+
+      Both bounds, and the minimum is the load-bearing half. KWD's CLDR default
+      is three fraction digits, so naming only the maximum leaves ICU to
+      reconcile a minimum of 3 against a maximum of 1 — and it does that by
+      clamping the minimum *down to the maximum* rather than to zero. Every
+      compacted dinar figure then carried a forced tenth: `KWD 25.0k` where the
+      dashboard wants `KWD 25k`. Saying `minimumFractionDigits: 0` outright is
+      the whole fix, and it makes the output the same under any ICU build
+      instead of depending on how one resolves the conflict.
+    */
+    ...(compact && Math.abs(value.amount) >= 10_000
+      ? { minimumFractionDigits: 0, maximumFractionDigits: 1 }
+      : {}),
   }).format(value.amount)
 }
 
