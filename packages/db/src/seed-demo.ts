@@ -51,6 +51,7 @@ import { systemActor, withActor } from './actor'
 import {
   assets,
   branches,
+  chargeLines,
   chargeTypes,
   commodities,
   countries,
@@ -70,6 +71,8 @@ import {
   jobPartners,
   jobs,
   locations,
+  partnerSettlementLines,
+  partnerSettlements,
   partners,
   paymentAllocations,
   payments,
@@ -78,6 +81,9 @@ import {
   quotes,
   rateCardLines,
   rateCards,
+  supplierInvoiceLines,
+  supplierInvoiceMatches,
+  supplierInvoices,
   workingCalendars,
 } from './schema/index'
 
@@ -718,17 +724,55 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from notification_outbox;
       delete from message_attachments;
       delete from messages;
+      /*
+        The buy side, before the ledger it points at.
+
+        supplier_invoice_matches holds a charge line, and a settlement holds
+        the bills it consumed while those bills hold the settlement back -- so
+        the link is broken first and the two ends removed in order. Deleting
+        charge_lines before the matches fails on the constraint.
+      */
+      delete from partner_settlement_lines;
+      update supplier_invoices set settlement_id = null;
+      delete from partner_settlements;
+      delete from supplier_invoice_matches;
+      delete from supplier_invoice_lines;
+      delete from supplier_payment_allocations;
+      delete from supplier_invoices;
+      /*
+        Children of the jobs, invoices and documents removed below.
+
+        None of these were listed, because none of them had rows while this
+        file was the only thing that ever wrote to the database. The moment
+        somebody uses the application — captures cargo, names a shipper, asks
+        the assistant — a reset fails on a foreign key instead, which is the
+        opposite of what a reset is for.
+      */
+      delete from credit_overrides;
+      delete from ai_invocations;
+      delete from consol_allocation_shares;
+      delete from pod_photos;
+      delete from proof_of_delivery;
+      delete from job_cargo;
+      delete from job_parties;
+      -- Before charge_lines: a clock that has written its own demurrage charge
+      -- points at the line it wrote. Harmless while this file made no charge
+      -- lines and a constraint violation the moment it did.
+      delete from free_time_clocks;
       delete from charge_lines;
       delete from rate_requests;
       delete from payment_allocations;
       delete from payments;
       delete from invoice_lines;
       delete from invoices;
-      delete from free_time_clocks;
       delete from exceptions;
       delete from customs_stages;
       delete from documents;
       delete from equipment;
+      -- Posted exports hold the CSV they produced, so they go before the
+      -- assets and after the ledger rows that name the export.
+      delete from accounting_exports;
+      delete from partner_compliance;
       -- Assets outlive the documents that point at them, and the storage key
       -- is unique, so a reseed collides on a key it created last time.
       delete from assets;
@@ -742,22 +786,24 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from rate_cards;
       delete from customer_contacts;
       /*
-        The parties themselves, which this block used to leave standing.
+        Customers and partners are deliberately left standing.
 
-        Every insert below is keyed on a natural code with
-        onConflictDoNothing, so a customer whose *code* changes is not an
-        update -- it is a second row. Renaming the ten demo customers proved
-        it: a reseed of an existing instance produced twenty, the ten it was
-        meant to replace still among them. A reset that claims to remove what
-        this file created could not honour that for the two tables a rename is
-        most likely to touch.
+        The obvious next line is a delete of both -- a rename changes the
+        natural key, onConflictDoNothing then inserts rather than updates, and
+        an existing instance ends up with twenty customers instead of ten. That
+        was tried, and it is the wrong trade.
 
-        Last, because everything holding a foreign key to them is already gone
-        by this line -- contacts immediately above, then jobs, invoices,
-        quotes and rate cards before that.
+        Twenty tables hang off these two, and they are not demo data:
+        principals (a customer's portal logins), customer_branch_terms,
+        credit_overrides, api_keys, webhook_endpoints. A reset that reaches
+        them is deleting identity and configuration to tidy up a fixture, and
+        it fails outright on any database where somebody has actually used the
+        application.
+
+        So a renamed code leaves its old row behind, and that is the honest
+        cost. Clear those by hand on the rare occasion it matters; every other
+        table here is genuinely this file's to remove.
       */
-      delete from customers;
-      delete from partners;
     `)
   }
 
@@ -1484,6 +1530,368 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       })
     }
   }
+
+  // --- the buy side ---------------------------------------------------------
+
+  /*
+    Supplier bills, and the accruals they are matched against.
+
+    This dataset had no buy side at all: eighty-six invoices out and nothing
+    coming in, so `/payables` and `/settlements` were empty boards and the
+    margin on every shipment was pure revenue. A forwarder looking at that sees
+    a product that has only ever billed and never bought.
+
+    The accrual comes first and it is not decoration. `listSupplierInvoices`
+    computes variance as *billed minus matched*, so a bill with nothing to
+    match against reports its whole value as a discrepancy — every row in the
+    review queue, which is the same as no queue at all. Seeding the cost line
+    the bill answers is what makes the number mean anything.
+
+    `accrued` is therefore what we thought it would cost, and `amount` is what
+    they billed. Equal on most lines, deliberately not on two:
+
+      - `KWI-JOB-0004` freight is 40 KWD over its accrual — one line in the
+        review queue, with a reason somebody has to accept or dispute.
+      - `KWI-JOB-0007` carries a line we never accrued at all, which is the
+        state the matching screen exists for: an agent's charge nobody booked,
+        against a job it may or may not belong to.
+  */
+  const BILLS = [
+    {
+      job: 'KWI-JOB-0001',
+      partner: 'MAERSK',
+      reference: 'MAEU-8841273',
+      status: 'approved' as const,
+      daysAgo: 26,
+      termsDays: 30,
+      lines: [
+        { description: 'OCEAN FREIGHT SHA/KWI 1X40HC', amount: 980, accrued: 980 },
+        { description: 'B/L RELEASE FEE', amount: 45, accrued: 45 },
+      ],
+    },
+    {
+      job: 'KWI-JOB-0002',
+      partner: 'ALSHA',
+      reference: 'ASC-2026-0412',
+      status: 'part_paid' as const,
+      paid: 60,
+      daysAgo: 19,
+      termsDays: 15,
+      lines: [{ description: 'CUSTOMS CLEARANCE — IMPORT', amount: 120, accrued: 120 }],
+    },
+    {
+      job: 'KWI-JOB-0004',
+      partner: 'MSC',
+      reference: 'MSCU-5510388',
+      status: 'received' as const,
+      daysAgo: 6,
+      termsDays: 30,
+      lines: [
+        // Billed over the accrual. The variance is the point of the row.
+        { description: 'OCEAN FREIGHT + BAF', amount: 1240, accrued: 1200 },
+        { description: 'TERMINAL HANDLING ORIGIN', amount: 85, accrued: 85 },
+      ],
+    },
+    {
+      job: 'KWI-JOB-0005',
+      partner: 'AHMTRN',
+      reference: 'ATC-99120',
+      status: 'paid' as const,
+      paid: 165,
+      daysAgo: 41,
+      termsDays: 30,
+      lines: [{ description: 'HAULAGE SHUWAIKH — SHUAIBA', amount: 165, accrued: 165 }],
+    },
+    {
+      job: 'KWI-JOB-0007',
+      partner: 'SHACO',
+      reference: 'SOL/26/1188',
+      status: 'received' as const,
+      daysAgo: 3,
+      termsDays: 45,
+      lines: [
+        { description: 'ORIGIN DOC FEE', amount: 35, accrued: 35 },
+        // Nothing accrued this. It is the queue the matching screen is for.
+        { description: 'EXPORT CUSTOMS — SHANGHAI', amount: 70, accrued: null },
+      ],
+    },
+    {
+      job: 'KWI-JOB-0003',
+      partner: 'KPA',
+      reference: 'KPA-STG-44219',
+      status: 'disputed' as const,
+      daysAgo: 12,
+      termsDays: 0,
+      dispute: 'Storage charged from arrival; free time ran to the 14th. Evidence sent.',
+      lines: [{ description: 'STORAGE 6 DAYS', amount: 210, accrued: 90 }],
+    },
+  ]
+
+  const jobByRef = new Map<string, { id: string; branchId: string }>(
+    (
+      await tx
+        .select({ id: jobs.id, reference: jobs.reference, branchId: jobs.branchId })
+        .from(jobs)
+    ).map((row: { id: string; reference: string; branchId: string }) => [
+      row.reference,
+      { id: row.id, branchId: row.branchId },
+    ]),
+  )
+
+  /** A charge type to hang a cost on. Their vocabulary is on the bill line. */
+  const costCharge = anyCharge[0]?.id ?? null
+
+  for (const bill of BILLS) {
+    const job = jobByRef.get(bill.job)
+    const partnerId = partner.get(bill.partner)
+    if (!job || !partnerId || !costCharge) continue
+
+    const [existing] = await tx
+      .select({ id: supplierInvoices.id })
+      .from(supplierInvoices)
+      .where(
+        and(
+          eq(supplierInvoices.partnerId, partnerId),
+          eq(supplierInvoices.reference, bill.reference),
+        ),
+      )
+      .limit(1)
+    if (existing) continue
+
+    const subtotal = bill.lines.reduce((sum, line) => sum + line.amount, 0)
+    const invoiceDate = days(-bill.daysAgo)
+
+    const [supplier] = await tx
+      .insert(supplierInvoices)
+      .values({
+        branchId: job.branchId,
+        partnerId,
+        reference: bill.reference,
+        status: bill.status,
+        currency: 'KWD',
+        subtotal: String(subtotal),
+        taxAmount: '0',
+        total: String(subtotal),
+        amountPaid: String('paid' in bill ? (bill.paid ?? 0) : 0),
+        invoiceDate: isoDay(invoiceDate),
+        dueOn: isoDay(days(-bill.daysAgo + bill.termsDays)),
+        receivedAt: invoiceDate,
+        // Approval is a separate act from capture, so only the bills past it
+        // carry an approver — `received` and `disputed` deliberately do not.
+        approvedById: ['approved', 'part_paid', 'paid'].includes(bill.status) ? owner(1) : null,
+        approvedAt: ['approved', 'part_paid', 'paid'].includes(bill.status)
+          ? days(-bill.daysAgo + 2)
+          : null,
+        disputedAt: bill.status === 'disputed' ? days(-bill.daysAgo + 1) : null,
+        disputeReason: 'dispute' in bill ? (bill.dispute ?? null) : null,
+      })
+      .returning({ id: supplierInvoices.id })
+
+    let sortOrder = 0
+    for (const line of bill.lines) {
+      const [billLine] = await tx
+        .insert(supplierInvoiceLines)
+        .values({
+          supplierInvoiceId: supplier!.id,
+          branchId: job.branchId,
+          jobId: job.id,
+          description: line.description,
+          quantity: '1',
+          unitPrice: String(line.amount),
+          amount: String(line.amount),
+          sortOrder: sortOrder++,
+        })
+        .returning({ id: supplierInvoiceLines.id })
+
+      if (line.accrued === null) continue
+
+      /*
+        The cost we booked before their document arrived.
+
+        `is_accrual` is what distinguishes a figure we estimated from one we
+        agreed, and the job P&L reads it as "still accrued" until a bill is
+        matched to it — which is exactly what happens on the next statement.
+      */
+      const [chargeLine] = await tx
+        .insert(chargeLines)
+        .values({
+          jobId: job.id,
+          branchId: job.branchId,
+          direction: 'cost',
+          chargeTypeId: costCharge,
+          description: line.description,
+          basis: 'flat',
+          quantity: '1',
+          rate: String(line.accrued),
+          amount: String(line.accrued),
+          currency: 'KWD',
+          amountBase: String(line.accrued),
+          baseCurrency: 'KWD',
+          counterpartyPartnerId: partnerId,
+          isAccrual: true,
+          sourceKind: 'demo_seed',
+        })
+        .returning({ id: chargeLines.id })
+
+      await tx.insert(supplierInvoiceMatches).values({
+        supplierInvoiceLineId: billLine!.id,
+        chargeLineId: chargeLine!.id,
+        branchId: job.branchId,
+        // What the match claims of the supplier line — never more than the
+        // accrual it answers. The variance is the difference, and it is meant
+        // to be visible rather than absorbed here.
+        amount: String(Math.min(line.amount, line.accrued)),
+        matchedById: owner(1),
+      })
+    }
+  }
+
+  // --- a set-off, which needs a counterparty that is both ---------------------
+
+  /*
+    An agent we buy from and also bill.
+
+    A settlement nets what they owe us against what we owe them, so it cannot
+    be demonstrated with a partner who is only ever paid. Shanghai Ocean
+    Logistics is the origin agent on the China lane *and* a customer of ours
+    for the cross-trade shipments they hand us — which is the ordinary
+    arrangement between two forwarders, and the only shape in which a set-off
+    means anything.
+
+    Registered as its own customer row rather than by pointing `customers` at a
+    partner: they are two relationships with two credit positions and two sets
+    of terms, and the day one of them is disputed is the day that distinction
+    earns itself.
+  */
+  await tx
+    .insert(customers)
+    .values({
+      code: 'SHALOG',
+      legalNameEn: 'Shanghai Ocean Logistics',
+      legalNameAr: 'شنغهاي أوشن للخدمات اللوجستية',
+      countryCode: 'CN',
+      primaryBranchId: branchBy.get('KWI')!,
+    })
+    .onConflictDoNothing()
+
+  const [agentCustomer] = await tx
+    .select({ id: customers.id })
+    .from(customers)
+    .where(eq(customers.code, 'SHALOG'))
+    .limit(1)
+
+  const agentPartner = partner.get('SHACO')
+
+  if (agentCustomer && agentPartner) {
+    const [already] = await tx
+      .select({ id: partnerSettlements.id })
+      .from(partnerSettlements)
+      .where(eq(partnerSettlements.reference, 'SET-KWI-2026-0001'))
+      .limit(1)
+
+    if (!already) {
+      const branchId = branchBy.get('KWI')!
+
+      // Two cross-trade invoices out to them.
+      const receivables = []
+      for (const [index, amount] of [420, 380].entries()) {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId,
+            customerId: agentCustomer.id,
+            seriesNo: `KWI-INV-${NOW.getUTCFullYear()}-9000${index + 1}`,
+            status: 'issued',
+            currency: 'KWD',
+            subtotal: String(amount),
+            taxAmount: '0',
+            total: String(amount),
+            amountPaid: '0',
+            taxTreatment: 'zero_rated',
+            taxRatePercent: '0',
+            issuedAt: days(-40 + index * 6),
+            dueOn: isoDay(days(-40 + index * 6 + 45)),
+            issuedById: owner(1),
+            notes: 'Cross-trade handling, billed to the origin agent.',
+          })
+          .returning({ id: invoices.id, total: invoices.total })
+        receivables.push(invoice!)
+      }
+
+      // Their bills to us, the two the statement claims.
+      const payablesToNet = await tx
+        .select({ id: supplierInvoices.id, total: supplierInvoices.total })
+        .from(supplierInvoices)
+        .where(eq(supplierInvoices.partnerId, agentPartner))
+
+      const receivableTotal = receivables.reduce((sum, row) => sum + Number(row.total), 0)
+      const payableTotal = payablesToNet.reduce(
+        (sum: number, row: { total: string }) => sum + Number(row.total),
+        0,
+      )
+      const offset = Math.min(receivableTotal, payableTotal)
+      const residual = Math.abs(receivableTotal - payableTotal)
+
+      const [settlement] = await tx
+        .insert(partnerSettlements)
+        .values({
+          reference: 'SET-KWI-2026-0001',
+          branchId,
+          partnerId: agentPartner,
+          status: 'agreed',
+          currency: 'KWD',
+          periodFrom: isoDay(days(-60)),
+          periodTo: isoDay(days(-1)),
+          receivableTotal: String(receivableTotal),
+          payableTotal: String(payableTotal),
+          offsetAmount: String(offset),
+          residualAmount: String(residual),
+          /*
+            Which way the remainder moves, stated rather than inferred from a
+            sign. `residual_amount` is always positive and the direction is its
+            own column, because "they owe us 380" and "we owe them 380" are
+            different sentences and a minus sign is a poor way to say which.
+          */
+          residualDirection:
+            receivableTotal > payableTotal
+              ? 'they_owe_us'
+              : receivableTotal < payableTotal
+                ? 'we_owe_them'
+                : 'square',
+          agreedAt: days(-1),
+          agreedById: owner(1),
+          notes: 'Netted against the January statement; residual on the next remittance.',
+        })
+        .returning({ id: partnerSettlements.id })
+
+      for (const invoice of receivables) {
+        await tx.insert(partnerSettlementLines).values({
+          settlementId: settlement!.id,
+          branchId,
+          kind: 'invoice',
+          invoiceId: invoice.id,
+          amount: invoice.total,
+          isFull: true,
+        })
+      }
+
+      for (const bill of payablesToNet as { id: string; total: string }[]) {
+        await tx.insert(partnerSettlementLines).values({
+          settlementId: settlement!.id,
+          branchId,
+          kind: 'bill',
+          supplierInvoiceId: bill.id,
+          amount: bill.total,
+          isFull: true,
+        })
+        // A bill consumed by a set-off was not paid, and says so.
+        await tx
+          .update(supplierInvoices)
+          .set({ settlementId: settlement!.id })
+          .where(eq(supplierInvoices.id, bill.id))
+      }
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -1525,7 +1933,9 @@ async function main(): Promise<void> {
                (select count(*) from quotes)::int     as quotes,
                (select count(*) from jobs)::int       as shipments,
                (select count(*) from exceptions)::int as exceptions,
-               (select count(*) from invoices)::int   as invoices
+               (select count(*) from invoices)::int   as invoices,
+               (select count(*) from supplier_invoices)::int  as bills,
+               (select count(*) from partner_settlements)::int as settlements
       `),
     database,
   )
