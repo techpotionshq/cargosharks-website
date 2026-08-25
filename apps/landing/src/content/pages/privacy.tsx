@@ -333,12 +333,14 @@ export function PrivacyContent() {
                 <p>What the software does is described above and in the <a href="/dpa/#measures">addendum</a>: separation enforced by the database rather than by application code, an audit trail written by triggers, no delete permission anywhere, sealed credentials, scoped and expiring support access. Those are properties of the build and can be checked against it.</p>
                 <p>What is <em>not</em> in place is listed here rather than omitted, because a security section that only lists strengths tells a reviewer nothing:</p>
                 <ul className="bullets">
-                  <li><strong>No security headers are set by the application.</strong> There is no HSTS, no content-security policy, no frame-options header and no HTTPS redirect in the application itself. TLS termination is left to the reverse proxy in front of it, and is not documented as enforced.</li>
                   <li><strong>The database connection does not specify TLS.</strong> Traffic between the application containers and PostgreSQL runs however the connection string and the server negotiate; nothing in the code requires encryption on that hop. Traffic between the web and service containers is plain HTTP on a private network, deliberately.</li>
                   <li><strong>Encryption at rest for the database itself is not established anywhere.</strong> It is a property of the chosen host, and no host has been chosen.</li>
-                  <li><strong>Account lockout after repeated failed sign-ins is specified and not built.</strong> Rate limiting exists; lockout does not.</li>
+                  <li><strong>Audit search and export is not built.</strong> The log is complete, immutable and readable, but no screen searches or exports it.</li>
+                  <li><strong>There is no data-erasure mechanism.</strong> The system is built so that nothing is deleted, which is right for an audit trail and is in tension with a right to erasure. See section 09.</li>
+                  <li><strong>Monitoring and alerting are not in place.</strong> Tracing is wired with no exporter registered.</li>
                   <li><strong>No independent audit has been performed.</strong> No penetration test, no SOC 2, no ISO 27001. The counts quoted on this site &mdash; 88 tables, 197 policies, 80 audit triggers &mdash; are counted against a live database by the project&rsquo;s own tests, which is verification, not attestation.</li>
                 </ul>
+                <p>Two entries left this list on 25 August 2026, and are named here rather than quietly removed. <strong>Security headers are now set</strong> by the application &mdash; a content-security policy with a per-request nonce, HSTS, frame-options, referrer and permissions policies. <strong>Sign-in lockout is built</strong>: five failed attempts lock an account for fifteen minutes, alongside a per-address rate limit, and two-factor authentication is now enforced for the Administrator and Finance roles rather than merely offered.</p>
                 <p><span className="tbc">[TO CONFIRM: which of the above are closed before launch, and what the operator commits to in writing. A reviewer will ask for a date against each.]</span></p>
               </section>
 

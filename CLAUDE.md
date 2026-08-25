@@ -10,6 +10,11 @@ enough to be boring.
 Full guides: [`CONTRIBUTING.md`](CONTRIBUTING.md) for the working loop and
 schema changes, [`README.md`](README.md) for setup, and
 [`docs/Qabandi_Architecture.md`](docs/Qabandi_Architecture.md) for the reasoning.
+[`docs/compliance/`](docs/compliance/README.md) is what a buyer's security
+reviewer asks for — measures, sub-processors, incident plan, and the open
+questions the legal pages still carry. Re-verify it when `packages/db`,
+authentication or `apps/web/src/proxy.ts` changes; every count in it is read
+from a live database and the query is printed beside it.
 
 ## Commands
 

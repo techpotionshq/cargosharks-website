@@ -203,13 +203,14 @@ export function DpaContent() {
                 <h2><span className="doc__n">08</span>Security measures not yet in place</h2>
                 <p>Listed rather than omitted. A reviewer who finds these on their own will discount everything in section 07.</p>
                 <ul className="bullets">
-                  <li>The application sets <strong>no security headers</strong> &mdash; no HSTS, no content-security policy, no frame-options, no HTTPS redirect. TLS termination is the reverse proxy&rsquo;s job and is not documented as enforced.</li>
                   <li><strong>The database connection does not require TLS.</strong> Nothing in the code specifies it. Traffic between the web and service containers is plain HTTP on a private network, by design.</li>
                   <li><strong>Encryption at rest for the database is not established.</strong> It depends on a host that has not been chosen.</li>
                   <li><strong>No independent security testing.</strong> No penetration test, no SOC 2, no ISO 27001.</li>
-                  <li><strong>Account lockout is specified and not built.</strong></li>
+                  <li><strong>There is no data-erasure mechanism</strong>, and retention periods are not set. See section 11.</li>
+                  <li><strong>Monitoring and alerting are not in place.</strong></li>
                   <li><strong>Audit search and export is specified and not built</strong> &mdash; the log is complete and readable, but there is no screen that searches or exports it.</li>
                 </ul>
+                <p>Closed on 25 August 2026, and recorded here rather than quietly dropped: the application now sets a full set of <strong>security headers</strong>, including a content-security policy with a per-request nonce and HSTS; <strong>sign-in lockout</strong> and a per-address rate limit are built; and <strong>two-factor authentication is enforced</strong> for the Administrator and Finance roles.</p>
                 <p><span className="tbc">[TO CONFIRM: which of these are closed before launch, with a date against each, and which are accepted as residual risk in writing]</span></p>
               </section>
 
