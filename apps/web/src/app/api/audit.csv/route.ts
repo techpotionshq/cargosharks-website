@@ -31,27 +31,13 @@ import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listAudit } from '@/features/admin/queries'
+import { csvDocument } from '@/lib/csv'
 
 export const dynamic = 'force-dynamic'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const OPERATIONS = new Set(['INSERT', 'UPDATE', 'DELETE'])
 const LIMIT = 10_000
-
-/**
- * RFC 4180 quoting, plus the formula guard.
- *
- * A field beginning `=`, `+`, `-` or `@` is executed as a formula by Excel and
- * by Sheets when the file is opened. On this table the dangerous fields are
- * not hypothetical: `row_id` and the principal name both carry text an
- * operator typed, and the audit export is the file most likely to be opened by
- * somebody senior on a managed laptop.
- */
-function cell(value: string | number | bigint | null | undefined): string {
-  const text = String(value ?? '')
-  const guarded = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
-  return `"${guarded.replace(/"/g, '""')}"`
-}
 
 export async function GET(request: Request) {
   const session = await getSession()
@@ -97,38 +83,28 @@ export async function GET(request: Request) {
     'ip',
   ]
 
-  const lines = [
-    header.map(cell).join(','),
-    ...rows.map((row) =>
-      [
-        row.id,
-        // ISO 8601 in UTC, not a localised date. This file is read by people in
-        // more than one timezone and by machines in none of them, and a
-        // localised timestamp in an audit export is how two accounts of the
-        // same incident stop lining up.
-        row.at.toISOString(),
-        row.op,
-        row.tableName,
-        row.rowId,
-        row.principalName ?? 'system',
-        row.principalType ?? 'system',
-        row.branchCode ?? '',
-        row.ip ?? '',
-      ]
-        .map(cell)
-        .join(','),
-    ),
-  ]
+  const body = csvDocument(
+    header,
+    rows.map((row) => [
+      row.id,
+      // ISO 8601 in UTC, not a localised date. This file is read by people in
+      // more than one timezone and by machines in none of them, and a
+      // localised timestamp in an audit export is how two accounts of the
+      // same incident stop lining up.
+      row.at.toISOString(),
+      row.op,
+      row.tableName,
+      row.rowId,
+      row.principalName ?? 'system',
+      row.principalType ?? 'system',
+      row.branchCode ?? '',
+      row.ip ?? '',
+    ]),
+    rows.length === LIMIT
+      ? `TRUNCATED: this export stopped at ${LIMIT} entries. Narrow the period and export again.`
+      : undefined,
+  )
 
-  if (rows.length === LIMIT) {
-    lines.push(
-      cell(
-        `TRUNCATED: this export stopped at ${LIMIT} entries. Narrow the period and export again.`,
-      ),
-    )
-  }
-
-  const body = `﻿${lines.join('\r\n')}\r\n`
   const stamp = new Date().toISOString().slice(0, 10)
 
   return new NextResponse(body, {
