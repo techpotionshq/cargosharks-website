@@ -14,9 +14,12 @@ it is real and the rest is named. `No` means it is not there. `N/A` means the
 question does not apply to how this is built. There are deliberately a lot of
 `No`s — a questionnaire without them is one nobody believes.
 
-For submission to a customer this converts to the official spreadsheet; the
-answers below are the source of truth and the spreadsheet is a rendering of
-them.
+**Where the answers live.** The rows are held in
+[`build-spreadsheets.py`](build-spreadsheets.py), which renders them into
+`spreadsheets/CAIQ.xlsx` — the form a customer's procurement team asks for.
+This file is the narrative beside them: it carries the reasoning that does not
+fit in a cell. Change an answer in the script, re-run it, and correct the prose
+here from what it prints.
 
 ---
 
@@ -168,10 +171,15 @@ them.
 
 | | Count |
 | --- | --- |
-| Yes | 27 |
-| Partial | 24 |
-| No | 15 |
-| N/A | 3 |
+| Yes | 29 |
+| Partial | 23 |
+| No | 18 |
+| N/A | 2 |
+| **Total** | **72** |
+
+These are counted by `build-spreadsheets.py`, not tallied by hand — an earlier
+draft of this file said 69 and was simply wrong. Re-run the script after
+changing an answer and correct the table above from what it prints.
 
 **The shape of this is worth naming.** The strengths cluster in tenant
 separation, audit, identity and the build pipeline — the controls that are
