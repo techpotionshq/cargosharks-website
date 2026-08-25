@@ -35,10 +35,19 @@ menu-stack.webp      雙 film        unsplash.com/photos/1gveplodu04
 Fetched straight from the Unsplash CDN as WebP rather than downloaded and
 re-encoded, which is what the four above needed:
 
-  https://images.unsplash.com/<photo-id>?w=1000&q=68&fm=webp&fit=crop
+  https://images.unsplash.com/<photo-id>?w=760&q=62&fm=webp&fit=crop
 
-1000px because the panel renders them at about 370 CSS pixels, so this is
-already 2x for a retina screen and there is nothing for sharp to do.
+760px because the panel renders them at about 330 CSS pixels, so that is 2x for
+a retina screen and there is nothing left for sharp to do. They were fetched at
+w=1000 first, which put one of them at 340 KB for a thumbnail nobody sees until
+they open a menu; 760 halves the set to 436 KB total.
+
+**They are files in this directory, not hot-linked.** Nothing under `src/`
+references images.unsplash.com — the CDN is where they came from, once, and the
+build copies these three into `out/pic/photos/` like every other asset. A
+marketing site that fetched its own furniture from a third party at run time
+would also be handing that third party a log of every visitor, which is exactly
+what `/privacy/` says does not happen.
 
 A fourth was downloaded and then deleted rather than used: a warehouse
 interior with a forklift (Bernd Dittrich, unsplash.com/photos/F2C_mSrb6iM).
