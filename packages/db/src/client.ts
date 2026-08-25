@@ -92,6 +92,16 @@ export function resolveSsl(connectionString: string): pg.PoolConfig['ssl'] {
   const mode = (process.env.DATABASE_SSL ?? '').trim().toLowerCase()
 
   if (mode === 'disable') return undefined
+  // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
+  //
+  // Flagged, and correctly — this is the weaker mode, and it is weaker on
+  // purpose. `require` is PostgreSQL's own name for "encrypt, do not verify",
+  // and a deployment that asks for it by name has said so deliberately. The
+  // rule's advice is to use `verify-full`, which is exactly what the next
+  // branch implements and what `.env.example` recommends. Removing this option
+  // would not make anything safer; it would make the operator's only choices
+  // `verify-full` or nothing, and the deployments that cannot yet produce a CA
+  // bundle would pick nothing.
   if (mode === 'require') return { rejectUnauthorized: false }
   if (mode === 'verify-full') {
     const caPath = process.env.DATABASE_CA_CERT

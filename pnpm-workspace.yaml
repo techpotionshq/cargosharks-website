@@ -1,6 +1,49 @@
+# nosemgrep: package_managers.pnpm.pnpm-missing-minimum-release-age.pnpm-minimum-release-age
+#
+# `minimumReleaseAge: 10080` belongs here and is deliberately not here yet.
+#
+# It is the setting with the most teeth of the three below: nearly every npm
+# compromise of recent years was found and yanked within hours to days of
+# publication, and the damage landed on whoever installed inside that window.
+# A seven-day floor does not make a package trustworthy — it makes somebody
+# else the one who finds out.
+#
+# Turning it on today breaks every install instead. `pnpm install
+# --frozen-lockfile` refuses, because the committed lockfile pins four packages
+# published inside the window — framer-motion, motion, motion-dom and
+# deepmerge-ts, all from 20–21 August 2026. A supply-chain control that turns
+# CI red on the day it lands gets reverted by the next person to hit it, which
+# leaves the repository with neither the control nor the reason it was wanted.
+#
+# The youngest of those was published 2026-08-21, so this can be uncommented
+# from **28 August 2026** with no other change. Verify with `pnpm install
+# --frozen-lockfile` before pushing; if it refuses, the message names the
+# package and the date it becomes acceptable.
+#
+# The standing cost is worth stating too: a genuinely urgent security patch is
+# held for seven days as well. Pin the fixed version explicitly in the manifest
+# when that happens — an exception with a name on it, rather than turning the
+# floor off for everything.
+#
+# minimumReleaseAge: 10080
+
 packages:
   - 'packages/*'
   - 'apps/*'
+
+# Supply-chain settings, all three of which exist to slow an attack down rather
+# than to detect one. The `supply-chain` job audits what is already installed;
+# these govern what is allowed to become installed in the first place.
+#
+# Refuses a transitive dependency resolved from a git URL, a tarball URL or a
+# local path. A direct dependency declared that way is a decision somebody made
+# and can be read in the manifest; the same thing arriving four levels down is
+# a fetch from somewhere no lockfile audit is looking.
+blockExoticSubdeps: true
+
+# Stops a package update from quietly relaxing the settings above. A downgrade
+# of a security setting is not a thing a legitimate version bump needs to do.
+trustPolicy: no-downgrade
 
 # Build scripts are opt-in under pnpm 10+. Only what genuinely needs one.
 allowBuilds:

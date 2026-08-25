@@ -521,6 +521,13 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
 
       try {
         const result = await voidAccountingExport(actor, request.params.id, reason ?? '')
+        // nosemgrep: javascript.express.security.audit.xss.direct-response-write.direct-response-write
+        //
+        // The rule is an Express one and its advice — `resp.render()` — does not
+        // exist here. Fastify serialises this to JSON against the route's response
+        // schema; nothing is written as HTML, and there is no browser rendering the
+        // result. `result` is also assembled from the database rather than echoed
+        // from the request.
         return reply.send(result)
       } catch (error) {
         if (error instanceof ExportError) {

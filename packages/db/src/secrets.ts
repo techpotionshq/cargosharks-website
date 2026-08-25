@@ -44,6 +44,22 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 
 const SCHEME = 'v1'
 const ALGORITHM = 'aes-256-gcm'
+
+/**
+ * The authentication tag length, in bytes, stated rather than assumed.
+ *
+ * GCM's tag may legitimately be truncated, and Node lets `setAuthTag` accept
+ * whichever length it is handed unless the cipher was told what to expect. So
+ * a row rewritten to carry a four-byte tag is verified against four bytes —
+ * and a forgery only has to survive a one-in-four-billion check instead of the
+ * full 128-bit one. The attacker controls the tag, which means the attacker
+ * controls the difficulty, which is not a property worth leaving to a default.
+ *
+ * Sixteen is what `getAuthTag` already produces here, so nothing about the
+ * stored format changes and every secret sealed by an earlier build still
+ * opens. This only refuses the short tags that were never written by us.
+ */
+const TAG_BYTES = 16
 const IV_BYTES = 12
 const KEY_BYTES = 32
 
@@ -132,7 +148,7 @@ export function seal(plaintext: string): string {
   if (plaintext === '') throw new SealedSecretError('Refusing to seal an empty secret.')
 
   const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv(ALGORITHM, key(), iv)
+  const cipher = createCipheriv(ALGORITHM, key(), iv, { authTagLength: TAG_BYTES })
   const body = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
 
   return [
@@ -153,7 +169,9 @@ export function open(sealed: string): string {
   }
 
   try {
-    const decipher = createDecipheriv(ALGORITHM, key(), Buffer.from(iv, 'base64'))
+    const decipher = createDecipheriv(ALGORITHM, key(), Buffer.from(iv, 'base64'), {
+      authTagLength: TAG_BYTES,
+    })
     decipher.setAuthTag(Buffer.from(tag, 'base64'))
     return Buffer.concat([decipher.update(Buffer.from(body, 'base64')), decipher.final()]).toString(
       'utf8',

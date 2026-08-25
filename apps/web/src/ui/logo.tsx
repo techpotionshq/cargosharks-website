@@ -56,6 +56,26 @@ export function Logo({
       <span
         className="shrink-0"
         // eslint-disable-next-line react/no-danger -- generated from typed brand tokens
+        // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+        //
+        // Not request input, and not quite a constant either — worth saying
+        // which, because the eslint note above says "typed brand tokens" and
+        // that is only true of the generated monogram.
+        //
+        // `markSvg` builds the mark from brand tokens and escapes the two
+        // strings it interpolates (`title`, `className`). The exception is
+        // `BRAND_LOGO_SVG`: an operator may supply artwork as inline SVG, and
+        // that path inserts the file verbatim, because sanitising artwork into
+        // safety generally means rendering it wrong.
+        //
+        // That is deployment configuration rather than anything a visitor can
+        // reach, and whoever sets environment variables on this server can
+        // already run code on it, so the rule's threat model does not apply as
+        // written. The residual risk is real but different: if artwork ever
+        // arrives from a *customer* rather than from the operator — which the
+        // whitelabel story invites — it is markup from outside the trust
+        // boundary reaching every page, and it must be sanitised before it is
+        // stored, not here.
         dangerouslySetInnerHTML={{
           __html: markSvg(brand, {
             size: MARK_PX[size],
