@@ -847,3 +847,37 @@ describe('shared totals', () => {
     })
   })
 })
+
+/**
+ * The letterhead is the operator's, whoever the operator is.
+ *
+ * `DOCUMENT_CSS` opened with `--brand:#8c1d18` — Al-Qabandi's maroon — for as
+ * long as they were the default brand, and kept printing it after the default
+ * became CargoSharks. Every surrender stamp, warning box and draft watermark
+ * on a bill of lading, delivery order, waybill and manifest came out in one
+ * client's red regardless of who had issued the document. Asserted across all
+ * four because they share one stylesheet and would have failed together.
+ */
+describe('the shared stylesheet', () => {
+  const documents = {
+    'bill of lading': () => renderBillOfLadingHtml(base, 'en'),
+    'air waybill': () => renderAirWaybillHtml(base, 'en'),
+    'delivery order': () => renderDeliveryOrderHtml(base, 'en'),
+    'packing list': () => renderPackingListHtml(base, 'en'),
+  }
+
+  for (const [name, render] of Object.entries(documents)) {
+    it(`resolves ${name} colours from the brand, not a literal`, () => {
+      const html = render()
+      expect(html).toContain('--qb-brand:')
+      expect(html).toContain('--brand: var(--qb-brand)')
+      expect(html).not.toMatch(/#[0-9a-fA-F]{6}/)
+      expect(html).not.toContain('rgba(140,29,24')
+    })
+  }
+
+  /* Paper has no colour scheme — see `pdf/brand.ts`. */
+  it('pins the page to the light theme', () => {
+    expect(renderBillOfLadingHtml(base, 'ar')).toContain('data-theme="light"')
+  })
+})

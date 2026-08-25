@@ -13,7 +13,8 @@ import { cache } from 'react'
 import { cookies, headers } from 'next/headers'
 import { and, eq, gt } from 'drizzle-orm'
 import { allPermissionKeys } from '@qabandi/core'
-import { usePilotFixtures } from '@/lib/pilot/source'
+import { usePilotFixtures, useDemoLogin } from '@/lib/pilot/source'
+import { demoSession } from '@/lib/pilot/demo'
 import {
   authSession,
   principalBranchRoles,
@@ -57,6 +58,11 @@ export interface Session {
  * It is gated by exactly the same predicate as the data, and that predicate
  * refuses to engage in production against a real database. There is no path
  * where this stands in for a real session on a deployment that has one.
+ *
+ * The demo login's operations persona *is* this object rather than a copy of
+ * it (`lib/pilot/demo.ts`), which is why the two cannot drift. The one thing
+ * restated over there is the address below, because the sign-in panel has to
+ * print it before there is a session to read it from.
  */
 const PILOT_SESSION: Session = {
   actor: {
@@ -71,7 +77,13 @@ const PILOT_SESSION: Session = {
     id: '00000000-0000-7000-8000-0000000000a1',
     nameEn: 'Fahad Al-Rashid',
     nameAr: 'فهد الرشيد',
-    email: 'operations@qabandi.local',
+    /*
+      `.example` is reserved (RFC 2606) and cannot be registered, which is the
+      point: this address is printed on the demo sign-in screen, so it is read
+      by prospects rather than only by tests. It previously carried the domain
+      of the client who used to be the default brand.
+    */
+    email: 'operations@cargosharks.example',
     locale: 'en',
   },
   // `allPermissionKeys()`, not `permissionKeys()`. The latter returns only the
@@ -88,7 +100,21 @@ const PILOT_SESSION: Session = {
 }
 
 export const getSession = cache(async (): Promise<Session | null> => {
-  if (usePilotFixtures()) return PILOT_SESSION
+  if (usePilotFixtures()) {
+    /*
+      The public demo asks who you are — `QABANDI_DEMO_LOGIN=1`, off by
+      default, `lib/pilot/demo.ts`.
+
+      The whole of the change is this one branch, and the ordering is the
+      point: with the flag unset the line below runs exactly as it always has,
+      which is what the offline end-to-end suite and every
+      `QABANDI_PILOT_FIXTURES=1 pnpm dev` depend on. With it set, no cookie
+      means no session, and the shells send the visitor to `/sign-in` as they
+      already do for anyone signed out.
+    */
+    if (useDemoLogin()) return await demoSession(PILOT_SESSION)
+    return PILOT_SESSION
+  }
 
   const token = await sessionToken()
   if (!token) return null

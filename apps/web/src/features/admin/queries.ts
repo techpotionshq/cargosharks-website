@@ -37,6 +37,22 @@ import {
   workingCalendars,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotAudit,
+  pilotAuditTableCounts,
+  pilotBranches,
+  pilotCalendarOptions,
+  pilotCalendars,
+  pilotChargeTypes,
+  pilotDutyRates,
+  pilotEngineRules,
+  pilotMilestoneTemplates,
+  pilotReferenceCounts,
+  pilotReferenceSample,
+  pilotRoles,
+  pilotUsers,
+} from '@/lib/pilot/fixtures'
 
 // --- people ----------------------------------------------------------------
 
@@ -55,6 +71,8 @@ export interface UserRow {
 }
 
 export async function listUsers(actor: Actor): Promise<UserRow[]> {
+  if (usePilotFixtures()) return pilotUsers()
+
   return withActor(actor, async (tx) => {
     const people = await tx
       .select({
@@ -111,6 +129,8 @@ export async function listRoles(
 ): Promise<
   { key: string; nameEn: string; nameAr: string; requiresTwoFactor: boolean; permissions: number }[]
 > {
+  if (usePilotFixtures()) return pilotRoles()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -166,6 +186,8 @@ export interface BranchRow {
 }
 
 export async function listBranches(actor: Actor): Promise<BranchRow[]> {
+  if (usePilotFixtures()) return pilotBranches()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -230,6 +252,8 @@ export interface ReferenceTable {
  * error surfaces three screens away as "no rate found".
  */
 export async function referenceCounts(actor: Actor): Promise<ReferenceTable[]> {
+  if (usePilotFixtures()) return pilotReferenceCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -262,6 +286,8 @@ export async function listChargeTypes(actor: Actor): Promise<
     costAccountCode: string | null
   }[]
 > {
+  if (usePilotFixtures()) return pilotChargeTypes()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -295,6 +321,8 @@ export async function listReferenceSample(actor: Actor): Promise<{
   countries: { code: string; nameEn: string }[]
   milestones: number
 }> {
+  if (usePilotFixtures()) return pilotReferenceSample()
+
   return withActor(actor, async (tx) => {
     const [
       incotermRows,
@@ -389,6 +417,8 @@ export interface AuditRow {
  * recorded, and a developer cannot forget to log one.
  */
 export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[]> {
+  if (usePilotFixtures()) return pilotAudit(Date.now(), table)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -414,6 +444,8 @@ export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[
 export async function auditTableCounts(
   actor: Actor,
 ): Promise<{ tableName: string; count: number }[]> {
+  if (usePilotFixtures()) return pilotAuditTableCounts()
+
   return withActor(actor, async (tx) =>
     tx
       .select({ tableName: auditLog.tableName, count: sql<number>`count(*)::int` })
@@ -434,6 +466,8 @@ export async function auditTableCounts(
 export async function listCalendarOptions(
   actor: Actor,
 ): Promise<{ value: string; label: string }[]> {
+  if (usePilotFixtures()) return pilotCalendarOptions()
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({ id: workingCalendars.id, name: workingCalendars.nameEn })
@@ -462,6 +496,8 @@ export interface MilestoneTemplateRow {
 
 /** The plan a job of each shape is booked with — FR-JB-02. */
 export async function listMilestoneTemplates(actor: Actor): Promise<MilestoneTemplateRow[]> {
+  if (usePilotFixtures()) return pilotMilestoneTemplates()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -501,6 +537,8 @@ export interface CalendarRow {
 
 /** Working weeks, with how many closures each one carries — NFR-03. */
 export async function listCalendars(actor: Actor): Promise<CalendarRow[]> {
+  if (usePilotFixtures()) return pilotCalendars()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -544,6 +582,8 @@ export interface DutyRateRow {
  * and stops at the first one it starts with.
  */
 export async function listDutyRates(actor: Actor): Promise<DutyRateRow[]> {
+  if (usePilotFixtures()) return pilotDutyRates()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -593,6 +633,8 @@ export async function listEngineRules(actor: Actor): Promise<{
   chargeable: EngineRuleRow[]
   freeTime: EngineRuleRow[]
 }> {
+  if (usePilotFixtures()) return pilotEngineRules()
+
   return withActor(actor, async (tx) => {
     const chargeable = await tx.execute(sql`
       select r.id, r.mode::text as mode, r.branch_id as "branchId", b.code as "branchCode",

@@ -217,7 +217,16 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         kind: 'text',
         env: 'MAIL_FROM',
         required: true,
-        placeholder: 'Al-Qabandi & Partners <no-reply@qabandi.com>',
+        /*
+          Generic on purpose. This catalogue is a plain data table in `core`,
+          which imports nothing — `@qabandi/brand` included — so unlike the
+          per-entity `From` field in the branch dialog it cannot show the
+          operator their own name back. The alternative to a nameless example
+          is a hard-coded one, and that is how a client's identity ends up on
+          another client's settings screen. `example.com` is reserved by
+          RFC 2606 and can never be somebody's live mail domain.
+        */
+        placeholder: 'Freight Co <no-reply@example.com>',
       },
       /*
         Verifying the server is who it claims to be. On unless a deployment

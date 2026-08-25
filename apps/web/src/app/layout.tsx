@@ -32,7 +32,20 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s · ${brand.identity.nameEn}`,
     },
     description: brand.identity.legalNameEn,
-    icons: { icon: faviconDataUri(brand) },
+    /**
+     * Two icons, and only one of them re-skins.
+     *
+     * `icon` is drawn from the brand at request time — no file, no build step,
+     * correct for whichever operator `BRAND` selects. That is the whitelabel
+     * path and it stays.
+     *
+     * iOS ignores SVG for the home-screen icon and will not fall back to it,
+     * so `apple` has to be a raster file on disk. `apple-touch-icon.png` is
+     * therefore the one piece of CargoSharks-specific artwork in `public/`:
+     * an operator shipping their own brand replaces that file, and everything
+     * else about their identity remains an environment variable.
+     */
+    icons: { icon: faviconDataUri(brand), apple: '/apple-touch-icon.png' },
     applicationName: brand.identity.nameEn,
   }
 }
@@ -71,12 +84,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Loaded as a stylesheet rather than through `next/font` deliberately:
           the pilot environment is stood up in a day (Pilot §4) and a build
           that reaches the network to succeed is a build that fails in a room
-          with no internet. Both faces degrade to the system stack declared in
+          with no internet. Every face degrades to the system stack declared in
           the brand's typography tokens.
+
+          Three families, because the request is the union of what the
+          registered brands ask for rather than what the resolved one uses:
+          Manrope is CargoSharks' display face and `qabandi` leaves display on
+          Inter. Requesting both keeps a re-skin an environment change with no
+          rebuild, at the cost of one extra family for whichever brand is not
+          running. 800 is there because the wordmark is set at it —
+          `typography.wordmarkWeight` — and the supplied artwork is Manrope
+          ExtraBold converted to outlines, so anything lighter puts the company
+          name in a visibly different weight from the mark next to it.
         */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
         />
       </head>
       <body className="min-h-dvh bg-canvas text-ink antialiased">

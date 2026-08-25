@@ -29,3 +29,29 @@ export function usePilotFixtures(): boolean {
   if (explicit === '1') return !(process.env.NODE_ENV === 'production' && hasDatabase)
   return !hasDatabase
 }
+
+/**
+ * Whether the fixtures ask a visitor to sign in — `QABANDI_DEMO_LOGIN=1`.
+ *
+ * This exists for one deployment: the public demo the marketing site links to.
+ * A prospect arriving there should meet the product's own sign-in screen and
+ * choose whose view they want — the forwarder's board, their customer's
+ * portal, their agent's page — because "what does my customer see" is the
+ * question the demo is answering. Seeing the form is part of the demo.
+ *
+ * Everywhere else it must stay off, and *off is the default*. With the flag
+ * unset `getSession()` short-circuits to the pilot principal exactly as it
+ * always has, which is what `pnpm test:e2e` is built on — the offline suite
+ * authenticates nobody and loads no storage state, so a gate that engaged by
+ * default would turn every screen in it into a sign-in redirect. The same goes
+ * for every developer running `QABANDI_PILOT_FIXTURES=1 pnpm dev`.
+ *
+ * It is deliberately expressed as `usePilotFixtures() && …` rather than as a
+ * flag test of its own. The demo personas are fixture data like any other, so
+ * they inherit that predicate's refusal to engage in production against a
+ * configured database — restating the condition here would be a second place
+ * for it to be got wrong.
+ */
+export function useDemoLogin(): boolean {
+  return usePilotFixtures() && process.env.QABANDI_DEMO_LOGIN === '1'
+}

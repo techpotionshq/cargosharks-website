@@ -32,6 +32,7 @@ import {
   authUser,
   authVerification,
 } from '@qabandi/db'
+import { getBrand } from '@/lib/brand'
 
 /**
  * Stated once, so the policy and the message a person reads cannot drift.
@@ -163,5 +164,25 @@ export const auth = betterAuth({
     useSecureCookies: process.env.NODE_ENV === 'production',
   },
 
-  plugins: [twoFactor({ issuer: 'Al-Qabandi & Partners' })],
+  /**
+   * The issuer is the label in the person's authenticator app.
+   *
+   * It is not decoration and it is not a setting: it is baked into the
+   * `otpauth://` URI of the enrolment QR, and an authenticator copies it once
+   * at scan time and never looks again. So changing it here renames the entry
+   * for people who enrol *afterwards* and does nothing at all for anyone
+   * already enrolled — their app keeps showing whatever it was told the day
+   * they scanned. Getting it wrong is therefore wrong permanently for that
+   * population; the only remedy is asking each of them to re-enrol.
+   *
+   * Which is exactly why it must come from the brand rather than be typed. A
+   * whitelabel deployment whose staff see another company's name beside their
+   * six digits is the one place a hard-coded operator name cannot be corrected
+   * by a re-skin.
+   *
+   * `getBrand()` at module scope is fine: it returns a value resolved once per
+   * process, and React's `cache` wrapper calls straight through when there is
+   * no request to memoise against.
+   */
+  plugins: [twoFactor({ issuer: getBrand().identity.nameEn })],
 })

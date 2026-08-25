@@ -9,6 +9,7 @@
  */
 
 import { getTranslations } from 'next-intl/server'
+import { brandMailDomain, getBrand } from '@/lib/brand'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -227,6 +228,14 @@ export async function BranchDialog({
 
   const editing = Boolean(defaults?.id)
 
+  /*
+    Only for the `mailFrom` placeholder below — the shape of the answer, drawn
+    from this deployment's own identity rather than from whoever the default
+    brand happened to be when the field was written.
+  */
+  const brand = getBrand()
+  const mailFromExample = `${brand.identity.nameEn} <no-reply@${brandMailDomain(brand)}>`
+
   const fields: FieldSpec[] = [
     ...(editing ? [{ kind: 'hidden' as const, name: 'branchId', value: defaults!.id! }] : []),
     {
@@ -313,7 +322,12 @@ export async function BranchDialog({
       label: t('mailFrom'),
       span: 12,
       hint: t('mailFromHint'),
-      placeholder: 'Al-Qabandi & Partners <no-reply@qabandi.com>',
+      /*
+        A placeholder and not a default: an entity that has not chosen a
+        `From` must fall through to `MAIL_FROM` rather than silently start
+        writing to customers as the brand's own address.
+      */
+      placeholder: mailFromExample,
       defaultValue: defaults?.mailFrom ?? '',
     },
     {

@@ -1,0 +1,1684 @@
+/**
+ * The stylesheet for the five documents under `src/content/pages`.
+ *
+ * It began as `public/assets/styles.css`, the stylesheet those pages used when
+ * they were standalone HTML, and was brought across by the same script that
+ * converted the markup. Two transformations were applied, and both are worth
+ * knowing about before editing it:
+ *
+ *   - **Every colour is a `--qb-*` token.** There were 132 literals in here,
+ *     each an approximation of a stop `@qabandi/brand` already publishes: the
+ *     navy ramp, the neutral ramp and the four status hues. Mapping them onto
+ *     the ramp is what makes the marketing site re-skin along with the product
+ *     rather than staying in CargoSharks' blue for ever, and
+ *     `scripts/check-brand.mjs` fails the build on a literal that creeps back.
+ *
+ *   - **Every selector is scoped under `.doc-page`.** `globals.css` owns
+ *     `.shell`, the resets and the type scale for the app's own routes, and
+ *     this file has its own opinion about all three. Scoping makes a collision
+ *     structurally impossible rather than merely unlikely. The rules that used
+ *     to hang off `body` and `html` are on `.doc-page` itself — scoping those
+ *     produced three rules that matched nothing, and the one on `body` carried
+ *     the ink colour every unstyled heading inherits, so for a while the clause
+ *     headings rendered in the dark theme's near-white on a paper band.
+ *
+ * Rules for classes the five pages no longer use are left in place rather than
+ * pruned. There were 246 of them against 282 in use, and each one removed is a
+ * chance to take something the cascade needed.
+ */
+
+/* ---------------------------------------------------------------------------
+   Tokens. The four brand colours come from cargosharks-logo/README.txt and are
+   not reinterpreted here — everything else is derived from them so the page
+   cannot drift away from the mark. Amber is the one addition: status pills need
+   a third state that is neither "live" nor "absent", and no brand colour can
+   carry that meaning without also reading as a link.
+--------------------------------------------------------------------------- */
+.doc-page {
+  --navy:var(--qb-primary-950);
+  --blue:var(--qb-primary-500);
+  --blue-light:var(--qb-primary-300);
+  --white:var(--qb-neutral-50);
+
+  --navy-900:color-mix(in oklab, var(--qb-primary-950) 46%, black);          /* deeper than the mark, for the page floor  */
+  --navy-800:var(--qb-primary-950);
+  --navy-raised:var(--qb-primary-800);
+  --navy-line:rgba(255,255,255,.11);
+  --navy-ink:var(--qb-neutral-50);
+  --navy-ink-muted:color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
+
+  --paper:var(--qb-neutral-50);
+  --paper-raised:var(--qb-neutral-50);
+  --ink:var(--qb-primary-950);
+  --ink-muted:var(--qb-neutral-600);
+  --ink-subtle:var(--qb-neutral-500);
+  --line:var(--qb-neutral-200);
+  --line-strong:var(--qb-neutral-300);
+
+  --amber:var(--qb-caution);
+  /* The same amber, lifted for a navy ground — var(--qb-caution) on navy is mud. */
+  --amber-on-dark:var(--qb-caution);
+  --amber-soft:var(--qb-caution-soft);
+
+  --shadow-sm:0 1px 2px color-mix(in oklab, var(--qb-primary-950) 6%, transparent), 0 4px 12px color-mix(in oklab, var(--qb-primary-950) 5%, transparent);
+  --shadow-md:0 2px 4px color-mix(in oklab, var(--qb-primary-950) 6%, transparent), 0 12px 32px color-mix(in oklab, var(--qb-primary-950) 9%, transparent);
+  --shadow-lg:0 8px 24px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 18%, transparent), 0 32px 64px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 22%, transparent);
+
+  /*
+    Two voices, and no third.
+
+    A serif was tried here for headlines and taken out: it read as a magazine
+    rather than as freight software, which is not what this business is. The
+    contrast that stops one typeface doing every job comes from mono against
+    sans instead — the product's own convention, where a figure is set in mono
+    and prose is not — and from scale, not from a second alphabet.
+  */
+  --sans:"Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --shell:1200px;
+  --gutter:clamp(20px, 5vw, 56px);
+  /*
+    Three rhythms, chosen per section by how dense its content is.
+
+    Every band used to be the same 72–132px, which is what "generous whitespace
+    standing in for a design decision" looks like in a stylesheet. A ledger of
+    six one-line entries does not need the air that a section carrying a
+    1440-wide screenshot needs.
+  */
+  --band:clamp(64px, 7.5vw, 108px);
+  --band-tight:clamp(48px, 5vw, 72px);
+  --band-wide:clamp(88px, 11vw, 156px);
+  /*
+    Two radii, and the split is the point.
+
+    Everything used to be 14px — every card, every panel, every figure — which
+    is the shape of a component library rather than of a document. The things
+    on this page that hold *data* are square now, because the paperwork this
+    trade runs on is square: a manifest, a customs form, a bill of lading. Only
+    the things you can press are rounded, because a control should look
+    pressable. A page where the radius is uniform is a page where the radius was
+    never decided.
+  */
+  --radius:3px;
+  --radius-control:9px;
+}
+
+.doc-page *, .doc-page *::before, .doc-page *::after {box-sizing:border-box}
+/*
+  The scope carries what `body` used to.
+
+  These pages were standalone documents and set their own ink, paper and type
+  scale on `body`. `body` now belongs to the app, which is dark — so the colour
+  has to land on `.doc-page` itself or every heading in the five documents
+  inherits near-white and disappears against a paper band. `html` is the app's
+  too; its two declarations are already in `globals.css`.
+*/
+.doc-page {
+  background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.62;
+  font-weight:400; -webkit-font-smoothing:antialiased;
+}
+.doc-page img, .doc-page svg {max-width:100%; display:block}
+.doc-page a {color:inherit}
+.doc-page h1, .doc-page h2, .doc-page h3, .doc-page h4 {margin:0; font-weight:800; letter-spacing:-.022em; line-height:1.1}
+/* Statements are set in the serif; anything that *labels* a component stays in
+   the interface face, so the two never compete for the same job. */
+
+.doc-page p {margin:0}
+.doc-page ul {margin:0; padding:0; list-style:none}
+
+.doc-page .shell {width:100%; max-width:var(--shell); margin-inline:auto; padding-inline:var(--gutter)}
+/*
+  The content column, as one value.
+
+  Everything a reader sees starts and ends on the same two vertical lines as the
+  brand in the header. That was not true: the hero copy ran full-bleed, the hero
+  screenshot sat 46px outside it, the product cards 120px outside and the
+  bilingual pair 150px outside — four different widths on one page, which reads
+  as a page nobody ruled rather than as four deliberate decisions. Anything that
+  genuinely wants more room now goes to the full edge on purpose; nothing sits
+  just-past the line.
+*/
+.doc-page .col {width:min(100%, calc(var(--shell) - var(--gutter) * 2)); margin-inline:auto}
+.doc-page .band {padding-block:var(--band)}
+.doc-page .band--tight {padding-block:var(--band-tight)}
+.doc-page .band--wide {padding-block:var(--band-wide)}
+.doc-page .band--paper {background:var(--paper)}
+.doc-page .band--white {background:var(--paper-raised)}
+.doc-page .band--navy {background:var(--navy-900); color:var(--navy-ink)}
+.doc-page .band--navy h2, .doc-page .band--navy h3 {color:var(--white)}
+
+/* --- type scale ---------------------------------------------------------- */
+.doc-page .display {font-size:clamp(2.2rem, 4.4vw, 3.4rem); letter-spacing:-.03em; line-height:1.06}
+.doc-page .h2 {font-size:clamp(1.6rem, 2.7vw, 2.3rem); letter-spacing:-.026em; line-height:1.16}
+.doc-page .h3 {font-size:clamp(1.15rem, 1.6vw, 1.35rem); letter-spacing:-.016em; font-weight:700}
+.doc-page .lead {font-size:clamp(1.06rem, 1.5vw, 1.28rem); line-height:1.55; color:var(--ink-muted); font-weight:500}
+.doc-page .band--navy .lead {color:var(--navy-ink-muted)}
+.doc-page .small {font-size:.94rem; line-height:1.6}
+.doc-page .muted {color:var(--ink-muted)}
+.doc-page .band--navy .muted {color:var(--navy-ink-muted)}
+
+/* Eyebrow: mono, because every label in the product itself is data, and this
+   page borrows the product's own voice rather than inventing a louder one. */
+/*
+  The section mark.
+
+  Eleven of these run down the page, and they used to be eleven identical
+  `01 — Label` constructions, which reads as a template even when each label is
+  different. The number is now set as a mark of its own — the way a clause
+  number sits in a contract — and the dash is gone.
+*/
+.doc-page .eyebrow {
+  font-family:var(--mono); font-size:.7rem; font-weight:500;
+  letter-spacing:.17em; text-transform:uppercase; color:var(--ink-subtle);
+  display:flex; align-items:center; gap:12px; margin-bottom:22px;
+}
+.doc-page .eyebrow b {
+  font-weight:600; color:var(--blue); letter-spacing:.06em;
+  padding-inline-end:12px; border-inline-end:1px solid var(--line);
+}
+.doc-page .band--navy .eyebrow {color:color-mix(in oklab, var(--qb-primary-200) 72%, transparent)}
+.doc-page .band--navy .eyebrow b {color:var(--blue-light); border-inline-end-color:var(--navy-line)}
+.doc-page .band--navy .eyebrow {color:var(--blue-light)}
+
+.doc-page .section-head {max-width:760px; margin-bottom:clamp(40px,5vw,64px)}
+.doc-page .section-head .lead {margin-top:18px}
+.doc-page .h2 + .lead {margin-top:18px}
+
+/* --- fin motif: the three ascending sails from the mark, reused as a rule -- */
+.doc-page .fins {display:flex; align-items:flex-end; gap:4px; height:18px}
+.doc-page .fins i {display:block; background:var(--blue-light); border-radius:1px 3px 0 0;
+  clip-path:polygon(100% 0, 100% 100%, 0 100%)}
+.doc-page .fins i:nth-child(1) {width:7px; height:9px}
+.doc-page .fins i:nth-child(2) {width:9px; height:14px; background:var(--blue)}
+.doc-page .fins i:nth-child(3) {width:11px; height:18px; background:var(--navy)}
+.doc-page .band--navy .fins i:nth-child(3) {background:var(--white)}
+
+/* --- buttons ------------------------------------------------------------- */
+.doc-page .btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  font-family:var(--sans); font-weight:700; font-size:.97rem; letter-spacing:-.008em;
+  padding:14px 24px; border-radius:var(--radius-control); border:1px solid transparent;
+  text-decoration:none; cursor:pointer; transition:transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  white-space:nowrap;
+}
+.doc-page .btn:hover {transform:translateY(-1px)}
+.doc-page .btn--primary {background:var(--blue); color:var(--white); box-shadow:0 6px 20px color-mix(in oklab, var(--qb-primary-500) 32%, transparent)}
+.doc-page .btn--primary:hover {background:var(--qb-primary-600); box-shadow:0 10px 28px color-mix(in oklab, var(--qb-primary-500) 40%, transparent)}
+.doc-page .btn--ghost {background:rgba(255,255,255,.06); color:var(--white); border-color:rgba(255,255,255,.28); backdrop-filter:blur(6px)}
+.doc-page .btn--ghost:hover {background:rgba(255,255,255,.13); border-color:rgba(255,255,255,.5)}
+.doc-page .btn--quiet {background:transparent; color:var(--blue); border-color:var(--line-strong)}
+.doc-page .btn--quiet:hover {border-color:var(--blue); background:color-mix(in oklab, var(--qb-primary-500) 5%, transparent)}
+.doc-page .btn--sm {padding:10px 18px; font-size:.9rem}
+
+/* --- header -------------------------------------------------------------- */
+.doc-page .site-header {
+  position:fixed; inset-block-start:0; inset-inline:0; z-index:80;
+  transition:background .25s ease, border-color .25s ease, backdrop-filter .25s ease;
+  border-bottom:1px solid transparent;
+}
+.doc-page .site-header.is-stuck {background:color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 90%, transparent); backdrop-filter:blur(14px); border-bottom-color:var(--navy-line)}
+.doc-page .site-header .shell {display:flex; align-items:center; gap:32px; height:72px}
+.doc-page .brand {display:flex; align-items:center; text-decoration:none; flex:0 0 auto}
+.doc-page .brand img {height:26px; width:auto}
+.doc-page .nav {display:flex; gap:28px; margin-inline-start:auto; align-items:center}
+.doc-page .nav a {
+  color:rgba(255,255,255,.82); text-decoration:none; font-size:.93rem; font-weight:600;
+  letter-spacing:-.008em; transition:color .16s ease;
+}
+.doc-page .nav a:hover {color:var(--white)}
+/* Bordered, but squared off rather than a pill. */
+.doc-page .nav-cta {margin-inline-start:4px; border-radius:4px}
+
+/*
+   Below 900px the anchor links go and everything else stays.
+
+   The rule used to be `.nav{display:none}`, which took the call to action and
+   the language switch with it — so a visitor on a phone had no way to reach the
+   form except by scrolling to it, and an Arabic speaker had no way to reach the
+   Arabic page at all. That is the wrong half to drop on the site whose argument
+   is that Arabic is not an afterthought.
+
+   No hamburger: five anchors on a single-page document are reachable by
+   scrolling, and a menu that only holds anchors is a tap in front of a scroll.
+*/
+@media (max-width:900px){
+.doc-page .nav {gap:14px}
+.doc-page .nav a:not(.nav-cta):not(.nav-lang) {display:none}
+.doc-page .nav-cta {padding:9px 15px; font-size:.86rem}
+}
+@media (max-width:380px){ .nav-cta{display:none} }
+
+/* The language switch is a peer of the nav links, not a control in a corner.
+   It is labelled in the language it goes *to* — a visitor who needs Arabic
+   cannot be asked to find the word "Arabic" in English first. */
+.doc-page .nav-lang {
+  font-weight:600; padding-inline:2px;
+  color:var(--blue-light) !important;
+  /* Set in the Arabic face at a size of its own. Arabic at the Latin nav's
+     0.93rem reads two steps smaller than the words beside it — the script has
+     no capitals, so its x-height is doing all the work. */
+  font-family:"IBM Plex Sans Arabic","Noto Sans Arabic","Geeza Pro",var(--sans);
+  font-size:1.02rem; line-height:1;
+}
+.doc-page .nav-lang:hover {color:var(--white) !important}
+/* On the Arabic page the switch points back to English, so it is Latin again
+   and wants the nav's own size. */
+.doc-page [dir="rtl"] .nav-lang {font-family:var(--sans); font-size:.93rem}
+
+/* --- back to top --------------------------------------------------------- */
+/* Solid blue rather than the glass the header uses: this one floats over paper
+   bands and navy ones alike, and a translucent chip legible on one is invisible
+   on the other. It stays hidden until the hero is behind you — until then it has
+   nothing to undo, and the hero is already pointing the other way. */
+.doc-page .to-top {
+  position:fixed; inset-block-end:26px; inset-inline-end:26px; z-index:70;
+  display:grid; place-items:center; width:46px; height:46px; border-radius:50%;
+  background:var(--blue); color:var(--white); text-decoration:none;
+  box-shadow:0 6px 20px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 34%, transparent);
+  opacity:0; visibility:hidden; transform:translateY(10px);
+  transition:opacity .22s ease, transform .22s ease, visibility .22s, background .16s ease, box-shadow .16s ease;
+}
+.doc-page .to-top.is-on {opacity:1; visibility:visible; transform:none}
+.doc-page .to-top:hover {background:var(--qb-primary-600); transform:translateY(-2px); box-shadow:0 10px 26px color-mix(in oklab, var(--qb-primary-500) 42%, transparent)}
+.doc-page .to-top svg {display:block; width:18px; height:18px}
+@media (max-width:520px){ .to-top{inset-block-end:18px; inset-inline-end:18px} }
+
+/* --- hero ------------------------------------------------------------------
+   Left-aligned, not centred, and no photograph.
+
+   The centred-over-a-port-photo hero is what every forwarding site runs, and
+   the type had to fight a picture for the first two seconds. Now the type is
+   the first thing and the *data* is the second: a real shipment line under the
+   headline, set the way the product sets a document. Nothing here is decorative
+   except the grid, and the grid is the product's own paper.
+--------------------------------------------------------------------------- */
+.doc-page .hero {
+  position:relative; background:var(--navy-900); color:var(--navy-ink);
+  padding-block:clamp(96px,11vh,132px) 0; overflow:hidden;
+}
+.doc-page .hero__field {position:absolute; inset:0; pointer-events:none}
+/* A document grid at 1px and 4% — invisible as lines, visible as the absence of
+   a flat field. The mask fades it out before it reaches the copy. */
+.doc-page .hero__grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--qb-primary-300) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--qb-primary-300) 9%, transparent) 1px, transparent 1px);
+  background-size:clamp(48px,6vw,86px) clamp(48px,6vw,86px);
+  mask-image:radial-gradient(120% 90% at 18% 12%, var(--qb-neutral-950) 0%, rgba(0,0,0,.35) 46%, transparent 78%);
+}
+/* The mark at watermark scale, bled off the trailing edge. It reads as the
+   letterhead it is rather than as a logo dropped into a corner. */
+/* The mark was here as a watermark and has been taken out.
+
+   Twice it was resized and repositioned and twice it read as a grey wedge
+   rather than as the mark — at watermark opacity the three fins stop being
+   three fins and become one diagonal. The grid, the type and the manifest
+   strip are enough; an ornament that has to be explained is not earning its
+   place. `.hero__field` stays, for the grid alone. */
+.doc-page .hero__copy {position:relative; z-index:2}
+/*
+  Sized down, twice.
+
+  It ran to 5.9rem over three lines, which is the oversized hero the research
+  on this names as a tell in its own right — the headline was doing the work of
+  a billboard on a page whose argument is made by data. It is now a heading:
+  large enough to lead, small enough that the manifest line under it and the
+  product below are read in the same breath.
+*/
+.doc-page .hero .display {
+  color:var(--white); max-width:24ch; text-wrap:balance;
+  font-size:clamp(2rem, 4.2vw, 3.15rem); letter-spacing:-.03em; line-height:1.08;
+}
+.doc-page .hero__sub {
+  margin:clamp(18px,2vw,24px) 0 0; max-width:52ch;
+  color:rgba(232,239,249,.74);
+  font-size:clamp(1rem,1.2vw,1.12rem); line-height:1.6; font-weight:500; text-wrap:pretty;
+}
+/* Mono, with a rule that runs out of the letters — the product's own label
+   register, and it sits *above* the headline where a document's file number
+   would. */
+.doc-page .hero__kicker {
+  display:flex; align-items:center; gap:14px; margin-bottom:clamp(20px,2.4vw,30px);
+  font-family:var(--mono); font-size:.73rem; font-weight:500; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--blue-light);
+}
+.doc-page .hero__kicker i {display:block; width:clamp(28px,5vw,64px); height:1px; background:currentColor; opacity:.5; flex:none}
+/* The rule is a lead-in to a single line. Once the line wraps it is a stray
+   dash floating above the text, so below the width where that happens it goes. */
+@media (max-width:560px){ .hero__kicker i{display:none} }
+
+.doc-page .hero__actions {margin-top:clamp(30px,3.6vw,44px); display:flex; flex-wrap:wrap; gap:14px}
+.doc-page .hero__actions .btn {min-width:14rem}
+/* The doubt the button raises, answered on the button. */
+.doc-page .btn__hint {
+  font-family:var(--mono); font-size:.66rem; font-weight:500; letter-spacing:.12em;
+  text-transform:uppercase; opacity:.62; margin-inline-start:2px;
+}
+
+/* --- the manifest strip --------------------------------------------------- */
+/* A ruled band, darker than the field it sits on, so it reads as a line lifted
+   off a document rather than as more page. The top rule is brighter than the
+   bottom one — the strip is *under* the headline, and the eye should meet an
+   edge there. */
+.doc-page .manifest {
+  position:relative; z-index:2; margin-top:clamp(40px,5vw,68px);
+  background:color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 34%, black) 66%, transparent); backdrop-filter:blur(3px);
+  border-block:1px solid var(--navy-line);
+  border-block-start-color:color-mix(in oklab, var(--qb-primary-300) 22%, transparent);
+}
+.doc-page .manifest__row {
+  display:grid;
+  /* Weighted by how much each cell actually holds. Equal columns truncated
+     the widest and left the narrowest half empty. */
+  grid-template-columns:
+    minmax(0,1.1fr) minmax(0,1.2fr) minmax(0,1.1fr)
+    minmax(0,.62fr) minmax(0,1.25fr) minmax(0,1.15fr);
+  padding-block:20px;
+}
+.doc-page .manifest__cell {display:flex; flex-direction:column; gap:6px; min-width:0; padding-inline-end:16px}
+.doc-page .manifest__cell + .manifest__cell {border-inline-start:1px solid var(--navy-line); padding-inline-start:clamp(12px,1.6vw,22px)}
+.doc-page .manifest__cell span {
+  font-family:var(--mono); font-size:.62rem; letter-spacing:.15em; text-transform:uppercase;
+  color:color-mix(in oklab, var(--qb-primary-200) 72%, transparent);
+}
+.doc-page .manifest__cell b {
+  font-family:var(--mono); font-size:.845rem; font-weight:500; color:var(--navy-ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.doc-page .manifest__cell i {font-style:normal; color:var(--blue-light)}
+.doc-page .manifest__cell em {font-style:normal; color:var(--amber-on-dark)}
+.doc-page .manifest__cell .is-held {color:var(--qb-critical)}
+.doc-page .manifest__cell--live b {color:var(--white); font-size:.98rem}
+.doc-page .manifest__cell--live u {text-decoration:none; color:color-mix(in oklab, var(--qb-primary-200) 80%, transparent); font-size:.78rem}
+/* The digits are tabular so the number does not jitter sideways as it counts. */
+.doc-page .manifest__cell--live output {font-variant-numeric:tabular-nums; letter-spacing:.01em}
+@media (max-width:1080px){
+.doc-page .manifest__row {grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px 0}
+.doc-page .manifest__cell:nth-child(3n+1) {border-inline-start:0; padding-inline-start:0}
+}
+@media (max-width:600px){
+.doc-page .manifest__row {grid-template-columns:repeat(2,minmax(0,1fr))}
+.doc-page .manifest__cell:nth-child(3n+1) {border-inline-start:1px solid var(--navy-line); padding-inline-start:clamp(12px,1.6vw,22px)}
+.doc-page .manifest__cell:nth-child(2n+1) {border-inline-start:0; padding-inline-start:0}
+}
+
+/* --- the product, at the top of the page ---------------------------------- */
+.doc-page .hero__shot {
+  position:relative; z-index:2; margin:clamp(30px,3.6vw,52px) auto 0;
+  width:min(100%, calc(var(--shell) - var(--gutter) * 2));
+  aspect-ratio:1180 / 470; overflow:hidden;
+  border-radius:var(--radius) var(--radius) 0 0;
+  border:1px solid rgba(255,255,255,.14); border-bottom:0;
+  box-shadow:0 -1px 0 rgba(255,255,255,.06) inset, 0 40px 90px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 60%, transparent);
+}
+/* `top`, not `center`: the crop must bite the bottom, where there is more of
+   the same, rather than the top, where the product's own chrome is. */
+.doc-page .hero__shot img {width:100%; height:100%; object-fit:cover; object-position:top center; display:block}
+@media (max-width:720px){ .hero__shot{aspect-ratio:1180 / 620} }
+
+/* --- generic cards ------------------------------------------------------- */
+.doc-page .grid {display:grid; gap:clamp(16px,2vw,24px)}
+.doc-page .grid--3 {grid-template-columns:repeat(3,1fr)}
+.doc-page .grid--2 {grid-template-columns:repeat(2,1fr)}
+@media (max-width:960px){ .grid--3{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:680px){ .grid--3,.grid--2{grid-template-columns:1fr} }
+
+.doc-page .card {
+  background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+  padding:28px 26px 30px; box-shadow:var(--shadow-sm);
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.doc-page .card:hover {transform:translateY(-3px); box-shadow:var(--shadow-md); border-color:var(--line-strong)}
+.doc-page .card h3 {margin-bottom:12px}
+.doc-page .card p {color:var(--ink-muted); font-size:.985rem; line-height:1.58}
+
+/* Leak cards sit on navy and carry a numeral rather than an icon: the product's
+   own copy rule is that a picture of a truck says nothing a number doesn't. */
+.doc-page .leak {
+  background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.022));
+  border:1px solid var(--navy-line); border-radius:var(--radius);
+  padding:28px 26px 30px; transition:border-color .2s ease, transform .2s ease, background .2s ease;
+}
+.doc-page .leak:hover {border-color:color-mix(in oklab, var(--qb-primary-300) 42%, transparent); transform:translateY(-3px);
+  background:linear-gradient(180deg, color-mix(in oklab, var(--qb-primary-300) 10%, transparent), rgba(255,255,255,.03))}
+.doc-page .leak__n {font-family:var(--mono); font-size:.76rem; letter-spacing:.13em; color:var(--blue-light); display:block; margin-bottom:16px}
+.doc-page .leak h3 {font-size:1.1rem; color:var(--white); margin-bottom:11px; line-height:1.28}
+.doc-page .leak p {color:var(--navy-ink-muted); font-size:.96rem; line-height:1.6}
+
+/* --- figures ------------------------------------------------------------- */
+/*
+  The two hand-drawn figures that lived here are gone, and their rules with them.
+
+  One showed five mailboxes turning into one queue, the other a query crossing a
+  row-level-security boundary. Both were bespoke SVG, both had to be re-laid-out
+  by hand for the Arabic page, and neither earned it: the sections they sat in
+  already say the same thing in a sentence, and a diagram that restates its own
+  caption is decoration with a lot of coordinates. The product screenshots do
+  the showing on this page.
+*/
+.doc-page .pull {
+  margin-top:clamp(44px,5vw,72px); padding-inline-start:clamp(18px,2vw,28px);
+  border-inline-start:3px solid transparent;
+  border-image:linear-gradient(to bottom,var(--blue-light),var(--blue)) 1;
+  font-size:clamp(1.25rem,2.3vw,1.85rem); font-weight:700; letter-spacing:-.022em;
+  line-height:1.34; color:var(--white); max-width:44ch; text-wrap:pretty;
+}
+.doc-page .band--white .pull, .doc-page .band--paper .pull {color:var(--ink)}
+
+/* --- the six-state rail -------------------------------------------------- */
+.doc-page .rail {position:relative; display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-top:8px}
+.doc-page .rail::before {
+  content:""; position:absolute; inset-block-start:21px; inset-inline:8%;
+  height:2px; background:linear-gradient(90deg,var(--blue-light),var(--blue),var(--navy));
+  opacity:.32;
+}
+.doc-page .stage {position:relative; text-align:center; padding-top:0}
+.doc-page .stage__dot {
+  width:44px; height:44px; border-radius:50%; margin:0 auto 18px;
+  display:grid; place-items:center; position:relative; z-index:2;
+  background:var(--navy); color:var(--white);
+  font-family:var(--mono); font-size:.86rem; font-weight:600;
+  box-shadow:0 0 0 6px var(--paper-raised), 0 0 0 7px var(--line-strong), 0 4px 12px color-mix(in oklab, var(--qb-primary-950) 20%, transparent);
+}
+.doc-page .stage:nth-child(1) .stage__dot {background:var(--blue-light); color:var(--navy)}
+.doc-page .stage:nth-child(2) .stage__dot {background:var(--qb-primary-400)}
+.doc-page .stage:nth-child(3) .stage__dot {background:var(--blue)}
+.doc-page .stage:nth-child(4) .stage__dot {background:var(--qb-primary-600)}
+.doc-page .stage:nth-child(5) .stage__dot {background:var(--qb-primary-700)}
+.doc-page .stage h3 {font-size:1.02rem; margin-bottom:8px}
+.doc-page .stage p {font-size:.9rem; color:var(--ink-muted); line-height:1.5}
+@media (max-width:860px){
+.doc-page .rail {grid-template-columns:1fr; gap:0}
+.doc-page .rail::before {inset-block:22px auto; inset-block-end:22px; inset-inline-start:21px; inset-inline-end:auto; width:2px; height:auto}
+.doc-page .stage {display:grid; grid-template-columns:44px 1fr; gap:0 20px; text-align:start; padding-bottom:26px}
+.doc-page .stage__dot {margin:0; box-shadow:0 0 0 6px var(--paper-raised), 0 0 0 7px var(--line-strong)}
+.doc-page .stage h3 {grid-column:2; margin-top:9px}
+.doc-page .stage p {grid-column:2}
+}
+
+/* --- product blocks with screenshots ------------------------------------- */
+.doc-page .split {display:grid; grid-template-columns:minmax(0,.52fr) minmax(0,1fr); gap:clamp(28px,3.4vw,52px); align-items:center}
+.doc-page .split--flip {grid-template-columns:minmax(0,1fr) minmax(0,.52fr)}
+.doc-page .split--flip .split__copy {order:2}
+@media (max-width:980px){
+.doc-page .split {grid-template-columns:1fr; gap:40px}
+.doc-page .split--flip .split__copy {order:0}
+}
+.doc-page .split__copy .h2 {margin-bottom:20px}
+.doc-page .split__copy .lead {margin-bottom:26px}
+.doc-page .feature-list {margin-top:22px; padding-inline-start:1.15em; list-style:disc; display:grid; gap:11px}
+.doc-page .feature-list li {display:list-item; font-size:.93rem; line-height:1.52; color:var(--ink-muted)}
+.doc-page .feature-list li::marker {color:var(--blue)}
+.doc-page .feature-list b {color:var(--ink); font-weight:700}
+
+/* Browser chrome around a screenshot: it reads as "this is the running
+   product" rather than "this is a rendering of one". */
+.doc-page .frame {
+  border-radius:12px; overflow:hidden; background:var(--paper-raised);
+  border:1px solid var(--line-strong); box-shadow:var(--shadow-lg);
+}
+.doc-page .frame img {width:100%; height:auto}
+.doc-page .stack {display:grid; gap:20px}
+.doc-page .stack--offset {position:relative}
+.doc-page .stack--offset .frame:last-child {margin-inline-start:clamp(24px,6%,64px)}
+
+/* --- bilingual pair ------------------------------------------------------ */
+/* Two identical cards — same size, same content, numbers and map — with the
+   Arabic one laid over the English at a diagonal offset. The offset is set so
+   the Arabic card's top edge clears the English stat row: both rows of numbers
+   stay readable, one above the other, and the Arabic card covers the middle of
+   the English map while its own map carries on below.
+   Side by side reads as a comparison you are asked to perform. Overlapped reads
+   as one product, twice — which is the actual claim. */
+/* The pair used to get an 1800px shell of its own, wider than anything else on
+   the page, so the two screenshots hung 150px past the column on both sides.
+   They are laid over each other at an offset, so they read as a pair at any
+   width; what they did not read as was aligned. */
+.doc-page #bilingual .shell {max-width:var(--shell); padding-inline:var(--gutter)}
+
+/* Every offset below is a percentage of the container's WIDTH — including the
+   vertical ones, because percentage margins and padding resolve against width
+   even in the block direction. That is what keeps the two cards registered to
+   each other at every viewport instead of drifting apart as the page narrows. */
+.doc-page .pair {position:relative; padding-block-end:24%}
+.doc-page .pair figure {margin:0}
+.doc-page .pair .frame {height:auto; overflow:hidden; background:var(--navy-raised); border-color:rgba(255,255,255,.16)}
+/* These two captures already have the sidebar cropped out, so the frame takes
+   them whole. */
+.doc-page .pair .frame img {width:100%; height:auto; display:block}
+
+.doc-page .pair__en {width:72%}
+.doc-page .pair__ar {
+  position:absolute; inset-block-start:0; inset-inline-end:0; z-index:2;
+  width:72%; padding-block-start:20.2%;   /* clears the English stat row */
+}
+.doc-page .pair__ar .frame {
+  box-shadow:0 28px 80px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 66%, transparent), 0 4px 16px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 45%, transparent);
+  border-color:color-mix(in oklab, var(--qb-primary-300) 30%, transparent);
+}
+
+@media (max-width:900px){
+.doc-page .pair {padding-block-end:0; display:grid; gap:clamp(22px,4vw,38px)}
+.doc-page .pair__en, .doc-page .pair__ar {width:100%; position:static; padding-block-start:0}
+}
+
+.doc-page .pair figcaption {
+  margin-top:16px; font-family:var(--mono); font-size:.76rem; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--navy-ink-muted); display:flex; align-items:center; gap:9px;
+}
+.doc-page .pair figcaption::before {content:""; width:16px; height:1px; background:var(--blue-light)}
+.doc-page .pair--rtl figcaption {direction:rtl; justify-content:flex-end}
+
+/* --- scope columns ------------------------------------------------------- */
+.doc-page .scope {display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(18px,2.4vw,28px); margin-top:8px}
+@media (max-width:900px){ .scope{grid-template-columns:1fr} }
+.doc-page .scope__col {
+  background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+  padding:26px 24px 28px; transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  --accent:76,97,126; --accent-ink:var(--ink-muted);
+}
+/* In it / not in it / coming — green, red, blue. The column is neutral at rest
+   and takes its colour under the pointer, so the table reads as three equal
+   statements of fact rather than one recommendation and two disclaimers. */
+.doc-page .scope__col--in {--accent:15,138,87;  --accent-ink:var(--qb-positive)}
+.doc-page .scope__col--not {--accent:192,57,47; --accent-ink:var(--qb-critical)}
+.doc-page .scope__col--road {--accent:31,111,235; --accent-ink:var(--qb-primary-500)}
+.doc-page .scope__col:hover {
+  border-color:rgba(var(--accent),.5);
+  box-shadow:0 0 0 1px rgba(var(--accent),.16), var(--shadow-md);
+  transform:translateY(-3px);
+}
+.doc-page .scope__title {
+  font-family:var(--mono); font-size:.74rem; letter-spacing:.14em; text-transform:uppercase;
+  margin-bottom:20px; display:flex; align-items:center; gap:9px; color:var(--accent-ink);
+}
+.doc-page .scope ul li {
+  padding:10px 0; border-bottom:1px solid var(--line); font-size:.95rem; line-height:1.5;
+  display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:baseline;
+}
+.doc-page .scope ul li:last-child {border-bottom:0}
+.doc-page .scope ul li::before {content:"—"; color:var(--ink-subtle); font-family:var(--mono); font-size:.8rem}
+.doc-page .scope__col--in ul li::before {content:"✓"; color:var(--accent-ink); font-size:.85rem}
+.doc-page .scope__col--not ul li::before {content:"✕"; color:rgba(var(--accent),.8); font-size:.8rem}
+.doc-page .scope__col--road ul li::before {content:"→"; color:var(--accent-ink); font-size:.85rem}
+.doc-page .scope small {display:block; color:var(--ink-subtle); font-size:.85rem; margin-top:3px}
+
+/* --- integration boxes --------------------------------------------------- */
+.doc-page .pill {
+  display:inline-flex; align-items:center; gap:7px; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; font-weight:500;
+  padding:5px 11px; border-radius:100px; white-space:nowrap;
+}
+.doc-page .pill::before {content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+.doc-page .pill--live {background:color-mix(in oklab, var(--qb-primary-500) 10%, transparent); color:var(--blue)}
+.doc-page .pill--wait {background:var(--amber-soft); color:var(--amber)}
+.doc-page .pill--none {background:var(--qb-neutral-100); color:var(--ink-subtle)}
+/* Six identical white boxes were saying three different things. The card now
+   carries its own state rather than leaving the whole job to the pill: a rail in
+   the pill's own colour, and — for the one thing that is not built — the dashed,
+   flat treatment the mailbox figure in section 02 already uses to mean "nothing
+   is here yet". The rail is a stub at rest and draws to full height on hover,
+   which is the only motion in the grid and belongs to the card you are reading. */
+.doc-page .conn {display:flex; flex-direction:column; gap:14px; position:relative; overflow:hidden}
+.doc-page .conn h3 {font-size:1.04rem}
+.doc-page .conn p {font-size:.94rem; color:var(--ink-muted); line-height:1.55}
+.doc-page .conn::before {
+  content:""; position:absolute; inset-block-start:27px; inset-inline-start:0;
+  width:3px; height:30px; border-radius:0 3px 3px 0; background:var(--line-strong);
+  transition:height .32s cubic-bezier(.2,.7,.3,1), background .2s ease;
+}
+.doc-page .conn:hover::before {height:calc(100% - 54px)}
+.doc-page .conn--live::before {background:var(--blue)}
+.doc-page .conn--wait::before {background:var(--amber)}
+/* Not built, so it does not get to sit forward with the ones that are. */
+.doc-page .conn--none {background:transparent; border-style:dashed; border-color:var(--line-strong); box-shadow:none}
+.doc-page .conn--none:hover {box-shadow:none; border-color:var(--ink-subtle); transform:translateY(-3px)}
+.doc-page .conn--none h3 {color:var(--ink-muted)}
+.doc-page .conn--none::before {background:var(--qb-neutral-300)}
+
+/* --- the 09 → 10 transition ---------------------------------------------- */
+/* The page goes from a white band to the darkest one on the site, which is a
+   hard join. A photograph blurred at both edges and sharp in the middle carries
+   it: the light end dissolves out of the paper, the dark end dissolves into the
+   navy, and the strip in between is the only part you actually read as an
+   image. Two blur layers rather than one — a real progressive blur needs a
+   ramp, and a single pass reads as a smear. */
+.doc-page .fade {
+  position:relative; z-index:1; height:clamp(240px,30vw,420px); overflow:hidden;
+  background:var(--paper);
+  margin-block-start:calc(var(--band) * -0.5);
+  margin-block-end:calc(var(--band) * -0.5);
+}
+.doc-page .fade > img {width:100%; height:100%; object-fit:cover; object-position:center 62%}
+.doc-page .fade__blur {position:absolute; inset:0; pointer-events:none}
+.doc-page .fade__blur--soft {
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  -webkit-mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,var(--qb-neutral-950) 12%,transparent 38%,transparent 60%,var(--qb-neutral-950) 88%,var(--qb-neutral-950) 100%);
+          mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,var(--qb-neutral-950) 12%,transparent 38%,transparent 60%,var(--qb-neutral-950) 88%,var(--qb-neutral-950) 100%);
+}
+.doc-page .fade__blur--hard {
+  backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+  -webkit-mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,transparent 22%,transparent 76%,var(--qb-neutral-950) 100%);
+          mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,transparent 22%,transparent 76%,var(--qb-neutral-950) 100%);
+}
+.doc-page .fade::after {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg,
+    var(--paper) 0%, rgba(244,247,252,.7) 10%, rgba(244,247,252,.12) 27%,
+    color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 14%, transparent) 57%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 66%, transparent) 83%, var(--navy-900) 100%);
+}
+/* Safari and Firefox without backdrop-filter still get the gradient join, which
+   is the part that actually does the work. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+.doc-page .fade__blur {display:none}
+}
+
+/* --- the 09 → 10 seam ----------------------------------------------------- */
+/* No photograph here — the pilot band already carries one, and two images in a
+   row would compete. Just a blue that dissolves the white section into the
+   darkest one on the page. The glow is a blurred radial rather than another
+   gradient stop, because a gradient alone still leaves a readable edge where
+   its slope changes. */
+.doc-page .seam {
+  position:relative; z-index:1; height:clamp(160px,18vw,300px); overflow:hidden;
+  margin-block-start:calc(var(--band) * -0.5);
+  margin-block-end:calc(var(--band) * -0.5);
+  background:linear-gradient(180deg,
+    var(--paper-raised) 0%, var(--qb-primary-50) 22%, var(--qb-primary-300) 48%, var(--qb-primary-600) 74%, var(--navy-900) 100%);
+}
+/* The glow is masked out before the seam's bottom edge. Left to itself it is
+   taller than the seam, and overflow:hidden cut its bright middle off against
+   the navy as a straight line — visible across the centre and not at the
+   corners, where the radial has already fallen away horizontally. */
+.doc-page .seam i {
+  position:absolute; inset-inline:-10%; inset-block-start:34%; height:70%;
+  background:radial-gradient(60% 100% at 50% 30%, color-mix(in oklab, var(--qb-primary-300) 85%, transparent), color-mix(in oklab, var(--qb-primary-500) 35%, transparent) 55%, transparent 78%);
+  filter:blur(52px); opacity:.9;
+  -webkit-mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,rgba(0,0,0,.55) 46%,transparent 82%);
+          mask-image:linear-gradient(180deg,var(--qb-neutral-950) 0%,rgba(0,0,0,.55) 46%,transparent 82%);
+}
+/* And the last hand's breadth of the seam is navy over navy, so whatever the
+   gradient and the glow leave behind lands on the pilot band without a step. */
+.doc-page .seam::after {
+  content:""; position:absolute; inset-inline:0; inset-block-end:0; height:34%;
+  background:linear-gradient(180deg, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 0%, transparent) 0%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 72%, transparent) 58%, var(--navy-900) 100%);
+}
+
+
+
+/* --- the ledger (section 01) ---------------------------------------------
+   A statement of account, because that is what the section is: six ways money
+   leaves the business. Rules rather than boxes, the number in the margin where
+   a line number goes, and the account it comes out of set right — so the eye
+   runs down one column instead of round a grid of six equal cards.
+--------------------------------------------------------------------------- */
+.doc-page .ledger {list-style:none; margin:clamp(36px,4.5vw,56px) 0 0; padding:0; border-block-start:1px solid var(--navy-line)}
+.doc-page .ledger__row {
+  display:grid; align-items:baseline;
+  grid-template-columns:clamp(52px,6vw,88px) minmax(0,1fr) clamp(84px,10vw,140px);
+  gap:0 clamp(14px,2vw,28px);
+  padding-block:clamp(20px,2.4vw,30px);
+  border-block-end:1px solid var(--navy-line);
+  transition:background .18s ease;
+}
+/* The whole row lifts, not a card — there is no card. */
+.doc-page .ledger__row:hover {background:color-mix(in oklab, var(--qb-primary-300) 4.5%, transparent)}
+.doc-page .ledger__n {
+  font-family:var(--mono); font-size:.8rem; font-weight:500; letter-spacing:.06em;
+  color:var(--blue-light); opacity:.72;
+}
+.doc-page .ledger__what h3 {
+  font-size:clamp(1.08rem,1.7vw,1.42rem); letter-spacing:-.02em; line-height:1.24;
+  color:var(--white); font-weight:700; text-wrap:balance;
+}
+.doc-page .ledger__what p {margin-top:8px; color:var(--navy-ink-muted); font-size:1rem; line-height:1.6; max-width:62ch}
+/* Mono, uppercase, quiet: it is a column header repeated per row, not a label
+   anybody needs to read twice. */
+.doc-page .ledger__acct {
+  font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; text-transform:uppercase;
+  color:color-mix(in oklab, var(--qb-primary-200) 60%, transparent); text-align:end;
+}
+@media (max-width:720px){
+.doc-page .ledger__row {grid-template-columns:clamp(40px,10vw,56px) minmax(0,1fr); gap:0 14px}
+  /* The account moves under the entry rather than shrinking to nothing. */
+.doc-page .ledger__acct {grid-column:2; text-align:start; margin-top:10px}
+}
+
+
+/* --- the specification (section 08) ---------------------------------------
+   A term and its definition, which is the shape a guarantee actually has. The
+   term sits in the margin in mono — the same place, and the same face, as the
+   line number in the ledger above — so the two sections read as two views of
+   one document rather than as two unrelated components.
+--------------------------------------------------------------------------- */
+.doc-page .spec {margin:clamp(40px,5vw,64px) 0 0; border-block-start:1px solid var(--navy-line)}
+.doc-page .spec__row {
+  display:grid; grid-template-columns:clamp(96px,12vw,168px) minmax(0,1fr);
+  gap:0 clamp(16px,2.4vw,34px);
+  padding-block:clamp(18px,2.2vw,26px); border-block-end:1px solid var(--navy-line);
+}
+.doc-page .spec dt {
+  font-family:var(--mono); font-size:.66rem; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--blue-light); opacity:.75; padding-block-start:5px;
+}
+.doc-page .spec dd {margin:0}
+.doc-page .spec dd b {display:block; color:var(--white); font-size:clamp(1.02rem,1.4vw,1.2rem); font-weight:700; letter-spacing:-.016em}
+.doc-page .spec dd span {display:block; margin-top:6px; color:var(--navy-ink-muted); line-height:1.6; max-width:64ch}
+@media (max-width:640px){
+.doc-page .spec__row {grid-template-columns:minmax(0,1fr); gap:8px}
+.doc-page .spec dt {padding-block-start:0}
+}
+
+/* --- the verified figures --------------------------------------------------
+   Lifted out of the list because they are the only numbers on this page a
+   sceptical reader will actually go and check, and a checkable number buried in
+   the sixth card of a grid is a number nobody checks.
+--------------------------------------------------------------------------- */
+.doc-page .verified {margin-top:clamp(32px,4vw,48px)}
+.doc-page .verified__lede {font-family:var(--mono); font-size:.68rem; letter-spacing:.14em;
+  text-transform:uppercase; color:color-mix(in oklab, var(--qb-primary-200) 72%, transparent)}
+.doc-page .verified__figures {
+  display:flex; flex-wrap:wrap; gap:clamp(24px,4vw,64px);
+  margin:20px 0 0; padding:0; list-style:none;
+}
+.doc-page .verified__figures li {display:flex; flex-direction:column; gap:2px}
+.doc-page .verified__figures b {
+  font-family:var(--mono); font-size:clamp(1.7rem,3.4vw,2.7rem); font-weight:600;
+  color:var(--white); line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+}
+.doc-page .verified__figures span {font-size:.86rem; color:var(--navy-ink-muted)}
+.doc-page .verified__note {margin-top:22px; font-size:.94rem; color:var(--navy-ink-muted); max-width:60ch}
+
+
+/* --- the integration board (section 09) -----------------------------------
+   Borrowed from Settings › Integrations, which is a list with a state against
+   each row. The state is a word and a dot, not a badge with a background: the
+   section's point is that these labels are literal, and a label that looks
+   like marketing is one a reader discounts.
+--------------------------------------------------------------------------- */
+.doc-page .wires {margin:clamp(36px,4.5vw,56px) 0 0; padding:0; list-style:none; border-block-start:1px solid var(--line)}
+.doc-page .wire {
+  display:grid; align-items:baseline;
+  grid-template-columns:clamp(88px,11vw,132px) minmax(0,1.05fr) minmax(0,1.55fr);
+  gap:6px clamp(16px,2.4vw,32px);
+  padding-block:clamp(18px,2.2vw,26px); border-block-end:1px solid var(--line);
+}
+.doc-page .wire__state {
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:.66rem; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-subtle);
+}
+.doc-page .wire__state i {width:7px; height:7px; border-radius:50%; background:currentColor; flex:none}
+.doc-page .wire--live .wire__state {color:var(--qb-positive)}
+.doc-page .wire--wait .wire__state {color:var(--amber)}
+.doc-page .wire--part .wire__state {color:var(--blue)}
+/* Not a colour: the point of this row is that nothing is running yet, and a
+   coloured dot would say otherwise. */
+.doc-page .wire--none .wire__state {color:var(--ink-subtle)}
+.doc-page .wire--none .wire__state i {background:none; box-shadow:inset 0 0 0 1.5px currentColor}
+
+.doc-page .wire__name {font-weight:700; font-size:1.02rem; letter-spacing:-.014em; color:var(--ink)}
+.doc-page .wire__name small {display:block; margin-top:4px; font-weight:500; font-size:.82rem;
+  color:var(--ink-subtle); letter-spacing:0}
+.doc-page .wire__note {color:var(--ink-muted); font-size:.97rem; line-height:1.6}
+@media (max-width:820px){
+.doc-page .wire {grid-template-columns:minmax(0,1fr); gap:8px}
+.doc-page .wire__state {order:-1}
+}
+
+/* --- the demo band -------------------------------------------------------- */
+/*
+   Two columns: the argument on one side, the keys on the other. The keys are
+   set as a card rather than as prose because that is what they are — something
+   to be copied, not read — and because a password in a paragraph is a password
+   nobody finds.
+*/
+.doc-page .demo {display:grid; gap:clamp(28px,4vw,64px); align-items:start}
+@media (min-width:960px){ .demo{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr)} }
+.doc-page .demo__caveat {margin-top:22px; max-width:52ch}
+
+.doc-page .demo__keys {
+  background:var(--navy-900); color:var(--navy-ink); border-radius:var(--radius);
+  padding:clamp(24px,3vw,36px); box-shadow:var(--shadow-lg);
+}
+.doc-page .demo__lede {font-size:.97rem; color:var(--navy-ink-muted); margin-bottom:18px}
+.doc-page .demo__lede em {color:var(--white); font-style:normal; font-weight:700}
+
+.doc-page .demo__list {display:grid; gap:2px}
+.doc-page .demo__list li {
+  display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between;
+  gap:6px 18px; padding:14px 0; border-bottom:1px solid var(--navy-line);
+}
+.doc-page .demo__list li:first-child {border-top:1px solid var(--navy-line)}
+.doc-page .demo__who {display:flex; flex-direction:column; gap:3px; font-weight:700; color:var(--white); font-size:1rem}
+.doc-page .demo__who small {font-weight:500; font-size:.83rem; color:var(--navy-ink-muted); line-height:1.45}
+/*
+   The address is the thing being copied, so it is the thing set in mono — the
+   product's own convention, where data is mono and prose is not. `user-select`
+   is left alone deliberately: a click-to-copy that needs JavaScript is one more
+   thing to break on a page that otherwise needs none.
+*/
+.doc-page .demo__list code, .doc-page .demo__pw code {
+  font-family:var(--mono); font-size:.86rem; color:var(--blue-light);
+  background:color-mix(in oklab, var(--qb-primary-500) 12%, transparent); border:1px solid color-mix(in oklab, var(--qb-primary-300) 20%, transparent);
+  border-radius:6px; padding:4px 9px; white-space:nowrap;
+}
+.doc-page .demo__pw {margin:22px 0 24px; font-size:.94rem; color:var(--navy-ink-muted)}
+.doc-page .demo__foot {margin-top:20px; color:var(--navy-ink-muted); max-width:52ch}
+.doc-page .band--white .demo__keys .small.muted, .doc-page .demo__keys .muted {color:var(--navy-ink-muted)}
+
+/* On a narrow screen the label and the address stop sharing a line, and the
+   address wants the full width rather than a ragged hang. */
+@media (max-width:560px){
+.doc-page .demo__list li {flex-direction:column; align-items:flex-start}
+.doc-page .demo__list code {white-space:normal; word-break:break-all}
+}
+
+/* The line under the hero buttons. Deliberately quiet — it answers "what does
+   clicking that cost me", which is a doubt rather than a selling point. */
+.doc-page .hero__note {
+  margin-top:18px; font-size:.92rem; color:rgba(232,239,249,.62);
+  font-weight:500; text-wrap:balance;
+}
+
+/* --- footer wave ---------------------------------------------------------- */
+.doc-page .footer-wave {background:var(--paper); line-height:0; position:relative}
+.doc-page .footer-wave svg {display:block; width:100%; height:clamp(64px,7.5vw,132px)}
+
+/* --- pilot band ---------------------------------------------------------- */
+.doc-page .pilot {position:relative; overflow:hidden; background:var(--navy-900)}
+.doc-page .pilot__media {position:absolute; inset:0}
+.doc-page .pilot__media img {width:100%; height:100%; object-fit:cover; opacity:.42}
+.doc-page .pilot__media::after {content:""; position:absolute; inset:0;
+  background:linear-gradient(100deg, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 95%, transparent) 8%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 78%, transparent) 46%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 50%, transparent) 100%)}
+.doc-page .pilot .shell {position:relative; z-index:2}
+.doc-page .pilot__grid {display:grid; grid-template-columns:minmax(0,1fr) minmax(0,460px); gap:clamp(40px,5vw,76px); align-items:start}
+@media (max-width:980px){ .pilot__grid{grid-template-columns:1fr} }
+.doc-page .steps {display:grid; gap:2px; margin-top:36px}
+.doc-page .step {display:grid; grid-template-columns:auto 1fr; gap:20px; padding:20px 0; border-bottom:1px solid var(--navy-line)}
+.doc-page .step:last-child {border-bottom:0}
+.doc-page .step__n {font-family:var(--mono); font-size:.8rem; color:var(--blue-light); padding-top:4px; letter-spacing:.08em}
+.doc-page .step h3 {font-size:1.04rem; margin-bottom:7px; color:var(--white)}
+.doc-page .step p {font-size:.94rem; color:var(--navy-ink-muted); line-height:1.55}
+
+/* --- form ---------------------------------------------------------------- */
+.doc-page .form-card {background:rgba(255,255,255,.055); border:1px solid var(--navy-line); border-radius:var(--radius); padding:clamp(26px,3vw,34px); backdrop-filter:blur(10px)}
+/* .pilot is dark but is not .band--navy, so the white heading override does not
+   reach here — the ink default rendered this all but invisible on the navy. */
+.doc-page .form-card h3 {font-size:1.2rem; margin-bottom:8px; color:var(--white)}
+.doc-page .form-card > p {font-size:.94rem; color:var(--navy-ink-muted); margin-bottom:24px}
+.doc-page .field {display:grid; gap:7px; margin-bottom:15px}
+.doc-page .field label {font-family:var(--mono); font-size:.71rem; letter-spacing:.12em; text-transform:uppercase; color:var(--navy-ink-muted)}
+.doc-page .field input, .doc-page .field select {
+  font-family:var(--sans); font-size:.97rem; color:var(--white);
+  background:rgba(0,0,0,.26); border:1px solid var(--navy-line); border-radius:9px;
+  padding:12px 14px; width:100%; transition:border-color .16s ease, background .16s ease;
+}
+.doc-page .field input::placeholder {color:color-mix(in oklab, var(--qb-primary-200) 55%, transparent)}
+.doc-page .field input:focus, .doc-page .field select:focus {outline:none; border-color:var(--blue-light); background:rgba(0,0,0,.4)}
+.doc-page .field select option {background:var(--navy); color:var(--white)}
+.doc-page .field-row {display:grid; grid-template-columns:1fr 1fr; gap:15px}
+/* An even split is wrong for the last row: the select holds "7 or more" and no
+   more, while its neighbour has to show a placeholder of worked examples. Split
+   evenly, that placeholder clipped mid-word at every width the card is laid out
+   at. */
+.doc-page .field-row--uneven {grid-template-columns:minmax(0,.52fr) minmax(0,1fr)}
+@media (max-width:520px){ .field-row{grid-template-columns:1fr} }
+.doc-page .form-card .btn {width:100%; margin-top:10px}
+.doc-page .form-note {margin-top:16px; font-size:.84rem; color:var(--navy-ink-muted); line-height:1.5}
+.doc-page .form-sent {
+  display:none; margin-top:18px; padding:14px 16px; border-radius:9px;
+  background:color-mix(in oklab, var(--qb-primary-300) 12%, transparent); border:1px solid color-mix(in oklab, var(--qb-primary-300) 30%, transparent);
+  font-size:.92rem; line-height:1.55; color:var(--navy-ink);
+}
+.doc-page .form-sent.is-on {display:block}
+
+/* --- FAQ ----------------------------------------------------------------- */
+/*
+  Two columns above 1000px: the section heading holds the left, the questions
+  take the right. As one 860px column inside a 1200px shell it left a third of
+  the band empty beside a list of short lines, which reads as an unfinished
+  page rather than as a wide margin.
+*/
+.doc-page .faq-wrap {display:grid; gap:clamp(28px,4vw,64px); align-items:start}
+@media (min-width:1000px){ .faq-wrap{grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr)} }
+.doc-page .faq-wrap .section-head {margin-bottom:0; position:sticky; inset-block-start:104px}
+@media (max-width:999px){ .faq-wrap .section-head{position:static} }
+.doc-page .faq {margin-top:0}
+.doc-page .faq details {border-bottom:1px solid var(--line)}
+.doc-page .faq summary {
+  cursor:pointer; list-style:none; padding-block:24px; padding-inline:0 44px; position:relative;
+  font-weight:700; font-size:1.05rem; letter-spacing:-.014em; color:var(--ink);
+}
+.doc-page .faq summary::-webkit-details-marker {display:none}
+.doc-page .faq summary::after {
+  content:""; position:absolute; inset-inline-end:8px; inset-block-start:31px;
+  width:11px; height:11px; border-inline-end:2px solid var(--blue); border-block-end:2px solid var(--blue);
+  transform:rotate(45deg); transition:transform .2s ease;
+}
+.doc-page .faq details[open] summary::after {transform:rotate(-135deg); inset-block-start:34px}
+.doc-page .faq summary:hover {color:var(--blue)}
+.doc-page .faq p {padding-block:0 26px; padding-inline:0 44px; color:var(--ink-muted); font-size:.99rem; line-height:1.65; max-width:72ch}
+
+/* --- divider photo ------------------------------------------------------- */
+.doc-page .divider {height:clamp(200px,26vw,340px); position:relative; overflow:hidden; background:var(--navy-900)}
+.doc-page .divider img {width:100%; height:100%; object-fit:cover}
+.doc-page .divider::after {content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg,var(--paper) 0%, color-mix(in oklab, var(--qb-primary-950) 35%, transparent) 26%, color-mix(in oklab, var(--qb-primary-950) 55%, transparent) 74%, var(--navy-900) 100%)}
+
+/* --- footer -------------------------------------------------------------- */
+.doc-page .site-footer {background:var(--navy-900); color:var(--navy-ink-muted); padding-block:0 40px}
+.doc-page .footer-top {margin-block-start:clamp(40px,5vw,72px); display:grid; grid-template-columns:minmax(0,1.4fr) repeat(2,minmax(0,1fr)); gap:40px; padding-bottom:44px; border-bottom:1px solid var(--navy-line)}
+@media (max-width:820px){ .footer-top{grid-template-columns:1fr 1fr} .footer-brand{grid-column:1/-1} }
+.doc-page .footer-brand img {height:30px; margin-bottom:22px}
+.doc-page .footer-brand p {font-size:.95rem; line-height:1.62; max-width:40ch}
+.doc-page .site-footer h4 {font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--blue-light); margin-bottom:18px; font-weight:500}
+.doc-page .site-footer li {margin-bottom:11px}
+.doc-page .site-footer a {color:var(--navy-ink-muted); text-decoration:none; font-size:.94rem; transition:color .16s ease}
+.doc-page .site-footer a:hover {color:var(--white)}
+.doc-page .footer-bottom {display:flex; flex-wrap:wrap; gap:14px 28px; justify-content:space-between; padding-top:28px; font-size:.85rem}
+
+
+/* ---------------------------------------------------------------------------
+   The stacked deck (sections 03–05)
+   Three sticky siblings in one tall wrapper. Each pins under the header; the
+   next slides up and covers it. The card underneath is scaled and dimmed from
+   JS as it is covered, which is what makes the stack read as depth rather than
+   as one panel replacing another.
+--------------------------------------------------------------------------- */
+.doc-page .stackwrap {
+  background:var(--paper);
+  padding-block:var(--band) calc(var(--band) + 4vh);
+  padding-inline:var(--gutter);
+}
+.doc-page .stack-card {
+  position:sticky; inset-block-start:84px;
+  /* Was 1500px, on the reasoning that a card showing a 1440-wide interface
+     wants more room than body copy. It does, but 1500 is not more room, it is
+     a fourth margin — 120px outside the column everything else lines up on,
+     which reads as a mistake rather than as emphasis. */
+  max-width:calc(var(--shell) - var(--gutter) * 2); margin-inline:auto;
+  margin-block-end:clamp(24px,4vh,52px);
+}
+.doc-page .stack-card:last-child {margin-block-end:0}
+.doc-page .stack-card .h2 {font-size:clamp(1.55rem,2.35vw,2.1rem)}
+.doc-page .stack-card .lead {font-size:clamp(.98rem,1.15vw,1.08rem); margin-top:14px}
+.doc-page .stack-card .eyebrow {margin-bottom:14px}
+.doc-page .stack-card__inner {
+  background:var(--paper-raised);
+  border:1px solid var(--line); border-radius:var(--radius);
+  padding:clamp(24px,2.6vw,40px);
+  box-shadow:0 20px 56px color-mix(in oklab, var(--qb-primary-950) 11%, transparent), 0 3px 10px color-mix(in oklab, var(--qb-primary-950) 5%, transparent);
+  transform-origin:50% 0%;
+  will-change:transform, opacity;
+  overflow:hidden;
+}
+.doc-page .stack-card--dark .stack-card__inner {
+  background:var(--navy-900); border-color:rgba(255,255,255,.1); color:var(--navy-ink);
+  box-shadow:0 24px 64px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 34%, transparent), 0 3px 10px color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 20%, transparent);
+}
+.doc-page .stack-card--dark .h2 {color:var(--white)}
+.doc-page .stack-card--dark .lead {color:var(--navy-ink-muted)}
+.doc-page .stack-card--dark .eyebrow {color:var(--blue-light)}
+.doc-page .stack-card--dark .feature-list li {color:var(--navy-ink-muted)}
+.doc-page .stack-card--dark .feature-list b {color:var(--white)}
+.doc-page .stack-card--dark .fins i:nth-child(3) {background:var(--white)}
+.doc-page .stack-card--dark .frame {border-color:rgba(255,255,255,.16)}
+/* Two screenshots, same width and same height, one above the other. The height
+   is clamped against the viewport rather than the image, because the card has
+   to finish inside one screen for the sticky stack to read at all — so the
+   frames crop from the top, which is the informative half of every screen. */
+.doc-page .shot .frame {border-radius:12px; height:auto; max-height:calc(100vh - 210px); overflow:hidden}
+.doc-page .shot .frame img {width:120.5%; max-width:none; height:auto; display:block;
+  margin-inline-start:-20.5%}   /* 17% of the rendered width — the sidebar */
+@media (max-width:980px){
+.doc-page .shot .frame {height:auto}
+.doc-page .shot .frame img {width:100%; margin-inline-start:0}
+}
+@media (max-width:820px){
+.doc-page .stack-card {position:static; inset-block-start:auto}
+.doc-page .stack-card__inner {transform:none !important; opacity:1 !important}
+}
+
+/* --- finish: grain, nav underline, focus ---------------------------------- */
+/* A single fixed grain layer over the whole page. At 3% it is invisible as
+   texture and visible as the absence of flatness on the large navy fields. */
+/* The grain layer this file used to carry is gone with the `body` it hung off:
+   scoped to `main` it would have stopped at the header and drawn a visible
+   seam, and a 3% texture is not worth a wrapper element to keep. */
+.doc-page .hero__media img {transform:scale(1.08); will-change:transform}
+.doc-page :focus-visible {outline:2px solid var(--blue-light); outline-offset:3px; border-radius:4px}
+.doc-page ::selection {background:color-mix(in oklab, var(--qb-primary-500) 24%, transparent)}
+
+/* --- motion -------------------------------------------------------------- */
+/*
+  `.rise` is now inert, and deliberately so.
+
+  It used to fade-and-lift 39 elements — every card, every heading, every list
+  item — on the same curve with the same 18px travel. One motion applied to
+  everything is not a design decision, it is a default, and it is one of the
+  named tells of a page nobody art-directed. Motion on this page now has to
+  earn its place by doing a job: the demurrage clock in the hero counts because
+  the counting *is* the argument, and the stacked product cards scale because
+  the depth is what makes them read as a pile. Nothing else moves.
+
+  The class is left on the markup rather than stripped out of two documents,
+  and left defined rather than deleted, so that this reasoning has somewhere to
+  live and so a future change is one rule rather than 39 edits.
+*/
+.doc-page .rise {opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){
+.doc-page .rise {opacity:1; transform:none; transition:none}
+.doc-page .btn:hover, .doc-page .card:hover, .doc-page .leak:hover, .doc-page .to-top:hover, .doc-page .conn--none:hover {transform:none}
+.doc-page .conn::before {transition:none}
+.doc-page .to-top {transform:none}
+}
+
+
+
+/* ===========================================================================
+   PAGES BEYOND THE HOME PAGE
+   ---------------------------------------------------------------------------
+   Everything below is for the documents that hang off index.html: the two
+   error pages, the three legal drafts, and the two standalone marketing pages.
+   None of it forks anything above — the bands, the shell, the buttons, the
+   pills, the cards, the rail and the scope columns are the same objects. What
+   is added here is the handful of shapes the home page has no use for: a
+   shorter masthead, a two-column document with a table of contents, an
+   unmissable draft warning, a placeholder that cannot be mistaken for a
+   decision, and a comparison table.
+   =========================================================================== */
+
+/* --- the page masthead ------------------------------------------------------
+   Every page that is not the home page opens with one of these. It is the
+   `.hero` object with its proportions taken down: the same navy, the same
+   document grid, the same mono kicker sitting where a file number would — but
+   at the height of a title block rather than a hero.
+
+   The class is deliberately still `.hero`, not a new one. `site.js` measures
+   `document.querySelector('.hero').offsetHeight` to decide when the
+   back-to-top button appears, and a page with no `.hero` throws there before
+   anything else on the page has run.
+--------------------------------------------------------------------------- */
+.doc-page .hero--page {padding-block:clamp(112px,13vh,150px) clamp(52px,6vw,84px)}
+.doc-page .hero--page .display {font-size:clamp(2.15rem,4.6vw,3.5rem); letter-spacing:-.03em; max-width:20ch}
+.doc-page .hero--page .hero__sub {max-width:62ch; margin-top:clamp(18px,2.2vw,26px)}
+/* The masthead's own trailing rule: the page has no manifest strip under it,
+   and without an edge the navy simply stops. */
+.doc-page .hero--page::after {
+  content:""; position:absolute; inset-inline:0; inset-block-end:0; height:1px;
+  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--qb-primary-300) 34%, transparent) 22%,color-mix(in oklab, var(--qb-primary-300) 34%, transparent) 78%,transparent);
+}
+/* A run of links under the masthead copy — "back to the home page", the demo,
+   the sibling documents. Set as a row of quiet mono links rather than buttons:
+   these are navigation, and three buttons in a row is a page asking to be
+   clicked rather than read. */
+.doc-page .hero__ways {
+  display:flex; flex-wrap:wrap; gap:10px 26px;
+  margin-top:clamp(26px,3vw,36px);
+  font-family:var(--mono); font-size:.79rem; letter-spacing:.06em;
+}
+.doc-page .hero__ways a {color:var(--blue-light); text-decoration:none; display:inline-flex; align-items:center; gap:8px}
+.doc-page .hero__ways a::before {content:"→"; opacity:.6}
+.doc-page .hero__ways a:hover {color:var(--white)}
+.doc-page .hero__ways a:hover::before {opacity:1}
+.doc-page [dir="rtl"] .hero__ways a::before {content:"←"}
+
+/* --- error pages ------------------------------------------------------------
+   Short, and the same voice the product's own boundary uses: what happened,
+   that nothing was lost, and a way on. The product shows an error digest there
+   because it has one; a static file does not, and inventing a reference number
+   for a page that logs nothing would be worse than having none.
+
+   The status code is set large in mono, outlined rather than filled, because it
+   is the one piece of the page that is a machine's word rather than ours.
+--------------------------------------------------------------------------- */
+.doc-page .errband {min-height:calc(100dvh - 72px); display:flex; align-items:center}
+.doc-page .err {display:grid; gap:clamp(30px,4vw,56px); align-items:start}
+@media (min-width:900px){ .err{grid-template-columns:minmax(0,1fr) minmax(0,.72fr)} }
+.doc-page .err__code {
+  font-family:var(--mono); font-weight:600; line-height:.9;
+  font-size:clamp(4.6rem,11vw,9rem); letter-spacing:-.02em;
+  color:transparent; -webkit-text-stroke:1.5px color-mix(in oklab, var(--qb-primary-300) 50%, transparent);
+  margin-bottom:clamp(20px,2.4vw,30px);
+}
+@supports not (-webkit-text-stroke:1px var(--qb-neutral-950)){ .err__code{color:color-mix(in oklab, var(--qb-primary-300) 50%, transparent)} }
+.doc-page .err h1 {font-size:clamp(1.9rem,4vw,3rem); color:var(--white); letter-spacing:-.03em; max-width:17ch; text-wrap:balance}
+.doc-page .err__say {margin-top:20px; max-width:54ch; color:rgba(232,239,249,.74); font-size:clamp(1rem,1.3vw,1.13rem); line-height:1.62}
+.doc-page .err__say + .err__say {margin-top:14px}
+.doc-page .err__say b {color:var(--white); font-weight:700}
+/* The ways out, as ruled rows rather than a row of buttons: four equal choices,
+   and the visitor is the one who knows which one they wanted. */
+.doc-page .err__out {border-block-start:1px solid var(--navy-line)}
+.doc-page .err__out li {margin:0}
+.doc-page .err__out a {
+  display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:6px 18px;
+  padding-block:17px; border-block-end:1px solid var(--navy-line);
+  text-decoration:none; color:var(--navy-ink); transition:background .16s ease, padding .16s ease;
+}
+.doc-page .err__out a:hover {background:color-mix(in oklab, var(--qb-primary-300) 6%, transparent); padding-inline:10px}
+.doc-page .err__out b {display:block; font-size:1rem; font-weight:700; color:var(--white)}
+.doc-page .err__out small {display:block; margin-top:4px; font-size:.86rem; color:var(--navy-ink-muted); line-height:1.5}
+.doc-page .err__tag {
+  font-family:var(--mono); font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--blue-light); white-space:nowrap; justify-self:end;
+}
+
+/* --- the draft warning ------------------------------------------------------
+   These three documents were written from the source code, and nobody with a
+   practising certificate has read them. That has to be the first thing on the
+   page and it has to survive being skimmed, so it is a full-bleed amber band
+   directly under the header — the same amber the status pills use for "waiting
+   on something", which is exactly what this is.
+--------------------------------------------------------------------------- */
+.doc-page .draft {background:var(--amber-soft); border-block-end:1px solid color-mix(in oklab, var(--qb-caution) 40%, transparent); color:var(--qb-caution)}
+.doc-page .draft .shell {
+  display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px 20px;
+  align-items:start; padding-block:18px;
+}
+@media (max-width:620px){ .draft .shell{grid-template-columns:1fr} }
+.doc-page .draft__tag {
+  font-family:var(--mono); font-size:.7rem; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  background:var(--amber); color:var(--qb-neutral-50); border-radius:5px; padding:6px 11px; white-space:nowrap;
+}
+.doc-page .draft p {font-size:.93rem; line-height:1.58; max-width:88ch}
+.doc-page .draft b {font-weight:700}
+/* The same warning restated at the head of the document itself, where a reader
+   who arrived on an anchor lands. */
+.doc-page .draft-card {
+  border:1px solid color-mix(in oklab, var(--qb-caution) 45%, transparent); border-inline-start-width:4px;
+  border-radius:var(--radius); background:var(--amber-soft); color:var(--qb-caution);
+  padding:clamp(20px,2.4vw,28px); margin-bottom:clamp(34px,4vw,48px);
+}
+/* `display:block` and the explicit colour are both overriding `.doc__body h2`
+   and `.doc__body p`, which this card sits inside. Without them the warning
+   inherits the document's numbered-heading grid and its muted body ink — and
+   ends up quieter than the clauses it is warning about. */
+.doc-page .draft-card h2 {display:block; font-size:1.12rem; margin-bottom:12px; color:var(--qb-caution); letter-spacing:-.014em}
+.doc-page .draft-card p, .doc-page .doc__body .draft-card p {font-size:.94rem; line-height:1.62; color:var(--qb-caution)}
+.doc-page .draft-card p + p {margin-top:11px}
+.doc-page .draft-card ul, .doc-page .doc__body .draft-card ul {margin-top:12px; display:grid; gap:7px; padding-inline-start:0; list-style:none}
+.doc-page .draft-card li, .doc-page .doc__body .draft-card li {display:block; font-size:.94rem; line-height:1.55; color:var(--qb-caution); padding-inline-start:18px; position:relative}
+.doc-page .draft-card li::before {content:"\2014"; position:absolute; inset-inline-start:0; opacity:.6}
+.doc-page .draft-card b, .doc-page .draft-card strong {color:var(--qb-caution); font-weight:700}
+
+/* The draft marker in the masthead — the first of the three places the warning
+   appears, and the one a reader sees before the headline. */
+.doc-page .pill--draft {background:color-mix(in oklab, var(--qb-caution) 16%, transparent); color:var(--amber-on-dark); border:1px solid color-mix(in oklab, var(--qb-caution) 45%, transparent)}
+.doc-page .hero--page .pill--draft {margin-bottom:clamp(18px,2.2vw,26px)}
+
+/* --- placeholders -----------------------------------------------------------
+   Anything a lawyer or a director still has to decide is marked and styled so
+   it cannot be read as a decision that has been taken. Dashed, amber, mono, and
+   it says so in words: `[TO CONFIRM: …]`. The failure mode this exists to
+   prevent is a plausible-looking retention period nobody ever chose.
+--------------------------------------------------------------------------- */
+.doc-page .tbc {
+  font-family:var(--mono); font-size:.845em; font-weight:500; font-style:normal;
+  color:var(--qb-caution); background:color-mix(in oklab, var(--qb-caution) 11%, transparent);
+  border:1px dashed color-mix(in oklab, var(--qb-caution) 75%, transparent); border-radius:5px;
+  padding:1px 6px; margin-inline:1px;
+  -webkit-box-decoration-break:clone; box-decoration-break:clone;
+}
+.doc-page .band--navy .tbc, .doc-page .hero .tbc {
+  color:var(--amber-on-dark); background:color-mix(in oklab, var(--qb-caution) 12%, transparent); border-color:color-mix(in oklab, var(--qb-caution) 55%, transparent);
+}
+
+/* --- long documents ---------------------------------------------------------
+   Two columns above 1040px: the contents hold the leading edge and stay put,
+   the prose runs beside them at a measure of about 68 characters. Below that
+   the contents become a plain list at the top of the document, which is what a
+   phone can do with a table of contents that is worth anything.
+--------------------------------------------------------------------------- */
+.doc-page .doc {display:grid; gap:clamp(34px,4vw,72px); align-items:start}
+/* Grid items default to `min-width:auto`, so the widest thing inside the
+   document — the sub-processor table, which carries a 560px min-width so its
+   columns stay readable — pushed the whole single-column track to 562px and
+   scrolled the page sideways at 390. The table already scrolls inside its own
+   `.tablewrap`; this is what lets it. */
+.doc-page .doc > * {min-width:0}
+@media (min-width:1040px){ .doc{grid-template-columns:minmax(0,232px) minmax(0,1fr)} }
+
+.doc-page .doc__toc {position:relative}
+@media (min-width:1040px){
+.doc-page .doc__toc {position:sticky; inset-block-start:96px; max-height:calc(100vh - 130px); overflow-y:auto; padding-block-end:20px}
+}
+.doc-page .doc__toc h2 {
+  font-family:var(--mono); font-size:.72rem; font-weight:500; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-subtle); margin-bottom:16px;
+}
+.doc-page .doc__toc ol {list-style:none; counter-reset:toc; display:grid; gap:1px}
+.doc-page .doc__toc li {counter-increment:toc}
+.doc-page .doc__toc a {
+  display:grid; grid-template-columns:2.1em 1fr; gap:8px; align-items:baseline;
+  padding-block:7px; text-decoration:none; font-size:.9rem; line-height:1.4;
+  color:var(--ink-muted); border-block-end:1px solid transparent;
+  transition:color .16s ease;
+}
+.doc-page .doc__toc a::before {
+  content:counter(toc,decimal-leading-zero);
+  font-family:var(--mono); font-size:.74rem; color:var(--ink-subtle); letter-spacing:.04em;
+}
+.doc-page .doc__toc a:hover {color:var(--blue)}
+.doc-page .doc__toc a:hover::before {color:var(--blue)}
+
+.doc-page .doc__body {max-width:68ch}
+.doc-page .doc__body > section {scroll-margin-top:96px; padding-block:clamp(30px,3.4vw,44px) 0}
+.doc-page .doc__body > section + section {border-block-start:1px solid var(--line); margin-block-start:clamp(30px,3.4vw,44px)}
+/* The section number sits in the heading rather than in a margin: at a 68ch
+   measure inside a 1200px shell there is no margin to put it in, and a number
+   floated into the gutter collides with the contents column. */
+.doc-page .doc__body h2 {
+  font-size:clamp(1.32rem,2.1vw,1.72rem); letter-spacing:-.022em; line-height:1.24;
+  display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:baseline;
+  margin-bottom:18px; text-wrap:balance;
+}
+.doc-page .doc__body h2 .doc__n {
+  font-family:var(--mono); font-size:.78rem; font-weight:500; letter-spacing:.1em;
+  color:var(--blue); padding-top:.25em;
+}
+.doc-page .doc__body h3 {
+  font-size:1.03rem; font-weight:700; letter-spacing:-.012em;
+  margin-top:clamp(24px,2.6vw,32px); margin-bottom:10px; scroll-margin-top:96px;
+}
+.doc-page .doc__body p {font-size:1rem; line-height:1.68; color:var(--ink-muted)}
+.doc-page .doc__body p + p {margin-top:14px}
+.doc-page .doc__body p strong, .doc-page .doc__body li strong {color:var(--ink); font-weight:700}
+.doc-page .doc__body a:not(.btn) {color:var(--blue); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px}
+.doc-page .doc__body a:not(.btn):hover {text-decoration-thickness:2px}
+/* Identifiers inside prose — a column name, an environment variable, a model
+   id. Mono at .9em rather than 1em: IBM Plex Mono runs larger on the body than
+   Manrope does, and matched by number it reads a size up. */
+.doc-page .doc__body code, .doc-page .doc td code, .doc-page .doc th code {
+  font-family:var(--mono); font-size:.88em; color:var(--ink);
+  background:color-mix(in oklab, var(--qb-primary-500) 7%, transparent); border-radius:5px; padding:1px 5px;
+  word-break:break-word;
+}
+
+/* A label a screen reader needs and a sighted reader does not — the empty
+   corner cell of the comparison table has to be announced as something. */
+.doc-page .visually-hidden {
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+
+/* Clause lists. Numbered against the section, because "3.4" is how a clause is
+   quoted back at you in an email and an unnumbered bullet cannot be. */
+.doc-page .clauses {counter-reset:clause; display:grid; gap:14px; margin-top:16px; list-style:none; padding-inline-start:0}
+/*
+  The number hangs in a padded gutter rather than sitting in a grid column.
+
+  It was a two-column grid, which looked right and was wrong: a grid container
+  makes a separate item of every element child, so a clause reading
+  "<strong>Your own database.</strong> Your data is in…" put the bold lead-in
+  in one cell and the sentence after it in the next row's first cell. Six
+  clauses came to five thousand pixels. `position` and a padded gutter keep the
+  clause as one run of prose, which is what a clause is.
+*/
+.doc-page .clauses > li {
+  counter-increment:clause; position:relative;
+  padding-inline-start:3.6em;
+  font-size:1rem; line-height:1.66; color:var(--ink-muted);
+}
+.doc-page .clauses > li::before {
+  content:attr(data-s) "." counter(clause);
+  position:absolute; inset-inline-start:0; inset-block-start:.3em;
+  font-family:var(--mono); font-size:.78rem; color:var(--ink-subtle); letter-spacing:.03em;
+}
+/* An unnumbered list, for the places where a clause is a set rather than a
+   sequence — the categories of data, the things a customer may not do. */
+.doc-page .doc__body ul.bullets {display:grid; gap:9px; margin-top:14px; padding-inline-start:1.1em; list-style:disc}
+.doc-page .doc__body ul.bullets li {display:list-item; font-size:.985rem; line-height:1.62; color:var(--ink-muted)}
+.doc-page .doc__body ul.bullets li::marker {color:var(--blue)}
+
+/* Defined terms. A description list, set so the term and its definition stay on
+   one grid rather than indenting away from each other. */
+.doc-page .defs {display:grid; gap:0; margin-top:18px; border-block-start:1px solid var(--line)}
+.doc-page .defs > div {
+  display:grid; gap:4px 20px; padding-block:14px; border-block-end:1px solid var(--line);
+}
+@media (min-width:680px){ .defs > div{grid-template-columns:minmax(0,.42fr) minmax(0,1fr)} }
+.doc-page .defs dt {font-weight:700; color:var(--ink); font-size:.97rem; line-height:1.5}
+.doc-page .defs dd {margin:0; font-size:.95rem; line-height:1.6; color:var(--ink-muted)}
+
+/* Tables — the sub-processor list, the data categories, the comparison grid.
+   Wrapped in a scroller because a four-column table at 390px is either scrolled
+   or unreadable, and reflowing a table into cards loses the column you were
+   reading across. */
+.doc-page .tablewrap {overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:20px; border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-raised)}
+/* Scoped to `.tablewrap` rather than to `.doc`, so the comparison table on
+   compare.html and the sub-processor tables in the legal drafts are the same
+   object. Anything inside a wrapper is a table meant to be read across. */
+.doc-page .tablewrap table {width:100%; border-collapse:collapse; min-width:560px; font-size:.92rem}
+.doc-page .tablewrap thead th {
+  text-align:start; padding:14px 16px; border-block-end:1px solid var(--line-strong);
+  font-family:var(--mono); font-size:.7rem; font-weight:500; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-subtle); vertical-align:bottom; background:var(--paper);
+}
+.doc-page .tablewrap tbody td {
+  padding:14px 16px; border-block-end:1px solid var(--line); vertical-align:top;
+  line-height:1.55; color:var(--ink-muted);
+}
+.doc-page .tablewrap tbody th {
+  padding:14px 16px; border-block-end:1px solid var(--line); text-align:start;
+  font-weight:700; color:var(--ink); vertical-align:top; line-height:1.5;
+}
+.doc-page .tablewrap tbody tr:last-child td, .doc-page .tablewrap tbody tr:last-child th {border-block-end:0}
+/*
+  The leading column stays put while the rest of the table scrolls under it.
+
+  Without this, a four-column comparison on a 390px screen shows one and a half
+  columns of answers with no way to tell which question they answer — you scroll
+  right and lose the row. Pinning it also makes the affordance honest: a column
+  cut off at the trailing edge is what says the table moves.
+
+  `border-collapse:collapse` does not carry a cell's borders with it when the
+  cell is stuck, so the trailing edge is drawn as a shadow instead. It is
+  mirrored for RTL because a shadow offset is a number, not a direction.
+*/
+.doc-page .tablewrap thead th:first-child, .doc-page .tablewrap tbody th:first-child {
+  position:sticky; inset-inline-start:0; z-index:2;
+  background:var(--paper-raised); box-shadow:1px 0 0 var(--line);
+}
+.doc-page .tablewrap thead th:first-child {background:var(--paper); z-index:3}
+.doc-page [dir="rtl"] .tablewrap thead th:first-child, .doc-page [dir="rtl"] .tablewrap tbody th:first-child {box-shadow:-1px 0 0 var(--line)}
+/* The tinted column keeps its tint under the sticky one. */
+.doc-page .tablewrap tbody th:first-child.is-ours {background:color-mix(in oklab, var(--qb-primary-500) 5%, transparent)}
+
+/* A note set apart from the argument: where the code and a normal legal
+   sentence disagree, the disagreement is written down rather than smoothed
+   over. Blue rule, quieter type, never amber — amber means undecided. */
+.doc-page .doc__aside {
+  margin-top:18px; padding:16px 18px; border-radius:10px;
+  background:color-mix(in oklab, var(--qb-primary-500) 5%, transparent); border-inline-start:3px solid var(--blue);
+  font-size:.92rem; line-height:1.6; color:var(--ink-muted);
+}
+.doc-page .doc__aside b {color:var(--ink)}
+
+/* The document's own colophon: version, date, and what it is derived from. */
+.doc-page .doc__stamp {
+  margin-top:clamp(40px,5vw,64px); padding-top:24px; border-block-start:1px solid var(--line);
+  font-family:var(--mono); font-size:.76rem; line-height:1.9; letter-spacing:.02em; color:var(--ink-subtle);
+  display:grid; gap:2px;
+}
+.doc-page .doc__stamp b {color:var(--ink-muted); font-weight:500}
+
+/* The row of sibling documents at the foot of each legal page. */
+.doc-page .doc-switch {display:grid; gap:14px; margin-top:clamp(36px,4vw,52px)}
+@media (min-width:760px){ .doc-switch{grid-template-columns:repeat(3,1fr)} }
+.doc-page .doc-switch a {
+  display:block; padding:20px 22px; border:1px solid var(--line); border-radius:var(--radius);
+  background:var(--paper-raised); text-decoration:none; transition:border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.doc-page .doc-switch a:hover {border-color:var(--line-strong); transform:translateY(-3px); box-shadow:var(--shadow-md)}
+.doc-page .doc-switch a[aria-current] {border-color:var(--blue); background:color-mix(in oklab, var(--qb-primary-500) 4%, transparent)}
+.doc-page .doc-switch b {display:block; font-size:1rem; font-weight:700; color:var(--ink); margin-bottom:6px}
+.doc-page .doc-switch small {display:block; font-size:.87rem; line-height:1.5; color:var(--ink-muted)}
+
+/* --- explainer pages --------------------------------------------------------
+   `what-we-do.html` and `compare.html` are ordinary bands, so almost everything
+   they need is already above. These are the three shapes the home page does not
+   have: a lead paragraph set larger than the body for the opening of a section,
+   a two-up prose column, and the numbered mode table.
+--------------------------------------------------------------------------- */
+.doc-page .prose {max-width:68ch}
+.doc-page .prose p {font-size:1.04rem; line-height:1.7; color:var(--ink-muted)}
+.doc-page .prose p + p {margin-top:16px}
+.doc-page .prose strong {color:var(--ink); font-weight:700}
+.doc-page .band--navy .prose p {color:var(--navy-ink-muted)}
+.doc-page .band--navy .prose strong {color:var(--white)}
+
+/* Three product blocks stacked in one band rather than pinned as sticky cards.
+   The home page's deck needs the viewport to itself; an explainer page is read
+   straight through, so the same `.split` object is simply repeated with a rule
+   between the repeats. */
+.doc-page .splits > .split + .split {
+  margin-block-start:clamp(48px,6vw,88px);
+  padding-block-start:clamp(48px,6vw,88px);
+  border-block-start:1px solid var(--line);
+}
+/* Even columns, aligned to the top. The home page's 0.52fr copy column is
+   right for three sentences and a three-line list; the explainer carries five
+   longer points per block, and at 0.52fr that became a tall narrow measure
+   beside a short picture with a hand's breadth of nothing under it. */
+.doc-page .splits > .split {grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr); align-items:start}
+/* The flipped block puts the copy second, so the fractions swap with it —
+   otherwise the middle screenshot renders a hundred pixels narrower than the
+   two either side of it, which reads as a mistake rather than as a rhythm. */
+.doc-page .splits > .split.split--flip {grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr)}
+@media (max-width:980px){ .splits > .split,.splits > .split.split--flip{grid-template-columns:1fr} }
+/* Wider than the reading shell, for the same reason the home page's deck is:
+   a 1440-wide interface inside a 1200px column is a picture of a screenshot
+   rather than a screenshot. The section heading keeps its own 760px measure. */
+.doc-page .splits-wide {width:100%; max-width:1440px; margin-inline:auto; padding-inline:var(--gutter)}
+.doc-page .band--navy .splits > .split + .split {border-block-start-color:var(--navy-line)}
+
+.doc-page .twoup {display:grid; gap:clamp(26px,3.4vw,52px)}
+@media (min-width:880px){ .twoup{grid-template-columns:repeat(2,minmax(0,1fr))} }
+
+/* The five transport modes. A ruled table rather than five cards: the whole
+   point is that each mode is calculated differently, and a reader compares that
+   by running down a column. */
+.doc-page .modes {border-block-start:1px solid var(--line); margin-top:clamp(30px,3.4vw,44px)}
+.doc-page .modes__row {
+  display:grid; gap:6px 24px; padding-block:clamp(18px,2vw,24px);
+  border-block-end:1px solid var(--line); align-items:baseline;
+}
+@media (min-width:800px){ .modes__row{grid-template-columns:minmax(0,.3fr) minmax(0,.42fr) minmax(0,1fr)} }
+.doc-page .modes__name {font-weight:700; font-size:1.02rem; color:var(--ink); display:flex; align-items:baseline; gap:10px}
+.doc-page .modes__name i {font-family:var(--mono); font-style:normal; font-size:.74rem; color:var(--blue); letter-spacing:.1em}
+.doc-page .modes__unit {font-family:var(--mono); font-size:.82rem; color:var(--blue); letter-spacing:.02em}
+.doc-page .modes__note {font-size:.95rem; line-height:1.58; color:var(--ink-muted)}
+.doc-page .band--navy .modes {border-block-start-color:var(--navy-line)}
+.doc-page .band--navy .modes__row {border-block-end-color:var(--navy-line)}
+.doc-page .band--navy .modes__name {color:var(--white)}
+.doc-page .band--navy .modes__name i, .doc-page .band--navy .modes__unit {color:var(--blue-light)}
+.doc-page .band--navy .modes__note {color:var(--navy-ink-muted)}
+
+/* --- the comparison grid ----------------------------------------------------
+   Approaches down the columns, questions down the rows. The last column is
+   ours and is marked as ours — a comparison table that hides which column
+   wrote it is the one thing that would make this page dishonest.
+--------------------------------------------------------------------------- */
+.doc-page .compare .tablewrap {margin-top:clamp(30px,3.4vw,44px)}
+/* Fixed layout so the three approach columns stay equal: with `auto` the
+   column holding the longest sentence took half the table, which reads as
+   emphasis rather than as measurement. */
+.doc-page table.compare-table {min-width:860px; table-layout:fixed}
+/* Fixed pixels rather than a percentage: this column is stuck to the leading
+   edge, so at 390 a 21% share of the table's 860px min-width took 46% of the
+   screen and left the answers a 210px measure. */
+.doc-page table.compare-table th:first-child {width:160px}
+.doc-page table.compare-table .is-ours {background:color-mix(in oklab, var(--qb-primary-500) 5%, transparent)}
+.doc-page table.compare-table thead th.is-ours {color:var(--blue); background:color-mix(in oklab, var(--qb-primary-500) 9%, transparent)}
+.doc-page table.compare-table tbody td.is-ours {color:var(--ink)}
+.doc-page .compare__mark {
+  display:block; font-family:var(--mono); font-size:.64rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--blue); margin-top:5px; opacity:.85;
+}
+
+/* "Who this is not for." Set in the scope columns' red so it reads as the same
+   kind of statement section 07 of the home page makes: a boundary, stated once,
+   without an apology after it. */
+.doc-page .notfor {display:grid; gap:0; margin-top:clamp(28px,3vw,40px); border-block-start:1px solid var(--line)}
+.doc-page .notfor li {
+  display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:baseline;
+  padding-block:16px; border-block-end:1px solid var(--line);
+}
+.doc-page .notfor li::before {content:"✕"; font-family:var(--mono); font-size:.8rem; color:var(--qb-critical)}
+.doc-page .notfor b {display:block; font-size:1rem; color:var(--ink); margin-bottom:5px}
+.doc-page .notfor span {display:block}
+.doc-page .notfor small {display:block; font-size:.92rem; line-height:1.58; color:var(--ink-muted)}
+
+/* A quiet, sourced footnote. Every claim on the comparison page that is about
+   anybody but us carries one of these, and it names where it came from. */
+.doc-page .sourced {
+  margin-top:clamp(30px,3.4vw,44px); padding-top:22px; border-block-start:1px solid var(--line);
+  font-size:.87rem; line-height:1.65; color:var(--ink-subtle); max-width:78ch;
+}
+.doc-page .sourced b {color:var(--ink-muted); font-weight:600}
+.doc-page .sourced p + p {margin-top:9px}
+
+/* --- a call to action at the foot of a page --------------------------------- */
+.doc-page .tail {background:var(--navy-900); color:var(--navy-ink)}
+.doc-page .tail .shell {display:grid; gap:clamp(24px,3vw,44px); align-items:center}
+@media (min-width:860px){ .tail .shell{grid-template-columns:minmax(0,1fr) auto} }
+.doc-page .tail h2 {color:var(--white); font-size:clamp(1.5rem,2.6vw,2.15rem); letter-spacing:-.024em; max-width:22ch}
+.doc-page .tail p {margin-top:14px; color:var(--navy-ink-muted); font-size:1rem; line-height:1.6; max-width:56ch}
+.doc-page .tail__actions {display:flex; flex-wrap:wrap; gap:12px}
+
+/* ---------------------------------------------------------------------------
+   Right to left.
+
+   Almost nothing, and that is the point: every rule above is written in
+   logical properties — `margin-inline-start`, `inset-inline-end`,
+   `border-inline-start` — so `dir="rtl"` on the document flips the layout with
+   no mirrored stylesheet to keep in step. What is left here is the handful of
+   things direction does *not* describe.
+--------------------------------------------------------------------------- */
+.doc-page [dir="rtl"] {
+  /* Manrope has no Arabic. IBM Plex Sans Arabic is the product's own Arabic
+     face, so the site and the software set Arabic in the same type. */
+  --sans:"IBM Plex Sans Arabic", "Noto Sans Arabic", "Geeza Pro", "Segoe UI", system-ui, sans-serif;
+}
+/* Arabic has no capitals and no ExtraBold in this face's useful range, so the
+   English headline weights land heavier than intended. Back off one step and
+   loosen the tracking the Latin scale tightens — negative tracking on Arabic
+   collides the joins. */
+.doc-page [dir="rtl"] h1, .doc-page [dir="rtl"] h2, .doc-page [dir="rtl"] h3, .doc-page [dir="rtl"] h4 {font-weight:700; letter-spacing:0}
+/* Arabic wants more leading than Latin at every size, and the tight heading
+   line-heights here were set against a script with no marks above the letters:
+   at 1.2 the fathatan on «فعلاً» came up under the dots of the line above it.
+   The body gets the same treatment one step smaller. */
+.doc-page [dir="rtl"] .display {letter-spacing:0; line-height:1.2}
+.doc-page [dir="rtl"] .h2 {letter-spacing:0; line-height:1.3}
+.doc-page [dir="rtl"] h3, .doc-page [dir="rtl"] h4 {line-height:1.38}
+.doc-page [dir="rtl"] body {line-height:1.75}
+.doc-page [dir="rtl"] .lead {line-height:1.68}
+/* The small mono labels: eyebrows, pills, captions, field labels, column
+   headings. Every one of them is IBM Plex Mono with wide tracking, and
+   ar.html is the first document to set any of them in Arabic — where the mono
+   face has no glyphs at all and the tracking prises a word's joins apart,
+   which is precisely what a machine-translated page looks like. The mono is
+   kept at the head of the stack because font fallback is per character, so
+   "01 —" is still set in the product's own label face and the Arabic beside
+   it falls through to the page's Arabic. The tracking has to go. */
+[dir="rtl"] .eyebrow,
+[dir="rtl"] .hero__kicker,
+[dir="rtl"] .scope__title,
+[dir="rtl"] .pill,
+[dir="rtl"] .field label,
+.doc-page [dir="rtl"] .pair figcaption {font-family:"IBM Plex Mono", var(--sans); letter-spacing:0}
+/* A run of digits inside an RTL line is a bidi problem the browser only solves
+   if it is told the run's direction — but only where the run is inline.
+   `.leak__n` is a block, and `direction:ltr` on a block also aligns it left,
+   which put every leak card's number on the far side of its card. Latin digits
+   on their own reorder correctly without any of this. */
+.doc-page [dir="rtl"] .hero__facts b, .doc-page [dir="rtl"] .stat__n {direction:ltr; unicode-bidi:isolate}
+/* `ch` is the advance width of "0", and Arabic sets a good deal wider than that
+   per character — 17ch broke the Arabic headline over four lines. */
+.doc-page [dir="rtl"] .hero h1 {max-width:26ch}
+/* Three marks that are drawn rather than written, so none of them turns with
+   the document: the rail runs from the first stage to the last, the roadmap
+   arrow points the way its column reads, and the scrim under the pilot band is
+   angled to sit heaviest behind the copy — which has moved to the other side. */
+.doc-page [dir="rtl"] .rail::before {background:linear-gradient(270deg,var(--blue-light),var(--blue),var(--navy))}
+.doc-page [dir="rtl"] .scope__col--road ul li::before {content:"\2190"}
+.doc-page [dir="rtl"] .pilot__media::after {background:linear-gradient(260deg, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 95%, transparent) 8%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 78%, transparent) 46%, color-mix(in oklab, color-mix(in oklab, var(--qb-primary-950) 46%, black) 50%, transparent) 100%)}
+/* The FAQ chevron is two borders and a rotation. The borders are logical and
+   flip on their own; 45 degrees is a number and does not, so the mirrored
+   corner ends up pointing at the question instead of down. */
+.doc-page [dir="rtl"] .faq summary::after {transform:rotate(-45deg)}
+.doc-page [dir="rtl"] .faq details[open] summary::after {transform:rotate(135deg)}
+/* The fin motif points forward, and forward has changed. */
+.doc-page [dir="rtl"] .fins {transform:scaleX(-1)}
+.doc-page [dir="rtl"] .to-top svg {transform:none}
+
+/* ----------------------------------------------------------------------------
+   The shared header, matched to the home page.
+
+   The home page moved into `apps/landing/src` as a Next route and renders its
+   own header from `src/components/Header.tsx`. These seven pages keep theirs in
+   markup, so the two have to be kept in step by hand — and the parts that were
+   *not* in step were the ones a visitor sees on the click through: the call to
+   action was a square ghost button here and a filled pill there, the language
+   switch was bare blue text here and a bordered pill there, and the bar was
+   four pixels taller.
+
+   Everything below is an override of a rule earlier in this file rather than an
+   edit to it, so the diff against the previous site stays readable and a
+   revert is one block.
+   ------------------------------------------------------------------------- */
+
+.doc-page .site-header .shell {
+  height: 72px;
+}
+
+/* 26px here against 30px on the home page was a four-pixel jump on the click
+   through — small enough that nobody names it and large enough that everybody
+   sees it. */
+.doc-page .brand img {
+  height: 30px;
+}
+
+/* Mono, small and tracked, which is the product's own convention for a label
+   and the home page's for a nav item. In the sans at .93rem these two sat at
+   the same weight and size as the body copy underneath them, so the bar read as
+   a sentence rather than as chrome. */
+.doc-page .nav a:not(.nav-lang):not(.nav-cta) {
+  font-family: var(--mono);
+  font-size: .68rem;
+  font-weight: 400;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .62);
+}
+
+.doc-page .nav a:not(.nav-lang):not(.nav-cta):hover {
+  color: var(--white);
+}
+
+/* Filled, so it reads as the primary action on the bar. `--white` on the navy
+   rather than the brand blue: the blue is spent on the mark and on the one
+   button in the hero, and a header that also shouts competes with both. */
+.nav-cta,
+.doc-page .nav-cta.btn {
+  background: var(--white);
+  color: var(--navy);
+  border-color: transparent;
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.nav-cta:hover,
+.doc-page .nav-cta.btn:hover {
+  background: var(--white);
+  transform: scale(1.03);
+}
+
+/* A bordered pill rather than blue text. As bare text beside two other links
+   it read as a third nav item that happened to be in Arabic, which is not what
+   it does — it changes the language of the page you are on. */
+.doc-page .nav-lang {
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 999px;
+  padding: 5px 14px !important;
+  color: rgba(255, 255, 255, .82) !important;
+  transition: border-color .16s ease, color .16s ease;
+}
+
+.doc-page .nav-lang:hover {
+  border-color: rgba(255, 255, 255, .5);
+}
+
+/* The underline that grows under a nav link is for the two text links only;
+   on a pill it draws a line across the bottom of the pill. */
+.nav a.nav-lang::after,
+.doc-page .nav a.nav-cta::after {
+  display: none;
+}

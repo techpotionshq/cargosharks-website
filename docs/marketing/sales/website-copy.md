@@ -408,14 +408,14 @@ on every page of your system. You can revoke it in one click.
 
 # Footer
 
-**Cargolane** — freight forwarding software for the Gulf.
+**CargoSharks** — freight forwarding software for the Gulf.
 Built with AL-QABANDI & PARTNERS Co. (Shipping & Forwarding), Kuwait.
 
 > **Reference-customer naming requires written permission.** Until it is in hand,
 > replace the second line with *"Built with a Kuwaiti forwarder, on their own
 > operation."* — which is true, credible and safe.
 
-`hello@cargolane.com` · Kuwait City
+`hello@cargosharks.com` · Kuwait City
 
 > **Legal pages required before launch:** privacy policy naming the hosting
 > region and the retention period, terms of service, and a data-processing

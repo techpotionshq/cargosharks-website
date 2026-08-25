@@ -23,11 +23,18 @@
  * Each list is capped. A `<select>` holding four thousand ports is not a
  * usable control, and the cap is the forcing function that says so — the long
  * lists belong behind their own search.
+ *
+ * The whole statement has a fixture counterpart, taken before `withActor`.
+ * This one query is why `/enquiries` and `/jobs` needed a database even though
+ * both registers had fixtures: each renders a dialog, every dialog calls this,
+ * and one un-branched read is enough to fail the route.
  */
 
 import { cache } from 'react'
 import { sql } from 'drizzle-orm'
 import { withActor, type Actor } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotOptions } from '@/lib/pilot/fixtures'
 
 export interface Choice {
   readonly value: string
@@ -79,8 +86,16 @@ const EMPTY: ReferenceOptions = {
  * the name. Putting the name first would break the first case for no gain in
  * the second.
  */
-export const loadOptions = cache(async (actor: Actor): Promise<ReferenceOptions> =>
-  withActor(actor, async (tx) => {
+export const loadOptions = cache(async (actor: Actor): Promise<ReferenceOptions> => {
+  /*
+    The `list()` normalisation below stays behind the branch. It exists only
+    because `json_agg` over an empty set is NULL rather than `[]`, which is a
+    fact about the statement and not about the data — the builder returns every
+    list as an array already.
+  */
+  if (usePilotFixtures()) return pilotOptions()
+
+  return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
         with
           b as (
@@ -205,5 +220,5 @@ export const loadOptions = cache(async (actor: Actor): Promise<ReferenceOptions>
       people: list('people'),
       roles: list('roles'),
     }
-  }),
-)
+  })
+})

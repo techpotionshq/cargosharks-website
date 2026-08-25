@@ -1,5 +1,11 @@
 /**
- * AL-QABANDI & PARTNERS — the default brand.
+ * AL-QABANDI & PARTNERS — a client, reached with `BRAND=qabandi`.
+ *
+ * It was the default until the product had a name of its own, which is the
+ * only reason it is worth saying it is not one now: a supplier's demo wearing
+ * a client's identity is a permissions problem, not a styling choice. It is
+ * kept registered because it is the worked example — a real brand, arrived at
+ * without touching `apps/web`, and the case that forced every rule below.
  *
  * **Status: taken from the client's live identity**, not guessed. Every value
  * below traces to qabandi.com: the laurel wreath is their own artwork, the red

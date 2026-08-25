@@ -23,7 +23,7 @@ Two things are unresolved, and neither is a detail.
 
 Three consequences worth accepting rather than working around:
 
-- **Lead with the product, not the pedigree.** `packages/brand` makes the operator a parameter; the product was built to be whitelabelled. Sell Cargolane, not "the system we built for Al-Qabandi."
+- **Lead with the product, not the pedigree.** `packages/brand` makes the operator a parameter; the product was built to be whitelabelled. Sell CargoSharks, not "the system we built for Al-Qabandi."
 - **Do not name Al-Qabandi as a reference** until Q5 is answered by the account. Naming them uninvited converts a design partner into a party with a grievance.
 - **Consider telling Al-Qabandi first.** A forwarder who hears from a competitor that their software vendor is selling next door has been surprised; one who was asked has been consulted. The second conversation is cheaper.
 
@@ -189,7 +189,7 @@ Then stop talking. If they run one entity, drop the opener and ask what they use
 >
 > Thank you for the moment on the phone. In one paragraph, in case it is useful to a colleague:
 >
-> We build Cargolane — booking, documents (house B/L, house AWB, delivery order, packing list, customs pack), customs stages, and invoicing, for freight forwarders. Three things usually decide it:
+> We build CargoSharks — booking, documents (house B/L, house AWB, delivery order, packing list, customs pack), customs stages, and invoicing, for freight forwarders. Three things usually decide it:
 >
 > - **Arabic and English are equal.** Every screen, every document, right-to-left throughout. Not a translation layer added later.
 > - **Your data stays yours.** We deploy a separate database per customer. Nothing is shared, and nothing is deleted — records are superseded and the history is kept, enforced by the database.
@@ -211,7 +211,7 @@ Then stop talking. If they run one entity, drop the opener and ask what they use
 <p><strong>الموضوع: نظام لإدارة الشحن — بالعربية، وبالدينار الكويتي بثلاث خانات عشرية</strong></p>
 <p>تحية طيبة وبعد،</p>
 <p>شكراً لوقتكم على الهاتف. باختصار، إن أردتم مشاركتها مع زميل:</p>
-<p>نحن شركة techpotions في الكويت، وقد طوّرنا منصة تشغيل متكاملة لشركات الشحن والتخليص: الحجوزات، والمستندات (بوليصة الشحن البيتية، وبوليصة الشحن الجوي البيتية، وأمر التسليم، وقائمة التعبئة، وملف التخليص الجمركي)، ومراحل التخليص، والفوترة.</p>
+<p>نحن شركة techpotions في الكويت، وقد طوّرنا منصة تشغيل متكاملة لشركات الشحن والتخليص: الحجوزات، والمستندات (بوليصة الشحن الفرعية، وبوليصة الشحن الجوي الفرعية، وأمر التسليم، وقائمة التعبئة، وملف البيان الجمركي)، ومراحل التخليص، والفوترة.</p>
 <p>ثلاث نقاط عادةً ما تحسم القرار:</p>
 <ul>
 <li><strong>العربية والإنجليزية متساويتان.</strong> كل شاشة وكل مستند، ومن اليمين إلى اليسار بالكامل — وليست ترجمة أُضيفت لاحقاً.</li>

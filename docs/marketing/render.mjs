@@ -32,7 +32,7 @@ const PW = join(REPO, 'node_modules/.pnpm/playwright-core@1.62.1/node_modules/pl
 const DOCS = [
   { src: 'README.md', out: 'Marketing-Set-Overview.pdf', title: 'Marketing and Documentation Set' },
 
-  { src: 'sales/one-pager.md', out: 'sales/01-One-Pager.pdf', title: 'Cargolane — One-Pager', subtitle: 'The freight platform that answers in minutes, in both languages' },
+  { src: 'sales/one-pager.md', out: 'sales/01-One-Pager.pdf', title: 'CargoSharks — One-Pager', subtitle: 'The freight platform that answers in minutes, in both languages' },
   { src: 'sales/deck.md', out: 'sales/02-Deck-and-Script.pdf', title: 'The Deck — Slides and Script', subtitle: 'Three moments, told from the screen' },
   {
     src: 'sales/battlecard.md',
@@ -121,7 +121,22 @@ const CSS = `
   --ink-soft: #4a5158;
   --rule: #d9dde1;
   --rule-soft: #eceff1;
-  --accent: #0f4c5c;
+  /*
+    CargoSharks' own blue, hard-coded on purpose.
+
+    The brand package exists so that an *operator's* documents carry the
+    operator's identity. These are not an operator's documents — they are
+    CargoSharks' own stationery, sent by CargoSharks, and resolving them from
+    whatever BRAND happened to be set would put a client's colours on a
+    supplier's sales deck. scripts/check-brand.mjs scopes itself to
+    apps and packages source for this reason.
+
+    The 700 stop rather than the 500 the mark is drawn in: --accent colours
+    headings, links, rules and table heads, and #1F6FEB at 10pt on white is
+    legible on a screen and thin on an office laser. Same hue, four stops
+    darker.
+  */
+  --accent: #0551a7;
   --wash: #f6f8f9;
 }
 
@@ -140,7 +155,15 @@ body {
 /* ---- title band --------------------------------------------------------- */
 
 .doc-title {
-  background: linear-gradient(120deg, #0b3846 0%, var(--accent) 62%, #14606f 100%);
+  /*
+    Navy at both ends, blue through the middle.
+
+    It ran navy-to-blue, and the mark sits at the right-hand end — so the
+    middle fin, which is drawn in #1F6FEB, landed on a #1F6FEB background and
+    disappeared. Keeping the band dark where the artwork sits is the fix; the
+    blue still reads, it just does it between the title and the mark.
+  */
+  background: linear-gradient(115deg, #0b2545 0%, #164a8f 52%, #0b2545 100%);
   color: #ffffff;
   border-radius: 5pt;
   padding: 15pt 17pt 14pt;
@@ -166,7 +189,8 @@ body {
   color: rgba(255, 255, 255, 0.85);
   margin-top: 5pt;
 }
-.doc-mark { width: 46pt; height: 29pt; flex: none; }
+/* 130:88 is the artwork's own viewBox; forcing a square would squash the fins. */
+.doc-mark { width: 46pt; height: 31pt; flex: none; }
 
 /* ---- figures ------------------------------------------------------------ */
 
@@ -270,7 +294,7 @@ code {
   border: 0.5pt solid var(--rule-soft);
   border-radius: 2pt;
   padding: 0.5pt 3pt;
-  color: #0b3d49;
+  color: #0b2545;
 }
 
 pre {
@@ -330,7 +354,7 @@ const footerTemplate = (title, note) => `
 <div style="width:100%;font-family:'Segoe UI',system-ui,sans-serif;font-size:7pt;
             color:#767d85;padding:4pt 18mm 0;display:flex;justify-content:space-between;
             align-items:baseline;border-top:0.5pt solid #d9dde1;">
-  <span style="letter-spacing:0.04em;">${note ? `<b style="color:#0f4c5c;">${esc(note)}</b>` : esc(title)}</span>
+  <span style="letter-spacing:0.04em;">${note ? `<b style="color:#0551a7;">${esc(note)}</b>` : esc(title)}</span>
   <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
 </div>`
 
@@ -372,26 +396,26 @@ const shell = (title, eyebrow, body, baseDir, subtitle) =>
 ${body}</body></html>`
 
 /*
-  The mark on the title band: three route lines arriving, each at its dot.
-  Decorative, so it is hidden from assistive technology.
+  The mark on the title band — the supplied CargoSharks artwork, not a drawing.
+
+  It used to be three route lines and three dots: a placeholder from before the
+  product had a mark, which then sat on the cover of every document sent to a
+  prospect. The fins are `apps/landing/public/cargosharks-logo/svg/
+  cargosharks-mark-dark.svg`, copied rather than read at run time because this
+  script has no bundler and a document build that reaches across the repo for
+  an asset is a document build that breaks when the asset moves.
+
+  The `-dark` variant: the band behind it is navy, so the largest fin is the
+  white one. Decorative, so it is hidden from assistive technology.
 */
-const WAVES = `<svg class="doc-mark" viewBox="0 0 64 40" aria-hidden="true">
-  <g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round">
-    <path d="M4 10 C 22 10, 34 6, 57 8"/>
-    <path d="M4 20 C 24 20, 38 16, 57 19"/>
-    <path d="M4 30 C 20 30, 40 27, 57 30"/>
-  </g>
-  <circle cx="59" cy="8" r="3" fill="#ffffff"/>
-  <circle cx="59" cy="19" r="3" fill="#ffffff"/>
-  <circle cx="59" cy="30" r="3" fill="#ffffff"/>
-</svg>`
+const WAVES = `<svg class="doc-mark" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="-4 4 130 88"><path d="M83.25 86.00 L121.81 86.00 L121.86 85.84 L119.49 82.89 L117.24 79.69 L115.11 76.23 L113.11 72.55 L111.22 68.64 L109.29 64.12 L107.66 59.81 L106.00 54.89 L104.63 50.25 L103.26 45.00 L102.03 39.62 L100.95 34.12 L100.10 29.04 L99.30 23.39 L98.59 17.16 L98.03 10.37 L97.91 10.11 L90.71 18.97 L83.00 28.14 L75.20 37.12 L67.65 45.54 L68.82 51.89 L70.19 57.77 L71.81 63.39 L73.68 68.69 L75.65 73.34 L77.69 77.34 L78.99 79.56 L80.36 81.63 L81.79 83.55 L83.41 85.46Z" fill="#FFFFFF"/><path d="M42.90 86.00 L81.42 86.00 L81.46 85.88 L79.58 83.54 L77.82 80.97 L76.45 78.71 L75.02 76.04 L73.67 73.21 L72.41 70.24 L71.23 67.14 L70.04 63.60 L69.05 60.26 L68.06 56.48 L67.18 52.61 L66.40 48.65 L65.79 44.99 L65.21 40.92 L64.71 36.43 L64.30 31.55 L64.21 31.36 L56.87 40.33 L49.34 49.14 L41.74 57.62 L34.35 65.50 L35.09 68.76 L35.94 71.85 L36.91 74.77 L37.94 77.33 L38.98 79.55 L40.11 81.58 L41.50 83.65 L43.05 85.51Z" fill="#1F6FEB"/><path d="M0.84 86.00 L3.90 83.42 L7.32 80.30 L11.07 76.65 L14.96 72.64 L18.93 68.35 L23.08 63.68 L27.18 58.86 L31.04 54.13 L31.62 59.70 L32.32 64.21 L33.29 68.78 L34.44 72.93 L35.82 76.81 L37.34 80.19 L38.98 83.07 L40.01 84.57 L41.10 85.93 L41.08 86.00Z" fill="#79B0FF"/></svg>`
 
 const eyebrowFor = (src) =>
   src.startsWith('sales/')
-    ? 'Cargolane · Sales'
+    ? 'CargoSharks · Sales'
     : src.startsWith('manual/')
-      ? 'Cargolane · User Manual'
-      : 'Cargolane'
+      ? 'CargoSharks · User Manual'
+      : 'CargoSharks'
 
 async function main() {
   /* playwright-core is CommonJS; under ESM its exports hang off `default`. */
@@ -449,7 +473,7 @@ async function main() {
     const html = join(tmp, 'bundle.html')
     writeFileSync(
       html,
-      shell(BUNDLE.title, 'Cargolane · User Manual', parts, join(SRC, 'manual'), BUNDLE.subtitle),
+      shell(BUNDLE.title, 'CargoSharks · User Manual', parts, join(SRC, 'manual'), BUNDLE.subtitle),
       'utf8',
     )
     await render(html, join(OUT, BUNDLE.out), BUNDLE.title)

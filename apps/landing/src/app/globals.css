@@ -1,0 +1,357 @@
+@import 'tailwindcss';
+
+/**
+ * The marketing site's stylesheet.
+ *
+ * Two rules, inherited from `apps/web/src/app/globals.css` and enforced by
+ * `scripts/check-brand.mjs`, which scans this directory:
+ *
+ * **1. No colour literals.** Every value resolves to a `--qb-*` custom
+ * property emitted by `@qabandi/brand` at build time. The page is a
+ * whitelabelled product's front door, so an operator who re-skins the software
+ * and finds the marketing site still in someone else's blue has been given the
+ * worst version of the feature.
+ *
+ * **2. Logical properties only.** `ms-`, `me-`, `ps-`, `pe-`, `start-`,
+ * `end-`, `text-start`. The Arabic page is the same components with `dir="rtl"`
+ * on the document and nothing else — no forked stylesheet, no mirrored
+ * markup — which only holds if nothing here knows left from right.
+ *
+ * The page-specific tokens below are all derived with `color-mix` from the
+ * brand ramp rather than picked. That is the trick that makes rule 1 survivable
+ * on a dark marketing page: the brand supplies eleven stops of blue and eleven
+ * of grey, the page needs a near-black navy and four hairlines that the ramp
+ * does not contain, and mixing is the only way to get them without inventing a
+ * colour that a re-skin would leave behind.
+ */
+
+@theme inline {
+  --color-void: var(--pg-void);
+  --color-deep: var(--pg-deep);
+  --color-raise: var(--pg-raise);
+  --color-paper: var(--pg-paper);
+  --color-paper-sunk: var(--pg-paper-sunk);
+
+  --color-ink: var(--pg-ink);
+  --color-ink-dim: var(--pg-ink-dim);
+  --color-ink-faint: var(--pg-ink-faint);
+  --color-ink-dark: var(--pg-ink-dark);
+  --color-ink-dark-dim: var(--pg-ink-dark-dim);
+
+  --color-edge: var(--pg-edge);
+  --color-edge-lit: var(--pg-edge-lit);
+  --color-edge-dark: var(--pg-edge-dark);
+
+  --color-blue: var(--pg-blue);
+  --color-blue-lit: var(--pg-blue-lit);
+  --color-blue-deep: var(--pg-blue-deep);
+  --color-amber: var(--qb-caution);
+  --color-positive: var(--qb-positive);
+  --color-on-brand: var(--qb-on-brand);
+
+  --font-display: var(--pg-font-display);
+  --font-sans: var(--pg-font-sans);
+  --font-mono: var(--pg-font-mono);
+
+  /* The page's own rhythm. Four values, used everywhere, so the vertical
+     spacing is a decision taken once rather than per section. */
+  --spacing-band: 7.5rem;
+  --spacing-band-sm: 4.5rem;
+  --spacing-gut: 1.5rem;
+}
+
+:root {
+  /* Darker than the ramp's darkest stop, because a hero that is merely dark
+     navy makes the product screenshot — which is itself a light interface —
+     read as a sticker rather than as a screen with depth behind it. */
+  --pg-void: color-mix(in oklab, var(--qb-primary-950) 46%, black);
+  --pg-deep: color-mix(in oklab, var(--qb-primary-950) 72%, black);
+  --pg-raise: color-mix(in oklab, var(--qb-primary-950) 92%, black);
+
+  --pg-paper: var(--qb-neutral-50);
+  --pg-paper-sunk: var(--qb-neutral-100);
+
+  --pg-ink: var(--qb-neutral-50);
+  --pg-ink-dim: color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
+  --pg-ink-faint: color-mix(in oklab, var(--qb-primary-300) 30%, var(--qb-neutral-600));
+  --pg-ink-dark: var(--qb-neutral-950);
+  --pg-ink-dark-dim: var(--qb-neutral-600);
+
+  --pg-edge: color-mix(in oklab, var(--qb-primary-200) 12%, transparent);
+  --pg-edge-lit: color-mix(in oklab, var(--qb-primary-300) 26%, transparent);
+  --pg-edge-dark: var(--qb-neutral-200);
+
+  --pg-blue: var(--qb-primary-500);
+  --pg-blue-lit: var(--qb-primary-300);
+  --pg-blue-deep: var(--qb-primary-700);
+
+  --pg-font-display: var(--font-manrope), var(--qb-font-display);
+  --pg-font-sans: var(--font-manrope), var(--qb-font-sans);
+  --pg-font-mono: var(--font-plex-mono), var(--qb-font-mono);
+}
+
+/**
+ * Arabic swaps the two Latin faces out and leaves the rest of the page alone.
+ *
+ * The mono stays at the head of the stack rather than being replaced: font
+ * fallback is per character, so a label reading "01 — الاستفسار" keeps the
+ * product's own label face for the digits and falls through to the Arabic for
+ * the words. What cannot survive is the tracking those labels carry —
+ * letter-spacing prises Arabic joins apart, which is exactly what a
+ * machine-translated page looks like — so it is zeroed for RTL and nowhere else.
+ */
+[dir='rtl'] {
+  --pg-font-display: var(--font-plex-arabic), var(--qb-font-arabic);
+  --pg-font-sans: var(--font-plex-arabic), var(--qb-font-arabic);
+  --pg-font-mono: var(--font-plex-mono), var(--font-plex-arabic), var(--qb-font-arabic);
+}
+
+[dir='rtl'] .tracked {
+  letter-spacing: 0;
+}
+
+/* Arabic sets a touch larger and looser: the script has no ascender rhythm to
+   carry a tight leading, and the same size reads smaller than the Latin. */
+[dir='rtl'] h1,
+[dir='rtl'] h2 {
+  line-height: 1.24;
+  letter-spacing: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--pg-void);
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--pg-void);
+  color: var(--pg-ink);
+  font-family: var(--pg-font-sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--pg-blue);
+  color: var(--qb-on-brand);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pg-blue-lit);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/**
+ * One content column, one gutter, everywhere — including off this app.
+ *
+ * The previous site had four different maximum widths and the header aligned
+ * to none of them, so every section started at a slightly different place and
+ * the page read as several pages stapled together. This is the fix: the header,
+ * every section and the footer all measure from `.shell`, and a component that
+ * wants to run wider bleeds out of it deliberately rather than by having its
+ * own opinion about the measure.
+ *
+ * **The numbers are not chosen here.** They are `--shell` and `--gutter` from
+ * `public/assets/styles.css`, copied to the pixel, because the seven
+ * hand-written pages that hang off this one use that stylesheet and share this
+ * header. A visitor who clicks from the home page to `what-we-do.html` must not
+ * watch the logo step forty pixels sideways — that reads as having left the
+ * site, which is the opposite of what a marketing page is for.
+ */
+.shell {
+  width: 100%;
+  max-width: 75rem;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
+/** Mono, small, wide — the product's own convention for a label. */
+.tracked {
+  font-family: var(--pg-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/** Tabular figures, so a counting number does not jitter its own width. */
+.figures {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/**
+ * The hairline grid behind the dark sections.
+ *
+ * It is a real grid at the same rhythm as the layout, not a gradient blob: the
+ * page is about a system that keeps columns straight, and a background that
+ * quietly agrees with that is worth more than atmosphere. Masked to fade out
+ * before it reaches the copy so it never competes with text.
+ */
+.grid-field {
+  background-image:
+    linear-gradient(to right, var(--pg-edge) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--pg-edge) 1px, transparent 1px);
+  background-size: 5.5rem 5.5rem;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 20%, transparent 78%);
+}
+
+/** Turn off every transform-driven flourish for a visitor who asked. */
+@media (prefers-reduced-motion: reduce) {
+  .no-motion-flat {
+    transform: none !important;
+  }
+}
+
+/**
+ * The hero screenshot's perspective.
+ *
+ * A product shot laid flat in a rounded rectangle with a drop shadow is the
+ * single most common composition in the category and reads as a sticker. Tilted
+ * on two axes it reads as a screen with room behind it, and it lets the frame
+ * run off the edge of the page without the crop looking accidental.
+ *
+ * The Y rotation is a variable because it is the one value that has to mirror:
+ * a screen turning away from the reader turns the other way in Arabic, and a
+ * hard-coded negative would have the Arabic page leaning into its own margin.
+ */
+.tilt {
+  transform-origin: center center;
+}
+
+@media (min-width: 1024px) {
+  .tilt {
+    --tilt-y: -8deg;
+    transform: perspective(2600px) rotateY(var(--tilt-y)) rotateX(3deg) rotate(0.6deg);
+  }
+}
+
+[dir='rtl'] .tilt {
+  --tilt-y: 8deg;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tilt {
+    transform: none;
+  }
+}
+
+/**
+ * The glow behind the hero screenshot.
+ *
+ * A single soft radial in the brand blue, sitting *behind* the frame rather
+ * than under the whole section. Without it the tilted screenshot floats on flat
+ * navy with nothing to explain the light on its edges.
+ */
+.bloom {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in oklab, var(--pg-blue) 40%, transparent),
+    transparent
+  );
+  filter: blur(48px);
+}
+
+/** A hairline that fades out at both ends, for section joins. */
+.rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--pg-edge-lit) 18%,
+    var(--pg-edge-lit) 82%,
+    transparent
+  );
+}
+
+/**
+ * The status dot beside the hero's eyebrow — the one place on the page that
+ * claims something is live. The demurrage labels used to carry it too and now
+ * take a Phosphor clock instead: two of them on one screen made the page look
+ * like it was loading.
+ */
+@keyframes ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::after {
+    animation: none;
+  }
+}
+
+/**
+ * A screenshot cropped to its own leading corner.
+ *
+ * `object-position` has no logical form, so this is one of the handful of
+ * places the direction has to be written down twice. It matters: the captures
+ * are of a left-to-right interface and a right-to-left one, and an RTL screen
+ * cropped from its left edge loses the sidebar it was cropped to show.
+ */
+.shot-crop {
+  object-position: left top;
+}
+
+[dir='rtl'] .shot-crop {
+  object-position: right top;
+}
+
+
+/**
+ * Arabic inside an English document.
+ *
+ * The 404 sets both languages on one page, and `dir="rtl"` alone is not enough:
+ * the English document's font stack is Manrope, Manrope has no Arabic, and the
+ * browser falls through to whatever it has — on macOS that is Geeza Pro, which
+ * is the face every machine-translated page in this market is set in. Naming
+ * the Arabic stack explicitly puts it back in IBM Plex Sans Arabic, the same
+ * face the product uses.
+ *
+ * The width matters as much as the face. An RTL block inside an LTR flow is
+ * laid out from the container's trailing edge, so a full-width paragraph starts
+ * at the far right of the viewport — half a screen from the English it is
+ * translating.
+ */
+.arabic {
+  font-family: var(--font-plex-arabic), var(--qb-font-arabic);
+  letter-spacing: 0;
+}
+
+/**
+ * The column an Arabic block sits in — on the wrapper, never on the RTL element
+ * itself.
+ *
+ * A `dir="rtl"` block narrower than its parent resolves its auto margins in its
+ * own direction, so constraining the paragraph directly pinned it to the far
+ * right of the viewport, half a screen from the English it translates. An LTR
+ * wrapper holds the measure and starts where the English starts; the RTL child
+ * fills it and sets its text from the right, which is the composition you
+ * actually want: two languages in one column, each flush to its own margin.
+ */
+.arabic-block {
+  max-width: 46ch;
+}

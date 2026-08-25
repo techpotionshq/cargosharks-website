@@ -16,7 +16,7 @@ schema changes, [`README.md`](README.md) for setup, and
 ```bash
 pnpm doctor        # what is configured and what each missing thing costs
 pnpm dev           # web :3000, service :3001
-pnpm lint          # oxlint + six repository invariants
+pnpm lint          # oxlint + seven repository invariants
 pnpm typecheck
 pnpm test:core     # engines, no infrastructure, ~1.4s
 pnpm test:db       # migrations, seed, RLS matrix — needs a database

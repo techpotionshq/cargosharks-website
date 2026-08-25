@@ -159,10 +159,13 @@ export interface ChartSlotSpec {
  * The categorical chart slots, in fixed order.
  *
  * Series colours are *not* free-hand, and they are **not** derived from the
- * brand hue. Al-Qabandi's corporate colour is a red at hue 27, which is also
- * where `critical` lives — so deriving slot 1 from the brand would put "alarm"
- * on an ordinary series and make the ops board lie. Charts therefore avoid red
- * entirely; the brand shows up in a chart through the surrounding chrome, not
+ * brand hue. The rule is: a chart series stays clear of the brand hue and of
+ * all four reserved status hues. The case that forced it was a red brand —
+ * Al-Qabandi's corporate colour is a red at hue 27, which is also where
+ * `critical` lives, so deriving slot 1 from that brand would have put "alarm"
+ * on an ordinary series and made the ops board lie. Fixing the slots instead of
+ * deriving them means the rule holds for whatever hue the next brand arrives
+ * with; the brand shows up in a chart through the surrounding chrome, not
  * through the bars.
  *
  * The defaults below are the output of a search over every hue at least 30
@@ -176,16 +179,30 @@ export interface ChartSlotSpec {
  * **Changing a value here means re-running `validate_palette.js` for both
  * modes**, against `#ffffff` and against the dark surface.
  *
+ * One honest caveat about the current default. CargoSharks is a blue at hue
+ * 261, fifteen degrees from slot 1's indigo at 276 — close enough to notice
+ * when a bar sits beside a primary button. That is not the failure this rule
+ * guards against, which is a series reading as a *status*: 276 still clears
+ * `info` at 232 by forty-four degrees, and a first series near the chrome reads
+ * as house style rather than as an alarm. Leave it. It becomes worth revisiting
+ * only if slot 1 has to be told apart from a brand-filled element inside the
+ * same frame — a selected row behind a sparkline, say — and the fix then is to
+ * move slot 1 and re-run the validator, never to derive it from the brand.
+ *
  * Assigned in order and never cycled: a fifth category folds into "other"
  * rather than reusing slot 1, because two different things in the same colour
  * is worse than one thing unnamed.
  */
 export const DEFAULT_CHART_SLOTS: readonly ChartSlotSpec[] = [
-  /** Indigo — the accent navy's own hue, so a chart still reads as Qabandi's. */
+  /**
+   * Indigo. Chosen for its distance from the status hues, not from any brand —
+   * though the search landing here rather than on some other clear hue is no
+   * accident: 276 is the qabandi brand's own navy.
+   */
   { lightness: 0.55, chroma: 0.14, hue: 276 },
   /** Teal. */
   { lightness: 0.65, chroma: 0.11, hue: 195 },
-  /** Green-gold, which lands on the green their own site already uses. */
+  /** Green-gold, which lands on the green Al-Qabandi's own site already uses. */
   { lightness: 0.6, chroma: 0.15, hue: 126 },
   /** Violet. Lightened from 0.50 so it clears 3:1 on the dark surface too. */
   { lightness: 0.54, chroma: 0.13, hue: 312 },
@@ -239,16 +256,22 @@ export interface ThemeSpec {
    * Separate from `primary` because the two are not the same decision. A brand
    * whose corporate colour is a saturated red does not want a red sidebar —
    * four hundred pixels of alarm beside a board whose whole job is to make one
-   * held container stand out. Al-Qabandi's chrome is their secondary navy, and
-   * red is spent only where it means something: the mark, a primary action, and
-   * `critical`.
+   * held container stand out. That is why `qabandi` cuts its chrome from the
+   * secondary navy and spends red only where it means something: the mark, a
+   * primary action, and `critical`. Brands whose primary is calm enough to
+   * carry a sidebar still set this deliberately rather than by default —
+   * `cargosharks` names its navy accent too, because the blue is wanted for
+   * actions.
    */
   readonly chrome: ColorScale
   /**
    * Drives the neutral tint and the shadow hue — **not** necessarily the brand
    * hue. Tinting every grey in the product with a red brand hue turns the whole
-   * interface pink; Al-Qabandi's own greys lean indigo (their site's muted grey
-   * sits at hue 283), so the neutrals follow the navy instead.
+   * interface pink, which is why `qabandi` points its neutrals at the navy
+   * instead (their own site's muted grey sits at hue 283, so that is where the
+   * greys already leaned). A brand whose primary is not hostile to a grey can
+   * point this at the primary; both registered brands still state it, because
+   * the value inherited by accident is the one nobody checks.
    */
   readonly hue: number
   /**
@@ -350,7 +373,7 @@ export function darkTheme(spec: ThemeSpec): ThemeColors {
      * `400` washed a saturated brand out to a pastel — Al-Qabandi's red
      * arrived as salmon. L 0.57 is the balance point: white label text clears
      * AA on it at 4.68:1, and it still stands 3.9:1 clear of the dark canvas.
-     * For this brand it lands within a hair of their actual `#da2726`.
+     * For that brand it lands within a hair of their actual `#da2726`.
      */
     brand: brandAt(spec.primarySpec, 0.57),
     brandHover: brandAt(spec.primarySpec, 0.635),

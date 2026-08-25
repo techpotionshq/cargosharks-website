@@ -220,3 +220,69 @@ both *from the service*: proof the request crossed the private network and
 the service answered. A `503 service_not_configured` on either means the web
 container has no `SERVICE_URL`; a `502` means it has one and the service is
 not listening there.
+
+---
+
+## 7. The public demo
+
+A demo deployment is the same two containers with the database taken away and
+one flag turned on. Nothing is forked and nothing is a special build: it is the
+release image reading a different environment, which is the only arrangement
+that keeps a demo honest about what the product does.
+
+```
+QABANDI_PILOT_FIXTURES=1
+QABANDI_DEMO_LOGIN=1
+QABANDI_DEMO_PASSWORD=…            # optional; unset it is `cargosharks-demo`
+BETTER_AUTH_SECRET=…               # still required — it keys the persona cookie
+BRAND=                             # leave unset: the default is CargoSharks
+```
+
+and, deliberately, **no `DATABASE_URL`**. `usePilotFixtures()` refuses to engage
+when `NODE_ENV=production` *and* a connection string is present, so a demo that
+is handed one silently stops being a demo and starts serving an empty database.
+Leaving it out is what makes the flag mean anything.
+
+`RUN_MIGRATIONS` and `MIGRATION_DATABASE_URL` must be unset. There is nothing to
+migrate.
+
+### What the visitor meets
+
+Without `QABANDI_DEMO_LOGIN`, fixture mode short-circuits session resolution to
+one internal principal and there is no sign-in screen at all — right for the
+day-15 rehearsal, wrong for a public URL, where the sign-in screen is part of
+what is being shown. With it, the visitor gets the product's own sign-in form
+and three personas:
+
+| | Lands on | Holds |
+|---|---|---|
+| `operations@cargosharks.example` | `/dashboard` | every permission key |
+| `customer@gulfsteel.example` | `/portal` | no branch, no role, no permission |
+| `agent@everbright.example` | `/agent` | no branch, no role, no permission |
+
+The last two are not a simplification. A real customer or agent contact holds
+exactly that — `roles` is seven *internal* roles and `create-user.ts` assigns
+one only to staff — so the demo's portal login provably cannot open the
+operations board, which is the claim the marketing site spends a section
+making. Signing in as the customer and trying is the demonstration.
+
+The password is printed on the sign-in screen, click-to-fill. A demo whose
+credentials are not on the screen is a demo nobody enters.
+`QABANDI_DEMO_PASSWORD` exists for the other case: a demo reachable only by
+people who were told the password.
+
+### What it is not
+
+`timingSafeEqual` on the password and an HMAC on the persona cookie are there so
+that a visitor cannot switch from the customer portal to the operations board by
+editing a cookie — which would refute the tenancy claim on the very deployment
+built to demonstrate it. That is the whole of the threat model. **It is a demo
+gate, not a security boundary**, and it guards seeded fixtures with the password
+written a few centimetres above the field. Nothing real is behind it, and
+nothing real should ever be put behind it.
+
+`QABANDI_DEMO_LOGIN` must never be set on a customer's deployment. It is
+inert there — it cannot engage without `usePilotFixtures()`, which a configured
+production database already refuses — but a flag that depends on another flag
+for its safety is a flag to leave alone.
+

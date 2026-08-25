@@ -32,6 +32,8 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { emptyLedgerMargin, jobMargin, type LedgerMargin } from '@qabandi/core'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotJobLedger, pilotMatchCandidates } from '@/lib/pilot/fixtures'
 
 export interface ChargeLineRow {
   readonly id: string
@@ -69,6 +71,22 @@ export interface JobLedger {
 }
 
 export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedger | undefined> {
+  /*
+    The fixture stops at the lines, and `jobMargin` still runs over them.
+
+    The margin is the figure the card exists to show, and `core/margin.ts` is
+    the one place that knows what it is — so a demo path that returned a
+    finished `LedgerMargin` would be showing arithmetic the product does not
+    do, which is the promise `lib/pilot/source.ts` opens by making. This was
+    also the last un-branched read on the job file: `getJobDetail` has had its
+    branch since the fixtures landed, and one query without one took the most
+    used screen in the product down with it.
+  */
+  if (usePilotFixtures()) {
+    const rows = pilotJobLedger(jobId)
+    return rows === undefined ? undefined : ledgerOf(rows)
+  }
+
   return withActor(actor, async (tx) => {
     const [job] = await tx
       .select({
@@ -132,27 +150,43 @@ export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedg
       .where(eq(chargeLines.jobId, jobId))
       .orderBy(asc(chargeLines.direction), asc(chargeLines.createdAt))
 
-    const lines = rows as ChargeLineRow[]
-
-    return {
+    return ledgerOf({
       jobId: job.id,
       jobReference: job.reference,
       baseCurrency: job.baseCurrency,
       marginFloorPercent: job.marginFloorPercent,
-      lines,
-      margin:
-        lines.length === 0
-          ? emptyLedgerMargin(job.baseCurrency)
-          : jobMargin(
-              lines.map((l) => ({
-                direction: l.direction,
-                amountBase: l.amountBase,
-                isAccrual: l.isAccrual,
-              })),
-              job.baseCurrency,
-            ),
-    }
+      lines: rows as ChargeLineRow[],
+    })
   })
+}
+
+/**
+ * The P&L over a ledger, and the one place it is computed.
+ *
+ * Shared by both branches above on purpose. `jobMargin` is what a job's margin
+ * *is* — a second reduction written for the fixture path would be a second
+ * definition of the number the commercial conversation turns on, which is
+ * exactly what `core/margin.ts`'s own header exists to prevent.
+ *
+ * An empty ledger takes `emptyLedgerMargin` rather than a sum over nothing: a
+ * gross percentage on no revenue is null, not zero, and `belowFloor` reads the
+ * difference (`FR-FN-05`).
+ */
+function ledgerOf(read: Omit<JobLedger, 'margin'>): JobLedger {
+  return {
+    ...read,
+    margin:
+      read.lines.length === 0
+        ? emptyLedgerMargin(read.baseCurrency)
+        : jobMargin(
+            read.lines.map((l) => ({
+              direction: l.direction,
+              amountBase: l.amountBase,
+              isAccrual: l.isAccrual,
+            })),
+            read.baseCurrency,
+          ),
+  }
 }
 
 /**
@@ -180,6 +214,13 @@ export async function listMatchCandidates(
   actor: Actor,
   filters: { readonly jobId?: string; readonly partnerId?: string } = {},
 ): Promise<MatchCandidate[]> {
+  /*
+    Reached from the supplier bill's matching dialog, so it needs the same
+    branch that read gets — otherwise fixing `getSupplierInvoice` alone only
+    moves the failure one query down the page.
+  */
+  if (usePilotFixtures()) return pilotMatchCandidates(filters)
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({

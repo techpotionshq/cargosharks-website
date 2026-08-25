@@ -32,7 +32,7 @@ import {
 } from '@qabandi/db'
 import type { Direction, EnquirySummary, JobSummary, Mode, OpsOverview } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotOverview } from '@/lib/pilot/fixtures'
+import { pilotMapData, pilotOverview } from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -412,6 +412,8 @@ export interface MapData {
 }
 
 export async function getMapData(actor: Actor): Promise<MapData> {
+  if (usePilotFixtures()) return pilotMapData()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       with live as (

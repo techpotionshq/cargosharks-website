@@ -599,7 +599,17 @@
       "bilingual": "English and Arabic throughout, including the documents you issue."
     },
     "forgotPassword": "Forgotten your password?",
-    "resetDone": "Your password has been changed. Sign in with the new one."
+    "resetDone": "Your password has been changed. Sign in with the new one.",
+    "demo": {
+      "title": "Demo access",
+      "body": "A live demo on sample data. Choose whose view to sign in as \u2014 the same system, seen from three sides.",
+      "password": "Password",
+      "personas": {
+        "operations": "The operations board",
+        "customer": "The customer portal",
+        "agent": "The agent view"
+      }
+    }
   },
   "forgotPassword": {
     "title": "Forgotten password",

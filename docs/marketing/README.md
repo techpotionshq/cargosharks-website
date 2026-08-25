@@ -10,30 +10,46 @@ Everything a buyer reads before signing, and everything a user reads after.
 
 ---
 
-## The name is a placeholder
+## The name, and what is still a token
 
-Every document in this directory calls the product **Cargolane**. That name is a
-token, not a decision. It was chosen to be unclaimed-looking, pronounceable in
-Arabic and English, and unambiguous in find-and-replace — it appears nowhere in
-the source tree, so renaming the whole set is:
+The product is **CargoSharks**. It was `Cargolane` — a deliberately disposable
+find-and-replace token — until 25 August 2026; every document in this directory
+now carries the decided name. The old one should survive only in this paragraph
+and in the stale PDFs:
 
 ```bash
-grep -rl Cargolane docs/marketing | xargs sed -i 's/Cargolane/<NewName>/g'
-grep -rn "cargolane\.com" docs/marketing   # domains, review by hand
+grep -rni cargolane docs/marketing --include='*.md' --include='*.mjs' \
+  | grep -v 'marketing/README.md'          # expected: nothing
 ```
 
-Two other tokens follow the same rule and want the same treatment before
-anything goes out:
+The marketing domain in this set is `cargosharks.com`, with `hello@` on it. That
+is the name, not a registration: `packages/brand/src/brands/cargosharks.ts` says
+in as many words that its contact block is placeholder-shaped until the domain is
+actually held. Confirm it is held before website copy ships, because the
+one-pager and the footer both print it.
+
+One token is still genuinely undecided and wants the same treatment the name
+just got:
 
 | Token | Means | Decide before |
 |---|---|---|
-| `Cargolane` | the product name | anything is sent |
-| `cargolane.com` | the marketing domain | website copy ships |
 | `[KWD ####]` / `[USD ####]` | an unconfirmed price | pricing sheet is quoted |
 
-**The codebase does not need renaming.** `packages/brand` already makes the
-operator a parameter and no component carries a company name, so the product's
-own name lives in brand configuration and in these documents — nowhere else.
+**Every figure on the pricing sheet is a placeholder**, and the rendered PDF
+prints a standing DRAFT warning saying so. Do not quote from it. The
+per-document fill-ins — `[Customer]`, `[date]`, `[N]`, `[name]` — are a
+different thing: they are filled in per send, not decided once.
+
+**The codebase needed no renaming, and that is the point.** `packages/brand`
+makes the operator a parameter and no component in `apps/web` carries a company
+name, colour literal or logo path, so the product's own name lives in exactly
+two places: these documents, and one brand file. That file is now
+`packages/brand/src/brands/cargosharks.ts`, registered in
+`packages/brand/src/resolve.ts` as `DEFAULT_BRAND_KEY = 'cargosharks'` — so a
+demo, a preview deployment or a fresh checkout wears the product's own identity
+rather than a client's. Al-Qabandi remains registered as `BRAND=qabandi`: still
+a real identity, now the worked example of whitelabelling rather than the
+default.
 
 ---
 
@@ -66,6 +82,17 @@ captures of the running product (1440×900 at 2×; retake them there when the
 interface changes) and `assets/art/` the drawn pieces. The same revision
 removed code references and internal jargon from every customer-facing page.
 If a chapter's date is later than the render, re-render before sending.
+
+**Every PDF in `pdf/` is behind the Markdown and says `Cargolane` on it**, page
+footers included — all of them were built before the name was decided, so
+re-render before anything goes out and do not send a file from that directory
+in the meantime.
+
+Re-rendering is not enough on its own. **Every capture in `assets/screens/` was
+taken when the default brand was still Al-Qabandi**, so each one shows their
+name in the sidebar and their red on the buttons — which is both off-message for
+a product called CargoSharks and the reference-customer naming that `Q5` has not
+yet granted. Retake them against the CargoSharks default before the next render.
 
 Needs `pandoc` on `PATH` and Google Chrome installed. pandoc parses; Chrome
 paginates, driven through the `playwright-core` the end-to-end run already

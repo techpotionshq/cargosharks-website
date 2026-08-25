@@ -13,21 +13,55 @@
  * rate arrives as a contract, and the sell rate is a commercial decision made
  * against it. Pairing them here — rather than in the schema — is what lets the
  * register show a margin without pretending the two were ever one record.
+ *
+ * Each read has two implementations behind `usePilotFixtures()`: the seeded
+ * pilot dataset, and the real tables. Same signature, same return type, so the
+ * switch from one to the other is an environment variable and no page changes.
+ * See `lib/pilot/source.ts` for why that matters.
  */
 
+import 'server-only'
 import { sql } from 'drizzle-orm'
-import { listExpiringRateCards, withActor, type Actor, type ExpiringRateCard } from '@qabandi/db'
+import { RATE_CARD_EXPIRY_HORIZON_DAYS } from '@qabandi/core'
+import {
+  listExpiringRateCards as dbListExpiringRateCards,
+  withActor,
+  type Actor,
+  type ExpiringRateCard,
+} from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotExpiringRateCards,
+  pilotLaneMargins,
+  pilotRateCardSummary,
+  pilotRateCards,
+} from '@/lib/pilot/fixtures'
+
+export type { ExpiringRateCard }
 
 /**
  * Coverage about to lapse — FR-RT-11's screen half.
  *
- * Re-exported rather than re-queried. The read lives in `@qabandi/db` because
+ * Delegated rather than re-queried. The read lives in `@qabandi/db` because
  * the nightly digest in `apps/service` needs the same answer, and a panel that
  * disagrees with the mail it was meant to explain is worse than no panel: the
  * argument then is about which of the two is broken, and nobody looks at the
  * lane.
+ *
+ * It is a wrapper rather than a bare `export { … }` for one reason: the
+ * fixture branch belongs on the *screen's* side of the boundary. The digest
+ * runs against the database or it does not run, so pointing the shared read at
+ * seeded data would mean a worker that mails invented lanes.
  */
-export { listExpiringRateCards, type ExpiringRateCard }
+export async function listExpiringRateCards(
+  actor: Actor,
+  asOf = new Date(),
+  withinDays = RATE_CARD_EXPIRY_HORIZON_DAYS,
+): Promise<ExpiringRateCard[]> {
+  if (usePilotFixtures()) return pilotExpiringRateCards(asOf.getTime(), withinDays)
+
+  return dbListExpiringRateCards(actor, asOf, withinDays)
+}
 
 export interface RateCardRow {
   readonly id: string
@@ -62,6 +96,8 @@ export interface RateCardRow {
  * says as much rather than calling it a price.
  */
 export async function listRateCards(actor: Actor, direction?: string): Promise<RateCardRow[]> {
+  if (usePilotFixtures()) return pilotRateCards(Date.now(), direction)
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select rc.id,
@@ -117,6 +153,8 @@ export async function rateCardSummary(actor: Actor): Promise<{
   lanesCovered: number
   uncoveredLanes: number
 }> {
+  if (usePilotFixtures()) return pilotRateCardSummary()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       with live_cards as (
@@ -177,6 +215,8 @@ export interface LaneMarginRow {
 }
 
 export async function laneMargins(actor: Actor): Promise<LaneMarginRow[]> {
+  if (usePilotFixtures()) return pilotLaneMargins()
+
   return withActor(actor, async (tx) => {
     /*
       Conditional aggregation, not a full outer join.

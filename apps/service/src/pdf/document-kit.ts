@@ -13,6 +13,8 @@
  * show and what they mean, not in what they read.
  */
 
+import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
+
 export type DocumentLocale = 'en' | 'ar'
 
 /** `ar-KW-u-nu-latn` — Arabic conventions, Latin digits. See `lib/format.ts`. */
@@ -316,9 +318,12 @@ export function cargoTotals(cargo: readonly CargoView[]): {
  * so one set of rules mirrors under `dir="rtl"` — the same reason `apps/web`
  * is written that way. Millimetres rather than pixels because these are
  * printed and then filed in a folder somebody has to close.
+ *
+ * It declares no colours of its own. Every `var()` below is bound in
+ * `./brand.ts` and prepended by `page()` — the rules here say *which* token a
+ * stamp or a rule line takes, never what colour that is.
  */
 export const DOCUMENT_CSS = `
-  :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --brand:#8c1d18; --wash:#f9fafb; }
   * { box-sizing: border-box; }
   body {
     font-family: 'Noto Sans', 'Noto Sans Arabic', 'KacstOne', 'Liberation Sans', sans-serif;
@@ -351,7 +356,7 @@ export const DOCUMENT_CSS = `
   .field .label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em;
                   color: var(--muted); display: block; }
   .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center;
-           font-size: 34pt; color: rgba(140,29,24,.12); font-weight: 700;
+           font-size: 34pt; color: var(--brand-wash); font-weight: 700;
            transform: rotate(-18deg); }
   .terms { margin-top: 4mm; padding-top: 3mm; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 7.5pt; line-height: 1.4; }
@@ -373,7 +378,7 @@ export const DOCUMENT_CSS = `
   .surrendered span { display: inline-block; padding: 3mm 8mm; border: 2.5px solid var(--brand);
                       color: var(--brand); font-size: 22pt; font-weight: 700;
                       letter-spacing: .12em; text-transform: uppercase; opacity: .55;
-                      background: rgba(255,255,255,.6); }
+                      background: var(--paper-veil); }
   .surrendered small { display: block; font-size: 10pt; letter-spacing: .06em; }
   .back h1 { font-size: 12pt; }
   .back .clauses { column-count: 2; column-gap: 6mm; font-size: 6.5pt; line-height: 1.35;
@@ -386,13 +391,19 @@ export const DOCUMENT_CSS = `
  *
  * Every document is a complete HTML document because the renderer prints
  * whatever it is handed and nothing wraps it. `lang` and `dir` are set from
- * the locale here rather than in six templates.
+ * the locale here rather than in six templates, and so is the brand: this is
+ * the single point every job document passes through, which is why the tokens
+ * are prepended here rather than pasted into each stylesheet.
+ *
+ * `documentBrandCss()` first, `DOCUMENT_CSS` after it, `extraCss` last — a
+ * template's own rules must be able to override the kit's, and neither can
+ * usefully override a custom property it is written in terms of.
  */
 export function page(locale: DocumentLocale, body: string, extraCss = ''): string {
   return `<!doctype html>
-<html lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}">
+<html lang="${locale}" dir="${locale === 'ar' ? 'rtl' : 'ltr'}" ${PRINT_THEME_ATTR}>
 <meta charset="utf-8">
-<style>${DOCUMENT_CSS}${extraCss}</style>
+<style>${documentBrandCss()}${DOCUMENT_CSS}${extraCss}</style>
 ${body}
 </html>`
 }

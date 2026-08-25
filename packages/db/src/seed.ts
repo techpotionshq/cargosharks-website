@@ -104,8 +104,8 @@ const CHARGE_TYPES = [
   ['legalisation', 'Legalisation', 'التصديق', 'per_unit', 'origin'],
   ['permit', 'Permit', 'التصاريح', 'flat', 'destination'],
   ['insurance', 'Cargo Insurance', 'تأمين البضائع', 'percent', 'other'],
-  ['demurrage', 'Demurrage', 'غرامة التأخير', 'per_day', 'other'],
-  ['detention', 'Detention', 'غرامة الاحتجاز', 'per_day', 'other'],
+  ['demurrage', 'Demurrage', 'أرضيات', 'per_day', 'other'],
+  ['detention', 'Detention', 'رسوم التأخير', 'per_day', 'other'],
   ['storage', 'Storage', 'رسوم التخزين', 'per_day', 'other'],
 ] as const
 
@@ -605,7 +605,7 @@ async function main(): Promise<void> {
           {
             code: 'free_time_expiry',
             nameEn: 'Free time expiring',
-            nameAr: 'انتهاء الفترة المجانية',
+            nameAr: 'انتهاء وقت السماح',
             defaultSeverity: 'high' as const,
             slaHours: 8,
           },

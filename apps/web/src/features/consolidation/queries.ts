@@ -6,11 +6,11 @@
  * internal-only by policy, because the house list names which other customers
  * shipped on the same vessel.
  *
- * No pilot-fixture branch. The fixtures were written for the screens the pilot
- * needed and consolidation was not one of them, so these routes want a
- * database and say so rather than degrading — the same treatment finance,
- * network and reference already get, and recorded in `e2e/support/harness.ts`
- * as `NEEDS_DATABASE` so the gap shows in the pipeline.
+ * Both the register and the file read from fixtures when there is no database.
+ * The file's totals are *reduced* from its houses and charges in one place
+ * below rather than stated by either path — the register's house count and the
+ * master file's house list are the same fact, and a demo where they differ is
+ * the one thing on the screen that could not be true.
  */
 
 import 'server-only'
@@ -28,6 +28,8 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotAttachableJobs, pilotConsolidation, pilotConsolidations } from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'consol_origin')
 const destination = alias(locations, 'consol_destination')
@@ -57,6 +59,8 @@ export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
 ): Promise<ConsolidationSummary[]> {
+  if (usePilotFixtures()) return pilotConsolidations(Date.now(), filters)
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -156,6 +160,11 @@ export async function getConsolidation(
   actor: Actor,
   id: string,
 ): Promise<ConsolidationDetail | undefined> {
+  if (usePilotFixtures()) {
+    const rows = pilotConsolidation(id)
+    return rows === undefined ? undefined : consolidationOf(rows.row, rows.houses, rows.charges)
+  }
+
   return withActor(actor, async (tx) => {
     const carrier = alias(partners, 'carrier')
     const coload = alias(partners, 'coload')
@@ -242,30 +251,47 @@ export async function getConsolidation(
       .where(eq(consolChargeLines.consolidationId, id))
       .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
 
-    const totals = houses.reduce(
-      (acc, h) => ({
-        volume: acc.volume + Number(h.volumeCbm ?? 0),
-        gross: acc.gross + Number(h.grossWeightKg ?? 0),
-      }),
-      { volume: 0, gross: 0 },
-    )
-
-    return {
-      ...(row as unknown as ConsolidationSummary),
-      branchId: row.branchId,
-      carrierName: row.carrierName,
-      coloadPartnerName: row.coloadPartnerName,
-      bookingNumber: row.bookingNumber,
-      notes: row.notes,
-      closedAt: row.closedAt,
-      houseCount: houses.length,
-      volumeCbm: totals.volume.toFixed(3),
-      grossWeightKg: totals.gross.toFixed(3),
-      unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
-      houses: houses as ConsolidationHouse[],
-      charges: charges as ConsolidationCharge[],
-    }
+    return consolidationOf(row, houses as ConsolidationHouse[], charges as ConsolidationCharge[])
   })
+}
+
+/** The master's row, with the four figures that are sums over what is under it. */
+type ConsolidationHead = Omit<
+  ConsolidationDetail,
+  'houseCount' | 'volumeCbm' | 'grossWeightKg' | 'unallocatedCount' | 'houses' | 'charges'
+>
+
+/**
+ * The master file, totalled — and the one place those totals are reached.
+ *
+ * Shared by both branches so the fixture cannot state a volume its own houses
+ * do not add up to. The sums go through `Number` rather than `Decimal`, which
+ * is the one place in this file that is acceptable: a cubic metre is not
+ * money, and the figure is a manifest total printed to three places, not a
+ * balance anything reconciles against.
+ */
+function consolidationOf(
+  row: ConsolidationHead,
+  houses: readonly ConsolidationHouse[],
+  charges: readonly ConsolidationCharge[],
+): ConsolidationDetail {
+  const totals = houses.reduce(
+    (acc, h) => ({
+      volume: acc.volume + Number(h.volumeCbm ?? 0),
+      gross: acc.gross + Number(h.grossWeightKg ?? 0),
+    }),
+    { volume: 0, gross: 0 },
+  )
+
+  return {
+    ...row,
+    houseCount: houses.length,
+    volumeCbm: totals.volume.toFixed(3),
+    grossWeightKg: totals.gross.toFixed(3),
+    unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
+    houses,
+    charges,
+  }
 }
 
 /**
@@ -280,6 +306,10 @@ export async function listAttachableJobs(
   actor: Actor,
   consolidationId: string,
 ): Promise<{ readonly id: string; readonly label: string }[]> {
+  // Awaited beside `getConsolidation` on the master file, so it needs the same
+  // branch: fixing one read alone only moves the failure down the page.
+  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId)
+
   return withActor(actor, async (tx) => {
     const [consol] = await tx
       .select({ branchId: consolidations.branchId, mode: consolidations.mode })

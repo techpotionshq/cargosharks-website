@@ -308,33 +308,48 @@ parameter, so **no component in `apps/web` contains a colour literal, a company
 name or a logo path.**
 
 `packages/brand` holds one object — identity, two hue specifications, logo
-geometry, typography, letterhead. Both themes, all three tonal ramps, every
-semantic colour and the chart series are derived from it, emitted as CSS custom
-properties in the root layout, and consumed through ordinary Tailwind utilities
-(`bg-surface`, `text-brand`, `border-line`) whose *values* resolve at run time.
-A re-skin therefore needs no rebuild:
+geometry, typography, letterhead. Both themes, all three tonal ramps and every
+semantic colour are derived from it, emitted as CSS custom properties in the
+root layout, and consumed through ordinary Tailwind utilities (`bg-surface`,
+`text-brand`, `border-line`) whose *values* resolve at run time. A re-skin
+therefore needs no rebuild:
 
 ```bash
 BRAND_NAME_EN="Meridian Logistics" BRAND_MONOGRAM=M \
 BRAND_PRIMARY_HUE=155 BRAND_ACCENT_HUE=25 BRAND_RADIUS=4 pnpm dev
 ```
 
-A second operator properly is one file under `packages/brand/src/brands/`,
-registered in `resolve.ts`, then `BRAND=<key>`. `/settings/brand` renders the
-resolved tokens and the variable that overrides each one, so the claim is
-inspectable rather than asserted.
+An operator properly is one file under `packages/brand/src/brands/`, registered
+in `resolve.ts`, then `BRAND=<key>`. Two are registered. The default is
+`cargosharks`, the product's own identity, so a demo, a preview deployment or an
+unconfigured checkout does not wear a client's name and colours; `qabandi` is
+the worked example of the whitelabel path, a real identity with a red primary
+and a navy chrome arrived at without touching `apps/web`. `/settings/brand`
+renders the resolved tokens and the variable that overrides each one, so the
+claim is inspectable rather than asserted.
+
+**A customer-facing deployment must set `BRAND` explicitly.** The default is the
+supplier's own identity, which is exactly what `NFR-16` says must not appear in
+front of an operator's customers. Nothing enforces this at boot; it belongs in
+the deployment checklist, and `.env.example` ships `BRAND=qabandi` for that
+reason.
 
 Two things deliberately do *not* follow the brand:
 
 - **Status colours.** Positive, caution, critical, info and muted are reserved
   for state. A board where "held" is calm because it matched a corporate palette
-  is worse than useless. A brand hue within ~15° of one of them will read as
-  that status — move the brand hue, not the status.
-- **Chart series.** Four slots, assigned in order and never cycled. Slots 1 and
-  2 follow the brand's own hues; 3 and 4 are fixed support hues. All four are
-  validated for lightness band, chroma floor, adjacent-pair separation under
-  simulated protanopia and deuteranopia, and contrast against both surfaces —
-  in both themes. Changing a support hue means re-running that validation.
+  is worse than useless. A brand hue within ~15° of one of the four coloured
+  ones will read as that status — move the brand hue, not the status. `muted`
+  carries so little chroma that its hue is not visible, so it does not constrain
+  anything.
+- **Chart series.** Four slots, assigned in order and never cycled, and **not**
+  derived from the brand: a brand hue that collides with `critical` would put
+  alarm on an ordinary series. All four are fixed in `DEFAULT_CHART_SLOTS`,
+  chosen at least 30° clear of every coloured status hue, and validated for
+  lightness band, chroma floor, adjacent-pair separation under simulated
+  protanopia and deuteranopia, and contrast against both surfaces — in both
+  themes. A brand may supply its own `chart` array; neither registered brand
+  does, and changing a hue means re-running that validation.
 
 ## Integration settings
 

@@ -35,6 +35,9 @@ import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { Icon, type IconName } from '@/ui/icon'
 import { Logo } from '@/ui/logo'
 import { SignInForm } from '@/features/auth/ui/sign-in-form'
+import { DemoPanel, type DemoPanelPersona } from '@/features/auth/ui/demo-panel'
+import { useDemoLogin } from '@/lib/pilot/source'
+import { DEMO_PERSONAS, demoPassword } from '@/lib/pilot/demo'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('signIn')
@@ -70,6 +73,35 @@ export default async function SignInPage({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const established = brand.identity.established
+
+  /*
+    The demo credentials, on the public demo deployment only.
+
+    The three role names are looked up as literal keys rather than built from
+    `persona.key`, because `scripts/check-messages.mjs` can only verify a key
+    it can read — an interpolated one is reported as unverifiable, which is the
+    same thing as unchecked. The icons sit here for the same reason the labels
+    do: `lib/pilot/demo.ts` is the data, and neither the message catalogue nor
+    the icon set belongs in it.
+  */
+  const demo = useDemoLogin()
+  const demoRoles = demo
+    ? {
+        operations: { role: t('demo.personas.operations'), icon: 'dashboard' as IconName },
+        customer: { role: t('demo.personas.customer'), icon: 'customers' as IconName },
+        agent: { role: t('demo.personas.agent'), icon: 'partners' as IconName },
+      }
+    : null
+
+  const demoPersonas: DemoPanelPersona[] = demoRoles
+    ? DEMO_PERSONAS.map((persona) => ({
+        email: persona.email,
+        name: locale === 'ar' ? persona.nameAr : persona.nameEn,
+        org: locale === 'ar' ? persona.orgAr : persona.orgEn,
+        role: demoRoles[persona.key].role,
+        icon: demoRoles[persona.key].icon,
+      }))
+    : []
 
   return (
     /* Full viewport: there is no header above this any more to subtract. */
@@ -154,6 +186,18 @@ export default async function SignInPage({
             >
               {t('resetDone')}
             </p>
+          ) : null}
+
+          {demo ? (
+            <DemoPanel
+              personas={demoPersonas}
+              password={demoPassword()}
+              labels={{
+                title: t('demo.title'),
+                body: t('demo.body'),
+                password: t('demo.password'),
+              }}
+            />
           ) : null}
 
           <div className="mt-7">

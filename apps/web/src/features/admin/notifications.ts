@@ -28,6 +28,12 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotNotificationDeliveries,
+  pilotNotificationSwitches,
+  pilotNotificationTemplates,
+} from '@/lib/pilot/fixtures'
 
 /**
  * The send switches, as the settings screen needs them — FR-NT-03.
@@ -39,6 +45,8 @@ import {
  * one nobody tested against a dispatcher.
  */
 export async function listChannelSettings(actor: Actor): Promise<NotificationSwitch[]> {
+  if (usePilotFixtures()) return pilotNotificationSwitches()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -79,6 +87,14 @@ export interface TemplateEvent {
  * which is exactly the state that used to send `failed: no adapter` to nobody.
  */
 export async function listTemplates(actor: Actor): Promise<TemplateEvent[]> {
+  /*
+    Both paths go through `byEvent` below, and that is the whole point of
+    splitting it out: the list is driven from `NOTIFICATION_EVENTS`, and a
+    fixture branch that returned finished events would route around the loop
+    that once threw `MISSING_MESSAGE` on an event nobody had translated.
+  */
+  if (usePilotFixtures()) return byEvent(pilotNotificationTemplates())
+
   const rows = await withActor(actor, (tx) =>
     tx
       .select({
@@ -102,12 +118,17 @@ export async function listTemplates(actor: Actor): Promise<TemplateEvent[]> {
       ),
   )
 
+  return byEvent(rows as TemplateRow[])
+}
+
+/** The catalogue, with whatever rows exist hung off it. Both paths use it. */
+function byEvent(rows: readonly TemplateRow[]): TemplateEvent[] {
   return NOTIFICATION_EVENTS.map((event) => ({
     key: event.key,
     audience: event.audience,
     summary: event.summary,
     mergeFields: [...UNIVERSAL_MERGE_FIELDS, ...event.fields],
-    templates: rows.filter((row) => row.eventKey === event.key) as TemplateRow[],
+    templates: rows.filter((row) => row.eventKey === event.key),
   }))
 }
 
@@ -138,6 +159,10 @@ export interface DeliveryRow {
  * one was a database client.
  */
 export async function listDeliveries(actor: Actor, limit = 100): Promise<DeliveryRow[]> {
+  // The cap is the query's, applied here too — a fixture that ignored it would
+  // be the one place the register's paging could not be seen to work.
+  if (usePilotFixtures()) return pilotNotificationDeliveries().slice(0, limit)
+
   const rows = await withActor(actor, (tx) =>
     tx.execute(sql`
       select d.id, o.event_key as "eventKey", d.channel::text as channel,

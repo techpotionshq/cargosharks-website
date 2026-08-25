@@ -30,7 +30,14 @@
  * allowlist in `core/ai.ts` is what makes it harmless, but concatenating
  * hostile text into the instruction block would remove the one boundary that
  * costs nothing to keep.
+ *
+ * The assistant prompt does interpolate the operator's name from
+ * `@qabandi/brand`, which is not an exception to that: a brand token is a
+ * value this repository or an environment sets, not a value a stranger can put
+ * into a record. Nothing reached by a tool call is ever spliced in here.
  */
+
+import { resolveBrand, type Brand } from '@qabandi/brand'
 
 /**
  * The supplier invoice reader.
@@ -128,13 +135,51 @@ export const INVOICE_USER_PROMPT =
  * delivered"* has told a coordinator something untrue about a button sitting
  * unpressed in front of them, and the system was never at risk. Being believed
  * wrongly is the damage.
+ *
+ * ## The first line is the only one that varies
+ *
+ * The operator's name comes from `@qabandi/brand`, which breaks this file's
+ * otherwise-absolute rule that a prompt is a fixed string. It has to: the
+ * opening sentence used to name one operator and their three countries, so a
+ * whitelabel deployment's own staff were told, in the assistant's own voice,
+ * that they were using somebody else's system.
+ *
+ * The geography went with it. Three named countries were that operator's
+ * branch footprint, not a property of the product; the Arabic instruction
+ * below is what actually carries the Gulf register, and it is not going
+ * anywhere.
+ *
+ * What this costs is real and worth stating: `assistant@2` is no longer a key
+ * to exactly one string, only to one *template*. Two deployments on the same
+ * version differ by a noun phrase. That is tolerable because the fingerprint
+ * in `ledger.ts` hashes the assembled messages rather than the version, so
+ * replay and de-duplication were never relying on the version to be unique —
+ * and because a golden-set comparison across two operators was never
+ * meaningful anyway, their data being different in every other respect. A
+ * comparison *within* one deployment, which is the one the version exists to
+ * make valid, is unaffected.
  */
-export const ASSISTANT_PROMPT_VERSION = 'assistant@1'
+export const ASSISTANT_PROMPT_VERSION = 'assistant@2'
+
+/**
+ * Resolved on first use, not at import.
+ *
+ * `loadEnv()` runs at module scope in `config.ts`, and ESM gives no ordering
+ * guarantee between two modules neither of which imports the other — so a
+ * `resolveBrand()` evaluated while this file is being imported could read a
+ * `BRAND` that `.env` has not set yet, and bake the wrong operator into every
+ * prompt for the life of the process. Deferring to the first call puts it
+ * safely after start-up. Memoised because a brand with hue overrides rebuilds
+ * three colour ramps, and a prompt needs none of them.
+ */
+let cachedBrand: Brand | undefined
 
 export function assistantSystemPrompt(locale: 'en' | 'ar'): string {
+  const brand = (cachedBrand ??= resolveBrand())
+
   return [
-    'You are the assistant inside Qabandi, a freight forwarding platform used by',
-    'Al-Qabandi & Partners in Kuwait, Qatar and the UAE. You help coordinators,',
+    `You are the assistant inside ${brand.identity.nameEn}, the freight forwarding`,
+    `platform run by ${brand.identity.legalNameEn}. You help coordinators,`,
     'operations staff and finance answer questions about their own shipments.',
     '',
     locale === 'ar'

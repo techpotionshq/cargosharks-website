@@ -9,7 +9,10 @@
  *
  * The rule this file exists to protect: **if it differs between two operators,
  * it is a token here.** A hex value in a component is a bug, and
- * `pnpm lint:brand` fails the build on one.
+ * `scripts/check-brand.mjs` — run by `pnpm lint` — fails the build on one. It
+ * was written after three files were found still printing a former default
+ * brand's maroon, two of them onto customer-facing PDFs, because the check
+ * this comment promised did not exist.
  */
 
 /**

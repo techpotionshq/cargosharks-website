@@ -18,6 +18,8 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { auth, MIN_PASSWORD_LENGTH } from '@/lib/auth'
+import { useDemoLogin } from '@/lib/pilot/source'
+import { demoPasswordMatches, demoPersonaByEmail, startDemoSession } from '@/lib/pilot/demo'
 
 export interface SignInState {
   readonly error?: string
@@ -32,6 +34,30 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   const password = String(formData.get('password') ?? '')
 
   if (!email || !password) return { error: t('errorMissing'), email }
+
+  /*
+    The public demo's three personas — `QABANDI_DEMO_LOGIN=1`, off by default
+    and impossible to reach without the pilot fixtures as well (`useDemoLogin`
+    in `lib/pilot/source.ts`).
+
+    Placed before Better Auth rather than beside it because on that deployment
+    there is no database and therefore no `auth_user` to authenticate against;
+    a demo address would otherwise take a round trip through a library that
+    cannot answer. Anything that is *not* one of the three addresses falls
+    straight through to the real path below, unchanged — including the failure
+    message, which stays the same one for "no such user" and "wrong password"
+    so the form is not an enumeration oracle here either.
+  */
+  if (useDemoLogin()) {
+    const persona = demoPersonaByEmail(email)
+    if (persona && demoPasswordMatches(password)) {
+      await startDemoSession(persona)
+      // Not `/dashboard`. Which shell a persona belongs to is the entire point
+      // of having three of them; `homeFor()` states the same mapping for every
+      // other entry point.
+      redirect(persona.home)
+    }
+  }
 
   let response: Response
   try {

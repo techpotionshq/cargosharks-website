@@ -1,10 +1,24 @@
 Photography — Unsplash Licence (free for commercial use, no attribution required;
 credit given here as a courtesy and to record provenance).
 
-hero-port-dusk.jpg      unsplash.com/photos/1590496793907-4d66e2994b4d
-containers-aerial.jpg   unsplash.com/photos/1562892302-97faedd66f1c
-containers-stack.jpg    unsplash.com/photos/1605732562742-3023a888e56e
-ship-aerial.jpg         unsplash.com/photos/1518527989017-5baca7a58d3c
+hero-port-dusk.webp      unsplash.com/photos/1590496793907-4d66e2994b4d
+containers-aerial.webp   unsplash.com/photos/1562892302-97faedd66f1c
+containers-stack.webp    unsplash.com/photos/1605732562742-3023a888e56e
+ship-aerial.webp         unsplash.com/photos/1518527989017-5baca7a58d3c
 
-Downloaded 24 August 2026 at w=2000, q=72. Compress and convert to WebP/AVIF
-before serving — see ../../README.md.
+Downloaded 24 August 2026 at w=2000, q=72, and re-encoded to WebP on 25 August.
+Only the WebP is kept. The JPEGs were the download rather than a source anyone
+edits, and the four of them were 2.8 MB in a directory that now serves 1 MB.
+
+To redo it: re-download from the URLs above and re-encode with sharp, the way
+docs/marketing/capture.mjs does for the screenshots — that file carries the
+import path and the reason sharp is reached by path rather than declared.
+
+  sharp(input).resize({ width: W }).webp({ quality: Q }).toFile(output)
+
+W and Q differ per file, because only one of these is looked at:
+
+  hero-port-dusk       2000  76   full-bleed behind the headline
+  containers-aerial    1600  62   a divider strip, cropped to a band
+  containers-stack     1600  58   sits under two blur layers
+  ship-aerial          1600  62   sits under the pilot section's dark scrim

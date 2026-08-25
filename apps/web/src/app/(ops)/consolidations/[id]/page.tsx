@@ -32,7 +32,7 @@ import {
   reverseConsolAllocation,
 } from '@/features/consolidation/form-actions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
@@ -262,8 +262,20 @@ export default async function ConsolidationDetailPage({
                         {t(`bases.${charge.allocationBasis}` as 'bases.volume')}
                       </span>
                     </div>
+                    {/*
+                      Formatted, not interpolated.
+
+                      This printed `{charge.amount} {charge.currency}` straight
+                      from the row, and a `numeric(19,6)` column arrives from
+                      node-postgres as the string `1450.000000` — so a master's
+                      cost card read "1450.000000 KWD". It went unnoticed while
+                      the card had no rows to draw. `formatMoney` is what every
+                      other money figure in the product goes through, and it is
+                      what rounds per currency: three places for the dinar, two
+                      for the dirham.
+                    */}
                     <span className="numeric shrink-0 text-[0.875rem] font-medium">
-                      {charge.amount} {charge.currency}
+                      {formatMoney({ amount: Number(charge.amount), currency: charge.currency }, locale)}
                     </span>
                   </div>
 

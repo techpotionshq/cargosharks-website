@@ -1,126 +1,216 @@
 # CargoSharks marketing site
 
-One static page. No build step, no framework, no dependencies — open
-`index.html` and it works. Everything is inline except the images and one
-Google Fonts request (Manrope and IBM Plex Mono).
+A Next.js app that builds to static files. Nine pages, two languages, no server.
 
 ```bash
-python -m http.server 4173   # then http://127.0.0.1:4173/
+pnpm dev:landing        # http://localhost:3002
+pnpm build:landing      # writes apps/landing/out/
+pnpm preview:landing    # serves out/ the way a static host will
 ```
 
-`file://` mostly works too, but serve it if you want the fonts and the sticky
-behaviour to match what a visitor gets.
+`out/` is what deploys. Point any static host at that one directory: there is
+no Node process to keep alive, no runtime to patch, and nothing in the
+repository outside it is exposed.
+
+**Use `preview` rather than `dev` to check anything about paths.** The dev
+server rewrites, falls back, and thinks in routes; a static host thinks in
+files. `scripts/preview.mjs` does what the host does and nothing else — a
+directory gets its `index.html`, an unknown path gets `404.html` with a real 404
+status — which is the only way to catch a link that works in development and
+dies in production.
+
+## Why a framework at all
+
+The site was nine hand-written HTML files with a shared stylesheet and a shared
+script, which was the right shape while it was nine files that mostly said the
+same thing. It stopped being the right shape twice over.
+
+**The home page outgrew it.** A scroll-driven sequence with a pinned product
+frame, a language switch that flips a real screenshot, and a counter running off
+`requestAnimationFrame` is an application, and it had an English copy and an
+Arabic copy that were kept in step by hand. They did not stay in step: a
+correction landed in `index.html` and not in `ar.html` more than once, and for a
+while the two languages made different claims about the same product.
+
+**The other pages drifted from it.** They carried their own header markup, their
+own footer, their own nav labels and their own copy of the scroll behaviour, and
+every one of those was a thing to remember. The nav said "What it does" while
+the page it opened was called "What we do"; the lockup was 26px in one place and
+30px in the other; the shell was 1200px here and 1248px there, so the logo
+stepped forty pixels sideways on the click through.
+
+None of that is a problem any more, because there is one header, one footer, one
+shell and one copy file.
 
 ## What is here
 
 ```
-index.html                 the whole page
-cargosharks-logo/          the supplied mark — do not edit, it is the source
-pic/photos/                stock photography (Unsplash licence, commercial use, no attribution required)
-pic/screens/               real captures of the running product, copied from docs/marketing/assets/screens/
+next.config.ts               static export, no image optimiser, trailing slashes
+scripts/postbuild.mjs        copies the two error routes to 404.html / 500.html
+scripts/preview.mjs          serves out/ the way a host will
+src/app/(en)/                English root layout + / and the six document routes
+src/app/(ar)/                Arabic root layout and home page
+src/app/globals.css          the stylesheet for the app's own pages
+src/app/pages.css            the stylesheet for the imported documents
+src/components/              sections, header, footer, the counter
+src/content/copy.ts          every word of the home page, both languages
+src/content/pages/           the five imported documents
+src/lib/fonts.ts             Manrope, IBM Plex Mono, IBM Plex Sans Arabic
+public/cargosharks-logo/     the supplied mark — do not edit, it is the source
+public/pic/screens/          real captures of the running product
+public/pic/photos/           stock photography (Unsplash licence, commercial use)
 ```
+
+`public/` holds nothing but assets now. Every page is a route.
+
+| Route | What it is |
+|---|---|
+| `/` and `/ar/` | the home page, six blocks, ~5,400px |
+| `/what-we-do/` | the product explained standalone, for arrivals from search |
+| `/compare/` | how we are different, and who we are not for |
+| `/privacy/` `/terms/` `/dpa/` | **unreviewed drafts** — see below |
+| `/not-found/` `/server-error/` | copied to `404.html` and `500.html` at build |
+
+The two error routes are named that way because Next silently drops a folder
+called `404` from the route table: the build passes, the copy runs, and the file
+copied is Next's own built-in 404 onto itself.
+
+## The imported documents
+
+`src/content/pages/*.tsx` were hand-written HTML until the site became an app.
+They were converted **mechanically, by a script**, and that was the point:
+between them they carry fifty-three `[TO CONFIRM]` markers, a clause-numbering
+scheme people quote back in emails, and a great deal of prose that says exactly
+what the software does and no more. Retyping that into JSX by hand is the most
+expensive way to introduce an error in this repository — a dropped `not` in a
+clause is invisible in review and consequential in a way a layout bug never is.
+
+The HTML originals are gone and those files are the source now. **Edit them
+there.** They read oddly for React components — plain markup, no props, no
+composition — because they are documents, and breaking them up would be the
+retyping the conversion avoided.
+
+`src/app/pages.css` is their stylesheet, and it came across the same way. Every
+selector in it is scoped under `.doc-page`, which `DocPage.tsx` puts on the
+`<main>` around them, so it cannot collide with `globals.css` — both define
+`.shell`. Every colour in it is a `--qb-*` token; there were 132 literals and
+each was an approximation of a stop `@qabandi/brand` already publishes.
+
+## The two languages
+
+There is no root layout. Each language is a route group with its own — `(en)`
+and `(ar)` — so `lang` and `dir` are real attributes on the document rather than
+something JavaScript patches on after hydration. `src/components/Document.tsx`
+holds everything the two documents share, so neither gets a chance to drift.
+
+Everything Arabic-specific is the `[dir='rtl']` block in `globals.css`: the font
+stack, the heading leading, and the label tracking that would otherwise prise
+Arabic joins apart. **Add to that block rather than starting a second
+stylesheet.** Arabic set *inside* an English document — the 404, the language
+switch, the bilingual toggle — takes `.arabic`, and if it is a block, an
+`.arabic-block` wrapper around it. That wrapper is not decoration: a `dir="rtl"`
+block narrower than its parent resolves its auto margins in its own direction
+and pins itself to the far right of the viewport.
+
+Only the home page has an Arabic twin. The six document routes do not, which is
+why none of them declares an `hreflang` alternate; their language switch points
+at `/ar/`, because that is the only Arabic entry point there is, and no Arabic
+entry point at all is the worse answer on the site whose argument is that Arabic
+is not an afterthought.
+
+The Arabic captures in `pic/screens/*-ar.webp` are separate files, not the
+English ones mirrored. The sidebar crop is a logical property, so on an RTL
+document it takes its bite out of the right edge — which is where the sidebar is
+only in an RTL capture.
+
+## Design
+
+`.shell` is `75rem` with a `clamp(20px, 5vw, 56px)` gutter, and it is the only
+measure on the site. The home page is six blocks and about 5,400px; it was
+eleven sections and 14,086px. What was cut is not gone — the pain points, the
+six-state loop, the scope table and the ownership argument are `/what-we-do/`,
+and the comparison is `/compare/`.
+
+**No colour literals.** Every value in both stylesheets resolves to a `--qb-*`
+custom property emitted by `@qabandi/brand`, and `scripts/check-brand.mjs` fails
+the build on a hex, an `oklch(` or a chromatic `rgb()` anywhere under `src/`.
+The near-black navy the dark sections need is not a stop on the brand ramp, so
+it is derived with `color-mix` from the stop that is. Mix, never pick.
+
+Type is Manrope, because the supplied wordmark is Manrope ExtraBold converted to
+outlines. IBM Plex Mono carries every label, eyebrow, figure and status pill,
+which is the product's own convention: data is set in mono.
+
+The wordmark is the **supplied lockup**, as an image, not the name set live. It
+was live text for a while, on the reasoning that the outlines are Manrope
+anyway — but the artwork sets the name lowercase and in two colours while
+`brand.identity.nameEn` is `CargoSharks`, so the home page was showing a
+different logo from the pages linked off it and from the file the operator
+prints on their letterhead. A wordmark is artwork, not a string.
+
+Icons are [Phosphor](https://phosphoricons.com), imported from
+`@phosphor-icons/react/dist/ssr` so they render on the server, and there are
+seven of them on the home page. They are used where they carry meaning — the
+three desks, the three demo roles, the demurrage clock — and nowhere else; the
+nine bullets under the desks have a rule rather than a glyph each, because a
+column of decorative icons is the thing that makes a page look generated.
+
+**There are no animations beyond motion.** There were two Lottie files,
+generated from the logo geometry and a sine wave, and they were decoration
+standing where an argument should be: at the opacity that kept them from
+competing with the figures they sat behind, they read as smudges. `motion`
+drives the scroll parallax, the stage cross-fade and the language pill, and
+nothing else moves.
 
 ## Where the content came from
 
-Nothing on this page was invented for it. The copy is
+Nothing was invented. The home page copy is
 [`docs/marketing/sales/website-copy.md`](../../docs/marketing/sales/website-copy.md),
-the pain points in section 01 are `PP-01…PP-13` from
-[`docs/Qabandi_Release_One_SRS.md`](../../docs/Qabandi_Release_One_SRS.md) §3, and the
-scope columns in section 07 are §11 of the same document — the deferral table,
-the built-beyond-spec list and the still-open list, read straight across.
-
-That matters when the product moves: **when §11 changes, section 07 of this page
-is wrong.** It is the only part of the page that goes stale silently.
+and the Arabic is carried over from the previous site's `ar.html`, which took
+its vocabulary from `apps/web/messages/ar.json` so that a prospect reads
+«بوليصة الشحن الفرعية» here and sees the same string on the document the demo
+issues.
 
 ### The figures quoted, and how to re-check them
 
 | Figure | Where | Verify with |
 |---|---|---|
-| **2,709 interface strings**, EN and AR in sync | §06, FAQ | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
-| **88 tables, 82 with RLS forced, 197 policies, 80 audit triggers** | §08 | `README.md` §Status — verified against a live PostgreSQL 18.6 |
-| **Five transport modes** | hero, §02 | `packages/db/src/schema/enums.ts` → `modeEnum` |
-| UAE e-invoicing dates | §07, §09 | SRS §11 — provider due 30 Oct 2026, go-live 1 Jan 2027 |
-
-## Design
-
-The palette is the four colours in `cargosharks-logo/README.txt` and nothing
-else, with one addition: an amber used only for the "waiting on something"
-status pill, because no brand colour can carry that meaning without also reading
-as a link.
-
-| | |
-|---|---|
-| navy | `#0B2545` |
-| blue | `#1F6FEB` |
-| light blue | `#79B0FF` |
-| white | `#FFFFFF` |
-
-Type is Manrope, because the supplied wordmark is Manrope ExtraBold converted to
-outlines — the page and the mark are the same typeface. IBM Plex Mono carries
-every label, eyebrow and status pill, which is the product's own convention:
-data is set in mono.
-
-Sections 03–05 are sticky siblings that pin and stack over one another; the card
-underneath is scaled and dimmed from JavaScript, and the whole effect is
-disabled under `prefers-reduced-motion` and below 820px. Those cards run wider
-than the rest of the page (1500px against 1200px) and the bilingual section
-wider still, because both exist to show a 1440-wide interface and the readable
-measure for body copy is the wrong measure for a screenshot.
-
-The three card screenshots (`enquiries`, `jobs`, `finance`) are 1440×900
-captures cropped 17% from the left in CSS — exactly the product's sidebar,
-identical on every one, so it costs a sixth of the frame to say nothing new.
-Past 17% the crop starts eating the first stat tile.
-
-`english.png` and `arabic.png` are separate captures at a shorter viewport, with
-the sidebar already cropped out of the file, so the page takes them whole. The
-short frame is deliberate: it cuts the map across the middle and puts the
-assistant dock — which is `fixed bottom-5 end-5` — just below it. Section 06
-lays the two over each other at an offset tuned so the Arabic card's top edge
-lands on the bottom of the English stat row; both rows of numbers stay readable
-and the Arabic map runs on below. Every offset there is a percentage of the
-container's *width*, including the vertical ones, so the two stay registered as
-the page narrows.
-
-Retaking those two needs the app running (`QABANDI_PILOT_FIXTURES=1`, no
-database) and a browser that is not sandboxed — the lazily-loaded `maplibre-gl`
-chunk comes back 403 under the sandbox while curl gets 200 for the same URL, so
-the map silently never renders. Locale is the `qabandi_locale` cookie, not a
-route segment.
-
-## The "shorter text" button
-
-The header carries a dev toggle that swaps every block with a `data-short`
-attribute for a shorter version — 42 of them, across the six-card sections, the
-product cards, the pilot steps and the FAQ. It is an authoring aid, not a
-feature: it exists so both lengths can be read in place before one is chosen.
-The long copy is the source of truth and is held in memory, so toggling is
-lossless. **Delete the button and the `data-short` attributes before launch**,
-or promote the short copy into the markup and delete the long.
+| **2,709 interface strings**, EN and AR in sync | proof strip | `node -e "const c=o=>Object.values(o).reduce((n,v)=>n+(typeof v==='object'&&v?c(v):1),0);for(const f of ['en','ar'])console.log(f,c(require('./apps/web/messages/'+f+'.json')))"` |
+| **197 row-level policies, 80 audit triggers** | proof strip | `README.md` §Status — verified against a live PostgreSQL 18.6 |
+| **Five transport modes** | hero, proof strip, `/what-we-do/` §03 | `packages/db/src/schema/enums.ts` → `modeEnum` |
+| **Three decimals on every dinar** | proof strip | `CLAUDE.md` §Non-negotiables; `packages/core` money tests |
+| Every divisor, increment and minimum | `/what-we-do/` §03 | `packages/core/src/chargeable.ts` — they are seed rows, not numbers written for a website |
 
 ## Before this goes live
 
-1. **The screenshots still carry Al-Qabandi's red brand.** Their *name* is no
-   longer visible — the page crops the sidebar out of every capture, which is
-   where *AL-QABANDI & PARTNERS* sat — but the red accent throughout the
-   interface still clashes with this palette, and the raw files in
-   `pic/screens/` are unchanged, so anyone opening them sees the name. Naming
-   them as a reference customer needs written permission
-   (`docs/marketing/README.md`). Re-capture under a neutral brand —
-   `packages/brand` makes the operator a parameter, so this is a configuration
-   change, not a redesign.
-2. **The contact form has no backend.** It intercepts the submit and tells the
-   visitor to email instead. Wire it to something real or replace it with a
-   `mailto:` link.
-3. **There is no Arabic version of this page**, which is awkward for a page whose
-   central claim is that Arabic is not an afterthought. It needs a rewrite by
-   someone who sells freight in Arabic, not a translation pass — the same rule
-   the product follows.
-4. **Compress the images.** `pic/` is roughly 8 MB unoptimised. Resize the
-   screenshots to their display width and convert everything to WebP or AVIF
-   before this is served to anyone on a phone.
-5. **Legal pages.** Privacy policy naming the hosting region and retention
-   period, terms of service, data-processing addendum. A prospect's IT reviewer
-   looks for these before they look at the product.
-6. **`hello@cargosharks.com` and the domain** are placeholders until the domain
-   is actually held.
+1. **A demo has to be deployed at the address the page links to.** Both
+   languages send their first call to action to `https://demo.cargosharks.com`,
+   and the demo block prints three sign-ins and a password. Nothing is standing
+   there yet. What to deploy is in
+   [`docs/Deployment_Coolify.md`](../../docs/Deployment_Coolify.md) §7 — the
+   release image with `QABANDI_PILOT_FIXTURES=1`, `QABANDI_DEMO_LOGIN=1` and
+   **no** `DATABASE_URL`. Until it exists the page's strongest claim is a broken
+   link, which is worse than not making it.
+2. **The three legal pages are unreviewed drafts and say so three times each,**
+   and carry `robots: noindex` until they are not. They were written from the
+   codebase — the schema, the migrations, the integration adapters — which makes
+   them accurate about mechanism and deliberately incomplete about law. **They
+   must not go live in this state.** Every open decision is marked
+   `[TO CONFIRM: …]`: 17 in the privacy policy, 21 in the terms, 15 in the
+   addendum. Two are for counsel first: there is no erasure mechanism anywhere
+   in the product, and destroying data at the end of an engagement is an
+   infrastructure act rather than a function inside the software. Both are
+   written down rather than smoothed over (`/privacy/` §09, `/dpa/` §11 and §14).
+
+   No certification is claimed on any page — no SOC 2, no ISO 27001, no "GDPR
+   compliant". Keep it that way until one exists.
+3. **The Arabic has not been read by a native reviewer.** It was written, not
+   translated. What a reviewer still has to settle: «مُشغِّل» for a database
+   *trigger* is a coinage the deck invented and `ar.json` does not fix,
+   «الترسية» for *award* is Gulf tender vocabulary, and «ماذا نفعل» and
+   «كيف نقارن» in the navigation are new here.
+4. **`hello@cargosharks.com` and the domain** are placeholders until the domain
+   is held. So is `demo.cargosharks.com`. The three demo addresses are
+   `.example`, which RFC 2606 reserves and nobody can register — deliberately,
+   because a credential printed on a public page should not resolve to a mailbox
+   anyone could be persuaded to send something to.

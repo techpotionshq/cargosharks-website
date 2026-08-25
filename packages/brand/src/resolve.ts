@@ -4,7 +4,9 @@
  * Two levels, in order of how much a client is changing:
  *
  *   1. **A registered brand** — `BRAND=qabandi`. A second operator adds one
- *      file under `brands/` and registers it. This is the intended path.
+ *      file under `brands/` and registers it. This is the intended path, and
+ *      `qabandi` is the worked example of it: a real identity, a red primary
+ *      and a navy chrome, arrived at without touching `apps/web`.
  *   2. **Environment overrides** — `BRAND_PRIMARY_HUE=210`. For a pilot that
  *      needs re-skinning between two meetings on the same afternoon, and for
  *      preview deployments that should not look like production.
@@ -15,14 +17,25 @@
  */
 
 import { defineBrand } from './define'
+import { cargosharksBrand } from './brands/cargosharks'
 import { qabandiBrand } from './brands/qabandi'
 import type { Brand } from './types'
 
 export const BRANDS: Record<string, Brand> = {
+  cargosharks: cargosharksBrand,
   qabandi: qabandiBrand,
 }
 
-export const DEFAULT_BRAND_KEY = 'qabandi'
+/**
+ * The product's own brand, not a client's.
+ *
+ * An unconfigured environment — a demo, a preview deployment, a developer's
+ * machine, the fixture run every screenshot is taken from — used to default to
+ * a live client's identity, which put their name and their red into every
+ * image and every sample PDF the product produced. The default is now the
+ * thing that owns the product; a client is `BRAND=<key>` and one file.
+ */
+export const DEFAULT_BRAND_KEY = 'cargosharks'
 
 type Env = Record<string, string | undefined>
 
@@ -58,7 +71,7 @@ function str(env: Env, key: string): string | undefined {
  * leave the sidebar behind.
  */
 export function resolveBrand(env: Env = ambientEnv()): Brand {
-  const base = BRANDS[str(env, 'BRAND') ?? DEFAULT_BRAND_KEY] ?? qabandiBrand
+  const base = BRANDS[str(env, 'BRAND') ?? DEFAULT_BRAND_KEY] ?? cargosharksBrand
 
   const primaryHue = num(env, 'BRAND_PRIMARY_HUE')
   const primaryChroma = num(env, 'BRAND_PRIMARY_CHROMA')
@@ -128,7 +141,8 @@ export function resolveBrand(env: Env = ambientEnv()): Brand {
      * Both of these have to be carried across explicitly. They are not
      * recoverable from the resolved ramps, and letting them fall back to their
      * defaults would mean that overriding one hue silently returns the sidebar
-     * to the primary ramp — for this brand, a red one.
+     * to the primary ramp — which for `qabandi`, the case that found this, is
+     * a red one.
      */
     chromeRamp: chromeRamp ?? rampOf(base),
     neutralHue: neutralHue ?? hueOf(base.palette.neutral[500]),

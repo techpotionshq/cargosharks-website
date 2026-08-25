@@ -50,11 +50,16 @@ export function SignInForm({ labels }: { readonly labels: Labels }) {
         </p>
       ) : null}
 
+      {/*
+        The two ids are load-bearing: on the public demo deployment the panel
+        above these fields fills them by id — `demo-panel.tsx`.
+      */}
       <label className="flex flex-col gap-1.5">
         <span className="eyebrow">{labels.email}</span>
         <input
           type="email"
           name="email"
+          id="sign-in-email"
           required
           defaultValue={state.email ?? ''}
           autoComplete="username"
@@ -68,6 +73,7 @@ export function SignInForm({ labels }: { readonly labels: Labels }) {
         <input
           type="password"
           name="password"
+          id="sign-in-password"
           required
           autoComplete="current-password"
           dir="ltr"

@@ -25,6 +25,7 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-node": "^0.221.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@qabandi/brand": "workspace:*",
     "@qabandi/core": "workspace:*",
     "@qabandi/db": "workspace:*",
     "drizzle-orm": "^0.45.2",

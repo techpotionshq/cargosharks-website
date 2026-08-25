@@ -45,11 +45,14 @@ import {
   sealSecret,
   withActor,
   withoutSealed,
+  type IntegrationSettings,
   type SettingSource,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { echo, fail, failWith, succeed, type ActionState } from '@/lib/form-state'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
 
 export interface IntegrationFieldView {
   readonly name: string
@@ -93,23 +96,35 @@ export async function listIntegrations(): Promise<IntegrationView[]> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
 
-  const rows = await withActor(session.actor, (tx) =>
-    tx
-      .select({
-        id: integrationSettings.id,
-        key: integrationSettings.key,
-        driver: integrationSettings.driver,
-        settings: integrationSettings.settings,
-        secrets: integrationSettings.secrets,
-        isActive: integrationSettings.isActive,
-        lastCheckedAt: integrationSettings.lastCheckedAt,
-        lastOkAt: integrationSettings.lastOkAt,
-        lastError: integrationSettings.lastError,
-        createdAt: integrationSettings.createdAt,
-        updatedAt: integrationSettings.updatedAt,
-      })
-      .from(integrationSettings),
-  )
+  /*
+    Only the rows come from fixtures, and only the rows can.
+
+    The answer below is the catalogue merged over the environment merged over
+    these — and two of those three layers are already present without a
+    database. Returning finished views here would report a configuration this
+    deployment does not have, which is the one thing a settings screen must
+    never do; handing the resolver a row set instead restores the missing
+    layer and leaves `resolveIntegration` to say where each value came from.
+  */
+  const rows: readonly IntegrationSettings[] = usePilotFixtures()
+    ? pilotIntegrationSettings()
+    : await withActor(session.actor, (tx) =>
+        tx
+          .select({
+            id: integrationSettings.id,
+            key: integrationSettings.key,
+            driver: integrationSettings.driver,
+            settings: integrationSettings.settings,
+            secrets: integrationSettings.secrets,
+            isActive: integrationSettings.isActive,
+            lastCheckedAt: integrationSettings.lastCheckedAt,
+            lastOkAt: integrationSettings.lastOkAt,
+            lastError: integrationSettings.lastError,
+            createdAt: integrationSettings.createdAt,
+            updatedAt: integrationSettings.updatedAt,
+          })
+          .from(integrationSettings),
+      )
 
   const byKey = new Map(rows.map((row) => [row.key, row]))
 

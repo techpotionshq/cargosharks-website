@@ -2,7 +2,7 @@
   "name": "qabandi",
   "version": "0.0.0",
   "private": true,
-  "description": "Qabandi Digital Freight Platform — Release One",
+  "description": "Qabandi Digital Freight Platform \u2014 Release One",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=10.0.0"
@@ -10,10 +10,15 @@
   "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:web": "pnpm --filter @qabandi/web dev",
+    "dev:service": "pnpm --filter @qabandi/service dev",
+    "dev:landing": "pnpm --filter @qabandi/landing dev",
     "doctor": "node scripts/doctor.mjs",
     "build": "pnpm -r build",
+    "build:landing": "pnpm --filter @qabandi/landing build",
+    "preview:landing": "pnpm --filter @qabandi/landing preview",
     "typecheck": "pnpm -r typecheck",
-    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-migrations.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs && node scripts/check-schedules.mjs && node scripts/check-permissions.mjs",
+    "lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/check-migrations.mjs && node scripts/check-messages.mjs && node scripts/check-links.mjs && node scripts/check-schedules.mjs && node scripts/check-permissions.mjs && node scripts/check-brand.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
