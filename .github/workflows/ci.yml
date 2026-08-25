@@ -185,6 +185,22 @@ jobs:
       # The floor in vitest.config.ts is set just under what this achieves.
       # Raise it when coverage rises; a threshold that is never raised stops
       # meaning anything.
+
+      # The coverage run needs the demo dataset, not just the reference seed.
+      #
+      # `src/features/imports/*.test.ts` asserts against `KWSWK` — Shuwaikh —
+      # and that location is created by `db:seed-demo`, not by `db:seed`. Six
+      # assertions there had nothing to fail against, which is why the coverage
+      # step died before writing a report and the job reported "No files were
+      # found with the provided path: coverage/" rather than a threshold miss.
+      #
+      # The seeded end-to-end job already loads it in exactly this position, so
+      # this is the same combination rather than a new one. It runs after the
+      # policy matrix so that suite still measures a database holding only what
+      # a real deployment starts with.
+      - name: Load the demo dataset
+        run: pnpm db:seed-demo
+
       - name: Coverage
         env:
           TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
