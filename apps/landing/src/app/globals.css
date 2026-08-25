@@ -236,59 +236,6 @@ body {
 }
 
 /**
- * The cut corner, and it is the one piece of shape language this site owns.
- *
- * Everything on the previous page was `rounded-2xl`, which is the default of
- * the framework and therefore the default of every page built with it. A cut
- * corner is not: it is the shape of a filing tab, of a punched shipping label
- * and of the clipped corner on a customs form, and this is a product whose
- * users spend their day inside exactly those objects. One shape, used on the
- * dark panels and the product frames, does more to make a page look designed
- * than any amount of gradient.
- *
- * `clip-path` rather than a border and a pseudo-element, because the cut has to
- * survive an image bleeding to the panel's edge — which is most of the places
- * it is used. The cost is that a clipped box cannot carry a border, so the
- * bordered variant is two nested clipped boxes; see `.cut-edge`.
- *
- * It mirrors. A tab cut into the trailing corner is cut into the other corner
- * in Arabic, and a hard-coded polygon would have put it on the wrong side of
- * every panel on the Arabic page.
- */
-.cut {
-  --cut: 26px;
-  clip-path: polygon(
-    0 0,
-    calc(100% - var(--cut)) 0,
-    100% var(--cut),
-    100% 100%,
-    0 100%
-  );
-}
-
-[dir='rtl'] .cut {
-  clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
-}
-
-.cut-lg {
-  --cut: 42px;
-}
-
-/**
- * A hairline around a cut box.
- *
- * A clipped element has no border to give it — the clip removes it along with
- * everything else outside the path — so the outline is a second clipped box
- * one pixel larger, in the line colour, with the real one sitting on top.
- * Put `.cut .cut-edge` on the outer element and the inner content inherits the
- * same corner.
- */
-.cut-edge {
-  padding: 1px;
-  background: var(--pg-line);
-}
-
-/**
  * A rule that fades out at both ends, for section joins.
  */
 .rule {

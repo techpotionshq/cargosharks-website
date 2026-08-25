@@ -136,8 +136,8 @@ export function Work({ lang, shotSuffix }: { lang: Lang; shotSuffix: string }) {
       {/* Full centred measure, so the capture is legible — this is the fault the
           rewrite exists to fix. */}
       <div className="shell-wide mt-10 lg:mt-12">
-        <div className="cut cut-lg cut-edge shadow-xl">
-          <div className="cut cut-lg bg-paper-lift">
+        <div className="overflow-hidden rounded-2xl border border-line shadow-xl">
+          <div className="bg-paper-lift">
             {/* The container holds the aspect ratio so a cross-fade does not
                 collapse the section's height to zero between two absolutely
                 positioned images. */}

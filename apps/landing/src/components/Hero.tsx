@@ -115,17 +115,37 @@ export function Hero({ lang, shot }: { lang: Lang; shot: string }) {
           animate={reduced ? undefined : { opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.34, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div className="cut cut-lg cut-edge shadow-2xl">
-            <div className="floor cut cut-lg max-h-[30rem] overflow-hidden bg-paper-lift">
-              <img
-                src={`/pic/screens/${shot}.webp`}
-                alt=""
-                width={2360}
-                height={1476}
-                className="w-full"
-                fetchPriority="high"
-              />
-            </div>
+          {/*
+            Rounded at the top, square at the bottom, and one element rather
+            than two.
+
+            The rule across the site is that a frame with all four corners
+            rounded is a complete object and a frame rounded only at the top is
+            one that continues past its crop. This is the only cropped frame
+            here, so it is the only one shaped this way — the ones in `Work` and
+            `Bilingual` show a whole capture and keep all four.
+
+            It was a rounded box inside a rounded box: the border and shadow on
+            the outer element, the mask on the inner. That drew a crisp closed
+            rectangle *underneath* an image that was dissolving — the frame
+            finished itself while its contents evaporated, which is two edges
+            making opposite claims about the same boundary. A radius says the
+            object ends here and a fade says it does not.
+
+            So the mask is on the element that carries the border, and it takes
+            the border with it. The shadow went with the second element and is
+            not missed: its top half sat on a dark photograph where a shadow is
+            invisible, and its bottom half sat under the part that fades out.
+          */}
+          <div className="floor max-h-[30rem] overflow-hidden rounded-t-2xl border border-b-0 border-line bg-paper-lift">
+            <img
+              src={`/pic/screens/${shot}.webp`}
+              alt=""
+              width={2360}
+              height={1476}
+              className="w-full"
+              fetchPriority="high"
+            />
           </div>
         </motion.div>
 

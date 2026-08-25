@@ -76,16 +76,16 @@ export function Bilingual({ lang }: { lang: Lang }) {
       </div>
 
       {/* `dir` on the frame, not on a stylesheet: the window chrome, the corner
-          cut that follows it and the caption all mirror because the browser
+          radius that follows it and the caption all mirror because the browser
           mirrors them, which is the same mechanism the product relies on. This
           is the one frame on the site whose chrome is the demonstration rather
           than the container, which is why it draws its own. */}
       <div className="shell-wide mt-12">
         <div
           dir={shown === 'ar' ? 'rtl' : 'ltr'}
-          className="cut cut-lg cut-edge mx-auto shadow-xl"
+          className="mx-auto overflow-hidden rounded-2xl border border-line shadow-xl"
         >
-          <div className="cut cut-lg bg-paper-lift">
+          <div className="bg-paper-lift">
             <div className="flex items-center gap-2 border-b border-line px-4 py-3">
               <span className="size-2.5 rounded-full bg-line-strong" />
               <span className="size-2.5 rounded-full bg-line-strong" />

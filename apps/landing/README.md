@@ -52,24 +52,24 @@ src/app/(en)/                English root layout + / and the six document routes
 src/app/(ar)/                Arabic root layout and home page
 src/app/globals.css          the stylesheet for the app's own pages
 src/app/pages.css            the stylesheet for the imported documents
-src/components/              sections, header, footer, the counter, the frame
-src/components/Frame.tsx     window chrome, shared by every product capture
-src/components/Illustrations.tsx  the two drawings, inline SVG on brand tokens
+src/components/              sections, header, footer, the counter
+src/components/Calculator.tsx     the free-time calculator, the one thing you operate
+src/components/Illustrations.tsx  the berth plan, inline SVG on brand tokens
 src/content/copy.ts          every word of the home page, both languages
 src/content/pages/           the five imported documents
 src/lib/fonts.ts             Manrope, IBM Plex Mono, IBM Plex Sans Arabic
 public/cargosharks-logo/     the supplied mark — do not edit, it is the source
 public/pic/screens/          real captures of the running product
 public/pic/photos/           stock photography (Unsplash licence, commercial use)
-                             two are used: the yard behind the demurrage band and
-                             the port behind the close. Two are not, yet.
+                             three are used, one per dark band: the port behind the
+                             hero, the yard behind demurrage, the ship behind the close
 ```
 
 `public/` holds nothing but assets now. Every page is a route.
 
 | Route | What it is |
 |---|---|
-| `/` and `/ar/` | the home page, eight blocks, ~8,300px |
+| `/` and `/ar/` | the home page, eight blocks, ~9,200px |
 | `/what-we-do/` | the product explained standalone, for arrivals from search |
 | `/compare/` | how we are different, and who we are not for |
 | `/privacy/` `/terms/` `/dpa/` | **unreviewed drafts** — see below |
@@ -181,13 +181,14 @@ Not one of those is fashion. A light page with a saturated photograph on it has
 somewhere for the eye to rest; a dark page with a glow behind every heading does
 not.
 
-**The cut corner is the one piece of shape language the site owns.** `.cut` in
-`globals.css` clips a corner off the dark panels and the product frames — the
-shape of a filing tab, a punched shipping label and the clipped corner of a
-customs form, which are objects this product's users are inside all day.
-`rounded-2xl` is the framework's default and therefore everybody's. It mirrors,
-because a tab cut into the trailing corner is cut into the other corner in
-Arabic.
+**Corners are rounded, and the frames all share one radius.** An earlier pass
+gave the dark panels and product frames a clipped corner — a filing-tab shape,
+on the reasoning that it was a form a forwarder handles all day and that
+`rounded-2xl` is the framework's default and therefore everybody's. It read as
+an affectation on a photograph of a real product, which is the more expensive
+kind of wrong: a shape nobody can name is a shape that distracts. The frames are
+`rounded-2xl` with a hairline border, and the shape language the site owns is the
+hairline grid instead.
 
 **The calculator is the centrepiece and it does not claim a saving.** Every
 calculator in this category ends with "you would save 23% with us" — a figure

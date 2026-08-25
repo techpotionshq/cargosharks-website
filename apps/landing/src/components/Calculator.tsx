@@ -129,10 +129,9 @@ export function Calculator({ lang }: { lang: Lang }) {
 
           It is dark because it is the only thing here that is not an input, and
           because a figure this size on the same paper as the sliders reads as
-          another form field. The cut corner is the site's own shape — see
-          `.cut` in `globals.css`.
+          another form field.
         */}
-        <div className="cut cut-lg bg-void p-8 lg:col-span-5 lg:p-10">
+        <div className="rounded-2xl bg-void p-8 lg:col-span-5 lg:p-10">
           <p className="tracked text-[0.6rem] text-on-void-faint">{calculator.resultLabel[lang]}</p>
 
           <p className="figures mt-5 flex flex-wrap items-baseline gap-x-2.5 font-mono leading-none text-on-void">
