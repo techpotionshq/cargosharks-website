@@ -165,6 +165,30 @@ COPY --from=build --chown=node:node /app/packages/db/migrations ./migrations
 COPY infra/web-entrypoint.sh /usr/local/bin/entrypoint
 RUN chmod +x /usr/local/bin/entrypoint
 
+# npm and corepack are removed, and this is a real fix rather than tidying.
+#
+# The base image ships npm, npm bundles its own `tar`, and that copy is three
+# CVEs behind — one CRITICAL (`CVE-2026-59873`, a gzip bomb) and two HIGH, all
+# with fixed versions published. Trivy found them on the first scan this job
+# has ever completed, and `pnpm why tar` finds nothing, because the vulnerable
+# copy was never a dependency of ours: it arrived inside the runtime.
+#
+# Nothing here needs it. This stage does not run `corepack enable`, does not
+# install anything, and `web-entrypoint.sh` invokes `node` and nothing else —
+# the Next.js standalone output ships its own traced `node_modules`. So the
+# package manager is pure attack surface sitting in a production image, and
+# deleting it is both the fix for these three and for whatever the next npm
+# advisory turns out to be.
+#
+# If a future entrypoint ever needs npm, install it deliberately rather than
+# deleting this line: the point is that a package manager in a runtime image
+# should be a decision somebody made.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm \
+    /usr/local/bin/npx \
+    /usr/local/bin/corepack
+
 USER node
 EXPOSE 3000
 

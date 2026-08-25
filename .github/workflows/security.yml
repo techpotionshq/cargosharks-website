@@ -123,10 +123,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The image is what runs, and `pnpm audit` cannot see any of it: the base
-      # layer's OpenSSL is not in the lockfile. Both apps ship from one
-      # Dockerfile, so one build covers them.
-      - name: Build
+      # layer's OpenSSL is not in the lockfile.
+      #
+      # Two builds, not one. This used to say "both apps ship from one
+      # Dockerfile, so one build covers them", which was wrong in a way nobody
+      # could see while the scan step was broken: `docker build .` builds the
+      # *final* stage only, and `service` is not it. So the service image — the
+      # one carrying pnpm, Chromium and a row of apt packages, and therefore the
+      # larger surface of the two — has never been scanned at all. A control
+      # that claims coverage it does not have is worse than one that claims
+      # nothing.
+      - name: Build the web runtime image
         run: docker build -t qabandi:scan .
+
+      - name: Build the service image
+        run: docker build --target service -t qabandi:service-scan .
 
       - name: Scan
         # v0.28.0 is permanently broken, which is why this job has never run: it
@@ -152,6 +163,16 @@ jobs:
           #
           # If this proves too noisy on the first real runs, narrow `severity`
           # rather than dropping `ignore-unfixed`.
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Scan the service image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: qabandi:service-scan
+          format: table
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
