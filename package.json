@@ -14,6 +14,7 @@
     "dev:service": "pnpm --filter @qabandi/service dev",
     "dev:landing": "pnpm --filter @qabandi/landing dev",
     "doctor": "node scripts/doctor.mjs",
+    "q": "node scripts/q.mjs",
     "build": "pnpm -r build",
     "build:landing": "pnpm --filter @qabandi/landing build",
     "preview:landing": "pnpm --filter @qabandi/landing preview",

@@ -23,6 +23,34 @@ pnpm test:db       # migrations, seed, RLS matrix — needs a database
 pnpm test:e2e      # every screen, both languages, on fixtures
 ```
 
+## Finding your way around — `pnpm q`
+
+Three layers of indirection make this repository slow to grep: a screen's text
+is a key in a catalogue, a URL is not a path because of route groups, and a
+table is spread over four files. `pnpm q` reads the tree in ~250ms and answers
+directly. Everything it prints is `file:line`.
+
+```bash
+pnpm q map                 # the whole repository on one screen
+pnpm q find <anything>     # messages, routes, slices, tables, symbols, paths at once
+pnpm q msg "<text>"        # what an operator quoted -> key -> both languages -> call sites
+pnpm q msg set <key> --en "…" --ar "…"    # write both catalogues atomically
+pnpm q where /invoices     # url -> page file, layouts, slices, fixture status
+pnpm q slice payables      # files, routes, permissions, namespaces, tests, exports
+pnpm q table shipments     # schema, migration, policy, audit trigger, callers
+pnpm q sym withActor       # declaration + every file that imports and names it
+pnpm q impact <file>       # importers, tests, screens — without running anything
+pnpm q gate                # only the checks the current diff can break, ~3s
+```
+
+`pnpm q gate` will not start `test:db`, the web or service suites, `test:e2e` or
+`build` — it names them and stops. They are minutes long, and the first three
+share one remote database that fails differently every time two of them overlap.
+`--full` runs them, strictly one at a time.
+
+A `PostToolUse` hook (`scripts/q-hook.mjs`) runs the matching invariant checks
+after every edit and says nothing unless one fails.
+
 `QABANDI_PILOT_FIXTURES=1 pnpm dev` runs the pilot screens with no database.
 It is a subset: the routes that still need one are listed as `NEEDS_DATABASE`
 in `apps/web/e2e/support/harness.ts`, each naming the query responsible.
