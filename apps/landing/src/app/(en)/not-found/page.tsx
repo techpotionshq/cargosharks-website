@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Wordmark } from '@/components/Wordmark'
-import { CONTACT_EMAIL, nav } from '@/content/copy'
+import { CONTACT_EMAIL, navLinks } from '@/content/copy'
 
 /**
  * `noindex` and no canonical: the group layout's metadata would otherwise give
@@ -84,7 +84,7 @@ export default function NotFound() {
           >
             The home page
           </a>
-          {nav.map((item) => (
+          {navLinks.map((item) => (
             <a
               key={item.href}
               href={item.href}

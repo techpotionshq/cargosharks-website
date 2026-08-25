@@ -28,10 +28,146 @@ export type Bi = { en: string; ar: string }
 export const DEMO_URL = 'https://demo.cargosharks.com'
 export const CONTACT_EMAIL = 'hello@cargosharks.com'
 
-export const nav: { href: string; label: Bi }[] = [
-  { href: '/what-we-do/', label: { en: 'What we do', ar: 'ماذا نفعل' } },
-  { href: '/compare/', label: { en: 'How we compare', ar: 'كيف نقارن' } },
+/**
+ * The header's navigation, as two groups and a link.
+ *
+ * It was two flat links, which was right while there were seven pages. There
+ * are eleven now — four comparison pages arrived — and a flat bar has two bad
+ * answers to that: list all of them, or hide the new ones where nobody but a
+ * search engine finds them. A panel is the third answer, and it is the one that
+ * lets a page like `/compare/spreadsheets/` be reachable by a human.
+ *
+ * `blurb` is not decoration. A menu of eleven bare links is a sitemap; a line
+ * of explanation under each turns it into a page in its own right, and it is
+ * where a reader who does not yet know what they want actually decides.
+ */
+export const nav: {
+  id: string
+  label: Bi
+  /** A group opens a panel; a plain `href` is a link and opens nothing. */
+  href?: string
+  intro?: Bi
+  columns?: { heading: Bi; links: { href: string; label: Bi; blurb: Bi }[] }[]
+}[] = [
+  {
+    id: 'product',
+    label: { en: 'Product', ar: 'المنتج' },
+    intro: {
+      en: 'One file from enquiry to paid invoice, in Arabic and English, on a database that belongs to you.',
+      ar: 'سجل واحد من الاستفسار إلى الفاتورة المسدَّدة، بالعربية والإنجليزية، على قاعدة بيانات تملكونها.',
+    },
+    columns: [
+      {
+        heading: { en: 'Overview', ar: 'نظرة عامة' },
+        links: [
+          {
+            href: '/what-we-do/',
+            label: { en: 'What we do', ar: 'ماذا نفعل' },
+            blurb: {
+              en: 'The whole product, explained from the beginning',
+              ar: 'المنتج كاملاً، مشروحاً من البداية',
+            },
+          },
+          {
+            href: '/#work',
+            label: { en: 'The three desks', ar: 'المكاتب الثلاثة' },
+            blurb: {
+              en: 'Commercial, operations and finance on one shipment',
+              ar: 'التجاري والعمليات والمالية على شحنة واحدة',
+            },
+          },
+          {
+            href: '/#demo',
+            label: { en: 'The live demo', ar: 'النسخة التجريبية' },
+            blurb: {
+              en: 'The real software on seeded data, no sign-up',
+              ar: 'البرنامج نفسه على بيانات مُعدّة، بلا تسجيل',
+            },
+          },
+        ],
+      },
+      {
+        heading: { en: 'How it is built', ar: 'كيف بُني' },
+        links: [
+          {
+            href: '/what-we-do/#bilingual',
+            label: { en: 'Arabic and English', ar: 'بالعربية والإنجليزية' },
+            blurb: {
+              en: 'The same build, not a translation layer',
+              ar: 'البناء نفسه، لا طبقة ترجمة',
+            },
+          },
+          {
+            href: '/dpa/',
+            label: { en: 'Data and security', ar: 'البيانات والأمان' },
+            blurb: {
+              en: 'Where your rows live and who can read them',
+              ar: 'أين تعيش صفوفكم ومن يستطيع قراءتها',
+            },
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'compare',
+    label: { en: 'Compare', ar: 'المقارنات' },
+    intro: {
+      en: 'No tick-and-cross grids. Each page says what the other vendor states about itself, where they are the better answer, and the questions worth asking both of us.',
+      ar: 'بلا جداول علامات. كل صفحة تقول ما يذكره المورّد الآخر عن نفسه، وأين يكون هو الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
+    },
+    columns: [
+      {
+        heading: { en: 'Against a system', ar: 'مقابل نظام' },
+        links: [
+          {
+            href: '/compare/cargowise/',
+            label: { en: 'vs CargoWise', ar: 'مقابل CargoWise' },
+            blurb: { en: 'The enterprise platform, and when it wins', ar: 'المنصة المؤسسية، ومتى تفوز' },
+          },
+          {
+            href: '/compare/logistaas/',
+            label: { en: 'vs Logistaas', ar: 'مقابل Logistaas' },
+            blurb: { en: 'The closest comparison on the list', ar: 'أقرب مقارنة في القائمة' },
+          },
+          {
+            href: '/compare/cargoes-runner/',
+            label: { en: 'vs CARGOES Runner', ar: 'مقابل CARGOES Runner' },
+            blurb: { en: 'DP World’s platform for smaller forwarders', ar: 'منصة DP World للوكلاء الأصغر' },
+          },
+        ],
+      },
+      {
+        heading: { en: 'Against how it is done now', ar: 'مقابل الطريقة الحالية' },
+        links: [
+          {
+            href: '/compare/spreadsheets/',
+            label: { en: 'vs spreadsheets', ar: 'مقابل جداول البيانات' },
+            blurb: { en: 'The real incumbent, and where it breaks', ar: 'المنافس الحقيقي، وأين ينكسر' },
+          },
+          {
+            href: '/compare/',
+            label: { en: 'How we compare', ar: 'كيف نقارن' },
+            blurb: { en: 'Three ways to run an operation, and who we are not for', ar: 'ثلاث طرق لإدارة العمل، ومن لسنا لهم' },
+          },
+        ],
+      },
+    ],
+  },
 ]
+
+/** Flattened, for the places that want links rather than a menu. */
+export const navLinks: { href: string; label: Bi }[] = nav.flatMap((item) =>
+  item.href
+    ? [{ href: item.href, label: item.label }]
+    : (item.columns ?? []).flatMap((column) =>
+        column.links
+          // Anchors into the home page are menu affordances rather than pages,
+          // so they are not links a sitemap or a mobile list should repeat.
+          .filter((link) => !link.href.includes('#'))
+          .map((link) => ({ href: link.href, label: link.label })),
+      ),
+)
 
 export const hero = {
   /** Split so the line breaks are a design decision rather than the browser's. */
@@ -497,6 +633,15 @@ export const footer = {
         { href: '/what-we-do/', label: { en: 'What we do', ar: 'ماذا نفعل' } },
         { href: '/compare/', label: { en: 'How we compare', ar: 'كيف نقارن' } },
         { href: '#demo', label: { en: 'Demo', ar: 'النسخة التجريبية' } },
+      ],
+    },
+    {
+      heading: { en: 'Compare', ar: 'المقارنات' },
+      links: [
+        { href: '/compare/cargowise/', label: { en: 'vs CargoWise', ar: 'مقابل CargoWise' } },
+        { href: '/compare/logistaas/', label: { en: 'vs Logistaas', ar: 'مقابل Logistaas' } },
+        { href: '/compare/cargoes-runner/', label: { en: 'vs CARGOES Runner', ar: 'مقابل CARGOES Runner' } },
+        { href: '/compare/spreadsheets/', label: { en: 'vs spreadsheets', ar: 'مقابل جداول البيانات' } },
       ],
     },
     {

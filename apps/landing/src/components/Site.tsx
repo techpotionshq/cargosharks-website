@@ -4,6 +4,7 @@ import { Capabilities } from '@/components/Capabilities'
 import { Cta } from '@/components/Cta'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
+import { SiteSchema } from '@/components/StructuredData'
 import { Hero } from '@/components/Hero'
 import { Leak } from '@/components/Leak'
 import { Modes } from '@/components/Modes'
@@ -45,6 +46,7 @@ export function Site({ lang }: { lang: Lang }) {
 
   return (
     <>
+      <SiteSchema lang={lang} />
       {/* The bar inverts against whatever band is behind it, so it needs both
           inkings of the lockup and picks one — see `Header`. They are rendered
           here rather than there because `Wordmark` calls `resolveBrand()`, and

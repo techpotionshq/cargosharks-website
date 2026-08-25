@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ArrowRight, List, X } from '@phosphor-icons/react/dist/ssr'
+import { ArrowRight, CaretDown, List, X } from '@phosphor-icons/react/dist/ssr'
 import { DEMO_URL, type Lang, languageSwitch, nav } from '@/content/copy'
 
 /**
@@ -28,6 +28,26 @@ const BASELINE_PX = 40
  * documents opens on `.hero` and punctuates with `.band--navy`.
  */
 const DARK_SELECTOR = '[data-tone="dark"], .doc-page .hero, .doc-page .band--navy'
+
+
+/**
+ * The pill that slides between nav items.
+ *
+ * One `layoutId` shared by every item is what makes it travel rather than fade
+ * — two elements with the same layout id are treated as the same object moving,
+ * which is the difference between a menu that feels responsive and one that
+ * feels like two backgrounds crossfading.
+ */
+function NavPill({ reduced }: { reduced: boolean | null }) {
+  return (
+    <motion.span
+      layoutId="nav-pill"
+      aria-hidden="true"
+      className="bar-pill absolute inset-0 -z-10 rounded-lg"
+      transition={{ duration: reduced ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
+    />
+  )
+}
 
 /**
  * A bar that floats clear of the top edge, and inverts against whatever is
@@ -85,6 +105,7 @@ export function Header({
   const [condensed, setCondensed] = useState(false)
   const [overDark, setOverDark] = useState(true)
   const [hovered, setHovered] = useState<string | null>(null)
+  const [panel, setPanel] = useState<string | null>(null)
   const pathname = usePathname()
   const reduced = useReducedMotion()
   const other = languageSwitch[lang]
@@ -152,6 +173,29 @@ export function Header({
   }, [open])
 
   /**
+   * Escape closes the panel, and so does scrolling.
+   *
+   * Escape because a panel opened by a click is a thing a keyboard user has to
+   * be able to dismiss. Scroll because the panel is anchored to a fixed bar and
+   * would otherwise hang over the page the reader has moved on to — a menu that
+   * outlives the intention that opened it.
+   */
+  useEffect(() => {
+    if (!panel) return
+
+    const close = () => setPanel(null)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', close, { passive: true })
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', close)
+    }
+  }, [panel])
+
+  /**
    * `/what-we-do` and `/what-we-do/` are the same page.
    *
    * `trailingSlash: true` means every href in `copy.ts` carries one and every
@@ -167,7 +211,7 @@ export function Header({
   // The pill follows the cursor while the reader is in the bar, and falls back
   // to the current page when they leave it. One `layoutId` across both states is
   // what makes it slide rather than cross-fade.
-  const lit = hovered ?? nav.find((item) => here(item.href))?.href ?? null
+  const lit = hovered ?? nav.find((item) => (item.href ? here(item.href) : false))?.id ?? null
 
   /**
    * One number, and the stylesheet does the rest.
@@ -184,6 +228,8 @@ export function Header({
    * easing. Nothing here knows what colour anything is.
    */
   const tone = overDark ? 1 : 0
+
+  const panelItem = nav.find((item) => item.id === panel && item.columns) ?? null
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-50 pt-3 sm:pt-4">
@@ -216,28 +262,66 @@ export function Header({
             </span>
           </a>
 
-          <nav className="hidden items-center gap-1 md:flex" onMouseLeave={() => setHovered(null)}>
-            {nav.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                onMouseEnter={() => setHovered(item.href)}
-                aria-current={here(item.href) ? 'page' : undefined}
-                className={`relative isolate rounded-lg px-3.5 py-2 text-[0.875rem] ${
-                  lit === item.href ? 'bar-ink' : 'bar-dim'
-                }`}
-              >
-                {lit === item.href ? (
-                  <motion.span
-                    layoutId="nav-pill"
-                    aria-hidden="true"
-                    className="bar-pill absolute inset-0 -z-10 rounded-lg"
-                    transition={{ duration: reduced ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
-                  />
-                ) : null}
-                {item.label[lang]}
-              </a>
-            ))}
+          <nav
+            className="hidden items-center gap-1 md:flex"
+            onMouseLeave={() => {
+              setHovered(null)
+              setPanel(null)
+            }}
+          >
+            {nav.map((item) => {
+              const isOpen = panel === item.id
+              const active = item.href ? here(item.href) : isOpen
+
+              /*
+                Hover opens it and a click toggles it.
+
+                Hover alone is the pattern everyone knows and it strands anybody
+                on a touchscreen or a keyboard — the panel can never be opened.
+                Click alone costs a mouse user a click on every menu. Both, with
+                the click winning, is the arrangement that works for all three
+                without either group noticing there was a decision.
+              */
+              return (
+                <div
+                  key={item.id}
+                  onMouseEnter={() => {
+                    setHovered(item.id)
+                    if (item.columns) setPanel(item.id)
+                  }}
+                >
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      aria-current={here(item.href) ? 'page' : undefined}
+                      className={`relative isolate block rounded-lg px-3.5 py-2 text-[0.875rem] ${
+                        lit === item.id || active ? 'bar-ink' : 'bar-dim'
+                      }`}
+                    >
+                      {lit === item.id ? <NavPill reduced={reduced} /> : null}
+                      {item.label[lang]}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPanel(isOpen ? null : item.id)}
+                      aria-expanded={isOpen}
+                      className={`relative isolate flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[0.875rem] ${
+                        lit === item.id || isOpen ? 'bar-ink' : 'bar-dim'
+                      }`}
+                    >
+                      {lit === item.id ? <NavPill reduced={reduced} /> : null}
+                      {item.label[lang]}
+                      <CaretDown
+                        weight="bold"
+                        aria-hidden="true"
+                        className={`size-2.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -303,6 +387,67 @@ export function Header({
           </div>
         </motion.div>
 
+        {/*
+          The panel.
+
+          It hangs off the bar rather than out of the item that opened it, so
+          the two are one object: same width, same surface, same `--tone`, and a
+          single element to animate. A panel anchored under its own trigger has
+          to be measured and positioned, and it has to be re-measured when the
+          language flips the bar's contents end to end.
+        */}
+        <AnimatePresence initial={false}>
+          {panelItem ? (
+            <motion.div
+              key={panelItem.id}
+              onMouseEnter={() => setPanel(panelItem.id)}
+              onMouseLeave={() => setPanel(null)}
+              style={{ '--tone': tone } as CSSProperties}
+              initial={reduced ? false : { opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? undefined : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="bar bar-surface pointer-events-auto mx-auto mt-2 hidden max-w-[64rem] overflow-hidden rounded-xl border shadow-xl backdrop-blur-xl md:block"
+            >
+              <div className="grid gap-8 p-7 lg:grid-cols-12 lg:gap-10 lg:p-9">
+                {panelItem.intro ? (
+                  <p className="bar-dim max-w-[34ch] text-[0.9rem] leading-[1.65] lg:col-span-4">
+                    {panelItem.intro[lang]}
+                  </p>
+                ) : null}
+
+                <div className="grid gap-8 sm:grid-cols-2 lg:col-span-8 lg:gap-10">
+                  {(panelItem.columns ?? []).map((column) => (
+                    <div key={column.heading.en}>
+                      <p className="tracked bar-dim text-[0.55rem] opacity-70">
+                        {column.heading[lang]}
+                      </p>
+                      <ul className="mt-4 space-y-1">
+                        {column.links.map((link) => (
+                          <li key={link.href}>
+                            <a
+                              href={link.href}
+                              onClick={() => setPanel(null)}
+                              className="bar-hover -mx-3 block rounded-lg px-3 py-2.5"
+                            >
+                              <span className="bar-ink block text-[0.9rem] font-medium">
+                                {link.label[lang]}
+                              </span>
+                              <span className="bar-dim mt-0.5 block text-[0.8rem] leading-[1.5] opacity-80">
+                                {link.blurb[lang]}
+                              </span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         <AnimatePresence initial={false}>
           {open ? (
             <motion.nav
@@ -316,22 +461,48 @@ export function Header({
               style={{ '--tone': tone } as CSSProperties}
               className="bar bar-surface pointer-events-auto mx-auto mt-2 max-w-[64rem] overflow-hidden rounded-xl border backdrop-blur-xl md:hidden"
             >
-              <div className="flex flex-col p-3">
-                {nav.map((item, index) => (
-                  <motion.a
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setOpen(false)}
+              {/*
+                On a phone the panel is not a panel — everything is open at
+                once, under its own heading.
+
+                A mega menu that becomes an accordion on mobile makes a reader
+                tap twice to reach a page they can already see the name of, and
+                it hides exactly the pages this menu exists to surface. The
+                sheet is scrollable and the whole tree is eleven lines; there is
+                nothing here worth collapsing.
+              */}
+              <div className="flex max-h-[70vh] flex-col overflow-y-auto p-3">
+                {nav.map((group, groupIndex) => (
+                  <motion.div
+                    key={group.id}
                     initial={reduced ? false : { opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.25, delay: 0.05 + index * 0.05 }}
-                    aria-current={here(item.href) ? 'page' : undefined}
-                    className={`rounded-lg px-3 py-3.5 text-[1rem] ${
-                      here(item.href) ? 'bar-pill bar-ink' : 'bar-dim'
-                    }`}
+                    transition={{ duration: 0.25, delay: 0.05 + groupIndex * 0.06 }}
+                    className={groupIndex > 0 ? 'bar-edge mt-4 border-t pt-4' : ''}
                   >
-                    {item.label[lang]}
-                  </motion.a>
+                    <p className="tracked bar-dim px-3 text-[0.55rem] opacity-70">
+                      {group.label[lang]}
+                    </p>
+
+                    {(group.columns ?? []).flatMap((column) => column.links).map((link) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        onClick={() => setOpen(false)}
+                        aria-current={here(link.href) ? 'page' : undefined}
+                        className={`mt-1 block rounded-lg px-3 py-2.5 ${
+                          here(link.href) ? 'bar-pill' : ''
+                        }`}
+                      >
+                        <span className="bar-ink block text-[0.95rem] font-medium">
+                          {link.label[lang]}
+                        </span>
+                        <span className="bar-dim mt-0.5 block text-[0.8rem] leading-[1.5] opacity-80">
+                          {link.blurb[lang]}
+                        </span>
+                      </a>
+                    ))}
+                  </motion.div>
                 ))}
                 <a
                   href={DEMO_URL}
