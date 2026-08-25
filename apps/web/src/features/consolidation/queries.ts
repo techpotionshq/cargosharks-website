@@ -343,45 +343,6 @@ export async function listAttachableJobs(
   })
 }
 
-/** The cargo figures every allocation basis reads from. */
-export async function loadAllocationTargets(
-  actor: Actor,
-  consolidationId: string,
-): Promise<
-  {
-    readonly jobId: string
-    readonly reference: string
-    readonly chargeableWeightKg: string | null
-    readonly volumeCbm: string | null
-    readonly grossWeightKg: string | null
-    readonly packages: number | null
-  }[]
-> {
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        jobId: jobs.id,
-        reference: jobs.reference,
-        chargeableWeightKg: jobs.chargeableWeightKg,
-        volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        packages: sql<number>`(
-          select coalesce(sum(c.package_count), 0)::int from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-      })
-      .from(jobs)
-      .where(eq(jobs.consolidationId, consolidationId))
-      .orderBy(asc(jobs.reference))
-
-    return rows
-  })
-}
-
 /** Where an allocated cost landed — the answer to "why is this on my job?". */
 export async function listAllocationShares(
   actor: Actor,
