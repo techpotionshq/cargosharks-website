@@ -60,6 +60,29 @@
   --spacing-gut: 1.5rem;
 }
 
+/**
+ * The measure the product frames run to.
+ *
+ * `.shell` is 75rem and it is the *text* measure — it is shared with the five
+ * imported documents and it is not moving, because a logo that steps sideways
+ * on a click-through reads as having left the site. But a 1440-wide screenshot
+ * inside a 1200-wide column is a screenshot of a screenshot: the sidebar labels
+ * land at about nine pixels and the whole point of showing the product is that
+ * somebody can read it.
+ *
+ * So the frames get their own wider measure and the copy keeps the narrow one.
+ * They are concentric — same centre, same gutter — so the page still reads as
+ * one column with the pictures breathing out of it, which is the composition
+ * every product site in this category converged on because it is the one that
+ * works.
+ */
+.shell-wide {
+  width: 100%;
+  max-width: 84rem;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
 :root {
   /* Darker than the ramp's darkest stop, because a hero that is merely dark
      navy makes the product screenshot — which is itself a light interface —
@@ -211,44 +234,37 @@ body {
 }
 
 /**
- * The hero screenshot's perspective.
+ * The screenshot's frame — window chrome, and the reason it is there.
  *
- * A product shot laid flat in a rounded rectangle with a drop shadow is the
- * single most common composition in the category and reads as a sticker. Tilted
- * on two axes it reads as a screen with room behind it, and it lets the frame
- * run off the edge of the page without the crop looking accidental.
+ * The captures used to sit in a bare rounded rectangle, which is the most
+ * common composition in the category and has a specific failure: with no chrome
+ * around it, a screenshot of a web application reads as a *picture of a web
+ * page*, and the reader's eye treats it as decoration. A title bar and an
+ * address turn it back into a screen — the same trick a photograph of a laptop
+ * plays, at none of the weight and with the pixels still legible.
  *
- * The Y rotation is a variable because it is the one value that has to mirror:
- * a screen turning away from the reader turns the other way in Arabic, and a
- * hard-coded negative would have the Arabic page leaning into its own margin.
+ * It is drawn rather than photographed for one reason worth writing down: the
+ * bar has to mirror. A window's controls sit at its trailing edge, and every
+ * laptop mock-up on the internet is left-to-right.
  */
-.tilt {
-  transform-origin: center center;
-}
-
-@media (min-width: 1024px) {
-  .tilt {
-    --tilt-y: -8deg;
-    transform: perspective(2600px) rotateY(var(--tilt-y)) rotateX(3deg) rotate(0.6deg);
-  }
-}
-
-[dir='rtl'] .tilt {
-  --tilt-y: 8deg;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tilt {
-    transform: none;
-  }
+.frame {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--pg-edge-lit);
+  background: var(--pg-raise);
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 0 color-mix(in oklab, var(--qb-neutral-50) 8%, transparent) inset,
+    0 40px 80px -20px color-mix(in oklab, var(--qb-primary-950) 90%, black),
+    0 0 0 1px color-mix(in oklab, var(--qb-primary-950) 60%, transparent);
 }
 
 /**
- * The glow behind the hero screenshot.
+ * The glow behind a product frame.
  *
  * A single soft radial in the brand blue, sitting *behind* the frame rather
- * than under the whole section. Without it the tilted screenshot floats on flat
- * navy with nothing to explain the light on its edges.
+ * than under the whole section. Without it the screenshot floats on flat navy
+ * with nothing to explain the light on its edges.
  */
 .bloom {
   background: radial-gradient(
@@ -257,6 +273,114 @@ body {
     transparent
   );
   filter: blur(48px);
+}
+
+/**
+ * The light behind the hero.
+ *
+ * Two offset radials rather than one centred blob. A single centred glow puts
+ * its brightest point directly behind the headline, which is the one place on
+ * the page that needs maximum contrast — it washed the type out and the fix
+ * kept being to dim the glow until it was not doing anything. Offset to either
+ * shoulder, the light frames the headline instead of sitting under it, and the
+ * two overlap into a wide band behind the product frame, which is where the
+ * brightness is actually wanted.
+ *
+ * Positions are percentages of the element, so this mirrors for free.
+ */
+.aurora {
+  background:
+    radial-gradient(
+      ellipse 46% 38% at 22% 18%,
+      color-mix(in oklab, var(--pg-blue) 26%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 44% 34% at 80% 12%,
+      color-mix(in oklab, var(--qb-primary-400) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 70% 44% at 50% 62%,
+      color-mix(in oklab, var(--pg-blue) 16%, transparent),
+      transparent 72%
+    );
+  filter: blur(12px);
+}
+
+/**
+ * A hairline that is brighter along its top edge than its bottom.
+ *
+ * Cards on a dark page need a lit top edge or they read as holes cut in the
+ * background rather than as surfaces raised off it. This is that edge, done as
+ * a border-image-ish gradient on a pseudo-element so the card's own border can
+ * stay a flat hairline and the two do not fight over the corner radius.
+ */
+.lit {
+  position: relative;
+}
+
+.lit::before {
+  content: '';
+  position: absolute;
+  inset-inline: 12%;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in oklab, var(--qb-primary-300) 55%, transparent),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/**
+ * The floor under the hero screenshot.
+ *
+ * The frame is tall enough that its bottom edge lands near the fold on a laptop,
+ * and a hard edge there tells the reader the page has finished. Fading the last
+ * of it into the page background does the opposite: the image visibly continues
+ * past what is on screen, which is the cheapest possible "keep scrolling".
+ *
+ * A mask rather than a gradient overlay, because the frame casts a shadow and an
+ * opaque overlay would sit on top of it and cut a straight line through it.
+ */
+.floor {
+  mask-image: linear-gradient(to bottom, black 62%, transparent 99%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floor {
+    mask-image: none;
+  }
+}
+
+/**
+ * The dashed lane in the route illustration, drawn as though it were being
+ * travelled.
+ *
+ * `stroke-dashoffset` on a loop, which is the one animation on this page that
+ * is decorative — everything else moving is either a real figure or a response
+ * to the reader. It earns it by being what the drawing is *about*: a lane with
+ * nothing moving along it is a map, and the section it illustrates is about a
+ * shipment in progress.
+ */
+@keyframes lane {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.lane-dash {
+  stroke-dasharray: 3 5;
+  animation: lane 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lane-dash {
+    animation: none;
+  }
 }
 
 /** A hairline that fades out at both ends, for section joins. */
@@ -303,23 +427,6 @@ body {
     animation: none;
   }
 }
-
-/**
- * A screenshot cropped to its own leading corner.
- *
- * `object-position` has no logical form, so this is one of the handful of
- * places the direction has to be written down twice. It matters: the captures
- * are of a left-to-right interface and a right-to-left one, and an RTL screen
- * cropped from its left edge loses the sidebar it was cropped to show.
- */
-.shot-crop {
-  object-position: left top;
-}
-
-[dir='rtl'] .shot-crop {
-  object-position: right top;
-}
-
 
 /**
  * Arabic inside an English document.

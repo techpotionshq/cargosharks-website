@@ -52,8 +52,21 @@ export const hero = {
     en: 'Quote, book, clear and invoice a shipment without ever keying it into a second system.',
     ar: 'سعّروا الشحنة واحجزوها وخلّصوها وفوتروها، دون إدخال بياناتها مرة أخرى في أي نظام آخر.',
   },
+  /**
+   * The pill above the headline, and the one thing above it on the page.
+   *
+   * This is not the mono eyebrow that used to be here. That one described the
+   * company — "KUWAIT · SEA, AIR, ROAD, RAIL, COURIER" — which is the reader's
+   * least urgent question. This one is a link to the only thing on the page
+   * worth doing, phrased as the objection it removes: the demo is open, and
+   * looking at it does not put you on a mailing list.
+   */
+  badge: { en: 'The live demo is open', ar: 'النسخة التجريبية مفتوحة' },
+  badgeNote: { en: 'no sign-up', ar: 'بلا تسجيل' },
   primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
   secondary: { en: 'See what it does', ar: 'اطّلعوا على ما يفعله' },
+  /** The address in the frame's chrome. A real route in the real product. */
+  frameUrl: 'demo.cargosharks.com/dashboard',
   /** Where the eyebrow's content went: the same facts, out of the way. */
   micro: {
     en: 'Built in Kuwait. Sea, air, road, rail and courier, in Arabic and English.',
@@ -94,11 +107,30 @@ export const proof: { value: string; label: Bi }[] = [
  * in `Work.tsx`, so this file stays a data file and swapping icon sets is one
  * edit rather than sixty.
  */
-export const steps: { n: string; shot: string; icon: string; title: Bi; body: Bi; points: Bi[] }[] = [
+/**
+ * `desk` is the tab label and `title` is the claim.
+ *
+ * The section used to pin a frame and dim two of three stages as the reader
+ * scrolled past them, which meant the only way to see stage three was to scroll
+ * through stages one and two. A tab says which desk you are looking at in one
+ * word and lets a finance buyer go straight to finance — and one word is all
+ * that fits in a tab, which is why it is a separate string rather than a
+ * truncation of the title.
+ */
+export const steps: {
+  n: string
+  shot: string
+  icon: string
+  desk: Bi
+  title: Bi
+  body: Bi
+  points: Bi[]
+}[] = [
   {
     n: '01',
     shot: 'enquiries',
     icon: 'commercial',
+    desk: { en: 'Commercial', ar: 'التجاري' },
     title: {
       en: 'The enquiry arrives as an email. It leaves as a quote.',
       ar: 'يصل الاستفسار بريداً إلكترونياً، ويخرج عرض سعر.',
@@ -117,6 +149,7 @@ export const steps: { n: string; shot: string; icon: string; title: Bi; body: Bi
     n: '02',
     shot: 'jobs',
     icon: 'operations',
+    desk: { en: 'Operations', ar: 'العمليات' },
     title: {
       en: 'One job file, and everything hangs off it.',
       ar: 'سجل واحد للشحنة، وكل شيء معلَّق عليه.',
@@ -135,6 +168,7 @@ export const steps: { n: string; shot: string; icon: string; title: Bi; body: Bi
     n: '03',
     shot: 'finance',
     icon: 'finance',
+    desk: { en: 'Finance', ar: 'المالية' },
     title: {
       en: 'Costs land against the job before the invoice does.',
       ar: 'التكاليف تُقيَّد على الشحنة قبل أن تصدر الفاتورة.',
@@ -160,6 +194,131 @@ export const work = {
   sub: {
     en: 'Commercial, operations and finance work the same shipment. Nothing is re-keyed between them and nothing leaves the file.',
     ar: 'التجاري والعمليات والمالية يعملون على الشحنة نفسها. لا يُعاد إدخال شيء بينهم، ولا يخرج من السجل شيء.',
+  },
+}
+
+/**
+ * The five modes, as a strip under the hero.
+ *
+ * `proof` already counts them — "5 transport modes" — and a count is a claim a
+ * reader has to take on trust. Naming them costs one line and settles the
+ * question a forwarder is actually asking, which is not *how many* but *is mine
+ * one of them*. An air-only broker reading "5" scrolls on; the same broker
+ * reading "Air" does not.
+ *
+ * `key` maps to a Phosphor glyph in `Modes.tsx`, the same split `steps.icon`
+ * uses and for the same reason: this file stays data.
+ */
+export const modes: { key: string; label: Bi }[] = [
+  { key: 'sea', label: { en: 'Sea', ar: 'بحري' } },
+  { key: 'air', label: { en: 'Air', ar: 'جوي' } },
+  { key: 'road', label: { en: 'Road', ar: 'بري' } },
+  { key: 'rail', label: { en: 'Rail', ar: 'سككي' } },
+  { key: 'courier', label: { en: 'Courier', ar: 'بريد سريع' } },
+]
+
+export const modesNote = {
+  en: 'One file, whichever way the cargo moves',
+  ar: 'سجل واحد، مهما تحرّكت البضاعة',
+}
+
+/**
+ * The capability grid.
+ *
+ * The page had no section between "here are three desks" and "here is a
+ * demurrage clock", which left the specific questions a buyer arrives with —
+ * does it hold my rate cards, does it print my documents, who can see my rows —
+ * answered nowhere on the home page. They were answered on `/what-we-do/`,
+ * which is a page nobody reaches before they have decided the product is
+ * plausible.
+ *
+ * Five cards, each one a mechanism rather than a benefit. `art` names the
+ * illustration in `Illustrations.tsx`; two cards carry one and three do not,
+ * because a drawing on every card is wallpaper and a drawing on the two cards
+ * whose claim is *structural* is an explanation.
+ */
+export const capabilities = {
+  eyebrow: { en: 'Under the file', ar: 'داخل السجل' },
+  title: {
+    en: 'The parts a forwarder opens every day.',
+    ar: 'الأجزاء التي يفتحها الوكيل كل يوم.',
+  },
+  sub: {
+    en: 'Not a feature list. Five mechanisms, each one a thing the database enforces rather than a thing the interface asks nicely for.',
+    ar: 'ليست قائمة مزايا. خمس آليات، كل واحدة تفرضها قاعدة البيانات لا واجهة تطلبها بلطف.',
+  },
+  cards: [
+    {
+      key: 'lane',
+      art: 'route',
+      span: 'wide',
+      icon: 'route',
+      title: { en: 'Every leg on one timeline', ar: 'كل مرحلة على خط زمني واحد' },
+      body: {
+        en: 'Pickup, gate-in, sailing, discharge, customs and delivery sit on the same file with planned, revised and actual times kept side by side. Nothing overwrites anything, so the question of when a date moved and who moved it always has an answer.',
+        ar: 'الاستلام والدخول والإبحار والتفريغ والتخليص والتسليم على السجل نفسه، والوقت المخطط والمعدّل والفعلي محفوظة جنباً إلى جنب. لا يُكتب شيء فوق شيء، فسؤال متى تغيّر التاريخ ومن غيّره له جواب دائماً.',
+      },
+    },
+    {
+      key: 'money',
+      art: 'dinar',
+      span: 'tall',
+      icon: 'money',
+      title: { en: 'Three decimals, all the way down', ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف' },
+      body: {
+        en: 'The dinar has three decimal places. Money is decimal in the database, decimal in the engines and a string on the wire — never a floating-point number, and never rounded to two on its way to a screen.',
+        ar: 'للدينار ثلاث خانات عشرية. الحساب عشري في قاعدة البيانات وفي المحرّكات، ونص على الشبكة — لا رقم عائم، ولا تقريب إلى خانتين في طريقه إلى الشاشة.',
+      },
+    },
+    {
+      key: 'rates',
+      art: null,
+      span: 'third',
+      icon: 'rates',
+      title: { en: 'Rate cards that cannot collide', ar: 'بطاقات أسعار لا تتصادم' },
+      body: {
+        en: 'Priced by lane, mode and carrier, with validity dates. Two cards cannot cover one route at one time — the constraint is in the schema, so it is not a rule somebody remembers.',
+        ar: 'التسعير حسب المسار والوسيلة والناقل، بتواريخ صلاحية. ولا يمكن لبطاقتين أن تغطّيا مساراً واحداً في وقت واحد — القيد في بنية القاعدة، لا قاعدة يتذكّرها أحد.',
+      },
+    },
+    {
+      key: 'docs',
+      art: null,
+      span: 'third',
+      icon: 'docs',
+      title: { en: 'Documents from the shipment’s own data', ar: 'مستندات من بيانات الشحنة نفسها' },
+      body: {
+        en: 'House bill, air waybill, delivery order, packing list, manifest and the customs pack — issued in Arabic or English from the file, not retyped into a template.',
+        ar: 'بوليصة الشحن الفرعية وبوليصة الشحن الجوي وأمر التسليم وقائمة التعبئة والبيان وحزمة التخليص — تصدر بالعربية أو الإنجليزية من السجل، لا تُكتب من جديد في قالب.',
+      },
+    },
+    {
+      key: 'tenancy',
+      art: null,
+      span: 'third',
+      icon: 'tenancy',
+      title: { en: 'Your rows, and only your rows', ar: 'صفوفكم، وصفوفكم وحدها' },
+      body: {
+        en: 'Branch and entity separation is a row-level policy in the database, not a filter in the application. A query written wrong returns nothing rather than somebody else’s shipments.',
+        ar: 'الفصل بين الفروع والكيانات سياسة على مستوى الصف في قاعدة البيانات، لا مرشّح في التطبيق. والاستعلام المكتوب خطأً يعيد لا شيء، لا شحنات غيركم.',
+      },
+    },
+  ],
+}
+
+/**
+ * The yard band.
+ *
+ * The demurrage section used to sit on flat navy, which is a strange surface
+ * for the one claim on the page that is about a physical object standing in a
+ * physical place costing money by the hour. It sits on a container yard now.
+ * The photograph is doing an argument's work rather than decorating: the reader
+ * is looking at the thing the counter is counting.
+ */
+export const yard = {
+  quote: {
+    en: 'Somewhere in Shuwaikh, a box is earning the terminal money.',
+    ar: 'في مكان ما من الشويخ، حاوية تدرّ على المحطة مالاً.',
   },
 }
 

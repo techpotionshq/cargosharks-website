@@ -9,31 +9,48 @@ import { CONTACT_EMAIL, cta, DEMO_URL, type Lang } from '@/content/copy'
  * article rather than an invitation — and they are already on the demo's own
  * sign-in screen, which is where somebody who wants them is looking.
  *
- * This is the one place on the page where centring earns its keep. Everything
- * above is asymmetric on purpose, so a single centred column at the end reads
- * as the page stopping and asking a question rather than as another band.
+ * The whole page is centred now, so centring is no longer what makes this
+ * section feel like an ending. The port at dusk is. It is the only photograph
+ * on the site with a horizon in it, and a horizon is what a page stops on — the
+ * same reason a film's last shot pulls back. It sits behind a heavy scrim
+ * because this is the one block on the page where every word is a call to
+ * action and none of them may be hard to read.
  */
 export function Cta({ lang }: { lang: Lang }) {
   return (
-    <section id="demo" className="relative scroll-mt-24 overflow-hidden border-t border-edge py-band-sm lg:py-band">
-      <div className="grid-field pointer-events-none absolute inset-0" />
-      {/* One soft light behind the headline. It is the only gradient on the
-          page and it is doing the job a spotlight does on a stage. */}
-      <div className="bloom pointer-events-none absolute start-1/2 top-[18%] h-64 w-[38rem] -translate-x-1/2 rtl:translate-x-1/2" />
+    <section
+      id="demo"
+      className="relative isolate scroll-mt-24 overflow-hidden border-t border-edge py-band-sm lg:py-band"
+    >
+      <img
+        src="/pic/photos/hero-port-dusk.webp"
+        alt=""
+        width={2000}
+        height={1333}
+        loading="lazy"
+        className="absolute inset-0 -z-20 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 -z-10 bg-void/88" />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-void via-transparent to-void" />
+      {/* One soft light behind the headline — the same lamp the hero uses, so
+          the page opens and closes on the same note. */}
+      <div className="bloom pointer-events-none absolute start-1/2 top-[14%] -z-10 h-64 w-[38rem] -translate-x-1/2 rtl:translate-x-1/2" />
 
       <div className="shell relative flex flex-col items-center text-center">
-        <p className="tracked text-[0.68rem] text-blue-lit">{cta.eyebrow[lang]}</p>
+        <p className="tracked text-[0.62rem] text-blue-lit">{cta.eyebrow[lang]}</p>
 
-        <h2 className="mt-6 max-w-[18ch] font-display text-[clamp(2rem,4.4vw,3.4rem)] font-extrabold leading-[1.06] tracking-[-0.035em]">
+        <h2 className="mt-6 max-w-[18ch] text-balance font-display text-[clamp(2.1rem,4.8vw,3.6rem)] font-extrabold leading-[1.04] tracking-[-0.04em]">
           {cta.title[lang]}
         </h2>
 
-        <p className="mt-7 max-w-[54ch] text-[1.0625rem] leading-[1.7] text-ink-dim">{cta.body[lang]}</p>
+        <p className="mt-7 max-w-[54ch] text-balance text-[1.0625rem] leading-[1.7] text-ink-dim">
+          {cta.body[lang]}
+        </p>
 
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <a
             href={DEMO_URL}
-            className="group flex items-center gap-2 rounded-full bg-blue px-7 py-4 text-[1rem] font-semibold text-on-brand transition-transform hover:scale-[1.03] active:scale-100"
+            className="group flex items-center gap-2 rounded-full bg-blue px-7 py-4 text-[1rem] font-semibold text-on-brand shadow-lg transition-transform hover:scale-[1.03] active:scale-100"
           >
             {cta.primary[lang]}
             <ArrowRight
@@ -43,7 +60,7 @@ export function Cta({ lang }: { lang: Lang }) {
           </a>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
-            className="rounded-full border border-edge-lit px-7 py-4 text-[1rem] font-medium text-ink transition-colors hover:bg-raise"
+            className="rounded-full border border-edge-lit bg-raise/40 px-7 py-4 text-[1rem] font-medium text-ink backdrop-blur-sm transition-colors hover:bg-raise"
           >
             {cta.secondary[lang]}
           </a>

@@ -52,20 +52,24 @@ src/app/(en)/                English root layout + / and the six document routes
 src/app/(ar)/                Arabic root layout and home page
 src/app/globals.css          the stylesheet for the app's own pages
 src/app/pages.css            the stylesheet for the imported documents
-src/components/              sections, header, footer, the counter
+src/components/              sections, header, footer, the counter, the frame
+src/components/Frame.tsx     window chrome, shared by every product capture
+src/components/Illustrations.tsx  the two drawings, inline SVG on brand tokens
 src/content/copy.ts          every word of the home page, both languages
 src/content/pages/           the five imported documents
 src/lib/fonts.ts             Manrope, IBM Plex Mono, IBM Plex Sans Arabic
 public/cargosharks-logo/     the supplied mark — do not edit, it is the source
 public/pic/screens/          real captures of the running product
 public/pic/photos/           stock photography (Unsplash licence, commercial use)
+                             two are used: the yard behind the demurrage band and
+                             the port behind the close. Two are not, yet.
 ```
 
 `public/` holds nothing but assets now. Every page is a route.
 
 | Route | What it is |
 |---|---|
-| `/` and `/ar/` | the home page, six blocks, ~5,400px |
+| `/` and `/ar/` | the home page, eight blocks, ~8,300px |
 | `/what-we-do/` | the product explained standalone, for arrivals from search |
 | `/compare/` | how we are different, and who we are not for |
 | `/privacy/` `/terms/` `/dpa/` | **unreviewed drafts** — see below |
@@ -125,11 +129,28 @@ only in an RTL capture.
 
 ## Design
 
-`.shell` is `75rem` with a `clamp(20px, 5vw, 56px)` gutter, and it is the only
-measure on the site. The home page is six blocks and about 5,400px; it was
-eleven sections and 14,086px. What was cut is not gone — the pain points, the
-six-state loop, the scope table and the ownership argument are `/what-we-do/`,
-and the comparison is `/compare/`.
+**Two measures, concentric.** `.shell` is `75rem` with a
+`clamp(20px, 5vw, 56px)` gutter and it carries every word on the site — it is
+shared with the five imported documents and with the header, which is what stops
+the lockup stepping sideways on a click-through. `.shell-wide` is `84rem` on the
+same centre and the same gutter, and it carries nothing but product frames: a
+1440-wide capture rendered into a 1200-wide text column has its sidebar labels at
+about nine pixels, which defeats the only reason a screenshot is on the page.
+Anything wider than `.shell` is bleeding out of it deliberately.
+
+The home page is eight blocks and about 8,300px. It was six and 5,400px before
+the frames were given room and the capability grid was added; it was eleven
+sections and 14,086px before that. What was cut in the first pass is still gone —
+the pain points, the six-state loop, the scope table and the ownership argument
+are `/what-we-do/`, and the comparison is `/compare/`.
+
+**Centred, and that is a layout decision with a reason.** Every block used to be
+a five-column copy rail beside a seven-column picture. At 1440 that gives the
+copy about 460px — a nine-word headline over three lines — and the product about
+700px, which is backwards: the text needed a third of the width it was given and
+the screenshot needed all of it. One centred column with the frames running wider
+lets the product be the largest thing on the page, which is the one argument a
+competitor cannot copy in an afternoon.
 
 **No colour literals.** Every value in both stylesheets resolves to a `--qb-*`
 custom property emitted by `@qabandi/brand`, and `scripts/check-brand.mjs` fails
