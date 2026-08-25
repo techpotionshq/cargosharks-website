@@ -304,6 +304,14 @@ jobs:
       - name: Run
         run: pnpm test:e2e
 
+      # The failed specs, into the job summary. The log's last two hundred lines
+      # are the runner printing the service container's output at teardown, so
+      # what Playwright wrote is out of reach of anyone reading the failure
+      # through the API rather than the web UI.
+      - name: Failing specs
+        if: failure()
+        run: node scripts/e2e-summary.mjs
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
         with:
@@ -405,6 +413,14 @@ jobs:
 
       - name: Run
         run: pnpm test:e2e
+
+      # The failed specs, into the job summary. The log's last two hundred lines
+      # are the runner printing the service container's output at teardown, so
+      # what Playwright wrote is out of reach of anyone reading the failure
+      # through the API rather than the web UI.
+      - name: Failing specs
+        if: failure()
+        run: node scripts/e2e-summary.mjs
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}

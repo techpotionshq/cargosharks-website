@@ -50,7 +50,21 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }], ['list']] : [['list']],
+  /*
+    The JSON report is what makes a CI failure readable from outside the web UI.
+    The `github` reporter writes workflow annotations, which the checks API does
+    not return; the HTML report is an artifact, and artifact downloads are not
+    always reachable. A machine-readable file lets the workflow print the failed
+    specs into the job summary, where they survive both.
+  */
+  reporter: process.env.CI
+    ? [
+        ['github'],
+        ['html', { open: 'never' }],
+        ['json', { outputFile: 'playwright-report/results.json' }],
+        ['list'],
+      ]
+    : [['list']],
   timeout: 30_000,
   expect: { timeout: 10_000 },
 
