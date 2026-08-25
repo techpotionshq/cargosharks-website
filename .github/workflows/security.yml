@@ -129,14 +129,29 @@ jobs:
         run: docker build -t qabandi:scan .
 
       - name: Scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
+        # v0.28.0 is permanently broken, which is why this job has never run: it
+        # calls `aquasecurity/setup-trivy@v0.2.1` by tag, and that tag has since
+        # been deleted upstream, so the action fails to resolve before Trivy is
+        # ever invoked. The oldest setup-trivy tag still published is v0.2.6.
+        # v0.36.0 pins its own dependency by SHA rather than by tag, which is
+        # the fix for the class as well as the instance.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: qabandi:scan
           format: table
-          # OS packages and language dependencies both. `exit-code: 1` on
-          # CRITICAL only — the base image carries HIGH findings with no fix
-          # available for weeks at a time, and failing on those means pinning
-          # to a stale digest to keep the build green, which is backwards.
+          # OS packages and language dependencies both, CRITICAL and HIGH.
+          #
+          # The comment here used to say "CRITICAL only", which is not what the
+          # line below does and never was — nobody caught it because the job
+          # could not resolve its action and so has never once scanned an image.
+          # What actually protects against the case it was worried about — a
+          # base image carrying HIGH findings with no fix available for weeks,
+          # where failing the build means pinning to a stale digest to stay
+          # green — is `ignore-unfixed: true` on the next line but one. A HIGH
+          # with a fix available is a bump somebody can actually make.
+          #
+          # If this proves too noisy on the first real runs, narrow `severity`
+          # rather than dropping `ignore-unfixed`.
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true

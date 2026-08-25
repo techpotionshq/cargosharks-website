@@ -56,8 +56,6 @@ export function Logo({
       <span
         className="shrink-0"
         // eslint-disable-next-line react/no-danger -- generated from typed brand tokens
-        // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
-        //
         // Not request input, and not quite a constant either — worth saying
         // which, because the eslint note above says "typed brand tokens" and
         // that is only true of the generated monogram.
@@ -77,6 +75,7 @@ export function Logo({
         // boundary reaching every page, and it must be sanitised before it is
         // stored, not here.
         dangerouslySetInnerHTML={{
+          // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
           __html: markSvg(brand, {
             size: MARK_PX[size],
             title: markOnly ? name : undefined,

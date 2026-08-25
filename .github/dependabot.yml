@@ -6,6 +6,18 @@
 #
 # Weekly rather than daily, and grouped rather than one PR per package. A team
 # of this size will read one pull request a week and will ignore fourteen.
+#
+# Every ecosystem carries a seven-day cooldown. A version published this morning
+# has not yet been looked at by anybody, and nearly every npm compromise of
+# recent years was found and yanked within days of publication — so waiting a
+# week does not make a release trustworthy, it makes somebody else the one who
+# finds out. The weekly schedule already means a bump waits on average three
+# days; this makes the floor explicit rather than incidental.
+#
+# It is the counterpart to `minimumReleaseAge` in `pnpm-workspace.yaml`, which
+# is written out there but not yet switched on. This half costs nothing to turn
+# on today: it delays a proposed update, where the other would refuse an
+# install.
 version: 2
 
 updates:
@@ -17,6 +29,8 @@ updates:
       time: '05:00'
       timezone: Asia/Kuwait
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     groups:
       # Everything that is only a build or test concern, in one PR. These
       # cannot reach a customer, so they are read for breakage, not for risk.
@@ -43,6 +57,8 @@ updates:
       day: monday
       time: '05:00'
       timezone: Asia/Kuwait
+    cooldown:
+      default-days: 7
     labels: [dependencies]
     commit-message:
       prefix: 'chore'
@@ -54,6 +70,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     labels: [dependencies]
     commit-message:
       prefix: 'chore'
