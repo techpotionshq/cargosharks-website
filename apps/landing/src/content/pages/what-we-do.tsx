@@ -273,7 +273,7 @@ export function WhatWeDoContent() {
           <div className="section-head rise" style={{ paddingInline: 'clamp(6px,2.4vw,42px)' }}>
             <p className="eyebrow">06 &mdash; Language</p>
             <h2 className="h2">Bilingual, not translated</h2>
-            <p className="lead">2,701 interface strings in Arabic and English, kept in sync, with right-to-left in the layout rather than bolted onto it. The quotation your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored.</p>
+            <p className="lead">2,727 interface strings in Arabic and English, kept in sync, with right-to-left in the layout rather than bolted onto it. The quotation your customer opens in Arabic reads the way an Arabic document should, because it was built that way rather than mirrored.</p>
           </div>
 
           <div className="pair rise">

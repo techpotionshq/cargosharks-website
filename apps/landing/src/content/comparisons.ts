@@ -82,8 +82,8 @@ export interface Comparison {
 /** Shared by three of the four pages, so the wording cannot drift between them. */
 const OUR_POINTS: Bi[] = [
   {
-    en: 'Arabic and English are the same build, checked for parity on every commit — 2,701 interface strings in both, and every document the system issues exists in each.',
-    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل — 2,701 نص واجهة باللغتين، وكل مستند يصدره النظام موجود بكليهما.',
+    en: 'Arabic and English are the same build, checked for parity on every commit — 2,727 interface strings in both, and every document the system issues exists in each.',
+    ar: 'العربية والإنجليزية بناء واحد، يُتحقق من تطابقهما مع كل تعديل — 2,727 نص واجهة باللغتين، وكل مستند يصدره النظام موجود بكليهما.',
   },
   {
     en: 'The dinar keeps three decimal places from the database to the printed invoice. Money is decimal end to end and never a floating-point number.',
@@ -182,16 +182,28 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
  *
  * This is the table §03 was missing. Everything else on a comparison page is
  * prose, and prose is where a reader stops being able to tell a mechanism from
- * an adjective — "fully bilingual" and "2,701 strings in both, and the build
+ * an adjective — "fully bilingual" and "2,727 strings in both, and the build
  * fails if one is missing" are the same sentence until one of them shows its
  * working.
  *
  * `check` is the point of the table rather than decoration. Every row can be
- * run by somebody who has cloned the repository or opened the demo, which is
- * the difference between this and the stat band every site in the category
- * carries. They can only be wrong by going stale, and going stale is a thing a
- * person can be asked to look at — `apps/landing/README.md` records the same
- * commands.
+ * run by somebody who has cloned the repository, opened the demo, or connected
+ * to a deployment, which is the difference between this and the stat band
+ * every site in the category carries. They can only be wrong by going stale,
+ * and going stale is a thing a person can be asked to look at —
+ * `apps/landing/README.md` records the same commands.
+ *
+ * **Two of these rows are SQL and not grep, and that is deliberate.** They
+ * were originally published as `grep -c "CREATE POLICY"` and
+ * `grep -c "attach_audit"` over the migration files, and both were wrong in a
+ * way that is worse than being absent: the migrations write lowercase SQL, so
+ * the first returned zero on all 38 files, and the policies and triggers are
+ * created inside `foreach … execute format(…)` loops, so no grep of any casing
+ * can count them — the second returned 16 against a published 80. A prospect's
+ * technical evaluator who runs the flagship command and gets a screen of zeros
+ * does not conclude that the command is wrong. They conclude the 197 was
+ * invented, and then they discount every other row on the page. Which is the
+ * exact failure this file's header warns about, aimed at ourselves.
  */
 export const facts: { claim: Bi; figure: string; check: Bi }[] = [
   {
@@ -206,21 +218,21 @@ export const facts: { claim: Bi; figure: string; check: Bi }[] = [
     claim: { en: 'Row-level security policies', ar: 'سياسات الأمان على مستوى الصف' },
     figure: '197',
     check: {
-      en: 'grep -c "CREATE POLICY" packages/db/migrations/*.sql',
-      ar: 'grep -c "CREATE POLICY" packages/db/migrations/*.sql',
+      en: "select count(*) from pg_policies where schemaname = 'public' — against any deployment, ours or yours. The policies are written by loops over the table registry, so a grep of the migration text counts the loops rather than the policies; pnpm test:db fails the build if any table lacks one.",
+      ar: "select count(*) from pg_policies where schemaname = 'public' — على أي نشر، نشرنا أو نشركم. السياسات تكتبها حلقات تمرّ على سجل الجداول، فبحث نصي في ملفات الترحيل يعدّ الحلقات لا السياسات؛ ويُفشل pnpm test:db البناء إن خلا جدول من سياسة.",
     },
   },
   {
     claim: { en: 'Audit triggers', ar: 'مُشغِّلات التدقيق' },
     figure: '80',
     check: {
-      en: 'grep -c "attach_audit" packages/db/migrations/*.sql',
-      ar: 'grep -c "attach_audit" packages/db/migrations/*.sql',
+      en: "select count(*) from pg_trigger where tgname like '%\\_audit' and not tgisinternal — attached by a loop rather than by a list, so a table added in a later migration is covered without anybody remembering to add it.",
+      ar: "select count(*) from pg_trigger where tgname like '%\\_audit' and not tgisinternal — تُربط بحلقة لا بقائمة، فالجدول المضاف في ترحيل لاحق مشمول دون أن يتذكره أحد.",
     },
   },
   {
     claim: { en: 'Interface strings, English and Arabic', ar: 'نصوص الواجهة بالإنجليزية والعربية' },
-    figure: '2,701',
+    figure: '2,727',
     check: {
       en: 'pnpm lint runs check-messages.mjs, which fails the build if a key exists in one catalogue and not the other.',
       ar: 'يشغّل pnpm lint ملف check-messages.mjs، الذي يُفشل البناء إن وُجد مفتاح في أحد الفهرسين دون الآخر.',

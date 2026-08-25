@@ -90,7 +90,7 @@ export function CompareContent() {
                   <th scope="row">Arabic</th>
                   <td>Whatever the person typing writes. Documents are usually English.</td>
                   <td>Available as a localisation, added to a product designed in English. You can tell, and so can your customer.</td>
-                  <td className="is-ours">2,701 interface strings in both languages, kept in sync, with right-to-left in the layout rather than applied to it. Documents generate bilingual from the job.</td>
+                  <td className="is-ours">2,727 interface strings in both languages, kept in sync, with right-to-left in the layout rather than applied to it. Documents generate bilingual from the job.</td>
                 </tr>
                 <tr>
                   <th scope="row">Where your data sits</th>
@@ -236,7 +236,7 @@ export function CompareContent() {
           </div>
 
           <div className="sourced rise">
-            <p><b>Where the claims on this page come from.</b> The counts &mdash; 88 tables, 197 policies, 80 audit triggers, 2,701 interface strings &mdash; are asserted by the project&rsquo;s own test suite against a live PostgreSQL 18.6 and against the two message catalogues. The per-mode chargeable-weight arithmetic is the seeded rule set in the pricing engine. The scope statements and the UAE e-invoicing dates are read from the specification&rsquo;s build-status table. The export qualification in the last row of the table is from the same source, where a complete export as a single action is recorded as not implemented.</p>
+            <p><b>Where the claims on this page come from.</b> The counts &mdash; 88 tables, 197 policies, 80 audit triggers, 2,727 interface strings &mdash; are asserted by the project&rsquo;s own test suite against a live PostgreSQL 18.6 and against the two message catalogues. The per-mode chargeable-weight arithmetic is the seeded rule set in the pricing engine. The scope statements and the UAE e-invoicing dates are read from the specification&rsquo;s build-status table. The export qualification in the last row of the table is from the same source, where a complete export as a single action is recorded as not implemented.</p>
             <p><b>Claims about other companies&rsquo; products on this page: none.</b> The three product names in section 03 are named only as products a prospect may be evaluating, with no statement made about any of them. The &ldquo;global platform&rdquo; column describes the shape of that choice in general and is not a description of any particular vendor.</p>
           </div>
         </div>
