@@ -206,26 +206,26 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
             </h2>
             <p className="lead">
               {lang === 'ar'
-                ? 'أجوبتنا مكتوبة سلفاً. من يأخذ هذه القائمة إلى مكالمة أخرى ويحصل على جواب أفضل من جوابنا ينبغي له أن يشتري من هناك — وهذا ما يجعل نشر القائمة يستحق.'
-                : 'Our answers are already written. Somebody who takes this list to another vendor’s call and gets a better answer than ours should buy from them — which is what makes the list worth publishing.'}
+                ? 'أجوبتنا مكتوبة سلفاً، وإلى جانبها ما يبدو عليه الجواب الجيد من أي مورّد — بما فيه نحن. من يأخذ هذه القائمة إلى مكالمة أخرى ويحصل على جواب أفضل من جوابنا ينبغي له أن يشتري من هناك، وهذا ما يجعل نشرها يستحق.'
+                : 'Our answers are already written, and beside each one is what a good answer sounds like from any vendor — including us. Somebody who takes this list to another vendor’s call and gets a better answer than ours should buy from them, which is what makes it worth publishing.'}
             </p>
           </div>
 
           {/*
-            A table with a column left blank, which is the best idea on these
-            pages.
+            Three columns, and all three carry content.
 
-            It was a `.spec` definition list, and that was the visible bug:
-            `.spec` is styled for a navy band — `--white` headings, a
-            `--navy-line` rule — so on `band--paper` the questions came out pale
-            blue on near-white and the answers were barely there.
+            The third was a ruled empty box for the reader to complete on the
+            call. On paper that is a worksheet; on a screen it read as content
+            that had failed to load — a column of dashed rectangles is what a
+            broken page looks like, not what an invitation looks like. It also
+            had us asking the reader to do the work while supplying nothing.
 
-            A table is what this content always was, and rebuilding it that way
-            made room for the third column. We fill in ours; the other one is
-            ruled and empty, for the reader to complete on the call. A
-            comparison the reader finishes themselves is the only kind this site
-            is allowed to publish — see "What you will not find" below — and it
-            is also the only kind anybody believes.
+            What fills it is the thing we can honestly put there: what a good
+            answer to that question sounds like from *anybody*. It is not a
+            claim about a competitor — every line applies to us as much as to
+            them, and two of them are pointedly aimed at us. It also makes the
+            table useful away from this page, which the blank column only
+            pretended to be.
           */}
           <div className="tablewrap">
             <table className="cmp-ask">
@@ -234,7 +234,7 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
                   <th scope="col">{lang === 'ar' ? 'السؤال' : 'The question'}</th>
                   <th scope="col">{lang === 'ar' ? 'جوابنا' : 'Our answer'}</th>
                   <th scope="col">
-                    {lang === 'ar' ? `جواب ${item.name}` : `${item.name}’s answer`}
+                    {lang === 'ar' ? 'كيف يبدو الجواب الجيد' : 'What a good answer sounds like'}
                   </th>
                 </tr>
               </thead>
@@ -243,13 +243,7 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
                   <tr key={entry.question.en}>
                     <th scope="row">{entry.question[lang]}</th>
                     <td>{entry.ours[lang]}</td>
-                    <td>
-                      <span
-                        className="cmp-fill"
-                        role="presentation"
-                        aria-label={lang === 'ar' ? 'اتركوه لتملأوه' : 'left blank for you'}
-                      />
-                    </td>
+                    <td className="cmp-tell">{entry.tell[lang]}</td>
                   </tr>
                 ))}
               </tbody>

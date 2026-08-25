@@ -1758,16 +1758,15 @@
 
 /* The questions table.
 
-   Three columns, and the third is empty on purpose — see `comparison.tsx`.
-   `--fill` is the ruled box a reader writes the other vendor's answer into,
-   which only reads as an invitation if it is visibly blank rather than merely
-   absent. */
-.doc-page .cmp-ask th:nth-child(1) {width:26%}
-.doc-page .cmp-ask th:nth-child(2) {width:44%}
-.doc-page .cmp-ask td:last-child {background:color-mix(in oklab, var(--ink) 2%, transparent)}
-.doc-page .cmp-fill {
-  display:block; min-height:34px; border:1px dashed var(--line-strong); border-radius:var(--radius);
-}
+   Three columns, all three filled. The third used to be a `--fill` box — a
+   ruled blank for the reader to complete — and on a screen a column of dashed
+   rectangles reads as a page that failed to load rather than as an invitation.
+   It carries "what a good answer sounds like" now, set quieter than our own
+   answer beside it because it is guidance rather than a claim. */
+.doc-page .cmp-ask th:nth-child(1) {width:24%}
+.doc-page .cmp-ask th:nth-child(2) {width:38%}
+.doc-page .cmp-tell {color:var(--ink-subtle); font-size:.88rem}
+.doc-page .band--navy .cmp-tell {color:color-mix(in oklab, var(--navy-ink-muted) 82%, transparent)}
 
 /* The verifiable-facts table: a claim, the figure, and how to check it. */
 .doc-page .cmp-facts td:nth-child(2) {

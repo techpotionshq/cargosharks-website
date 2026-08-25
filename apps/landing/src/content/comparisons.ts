@@ -25,14 +25,37 @@
  *     is an advertisement wearing a comparison's clothes, and a forwarder
  *     evaluating three systems can tell in one paragraph.
  *   - `pickUs` — mechanisms, each checkable in the demo or this repository.
- *   - `ask` — the questions to put to both vendors, with our answer already
- *     written. Somebody who takes this list to a CargoWise call and gets a
- *     better answer than ours should buy CargoWise; that is what makes the list
- *     worth publishing.
+ *   - `ask` — the questions to put to both vendors, with two answers each.
+ *     `ours` is what we say. `tell` is what a good answer to that question
+ *     sounds like *from anybody*, us included.
+ *
+ *     `tell` exists because the third column of that table was originally
+ *     blank — a ruled box for the reader to fill in on the call. On paper that
+ *     is a worksheet; on a screen it read as content that had failed to load,
+ *     which is a worse first impression than having no third column at all. It
+ *     also asked the reader to do the work while we supplied nothing. Saying
+ *     what separates a good answer from a weak one is the genuinely useful
+ *     thing we can put there, and it is still not a claim about anybody's
+ *     product — every line of it applies to us as much as to them.
  *
  * `checked` is a real date and it is meant to go stale visibly. A page that
  * says when it was last read is a page a reader can discount for themselves,
  * which is the honest version of a claim about somebody else.
+ *
+ * **Every `theirPitch` below was read off the vendor's own page on the date in
+ * `checked`, not recalled.** That distinction is the whole basis on which this
+ * file is publishable, so it is worth recording what the first pass got wrong
+ * when it was written from memory: Logistaas was described as serving "the
+ * Middle East, Africa and Asia" when it publishes "80+ countries" and offices
+ * in Amman and London; CARGOES Runner was called a "cloud logistics platform"
+ * when DP World calls it an ERP for small and medium-sized forwarders; and
+ * CargoWise was credited with "a large implementation-partner network", which
+ * is true enough as an industry fact and is not what its own front page says.
+ * None of those was a lie and all three were the wrong kind of writing.
+ *
+ * `cargoes.com` refuses non-browser requests with a 403, so the CARGOES Runner
+ * source is DP World's own product page, which is where the description was
+ * actually read. Cite what you read.
  */
 
 import type { Bi } from '@/content/copy'
@@ -53,7 +76,7 @@ export interface Comparison {
   theirPitch: Bi
   pickThem: { heading: Bi; points: Bi[] }
   pickUs: { heading: Bi; points: Bi[] }
-  ask: { question: Bi; ours: Bi }[]
+  ask: { question: Bi; ours: Bi; tell: Bi }[]
 }
 
 /** Shared by three of the four pages, so the wording cannot drift between them. */
@@ -81,7 +104,7 @@ const OUR_POINTS: Bi[] = [
 ]
 
 /** Also shared: the questions are the same questions whoever you are asking. */
-const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
+const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
   {
     question: {
       en: 'Is the Arabic a translation layer, or is it the same build?',
@@ -90,6 +113,10 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
     ours: {
       en: 'The same build. Right-to-left is in the layout rather than added on top of it, and `pnpm lint` fails if a string exists in one language and not the other. Open the demo, press the language switch, and look at a delivery order.',
       ar: 'البناء نفسه. الاتجاه من اليمين إلى اليسار في بنية التصميم لا مضافاً إليه، ويفشل الفحص إن وُجد نص بلغة دون الأخرى. افتحوا النسخة التجريبية واضغطوا مبدّل اللغة وانظروا إلى أمر تسليم.',
+    },
+    tell: {
+      en: 'A good answer names a mechanism — a parity check that fails a build, one catalogue rather than two, right-to-left in the layout. A weak one is “yes, we support Arabic” plus a screenshot. Ask to see a printed delivery order rather than a screen: that is where an added-on language shows first.',
+      ar: 'الجواب الجيد يسمّي آلية — فحص تطابق يُفشل البناء، فهرس واحد لا اثنان، واتجاه من اليمين إلى اليسار في بنية التصميم. والجواب الضعيف هو «نعم، ندعم العربية» مع لقطة شاشة. اطلبوا أمر تسليم مطبوعاً لا شاشة: هناك تظهر اللغة المضافة أولاً.',
     },
   },
   {
@@ -101,6 +128,10 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
       en: 'Three, everywhere, because the dinar has three. This is the single fastest way to find out whether a system was built for dollars and adapted.',
       ar: 'ثلاث، في كل موضع، لأن للدينار ثلاثاً. وهذه أسرع طريقة لمعرفة ما إذا كان النظام قد بُني للدولار ثم كُيِّف.',
     },
+    tell: {
+      en: '“Three” should come back instantly and without conditions. Hesitation, or “it is configurable”, usually means money is a floating-point number somewhere and the decimals are a display setting — which is fine until a rounding difference lands on a reconciliation.',
+      ar: '«ثلاث» ينبغي أن تأتي فوراً وبلا شروط. والتردد، أو «هذا قابل للضبط»، يعني غالباً أن المال رقم عائم في مكان ما وأن الخانات إعداد عرض — وهذا مقبول إلى أن يظهر فرق تقريب في مطابقة.',
+    },
   },
   {
     question: {
@@ -110,6 +141,10 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
     ours: {
       en: 'PostgreSQL, and yes. The tenancy rules are in the schema rather than in our application, which is also what makes the answer to the first half of that question boring.',
       ar: 'PostgreSQL، ونعم. قواعد الفصل بين المستأجرين في بنية القاعدة لا في تطبيقنا، وهو أيضاً ما يجعل جواب الشطر الأول ممِلاً.',
+    },
+    tell: {
+      en: 'Listen for a named engine and an export you can trigger yourself. “We can arrange an extract” is a different answer from “here is the button”, and the difference is what leaving costs you in three years.',
+      ar: 'أنصتوا إلى اسم محرّك قاعدة بيانات وتصدير تشغّلونه بأنفسكم. «يمكننا ترتيب استخراج» جواب مختلف عن «هذا هو الزر»، والفرق بينهما هو كلفة المغادرة بعد ثلاث سنوات.',
     },
   },
   {
@@ -121,6 +156,10 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
       en: 'Ask every vendor this and ask for the answer in writing. Per-shipment and per-transaction pricing is normal in this category and is not a trick — but it is a different shape of bill from a flat one, and the difference shows up in year two rather than at signature.',
       ar: 'اسألوا كل مورّد هذا واطلبوا الجواب مكتوباً. التسعير بالشحنة أو بالعملية معتاد في هذا المجال وليس حيلة — لكنه شكل فاتورة مختلف عن الثابت، والفرق يظهر في السنة الثانية لا عند التوقيع.',
     },
+    tell: {
+      en: 'Any pricing shape is defensible; a refusal to put the shape in writing is not. Ask for the figure at twice and five times today’s volume, in the contract rather than on a call — and ask us the same way.',
+      ar: 'أي شكل تسعير يمكن الدفاع عنه؛ أما رفض كتابة الشكل فلا. اطلبوا الرقم عند ضعف الحجم الحالي وخمسة أضعافه، في العقد لا في مكالمة — واسألونا بالطريقة نفسها.',
+    },
   },
   {
     question: {
@@ -130,6 +169,10 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
     ours: {
       en: 'Yes — demo.cargosharks.com, no sign-up. We think this question separates vendors more reliably than any feature question, which is why it is last.',
       ar: 'نعم — demo.cargosharks.com، بلا تسجيل. ونرى أن هذا السؤال يفرز المورّدين أكثر من أي سؤال عن المزايا، ولذلك جاء أخيراً.',
+    },
+    tell: {
+      en: 'The answer is yes or no, and both are legitimate. A demo that needs a discovery call first is a sales process rather than a fault — but it is also a reliable measure of how long a pilot will take to start.',
+      ar: 'الجواب نعم أو لا، وكلاهما مشروع. والنسخة التجريبية التي تتطلب مكالمة استكشاف أولاً عملية بيع لا عيب — لكنها أيضاً مقياس صادق لكم سيستغرق بدء التجربة.',
     },
   },
 ]
@@ -217,15 +260,15 @@ export const comparisons: Comparison[] = [
       ar: 'ليسا شيئاً واحداً في الحجم، والتظاهر بغير ذلك يضيّع وقتكم. هنا ما كل واحد منهما له، وأين يكون CargoWise الجواب الأفضل، والأسئلة التي تستحق أن تُطرح علينا معاً.',
     },
     theirPitch: {
-      en: 'CargoWise describes itself as a single global platform for logistics execution, from WiseTech Global, aimed at forwarders operating across many countries with deep customs coverage and a large implementation-partner network.',
-      ar: 'يصف CargoWise نفسه بأنه منصة عالمية واحدة لتنفيذ الخدمات اللوجستية، من WiseTech Global، موجَّهة إلى وكلاء يعملون في دول كثيرة، بتغطية جمركية عميقة وشبكة شركاء تنفيذ واسعة.',
+      en: 'WiseTech Global’s CargoWise calls itself “the platform that powers global logistics” — “a single intelligent system” on “a single global database” that “unifies your end-to-end supply chain”, quoting 193 countries, 30 languages and 162 currencies. It addresses forwarders, customs brokers, warehouse operators, carriers and drayage operators from the same platform.',
+      ar: 'يصف CargoWise، من WiseTech Global، نفسه بأنه «المنصة التي تشغّل الخدمات اللوجستية عالمياً» — «نظام ذكي واحد» على «قاعدة بيانات عالمية واحدة» يوحّد سلسلة التوريد من طرف إلى طرف، ويذكر 193 دولة و30 لغة و162 عملة. ويخاطب وكلاء الشحن والمخلّصين ومشغّلي المستودعات والناقلين من المنصة نفسها.',
     },
     pickThem: {
       heading: { en: 'Pick CargoWise if', ar: 'اختاروا CargoWise إذا' },
       points: [
         {
-          en: 'You clear customs in a dozen countries and need the filing coverage that comes with a platform of that size. This is the strongest single reason and we are not going to argue with it.',
-          ar: 'كنتم تخلّصون جمركياً في عشر دول أو أكثر وتحتاجون تغطية التقديم التي تأتي مع منصة بهذا الحجم. هذا أقوى سبب منفرد ولن نجادل فيه.',
+          en: 'You clear customs in a dozen countries and need the coverage that comes with a platform quoting 193 of them. This is the strongest single reason to pick CargoWise and we are not going to argue with it.',
+          ar: 'كنتم تخلّصون جمركياً في عشر دول أو أكثر وتحتاجون التغطية التي تأتي مع منصة تذكر 193 دولة. هذا أقوى سبب منفرد لاختيار CargoWise ولن نجادل فيه.',
         },
         {
           en: 'Your customers, agents or parent company already run it and the integration is the point.',
@@ -258,15 +301,15 @@ export const comparisons: Comparison[] = [
       ar: 'أقرب مقارنة في هذه القائمة: برنامج شحن سحابي يُباع لوكلاء بحجمنا، وناشط في هذه المنطقة. لذا فالفروق ضيقة ومحددة، وهو ما يجعل كتابتها بدقة أمراً يستحق.',
     },
     theirPitch: {
-      en: 'Logistaas describes itself as cloud software for freight forwarders and customs brokers, covering quotations, operations and accounting, with customers across the Middle East, Africa and Asia.',
-      ar: 'يصف Logistaas نفسه بأنه برنامج سحابي لوكلاء الشحن والمخلّصين الجمركيين، يغطي عروض الأسعار والعمليات والمحاسبة، بعملاء في الشرق الأوسط وأفريقيا وآسيا.',
+      en: 'Logistaas calls itself a transportation management system and “freight forwarding software of the future”, and says forwarders in more than 80 countries use it. It names modules for sales and pricing, operations, finance, accounting and a customer portal, and it publishes offices in Amman and London.',
+      ar: 'يصف Logistaas نفسه بأنه نظام لإدارة النقل و«برنامج الشحن الذي يمثّل المستقبل»، ويقول إن وكلاء في أكثر من 80 دولة يستخدمونه. ويسمّي وحدات للمبيعات والتسعير والعمليات والمالية والمحاسبة وبوابة للعملاء، وينشر مكتبين في عمّان ولندن.',
     },
     pickThem: {
       heading: { en: 'Pick Logistaas if', ar: 'اختاروا Logistaas إذا' },
       points: [
         {
-          en: 'You want a vendor with years of live customers behind them. We are in pilot. That is a real difference and it is the one we would weigh most heavily in your position.',
-          ar: 'أردتم مورّداً وراءه سنوات من العملاء العاملين. نحن في مرحلة تجريبية. هذا فرق حقيقي، وهو ما كنا سنرجّحه أكثر لو كنا مكانكم.',
+          en: 'You want a vendor with live customers behind them — they say forwarders in more than 80 countries use it. We are in pilot. That is a real difference and it is the one we would weigh most heavily in your position.',
+          ar: 'أردتم مورّداً وراءه عملاء عاملون — يقولون إن وكلاء في أكثر من 80 دولة يستخدمونه. نحن في مرحلة تجريبية. هذا فرق حقيقي، وهو ما كنا سنرجّحه أكثر لو كنا مكانكم.',
         },
         {
           en: 'You need a module we have not built. Our boundary is published on /what-we-do/ §07 — no warehouse module, no purchase-order management, no native mobile app.',
@@ -284,7 +327,7 @@ export const comparisons: Comparison[] = [
     slug: 'cargoes-runner',
     name: 'CARGOES Runner',
     short: 'CARGOES Runner',
-    source: 'https://www.cargoes.com/',
+    source: 'https://www.dpworld.com/smart-trade/freight-forwarding-erp',
     checked: '2026-08-25',
     title: {
       en: 'CargoSharks and CARGOES Runner',
@@ -295,8 +338,8 @@ export const comparisons: Comparison[] = [
       ar: 'منتج من DP World، وهذه أهم حقيقة عنه ولا علاقة لها بالبرمجيات. هنا ما يشتريه لكم ذلك، وأين يكون النظام المستقل الأصغر جواباً أفضل.',
     },
     theirPitch: {
-      en: 'CARGOES Runner is part of DP World’s CARGOES suite and is described as a cloud logistics platform for freight forwarders and small logistics businesses.',
-      ar: 'CARGOES Runner جزء من مجموعة CARGOES التابعة لـ DP World، ويوصف بأنه منصة لوجستية سحابية لوكلاء الشحن وشركات اللوجستيات الصغيرة.',
+      en: 'DP World describes CARGOES Runner as an ERP built from the ground up for small and medium-sized freight forwarders, aimed at back-office operations — quotations against your own tariff, quote-to-ship, digital invoicing and margin analytics, with an integrated ocean sailing-schedule search.',
+      ar: 'تصف DP World منتج CARGOES Runner بأنه نظام تخطيط موارد بُني من الأساس لوكلاء الشحن الصغار والمتوسطين، موجَّه إلى عمليات المكتب الخلفي — تسعير من تعرفتكم، ومن العرض إلى الشحن، وفوترة رقمية وتحليلات هوامش، مع بحث مدمج في جداول الإبحار.',
     },
     pickThem: {
       heading: { en: 'Pick CARGOES Runner if', ar: 'اختاروا CARGOES Runner إذا' },
