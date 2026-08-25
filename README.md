@@ -78,25 +78,29 @@ QABANDI_PILOT_FIXTURES=1 pnpm --filter @qabandi/web dev
 ```
 
 That is the default whenever `DATABASE_URL` is unset, so a laptop with nothing
-provisioned runs the pilot screens — including the day-15 rehearsal in a room
-with no network. It refuses to engage in production against a configured
-database. Everything behind it is the real query path, chosen one branch
-earlier in `apps/web/src/lib/pilot/source.ts`.
+provisioned runs the whole interface — including a rehearsal in a room with no
+network. It refuses to engage in production against a configured database.
+Everything behind it is the real query path, chosen one branch earlier in
+`apps/web/src/lib/pilot/source.ts`.
 
-**It is a subset, and the subset is enforced.** The fixtures were written for
-the screens the pilot needed. The register queries behind finance, payables,
-network, operations, reference and most of settings — and a secondary query on
-the dashboard, jobs and enquiries boards — still go straight to `withActor`,
-so those routes want a database and error without one rather than degrading.
-The list lives in
-`apps/web/e2e/support/harness.ts` as `NEEDS_DATABASE`, one entry per route
-naming the query responsible, and the end-to-end run reports each of them as
-skipped-with-a-reason — so the gap is visible in the pipeline rather than
-implied by an absence. Each entry is retired by giving its query the
-`usePilotFixtures()` branch every other feature already has.
+**It is the whole interface, and that is enforced.** Every screen the
+application serves renders with no database, and three checks keep it true
+rather than trusting that it is: `scripts/check-fixtures.mjs` fails `pnpm lint`
+on a read that reaches `withActor` without a `usePilotFixtures()` branch; the
+end-to-end sweep visits every route offline; and `routes.spec.ts` reads the
+build's own route manifest and fails on a screen no list mentions.
 
-**For a full instance — a demo a prospect can be given a URL to — load the
-demo dataset**, which populates every table an evaluation touches:
+It was a subset until recently, and the way it went wrong is worth stating.
+`NEEDS_DATABASE` in `apps/web/e2e/support/harness.ts` named twenty register
+queries as the cause; every one of them had a fixture branch already. The
+actual cause was four reads written in `ui/dialogs.tsx` and `ledger/unbilled.ts`
+instead of in a slice's `queries.ts` — and because the map's entries are routes
+the suite *skips*, nothing could tell that the diagnosis was wrong. The map is
+empty now and a test fails if an entry is ever added that is not true.
+
+**For a customer's own instance — theirs, with their branding, before their
+records land — load the demo dataset**, which populates every table an
+evaluation touches:
 
 ```bash
 pnpm db:up && pnpm db:migrate && pnpm db:seed

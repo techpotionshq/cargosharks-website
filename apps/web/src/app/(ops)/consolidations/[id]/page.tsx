@@ -18,12 +18,11 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import {
   getConsolidation,
+  listAllocationShares,
   listAttachableJobs,
+  type ConsolAllocationShare,
 } from '@/features/consolidation/queries'
-import {
-  ConsolChargeDialog,
-  ConsolidationDialog,
-} from '@/features/consolidation/ui/dialogs'
+import { ConsolChargeDialog, ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import {
   allocateConsolCharge,
   attachHouse,
@@ -34,6 +33,7 @@ import {
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
+import { Icon } from '@/ui/icon'
 import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
@@ -49,12 +49,27 @@ export default async function ConsolidationDetailPage({
   const consol = await getConsolidation(session.actor, id)
   if (!consol) notFound()
 
-  const [attachable, t, tc, tJob] = await Promise.all([
+  const [attachable, shares, t, tc, tJob] = await Promise.all([
     consol.status === 'open' ? listAttachableJobs(session.actor, id) : Promise.resolve([]),
+    // Unconditional: a closed master is the one most likely to be opened *to*
+    // settle an argument about who paid for what.
+    listAllocationShares(session.actor, id),
     getTranslations('consolidations'),
     getTranslations('common'),
     getTranslations('job'),
   ])
+
+  /*
+    Grouped here rather than by a `filter` inside the charge loop, which would
+    walk every share once per cost — quadratic on exactly the master that has
+    the most of both.
+  */
+  const sharesByCharge = new Map<string, ConsolAllocationShare[]>()
+  for (const share of shares) {
+    const list = sharesByCharge.get(share.consolChargeLineId)
+    if (list) list.push(share)
+    else sharesByCharge.set(share.consolChargeLineId, [share])
+  }
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -250,19 +265,22 @@ export default async function ConsolidationDetailPage({
             <EmptyState icon="finance" title={t('noCharges')} description={t('noChargesHint')} />
           ) : (
             <ul className="border-t border-line">
-              {consol.charges.map((charge) => (
-                <li key={charge.id} className="border-b border-line p-4 last:border-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <span className="block text-[0.875rem] font-medium text-ink">
-                        {charge.chargeTypeName}
-                      </span>
-                      <span className="block text-[0.6875rem] text-ink-subtle">
-                        {charge.counterpartyName ?? t('noCounterparty')} ·{' '}
-                        {t(`bases.${charge.allocationBasis}` as 'bases.volume')}
-                      </span>
-                    </div>
-                    {/*
+              {consol.charges.map((charge) => {
+                const chargeShares = sharesByCharge.get(charge.id) ?? []
+
+                return (
+                  <li key={charge.id} className="border-b border-line p-4 last:border-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="block text-[0.875rem] font-medium text-ink">
+                          {charge.chargeTypeName}
+                        </span>
+                        <span className="block text-[0.6875rem] text-ink-subtle">
+                          {charge.counterpartyName ?? t('noCounterparty')} ·{' '}
+                          {t(`bases.${charge.allocationBasis}` as 'bases.volume')}
+                        </span>
+                      </div>
+                      {/*
                       Formatted, not interpolated.
 
                       This printed `{charge.amount} {charge.currency}` straight
@@ -274,41 +292,100 @@ export default async function ConsolidationDetailPage({
                       what rounds per currency: three places for the dinar, two
                       for the dirham.
                     */}
-                    <span className="numeric shrink-0 text-[0.875rem] font-medium">
-                      {formatMoney({ amount: Number(charge.amount), currency: charge.currency }, locale)}
-                    </span>
-                  </div>
-
-                  <div className="mt-2.5 flex items-center justify-between gap-2">
-                    <Badge tone={charge.direction === 'cost' ? 'muted' : 'positive'}>
-                      {charge.direction === 'cost' ? t('cost') : t('revenue')}
-                    </Badge>
-
-                    {charge.allocatedAt ? (
-                      <span className="flex items-center gap-2">
-                        <Badge tone="positive">{t('allocated')}</Badge>
-                        {mayAllocate ? (
-                          <form action={reverseConsolAllocation}>
-                            <input type="hidden" name="consolidationId" value={id} />
-                            <input type="hidden" name="chargeLineId" value={charge.id} />
-                            <Button type="submit" size="sm" variant="ghost">
-                              {t('reverse')}
-                            </Button>
-                          </form>
-                        ) : null}
+                      <span className="numeric shrink-0 text-[0.875rem] font-medium">
+                        {formatMoney(
+                          { amount: Number(charge.amount), currency: charge.currency },
+                          locale,
+                        )}
                       </span>
-                    ) : mayAllocate && consol.houses.length > 0 ? (
-                      <AllocateButton
-                        consolidationId={id}
-                        chargeLineId={charge.id}
-                        label={t('allocate')}
-                      />
-                    ) : (
-                      <Badge tone="caution">{t('notAllocated')}</Badge>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between gap-2">
+                      <Badge tone={charge.direction === 'cost' ? 'muted' : 'positive'}>
+                        {charge.direction === 'cost' ? t('cost') : t('revenue')}
+                      </Badge>
+
+                      {charge.allocatedAt ? (
+                        <span className="flex items-center gap-2">
+                          <Badge tone="positive">{t('allocated')}</Badge>
+                          {mayAllocate ? (
+                            <form action={reverseConsolAllocation}>
+                              <input type="hidden" name="consolidationId" value={id} />
+                              <input type="hidden" name="chargeLineId" value={charge.id} />
+                              <Button type="submit" size="sm" variant="ghost">
+                                {t('reverse')}
+                              </Button>
+                            </form>
+                          ) : null}
+                        </span>
+                      ) : mayAllocate && consol.houses.length > 0 ? (
+                        <AllocateButton
+                          consolidationId={id}
+                          chargeLineId={charge.id}
+                          label={t('allocate')}
+                        />
+                      ) : (
+                        <Badge tone="caution">{t('notAllocated')}</Badge>
+                      )}
+                    </div>
+
+                    {/*
+                    The split, on request.
+
+                    `<details>` rather than component state, for the reason the
+                    support banner gives: this is a server component on a page
+                    whose every other control is a form, and a breakdown that
+                    needs JavaScript to appear is one more thing between a
+                    finance manager and an answer they are already annoyed to
+                    be looking for.
+
+                    Driven off the rows rather than `charge.shareCount` so the
+                    control cannot promise a breakdown that is not there — a
+                    reversed allocation clears the shares, and a count read from
+                    a stale render would open onto nothing.
+                  */}
+                    {chargeShares.length > 0 ? (
+                      <details className="group mt-2.5">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[0.6875rem] text-ink-muted [&::-webkit-details-marker]:hidden">
+                          <Icon
+                            name="chevron-end"
+                            size={12}
+                            className="shrink-0 transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90"
+                          />
+                          <span>{t('shares', { count: chargeShares.length })}</span>
+                        </summary>
+
+                        <ul className="mt-2 space-y-1 border-s border-line ps-3">
+                          {chargeShares.map((share) => (
+                            <li
+                              key={share.jobId}
+                              className="flex items-baseline justify-between gap-3 text-[0.75rem]"
+                            >
+                              <Link
+                                href={`/jobs/${share.jobId}`}
+                                className="truncate text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+                              >
+                                {share.jobReference}
+                              </Link>
+                              {/*
+                              Same treatment as the cost above it: the column
+                              arrives as `12.500000` and only `formatMoney`
+                              knows the dinar takes three places.
+                            */}
+                              <span className="numeric shrink-0 text-ink">
+                                {formatMoney(
+                                  { amount: Number(share.shareAmount), currency: charge.currency },
+                                  locale,
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
+                  </li>
+                )
+              })}
             </ul>
           )}
 

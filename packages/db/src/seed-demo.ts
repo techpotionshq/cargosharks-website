@@ -1,11 +1,29 @@
 /**
- * A working dataset — `pnpm db:seed-demo`.
+ * A working dataset for a *customer's own* instance — `pnpm db:seed-demo`.
  *
  * `seed.ts` loads the *reference* data a deployment cannot run without:
  * currencies, incoterms, charge types, roles, permissions. This loads the
  * operational data a deployment cannot be *evaluated* without — real ports,
  * real lanes, enquiries at every stage, shipments mid-journey, invoices partly
  * paid, containers accruing demurrage right now.
+ *
+ * ## Who this is for, and how it differs from the pilot fixtures
+ *
+ * This runs when a new customer's instance is stood up, so it can be shown to
+ * them with their branding on it before their own records land. It needs a
+ * database and it is seen inside one engagement.
+ *
+ * `apps/web/src/lib/pilot/fixtures.ts` is the other dataset and the other
+ * audience: one forwarder, permanently, on a public URL, with no database at
+ * all. The two are deliberately not merged — that would either put a customer's
+ * instance on a public URL or make the public demo need PostgreSQL.
+ *
+ * Everything a company is named here is invented, and built from Gulf place
+ * names so it reads naturally without being anybody. This file listed ten real
+ * Kuwaiti and Emirati companies as customers until that was noticed, which is a
+ * poor thing to show somebody about how their own data will be handled.
+ * Carriers and terminals stay real: they are the trade's vocabulary rather than
+ * a claimed relationship.
  *
  * Two reasons that is worth a file this long rather than clicking through the
  * forms:
@@ -156,38 +174,38 @@ const PARTNERS = [
   ['INDAG', 'agent', 'Mumbai Freight Services', 'IN', 'USD', 45],
   ['ALSHA', 'broker', 'Al-Shamali Customs Clearance', 'KW', 'KWD', 15],
   ['GULFB', 'broker', 'Gulf Bridge Clearing', 'AE', 'AED', 15],
-  ['KTRAN', 'haulier', 'Kuwait Transport Company', 'KW', 'KWD', 30],
+  ['AHMTRN', 'haulier', 'Ahmadi Transport Company', 'KW', 'KWD', 30],
   ['DESERT', 'haulier', 'Desert Line Trucking', 'AE', 'AED', 30],
   ['KPA', 'terminal', 'Kuwait Ports Authority', 'KW', 'KWD', 0],
   ['DPW', 'terminal', 'DP World Jebel Ali', 'AE', 'AED', 0],
 ] as const
 
 const CUSTOMERS = [
-  ['ALGHANIM', 'Alghanim Industries', 'صناعات الغانم', 'KW', 'KWI', 45, '75000'],
-  ['ZAIN', 'Zain Telecommunications', 'زين للاتصالات', 'KW', 'KWI', 60, '120000'],
-  ['KNPC', 'Kuwait National Petroleum', 'شركة البترول الوطنية', 'KW', 'KWI', 60, '250000'],
-  ['SULTAN', 'Sultan Center Trading', 'مركز سلطان التجاري', 'KW', 'KWI', 30, '50000'],
-  ['BOUBYAN', 'Boubyan Petrochemical', 'بوبيان للبتروكيماويات', 'KW', 'KWI', 45, '90000'],
-  ['MEZZAN', 'Mezzan Holding', 'مجموعة ميزان', 'KW', 'KWI', 30, '60000'],
-  ['AGILITY', 'Agility Logistics', 'أجيليتي للخدمات اللوجستية', 'KW', 'KWI', 30, '40000'],
-  ['EMAAR', 'Emaar Properties', 'إعمار العقارية', 'AE', 'DXB', 45, '150000'],
-  ['MAJID', 'Majid Al Futtaim', 'ماجد الفطيم', 'AE', 'DXB', 45, '110000'],
-  ['ARAMEX', 'Aramex Emirates', 'أرامكس الإمارات', 'AE', 'DXB', 30, '35000'],
+  ['JAHRAIN', 'Jahra Industries', 'صناعات الجهراء', 'KW', 'KWI', 45, '75000'],
+  ['SALTEL', 'Salmiya Telecom', 'الساليمية للاتصالات', 'KW', 'KWI', 60, '120000'],
+  ['SABPET', 'Sabahiya Petroleum', 'شركة الصباحية للبترول', 'KW', 'KWI', 60, '250000'],
+  ['RUMRET', 'Rumaithiya Retail Trading', 'الرميثية للتجارة', 'KW', 'KWI', 30, '50000'],
+  ['FINPET', 'Fintas Petrochemical', 'الفنطاس للبتروكيماويات', 'KW', 'KWI', 45, '90000'],
+  ['ARDHLD', 'Ardiya Holding', 'مجموعة العارضية', 'KW', 'KWI', 30, '60000'],
+  ['SULLOG', 'Sulaibiya Logistics', 'الصليبية للخدمات اللوجستية', 'KW', 'KWI', 30, '40000'],
+  ['MIRPRP', 'Mirdif Properties', 'مرديف العقارية', 'AE', 'DXB', 45, '150000'],
+  ['DEIRET', 'Deira Retail Group', 'مجموعة ديرة للتجزئة', 'AE', 'DXB', 45, '110000'],
+  ['JUMEXP', 'Jumeirah Express', 'جميرا إكسبريس', 'AE', 'DXB', 30, '35000'],
 ] as const
 
 const CONTACTS = [
   [
-    'ALGHANIM',
+    'JAHRAIN',
     'Yousef Al-Mutairi',
     'يوسف المطيري',
-    'yousef.almutairi@alghanim.test',
+    'yousef.almutairi@jahraind.test',
     'Logistics Manager',
   ],
-  ['ZAIN', 'Dana Al-Sabah', 'دانة الصباح', 'dana.alsabah@zain.test', 'Procurement Lead'],
-  ['KNPC', 'Faisal Al-Otaibi', 'فيصل العتيبي', 'faisal.alotaibi@knpc.test', 'Supply Chain'],
-  ['SULTAN', 'Maryam Al-Hajri', 'مريم الهاجري', 'maryam.alhajri@sultan.test', 'Import Coordinator'],
-  ['EMAAR', 'Rashid Al-Nuaimi', 'راشد النعيمي', 'rashid@emaar.test', 'Head of Procurement'],
-  ['MAJID', 'Layla Haddad', 'ليلى حداد', 'layla.haddad@maf.test', 'Logistics Director'],
+  ['SALTEL', 'Dana Al-Sabah', 'دانة الصباح', 'dana.alsabah@saltel.test', 'Procurement Lead'],
+  ['SABPET', 'Faisal Al-Otaibi', 'فيصل العتيبي', 'faisal.alotaibi@sabpet.test', 'Supply Chain'],
+  ['RUMRET', 'Maryam Al-Hajri', 'مريم الهاجري', 'maryam.alhajri@rumret.test', 'Import Coordinator'],
+  ['MIRPRP', 'Rashid Al-Nuaimi', 'راشد النعيمي', 'rashid@mirprp.test', 'Head of Procurement'],
+  ['DEIRET', 'Layla Haddad', 'ليلى حداد', 'layla.haddad@deiret.test', 'Logistics Director'],
 ] as const
 
 /**
@@ -202,7 +220,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0001',
     branch: 'KWI',
-    customer: 'ALGHANIM',
+    customer: 'JAHRAIN',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'CNSHA',
@@ -226,7 +244,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0002',
     branch: 'KWI',
-    customer: 'SULTAN',
+    customer: 'RUMRET',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'NLRTM',
@@ -254,7 +272,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0003',
     branch: 'KWI',
-    customer: 'ZAIN',
+    customer: 'SALTEL',
     mode: 'air',
     direction: 'import',
     origin: 'CNSZX',
@@ -284,7 +302,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0004',
     branch: 'KWI',
-    customer: 'MEZZAN',
+    customer: 'ARDHLD',
     mode: 'sea_lcl',
     direction: 'import',
     origin: 'INNSA',
@@ -307,7 +325,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0005',
     branch: 'KWI',
-    customer: 'KNPC',
+    customer: 'SABPET',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'DEHAM',
@@ -317,7 +335,7 @@ const SHIPMENTS = [
     incoterm: 'CFR',
     carrier: 'HAPAG',
     broker: 'ALSHA',
-    haulier: 'KTRAN',
+    haulier: 'AHMTRN',
     vessel: 'HAMBURG BAY',
     voyage: '112E',
     etdDays: -40,
@@ -335,7 +353,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0006',
     branch: 'KWI',
-    customer: 'BOUBYAN',
+    customer: 'FINPET',
     mode: 'sea_fcl',
     direction: 'export',
     origin: 'KWSHU',
@@ -362,7 +380,7 @@ const SHIPMENTS = [
   {
     ref: 'KWI-JOB-0007',
     branch: 'KWI',
-    customer: 'AGILITY',
+    customer: 'SULLOG',
     mode: 'land',
     direction: 'import',
     origin: 'SADMM',
@@ -370,7 +388,7 @@ const SHIPMENTS = [
     goods: 'BLDG',
     status: 'in_transit',
     incoterm: 'DAP',
-    haulier: 'KTRAN',
+    haulier: 'AHMTRN',
     etdDays: -1,
     etaDays: 1,
     weight: '26000.000',
@@ -386,7 +404,7 @@ const SHIPMENTS = [
   {
     ref: 'DXB-JOB-0001',
     branch: 'DXB',
-    customer: 'EMAAR',
+    customer: 'MIRPRP',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'CNSHA',
@@ -410,7 +428,7 @@ const SHIPMENTS = [
   {
     ref: 'DXB-JOB-0002',
     branch: 'DXB',
-    customer: 'MAJID',
+    customer: 'DEIRET',
     mode: 'air',
     direction: 'import',
     origin: 'GBFXT',
@@ -432,7 +450,7 @@ const SHIPMENTS = [
   {
     ref: 'DXB-JOB-0003',
     branch: 'DXB',
-    customer: 'ARAMEX',
+    customer: 'JUMEXP',
     mode: 'sea_lcl',
     direction: 'export',
     origin: 'AEJEA',
@@ -454,7 +472,7 @@ const SHIPMENTS = [
   {
     ref: 'DXB-JOB-0004',
     branch: 'DXB',
-    customer: 'EMAAR',
+    customer: 'MIRPRP',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'TRMER',
@@ -491,7 +509,7 @@ const SHIPMENTS = [
 const ENQUIRIES = [
   {
     branch: 'KWI',
-    customer: 'ALGHANIM',
+    customer: 'JAHRAIN',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'CNSHA',
@@ -507,7 +525,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'KWI',
-    customer: 'ZAIN',
+    customer: 'SALTEL',
     mode: 'air',
     direction: 'import',
     origin: 'CNSZX',
@@ -523,7 +541,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'KWI',
-    customer: 'SULTAN',
+    customer: 'RUMRET',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'NLRTM',
@@ -538,7 +556,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'KWI',
-    customer: 'MEZZAN',
+    customer: 'ARDHLD',
     mode: 'sea_lcl',
     direction: 'import',
     origin: 'INNSA',
@@ -571,7 +589,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'KWI',
-    customer: 'KNPC',
+    customer: 'SABPET',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'DEHAM',
@@ -585,7 +603,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'KWI',
-    customer: 'AGILITY',
+    customer: 'SULLOG',
     mode: 'land',
     direction: 'import',
     origin: 'SADMM',
@@ -600,7 +618,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'DXB',
-    customer: 'EMAAR',
+    customer: 'MIRPRP',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'CNSHA',
@@ -615,7 +633,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'DXB',
-    customer: 'MAJID',
+    customer: 'DEIRET',
     mode: 'air',
     direction: 'import',
     origin: 'GBFXT',
@@ -630,7 +648,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'DXB',
-    customer: 'ARAMEX',
+    customer: 'JUMEXP',
     mode: 'sea_lcl',
     direction: 'export',
     origin: 'AEJEA',
@@ -644,7 +662,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'DXB',
-    customer: 'MAJID',
+    customer: 'DEIRET',
     mode: 'sea_fcl',
     direction: 'import',
     origin: 'SGSIN',
@@ -659,7 +677,7 @@ const ENQUIRIES = [
   },
   {
     branch: 'DXB',
-    customer: 'EMAAR',
+    customer: 'MIRPRP',
     mode: 'land',
     direction: 'export',
     origin: 'AEJEA',
@@ -723,6 +741,23 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from rate_card_lines;
       delete from rate_cards;
       delete from customer_contacts;
+      /*
+        The parties themselves, which this block used to leave standing.
+
+        Every insert below is keyed on a natural code with
+        onConflictDoNothing, so a customer whose *code* changes is not an
+        update -- it is a second row. Renaming the ten demo customers proved
+        it: a reseed of an existing instance produced twenty, the ten it was
+        meant to replace still among them. A reset that claims to remove what
+        this file created could not honour that for the two tables a rename is
+        most likely to touch.
+
+        Last, because everything holding a foreign key to them is already gone
+        by this line -- contacts immediately above, then jobs, invoices,
+        quotes and rate cards before that.
+      */
+      delete from customers;
+      delete from partners;
     `)
   }
 
@@ -1438,7 +1473,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     if (!existing) {
       await tx.insert(payments).values({
         branchId: branchBy.get('KWI')!,
-        customerId: customer.get('ALGHANIM')!,
+        customerId: customer.get('JAHRAIN')!,
         amount: '2500.000',
         currency: 'KWD',
         receivedOn: isoDay(days(-2)),

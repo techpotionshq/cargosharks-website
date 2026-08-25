@@ -14,19 +14,10 @@ import 'server-only'
  */
 
 import { desc, eq } from 'drizzle-orm'
-import {
-  assessCredit,
-  isNearLimit,
-  toScale,
-  type CreditAssessment,
-} from '@qabandi/core'
-import {
-  creditOverrides,
-  creditStanding,
-  principals,
-  withActor,
-  type Actor,
-} from '@qabandi/db'
+import { assessCredit, isNearLimit, toScale, type CreditAssessment } from '@qabandi/core'
+import { creditOverrides, creditStanding, principals, withActor, type Actor } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotCreditOverrides, pilotCreditStanding } from '@/lib/pilot/fixtures'
 
 interface CreditOverrideRow {
   readonly id: string
@@ -70,31 +61,44 @@ export async function creditView(
   customerId: string,
   branchId: string,
 ): Promise<CreditView> {
-  const standing = await creditStanding(actor, customerId, branchId)
+  /*
+    Only the position comes from fixtures; the decision does not.
+
+    `assessCredit` runs over both arms, so the outcome, the headroom and the
+    near-limit warning are the same function's answer whether the exposure was
+    summed by PostgreSQL or by `pilotCreditStanding`. A fixture that returned a
+    finished `CreditView` would be a second credit engine, and the one thing a
+    credit screen must not have is two.
+  */
+  const standing = usePilotFixtures()
+    ? pilotCreditStanding(customerId)
+    : await creditStanding(actor, customerId, branchId)
   const assessment = assessCredit(standing)
 
   const today = new Date().toISOString().slice(0, 10)
 
-  const overrides = await withActor(actor, (tx) =>
-    tx
-      .select({
-        id: creditOverrides.id,
-        jobId: creditOverrides.jobId,
-        invoiceId: creditOverrides.invoiceId,
-        expiresOn: creditOverrides.expiresOn,
-        reason: creditOverrides.reason,
-        approvedAt: creditOverrides.approvedAt,
-        exposure: creditOverrides.exposure,
-        creditLimit: creditOverrides.creditLimit,
-        currency: creditOverrides.currency,
-        approvedByEn: principals.nameEn,
-        approvedByAr: principals.nameAr,
-      })
-      .from(creditOverrides)
-      .innerJoin(principals, eq(principals.id, creditOverrides.approvedById))
-      .where(eq(creditOverrides.customerId, customerId))
-      .orderBy(desc(creditOverrides.approvedAt)),
-  )
+  const overrides = usePilotFixtures()
+    ? pilotCreditOverrides(customerId)
+    : await withActor(actor, (tx) =>
+        tx
+          .select({
+            id: creditOverrides.id,
+            jobId: creditOverrides.jobId,
+            invoiceId: creditOverrides.invoiceId,
+            expiresOn: creditOverrides.expiresOn,
+            reason: creditOverrides.reason,
+            approvedAt: creditOverrides.approvedAt,
+            exposure: creditOverrides.exposure,
+            creditLimit: creditOverrides.creditLimit,
+            currency: creditOverrides.currency,
+            approvedByEn: principals.nameEn,
+            approvedByAr: principals.nameAr,
+          })
+          .from(creditOverrides)
+          .innerJoin(principals, eq(principals.id, creditOverrides.approvedById))
+          .where(eq(creditOverrides.customerId, customerId))
+          .orderBy(desc(creditOverrides.approvedAt)),
+      )
 
   return {
     currency: standing.currency,

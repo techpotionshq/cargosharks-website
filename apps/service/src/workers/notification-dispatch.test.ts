@@ -100,6 +100,26 @@ const DAYTIME = new Date('2033-05-10T09:00:00Z')
 const NIGHT = new Date('2033-05-10T20:30:00Z')
 
 /**
+ * Terminate every queued delivery in the deployment.
+ *
+ * `claim` takes the fifty oldest due rows across the whole database rather
+ * than this suite's, so a row nobody terminated is a row some later test
+ * silently inherits. They are already garbage by the time this runs; the only
+ * thing that makes them harmful is still being due.
+ *
+ * Marked `failed` rather than removed — `DELETE` is revoked from `app_user`,
+ * and §5.5 means a delivery record outlives the run that made it.
+ */
+async function drainQueue(): Promise<void> {
+  await withActor(systemActor, (tx) =>
+    tx
+      .update(notificationDeliveries)
+      .set({ status: 'failed', failedAt: new Date(), deferredUntil: null })
+      .where(eq(notificationDeliveries.status, 'queued')),
+  )
+}
+
+/**
  * The outbox row this test just raised, found by its payload.
  *
  * `raise` returns nothing — it is written to be called inside somebody else's
@@ -177,20 +197,9 @@ function fakeChannel(behaviour: {
 
 describe.skipIf(!enabled)('the notification dispatcher', () => {
   beforeAll(async () => {
-    /*
-      Terminate anything left queued by an earlier run.
-
-      `flush` claims the fifty oldest due deliveries in the deployment, so rows
-      abandoned by a crashed run sit at the front of that queue for ever and
-      this file's own rows never get claimed. They are already garbage; the
-      only thing that makes them harmful is being due.
-    */
-    await withActor(systemActor, (tx) =>
-      tx
-        .update(notificationDeliveries)
-        .set({ status: 'failed', failedAt: new Date(), deferredUntil: null })
-        .where(eq(notificationDeliveries.status, 'queued')),
-    )
+    // Anything left queued by an earlier run. See `afterEach` for why this
+    // also runs between tests.
+    await drainQueue()
 
     await withActor(systemActor, async (tx) => {
       const [calendar] = await tx
@@ -298,27 +307,30 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
     })
   })
 
-  afterEach(() => {
+  /*
+    Between tests as well as around the file, and the reason is a cascade.
+
+    `flush` claims every due delivery in the deployment and orders them oldest
+    first, so anything one test leaves `queued` is claimed by the *next* test
+    ahead of its own rows. A test that times out mid-dispatch leaves exactly
+    that, and three timeouts against the shared database duly produced two
+    further failures in tests that were working perfectly — asserting on
+    `channel.sent[0]`, which was an invoice notice for a customer contact
+    abandoned by a run that never finished.
+
+    One round trip a test to make a red suite name its real cause rather than
+    five symptoms.
+  */
+  afterEach(async () => {
     clearChannels()
+    if (!enabled) return
+    await drainQueue()
   })
 
   afterAll(async () => {
     clearChannels()
     if (!enabled) return
-    /*
-      Nothing this file queued may be left due.
-
-      `flush` claims every due delivery in the deployment, not just this
-      suite's — so a row left `queued` is picked up by the next run of any test
-      that flushes, and counted there. Terminating them keeps the suites
-      independent.
-    */
-    await withActor(systemActor, (tx) =>
-      tx
-        .update(notificationDeliveries)
-        .set({ status: 'failed', failedAt: new Date(), deferredUntil: null })
-        .where(eq(notificationDeliveries.status, 'queued')),
-    )
+    await drainQueue()
   })
 
   describe('quiet hours', () => {
@@ -597,9 +609,7 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
         expect(result.expanded).toBe(0)
         expect(await deliveriesFor(id)).toEqual([])
         expect((await outboxRow(id)).dispatchedAt).not.toBeNull()
-        expect(complaint).toHaveBeenCalledWith(
-          expect.stringContaining('job.abducted_by_pirates'),
-        )
+        expect(complaint).toHaveBeenCalledWith(expect.stringContaining('job.abducted_by_pirates'))
       } finally {
         complaint.mockRestore()
       }

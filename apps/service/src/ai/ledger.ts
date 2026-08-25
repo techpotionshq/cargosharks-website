@@ -369,30 +369,6 @@ function describeFailure(error: Error): string {
 }
 
 /**
- * What this deployment has spent, by surface, for the month.
- *
- * The shape the cost report wants, and the reason `surface` is a column rather
- * than telemetry: an assistant answering forty questions a day and an
- * extraction reading four hundred invoices a month fail economically in
- * completely different ways, and a single total hides which one is happening.
- */
-export async function spendBySurface(
-  branchIds: readonly string[],
-): Promise<{ surface: string; calls: number; usd: string }[]> {
-  return withActor(systemActor([...branchIds]), (tx: Tx) =>
-    tx
-      .select({
-        surface: aiInvocations.surface,
-        calls: sql<number>`count(*)::int`,
-        usd: sql<string>`coalesce(sum(${aiInvocations.costUsd}), 0)::text`,
-      })
-      .from(aiInvocations)
-      .where(gte(aiInvocations.createdAt, sql`date_trunc('month', now())`))
-      .groupBy(aiInvocations.surface),
-  )
-}
-
-/**
  * A previous answer to exactly this question, if there is one.
  *
  * The cache `assets.checksum` and `input_hash` were both put there for. Re-reading

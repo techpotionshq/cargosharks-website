@@ -1,5 +1,6 @@
 /**
- * The pilot dataset — Pilot §3.1 item 14.
+ * The dataset behind the hosted demo — the CargoSharks instance, and the only
+ * dataset that ever faces someone who is not a customer.
  *
  * *"An empty system demos nothing. A populated one looks alive."*
  *
@@ -9,21 +10,55 @@
  * never stale: a demo where the newest job is three weeks old reads as a
  * screenshot, and the whole premise of Moment 1 is that this is happening now.
  *
- * **These are placeholders, and the plan is that they die.** Pilot §5 items 2
- * and 3 put the client's own job files and customer list on days 2 and 3,
- * because *"recognition is the whole trick"* — their own Shuwaikh–Jebel Ali
- * lane and their own customer names read as their business already running,
- * where a generic dataset reads as a product tour. Every name below is a
- * stand-in with the right shape, so the swap is a data import rather than a
- * rebuild. The lanes, ports, container types, milestone names and charge codes
- * are real; only the company names are invented.
+ * ## This is not the same thing as `db/seed-demo.ts`, and the difference is
+ * who is looking
+ *
+ * This file is *one forwarder, permanently*, served with no database at all —
+ * a public URL anybody can open, which is what makes every name below a
+ * question of judgement rather than of taste. `seed-demo.ts` is the opposite
+ * end: it provisions a *customer's own* instance in PostgreSQL, before their
+ * branding and their own records go in, and nobody outside that engagement
+ * sees it.
+ *
+ * Neither should become the other. Merging them would either put a customer's
+ * data on a public URL or make the public demo need a database, and each is
+ * worse than maintaining two datasets.
+ *
+ * ## Every company here is invented, and that is load-bearing
+ *
+ * The lanes, ports, container types, milestone names and charge codes are
+ * real — a forwarder reads `KWSWK Shuwaikh` and knows immediately whether the
+ * lane makes sense, and inventing those would make the whole board read as
+ * nonsense to the only people whose opinion matters.
+ *
+ * The *companies* are not real, and the names are deliberately built from
+ * Kuwaiti and Emirati place names — Fintas, Rumaithiya, Sulaibiya, Mirdif —
+ * so they read naturally to somebody in the trade without naming anybody. This
+ * file used to say the names were invented while listing half a dozen real
+ * Kuwaiti firms as customers of a forwarder that does not have them, on a page
+ * anyone can open. Carriers and terminals are the exception and stay real:
+ * booking with Maersk or clearing through Kuwait Ports Authority is the trade's
+ * vocabulary, the way a port code is, and claims no private relationship.
  */
 
-import { D } from '@qabandi/core'
+import {
+  D,
+  SEED_CURRENCIES,
+  allocate,
+  money,
+  type AllocationBasis,
+  type AllocationTarget,
+  type CurrencyCode,
+  type CurrencySpec,
+  // Core's `Money` is a `Decimal` and a currency; the view models in `./types`
+  // carry a `number` for display. Both are wanted here, so this one is named.
+  type Money as CoreMoney,
+} from '@qabandi/core'
 import type { ReferenceOptions } from '@/lib/options'
 import type {
   AccountingExportRow,
   AgeableBill,
+  ApiKeyRowLike,
   AgeingBucket,
   AuditRow,
   BranchRow,
@@ -31,10 +66,12 @@ import type {
   ChargeBasis,
   ChargeTypeRow,
   ClockView,
+  ConsolAllocationShareRow,
   ConsolidationChargeRow,
   ConsolidationDetailRows,
   ConsolidationHouseRow,
   ConsolidationSummary,
+  CreditOverrideRowLike,
   CustomerDetail,
   CustomerRow,
   CustomsRow,
@@ -63,6 +100,7 @@ import type {
   LedgerLineRow,
   LocationRow,
   MapData,
+  MailboxRowLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -70,7 +108,10 @@ import type {
   NotificationDeliveryRow,
   NotificationSwitchRow,
   NotificationTemplateRow,
+  OpenEnquiryRow,
+  OpenShipmentRow,
   OpsOverview,
+  OutstandingInvoiceRow,
   PartnerAccountRows,
   PartnerComplianceRow,
   PartnerCoverageRow,
@@ -90,6 +131,7 @@ import type {
   RateCardSummary,
   ReceivablesAgeing,
   ReferenceSample,
+  ReportRowLike,
   ReferenceTable,
   RoleRow,
   SettlementDetail,
@@ -104,7 +146,10 @@ import type {
   SupplierPaymentRow,
   TaxTreatment,
   TrackingResult,
+  UnbilledJobRow,
+  UnbilledLineRow,
   UserRow,
+  WebhookEndpointRowLike,
 } from './types'
 
 // --- time helpers ----------------------------------------------------------
@@ -155,6 +200,18 @@ type Dec = InstanceType<typeof D>
  */
 function numeric(value: string | Dec): string {
   return new D(value).toFixed(6)
+}
+
+/**
+ * The rounding rule for a currency, defaulting to two places.
+ *
+ * The same lookup `features/consolidation/form-actions.ts` makes before it
+ * allocates, and it has to be the same one: three decimals for the dinar is
+ * what decides where a remainder lands, so a fixture that assumed two would
+ * produce a split the database would not.
+ */
+function currencySpec(code: string): CurrencySpec {
+  return SEED_CURRENCIES.find((entry) => entry.code === code) ?? { code, minorUnits: 2 }
 }
 
 /** Sum of `numeric` strings, exactly. Used for balances and bucket totals. */
@@ -270,108 +327,108 @@ function branch(code: BranchCode): (typeof BRANCHES)[number] {
  */
 const CUSTOMERS = [
   {
-    en: 'Gulf Steel Industries',
-    ar: 'صناعات الخليج للحديد',
-    code: 'GULFST',
+    en: 'Fintas Steel Industries',
+    ar: 'صناعات الفنطاس للحديد',
+    code: 'FINTAS',
     country: 'KW',
     branch: 'KWI',
     terms: 45,
     limit: '75000.000000',
   },
   {
-    en: 'Al-Mulla Trading Co.',
-    ar: 'شركة الملا التجارية',
-    code: 'ALMULLA',
+    en: 'Rumaithiya Trading Co.',
+    ar: 'شركة الرميثية التجارية',
+    code: 'RUMTRD',
     country: 'KW',
     branch: 'KWI',
     terms: 30,
     limit: '40000.000000',
   },
   {
-    en: 'Kuwait Food Company',
-    ar: 'شركة الكويت للأغذية',
-    code: 'KFOOD',
+    en: 'Salmiya Food Industries',
+    ar: 'الساليمية للصناعات الغذائية',
+    code: 'SALFOOD',
     country: 'KW',
     branch: 'KWI',
     terms: 30,
     limit: '60000.000000',
   },
   {
-    en: 'Boubyan Petrochemicals',
-    ar: 'بوبيان للبتروكيماويات',
-    code: 'BOUBYAN',
+    en: 'Sabahiya Petrochemicals',
+    ar: 'الصباحية للبتروكيماويات',
+    code: 'SABPET',
     country: 'KW',
     branch: 'KWI',
     terms: 45,
     limit: '90000.000000',
   },
   {
-    en: 'Alghanim Electronics',
-    ar: 'الغانم للإلكترونيات',
-    code: 'ALGHANIM',
+    en: 'Jahra Electronics',
+    ar: 'الجهراء للإلكترونيات',
+    code: 'JAHRAEL',
     country: 'KW',
     branch: 'KWI',
     terms: 45,
     limit: '120000.000000',
   },
   {
-    en: 'Emirates Building Systems',
-    ar: 'أنظمة البناء الإماراتية',
-    code: 'EBS',
+    en: 'Mirdif Building Systems',
+    ar: 'مرديف لأنظمة البناء',
+    code: 'MIRDIF',
     country: 'AE',
     branch: 'DXB',
     terms: 30,
     limit: '200000.000000',
   },
   {
-    en: 'Al-Sayer Automotive',
-    ar: 'الساير للسيارات',
-    code: 'ALSAYER',
+    en: 'Ardiya Automotive',
+    ar: 'العارضية للسيارات',
+    code: 'ARDIYA',
     country: 'KW',
     branch: 'KWI',
     terms: 60,
     limit: '150000.000000',
   },
   {
-    en: 'Ministry of Public Works',
-    ar: 'وزارة الأشغال العامة',
-    code: 'MPW',
+    en: 'Public Works Authority',
+    ar: 'هيئة الأشغال العامة',
+    code: 'PWA',
     country: 'KW',
     branch: 'KWI',
     terms: 90,
     limit: '250000.000000',
   },
   {
-    en: 'Kirby Building Systems',
-    ar: 'كيربي لأنظمة البناء',
-    code: 'KIRBY',
+    en: 'Sulaibiya Steel Buildings',
+    ar: 'الصليبية للمباني الحديدية',
+    code: 'SULBLD',
     country: 'KW',
     branch: 'KWI',
     terms: 45,
     limit: '80000.000000',
   },
   {
-    en: 'Gulf Cables & Electrical',
-    ar: 'الخليج للكابلات والصناعات الكهربائية',
-    code: 'GULFCAB',
+    en: 'Shuaiba Cables & Electrical',
+    ar: 'الشعيبة للكابلات والصناعات الكهربائية',
+    code: 'SHUCAB',
     country: 'KW',
     branch: 'KWI',
     terms: 30,
     limit: '50000.000000',
   },
   {
-    en: 'Everbright Logistics (Shanghai)',
-    ar: 'إيفربرايت للخدمات اللوجستية (شنغهاي)',
-    code: 'EVERBR',
+    en: 'Hongqiao Logistics (Shanghai)',
+    ar: 'هونغتشياو للخدمات اللوجستية (شنغهاي)',
+    code: 'HONGQ',
     country: 'CN',
     branch: 'KWI',
     terms: 45,
     limit: '30000.000000',
   },
   {
-    en: 'Gulf Agency Co.',
-    ar: 'الوكالة الخليجية',
-    code: 'GACAE',
+    en: 'Deira Agency Services',
+    ar: 'وكالة ديرة للخدمات',
+    code: 'DEIRAG',
     country: 'AE',
     branch: 'DXB',
     terms: 45,
@@ -462,10 +519,10 @@ const PARTNERS = [
   },
   {
     id: 'everbright',
-    code: 'EVERBR',
+    code: 'HONGQ',
     type: 'agent',
-    en: 'Everbright Logistics (Shanghai)',
-    ar: 'إيفربرايت للخدمات اللوجستية (شنغهاي)',
+    en: 'Hongqiao Logistics (Shanghai)',
+    ar: 'هونغتشياو للخدمات اللوجستية (شنغهاي)',
     country: 'CN',
     currency: 'USD',
     terms: 45,
@@ -475,10 +532,10 @@ const PARTNERS = [
   },
   {
     id: 'gac',
-    code: 'GACAE',
+    code: 'DEIRAG',
     type: 'agent',
-    en: 'Gulf Agency Co.',
-    ar: 'الوكالة الخليجية',
+    en: 'Deira Agency Services',
+    ar: 'وكالة ديرة للخدمات',
     country: 'AE',
     currency: 'AED',
     terms: 45,
@@ -545,8 +602,8 @@ const PARTNERS = [
     id: 'ktrans',
     code: 'KTRAN',
     type: 'haulier',
-    en: 'Kuwait Transport Company',
-    ar: 'شركة النقل الكويتية',
+    en: 'Ahmadi Transport Company',
+    ar: 'شركة الأحمدي للنقل',
     country: 'KW',
     currency: 'KWD',
     terms: 30,
@@ -1255,7 +1312,7 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
 /**
  * The agent at the far end, chosen by where the far end is.
  *
- * This used to be Shanghai on every import and Gulf Agency on every export,
+ * This used to be Shanghai on every import and Deira Agency on every export,
  * which put a Chinese agent on a Hamburg sailing. Nobody could see it while
  * the partner register needed a database; with the register on fixtures the
  * same row is a link to a company with a country on it, and the mismatch is
@@ -2601,7 +2658,7 @@ const PAYMENT_SEEDS: readonly PaymentSeed[] = [
   /*
     Money we have and cannot close a ledger with.
 
-    Alghanim paid a round 1,500 against no invoice number, which is the single
+    Jahra Electronics paid a round 1,500 against no invoice number, which is the single
     most common thing a receipts desk deals with and the reason `allocated` is
     on the row at all. It is deliberately the newest receipt, so it is the
     first line of the register.
@@ -5558,6 +5615,32 @@ export function pilotIntegrationSettings(now = Date.now()): IntegrationSettingRo
         lastOkAt: null,
       },
     ),
+    /*
+      The assistant, configured — and this row is why the dock exists on the
+      demo at all.
+
+      `assistantConfigured()` resolves this spec's `apiKey` secret and
+      `assistant-dock.tsx` refuses to draw a launcher without it ("no key, no
+      dock"). With no row here the answer was always false, so the hosted demo
+      shipped with the assistant invisible: a feature that exists, is tested,
+      is in the nav, and that no prospect could ever find.
+
+      Configured is not the same as *answering*. Asking a question goes to
+      `SERVICE_URL`, which a fixtures deployment does not have, and the panel
+      says so in a sentence. That is the honest demo of this surface — the
+      alternative is seeding invented model output, which would demonstrate a
+      product that does not exist.
+
+      The budget is the one number worth stating rather than leaving at zero.
+      Zero means *no cap*, and a demo whose spend limit reads "unlimited" is
+      the wrong thing to show somebody asking what an AI feature will cost.
+    */
+    row(
+      'ai',
+      null,
+      { model: 'minimax/minimax-m3', monthlyBudgetUsd: 40 },
+      { apiKey: 'set-in-fixtures-never-sealed' },
+    ),
   ]
 }
 
@@ -5857,12 +5940,12 @@ const PAYMENT_METHODS: readonly PaymentMethod[] = [
  *
  * `language` decides which of the bilingual columns the PDF renders and which
  * direction the template runs, and it is a property of the *customer* rather
- * than of the branch: a Kuwaiti ministry's accounts department will not
+ * than of the branch: a Kuwaiti public authority's accounts department will not
  * process an English invoice, and the trading companies beside it in
  * `CUSTOMERS` are content with one. One name is enough to show the column is
  * real; making it a branch default would show the opposite of what it is.
  */
-const ARABIC_INVOICE_CUSTOMERS: ReadonlySet<string> = new Set(['MPW'])
+const ARABIC_INVOICE_CUSTOMERS: ReadonlySet<string> = new Set(['PWA'])
 
 /**
  * The destination charges every invoice on this board carries, by currency.
@@ -6018,8 +6101,8 @@ const DXB_RECEIPT_SEEDS: readonly PaymentSeed[] = [
  * amount is exactly the invoice's `amountPaid`, which is what makes the
  * receipts panel add up to the balance the header already showed.
  *
- * Receipt 230 is deliberately absent. Alghanim's round 1,500 against no
- * invoice number is the unallocated money the payments register exists to
+ * Receipt 230 is deliberately absent. The round 1,500 from Jahra Electronics
+ * against no invoice number is the unallocated money the payments register exists to
  * show, and matching it here would quietly delete the point of it. So is
  * invoice 4116: its `amountPaid` is a credit applied, not money received, and
  * a credit note listing a receipt would have the customer paying us to be
@@ -6104,7 +6187,7 @@ export function pilotInvoiceDetail(id: string, now = Date.now()): InvoiceDetail 
  */
 function invoiceNotes(seed: InvoiceSeed): string | null {
   if (seed.isCreditNote === true) return 'Credited in full. No payment is due against this note.'
-  if (CUSTOMERS[seed.customer]!.code === 'MPW') return 'Against purchase order MPW/AQ/1184.'
+  if (CUSTOMERS[seed.customer]!.code === 'PWA') return 'Against purchase order PWA/AQ/1184.'
   return null
 }
 
@@ -6532,7 +6615,7 @@ interface ForeignAccrual {
 }
 
 const FOREIGN_ACCRUALS: readonly ForeignAccrual[] = [
-  // Everbright, the Shanghai agent, invoices its origin disbursements in dollars.
+  // Hongqiao, the Shanghai agent, invoices its origin disbursements in dollars.
   {
     job: 1044,
     charge: 'thc_origin',
@@ -6688,7 +6771,7 @@ const BILL_LINE_SEEDS: readonly BillLineSeed[] = [
     billed: '24.000',
   },
 
-  // Everbright's monthly account, across two shipments.
+  // Hongqiao's monthly account, across two shipments.
   {
     bill: 8842,
     description: 'ORIGIN THC — SHANGHAI',
@@ -7668,6 +7751,63 @@ function consolidationUnallocated(seq: number): number {
  * do so in both modes is what stops a fixture's stated volume drifting from
  * the houses it lists.
  */
+/**
+ * Serves `listAllocationShares` — the split behind each allocated master cost.
+ *
+ * Put through `allocate` rather than stated as a list of amounts, and that is
+ * the whole point of it. The shares are the one figure on this page a reader
+ * can check by adding up, so a fixture that listed them by hand would be
+ * inviting exactly the arithmetic it could not survive: three houses, a cost
+ * that does not divide by three, and a rounding remainder that has to land on
+ * somebody. The engine decides who, the same way it does against a database.
+ *
+ * `shareCount` on the charge is computed from the house list and these rows
+ * come from the same seeds, so the count and the list cannot disagree.
+ */
+export function pilotAllocationShares(
+  consolidationId: string,
+  now = Date.now(),
+): ConsolAllocationShareRow[] {
+  const seq = Number(consolidationId.replace('consol-', ''))
+  const seed = CONSOLIDATION_SEEDS.find((candidate) => candidate.seq === seq)
+  if (!seed) return []
+
+  const houses = consolidationHouses(seq, now)
+  if (houses.length === 0) return []
+
+  const currency = branch(seed.branch).currency
+  const targets: AllocationTarget[] = houses.map((house) => ({
+    jobId: house.jobId,
+    chargeableWeightKg: house.chargeableWeightKg,
+    volumeCbm: house.volumeCbm,
+    grossWeightKg: house.grossWeightKg,
+    packages: house.packages,
+  }))
+  const referenceOf = new Map(houses.map((house) => [house.jobId, house.reference]))
+
+  return consolidationCharges(seq, now)
+    .filter(
+      // A manual split has no figures to derive — its shares were typed by a
+      // person, and no seed states them. Skipping keeps this from throwing if
+      // one is ever added; the panel just stays closed for that cost.
+      (charge) => charge.allocatedAt !== null && charge.allocationBasis !== 'manual',
+    )
+    .flatMap((charge) =>
+      allocate(
+        money(charge.amount, currency),
+        targets,
+        charge.allocationBasis as AllocationBasis,
+        currencySpec(currency),
+      ).shares.map((share): ConsolAllocationShareRow => ({
+        consolChargeLineId: charge.id,
+        jobId: share.jobId,
+        jobReference: referenceOf.get(share.jobId) ?? '',
+        shareAmount: numeric(share.share.amount),
+      })),
+    )
+    .sort((a, b) => a.jobReference.localeCompare(b.jobReference))
+}
+
 export function pilotConsolidation(
   id: string,
   now = Date.now(),
@@ -7833,5 +7973,514 @@ export function pilotEnquiryProposals(enquiryId: string): EnquiryProposalRow[] {
     targetWasEmpty: seed.targetWasEmpty,
     model: 'claude-sonnet-4-5',
     promptVersion: 'enquiry-extract@4',
+  }))
+}
+
+// --- the four reads that live outside a queries.ts -------------------------
+
+/**
+ * Serves `loadOpenEnquiries` in `ledger/ui/dialogs.tsx`.
+ *
+ * The statuses are the query's `not in ('won', 'lost', 'cancelled',
+ * 'expired')` rather than a positive list, because the two are not the same
+ * set the moment somebody adds a status — and the dialog should offer a new
+ * one by default rather than hide it until a fixture is remembered.
+ *
+ * Ordered by reference, which is what the query orders by. It reads as
+ * chronological because the reference carries the sequence, and a coordinator
+ * scanning for the enquiry they took this morning finds it at the bottom.
+ */
+export function pilotOpenEnquiries(now = Date.now()): OpenEnquiryRow[] {
+  return pilotEnquiries(now)
+    .filter((row) => !['won', 'lost', 'cancelled', 'expired'].includes(row.status))
+    .map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      customer: row.customerName,
+      /*
+        Null throughout, and that is the fixture being accurate rather than
+        thin. `contact_name` is the person who wrote in when no customer record
+        exists yet, and every seeded enquiry here is against a known customer —
+        so the query's `?? contact` fallback is unreachable on this data in
+        exactly the way it is unreachable on a forwarder's own book.
+      */
+      contact: null,
+    }))
+    .sort((a, b) => a.reference.localeCompare(b.reference))
+}
+
+/**
+ * Serves `loadOutstandingInvoices` in `ledger/ui/dialogs.tsx`.
+ *
+ * `approved` is in the status list and no seeded invoice holds it. That is the
+ * query's list copied rather than trimmed to what this file happens to
+ * contain: a fixture that narrowed it would make the offline dialog disagree
+ * with the database's the first time somebody approved an invoice without
+ * issuing it.
+ *
+ * Oldest due date first — the query's `order by due_on asc nulls last`, which
+ * is the order a cheque is usually applied in.
+ */
+export function pilotOutstandingInvoices(now = Date.now()): OutstandingInvoiceRow[] {
+  return pilotInvoices(now)
+    .filter((row) => ['issued', 'part_paid', 'approved'].includes(row.status))
+    .filter((row) => new D(minus(row.total ?? '0', row.amountPaid ?? '0')).greaterThan(0))
+    .map((row) => ({
+      id: row.id,
+      label: row.seriesNo ?? '(draft)',
+      customer: row.customerName ?? '',
+      balance: minus(row.total ?? '0', row.amountPaid ?? '0'),
+      currency: row.currency,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * Serves `loadOpenShipments` in `operations/ui/dialogs.tsx` — the select on
+ * "raise an exception", and the one this dialog needs to open at all.
+ *
+ * This is the read that kept the job file itself dark with no database: the
+ * dialog is drawn on `/jobs/:id` as well as on `/exceptions`, so a screen
+ * whose every other query had a fixture branch still went to `withActor` for
+ * a list of options nobody had opened yet.
+ */
+export function pilotOpenShipments(now = Date.now()): OpenShipmentRow[] {
+  return pilotJobs(now)
+    .filter((job) => !['closed', 'cancelled', 'completed'].includes(job.status))
+    .map((job) => ({ id: job.id, reference: job.reference, customer: job.customerName }))
+    .sort((a, b) => a.reference.localeCompare(b.reference))
+}
+
+/**
+ * Serves `unbilledRevenue` — revenue priced onto a shipment and never raised.
+ *
+ * `isBilled` on the ledger's revenue lines is `invoice_id is not null` in the
+ * database, and `jobAccruals` sets it from `done >= 6`: a forwarder bills on
+ * delivery, so every shipment short of it is carrying priced revenue nobody
+ * has asked for. That is the register's whole subject, and it means the
+ * offline figure moves as the board moves rather than being a constant.
+ *
+ * Two things the query does that this deliberately copies rather than
+ * improves:
+ *
+ *   - **No job-status filter.** `unbilled.ts` argues the point at length — a
+ *     job sitting in clearance for five weeks with revenue on it is exactly
+ *     the row worth seeing, and hiding it until delivery is how the leak
+ *     survives.
+ *   - **`totalBase` sums across branches.** Kuwait bills dinars and Dubai
+ *     bills dirhams, and the summary labels the total with the first currency
+ *     it finds. The register has that flaw against a real database too; a
+ *     fixture that quietly totalled one branch would hide it.
+ *
+ * What it cannot demonstrate is the multi-currency refusal — the row that says
+ * a shipment cannot become one invoice. Revenue is priced in the branch's own
+ * currency by construction (see `pilotJobLedger`), so `currencies` is one
+ * entry per job here and the badge never draws. Faking it would mean seeding a
+ * job the pricing rules cannot produce.
+ */
+export function pilotUnbilledJobs(now = Date.now(), limit = 100): UnbilledJobRow[] {
+  return JOB_SEEDS.map((seed): UnbilledJobRow | null => {
+    const ledger = pilotJobLedger(`job-${seed.seq}`, now)
+    if (ledger === undefined) return null
+
+    const unbilled = ledger.lines.filter(
+      (line) => line.direction === 'revenue' && !line.isBilled && !line.isAccrual,
+    )
+    if (unbilled.length === 0) return null
+
+    const summary = jobSummary(seed, now)
+    return {
+      jobId: summary.id,
+      reference: summary.reference,
+      status: summary.status,
+      customerId: customerId(seed.customer),
+      customerName: summary.customerName,
+      lines: unbilled.length,
+      amountBase: sum(unbilled.map((line) => line.amountBase)),
+      baseCurrency: ledger.baseCurrency,
+      currencies: [...new Set(unbilled.map((line) => line.currency))],
+      oldestAt: unbilled.reduce(
+        (oldest, line) => (line.createdAt < oldest ? line.createdAt : oldest),
+        unbilled[0]!.createdAt,
+      ),
+    }
+  })
+    .filter((row): row is UnbilledJobRow => row !== null)
+    .sort((a, b) => (new D(b.amountBase).greaterThan(new D(a.amountBase)) ? 1 : -1))
+    .slice(0, limit)
+}
+
+/**
+ * Serves `unbilledLinesFor` — the lines behind one shipment's figure, in the
+ * order they were written.
+ *
+ * Reached only from the billing action, which needs a database to write, so
+ * nothing in fixture mode calls it today. It has a branch anyway: the register
+ * above it renders offline, and a read that answers on the board and throws
+ * one click deeper is the shape of gap this sweep exists to close.
+ */
+export function pilotUnbilledLines(jobId: string, now = Date.now()): UnbilledLineRow[] {
+  const ledger = pilotJobLedger(jobId, now)
+  if (ledger === undefined) return []
+
+  return ledger.lines
+    .filter((line) => line.direction === 'revenue' && !line.isBilled && !line.isAccrual)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((line) => ({
+      id: line.id,
+      description: line.description,
+      chargeTypeId: line.chargeTypeId,
+      quantity: line.quantity,
+      rate: line.rate,
+      amount: line.amount,
+      currency: line.currency,
+    }))
+}
+
+// --- credit — features/credit/queries.ts -----------------------------------
+
+/**
+ * Serves the standing half of `creditView`.
+ *
+ * Only the *position* is fixture data. `creditView` still runs `assessCredit`
+ * from core over it, so the outcome, the headroom, the excess and the
+ * near-limit warning are computed by the same function in both modes — which
+ * is the point: a credit decision demonstrated offline has to be the decision
+ * the product would actually make, not a second implementation that happens to
+ * agree today.
+ *
+ * Exposure is the customer's own open invoices, so the card and the ageing
+ * chart on `/finance` cannot disagree about what somebody owes. `onHold` is
+ * false throughout — a hold is a person's decision recorded against a branch's
+ * terms, and inventing one would have the demo show a customer blocked for a
+ * reason nobody in the room could explain.
+ */
+export function pilotCreditStanding(
+  id: string,
+  now = Date.now(),
+): {
+  customerId: string
+  branchId: string
+  currency: CurrencyCode
+  outstanding: CoreMoney
+  limit: CoreMoney | null
+  onHold: boolean
+  unconvertible: readonly { readonly currency: string; readonly amount: string }[]
+} {
+  const index = CUSTOMERS.findIndex((_, i) => customerId(i) === id)
+  const seed = index === -1 ? undefined : CUSTOMERS[index]
+  const home = branch(seed?.branch ?? 'KWI')
+  const currency = home.currency as CurrencyCode
+
+  const owed = pilotInvoices(now)
+    .filter((row) => row.customerName === seed?.en)
+    .filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+    .map((row) => minus(row.total ?? '0', row.amountPaid ?? '0'))
+
+  return {
+    customerId: id,
+    branchId: home.id,
+    currency,
+    outstanding: { amount: new D(sum(owed)), currency },
+    limit: seed === undefined ? null : { amount: new D(seed.limit), currency },
+    onHold: false,
+    /*
+      Empty, and that is the honest answer rather than a missing case.
+
+      `unconvertible` lists exposure in a currency with no rate to the limit's,
+      which the register reports as a floor rather than converting silently.
+      Every seeded invoice is in its own branch's currency, so the case cannot
+      arise here — see the note on `INVOICE_SEEDS` about why the Dubai book is
+      settled.
+    */
+    unconvertible: [],
+  }
+}
+
+/**
+ * Serves the overrides list on `creditView` — one release, on the customer
+ * carrying the aged debt.
+ *
+ * A standing override that has not lapsed, so the card draws its live state
+ * rather than an empty table. The alternative — no overrides anywhere — would
+ * demonstrate a credit screen that has never had to make the interesting
+ * decision, which is the one a forwarder asks about.
+ */
+export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverrideRowLike[] {
+  // Customer 4 is the name that is most of the aged tail — see `INVOICE_SEEDS`.
+  if (id !== customerId(4)) return []
+
+  const home = branch('KWI')
+  return [
+    {
+      id: 'credit-override-1',
+      jobId: null,
+      invoiceId: null,
+      expiresOn: day(now, 21),
+      reason: 'Payment plan agreed with the finance director. Review at quarter end.',
+      approvedByEn: OWNERS[3]!,
+      approvedByAr: 'نورة الصباح',
+      approvedAt: at(now, -9, 11),
+      exposure: numeric(sum(['18400.000', '2150.000'])),
+      creditLimit: CUSTOMERS[4]!.limit,
+      currency: home.currency,
+    },
+  ]
+}
+
+// --- the margin report — features/reports/queries.ts ------------------------
+
+interface MarginGroup {
+  labelEn: string
+  labelAr: string | null
+  jobs: Set<string>
+  revenue: Dec
+  cost: Dec
+  currency: string
+}
+
+/**
+ * Serves `marginByDimension`.
+ *
+ * The five cuts are the query's five, and each one groups the same ledger the
+ * job files already show — `pilotJobLedger` is the single source, so a lane's
+ * margin here and the margin card on a shipment in that lane are arithmetic on
+ * the same lines rather than two invented figures that nearly agree.
+ *
+ * Three of the query's decisions are copied deliberately:
+ *
+ *   - **The period is `etd`, falling back to creation.** A shipment is counted
+ *     in the period it sailed, not the period it was keyed in.
+ *   - **Cancelled shipments are excluded, closed ones are not.** A cancelled
+ *     job can still carry lines somebody entered before it fell through. No
+ *     seeded job is cancelled, so the filter is a no-op here and is written
+ *     anyway — the next seed that is cancelled must not quietly change a
+ *     report.
+ *   - **`owner` keeps the unassigned bucket.** How much trade is unattributed
+ *     is the most useful thing this cut says in a first month, and filtering it
+ *     away is how that goes unnoticed. Every seeded job is owned, so the bucket
+ *     is empty here rather than absent from the code.
+ *
+ * Ordered by gross profit descending, on `Decimal` and never on a JS number.
+ * The sort is what decides which lane a manager looks at first.
+ */
+export function pilotMarginByDimension(
+  dimension: 'branch' | 'customer' | 'lane' | 'mode' | 'owner',
+  period: { from: string; to: string },
+  now = Date.now(),
+): ReportRowLike[] {
+  const groups = new Map<string, MarginGroup>()
+
+  for (const seed of JOB_SEEDS) {
+    if (seed.status === 'cancelled') continue
+
+    const summary = jobSummary(seed, now)
+    const sailed = (summary.etd ?? summary.updatedAt).toISOString().slice(0, 10)
+    if (sailed < period.from || sailed > period.to) continue
+
+    const ledger = pilotJobLedger(summary.id, now)
+    if (ledger === undefined) continue
+
+    const home = branch(seed.branch)
+    const customer = CUSTOMERS[seed.customer]!
+    const origin = PORTS[seed.origin]
+    const destination = PORTS[seed.destination]
+
+    const cut =
+      dimension === 'branch'
+        ? { key: home.id, labelEn: home.en, labelAr: home.ar as string | null }
+        : dimension === 'customer'
+          ? {
+              key: customerId(seed.customer),
+              labelEn: customer.en,
+              labelAr: customer.ar as string | null,
+            }
+          : dimension === 'lane'
+            ? {
+                key: `${seed.origin} → ${seed.destination}`,
+                labelEn: `${origin.en} → ${destination.en}`,
+                /*
+                  The Arabic label reverses the arrow, and that is the query's
+                  `←` rather than a typo in either place: the lane is read
+                  right to left, so the origin has to end up on the right.
+                */
+                labelAr: `${origin.ar} ← ${destination.ar}` as string | null,
+              }
+            : dimension === 'mode'
+              ? { key: seed.mode, labelEn: seed.mode, labelAr: null as string | null }
+              : {
+                  key: `owner-${seed.owner}`,
+                  labelEn: OWNERS[seed.owner]!,
+                  labelAr: null as string | null,
+                }
+
+    const group: MarginGroup = groups.get(cut.key) ?? {
+      labelEn: cut.labelEn,
+      labelAr: cut.labelAr,
+      jobs: new Set<string>(),
+      revenue: new D(0),
+      cost: new D(0),
+      currency: ledger.baseCurrency,
+    }
+
+    group.jobs.add(summary.id)
+    for (const line of ledger.lines) {
+      if (line.direction === 'revenue') group.revenue = group.revenue.plus(new D(line.amountBase))
+      else group.cost = group.cost.plus(new D(line.amountBase))
+    }
+    groups.set(cut.key, group)
+  }
+
+  return [...groups.entries()]
+    .map(([key, group]): ReportRowLike => ({
+      key,
+      labelEn: group.labelEn,
+      labelAr: group.labelAr,
+      jobCount: group.jobs.size,
+      revenue: numeric(group.revenue),
+      cost: numeric(group.cost),
+      grossProfit: numeric(group.revenue.minus(group.cost)),
+      currency: group.currency,
+    }))
+    .sort((a, b) => (new D(b.grossProfit).greaterThan(new D(a.grossProfit)) ? 1 : -1))
+}
+
+// --- keys, webhooks and mailboxes — features/admin --------------------------
+
+/**
+ * Serves `listApiKeys` — live first, then revoked, which is the query's order
+ * and a rule rather than a preference: a revoked key stays on the screen (§5.5)
+ * because "who had access, and when did it stop" is what an audit asks.
+ *
+ * The prefixes are the real format and no secret is here at all. A key's secret
+ * is shown once at minting and stored as a hash; a fixture carrying one would
+ * teach the wrong thing about how this works.
+ */
+export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
+  const home = branch('KWI')
+  return [
+    {
+      id: 'apikey-1',
+      prefix: 'qbk_live_7f2a',
+      name: 'Portal — shipment status',
+      customerName: CUSTOMERS[0]!.en,
+      branchId: home.id,
+      scopes: ['shipments.read', 'documents.read'],
+      createdBy: OWNERS[0]!,
+      createdAt: at(now, -84, 10),
+      lastUsedAt: hours(now, -3),
+      expiresAt: null,
+      revokedAt: null,
+    },
+    {
+      id: 'apikey-2',
+      prefix: 'qbk_live_c419',
+      name: 'ERP — invoice export',
+      customerName: CUSTOMERS[4]!.en,
+      branchId: home.id,
+      scopes: ['invoices.read'],
+      createdBy: OWNERS[3]!,
+      createdAt: at(now, -41, 9),
+      lastUsedAt: hours(now, -26),
+      expiresAt: at(now, 120, 0),
+      revokedAt: null,
+    },
+    {
+      /*
+        Revoked, and still listed. This is the row that makes the screen worth
+        having: a key issued to a system that was decommissioned, cut off five
+        months ago, with the date still readable.
+      */
+      id: 'apikey-3',
+      prefix: 'qbk_live_08d6',
+      name: 'Legacy tracking widget',
+      customerName: CUSTOMERS[2]!.en,
+      branchId: home.id,
+      scopes: ['shipments.read'],
+      createdBy: OWNERS[0]!,
+      createdAt: at(now, -300, 14),
+      lastUsedAt: at(now, -158, 8),
+      expiresAt: null,
+      revokedAt: at(now, -152, 16),
+    },
+  ]
+}
+
+/**
+ * Serves `listWebhookEndpoints` — FR-AD-06, and the counts are the subject.
+ *
+ * An endpoint that exists is not an endpoint that works, so one of the three is
+ * disabled with the reason the worker wrote: a customer's URL died in a
+ * redeploy and a week of deliveries failed before anything gave up on it. A
+ * fixture where every endpoint is healthy demonstrates a list; this one
+ * demonstrates what the list is for.
+ */
+export function pilotWebhookEndpoints(now = Date.now()): WebhookEndpointRowLike[] {
+  return [
+    {
+      id: 'hook-1',
+      url: 'https://erp.example.kw/qabandi/events',
+      customerName: CUSTOMERS[4]!.en,
+      events: ['shipment.milestone', 'invoice.issued'],
+      isActive: true,
+      disabledAt: null,
+      disabledReason: null,
+      queued: 0,
+      failed: 0,
+      lastDeliveredAt: hours(now, -2),
+    },
+    {
+      id: 'hook-2',
+      url: 'https://portal.example.kw/hooks/freight',
+      customerName: CUSTOMERS[0]!.en,
+      events: ['shipment.milestone'],
+      isActive: true,
+      disabledAt: null,
+      disabledReason: null,
+      queued: 3,
+      failed: 0,
+      lastDeliveredAt: hours(now, -1),
+    },
+    {
+      id: 'hook-3',
+      url: 'https://old.example.ae/inbound',
+      customerName: CUSTOMERS[5]!.en,
+      events: ['shipment.milestone', 'document.released'],
+      isActive: false,
+      disabledAt: at(now, -6, 4),
+      disabledReason: 'Seven days of delivery failures — the host did not resolve.',
+      queued: 0,
+      failed: 41,
+      lastDeliveredAt: at(now, -13, 9),
+    },
+  ]
+}
+
+/**
+ * Serves `listMailboxes` — the inboxes the service polls for enquiries.
+ *
+ * A deactivated one is on the list on purpose. It is the answer to "why did
+ * that office stop receiving enquiries", and hiding it makes that question
+ * unanswerable from the screen that caused it. The Dubai row carries a real
+ * error string for the same reason.
+ *
+ * No password, sealed or otherwise. `listMailboxes` does not select the column
+ * and neither does this — nothing on this side of the system reads it.
+ */
+export function pilotMailboxes(now = Date.now()): MailboxRowLike[] {
+  return BRANCHES.map((home, index) => ({
+    id: `mailbox-${home.code.toLowerCase()}`,
+    branchId: home.id,
+    branchCode: home.code,
+    host: 'imap.example.net',
+    port: 993,
+    secure: true,
+    username: `freight.${home.code.toLowerCase()}@example.net`,
+    folder: 'INBOX',
+    archiveFolder: 'INBOX/Filed',
+    isActive: index === 0,
+    lastPolledAt: index === 0 ? hours(now, -1) : at(now, -11, 7),
+    lastMessageAt: index === 0 ? hours(now, -2) : at(now, -12, 15),
+    lastError: index === 0 ? null : 'Authentication failed — the application password was rotated.',
   }))
 }

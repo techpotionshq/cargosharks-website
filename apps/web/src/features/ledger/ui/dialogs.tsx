@@ -12,6 +12,8 @@ import { getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import type { OpenEnquiryRow, OutstandingInvoiceRow } from '@/lib/pilot/types'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addQuoteLine, createInvoice, createQuote, recordPayment } from '../form-actions'
 
@@ -405,30 +407,42 @@ export async function PaymentDialog({
   )
 }
 
-/** Enquiries that could still be quoted. */
+/**
+ * Enquiries that could still be quoted.
+ *
+ * The fixture branch and the statement both return the *select*, and the label
+ * is built once below them. Returning finished options from each arm would put
+ * the em dash and the `??` fallback in two places, and this dialog is the one
+ * that proved how that ends: it was the last read on `/quotes` without a
+ * fixture branch, so the register rendered offline and the screen still 500ed.
+ */
 async function loadOpenEnquiries(session: Awaited<ReturnType<typeof requireSession>>) {
-  const { withActor, enquiries, customers } = await import('@qabandi/db')
-  const { asc, eq, notInArray } = await import('drizzle-orm')
+  const rows: readonly OpenEnquiryRow[] = usePilotFixtures()
+    ? (await import('@/lib/pilot/fixtures')).pilotOpenEnquiries()
+    : await (async () => {
+        const { withActor, enquiries, customers } = await import('@qabandi/db')
+        const { asc, eq, notInArray } = await import('drizzle-orm')
 
-  return withActor(session.actor, async (tx) => {
-    const rows = await tx
-      .select({
-        id: enquiries.id,
-        reference: enquiries.reference,
-        customer: customers.legalNameEn,
-        contact: enquiries.contactName,
-      })
-      .from(enquiries)
-      .leftJoin(customers, eq(customers.id, enquiries.customerId))
-      .where(notInArray(enquiries.status, ['won', 'lost', 'cancelled', 'expired']))
-      .orderBy(asc(enquiries.reference))
-      .limit(300)
+        return withActor(session.actor, (tx) =>
+          tx
+            .select({
+              id: enquiries.id,
+              reference: enquiries.reference,
+              customer: customers.legalNameEn,
+              contact: enquiries.contactName,
+            })
+            .from(enquiries)
+            .leftJoin(customers, eq(customers.id, enquiries.customerId))
+            .where(notInArray(enquiries.status, ['won', 'lost', 'cancelled', 'expired']))
+            .orderBy(asc(enquiries.reference))
+            .limit(300),
+        )
+      })()
 
-    return rows.map((row) => ({
-      value: row.id,
-      label: `${row.reference}${row.customer || row.contact ? ` — ${row.customer ?? row.contact}` : ''}`,
-    }))
-  })
+  return rows.map((row) => ({
+    value: row.id,
+    label: `${row.reference}${row.customer || row.contact ? ` — ${row.customer ?? row.contact}` : ''}`,
+  }))
 }
 
 /**
@@ -437,7 +451,17 @@ async function loadOpenEnquiries(session: Awaited<ReturnType<typeof requireSessi
  * Showing the outstanding amount in the option text is what makes "which one
  * does this cheque settle?" answerable without leaving the dialog.
  */
+const outstandingOption = (row: OutstandingInvoiceRow) => ({
+  value: row.id,
+  label: `${row.label} — ${row.customer} — ${row.currency} ${row.balance}`,
+})
+
 async function loadOutstandingInvoices(session: Awaited<ReturnType<typeof requireSession>>) {
+  if (usePilotFixtures()) {
+    const { pilotOutstandingInvoices } = await import('@/lib/pilot/fixtures')
+    return pilotOutstandingInvoices().map(outstandingOption)
+  }
+
   const { withActor } = await import('@qabandi/db')
   const { sql } = await import('drizzle-orm')
 
@@ -456,18 +480,7 @@ async function loadOutstandingInvoices(session: Awaited<ReturnType<typeof requir
        limit 200
     `)
 
-    return (
-      result.rows as {
-        id: string
-        label: string
-        customer: string
-        balance: string
-        currency: string
-      }[]
-    ).map((row) => ({
-      value: row.id,
-      label: `${row.label} — ${row.customer} — ${row.currency} ${row.balance}`,
-    }))
+    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption)
   })
 }
 

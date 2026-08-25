@@ -53,7 +53,7 @@ export interface DemoPersona {
 /**
  * The agency the demo agent contact works for.
  *
- * `partnersFor()` in the fixtures names Everbright as the origin agent on
+ * `partnersFor()` in the fixtures names Hongqiao as the origin agent on
  * every import, so this is the partner an agent contact would actually be
  * looking at jobs through. The id is invented: the fixture jobs carry partner
  * ids of their own (`kwi-3-p2` and so on) that mean nothing outside the job
@@ -64,8 +64,8 @@ export interface DemoPersona {
  */
 const DEMO_PARTNER = {
   id: '00000000-0000-7000-8000-0000000000d2',
-  nameEn: 'Everbright Logistics (Shanghai)',
-  nameAr: 'إيفربرايت للخدمات اللوجستية (شنغهاي)',
+  nameEn: 'Hongqiao Logistics (Shanghai)',
+  nameAr: 'هونغتشياو للخدمات اللوجستية (شنغهاي)',
 } as const
 
 /** Likewise for the customer — `pilotPortalShipments()` filters on the name. */

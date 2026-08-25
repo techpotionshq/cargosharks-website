@@ -120,6 +120,18 @@ export default defineConfig({
             // DATABASE_URL in a developer's shell would otherwise turn this
             // suite red for a reason that has nothing to do with the code.
             DATABASE_URL: '',
+            /*
+              The service, cleared for exactly the same reason.
+
+              `api/assistant` answers 503 immediately when SERVICE_URL is unset
+              and otherwise spends up to fifteen seconds trying to reach it. A
+              developer whose `.env.local` names a service they are not running
+              gets nine assistant failures that CI — where the variable is
+              unset — never sees. Found by running this suite locally after the
+              assistant screens joined the offline sweep.
+            */
+            SERVICE_URL: '',
+            INTERNAL_API_SECRET: '',
           }),
     },
   },

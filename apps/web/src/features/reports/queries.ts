@@ -49,6 +49,8 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotMarginByDimension } from '@/lib/pilot/fixtures'
 
 /** What a management report can be cut by. */
 export type ReportDimension = 'branch' | 'customer' | 'lane' | 'mode' | 'owner'
@@ -96,6 +98,8 @@ export async function marginByDimension(
   dimension: ReportDimension,
   period: ReportPeriod,
 ): Promise<ReportRow[]> {
+  if (usePilotFixtures()) return pilotMarginByDimension(dimension, period)
+
   return withActor(actor, async (tx) => {
     /*
       One `sum` per direction rather than a join per direction.

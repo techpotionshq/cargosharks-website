@@ -1580,6 +1580,22 @@ export interface ConsolidationDetailRows {
   readonly charges: readonly ConsolidationChargeRow[]
 }
 
+/**
+ * One house's slice of one allocated master cost —
+ * `features/consolidation/queries.ts listAllocationShares`.
+ *
+ * Flat rather than nested under the charge for the same reason the query is
+ * flat: it is what a `select` over `consol_allocation_shares` returns, and the
+ * page groups it. A fixture that pre-grouped would be the one shape the
+ * database could not produce.
+ */
+export interface ConsolAllocationShareRow {
+  readonly consolChargeLineId: string
+  readonly jobId: string
+  readonly jobReference: string
+  readonly shareAmount: string
+}
+
 // --- what a model read off the mail — features/enquiries/proposals.ts -------
 
 /**
@@ -1600,4 +1616,160 @@ export interface EnquiryProposalRow {
   readonly targetWasEmpty: boolean
   readonly model: string | null
   readonly promptVersion: string | null
+}
+
+// --- reads that live outside a queries.ts — the ones the sweep found -------
+
+/**
+ * The shapes behind four reads that were written where they were used rather
+ * than in a slice's `queries.ts`: two option loaders in `ledger/ui/dialogs`,
+ * one in `operations/ui/dialogs`, and the unbilled register in
+ * `ledger/unbilled.ts`.
+ *
+ * Being outside a `queries.ts` is why they were the last four reads with no
+ * fixture branch, and why `/quotes`, `/payments`, `/exceptions`, `/finance`
+ * and the job file all answered 500 with no database while every register
+ * behind them rendered. `scripts/check-fixtures.mjs` now fails the build for
+ * the next one.
+ *
+ * Each shape is the *select*, not the rendered option. The loaders build their
+ * label from these rows below the branch, so the two modes cannot disagree
+ * about how an option reads — which is the failure a fixture that returned
+ * finished `{ value, label }` pairs would invite.
+ */
+
+/** Mirrors the select in `loadOpenEnquiries` — enquiries still worth quoting. */
+export interface OpenEnquiryRow {
+  readonly id: string
+  readonly reference: string
+  readonly customer: string | null
+  readonly contact: string | null
+}
+
+/** Mirrors the statement in `loadOutstandingInvoices`. */
+export interface OutstandingInvoiceRow {
+  readonly id: string
+  /** `series_no`, or the literal `(draft)` the query coalesces to. */
+  readonly label: string
+  readonly customer: string
+  readonly balance: string
+  readonly currency: string
+}
+
+/** Mirrors the select in `loadOpenShipments`. */
+export interface OpenShipmentRow {
+  readonly id: string
+  readonly reference: string
+  readonly customer: string | null
+}
+
+/**
+ * Mirrors one row of `unbilledRevenue`'s aggregate.
+ *
+ * `oldestAt` is a `Date` here and a string from the driver — the query
+ * converts once on its own side, so both arms hand the caller the same thing.
+ */
+export interface UnbilledJobRow {
+  readonly jobId: string
+  readonly reference: string
+  readonly status: string
+  readonly customerId: string | null
+  readonly customerName: string | null
+  readonly lines: number
+  readonly amountBase: string
+  readonly baseCurrency: string
+  readonly currencies: readonly string[]
+  readonly oldestAt: Date
+}
+
+/** Mirrors `unbilledLinesFor` — the lines behind one shipment's figure. */
+export interface UnbilledLineRow {
+  readonly id: string
+  readonly description: string | null
+  readonly chargeTypeId: string | null
+  readonly quantity: string
+  readonly rate: string
+  readonly amount: string
+  readonly currency: string
+}
+
+/**
+ * Mirrors `ReportRow` — one row of the margin report, already summed.
+ *
+ * The amounts are strings because the query computes them in PostgreSQL on
+ * `numeric` and never lets a JS `number` near them. The fixture holds to the
+ * same rule through `Decimal`: a year of Kuwaiti margins reduced through
+ * `Number()` loses fils, and this screen exists to be reconciled against the
+ * job files.
+ */
+export interface ReportRowLike {
+  readonly key: string
+  readonly labelEn: string
+  readonly labelAr: string | null
+  readonly jobCount: number
+  readonly revenue: string
+  readonly cost: string
+  readonly grossProfit: string
+  readonly currency: string
+}
+
+/** Mirrors `ApiKeyRow` — live keys first, revoked ones still listed (§5.5). */
+export interface ApiKeyRowLike {
+  readonly id: string
+  readonly prefix: string
+  readonly name: string
+  readonly customerName: string | null
+  readonly branchId: string | null
+  readonly scopes: string[]
+  readonly createdBy: string | null
+  readonly createdAt: Date
+  readonly lastUsedAt: Date | null
+  readonly expiresAt: Date | null
+  readonly revokedAt: Date | null
+}
+
+/** Mirrors `WebhookEndpointRow`, delivery counts included — FR-AD-06. */
+export interface WebhookEndpointRowLike {
+  readonly id: string
+  readonly url: string
+  readonly customerName: string | null
+  readonly events: string[]
+  readonly isActive: boolean
+  readonly disabledAt: Date | null
+  readonly disabledReason: string | null
+  readonly queued: number
+  readonly failed: number
+  readonly lastDeliveredAt: Date | null
+}
+
+/** Mirrors `MailboxRow`. `password_sealed` is absent from both, deliberately. */
+export interface MailboxRowLike {
+  readonly id: string
+  readonly branchId: string
+  readonly branchCode: string
+  readonly host: string
+  readonly port: number
+  readonly secure: boolean
+  readonly username: string
+  readonly folder: string
+  readonly archiveFolder: string | null
+  readonly isActive: boolean
+  readonly lastPolledAt: Date | null
+  readonly lastMessageAt: Date | null
+  readonly lastError: string | null
+}
+
+/** Mirrors the anonymous override row inside `CreditView`. */
+export interface CreditOverrideRowLike {
+  readonly id: string
+  readonly jobId: string | null
+  readonly invoiceId: string | null
+  readonly expiresOn: string | null
+  readonly reason: string
+  readonly approvedByEn: string
+  readonly approvedByAr: string | null
+  readonly approvedAt: Date
+  readonly exposure: string
+  readonly creditLimit: string
+  readonly currency: string
 }

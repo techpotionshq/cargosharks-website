@@ -53,7 +53,7 @@ const base: JobDocumentView = {
   parties: [
     {
       role: 'shipper',
-      nameEn: 'Shanghai Everbright Ltd.',
+      nameEn: 'Shanghai Hongqiao Ltd.',
       nameAr: null,
       address: 'No. 88 Pudong Avenue\nBuilding C, Floor 12',
       city: 'Shanghai',
@@ -138,7 +138,7 @@ describe('house bill of lading', () => {
   it('prints the shipper, consignee and notify party in their own boxes', () => {
     const html = renderBillOfLadingHtml(base, 'en')
 
-    expect(html).toContain('Shanghai Everbright Ltd.')
+    expect(html).toContain('Shanghai Hongqiao Ltd.')
     expect(html).toContain('TO ORDER')
     expect(html).toContain('Notify party')
   })
@@ -195,7 +195,7 @@ describe('house bill of lading', () => {
   })
 
   it('falls back to the English name where a party has no Arabic one', () => {
-    expect(renderBillOfLadingHtml(base, 'ar')).toContain('Shanghai Everbright Ltd.')
+    expect(renderBillOfLadingHtml(base, 'ar')).toContain('Shanghai Hongqiao Ltd.')
   })
 
   it('escapes markup in a shipper-supplied description', () => {
@@ -355,10 +355,10 @@ describe('house bill of lading', () => {
   })
 
   it('isolates a Latin party name on the Arabic face so its full stop stays put', () => {
-    // `Shanghai Everbright Ltd.` printed as `.Shanghai Everbright Ltd` — the
+    // `Shanghai Hongqiao Ltd.` printed as `.Shanghai Hongqiao Ltd` — the
     // trailing full stop resolved to the paragraph's direction.
     const html = renderBillOfLadingHtml(base, 'ar')
-    expect(html).toContain('<bdi>Shanghai Everbright Ltd.</bdi>')
+    expect(html).toContain('<bdi>Shanghai Hongqiao Ltd.</bdi>')
     expect(html).toContain('<bdi>No. 88 Pudong Avenue</bdi><br><bdi>Building C, Floor 12</bdi>')
   })
 
@@ -584,7 +584,7 @@ describe('cargo manifest', () => {
       {
         houseBillNumber: 'QBD-KWI-2026-00017',
         jobReference: 'KWI-JOB-2026-00042',
-        shipperName: 'Shanghai Everbright Ltd.',
+        shipperName: 'Shanghai Hongqiao Ltd.',
         consigneeName: 'Gulf Trading Co.',
         notifyName: null,
         descriptionEn: 'Ceramic floor tiles',
@@ -603,8 +603,8 @@ describe('cargo manifest', () => {
         houseBillNumber: 'QBD-KWI-2026-00018',
         jobReference: 'KWI-JOB-2026-00043',
         shipperName: 'Ningbo Fastener Works',
-        consigneeName: 'Al-Sayer Hardware',
-        notifyName: 'Al-Sayer Hardware',
+        consigneeName: 'Ardiya Hardware',
+        notifyName: 'Ardiya Hardware',
         descriptionEn: 'Steel fasteners',
         descriptionAr: null,
         marksAndNumbers: null,
@@ -723,7 +723,7 @@ describe('customs declaration pack', () => {
     const html = renderCustomsPackHtml(pack, 'en')
 
     expect(html).toContain('Importer of record')
-    expect(html).toContain('Shanghai Everbright Ltd.')
+    expect(html).toContain('Shanghai Hongqiao Ltd.')
   })
 
   /**

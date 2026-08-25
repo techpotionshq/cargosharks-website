@@ -16,7 +16,7 @@ schema changes, [`README.md`](README.md) for setup, and
 ```bash
 pnpm doctor        # what is configured and what each missing thing costs
 pnpm dev           # web :3000, service :3001
-pnpm lint          # oxlint + seven repository invariants
+pnpm lint          # oxlint + eight repository invariants
 pnpm typecheck
 pnpm test:core     # engines, no infrastructure, ~1.4s
 pnpm test:db       # migrations, seed, RLS matrix — needs a database
@@ -51,9 +51,15 @@ share one remote database that fails differently every time two of them overlap.
 A `PostToolUse` hook (`scripts/q-hook.mjs`) runs the matching invariant checks
 after every edit and says nothing unless one fails.
 
-`QABANDI_PILOT_FIXTURES=1 pnpm dev` runs the pilot screens with no database.
-It is a subset: the routes that still need one are listed as `NEEDS_DATABASE`
-in `apps/web/e2e/support/harness.ts`, each naming the query responsible.
+`QABANDI_PILOT_FIXTURES=1 pnpm dev` runs *every* screen with no database —
+that is the hosted CargoSharks demo, and `scripts/check-fixtures.mjs` fails the
+lint on any read that reaches `withActor` without a `usePilotFixtures()` branch.
+`NEEDS_DATABASE` in `apps/web/e2e/support/harness.ts` is empty, and a test fails
+if an entry is added that is not true.
+
+`db:seed-demo` is the *other* dataset and a different audience: a customer's own
+instance in PostgreSQL, before their branding and records go in. Do not merge
+the two — see the header of `apps/web/src/lib/pilot/fixtures.ts`.
 
 ## Non-negotiables
 

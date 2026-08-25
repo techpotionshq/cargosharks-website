@@ -12,33 +12,67 @@
  * quietly reduce what the suite covers.
  */
 
-import { test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
-  ALL_ROUTES,
   DETAIL_ROUTES,
   MODE,
   NEEDS_DATABASE,
   OPS_ROUTES,
   SETTINGS_ROUTES,
   openFirstRecordAndAssertHealthy,
+  readRouteManifest,
+  unswept,
   visitAndAssertHealthy,
 } from './support/harness'
 
 /**
- * The gap, stated in the run.
+ * The gap, checked rather than declared.
  *
- * A suite that simply omitted these would report "all green" over a third of
- * the product. Skipping them by name means the offline run says exactly what
- * it did not cover and why, and the same file passing in `E2E_MODE=full`
- * covers all of it.
+ * `NEEDS_DATABASE` is a list of routes this suite skips offline, which makes a
+ * stale entry invisible by construction — and it went stale badly: twenty
+ * registers were listed as needing a database while every one of their queries
+ * already had a fixture branch, so a third of the product sat unswept over four
+ * reads that had been written in the wrong file.
+ *
+ * These two tests close that loop. The first fails when a listed route renders
+ * anyway, which is the signal to delete the entry and let the sweep have it.
+ * The second fails when a screen exists that no list mentions, which is how
+ * `/reports`, `/settings/api-keys` and `/settings/mailboxes` shipped unswept.
  */
 test.describe('offline coverage gap', () => {
   test.skip(MODE === 'full', 'every route is covered against a database')
 
-  for (const route of ALL_ROUTES.filter((r) => r in NEEDS_DATABASE)) {
-    // eslint-disable-next-line playwright/no-skipped-test
-    test.fixme(`${route} needs a database — ${NEEDS_DATABASE[route]}`, () => {})
+  for (const [route, reason] of Object.entries(NEEDS_DATABASE)) {
+    test(`${route} still needs a database — ${reason}`, async ({ page }) => {
+      // A detail route is named by its register here; there is no id to visit,
+      // so the claim can only be checked on the board it is opened from.
+      const path = route.replace('/:id', '')
+      const response = await page.goto(path, { waitUntil: 'domcontentloaded' })
+
+      expect(
+        response?.status(),
+        `${route} renders with no database — delete its NEEDS_DATABASE entry and add it to the sweep`,
+      ).toBeGreaterThan(399)
+    })
   }
+})
+
+/**
+ * Every screen the application serves is in a list, or is a stated exclusion.
+ *
+ * The route manifest is the build's own answer to "what does this app serve",
+ * so it cannot drift from the code the way a hand-written array does. Three
+ * screens had already slipped past the arrays in `harness.ts` before this
+ * existed.
+ */
+test('sweeps every screen the build serves', async () => {
+  const manifest = await readRouteManifest()
+  test.skip(manifest.length === 0, 'no build output to read — run `next build` first')
+
+  expect(
+    unswept(manifest),
+    'screens the sweep has never heard of — add them to harness.ts, or to NOT_SWEPT with a reason',
+  ).toEqual([])
 })
 
 test.describe('operations routes', () => {
@@ -66,11 +100,6 @@ test.describe('settings routes', () => {
  * line, and the sweep above walked past it eighteen times a run.
  */
 test.describe('detail routes', () => {
-  test.skip(
-    MODE !== 'full',
-    'a record has to exist before it can be opened — run with E2E_MODE=full',
-  )
-
   for (const register of DETAIL_ROUTES) {
     test(`opens a record from ${register}`, async ({ page }, testInfo) => {
       await openFirstRecordAndAssertHealthy(page, register, testInfo)

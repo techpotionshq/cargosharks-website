@@ -106,7 +106,21 @@ export default async function InvoicesPage({
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
                 <TD>
-                  <RecordLink href={`/invoices/${row.id}`}>{row.seriesNo}</RecordLink>
+                  {/*
+                    A draft has no series number, and the link has to say
+                    something anyway.
+
+                    `series_no` is allocated at approval, so every draft
+                    rendered `<a></a>` — a row whose only way into the record
+                    was an empty, unclickable link. It survived because the
+                    detail routes were never opened offline and the demo
+                    dataset happens not to sort a draft to the top.
+                    `loadOutstandingInvoices` already coalesces to the same
+                    word in SQL.
+                  */}
+                  <RecordLink href={`/invoices/${row.id}`}>
+                    {row.seriesNo ?? t('statuses.draft')}
+                  </RecordLink>
                   {row.isCreditNote ? (
                     <Badge tone="caution" className="ms-2">
                       {t('creditNote')}

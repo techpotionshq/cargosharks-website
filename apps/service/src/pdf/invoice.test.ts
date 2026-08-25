@@ -21,7 +21,7 @@ const base: InvoiceView = {
   total: '8940.500000',
   amountPaid: '0',
   notes: null,
-  customer: { nameEn: 'Kuwait National Petroleum', nameAr: 'شركة البترول الوطنية' },
+  customer: { nameEn: 'Sabahiya Petroleum', nameAr: 'شركة الصباحية للبترول' },
   branch: {
     legalNameEn: 'Al-Qabandi Kuwait',
     legalNameAr: 'القبندي الكويت',
@@ -96,7 +96,7 @@ describe('invoice document', () => {
 
   it('prefers the Arabic name where one exists', () => {
     const html = renderInvoiceHtml(base, 'ar')
-    expect(html).toContain('شركة البترول الوطنية')
+    expect(html).toContain('شركة الصباحية للبترول')
     expect(html).toContain('أجرة الشحن البحري')
   })
 

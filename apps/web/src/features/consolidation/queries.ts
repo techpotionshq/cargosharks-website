@@ -29,7 +29,12 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotAttachableJobs, pilotConsolidation, pilotConsolidations } from '@/lib/pilot/fixtures'
+import {
+  pilotAllocationShares,
+  pilotAttachableJobs,
+  pilotConsolidation,
+  pilotConsolidations,
+} from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'consol_origin')
 const destination = alias(locations, 'consol_destination')
@@ -343,17 +348,50 @@ export async function listAttachableJobs(
   })
 }
 
-/** Where an allocated cost landed — the answer to "why is this on my job?". */
+/** One house's slice of one allocated master cost. */
+export interface ConsolAllocationShare {
+  readonly consolChargeLineId: string
+  readonly jobId: string
+  readonly jobReference: string
+  readonly shareAmount: string
+}
+
+/**
+ * Where every allocated cost on one master landed — the answer to "why is this
+ * on my job?".
+ *
+ * The whole master in one read rather than one read per charge. The file page
+ * draws every cost it holds, and a per-charge query would put a round trip
+ * behind each row of a list that is already on the screen — the shares are two
+ * columns and there are as many of them as houses times allocated costs, which
+ * on the largest master in the seed is fifteen rows.
+ *
+ * `shareCount` on the charge already says how many there are. This says who
+ * they were, and it is the only place the answer exists: the allocation writes
+ * a charge line onto each house and a share row here, and the house's line
+ * says "Allocated from consolidation" without naming the master it came from.
+ */
 export async function listAllocationShares(
   actor: Actor,
-  consolChargeLineId: string,
-): Promise<{ readonly jobReference: string; readonly shareAmount: string }[]> {
+  consolidationId: string,
+): Promise<readonly ConsolAllocationShare[]> {
+  if (usePilotFixtures()) return pilotAllocationShares(consolidationId)
+
   return withActor(actor, async (tx) =>
     tx
-      .select({ jobReference: jobs.reference, shareAmount: consolAllocationShares.shareAmount })
+      .select({
+        consolChargeLineId: consolAllocationShares.consolChargeLineId,
+        jobId: jobs.id,
+        jobReference: jobs.reference,
+        shareAmount: consolAllocationShares.shareAmount,
+      })
       .from(consolAllocationShares)
       .innerJoin(jobs, eq(jobs.id, consolAllocationShares.jobId))
-      .where(eq(consolAllocationShares.consolChargeLineId, consolChargeLineId))
+      .innerJoin(
+        consolChargeLines,
+        eq(consolChargeLines.id, consolAllocationShares.consolChargeLineId),
+      )
+      .where(eq(consolChargeLines.consolidationId, consolidationId))
       .orderBy(asc(jobs.reference)),
   )
 }

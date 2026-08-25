@@ -18,22 +18,22 @@ export const LOCALE_COOKIE = 'qabandi_locale'
 export const STORAGE_STATE = 'e2e/.auth/state.json'
 
 /**
- * The two ways this product can be stood up for evaluation, and the reason
- * this file has two route lists instead of one.
+ * The two ways this product can be stood up, and what each one is *for*.
  *
- * `full` — Postgres 18, `db:migrate`, `db:seed`, `db:seed-demo`. Every screen
- * works, because `seed-demo.ts` populates every table an evaluation touches:
- * customers, partners, rate cards, invoices partly paid, containers past free
- * time. This is the demo instance a prospect should be given a URL to, and the
- * mode that gives the suite its real coverage.
+ * `offline` — `QABANDI_PILOT_FIXTURES=1`, no database at all. This is the
+ * hosted public demo, and the mode that proves the rehearsal claim: the whole
+ * interface on a laptop with nothing provisioned. Every route in the lists
+ * below renders here.
  *
- * `offline` — `QABANDI_PILOT_FIXTURES=1`, no database at all. Fast, hermetic,
- * and the mode that proves the day-15 rehearsal claim. It covers *less* than
- * the README used to imply: the fixture set was written for the screens the
- * pilot needed, and the register queries behind finance, network, operations
- * and reference still go straight to `withActor`. Those routes 500 without a
- * database rather than degrading, which is a real gap and is named here rather
- * than quietly omitted from the sweep.
+ * `full` — Postgres 18, `db:migrate`, `db:seed`, `db:seed-demo`. This is how a
+ * *customer's own* instance is provisioned before their branding and their data
+ * go in. It is the mode that exercises the SQL, which is the half the fixtures
+ * cannot check.
+ *
+ * The two lists were different until the offline gap was closed. They are the
+ * same list now, and `routes.spec.ts` keeps them that way — see
+ * `NEEDS_DATABASE` below, which is empty and is *checked* to be honest rather
+ * than trusted.
  */
 export type Mode = 'offline' | 'full'
 
@@ -60,10 +60,18 @@ const ALL_OPS_ROUTES = [
   '/settlements',
   '/rates',
   '/customers',
+  // The creation form is a screen in its own right and was never swept: it is
+  // the one page in the register whose fields, selects and reference options
+  // all render before any record exists.
+  '/customers/new',
   '/partners',
   '/locations',
   '/reference',
   '/imports',
+  // The margin report. Absent from this sweep until the fixture pass found it
+  // 500ing offline — added with a slice the lists had never heard of, which is
+  // the drift `unswept()` in `routes.spec.ts` now fails on.
+  '/reports',
 ] as const
 
 const ALL_SETTINGS_ROUTES = [
@@ -75,6 +83,9 @@ const ALL_SETTINGS_ROUTES = [
   '/settings/integrations',
   '/settings/notifications',
   '/settings/brand',
+  // Both shipped after the lists were last touched and neither was ever swept.
+  '/settings/api-keys',
+  '/settings/mailboxes',
 ] as const
 
 /**
@@ -104,91 +115,47 @@ const ALL_DETAIL_ROUTES = [
 ] as const
 
 /**
- * What renders with no database today, verified by probing every route rather
- * than inferred from the code.
+ * Screens that still require a database in fixture mode, with the read that
+ * makes it so.
  *
- * Shrinking this list is a regression. *Growing* it is the fix for
- * `NEEDS_DATABASE` below — each route moves here as its query learns the
- * `usePilotFixtures()` branch every other feature already has.
+ * **Empty, and kept empty by a test rather than by good intentions.** Every
+ * entry here is a route `routes.spec.ts` skips offline, so a wrong entry is
+ * invisible — which is exactly what happened: this map named twenty register
+ * queries that had a `usePilotFixtures()` branch all along, and the real cause
+ * was four reads written in `ui/dialogs.tsx` and `ledger/unbilled.ts` instead
+ * of in a slice's `queries.ts`. Twenty-nine route checks sat skipped for months
+ * over four functions.
+ *
+ * So the list is now checked in both directions and neither check is optional:
+ *
+ *   - **A route named here must actually fail offline.** `routes.spec.ts`
+ *     visits it and fails if it renders — otherwise a route that quietly gains
+ *     a fixture branch stays skipped forever, which is how this got to twenty.
+ *   - **A route not named here must render offline**, which is just the sweep.
+ *
+ * Adding an entry is therefore a deliberate, tested claim about the code, and
+ * `scripts/check-fixtures.mjs` refuses the omission that would need one.
  */
-const OFFLINE_OPS_ROUTES = ['/imports', '/search'] as const
-const OFFLINE_SETTINGS_ROUTES = ['/settings', '/settings/brand'] as const
+export const NEEDS_DATABASE: Record<string, string> = {}
+
+export const OPS_ROUTES: readonly string[] = ALL_OPS_ROUTES.filter((r) => !(r in NEEDS_DATABASE))
+
+export const SETTINGS_ROUTES: readonly string[] = ALL_SETTINGS_ROUTES.filter(
+  (r) => !(r in NEEDS_DATABASE),
+)
 
 /**
- * Screens that require a database even in fixture mode, with the query that
- * makes it so. Reported by `routes.spec.ts` as skipped-with-a-reason, so the
- * gap appears in the run rather than being invisible.
+ * The registers a record is opened from, in both modes.
+ *
+ * Offline until the fixture pass this was empty — every register a row could be
+ * clicked on was itself listed as needing a database, so the detail pages went
+ * unswept in the mode CI runs on every commit.
  */
-export const NEEDS_DATABASE: Record<string, string> = {
-  '/dashboard': 'dashboard/queries.ts getMapData',
-  '/enquiries': 'enquiries — secondary register query',
-  '/quotes': 'ledger/queries.ts listQuotes',
-  '/jobs': 'jobs — secondary register query',
-  '/consolidations': 'consolidation/queries.ts listConsolidations',
-  '/customs': 'operations/queries.ts listCustoms',
-  '/exceptions': 'operations/queries.ts listExceptions',
-  '/documents': 'operations/queries.ts listDocuments',
-  '/finance': 'ledger/queries.ts receivablesAgeing',
-  '/invoices': 'ledger/queries.ts listInvoices',
-  '/payments': 'ledger/queries.ts listPayments',
-  '/rates': 'rates/queries.ts listRateCards',
-  '/customers': 'customers/queries.ts listCustomers',
-  '/partners': 'network/queries.ts listPartners',
-  '/locations': 'network/queries.ts listLocations',
-  '/reference': 'admin/queries.ts referenceCounts',
-  '/settings/users': 'admin/queries.ts — user register',
-  '/settings/branches': 'admin/queries.ts — branch register',
-  '/settings/audit': 'admin/queries.ts — audit register',
-  '/settings/support': 'features/support/queries.ts — grants and access trail',
-  /*
-    Reads `integration_settings` to merge each row over the environment. It
-    could resolve from the environment alone with no database — the resolver
-    already does exactly that when a row is absent — but a settings screen that
-    silently showed only half its answer would be worse in fixture mode than
-    one that is honestly listed as needing a database.
-  */
-  '/settings/integrations': 'admin/integrations.ts listIntegrations',
-  /*
-    Absent from this sweep until an untranslatable event key threw
-    MISSING_MESSAGE on it in `main`. The cards are driven by
-    `NOTIFICATION_EVENTS` in core rather than by the table, so the page draws
-    all thirteen — and re-throws that class of fault — even against an empty
-    `notification_templates`.
-  */
-  '/settings/notifications': 'admin/notifications.ts listTemplates',
-  '/payables': 'payables/queries.ts listSupplierInvoices — no fixture branch',
-  '/settlements': 'payables/queries.ts listSettlements — no fixture branch',
-  /*
-    The job file is the one detail page that needs a database for a reason of
-    its own rather than an inherited one: `getJobDetail` has the fixture branch
-    every other query on the page has, but the proof-of-delivery pair does not,
-    so the screen goes to `withActor` even in fixture mode. Stated here so that
-    teaching the jobs register its fixtures does not create the expectation
-    that the job file follows.
-  */
-  '/jobs/:id': 'pod/queries.ts jobProofOfDelivery — no fixture branch',
-  '/enquiries/:id': 'opened from /enquiries, which needs one',
-  '/quotes/:id': 'opened from /quotes, which needs one',
-  '/consolidations/:id': 'opened from /consolidations, which needs one',
-  '/invoices/:id': 'opened from /invoices, which needs one',
-  '/payables/:id': 'opened from /payables, which needs one',
-  '/settlements/:id': 'opened from /settlements, which needs one',
-  '/customers/:id': 'opened from /customers, which needs one',
-  '/partners/:id': 'opened from /partners, which needs one',
-}
+export const DETAIL_ROUTES: readonly string[] = ALL_DETAIL_ROUTES.filter(
+  (r) => !(`${r}/:id` in NEEDS_DATABASE),
+)
 
-export const OPS_ROUTES: readonly string[] = MODE === 'full' ? ALL_OPS_ROUTES : OFFLINE_OPS_ROUTES
-
-export const SETTINGS_ROUTES: readonly string[] =
-  MODE === 'full' ? ALL_SETTINGS_ROUTES : OFFLINE_SETTINGS_ROUTES
-
-/**
- * Empty offline, and not for want of trying: every register a record is opened
- * from is itself in `NEEDS_DATABASE`, so there is no board to click a row on.
- */
-export const DETAIL_ROUTES: readonly string[] = MODE === 'full' ? ALL_DETAIL_ROUTES : []
-
-/** Every route, whatever the mode — used to report the gap. */
+/** Every route, whatever the mode — the denominator for the coverage check. */
 export const ALL_ROUTES: readonly string[] = [
   ...ALL_OPS_ROUTES,
   ...ALL_SETTINGS_ROUTES,
@@ -196,12 +163,80 @@ export const ALL_ROUTES: readonly string[] = [
 ]
 
 /**
+ * Route segments the sweep is not expected to cover, so `unswept()` can tell a
+ * genuinely missed screen from one that could never be in a list.
+ *
+ * Everything here is either not a screen (`/api`, `/webhooks`), reachable only
+ * with a token or a reference number (`/track`, `/reset-password`), or a
+ * different audience's entry point tested by its own spec rather than by the
+ * internal sweep (`/portal`, `/agent`, `/sign-in`).
+ */
+const NOT_SWEPT = [
+  '/api',
+  '/webhooks',
+  '/track',
+  '/sign-in',
+  '/reset-password',
+  '/forgot-password',
+  '/portal',
+  '/agent',
+  '/', // redirects to /dashboard
+] as const
+
+/**
+ * The routes the build says it serves.
+ *
+ * `app-path-routes-manifest.json` is written by `next build`, so it is the
+ * application's own account of itself rather than a second list somebody has to
+ * remember to update. Returns empty when there is no build output — a developer
+ * running the suite against `next dev` should not fail on a file that only
+ * exists after a build, and CI always builds first.
+ */
+export async function readRouteManifest(): Promise<string[]> {
+  const { readFile } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+
+  try {
+    const raw = await readFile(join(process.cwd(), '.next/app-path-routes-manifest.json'), 'utf8')
+    return [...new Set(Object.values(JSON.parse(raw) as Record<string, string>))]
+      .filter((route) => !route.startsWith('/_'))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Screens the application serves that no list above mentions.
+ *
+ * `/reports`, `/settings/api-keys` and `/settings/mailboxes` all shipped
+ * without ever reaching this file, and nothing noticed because a sweep can only
+ * fail on routes it knows about. Reading the route manifest closes that: a new
+ * screen is in the sweep or it is a deliberate exclusion, and there is no third
+ * state.
+ */
+export function unswept(manifestRoutes: readonly string[]): string[] {
+  const known = new Set<string>(ALL_ROUTES)
+  return manifestRoutes
+    .filter((route) => !known.has(route))
+    .filter(
+      (route) => !NOT_SWEPT.some((prefix) => route === prefix || route.startsWith(`${prefix}/`)),
+    )
+    .filter((route) => !route.includes('[')) // a detail route, covered by DETAIL_ROUTES
+    .sort()
+}
+
+/**
  * One internal screen wearing the full chrome — sidebar, language switch,
  * theme switch — for the tests that are about the frame rather than the
- * contents. `/dashboard` in full mode; the first route that works with no
- * database otherwise.
+ * contents.
+ *
+ * `/dashboard` in both modes now. It used to fall back offline to whichever
+ * route happened to render, which was `/imports` — so the RTL, brand-token and
+ * assistant suites all ran against the thinnest screen in the product while
+ * reporting that they had checked the chrome.
  */
-export const CHROME_ROUTE: string = MODE === 'full' ? '/dashboard' : OPS_ROUTES[0]!
+export const CHROME_ROUTE: string = '/dashboard'
 
 /**
  * Console errors and uncaught exceptions, collected for the life of the page.
@@ -238,6 +273,34 @@ export function collectPageErrors(page: Page): string[] {
     if (/_next\/hmr/.test(text) || /_next\/hmr/.test(from)) return
     if (/ERR_INVALID_HTTP_RESPONSE|WebSocket connection to/i.test(text)) return
     if (/Failed to load resource/i.test(text) && /\/_next\//.test(from)) return
+
+    /*
+      The assistant saying it is unavailable, which is an answer, not a fault.
+
+      `api/assistant` has exactly two ways to report that no answer is coming,
+      and this suite is built to meet both: 503 where no `SERVICE_URL` is set —
+      a fixtures deployment, and the state `assistant.spec.ts` exists to
+      prove — and 502 where one is set but the service does not answer, which
+      is any developer running the web app on its own. Each renders as a
+      sentence in the panel.
+
+      The browser logs every failed fetch to its console itself, whether or not
+      the code handled it, so a handled path is indistinguishable from an
+      unhandled one *here*. Without this the suite goes red on a screen
+      behaving exactly as designed — offline on the 503, in full mode on the
+      502.
+
+      Scoped to those two statuses from that one endpoint. A 500 still fails,
+      and so does every other route: what is excused is two deliberate answers
+      from one path, not "errors from the assistant".
+    */
+    if (
+      /Failed to load resource/i.test(text) &&
+      /50[23]/.test(text) &&
+      /\/api\/assistant/.test(from)
+    ) {
+      return
+    }
 
     errors.push(`console: ${text}`)
   })

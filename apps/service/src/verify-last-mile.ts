@@ -184,7 +184,7 @@ async function build(): Promise<Fixture> {
         {
           jobId: job!.id,
           role: 'shipper',
-          nameEn: 'Shanghai Everbright Ltd.',
+          nameEn: 'Shanghai Hongqiao Ltd.',
           address: 'No. 88 Pudong Avenue\nBuilding C, Floor 12',
           city: 'Shanghai',
           country: 'CN',

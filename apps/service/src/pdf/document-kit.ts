@@ -74,7 +74,7 @@ export function ltr(value: string): string {
  * Isolates a run whose direction is whatever its first letter says it is.
  *
  * The second bidi fault, found after the first one was fixed: on the Arabic
- * face of a bill, `Shanghai Everbright Ltd.` printed as `.Shanghai Everbright
+ * face of a bill, `Shanghai Hongqiao Ltd.` printed as `.Shanghai Hongqiao
  * Ltd` — the full stop is neutral, it sits at the edge of the run, and at the
  * edge it resolves to the paragraph's direction, which is right-to-left. `ltr`
  * is the wrong tool here because the same box on the next bill holds an

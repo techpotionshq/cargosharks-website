@@ -678,14 +678,11 @@ describe('setting off an agent current account', () => {
 describe('the file', () => {
   it('quotes a legal name containing a comma', () => {
     const csv = toJournalCsv(
-      buildJournal(
-        base({ invoices: [invoice({ customerName: 'Al-Sayer Trading, W.L.L.' })] }),
-        KWD,
-      ),
+      buildJournal(base({ invoices: [invoice({ customerName: 'Ardiya Trading, W.L.L.' })] }), KWD),
       'KWD',
     )
 
-    expect(csv.split('\r\n')[1]).toContain('"Al-Sayer Trading, W.L.L."')
+    expect(csv.split('\r\n')[1]).toContain('"Ardiya Trading, W.L.L."')
   })
 
   it('writes the header the importers expect', () => {
