@@ -43,6 +43,12 @@ credential rows would copy secrets into the log.
 | Account enumeration | One message for "no such user" and "wrong password". The password-reset form answers identically whether or not the address exists. |
 | Reset links | One hour. A reset revokes every other session for the account. |
 
+## 2.1 Transport to the database
+
+`DATABASE_SSL` selects `disable`, `require` or `verify-full`; the last verifies the server certificate against `DATABASE_CA_CERT`. An `sslmode=` already present in the connection string wins outright, because silently replacing an operator's explicit parameter is how a secure-by-default flag ends up downgrading a connection somebody had already secured.
+
+Left unset, the process starts anywhere the packets never leave the machine and **refuses to start in production against a remote host**. That refusal is the substance of the control: the previous behaviour was to connect in clear across a network and say nothing. `packages/db/src/client.ts`, nine tests in `packages/db/test/tls.test.ts`.
+
 ## 3. Audit and accountability
 
 - **Audit is a trigger, not a convention.** 80 triggers, attached by a loop over
@@ -101,12 +107,13 @@ everything above.
 
 | Gap | Status |
 | --- | --- |
-| **TLS to the database is not required.** Nothing in the connection string or the code specifies it. Web-to-service traffic is plain HTTP on a private network, by design. | Open |
+| **TLS to the database is a deployment setting, not a guarantee.** `DATABASE_SSL` takes `disable`, `require` or `verify-full`, and in production against a non-local host the process refuses to start until one of them is chosen — so an unencrypted link is now a recorded decision rather than an accident. What this section cannot tell a reviewer is which value a given deployment picked; ask for it. Web-to-service traffic remains plain HTTP on a private network, by design. | **Closed in the build, open per deployment** |
 | **Encryption at rest is not established.** It is a property of the host, and the host is not chosen. | Open — blocked on the hosting decision |
 | **No independent security testing.** No penetration test, no SOC 2, no ISO 27001. The figures above are verified by our own tests, which is verification and not attestation. | Open |
-| **Audit search and export is not built.** The log is complete and readable; there is no screen that searches or exports it. NFR-10 requires both. | Open |
+| **Audit export is built; one half of the search is not.** The screen searches by record id, person and address across a table, an operation and a period, and `/api/audit.csv` exports the same query under the same row-level security. `FR-AD-02` also asks for search *by job*, and `row_id` holds the job's id rather than its reference — so a reference pasted from a document finds nothing until it is resolved to an id first. | **Export closed 2026-08-25**; reference lookup open |
 | **No data-erasure mechanism.** "Nothing is deleted" is a design principle, and it collides with erasure rights. There is no supervised redaction path. | Open — legal decision first |
 | **Retention periods are not set** for business records, audit entries, logs, object storage or backups. | Open — legal decision first |
+| **Monitoring is instrumented but not operating.** Spans are opened per transaction and both applications register an exporter; without `OTEL_EXPORTER_OTLP_ENDPOINT` all of it degrades to no-ops. No collector is chosen, and there is no alerting on top of whatever one is. | Open — operator commitment |
 | **HSTS is not preloaded**, and subdomains of a customer's own domain are therefore not protected before first contact. | Deliberate — see `proxy.ts` |
 | **Backups are tooling, not a schedule.** `fleet:backup` and `fleet:restore-drill` exist; NFR-11's daily/weekly cadence and quarterly signed-off drill are not operating. | Open — operator commitment |
 | **No formal access review cadence**, no documented RTO/RPO, no security awareness training record. | Open — operator commitment |

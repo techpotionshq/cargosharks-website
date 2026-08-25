@@ -34,11 +34,24 @@ enforced two-factor for Administrator and Finance, sign-in lockout, and weekly
 supply-chain scanning.
 
 **Missing**, and named in full in `Security_Measures.md` §6: any independent
-attestation, TLS to the database, encryption at rest, monitoring and alerting,
-audit search and export, retention periods, and a data-erasure mechanism.
+attestation, encryption at rest, a monitoring backend and alerting on top of it,
+retention periods, and a data-erasure mechanism.
+
+Two items left that list on 25 August 2026. **Audit export** is built, and most
+of the search with it — the screen searches by record id, person and address
+across a table, an operation and a period, and `/api/audit.csv` exports the same
+query under the same row-level security (`NFR-10`). `FR-AD-02` is not fully met:
+it also asks for search by job, and the trigger records a job's id rather than
+its reference, so a reference pasted from a document finds nothing yet. **TLS to
+the database** is now chosen by
+`DATABASE_SSL`, and a production start against a remote host refuses until
+somebody chooses; which value a given deployment picked is a question to ask of
+that deployment rather than of this directory.
 
 The gaps cluster in attestation and operational procedure rather than in the
-build. That is the cheaper half to fix.
+build. That is the cheaper half to fix — and it is worth being plain about what
+that now means: everything still open needs a purchase order, a lawyer, or
+somebody to commit to a cadence. None of it is waiting on an engineer.
 
 ## What to do next, and what it costs
 

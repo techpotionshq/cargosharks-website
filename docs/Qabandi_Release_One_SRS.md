@@ -563,7 +563,7 @@ Of the 126 functional requirements, these are not met, or only partly met, by th
 |---|---|---|
 | `FR-EQ-10` `FR-NT-02` `FR-NT-05` | WhatsApp — sending, the channel, inbound threading | Not built; excluded by decision until a Business API number exists. Email is built; in-app is a channel value with no adapter behind it yet, so a notification to a user with no email goes nowhere. |
 | `FR-ID-03` | Editable permission matrix | Permissions are rows (`role_permissions`) read on every request, so a change needs no release — but there is no screen for it; an administrator edits the rows. |
-| `FR-ID-05` | Lockout after repeated failures | Password policy and self-service reset are built; the lockout is not. |
+| `FR-ID-05` | Lockout after repeated failures | **Met since 25 Aug 2026.** Five failures lock the account for fifteen minutes and the lock lifts by itself, so it cannot be used to deny service to a named person. Policy in `core/lockout.ts`, counters in `features/auth/lockout.ts`. |
 | `FR-MD-03` | Per-contact portal access | Portal and agent users are created by an administrator against a customer or partner. Granting access contact by contact, with per-contact permissions, is not built. |
 | `FR-MD-05` | Compliance expiry warnings at 60, 30 and 7 days | The register, the documents and days-remaining on the partner record are built. The warnings are not sent. |
 | `FR-EQ-11` | Quote acceptance with evidence | Operations records acceptance; the portal cannot, and manual acceptance does not require an attachment. |
@@ -589,7 +589,7 @@ Of the 126 functional requirements, these are not met, or only partly met, by th
 | `FR-RP-06` | Every list exports to CSV | The margin report exports; other lists do not. |
 | `FR-RP-07` | Scheduled reports | Registered as a job name with no handler and no schedule. |
 | `FR-RP-08` | KPI dictionary | Not built. |
-| `FR-AD-02` | Audit search and export | The audit screen filters by table. Search by job, user or date range, and export, are not built. |
+| `FR-AD-02` | Audit search and export | **Mostly met since 25 Aug 2026.** The screen searches by record id, person and address, narrowed by table, operation and period; `/api/audit.csv` exports the same query under the same row-level security, with an inclusive closing day and a truncation row when the ten-thousand-row cap binds. **Still short of the requirement in one way:** "by job" means the job's *id*, because that is what the trigger records in `row_id` — pasting a job reference such as a house-bill number finds nothing. Resolving a reference to its id before searching is the remaining piece. |
 | `FR-AD-04` | Full data export as one action | Not built as one action. The accounting export and the import templates exist, and the database is Al-Qabandi's (`NFR-17`). |
 | `NFR-04` | Hijri dates beside Gregorian | Not built. |
 
