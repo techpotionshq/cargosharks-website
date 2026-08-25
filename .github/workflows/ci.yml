@@ -233,6 +233,19 @@ jobs:
       # Built and served as production, not `next dev`: RTL, brand tokens and
       # server components all behave differently under the dev server, and it
       # is the production build these tests are supposed to protect.
+      # `next start` runs as production, so `instrumentation.ts` refuses to boot
+      # without a signing key — which is what it is there for. Both end-to-end
+      # jobs were never given one, so the web server died on every restart
+      # attempt and Playwright failed on "Timed out waiting for webServer"
+      # without a single test having run. The symptom named the timeout and not
+      # the cause, which is why this went unfixed for four runs.
+      #
+      # Generated per run rather than pinned: a fixed base64 string sitting in a
+      # workflow file is a key that looks real, gets copied into a deployment,
+      # and signs sessions somebody else can mint.
+      - name: Generate a signing key for this run
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
       - name: Build
         run: pnpm --filter @qabandi/web build
 
@@ -321,6 +334,19 @@ jobs:
         run: >-
           pnpm db:create-user --email e2e@qabandi.test --name "E2E Operator"
           --role administrator --password "$E2E_PASSWORD"
+
+      # `next start` runs as production, so `instrumentation.ts` refuses to boot
+      # without a signing key — which is what it is there for. Both end-to-end
+      # jobs were never given one, so the web server died on every restart
+      # attempt and Playwright failed on "Timed out waiting for webServer"
+      # without a single test having run. The symptom named the timeout and not
+      # the cause, which is why this went unfixed for four runs.
+      #
+      # Generated per run rather than pinned: a fixed base64 string sitting in a
+      # workflow file is a key that looks real, gets copied into a deployment,
+      # and signs sessions somebody else can mint.
+      - name: Generate a signing key for this run
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm --filter @qabandi/web build
