@@ -1,5 +1,7 @@
 import { ArrowUpRight } from '@phosphor-icons/react/dist/ssr'
+import { facts } from '@/content/comparisons'
 import type { Comparison } from '@/content/comparisons'
+import { CostShape, SurfaceTimeline } from '@/content/pages/comparison-figures'
 import { CONTACT_EMAIL, DEMO_URL, type Lang } from '@/content/copy'
 
 /**
@@ -161,6 +163,34 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
               <li key={point.en}>{point[lang]}</li>
             ))}
           </ul>
+
+          {/* Every claim above that carries a number, with the command that
+              re-checks it. This is what stops §03 being prose. */}
+          <div className="tablewrap">
+            <table className="cmp-facts">
+              <thead>
+                <tr>
+                  <th scope="col">{lang === 'ar' ? 'الدعوى' : 'The claim'}</th>
+                  <th scope="col">{lang === 'ar' ? 'الرقم' : 'Figure'}</th>
+                  <th scope="col">{lang === 'ar' ? 'كيف تتحققون منه' : 'How you check it'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facts.map((fact) => (
+                  <tr key={fact.figure + fact.claim.en}>
+                    <th scope="row">{fact.claim[lang]}</th>
+                    <td>{fact.figure}</td>
+                    <td>{fact.check[lang]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* The one figure on this page that *is* a claim, and it is a claim
+              about our own software rather than about anybody's product — see
+              `comparison-figures.tsx`. */}
+          <SurfaceTimeline lang={lang} />
         </div>
       </section>
 
@@ -181,16 +211,55 @@ export function ComparisonContent({ item, lang }: { item: Comparison; lang: Lang
             </p>
           </div>
 
-          <dl className="spec">
-            {item.ask.map((entry) => (
-              <div key={entry.question.en}>
-                <dt>{entry.question[lang]}</dt>
-                <dd>
-                  <span>{entry.ours[lang]}</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
+          {/*
+            A table with a column left blank, which is the best idea on these
+            pages.
+
+            It was a `.spec` definition list, and that was the visible bug:
+            `.spec` is styled for a navy band — `--white` headings, a
+            `--navy-line` rule — so on `band--paper` the questions came out pale
+            blue on near-white and the answers were barely there.
+
+            A table is what this content always was, and rebuilding it that way
+            made room for the third column. We fill in ours; the other one is
+            ruled and empty, for the reader to complete on the call. A
+            comparison the reader finishes themselves is the only kind this site
+            is allowed to publish — see "What you will not find" below — and it
+            is also the only kind anybody believes.
+          */}
+          <div className="tablewrap">
+            <table className="cmp-ask">
+              <thead>
+                <tr>
+                  <th scope="col">{lang === 'ar' ? 'السؤال' : 'The question'}</th>
+                  <th scope="col">{lang === 'ar' ? 'جوابنا' : 'Our answer'}</th>
+                  <th scope="col">
+                    {lang === 'ar' ? `جواب ${item.name}` : `${item.name}’s answer`}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {item.ask.map((entry) => (
+                  <tr key={entry.question.en}>
+                    <th scope="row">{entry.question[lang]}</th>
+                    <td>{entry.ours[lang]}</td>
+                    <td>
+                      <span
+                        className="cmp-fill"
+                        role="presentation"
+                        aria-label={lang === 'ar' ? 'اتركوه لتملأوه' : 'left blank for you'}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* The pricing question above is the one a shape explains faster than
+              a sentence. No vendor is named on it and it has no vertical
+              scale. */}
+          <CostShape lang={lang} />
         </div>
       </section>
 

@@ -134,6 +134,73 @@ const SHARED_ASKS: { question: Bi; ours: Bi }[] = [
   },
 ]
 
+/**
+ * The claims about us that carry a number, and the command that re-checks each.
+ *
+ * This is the table §03 was missing. Everything else on a comparison page is
+ * prose, and prose is where a reader stops being able to tell a mechanism from
+ * an adjective — "fully bilingual" and "2,709 strings in both, and the build
+ * fails if one is missing" are the same sentence until one of them shows its
+ * working.
+ *
+ * `check` is the point of the table rather than decoration. Every row can be
+ * run by somebody who has cloned the repository or opened the demo, which is
+ * the difference between this and the stat band every site in the category
+ * carries. They can only be wrong by going stale, and going stale is a thing a
+ * person can be asked to look at — `apps/landing/README.md` records the same
+ * commands.
+ */
+export const facts: { claim: Bi; figure: string; check: Bi }[] = [
+  {
+    claim: { en: 'Transport modes', ar: 'وسائل الشحن' },
+    figure: '5',
+    check: {
+      en: 'Sea FCL, sea LCL, air, road, rail and courier appear in the mode selector on any enquiry in the demo.',
+      ar: 'بحري بحاوية كاملة وبحري بضاعة مجمعة وجوي وبري وسككي وبريد سريع تظهر في مُنتقي الوسيلة على أي استفسار في النسخة التجريبية.',
+    },
+  },
+  {
+    claim: { en: 'Row-level security policies', ar: 'سياسات الأمان على مستوى الصف' },
+    figure: '197',
+    check: {
+      en: 'grep -c "CREATE POLICY" packages/db/migrations/*.sql',
+      ar: 'grep -c "CREATE POLICY" packages/db/migrations/*.sql',
+    },
+  },
+  {
+    claim: { en: 'Audit triggers', ar: 'مُشغِّلات التدقيق' },
+    figure: '80',
+    check: {
+      en: 'grep -c "attach_audit" packages/db/migrations/*.sql',
+      ar: 'grep -c "attach_audit" packages/db/migrations/*.sql',
+    },
+  },
+  {
+    claim: { en: 'Interface strings, English and Arabic', ar: 'نصوص الواجهة بالإنجليزية والعربية' },
+    figure: '2,709',
+    check: {
+      en: 'pnpm lint runs check-messages.mjs, which fails the build if a key exists in one catalogue and not the other.',
+      ar: 'يشغّل pnpm lint ملف check-messages.mjs، الذي يُفشل البناء إن وُجد مفتاح في أحد الفهرسين دون الآخر.',
+    },
+  },
+  {
+    claim: { en: 'Decimal places on every dinar', ar: 'الخانات العشرية لكل دينار' },
+    figure: '3',
+    check: {
+      en: 'Open any invoice in the demo. A system built for dollars and adapted shows two.',
+      ar: 'افتحوا أي فاتورة في النسخة التجريبية. النظام المبني للدولار ثم المكيَّف يُظهر خانتين.',
+    },
+  },
+  {
+    claim: { en: 'Minutes to check all of the above', ar: 'دقائق للتحقق مما سبق' },
+    figure: '~10',
+    check: {
+      en: 'No sign-up and no call. That is the claim this whole page rests on.',
+      ar: 'بلا تسجيل وبلا مكالمة. وهذه هي الدعوى التي تقوم عليها هذه الصفحة كلها.',
+    },
+  },
+]
+
 export const comparisons: Comparison[] = [
   {
     slug: 'cargowise',

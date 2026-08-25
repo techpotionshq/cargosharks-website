@@ -1682,3 +1682,126 @@
 .doc-page .nav a.nav-cta::after {
   display: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Comparison pages
+   ═══════════════════════════════════════════════════════════════════════════
+
+   The four `/compare/<slug>/` pages are generated from `comparisons.ts` and
+   share the rest of this stylesheet. These are the pieces they add.
+
+   The `.spec` list is deliberately not among them. It was used for the
+   questions block and it is a *navy-band* component — `--white`, `--navy-line`,
+   `--navy-ink-muted` — so on `band--paper` the questions rendered as pale blue
+   on near-white and the answers were barely there. That is what "broken
+   colours" looked like. The questions are a table now, which is what they
+   always were. */
+
+/* A figure: a drawing in a panel, then the sentence saying what it does not
+   claim.
+
+   Full width, not 640px. Capped, the drawings rattled around in a 1200px band
+   *and* scaled 2.6x when they did stretch — every stroke and every label with
+   them. They are drawn at a 1000-unit viewBox now, which renders near 1:1 in
+   this column, so a hairline is a hairline.
+
+   The panel is what makes it a figure rather than loose SVG on a background:
+   a surface, a hairline and real padding, square like everything else on these
+   pages that holds data. The caption stays at a reading measure underneath —
+   a 62ch line under a 1090px drawing is correct, because the drawing is a
+   picture and the caption is prose. */
+.doc-page .cmp-figure {margin:clamp(32px,3.8vw,52px) 0 0}
+.doc-page .cmp-panel {
+  border:1px solid var(--line); border-radius:var(--radius); background:var(--paper-raised);
+  padding:clamp(20px,2.6vw,34px) clamp(18px,2.4vw,32px);
+}
+/* Not `--navy-raised`.
+
+   That token is `--qb-primary-800`, a saturated mid-blue meant for a chip or a
+   badge, and as a full panel on the near-black band it came out as a bright
+   blue rectangle — the loudest thing on the page, holding the quietest content.
+   A surface raised off `--navy-900` should be *slightly* lighter than it and
+   nothing else, which is what mixing toward `--navy-800` gives. */
+.doc-page .band--navy .cmp-panel {
+  border-color:var(--navy-line);
+  background:color-mix(in oklab, var(--navy-800) 55%, var(--navy-900));
+}
+.doc-page .cmp-svg {width:100%; height:auto; display:block; overflow:visible}
+.doc-page .cmp-figure figcaption {
+  margin-top:18px; font-size:.9rem; line-height:1.65; color:var(--ink-muted); max-width:62ch;
+}
+.doc-page .band--navy .cmp-figure figcaption {color:var(--navy-ink-muted)}
+
+.doc-page .cmp-axis {stroke:var(--line-strong); stroke-width:1}
+.doc-page .cmp-guide {stroke:var(--line-strong); stroke-width:1; stroke-dasharray:3 5}
+.doc-page .cmp-line {stroke-width:2.5; stroke-linecap:round}
+.doc-page .cmp-line--per {stroke:var(--blue)}
+.doc-page .cmp-line--flat {stroke:var(--ink-subtle)}
+.doc-page .cmp-dot {fill:var(--blue)}
+
+.doc-page .cmp-axis-label,
+.doc-page .cmp-track-label,
+.doc-page .cmp-note,
+.doc-page .cmp-key {
+  font-family:var(--mono); font-size:13px; letter-spacing:.04em; fill:var(--ink-subtle);
+}
+.doc-page .cmp-track-label {fill:var(--ink-muted)}
+.doc-page .cmp-note {fill:var(--blue)}
+.doc-page .cmp-note--late,
+.doc-page .cmp-mark--late {fill:var(--amber)}
+.doc-page .cmp-key--per {fill:var(--blue)}
+.doc-page .cmp-key--flat {fill:var(--ink-subtle)}
+
+.doc-page .cmp-track {stroke:var(--blue); stroke-width:2.5; stroke-linecap:round}
+.doc-page .cmp-track--late {stroke:var(--amber); stroke-width:2.5; stroke-dasharray:5 6}
+.doc-page .cmp-mark {fill:var(--blue)}
+
+/* The questions table.
+
+   Three columns, and the third is empty on purpose — see `comparison.tsx`.
+   `--fill` is the ruled box a reader writes the other vendor's answer into,
+   which only reads as an invitation if it is visibly blank rather than merely
+   absent. */
+.doc-page .cmp-ask th:nth-child(1) {width:26%}
+.doc-page .cmp-ask th:nth-child(2) {width:44%}
+.doc-page .cmp-ask td:last-child {background:color-mix(in oklab, var(--ink) 2%, transparent)}
+.doc-page .cmp-fill {
+  display:block; min-height:34px; border:1px dashed var(--line-strong); border-radius:var(--radius);
+}
+
+/* The verifiable-facts table: a claim, the figure, and how to check it. */
+.doc-page .cmp-facts td:nth-child(2) {
+  font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--ink);
+}
+
+/* The figures on a navy band.
+
+   `SurfaceTimeline` sits in §03, which is `band--navy`, and every colour above
+   is a light-page colour — `--ink-subtle` axis labels and `--line` guides came
+   out invisible against the navy. This is the same override pattern the rest of
+   this stylesheet uses for `.lead` and `.muted`, and it is needed for the same
+   reason: a component that names its own greys can only be right on one
+   surface. */
+.doc-page .band--navy .cmp-axis {stroke:var(--navy-line)}
+.doc-page .band--navy .cmp-guide {stroke:color-mix(in oklab, var(--navy-ink-muted) 34%, transparent)}
+.doc-page .band--navy .cmp-axis-label,
+.doc-page .band--navy .cmp-key {fill:var(--navy-ink-muted)}
+.doc-page .band--navy .cmp-track-label {fill:var(--navy-ink)}
+.doc-page .band--navy .cmp-note {fill:var(--blue-light)}
+.doc-page .band--navy .cmp-track,
+.doc-page .band--navy .cmp-mark {stroke:var(--blue-light); fill:var(--blue-light)}
+.doc-page .band--navy .cmp-track {fill:none}
+.doc-page .band--navy .cmp-note--late,
+.doc-page .band--navy .cmp-mark--late {fill:var(--amber-on-dark)}
+.doc-page .band--navy .cmp-track--late {stroke:var(--amber-on-dark)}
+.doc-page .band--navy .cmp-line--per {stroke:var(--blue-light)}
+.doc-page .band--navy .cmp-line--flat {stroke:var(--navy-ink-muted)}
+.doc-page .band--navy .cmp-dot {fill:var(--blue-light)}
+
+/* The tables on a navy band, for the same reason. */
+.doc-page .band--navy .tablewrap {border-color:var(--navy-line); background:color-mix(in oklab, var(--navy-800) 55%, var(--navy-900))}
+.doc-page .band--navy .tablewrap thead th {background:color-mix(in oklab, var(--navy-800) 80%, var(--navy-900)); color:var(--navy-ink); border-color:var(--navy-line)}
+.doc-page .band--navy .tablewrap tbody td,
+.doc-page .band--navy .tablewrap tbody th {color:var(--navy-ink-muted); border-color:var(--navy-line)}
+.doc-page .band--navy .tablewrap tbody th:first-child {background:transparent; color:var(--white)}
+.doc-page .band--navy .cmp-facts td:nth-child(2) {color:var(--white)}
