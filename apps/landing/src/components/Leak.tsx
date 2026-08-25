@@ -1,5 +1,4 @@
 import { Accrue } from '@/components/Accrue'
-import { YardArt } from '@/components/Illustrations'
 import { type Lang, leak, yard } from '@/content/copy'
 
 /**
@@ -22,10 +21,13 @@ import { type Lang, leak, yard } from '@/content/copy'
  * on is square, and a rounded card with a drop shadow reads as a component from
  * a design system.
  *
- * The berth plan under it is the one technical drawing on the site. It belongs
- * here rather than in the capability grid, where it started: it is a picture of
- * six bays with one box past its free days, which is this section's sentence
- * and nowhere else's.
+ * There is no illustration under it any more, and there is not meant to be. A
+ * drawn berth plan sat there for a while — six numbered bays, one box called out
+ * in amber, a dashed lane with marching ants along it. Both halves were wrong.
+ * A `stroke-dashoffset` loop is the visual language of a loading spinner, so
+ * the one moving thing in the section read as something still fetching; and the
+ * drawing was a picture of a container yard laid on top of a photograph of a
+ * container yard, which is the photograph's job and it does it better.
  */
 export function Leak({ lang }: { lang: Lang }) {
   const line = leak.line
@@ -96,13 +98,18 @@ export function Leak({ lang }: { lang: Lang }) {
           </div>
         </div>
 
-        {/* The plan, and the caption that admits what the photograph is. Without
-            the caption the image is a stock backdrop; with it, it is the yard
-            the counter refers to. */}
-        <div className="mx-auto mt-12 max-w-[44rem] text-on-void-faint">
-          <YardArt />
-          <p className="mt-5 text-center text-[0.85rem] text-on-void-faint">{yard.quote[lang]}</p>
-        </div>
+        {/* The caption that admits what the photograph is. Without it the image
+            is a stock backdrop; with it, it is the yard the counter refers to.
+
+            There was a drawn berth plan above this line — six numbered bays with
+            one box called out in amber, and a dashed lane with marching ants
+            running along it. It went for two reasons. The animation was the
+            cheap kind: a `stroke-dashoffset` loop is the visual language of a
+            loading state, so the one moving thing in the section read as
+            something still fetching. And the drawing was illustrating a
+            container yard directly on top of a photograph of a container yard.
+            The photograph is better at it. */}
+        <p className="mt-10 text-center text-[0.85rem] text-on-void-faint">{yard.quote[lang]}</p>
       </div>
     </section>
   )

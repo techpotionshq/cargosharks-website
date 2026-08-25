@@ -280,30 +280,6 @@ body {
 }
 
 /**
- * The dashed lane in the yard drawing, drawn as though it were being travelled.
- *
- * The one decorative animation on the page. It earns it by being what the
- * drawing is *about*: a lane with nothing moving along it is a map, and the
- * section it illustrates is about a shipment in progress.
- */
-@keyframes lane {
-  to {
-    stroke-dashoffset: -24;
-  }
-}
-
-.lane-dash {
-  stroke-dasharray: 2 4;
-  animation: lane 1.4s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .lane-dash {
-    animation: none;
-  }
-}
-
-/**
  * Arabic inside an English document.
  *
  * The 404 sets both languages on one page, and `dir="rtl"` alone is not enough:

@@ -231,10 +231,9 @@ export const modesNote = {
  * which is a page nobody reaches before they have decided the product is
  * plausible.
  *
- * Five cards, each one a mechanism rather than a benefit. `art` names the
- * illustration in `Illustrations.tsx`; two cards carry one and three do not,
- * because a drawing on every card is wallpaper and a drawing on the two cards
- * whose claim is *structural* is an explanation.
+ * Five cards, each one a mechanism rather than a benefit. `icon` is a key, not
+ * a component — the mapping to Phosphor lives in `Capabilities.tsx`, so this
+ * file stays a data file and swapping icon sets is one edit rather than five.
  */
 export const capabilities = {
   eyebrow: { en: 'Under the file', ar: 'داخل السجل' },

@@ -54,7 +54,6 @@ src/app/globals.css          the stylesheet for the app's own pages
 src/app/pages.css            the stylesheet for the imported documents
 src/components/              sections, header, footer, the counter
 src/components/Calculator.tsx     the free-time calculator, the one thing you operate
-src/components/Illustrations.tsx  the berth plan, inline SVG on brand tokens
 src/content/copy.ts          every word of the home page, both languages
 src/content/pages/           the five imported documents
 src/lib/fonts.ts             Manrope, IBM Plex Mono, IBM Plex Sans Arabic
