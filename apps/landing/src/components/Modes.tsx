@@ -1,53 +1,66 @@
-import { AirplaneTilt, Boat, Package, Train, Truck } from '@phosphor-icons/react/dist/ssr'
-import { type Lang, modes, modesNote } from '@/content/copy'
+import { type Lang, modes, modesNote, proof } from '@/content/copy'
 
 /**
- * The five modes, named.
+ * The five modes and the five counts, on one hairline band.
  *
- * This is the band that would be a logo wall on any other site in the category,
- * and a logo wall is not available: the product is in pilot, so the honest
- * version of that strip is empty. What goes there instead has to do the same
- * job — buy the reader a moment of "yes, this is for me" immediately after the
- * hero — without claiming customers that do not exist yet.
+ * These were two sections. The modes had thin icons and a mono caption; the
+ * counts were a five-cell strip with figures at 2.1rem — the "stats bar" every
+ * B2B page carries, and one of the clearest tells that a page was assembled
+ * from parts rather than composed. A row of enormous numbers directly under a
+ * hero is a page shouting before it has said anything.
  *
- * Naming the modes does it. `proof` counts them a section later, and a count is
- * something a reader takes on trust; an air-only broker reading "5 transport
- * modes" has learned nothing and the same broker reading "Air" has learned the
- * one thing they came for. It is also the cheapest disqualifier on the page,
- * which is worth as much: a page that lets the wrong reader leave in four
- * seconds is doing them and the sales desk a favour.
+ * Merged and quietened, they do the job the strip was actually for: a beat
+ * after the hero that says who this is for and gives one checkable fact, in
+ * passing, at the size of a caption. The figures are set at about a third of
+ * what they were. They lose nothing by it — a number is checkable or it is not,
+ * and 32px of it is no more checkable than 15px.
+ *
+ * Every count here is countable in the repository, and `apps/landing/README.md`
+ * records the command for each. That is the difference between this and the
+ * "10× faster, 99.9% uptime" band: these can only be wrong by going stale, and
+ * going stale is a thing a person can be asked to check.
  */
-const MODE_ICONS = {
-  sea: Boat,
-  air: AirplaneTilt,
-  road: Truck,
-  rail: Train,
-  courier: Package,
+const MODE_GLYPH = {
+  sea: 'sea',
+  air: 'air',
+  road: 'road',
+  rail: 'rail',
+  courier: 'courier',
 } as const
 
 export function Modes({ lang }: { lang: Lang }) {
   return (
-    <section className="relative z-10 border-y border-edge bg-deep/60">
-      {/* Stacked and centred rather than a label at one end and the modes at
-          the other. Justified apart, the row was two objects at opposite edges
-          of a 1200px band with nothing between them — the label read as a
-          stray caption and the modes as a menu. Centred under their own label
-          they read as one statement, which is what they are. */}
-      <div className="shell flex flex-col items-center gap-6 py-10">
-        <p className="tracked text-[0.62rem] text-ink-faint">{modesNote[lang]}</p>
+    <section className="mt-14 border-y border-line lg:mt-16">
+      <div className="shell flex flex-col items-center gap-6 py-8 text-center">
+        <p className="tracked text-[0.6rem] text-ink-faint">{modesNote[lang]}</p>
 
-        <ul className="flex flex-wrap items-center justify-center gap-x-9 gap-y-5 sm:gap-x-14">
-          {modes.map((mode) => {
-            const Icon = MODE_ICONS[mode.key as keyof typeof MODE_ICONS]
-
-            return (
-              <li key={mode.key} className="flex items-center gap-2.5 text-ink-dim">
-                <Icon weight="regular" className="size-[1.35rem] text-blue-lit" />
-                <span className="text-[0.95rem]">{mode.label[lang]}</span>
-              </li>
-            )
-          })}
+        {/* The modes as words, divided by hairlines. They had a Phosphor glyph
+            each — a boat, a plane, a truck, a train, a parcel — which is five
+            pictograms saying exactly what the five words beside them said. */}
+        <ul className="flex flex-wrap items-center justify-center">
+          {modes.map((mode, index) => (
+            <li
+              key={mode.key}
+              data-glyph={MODE_GLYPH[mode.key as keyof typeof MODE_GLYPH]}
+              className={`px-5 text-[1rem] text-ink sm:px-7 ${
+                index > 0 ? 'border-s border-line' : ''
+              }`}
+            >
+              {mode.label[lang]}
+            </li>
+          ))}
         </ul>
+      </div>
+
+      <div className="border-t border-line">
+        <div className="shell flex flex-wrap items-baseline justify-center gap-x-8 gap-y-2 py-5 sm:gap-x-12">
+          {proof.map((item, index) => (
+            <p key={item.value + index} className="flex items-baseline gap-2 text-[0.8rem]">
+              <span className="figures font-mono font-medium text-ink">{item.value}</span>
+              <span className="text-ink-faint">{item.label[lang]}</span>
+            </p>
+          ))}
+        </div>
       </div>
     </section>
   )

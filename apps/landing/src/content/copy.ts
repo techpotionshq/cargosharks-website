@@ -53,28 +53,27 @@ export const hero = {
     ar: 'سعّروا الشحنة واحجزوها وخلّصوها وفوتروها، دون إدخال بياناتها مرة أخرى في أي نظام آخر.',
   },
   /**
-   * The pill above the headline, and the one thing above it on the page.
+   * The line above the headline.
    *
-   * This is not the mono eyebrow that used to be here. That one described the
-   * company — "KUWAIT · SEA, AIR, ROAD, RAIL, COURIER" — which is the reader's
-   * least urgent question. This one is a link to the only thing on the page
-   * worth doing, phrased as the objection it removes: the demo is open, and
-   * looking at it does not put you on a mailing list.
+   * It was a glass pill with a pulsing green dot reading "The live demo is
+   * open · no sign-up". A pill with a pulsing dot is the single most recognisable
+   * component of a generated landing page, and this one was also making the
+   * page's most important offer in its smallest, most decorative element.
+   * The offer moved to the button, where it can be clicked, and what is left
+   * here is what an eyebrow is for: where this thing is from and what it covers.
    */
-  badge: { en: 'The live demo is open', ar: 'النسخة التجريبية مفتوحة' },
-  badgeNote: { en: 'no sign-up', ar: 'بلا تسجيل' },
+  eyebrow: {
+    en: 'Kuwait · sea, air, road, rail, courier',
+    ar: 'الكويت · بحري وجوي وبري وسككي وبريد سريع',
+  },
   primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
   secondary: { en: 'See what it does', ar: 'اطّلعوا على ما يفعله' },
-  /** The address in the frame's chrome. A real route in the real product. */
-  frameUrl: 'demo.cargosharks.com/dashboard',
-  /** Where the eyebrow's content went: the same facts, out of the way. */
-  micro: {
-    en: 'Built in Kuwait. Sea, air, road, rail and courier, in Arabic and English.',
-    ar: 'بُني في الكويت. بحري وجوي وبري وسككي وبريد سريع، بالعربية والإنجليزية.',
-  },
-  /** The chip laid over the screenshot. Its number is the live counter. */
-  chipLabel: { en: 'Demurrage · accruing', ar: 'أرضيات · جارية' },
-  chipRef: { en: 'MSKU 704 118 2 · Shuwaikh', ar: 'MSKU 704 118 2 · الشويخ' },
+  /**
+   * The caption under the product frame — one live figure, in mono, in small
+   * type. See `Hero.tsx` for why it is a caption rather than the chip it was.
+   */
+  tickerLabel: { en: 'Accruing right now on one box in Shuwaikh:', ar: 'يجري الآن على حاوية واحدة في الشويخ:' },
+  tickerRef: { en: '· MSKU 704 118 2 · 131 days past free time', ar: '· MSKU 704 118 2 · 131 يوماً بعد وقت السماح' },
 }
 
 /**
@@ -250,7 +249,6 @@ export const capabilities = {
   cards: [
     {
       key: 'lane',
-      art: 'route',
       span: 'wide',
       icon: 'route',
       title: { en: 'Every leg on one timeline', ar: 'كل مرحلة على خط زمني واحد' },
@@ -261,8 +259,7 @@ export const capabilities = {
     },
     {
       key: 'money',
-      art: 'dinar',
-      span: 'tall',
+      span: 'half',
       icon: 'money',
       title: { en: 'Three decimals, all the way down', ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف' },
       body: {
@@ -272,8 +269,7 @@ export const capabilities = {
     },
     {
       key: 'rates',
-      art: null,
-      span: 'third',
+      span: 'half',
       icon: 'rates',
       title: { en: 'Rate cards that cannot collide', ar: 'بطاقات أسعار لا تتصادم' },
       body: {
@@ -283,8 +279,7 @@ export const capabilities = {
     },
     {
       key: 'docs',
-      art: null,
-      span: 'third',
+      span: 'half',
       icon: 'docs',
       title: { en: 'Documents from the shipment’s own data', ar: 'مستندات من بيانات الشحنة نفسها' },
       body: {
@@ -294,8 +289,7 @@ export const capabilities = {
     },
     {
       key: 'tenancy',
-      art: null,
-      span: 'third',
+      span: 'half',
       icon: 'tenancy',
       title: { en: 'Your rows, and only your rows', ar: 'صفوفكم، وصفوفكم وحدها' },
       body: {
@@ -304,6 +298,94 @@ export const capabilities = {
       },
     },
   ],
+}
+
+/**
+ * The free-time calculator.
+ *
+ * The one section on this page that is not an argument. A reader moves a
+ * number, and a number they recognise as their own comes back — which is worth
+ * more than any sentence on the site, because they did the arithmetic and
+ * therefore believe it.
+ *
+ * **It does not claim a saving, and that is deliberate.** Every calculator in
+ * this category ends with "you would save 23% with us", a figure nobody can
+ * check and which this product has no pilot data to support. `docs/marketing`
+ * sets the rule the whole document set is written under — nothing is claimed
+ * that the working tree does not do — so the output here is the reader's own
+ * exposure, full stop, and `note` says plainly that the software does not make
+ * it smaller. What it does is make it arrive as a charge you raised on the day
+ * it started rather than as a supplier invoice six weeks later, which is a
+ * claim about the code and is true.
+ *
+ * The defaults are a mid-size Kuwaiti forwarder, and every one of them is a
+ * number a reader will immediately want to change. That is the point of them:
+ * a field somebody edits is a field they have read.
+ */
+export const calculator = {
+  eyebrow: { en: 'Free time calculator', ar: 'حاسبة وقت السماح' },
+  title: {
+    en: 'What is free time costing you?',
+    ar: 'كم يكلّفكم وقت السماح؟',
+  },
+  sub: {
+    en: 'Four numbers off your own board. Nothing is sent anywhere — the arithmetic happens in this page.',
+    ar: 'أربعة أرقام من لوحتكم. لا يُرسل شيء إلى أي مكان — الحساب يجري داخل هذه الصفحة.',
+  },
+  fields: [
+    {
+      key: 'boxes',
+      value: 40,
+      min: 1,
+      max: 400,
+      step: 1,
+      label: { en: 'Containers a month', ar: 'حاوية في الشهر' },
+    },
+    {
+      key: 'overrun',
+      value: 18,
+      min: 1,
+      max: 100,
+      step: 1,
+      label: { en: 'Share that overrun free time', ar: 'نسبة ما يتجاوز وقت السماح' },
+      unit: { en: '%', ar: '٪' },
+    },
+    {
+      key: 'days',
+      value: 6,
+      min: 1,
+      max: 60,
+      step: 1,
+      label: { en: 'Average days over', ar: 'متوسط الأيام الزائدة' },
+    },
+    {
+      key: 'rate',
+      value: 32,
+      min: 1,
+      max: 400,
+      step: 1,
+      label: { en: 'Demurrage a day', ar: 'الأرضيات في اليوم' },
+      unit: { en: 'KWD', ar: 'د.ك' },
+    },
+  ],
+  /**
+   * The currency, as a word, in each language.
+   *
+   * It was the literal `KWD` in the component. Every other figure on this site
+   * writes the dinar the way the reader's own invoices do — `leak.line` has
+   * `32.000 د.ك / يوم` — so an Arabic page showing `KWD 16,588.800` was the
+   * one place the site slipped back into English for a unit, in the section
+   * whose whole subject is money.
+   */
+  currency: { en: 'KWD', ar: 'د.ك' },
+  resultLabel: { en: 'On the clock every year', ar: 'على العدّاد كل سنة' },
+  monthLabel: { en: 'A month', ar: 'في الشهر' },
+  boxesLabel: { en: 'Boxes it happens to', ar: 'حاويات يقع عليها' },
+  boxesUnit: { en: 'a year', ar: 'في السنة' },
+  note: {
+    en: 'CargoSharks does not make this number smaller. It makes it arrive on the day the clock starts instead of six weeks later on a supplier invoice — as a charge line you raised, against the job that caused it, with the milestone that started it on the same screen.',
+    ar: 'لا يصغّر CargoSharks هذا الرقم. بل يجعله يصل يوم يبدأ العدّاد لا بعد ستة أسابيع على فاتورة مورّد — بنداً كتبتموه أنتم، على الشحنة التي سبّبته، والمرحلة التي بدأ عندها على الشاشة نفسها.',
+  },
 }
 
 /**

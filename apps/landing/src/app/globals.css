@@ -17,34 +17,58 @@
  * on the document and nothing else — no forked stylesheet, no mirrored
  * markup — which only holds if nothing here knows left from right.
  *
- * The page-specific tokens below are all derived with `color-mix` from the
- * brand ramp rather than picked. That is the trick that makes rule 1 survivable
- * on a dark marketing page: the brand supplies eleven stops of blue and eleven
- * of grey, the page needs a near-black navy and four hairlines that the ramp
- * does not contain, and mixing is the only way to get them without inventing a
- * colour that a re-skin would leave behind.
+ * ---
+ *
+ * **The page is light now, and that is the change everything else follows
+ * from.**
+ *
+ * It was near-black navy end to end, with a blue radial glow behind the
+ * headline, glass panels over it and a grid of rounded cards below. Every one
+ * of those is a real technique and all of them together are the house style of
+ * every generated landing page on the internet — which is a problem for a page
+ * whose entire argument is that this software was built by people who have
+ * seen a demurrage invoice. It looked generated.
+ *
+ * The sites this was rebuilt against — CargoWise, Stripe, tentrucks and
+ * Terminal — share a different set of decisions, and the overlap is striking:
+ * a light page, dark bands used as punctuation rather than as the ground,
+ * headline weights around 500 rather than 800, tracking near `-0.02em` rather
+ * than `-0.04em`, real photography carrying the colour, hairlines instead of
+ * card borders, and small radii instead of pills. None of that is fashion. A
+ * light page with one saturated photograph on it has somewhere for the eye to
+ * rest; a dark page with a glow behind every heading does not.
+ *
+ * So: paper is the ground, ink is near-black, the brand blue is for things you
+ * can click, amber is reserved for the one thread the page is actually about —
+ * a clock running — and the dark tokens are still here, used deliberately, for
+ * the three bands that are meant to feel like a different room.
  */
 
 @theme inline {
-  --color-void: var(--pg-void);
-  --color-deep: var(--pg-deep);
-  --color-raise: var(--pg-raise);
+  /* Light ground. */
   --color-paper: var(--pg-paper);
   --color-paper-sunk: var(--pg-paper-sunk);
+  --color-paper-lift: var(--pg-paper-lift);
 
   --color-ink: var(--pg-ink);
   --color-ink-dim: var(--pg-ink-dim);
   --color-ink-faint: var(--pg-ink-faint);
-  --color-ink-dark: var(--pg-ink-dark);
-  --color-ink-dark-dim: var(--pg-ink-dark-dim);
 
-  --color-edge: var(--pg-edge);
-  --color-edge-lit: var(--pg-edge-lit);
-  --color-edge-dark: var(--pg-edge-dark);
+  --color-line: var(--pg-line);
+  --color-line-strong: var(--pg-line-strong);
+
+  /* Dark bands. Named for the surface they sit on rather than for a shade, so
+     a component says what it means and a re-skin has one place to answer. */
+  --color-void: var(--pg-void);
+  --color-void-lift: var(--pg-void-lift);
+  --color-on-void: var(--pg-on-void);
+  --color-on-void-dim: var(--pg-on-void-dim);
+  --color-on-void-faint: var(--pg-on-void-faint);
+  --color-void-line: var(--pg-void-line);
 
   --color-blue: var(--pg-blue);
+  --color-blue-ink: var(--pg-blue-ink);
   --color-blue-lit: var(--pg-blue-lit);
-  --color-blue-deep: var(--pg-blue-deep);
   --color-amber: var(--qb-caution);
   --color-positive: var(--qb-positive);
   --color-on-brand: var(--qb-on-brand);
@@ -53,60 +77,46 @@
   --font-sans: var(--pg-font-sans);
   --font-mono: var(--pg-font-mono);
 
-  /* The page's own rhythm. Four values, used everywhere, so the vertical
+  /* The page's own rhythm. Three values, used everywhere, so the vertical
      spacing is a decision taken once rather than per section. */
-  --spacing-band: 7.5rem;
+  --spacing-band: 7rem;
   --spacing-band-sm: 4.5rem;
-  --spacing-gut: 1.5rem;
-}
-
-/**
- * The measure the product frames run to.
- *
- * `.shell` is 75rem and it is the *text* measure — it is shared with the five
- * imported documents and it is not moving, because a logo that steps sideways
- * on a click-through reads as having left the site. But a 1440-wide screenshot
- * inside a 1200-wide column is a screenshot of a screenshot: the sidebar labels
- * land at about nine pixels and the whole point of showing the product is that
- * somebody can read it.
- *
- * So the frames get their own wider measure and the copy keeps the narrow one.
- * They are concentric — same centre, same gutter — so the page still reads as
- * one column with the pictures breathing out of it, which is the composition
- * every product site in this category converged on because it is the one that
- * works.
- */
-.shell-wide {
-  width: 100%;
-  max-width: 84rem;
-  margin-inline: auto;
-  padding-inline: clamp(20px, 5vw, 56px);
 }
 
 :root {
-  /* Darker than the ramp's darkest stop, because a hero that is merely dark
-     navy makes the product screenshot — which is itself a light interface —
-     read as a sticker rather than as a screen with depth behind it. */
-  --pg-void: color-mix(in oklab, var(--qb-primary-950) 46%, black);
-  --pg-deep: color-mix(in oklab, var(--qb-primary-950) 72%, black);
-  --pg-raise: color-mix(in oklab, var(--qb-primary-950) 92%, black);
-
   --pg-paper: var(--qb-neutral-50);
   --pg-paper-sunk: var(--qb-neutral-100);
+  /* Above the ground rather than below it — the one surface that is whiter
+     than the page, for a document lying on it. */
+  --pg-paper-lift: color-mix(in oklab, var(--qb-neutral-50) 35%, white);
 
-  --pg-ink: var(--qb-neutral-50);
-  --pg-ink-dim: color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
-  --pg-ink-faint: color-mix(in oklab, var(--qb-primary-300) 30%, var(--qb-neutral-600));
-  --pg-ink-dark: var(--qb-neutral-950);
-  --pg-ink-dark-dim: var(--qb-neutral-600);
+  /* Near-black rather than the ramp's darkest stop. `neutral-950` sits at 0.226
+     lightness, which is a dark grey; a headline set in it on near-white paper
+     reads as soft rather than as printed. */
+  --pg-ink: color-mix(in oklab, var(--qb-neutral-950) 74%, black);
+  --pg-ink-dim: var(--qb-neutral-700);
+  --pg-ink-faint: var(--qb-neutral-500);
 
-  --pg-edge: color-mix(in oklab, var(--qb-primary-200) 12%, transparent);
-  --pg-edge-lit: color-mix(in oklab, var(--qb-primary-300) 26%, transparent);
-  --pg-edge-dark: var(--qb-neutral-200);
+  --pg-line: var(--qb-neutral-200);
+  --pg-line-strong: var(--qb-neutral-300);
+
+  /* Darker than the ramp's darkest stop, because a band that is merely dark
+     navy makes a light product screenshot read as a sticker rather than as a
+     screen with depth behind it. */
+  --pg-void: color-mix(in oklab, var(--qb-primary-950) 42%, black);
+  --pg-void-lift: color-mix(in oklab, var(--qb-primary-950) 68%, black);
+  --pg-on-void: var(--qb-neutral-50);
+  --pg-on-void-dim: color-mix(in oklab, var(--qb-primary-200) 46%, var(--qb-neutral-400));
+  --pg-on-void-faint: color-mix(in oklab, var(--qb-primary-300) 30%, var(--qb-neutral-600));
+  --pg-void-line: color-mix(in oklab, var(--qb-primary-200) 16%, transparent);
 
   --pg-blue: var(--qb-primary-500);
+  /* Blue as *text on paper* needs to be a darker stop than blue as a fill.
+     `primary-500` on near-white is about 3:1, which is a link nobody with
+     ordinary eyesight enjoys reading. */
+  --pg-blue-ink: var(--qb-primary-700);
+  /* And blue on a dark band needs a lighter one, for the same reason inverted. */
   --pg-blue-lit: var(--qb-primary-300);
-  --pg-blue-deep: var(--qb-primary-700);
 
   --pg-font-display: var(--font-manrope), var(--qb-font-display);
   --pg-font-sans: var(--font-manrope), var(--qb-font-sans);
@@ -137,13 +147,13 @@
    carry a tight leading, and the same size reads smaller than the Latin. */
 [dir='rtl'] h1,
 [dir='rtl'] h2 {
-  line-height: 1.24;
+  line-height: 1.28;
   letter-spacing: 0;
 }
 
 html {
   scroll-behavior: smooth;
-  background: var(--pg-void);
+  background: var(--pg-paper);
   -webkit-text-size-adjust: 100%;
 }
 
@@ -154,7 +164,7 @@ html {
 }
 
 body {
-  background: var(--pg-void);
+  background: var(--pg-paper);
   color: var(--pg-ink);
   font-family: var(--pg-font-sans);
   font-synthesis-weight: none;
@@ -168,7 +178,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--pg-blue-lit);
+  outline: 2px solid var(--pg-blue);
   outline-offset: 3px;
   border-radius: 2px;
 }
@@ -179,20 +189,35 @@ body {
  * The previous site had four different maximum widths and the header aligned
  * to none of them, so every section started at a slightly different place and
  * the page read as several pages stapled together. This is the fix: the header,
- * every section and the footer all measure from `.shell`, and a component that
- * wants to run wider bleeds out of it deliberately rather than by having its
- * own opinion about the measure.
+ * every section and the footer all measure from `.shell`.
  *
  * **The numbers are not chosen here.** They are `--shell` and `--gutter` from
- * `public/assets/styles.css`, copied to the pixel, because the seven
- * hand-written pages that hang off this one use that stylesheet and share this
- * header. A visitor who clicks from the home page to `what-we-do.html` must not
- * watch the logo step forty pixels sideways — that reads as having left the
- * site, which is the opposite of what a marketing page is for.
+ * `pages.css`, copied to the pixel, because the five imported documents use
+ * that stylesheet and share this header. A visitor who clicks from the home
+ * page to `/what-we-do/` must not watch the logo step forty pixels sideways —
+ * that reads as having left the site, which is the opposite of what a marketing
+ * page is for.
  */
 .shell {
   width: 100%;
   max-width: 75rem;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
+/**
+ * The measure the product frames run to.
+ *
+ * `.shell` is the *text* measure and it is not moving. But a 1440-wide capture
+ * inside a 1200-wide column is a screenshot of a screenshot — the sidebar
+ * labels land at about nine pixels, and the whole point of showing the product
+ * is that somebody can read it. Concentric with `.shell`: same centre, same
+ * gutter, so the page still reads as one column with the pictures breathing out
+ * of it.
+ */
+.shell-wide {
+  width: 100%;
+  max-width: 84rem;
   margin-inline: auto;
   padding-inline: clamp(20px, 5vw, 56px);
 }
@@ -211,143 +236,94 @@ body {
 }
 
 /**
- * The hairline grid behind the dark sections.
+ * The cut corner, and it is the one piece of shape language this site owns.
  *
- * It is a real grid at the same rhythm as the layout, not a gradient blob: the
- * page is about a system that keeps columns straight, and a background that
- * quietly agrees with that is worth more than atmosphere. Masked to fade out
- * before it reaches the copy so it never competes with text.
+ * Everything on the previous page was `rounded-2xl`, which is the default of
+ * the framework and therefore the default of every page built with it. A cut
+ * corner is not: it is the shape of a filing tab, of a punched shipping label
+ * and of the clipped corner on a customs form, and this is a product whose
+ * users spend their day inside exactly those objects. One shape, used on the
+ * dark panels and the product frames, does more to make a page look designed
+ * than any amount of gradient.
+ *
+ * `clip-path` rather than a border and a pseudo-element, because the cut has to
+ * survive an image bleeding to the panel's edge — which is most of the places
+ * it is used. The cost is that a clipped box cannot carry a border, so the
+ * bordered variant is two nested clipped boxes; see `.cut-edge`.
+ *
+ * It mirrors. A tab cut into the trailing corner is cut into the other corner
+ * in Arabic, and a hard-coded polygon would have put it on the wrong side of
+ * every panel on the Arabic page.
  */
-.grid-field {
-  background-image:
-    linear-gradient(to right, var(--pg-edge) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--pg-edge) 1px, transparent 1px);
-  background-size: 5.5rem 5.5rem;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 20%, transparent 78%);
-}
-
-/** Turn off every transform-driven flourish for a visitor who asked. */
-@media (prefers-reduced-motion: reduce) {
-  .no-motion-flat {
-    transform: none !important;
-  }
-}
-
-/**
- * The screenshot's frame — window chrome, and the reason it is there.
- *
- * The captures used to sit in a bare rounded rectangle, which is the most
- * common composition in the category and has a specific failure: with no chrome
- * around it, a screenshot of a web application reads as a *picture of a web
- * page*, and the reader's eye treats it as decoration. A title bar and an
- * address turn it back into a screen — the same trick a photograph of a laptop
- * plays, at none of the weight and with the pixels still legible.
- *
- * It is drawn rather than photographed for one reason worth writing down: the
- * bar has to mirror. A window's controls sit at its trailing edge, and every
- * laptop mock-up on the internet is left-to-right.
- */
-.frame {
-  position: relative;
-  border-radius: 14px;
-  border: 1px solid var(--pg-edge-lit);
-  background: var(--pg-raise);
-  overflow: hidden;
-  box-shadow:
-    0 1px 0 0 color-mix(in oklab, var(--qb-neutral-50) 8%, transparent) inset,
-    0 40px 80px -20px color-mix(in oklab, var(--qb-primary-950) 90%, black),
-    0 0 0 1px color-mix(in oklab, var(--qb-primary-950) 60%, transparent);
-}
-
-/**
- * The glow behind a product frame.
- *
- * A single soft radial in the brand blue, sitting *behind* the frame rather
- * than under the whole section. Without it the screenshot floats on flat navy
- * with nothing to explain the light on its edges.
- */
-.bloom {
-  background: radial-gradient(
-    closest-side,
-    color-mix(in oklab, var(--pg-blue) 40%, transparent),
-    transparent
+.cut {
+  --cut: 26px;
+  clip-path: polygon(
+    0 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% 100%,
+    0 100%
   );
-  filter: blur(48px);
+}
+
+[dir='rtl'] .cut {
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut));
+}
+
+.cut-lg {
+  --cut: 42px;
 }
 
 /**
- * The light behind the hero.
+ * A hairline around a cut box.
  *
- * Two offset radials rather than one centred blob. A single centred glow puts
- * its brightest point directly behind the headline, which is the one place on
- * the page that needs maximum contrast — it washed the type out and the fix
- * kept being to dim the glow until it was not doing anything. Offset to either
- * shoulder, the light frames the headline instead of sitting under it, and the
- * two overlap into a wide band behind the product frame, which is where the
- * brightness is actually wanted.
- *
- * Positions are percentages of the element, so this mirrors for free.
+ * A clipped element has no border to give it — the clip removes it along with
+ * everything else outside the path — so the outline is a second clipped box
+ * one pixel larger, in the line colour, with the real one sitting on top.
+ * Put `.cut .cut-edge` on the outer element and the inner content inherits the
+ * same corner.
  */
-.aurora {
-  background:
-    radial-gradient(
-      ellipse 46% 38% at 22% 18%,
-      color-mix(in oklab, var(--pg-blue) 26%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 44% 34% at 80% 12%,
-      color-mix(in oklab, var(--qb-primary-400) 18%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 70% 44% at 50% 62%,
-      color-mix(in oklab, var(--pg-blue) 16%, transparent),
-      transparent 72%
-    );
-  filter: blur(12px);
+.cut-edge {
+  padding: 1px;
+  background: var(--pg-line);
 }
 
 /**
- * A hairline that is brighter along its top edge than its bottom.
- *
- * Cards on a dark page need a lit top edge or they read as holes cut in the
- * background rather than as surfaces raised off it. This is that edge, done as
- * a border-image-ish gradient on a pseudo-element so the card's own border can
- * stay a flat hairline and the two do not fight over the corner radius.
+ * A rule that fades out at both ends, for section joins.
  */
-.lit {
-  position: relative;
-}
-
-.lit::before {
-  content: '';
-  position: absolute;
-  inset-inline: 12%;
-  top: -1px;
+.rule {
   height: 1px;
   background: linear-gradient(
     to right,
     transparent,
-    color-mix(in oklab, var(--qb-primary-300) 55%, transparent),
+    var(--pg-line) 18%,
+    var(--pg-line) 82%,
     transparent
   );
-  pointer-events: none;
+}
+
+/** The same, on a dark band. */
+.rule-dark {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--pg-void-line) 18%,
+    var(--pg-void-line) 82%,
+    transparent
+  );
 }
 
 /**
- * The floor under the hero screenshot.
+ * The bottom of a product capture, dissolved.
  *
- * The frame is tall enough that its bottom edge lands near the fold on a laptop,
- * and a hard edge there tells the reader the page has finished. Fading the last
- * of it into the page background does the opposite: the image visibly continues
- * past what is on screen, which is the cheapest possible "keep scrolling".
- *
- * A mask rather than a gradient overlay, because the frame casts a shadow and an
- * opaque overlay would sit on top of it and cut a straight line through it.
+ * A frame tall enough to reach the fold ends on a hard edge there, which tells
+ * the reader the page has finished. Fading the last of it into the background
+ * says the opposite. A mask rather than an overlay, so a shadow under the frame
+ * is not cut in half by an opaque rectangle.
  */
 .floor {
-  mask-image: linear-gradient(to bottom, black 62%, transparent 99%);
+  mask-image: linear-gradient(to bottom, black 68%, transparent 99%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -357,73 +333,25 @@ body {
 }
 
 /**
- * The dashed lane in the route illustration, drawn as though it were being
- * travelled.
+ * The dashed lane in the yard drawing, drawn as though it were being travelled.
  *
- * `stroke-dashoffset` on a loop, which is the one animation on this page that
- * is decorative — everything else moving is either a real figure or a response
- * to the reader. It earns it by being what the drawing is *about*: a lane with
- * nothing moving along it is a map, and the section it illustrates is about a
- * shipment in progress.
+ * The one decorative animation on the page. It earns it by being what the
+ * drawing is *about*: a lane with nothing moving along it is a map, and the
+ * section it illustrates is about a shipment in progress.
  */
 @keyframes lane {
   to {
-    stroke-dashoffset: -28;
+    stroke-dashoffset: -24;
   }
 }
 
 .lane-dash {
-  stroke-dasharray: 3 5;
-  animation: lane 1.6s linear infinite;
+  stroke-dasharray: 2 4;
+  animation: lane 1.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .lane-dash {
-    animation: none;
-  }
-}
-
-/** A hairline that fades out at both ends, for section joins. */
-.rule {
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--pg-edge-lit) 18%,
-    var(--pg-edge-lit) 82%,
-    transparent
-  );
-}
-
-/**
- * The status dot beside the hero's eyebrow — the one place on the page that
- * claims something is live. The demurrage labels used to carry it too and now
- * take a Phosphor clock instead: two of them on one screen made the page look
- * like it was loading.
- */
-@keyframes ping {
-  0% {
-    transform: scale(1);
-    opacity: 0.6;
-  }
-  70%,
-  100% {
-    transform: scale(2.6);
-    opacity: 0;
-  }
-}
-
-.live-dot::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 9999px;
-  background: currentColor;
-  animation: ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .live-dot::after {
     animation: none;
   }
 }
@@ -437,11 +365,6 @@ body {
  * is the face every machine-translated page in this market is set in. Naming
  * the Arabic stack explicitly puts it back in IBM Plex Sans Arabic, the same
  * face the product uses.
- *
- * The width matters as much as the face. An RTL block inside an LTR flow is
- * laid out from the container's trailing edge, so a full-width paragraph starts
- * at the far right of the viewport — half a screen from the English it is
- * translating.
  */
 .arabic {
   font-family: var(--font-plex-arabic), var(--qb-font-arabic);
@@ -456,8 +379,7 @@ body {
  * own direction, so constraining the paragraph directly pinned it to the far
  * right of the viewport, half a screen from the English it translates. An LTR
  * wrapper holds the measure and starts where the English starts; the RTL child
- * fills it and sets its text from the right, which is the composition you
- * actually want: two languages in one column, each flush to its own margin.
+ * fills it and sets its text from the right.
  */
 .arabic-block {
   max-width: 46ch;

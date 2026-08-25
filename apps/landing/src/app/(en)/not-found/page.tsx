@@ -51,16 +51,16 @@ export default function NotFound() {
       </div>
 
       <div className="shell">
-        <p className="tracked text-[0.68rem] text-blue-lit">404</p>
+        <p className="tracked text-[0.62rem] text-blue-ink">404</p>
 
-        <h1 className="mt-6 font-display text-[clamp(2rem,4.4vw,3.2rem)] font-extrabold leading-[1.08] tracking-[-0.035em]">
+        <h1 className="mt-6 font-display text-[clamp(2rem,4.4vw,3.2rem)] font-medium leading-[1.12] tracking-[-0.02em]">
           This page is not here.
         </h1>
         <div className="arabic-block mt-4">
           <h2
             lang="ar"
             dir="rtl"
-            className="arabic text-[clamp(1.5rem,3vw,2.1rem)] font-bold leading-[1.4] text-ink-dim"
+            className="arabic text-[clamp(1.5rem,3vw,2.1rem)] font-medium leading-[1.4] text-ink-dim"
           >
             هذه الصفحة غير موجودة.
           </h2>
@@ -80,7 +80,7 @@ export default function NotFound() {
         <nav className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3">
           <a
             href="/"
-            className="rounded-full bg-blue px-6 py-3.5 text-[0.95rem] font-semibold text-on-brand transition-transform hover:scale-[1.03]"
+            className="tracked rounded-lg bg-blue px-6 py-4 text-[0.66rem] leading-none text-on-brand transition-opacity hover:opacity-90"
           >
             The home page
           </a>
@@ -107,7 +107,7 @@ export default function NotFound() {
       <div className="shell">
         <p className="text-[0.8125rem] text-ink-faint">
           Certain the address was right?{' '}
-          <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-blue-lit hover:underline">
+          <a href={`mailto:${CONTACT_EMAIL}`} className="font-mono text-blue-ink hover:underline">
             {CONTACT_EMAIL}
           </a>
         </p>

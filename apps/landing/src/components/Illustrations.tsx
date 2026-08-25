@@ -1,156 +1,126 @@
 /**
- * The two drawings on the page, and why there are only two.
+ * The one drawing on the site, and it is a technical drawing.
  *
- * Every card on a capability grid *can* have an illustration, and the version
- * of this section that gave all five one looked like a stock icon set — five
- * drawings of roughly equal weight say "here is a grid" rather than "here is a
- * mechanism". These two are here because their claims are structural and a
- * sentence describing a structure is always worse than a picture of it: a lane
- * with six stamped milestones on it, and a figure whose third decimal place is
- * the entire point.
+ * The version this replaces was a smooth blue curve with six dots on it and
+ * three rounded bars underneath — a diagram in the visual language of an
+ * infographic, which is to say of nothing in particular. Terminal's site draws
+ * its yard as a wireframe: numbered bays, dashed lane markings, hairline
+ * outlines, one label in an accent colour. That reads as a plan somebody works
+ * from rather than as decoration, and it costs the same to draw.
  *
- * Both are inline SVG rather than files. They are a few hundred bytes, they
- * inherit `currentColor` and the brand tokens, and a re-skin recolours them
- * without touching an asset — which a `.svg` in `public/` would not do.
+ * So this is a berth plan. Six bays, one box in each, and the one that has run
+ * past its free days called out in amber — the thread the whole page follows.
+ * A forwarder looking at it sees a yard; a designer looking at it sees a drawing
+ * that could not have come from a stock icon set.
  *
- * **Neither of them mirrors, and that is deliberate.** A lane diagram in an
- * RTL document should run right to left, so the wrapper flips it with a
- * transform; the *labels* are set as HTML beside the drawing rather than as
- * `<text>` inside it precisely so that flipping the artwork does not write the
- * Arabic backwards.
+ * **Everything is `currentColor` except the call-out.** The drawing sits on the
+ * dark demurrage band today and would sit on paper if it moved, and a drawing
+ * that names its own greys can only ever be right on one surface. The caller
+ * sets a text colour, the plan inherits it, and the opacities below do the rest
+ * — which is also why the ribs and the bay outlines are not separate tokens.
+ * Amber is the exception because it is not a shade, it is the meaning.
+ *
+ * Inline SVG rather than a file: a few hundred bytes, it inherits the brand
+ * tokens, and a re-skin recolours it without touching an asset.
  */
-
-/**
- * A lane, with the six milestones the product stamps on it.
- *
- * The shape is the argument: one line, six points, and the line does not stop
- * and restart at the port. Every system this replaces has a gap there — one
- * application for the booking, another for the customs entry — and the drawing
- * makes the absence of the gap the most visible thing about it.
- */
-export function RouteArt() {
-  // Even spacing along a 300-unit line, inset far enough that the end pins do
-  // not clip against the viewBox.
-  const stops = [12, 69, 126, 183, 240, 292]
+export function YardArt() {
+  const bays = [0, 1, 2, 3, 4, 5]
+  // The fourth bay is the one over its free time. Fixed rather than random:
+  // this drawing is the same drawing on every load, which is what a plan is.
+  const late = 3
 
   return (
-    <svg
-      viewBox="0 0 304 74"
-      role="presentation"
-      aria-hidden="true"
-      className="w-full text-blue-lit rtl:-scale-x-100"
-    >
-      {/* The travelled part of the lane: solid, and stopping at the fourth pin.
-          The shipment in the drawing is at sea, which is the state a forwarder's
-          board is mostly in. */}
-      <path
-        d="M12 40 C 60 40, 78 22, 126 22 S 192 40, 240 40 L 292 40"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        opacity="0.28"
-      />
-      <path
-        d="M12 40 C 60 40, 78 22, 126 22 S 192 40, 183 40"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        className="lane-dash"
-      />
+    // A numbered plan does not mirror — bay 01 stays bay 01, and a berth is
+    // numbered from the same end whichever language the page is in.
+    <div dir="ltr" className="w-full">
+      <svg viewBox="0 0 320 132" role="presentation" aria-hidden="true" className="w-full">
+        {/* The apron the boxes are set against, and the lane in front of it with
+            traffic on it. */}
+        <path d="M8 104 H312" stroke="currentColor" strokeWidth="1" opacity="0.55" />
+        <path d="M8 118 H312" stroke="currentColor" strokeWidth="1" opacity="0.4" className="lane-dash" />
 
-      {stops.map((x, index) => {
-        // The pins sit on the curve, so their y has to follow it. Four values
-        // rather than a sampled path length: the curve is fixed, this is a
-        // drawing, and `getPointAtLength` in a render is a lot of machinery to
-        // avoid writing down four numbers.
-        const y = index === 1 || index === 2 ? 22 : index === 3 ? 31 : 40
-        const done = index <= 3
+        {bays.map((bay) => {
+          const x = 10 + bay * 51
+          const isLate = bay === late
 
-        return (
-          <g key={x}>
-            <circle
-              cx={x}
-              cy={y}
-              r={done ? 4 : 3}
-              fill="currentColor"
-              opacity={done ? 1 : 0.3}
-            />
-            {done ? <circle cx={x} cy={y} r="7.5" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.35" /> : null}
-          </g>
-        )
-      })}
+          return (
+            <g key={bay}>
+              {/* The painted bay on the ground. */}
+              <rect
+                x={x}
+                y={30}
+                width={44}
+                height={74}
+                fill="none"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                stroke="currentColor"
+                opacity="0.35"
+              />
 
-      {/* The three time rows under the lane — planned, revised, actual — as
-          three bars of different length. The claim the card makes is that all
-          three are kept, and three bars of the *same* length would say the
-          opposite. */}
-      {[0, 1, 2].map((row) => (
-        <rect
-          key={row}
-          x="12"
-          y={54 + row * 6}
-          width={[240, 196, 158][row]}
-          height="2"
-          rx="1"
-          fill="currentColor"
-          opacity={[0.34, 0.22, 0.5][row]}
-        />
-      ))}
-    </svg>
-  )
-}
+              {/* The container standing in it, drawn as a plan: the outline and
+                  the corrugation lines a box actually has. */}
+              <rect
+                x={x + 6}
+                y={44}
+                width={32}
+                height={54}
+                fill="none"
+                strokeWidth={isLate ? 1.4 : 1}
+                stroke="currentColor"
+                className={isLate ? 'text-amber' : undefined}
+                opacity={isLate ? 1 : 0.8}
+              />
+              {[0, 1, 2, 3].map((rib) => (
+                <path
+                  key={rib}
+                  d={`M${x + 6} ${54 + rib * 12} h32`}
+                  strokeWidth="1"
+                  stroke="currentColor"
+                  className={isLate ? 'text-amber' : undefined}
+                  opacity={isLate ? 0.45 : 0.35}
+                />
+              ))}
 
-/**
- * A dinar figure with its third decimal place called out.
- *
- * The card's claim — "money is decimal all the way down" — is the single most
- * abstract thing on the page and the single most consequential to a Kuwaiti
- * buyer. Drawn, it takes about half a second: three places, and the last one
- * lit. Written, it takes a paragraph and is still an assertion.
- *
- * Set in `<text>` rather than HTML because the ring has to sit on a specific
- * glyph, and a ring positioned against text laid out by the browser is a ring
- * that moves when the font falls back.
- */
-export function DinarArt() {
-  return (
-    /*
-     * Markup, not SVG — and that is the whole lesson of this component.
-     *
-     * It was an `<svg>` with the figure in a `<text>` and a bracket drawn as a
-     * `<path>` at hand-measured coordinates. Those coordinates were read off one
-     * rendering of IBM Plex Mono at one size, so the bracket was correct on the
-     * machine it was drawn on and nowhere else: at a different size, or before
-     * the webfont loaded, or on any fallback mono, the glyphs moved and the
-     * bracket did not. A mark that points at a specific digit has to be
-     * positioned by whatever is laying out that digit, which in a browser is
-     * the browser. Here the bracket is a box under a `<span>` and it is right by
-     * construction.
-     *
-     * `dir="ltr"` because a figure is Latin numerals reading left to right in
-     * both languages. An Arabic reader sees `4187.264` exactly as the product
-     * prints it, which is the claim.
-     */
-    <div dir="ltr" className="figures pb-4 font-mono">
-      <p className="flex items-baseline gap-2 text-[clamp(1.6rem,3.4vw,2.1rem)] leading-none tracking-[-0.03em]">
-        <span className="text-[0.85rem] tracking-normal text-ink-faint">KWD</span>
-        <span className="text-ink">
-          4187.
-          <span className="relative text-blue-lit">
-            264
-            {/* Three sides of a box, open at the top: a bracket. The bottom edge
-                is the one that reads, the two stubs say where it starts and
-                stops, and the missing top is what keeps it from looking like a
-                field the digits have been typed into. */}
-            <span
-              aria-hidden="true"
-              className="absolute inset-x-0 top-full mt-1.5 h-2 rounded-b-sm border-x border-b border-blue-lit/60"
-            />
-          </span>
-        </span>
-      </p>
+              {/* Bay number, in the mono the product labels everything in. */}
+              <text
+                x={x + 22}
+                y={22}
+                textAnchor="middle"
+                fontSize="8"
+                letterSpacing="1"
+                className={`figures font-mono ${isLate ? 'fill-amber' : 'fill-current'}`}
+                opacity={isLate ? 1 : 0.7}
+              >
+                {String(bay + 1).padStart(2, '0')}
+              </text>
+
+              {/* The call-out on the one box that is over: a leader line and a
+                  day count, the same two marks a yard plan actually carries. */}
+              {isLate ? (
+                <>
+                  <path
+                    d={`M${x + 22} 44 V 34 H ${x + 60}`}
+                    fill="none"
+                    strokeWidth="1"
+                    stroke="currentColor"
+                    className="text-amber"
+                  />
+                  <text
+                    x={x + 64}
+                    y={37}
+                    fontSize="8"
+                    letterSpacing="0.5"
+                    className="figures fill-amber font-mono"
+                  >
+                    +131d
+                  </text>
+                </>
+              ) : null}
+            </g>
+          )
+        })}
+      </svg>
     </div>
   )
 }

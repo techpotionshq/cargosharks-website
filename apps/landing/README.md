@@ -138,11 +138,10 @@ same centre and the same gutter, and it carries nothing but product frames: a
 about nine pixels, which defeats the only reason a screenshot is on the page.
 Anything wider than `.shell` is bleeding out of it deliberately.
 
-The home page is eight blocks and about 8,300px. It was six and 5,400px before
-the frames were given room and the capability grid was added; it was eleven
-sections and 14,086px before that. What was cut in the first pass is still gone —
-the pain points, the six-state loop, the scope table and the ownership argument
-are `/what-we-do/`, and the comparison is `/compare/`.
+The home page is eight blocks and about 9,200px. It was eleven sections and
+14,086px two rewrites ago. What was cut then is still gone — the pain points,
+the six-state loop, the scope table and the ownership argument are
+`/what-we-do/`, and the comparison is `/compare/`.
 
 **Centred, and that is a layout decision with a reason.** Every block used to be
 a five-column copy rail beside a seven-column picture. At 1440 that gives the
@@ -151,6 +150,53 @@ copy about 460px — a nine-word headline over three lines — and the product a
 the screenshot needed all of it. One centred column with the frames running wider
 lets the product be the largest thing on the page, which is the one argument a
 competitor cannot copy in an afternoon.
+
+### The page is light, and here is what that ruled out
+
+The second version of this page was near-black navy end to end, with a blue
+radial glow behind the headline, a glass pill above it carrying a pulsing green
+dot, `font-extrabold` display type at `-0.04em`, fully-rounded buttons, a
+screenshot in a browser frame with a second glow behind it, a five-figure stat
+bar, and a grid of `rounded-2xl` cards each with a Phosphor glyph in a
+rounded-square chip. Every one of those is a real technique. All of them
+together are the default output of the tools that generate landing pages, and it
+read that way — which is fatal for a page whose argument is that the software
+was built by people who have seen a demurrage invoice.
+
+It was rebuilt against four sites in or near this market: **CargoWise**,
+**tentrucks**, **Terminal** and **Stripe**. The overlap between them turned out
+to be specific and almost entirely about restraint:
+
+| They do | We now do | We used to do |
+|---|---|---|
+| Light ground, dark bands as punctuation | paper, three dark bands | near-black throughout |
+| Display weight ~400–500 | `font-medium`, `-0.02em` | `font-extrabold`, `-0.04em` |
+| Photography carries the colour | three full-bleed photographs | a `radial-gradient` glow |
+| Hairline-divided cells | `gap-px` over `bg-line` | floating `rounded-2xl` cards |
+| Small radii, mono micro-labels | `rounded-lg`, `.tracked` | pill buttons, sentence case |
+| One oddly specific live number | the accruing figure, in a caption | a stat bar of five |
+| Something the reader operates | the free-time calculator | — |
+
+Not one of those is fashion. A light page with a saturated photograph on it has
+somewhere for the eye to rest; a dark page with a glow behind every heading does
+not.
+
+**The cut corner is the one piece of shape language the site owns.** `.cut` in
+`globals.css` clips a corner off the dark panels and the product frames — the
+shape of a filing tab, a punched shipping label and the clipped corner of a
+customs form, which are objects this product's users are inside all day.
+`rounded-2xl` is the framework's default and therefore everybody's. It mirrors,
+because a tab cut into the trailing corner is cut into the other corner in
+Arabic.
+
+**The calculator is the centrepiece and it does not claim a saving.** Every
+calculator in this category ends with "you would save 23% with us" — a figure
+nobody can check and which this product has no pilot data to support. This one
+returns the reader's own exposure and then says in as many words that CargoSharks
+does not make the number smaller; what it does is make it arrive on the day the
+clock starts rather than six weeks later on a supplier invoice. That is a claim
+about the code and it is true, which is the rule `docs/marketing/README.md` sets
+for the whole document set.
 
 **No colour literals.** Every value in both stylesheets resolves to a `--qb-*`
 custom property emitted by `@qabandi/brand`, and `scripts/check-brand.mjs` fails
