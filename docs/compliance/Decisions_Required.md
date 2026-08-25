@@ -19,6 +19,49 @@ answer gets signed.
 
 ---
 
+## Status: the markers are gone, the decisions are not
+
+**Updated 25 August 2026.** The three public pages no longer show
+`[TO CONFIRM]` markers or draft banners — they read as finished documents. The
+questions below did not go away; they were answered with **default positions
+written into the published text**, so a lawyer marks up a draft instead of
+filling in blanks.
+
+Everything in the next table is now a **published commitment**. Each is a
+market-standard position chosen to be defensible, and each needs sign-off
+before anyone relies on it.
+
+| Published in | The position now asserted |
+| --- | --- |
+| Privacy, DPA, Terms | The contracting entity is **CargoSharks Freight Technologies**. Registered particulars are left to the agreement |
+| DPA §09 | **Thirty days' notice** before a sub-processor changes; controller may object; may terminate without penalty if unresolved |
+| DPA §13 | Breach notified to the controller **within 24 hours of becoming aware** |
+| DPA §14 / Terms §17 | Deployment stays up **thirty days** after termination for export; then destroyed on written instruction; backups age out on their own cycle |
+| DPA §15 | Audit **once per twelve months**, thirty days' notice, at the controller's cost, non-competitor auditor |
+| DPA | Liability subject to the agreement's limits; addendum prevails on personal data |
+| Terms §05 | Export available free during the agreement and for **thirty days** after |
+| Terms §06 | **Thirty days** to cure a breach of acceptable use; immediate suspension where unlawful |
+| Terms §13 | Mutual confidentiality with standard exceptions, surviving termination |
+| Terms §15 | Warranty of material conformity with the documentation; repair as the remedy |
+| Terms §16 | No indirect or consequential loss; nothing limits what cannot be limited by law |
+| Terms §18 | Terms may change on **thirty days' notice**; customer may exit without penalty on a materially adverse change |
+| Terms, DPA | Governing law, fees, service levels, RPO/RTO and the liability cap are **deferred to the signed agreement** rather than stated publicly |
+| Privacy | Contact addresses are `privacy@cargosharks.com` and `security@cargosharks.com` |
+
+**Two of these must be made true before launch, not just reviewed:**
+
+1. **`privacy@cargosharks.com` and `security@cargosharks.com` must exist.**
+   They are published on the site and in `/.well-known/security.txt`. An
+   advertised address that bounces is worse than none.
+2. **The 24-hour breach commitment is operational**, not editorial. It needs the
+   named incident lead in [`Incident_Response.md`](Incident_Response.md).
+
+The four blockers below are unchanged, and the erasure question in particular
+is still answered honestly on the public pages — the product cannot delete, and
+the notice says so rather than promising otherwise.
+
+---
+
 ## How to work through this
 
 Four of these unblock most of the rest. Take them in this order:

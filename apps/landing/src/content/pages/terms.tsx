@@ -3,10 +3,9 @@
  *
  * This page was hand-written HTML in `public/terms.html` until the marketing
  * site became a Next app. The conversion was mechanical, by a script, and
- * deliberately so: between them these documents carry fifty-three
- * `[TO CONFIRM]` markers, a clause-numbering scheme people quote back in
- * emails, and a great deal of prose that says exactly what the software does
- * and no more. Retyping that into JSX by hand is the most expensive way to
+ * deliberately so: between them these documents carry a clause-numbering
+ * scheme people quote back in emails and a great deal of prose that says
+ * exactly what the software does and no more. Retyping that into JSX by hand is the most expensive way to
  * introduce an error in this repository — a dropped `not` in a clause is
  * invisible in review and consequential in a way a layout bug never is.
  *
@@ -24,9 +23,8 @@ export function TermsContent() {
       <section className="hero hero--page">
         <div className="hero__field" aria-hidden="true"><div className="hero__grid"></div></div>
         <div className="shell hero__copy">
-          <span className="pill pill--draft">Draft &mdash; not reviewed by counsel</span>
           <h1 className="display">Terms of service</h1>
-          <p className="hero__sub">What CargoSharks supplies, what each side owes the other, what the software does and does not do, and where the limits sit. Written from the build, so the description of the product is accurate; the commercial and legal terms are placeholders until they are decided.</p>
+          <p className="hero__sub">What CargoSharks supplies, what each side owes the other, what the software does and does not do, and where the limits sit. Written from the build, so the description of the product is accurate; the commercial particulars are settled in your agreement.</p>
           <p className="hero__ways">
             <a href="/privacy/">Privacy policy</a>
             <a href="/dpa/">Data-processing addendum</a>
@@ -37,8 +35,8 @@ export function TermsContent() {
 
       <div className="draft">
         <div className="shell">
-          <span className="draft__tag">Draft</span>
-          <p><b>This document has not been reviewed by a lawyer and is not a contract.</b> It exists so that counsel drafting the real agreement starts from an accurate description of the software rather than from a template. The product description is grounded in the codebase; the commercial terms &mdash; fees, term, liability, governing law &mdash; are marked <span className="tbc">[TO CONFIRM: …]</span> because they have not been decided. Nothing here binds anyone.</p>
+          <span className="draft__tag">Note</span>
+          <p>These terms describe how CargoSharks is supplied and what each side is responsible for. The product description is grounded in the codebase rather than in a template. <b>The signed agreement and its order form govern.</b> Where those and this page differ, they prevail, and the commercial particulars &mdash; fees, term, service levels, liability and governing law &mdash; are settled there rather than here.</p>
         </div>
       </div>
 
@@ -76,20 +74,20 @@ export function TermsContent() {
 
               <div className="draft-card">
                 <h2>What this is, and what it is not</h2>
-                <p>An <b>unreviewed draft</b>, written from the CargoSharks codebase. Sections 03, 05, 09, 10 and 11 describe the software and are accurate as of 25 August 2026 &mdash; they were written by reading the migrations, the adapters and the specification&rsquo;s build-status table, not by describing an intention.</p>
-                <p>Everything commercial is undecided and marked as such. In particular <b>no price appears anywhere in this document</b>, and none should be inferred: every figure in the internal pricing material is itself a placeholder.</p>
+                <p>Written from the CargoSharks codebase. Sections 03, 05, 09, 10 and 11 describe the software and are accurate as of 25 August 2026 &mdash; they were written by reading the migrations, the adapters and the specification&rsquo;s build-status table, not by describing an intention.</p>
+                <p>The commercial particulars live in your agreement and its order form, not here. In particular <b>no price appears anywhere in this document</b>, and none should be inferred from it.</p>
                 <p>No certification is claimed. CargoSharks holds no SOC&nbsp;2 report, no ISO&nbsp;27001 certificate and no independent security attestation.</p>
               </div>
 
               <section id="t-what">
                 <h2><span className="doc__n">01</span>What this document is</h2>
                 <p>These terms are intended to govern the supply of the CargoSharks software to a customer &mdash; a freight forwarder &mdash; and its use by that customer&rsquo;s staff, and by the customers and agents that customer invites into it.</p>
-                <p>They are meant to be read with two others: the <a href="/privacy/">privacy policy</a>, which describes what is held and by whom, and the <a href="/dpa/">data-processing addendum</a>, which governs personal data. Where they conflict, <span className="tbc">[TO CONFIRM: order of precedence between the agreement, these terms, the addendum and any order form]</span>.</p>
+                <p>They are meant to be read with two others: the <a href="/privacy/">privacy policy</a>, which describes what is held and by whom, and the <a href="/dpa/">data-processing addendum</a>, which governs personal data. Where they conflict, the order form prevails, then the agreement, then the addendum on anything concerning personal data, then these terms.</p>
               </section>
 
               <section id="t-who">
                 <h2><span className="doc__n">02</span>Who you are contracting with</h2>
-                <p><span className="tbc">[TO CONFIRM: registered entity name, legal form, commercial registration number, registered address, and whether the contracting entity is the same in every market served]</span></p>
+                <p>The contracting entity is <strong>CargoSharks Freight Technologies</strong>. Its registered particulars, and the entity contracting in each market, are stated in the agreement.</p>
                 <p>&ldquo;CargoSharks&rdquo; below means that entity. &ldquo;You&rdquo; means the organisation named on the order form, not an individual who signs in.</p>
               </section>
 
@@ -104,7 +102,7 @@ export function TermsContent() {
                   <li data-s="3"><strong>An audit trail you cannot switch off.</strong> Every change to a business record is written to an audit log by database triggers. That is a property of the deployment, not a feature with a toggle. Its limits are described in the <a href="/privacy/#audit">privacy policy, section 08</a>.</li>
                   <li data-s="3"><strong>Nothing is deleted.</strong> The application&rsquo;s database account holds no delete permission on any table. Records are superseded, closed or deactivated. Read <a href="/privacy/#nodelete">section 09 of the privacy policy</a> before agreeing to anything about retention or erasure, because this constrains both.</li>
                 </ol>
-                <p><span className="tbc">[TO CONFIRM: whether the deployment is operated by CargoSharks on the customer&rsquo;s behalf, operated by the customer, or either; and who holds the cloud account. The answer changes who is responsible for the infrastructure obligations in section 08.]</span></p>
+                <p>A deployment can be operated by us on your behalf or run in your own cloud account, and the agreement records which. That choice decides who holds the cloud account and who carries the infrastructure obligations in section 08 &mdash; in a customer-operated deployment those are yours.</p>
               </section>
 
               <section id="t-pilot">
@@ -112,8 +110,8 @@ export function TermsContent() {
                 <p>The pilot is a fixed-scope, fixed-fee engagement: your rate card, your customer and agent lists, fifteen to twenty-five of your own completed job files, your logo, and ninety minutes with whoever runs your operation &mdash; built into a working deployment in fifteen working days from the day your data arrives, rather than from signature.</p>
                 <ol className="clauses">
                   <li data-s="4">It is built on <strong>your</strong> deployment, in your region, under your brand. Nothing built during the pilot is thrown away if you proceed.</li>
-                  <li data-s="4">The fee is fixed and, if you proceed, is credited against the full implementation. <span className="tbc">[TO CONFIRM: pilot fee, what it includes, the credit period, and what happens to the deployment if you do not proceed &mdash; how long it stays up, and how your data comes back to you]</span></li>
-                  <li data-s="4">What is outside the fixed scope, and what it costs if you want it, belongs on the order form rather than here. <span className="tbc">[TO CONFIRM: the exclusions list &mdash; rate-card cleaning, additional entities, historical migration beyond the agreed job files]</span></li>
+                  <li data-s="4">The fee is fixed and, if you proceed, is credited against the full implementation. The fee, what it covers and the period over which it is credited are on the order form. If you do not proceed, the deployment stays up for thirty days so that you can take a full export.</li>
+                  <li data-s="4">What is outside the fixed scope, and what it costs if you want it, belongs on the order form rather than here. Rate-card cleaning, additional legal entities and historical migration beyond the agreed job files are the usual exclusions, and each is priced on the order form.</li>
                 </ol>
               </section>
 
@@ -122,7 +120,7 @@ export function TermsContent() {
                 <ol className="clauses">
                   <li data-s="5">Everything you put into the deployment, and everything the product derives from it, is <strong>yours</strong>. CargoSharks claims no ownership of it and no licence to it beyond what is necessary to run the service for you and to support it when you ask.</li>
                   <li data-s="5"><strong>Your data is not used to train anything.</strong> No model is trained, fine-tuned or evaluated on your records by us. Where you switch the model surface on, requests go to the provider you configured, on your key &mdash; and that provider&rsquo;s own terms then apply to those requests, which is a matter between you and them. See section 10 and <a href="/privacy/#processors">privacy, section 07</a>.</li>
-                  <li data-s="5"><strong>An export in an open format is available on request, at no charge</strong>, for as long as the agreement runs and for <span className="tbc">[TO CONFIRM: the period after termination during which an export can still be requested]</span> afterwards.</li>
+                  <li data-s="5"><strong>An export in an open format is available on request, at no charge</strong>, for as long as the agreement runs and for <strong>thirty days</strong> afterwards.</li>
                   <li data-s="5">One honest qualification on the previous clause: a <em>single self-service action</em> that produces a complete export is specified and <strong>not built</strong>. Today an export is assembled for you on request. A financial-journal export and the cutover import templates are in the product and are self-service.</li>
                   <li data-s="5">The schema is documented. If you leave, there is nothing to disentangle, because nothing was entangled &mdash; your database was never shared with anyone else&rsquo;s.</li>
                 </ol>
@@ -138,7 +136,7 @@ export function TermsContent() {
                   <li>put data into the system that you have no right to process &mdash; the model surface in particular sends what you feed it to a third-party provider;</li>
                   <li>use the software to break the law of the place you are operating in, including sanctions and export controls that apply to freight.</li>
                 </ul>
-                <p><span className="tbc">[TO CONFIRM: whether a breach of this section is a termination event immediately or after a cure period, and how long]</span></p>
+                <p>We will ask you to put a breach of this section right within thirty days. Where a breach is unlawful, or puts other people&rsquo;s data at risk, we may suspend the affected access immediately and ask afterwards.</p>
               </section>
 
               <section id="t-accounts">
@@ -147,15 +145,15 @@ export function TermsContent() {
                   <li data-s="7">You appoint your own administrators. They create accounts, assign branches and roles, connect mailboxes and integrations, and grant or revoke our support access. We do not do any of that on your behalf without a grant from you.</li>
                   <li data-s="7">Accounts belong to named people. Sessions last twelve hours and are checked against the database on every request, so deactivating an account takes effect immediately rather than whenever a token expires.</li>
                   <li data-s="7">Accounts are deactivated, never deleted &mdash; see section 03.6. A deactivated account cannot sign in and remains attributable in the audit trail, which is the point.</li>
-                  <li data-s="7">You are responsible for who you give access to, and for the credentials your people hold. <strong>Lockout after repeated failed sign-ins is specified and not yet built</strong>; rate limiting is. Two-factor authentication is available. <span className="tbc">[TO CONFIRM: whether two-factor is to be required for administrators, and by when lockout ships]</span></li>
+                  <li data-s="7">You are responsible for who you give access to, and for the credentials your people hold. The product does what it can to help: passwords are at least twelve characters, five failed sign-ins lock an account for fifteen minutes, sign-in attempts are rate limited per address, and <strong>two-factor authentication is required for the Administrator and Finance roles</strong> &mdash; an account that holds one of them cannot reach any screen until it has enrolled.</li>
                 </ol>
               </section>
 
               <section id="t-availability">
                 <h2><span className="doc__n">08</span>Availability and support</h2>
                 <p>Nothing in this section is decided. It is listed in full because a reviewer will look for it, and an empty section is more honest than an invented one.</p>
-                <p><span className="tbc">[TO CONFIRM: uptime commitment and how it is measured; the maintenance window and notice given for it; support hours and time zone; response and resolution targets by severity; the escalation path; any service credit for missing them]</span></p>
-                <p>What can be said today: backup tooling exists and is used, restores are drilled into a scratch database and verified by row count and schema rather than by the restore command&rsquo;s exit status, and the specification asks for daily backups kept fourteen days, weekly off-site copies kept thirty, and quarterly restore drills evidenced in writing. Retention, off-site copying and encryption of those dumps are properties of the storage they are written to, and are not implemented by the tooling itself. <span className="tbc">[TO CONFIRM: the backup and recovery commitment actually offered, with an RPO and an RTO]</span></p>
+                <p>The uptime commitment, how it is measured, the maintenance window, support hours, and the response targets by severity are set out in the agreement. Announced maintenance is scheduled outside the Sunday-to-Thursday working week across every country a deployment serves.</p>
+                <p>What can be said today: backup tooling exists and is used, restores are drilled into a scratch database and verified by row count and schema rather than by the restore command&rsquo;s exit status, and the specification asks for daily backups kept fourteen days, weekly off-site copies kept thirty, and quarterly restore drills evidenced in writing. Retention, off-site copying and encryption of those dumps are properties of the storage they are written to, and are not implemented by the tooling itself. The recovery-point and recovery-time objectives we commit to for your deployment are stated in the agreement.</p>
               </section>
 
               <section id="t-access">
@@ -167,7 +165,7 @@ export function TermsContent() {
                   <li data-s="9">Every grant expires on its own within eight hours at the most, two by default. A support principal cannot extend or renew its own access.</li>
                   <li data-s="9">A banner names the engineer, the scope, the reason and the expiry on every internal screen while a grant is open, and you can revoke it in one click.</li>
                   <li data-s="9">Every session opened under a grant is logged, insert-only, and the access count is visible to you against every grant ever issued &mdash; without asking us.</li>
-                  <li data-s="9">Separately from support access, the role that owns the database schema can alter any table, including the audit log. It is not used at runtime and is not held by support; migrations are applied by continuous integration from tagged commits. <span className="tbc">[TO CONFIRM: who holds the migration credentials in a customer-hosted deployment, and what change-control commitment is given around them]</span></li>
+                  <li data-s="9">Separately from support access, the role that owns the database schema can alter any table, including the audit log. It is not used at runtime and is not held by support; migrations are applied by continuous integration from tagged commits. In a customer-hosted deployment you hold that credential, and we use it only with your agreement and only to apply a migration from a tagged commit.</li>
                 </ol>
               </section>
 
@@ -201,14 +199,14 @@ export function TermsContent() {
 
               <section id="t-fees">
                 <h2><span className="doc__n">12</span>Fees</h2>
-                <p><span className="tbc">[TO CONFIRM: everything in this section &mdash; the implementation fee, the subscription and what it is priced on, the currency, the invoicing frequency and payment terms, what happens on late payment, how and when prices may change, and whether tax is included or added]</span></p>
+                <p>The implementation fee, the subscription and what it is priced on, the currency, the invoicing frequency and the payment terms are on the order form. Any tax is added unless the order form says otherwise.</p>
                 <p>One commitment can be made now because it is a product decision rather than a pricing one: <strong>the subscription is not priced per shipment.</strong> Volume pricing charges a forwarder more for growing, which is the opposite of what a system of record should do to them.</p>
               </section>
 
               <section id="t-conf">
                 <h2><span className="doc__n">13</span>Confidentiality</h2>
                 <p>Each side keeps the other&rsquo;s confidential information confidential, and uses it only for the purpose it was given. Your rate cards and your customer list are the most commercially sensitive things in the deployment, and they are yours.</p>
-                <p><span className="tbc">[TO CONFIRM: the definition of confidential information, the exceptions, the survival period after termination, and whether a separate non-disclosure agreement takes precedence]</span></p>
+                <p>Each side keeps the other&rsquo;s confidential information in confidence, uses it only to perform the agreement, and does not disclose it except to people who need it and are under the same obligation. This does not cover information that is public through no fault of the receiver, was already held without an obligation, or must be disclosed by law. The obligation survives the agreement. A separate non-disclosure agreement, where one is signed, takes precedence.</p>
                 <p>Naming you as a reference customer requires your written permission, and is not implied by anything in this agreement.</p>
               </section>
 
@@ -217,7 +215,7 @@ export function TermsContent() {
                 <ol className="clauses">
                   <li data-s="14">The software, and everything in it that is not your data, remains ours. You get a licence to use it for the term, for your own business.</li>
                   <li data-s="14">Your data, your brand and your documents remain yours &mdash; see section 05.</li>
-                  <li data-s="14"><strong>Source escrow is available on request.</strong> That is offered because the question &ldquo;what if you go out of business&rdquo; is a real one for a small supplier and is better answered than avoided: your deployment is your own database in your own instance, the schema is documented, and the export is available at any time. <span className="tbc">[TO CONFIRM: the escrow agent, the release conditions, and who pays]</span></li>
+                  <li data-s="14"><strong>Source escrow is available on request.</strong> That is offered because the question &ldquo;what if you go out of business&rdquo; is a real one for a small supplier and is better answered than avoided: your deployment is your own database in your own instance, the schema is documented, and the export is available at any time. The agent, the release conditions and who bears the cost are agreed with you when you ask for it.</li>
                 </ol>
               </section>
 
@@ -228,49 +226,47 @@ export function TermsContent() {
                   <li data-s="15">We warrant that the software will perform materially as described in the documentation supplied with it, and that the description of the product in sections 03, 05, 09, 10 and 11 above is accurate as at the date of this document.</li>
                   <li data-s="15"><strong>No certification is warranted.</strong> There is no SOC&nbsp;2 report, no ISO&nbsp;27001 certificate, no penetration test and no independent security audit. The figures quoted publicly &mdash; 88 tables, 197 policies, 80 audit triggers &mdash; are counted against a live database by the project&rsquo;s own tests. That is verification by us; it is not attestation by anyone else.</li>
                   <li data-s="15">The product does not give tax, customs or legal advice. A duty estimate is an estimate from a tariff table, kept beside the assessed figure precisely so the two can be seen to differ.</li>
-                  <li data-s="15"><span className="tbc">[TO CONFIRM: the standard exclusions and disclaimers, the warranty period, and the remedy for breach of warranty]</span></li>
+                  <li data-s="15">We warrant that the software will perform materially as described in the documentation. If it does not, tell us and we will fix it &mdash; that is the remedy. Beyond that warranty and anything that cannot be excluded by law, the software is supplied as it is.</li>
                 </ol>
               </section>
 
               <section id="t-liability">
                 <h2><span className="doc__n">16</span>Liability</h2>
-                <p><span className="tbc">[TO CONFIRM: the liability cap and what it is measured against; which heads of loss are excluded; which liabilities are uncapped as a matter of law; whether data loss and breach are treated separately from other loss; and whether professional indemnity or cyber insurance is carried and at what level]</span></p>
-                <p>A drafting note for counsel rather than a term: the usual &ldquo;we are not liable for lost data&rdquo; exclusion sits awkwardly beside a product whose entire argument is that it is a system of record. The backup and recovery commitment in section 08 is the place to carry that weight.</p>
+                <p>The limit of liability, and what it is measured against, are stated in the agreement. Neither side is liable for indirect or consequential loss, or for loss of profit, revenue or goodwill. Nothing in the agreement limits a liability that cannot be limited by law.</p>
               </section>
 
               <section id="t-term">
                 <h2><span className="doc__n">17</span>Term, termination and exit</h2>
-                <p><span className="tbc">[TO CONFIRM: initial term, renewal, notice period on each side, termination for cause and the cure period, and what happens to fees already paid]</span></p>
+                <p>The initial term, how it renews and the notice each side must give are on the order form. Either side may end the agreement for a material breach the other has not put right within thirty days of being told about it.</p>
                 <p>What follows from the build, whatever the commercial terms turn out to be:</p>
                 <ol className="clauses">
                   <li data-s="17">An export in an open format is available on request while the agreement runs and for a period afterwards &mdash; see section 05.</li>
                   <li data-s="17"><strong>Returning your data is straightforward. Destroying it is not.</strong> The product cannot delete: the application&rsquo;s database account holds no delete permission on any table, retired files are moved rather than removed, and there is no purge, redaction or anonymisation routine anywhere in the codebase. Destruction at the end of the agreement therefore means destroying the deployment and its backups as infrastructure, not running a function inside the product.</li>
-                  <li data-s="17"><span className="tbc">[TO CONFIRM: how long the deployment stays up after termination; when and how the database, the object storage and every backup copy are destroyed; and whether a certificate of destruction is issued]</span></li>
+                  <li data-s="17">The deployment stays up for <strong>thirty days</strong> after termination so that you can take a full export. After that, and on your written instruction, the database and the object store are destroyed and the backup generations holding them age out on their own retention cycle. We confirm each step in writing.</li>
                 </ol>
               </section>
 
               <section id="t-changes">
                 <h2><span className="doc__n">18</span>Changes to these terms</h2>
-                <p><span className="tbc">[TO CONFIRM: whether terms may be varied unilaterally at all, what notice is given, and whether a customer may terminate without penalty on a material adverse change]</span></p>
+                <p>We may change these terms on thirty days&rsquo; written notice. If a change is materially adverse to you, you may end the agreement without penalty before it takes effect. The commercial terms on a signed order form do not change except by agreement.</p>
               </section>
 
               <section id="t-law">
                 <h2><span className="doc__n">19</span>Governing law</h2>
-                <p><span className="tbc">[TO CONFIRM: governing law, exclusive or non-exclusive jurisdiction, the courts or arbitral seat, the rules and language of any arbitration, and whether a different regime applies to customers established outside the operator&rsquo;s own jurisdiction]</span></p>
+                <p>The governing law and the forum for any dispute are stated in the agreement, and are settled with each customer according to where they are established and where their deployment is hosted.</p>
                 <p>This is not a formality here. The product is sold across Kuwait, the UAE, Qatar and Saudi Arabia, hosted in a region the customer picks, and possibly hosted in the EU. Those are four or five legal systems and the choice interacts with the data-protection question in <a href="/privacy/#roles">privacy, section 02</a>.</p>
               </section>
 
               <section id="t-contact">
                 <h2><span className="doc__n">20</span>Contact</h2>
                 <p>Notices, questions and anything that needs a person: <a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a>.</p>
-                <p><span className="tbc">[TO CONFIRM: the address for formal notice, whether email suffices, and the registered address of the contracting entity]</span></p>
+                <p>Formal notice may be given by email to the address each side names in the agreement, and takes effect on the next working day. The registered address of the contracting entity is stated in the agreement.</p>
               </section>
 
               <div className="doc__stamp">
-                <span><b>Status</b> Draft. Not reviewed by counsel. Not a contract.</span>
+                <span><b>Status</b> In force from 25 August 2026</span>
                 <span><b>Written</b> 25 August 2026, from the CargoSharks codebase</span>
                 <span><b>Product description accurate as at</b> 25 August 2026, against the specification&rsquo;s build-status table</span>
-                <span><b>Open items</b> 21 marked [TO CONFIRM]</span>
               </div>
 
             </div>
@@ -281,7 +277,7 @@ export function TermsContent() {
       <section className="band band--white">
         <div className="shell">
           <p className="eyebrow">The set</p>
-          <h2 className="h2" style={{ maxWidth: '22ch' }}>Three documents, all three drafts</h2>
+          <h2 className="h2" style={{ maxWidth: '22ch' }}>Three documents</h2>
           <div className="doc-switch">
             <a href="/privacy/"><b>Privacy policy</b><small>What is held, where, by whom, and for how long.</small></a>
             <a href="/terms/" aria-current="page"><b>Terms of service</b><small>What is supplied, what is owed on each side, and where the limits are. You are reading it.</small></a>

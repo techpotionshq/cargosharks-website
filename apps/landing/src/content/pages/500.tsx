@@ -3,10 +3,9 @@
  *
  * This page was hand-written HTML in `public/500.html` until the marketing
  * site became a Next app. The conversion was mechanical, by a script, and
- * deliberately so: between them these documents carry fifty-three
- * `[TO CONFIRM]` markers, a clause-numbering scheme people quote back in
- * emails, and a great deal of prose that says exactly what the software does
- * and no more. Retyping that into JSX by hand is the most expensive way to
+ * deliberately so: between them these documents carry a clause-numbering
+ * scheme people quote back in emails and a great deal of prose that says
+ * exactly what the software does and no more. Retyping that into JSX by hand is the most expensive way to
  * introduce an error in this repository — a dropped `not` in a clause is
  * invisible in review and consequential in a way a layout bug never is.
  *

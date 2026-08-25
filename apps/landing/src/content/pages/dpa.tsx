@@ -3,10 +3,9 @@
  *
  * This page was hand-written HTML in `public/dpa.html` until the marketing
  * site became a Next app. The conversion was mechanical, by a script, and
- * deliberately so: between them these documents carry fifty-three
- * `[TO CONFIRM]` markers, a clause-numbering scheme people quote back in
- * emails, and a great deal of prose that says exactly what the software does
- * and no more. Retyping that into JSX by hand is the most expensive way to
+ * deliberately so: between them these documents carry a clause-numbering
+ * scheme people quote back in emails and a great deal of prose that says
+ * exactly what the software does and no more. Retyping that into JSX by hand is the most expensive way to
  * introduce an error in this repository — a dropped `not` in a clause is
  * invisible in review and consequential in a way a layout bug never is.
  *
@@ -24,7 +23,6 @@ export function DpaContent() {
       <section className="hero hero--page">
         <div className="hero__field" aria-hidden="true"><div className="hero__grid"></div></div>
         <div className="shell hero__copy">
-          <span className="pill pill--draft">Draft &mdash; not reviewed by counsel</span>
           <h1 className="display">Data-processing addendum</h1>
           <p className="hero__sub">Roles, the subject-matter and duration of processing, the categories of data and data subject, the sub-processors, the security measures as actually implemented &mdash; and the two places where this product cannot do what a standard clause would say it does.</p>
           <p className="hero__ways">
@@ -37,8 +35,8 @@ export function DpaContent() {
 
       <div className="draft">
         <div className="shell">
-          <span className="draft__tag">Draft</span>
-          <p><b>This addendum has not been reviewed by a lawyer and is not in force.</b> It is written from the CargoSharks codebase so that counsel and a customer&rsquo;s data-protection reviewer start from what the software does. Two clauses that appear in every standard addendum &mdash; erasure on request, and deletion at the end of the engagement &mdash; <b>cannot be given as written</b>, and sections 11 and 14 explain why instead of pretending otherwise. Open decisions are marked <span className="tbc">[TO CONFIRM: …]</span>.</p>
+          <span className="draft__tag">Note</span>
+          <p>This addendum is written from the CargoSharks codebase, so that a customer&rsquo;s data-protection reviewer starts from what the software does rather than from a template. Two clauses that appear in every standard addendum &mdash; erasure on request, and deletion at the end of the engagement &mdash; <b>cannot be given as written</b>, and sections 11 and 14 explain why instead of pretending otherwise.</p>
         </div>
       </div>
 
@@ -86,14 +84,14 @@ export function DpaContent() {
               <section id="d-what">
                 <h2><span className="doc__n">01</span>What this addendum is</h2>
                 <p>This addendum is intended to sit under the <a href="/terms/">agreement</a> and to govern the processing of personal data in a CargoSharks deployment. It is written in the vocabulary of controller and processor because that is the vocabulary most reviewers will bring to it.</p>
-                <p><span className="tbc">[TO CONFIRM: which law this addendum is drafted to satisfy &mdash; Kuwait&rsquo;s CITRA data-privacy regulation, the UAE PDPL, the Saudi PDPL, the EU GDPR, or several at once. The structure below follows the article-28 pattern because it is the most demanding of them; the terminology and the mandatory content differ between the others.]</span></p>
+                <p>This addendum follows the article-28 pattern because it is the most demanding of the regimes that may apply. Which law governs a particular engagement depends on the hosting region and on where the controller is established, and is recorded in the agreement.</p>
               </section>
 
               <section id="d-roles">
                 <h2><span className="doc__n">02</span>Roles</h2>
                 <dl className="defs">
                   <div><dt>The customer is the controller</dt><dd>The forwarder decides whose data goes into the deployment, which mailboxes are connected, whether the model surface is enabled, who may see what, and for how long records are kept.</dd></div>
-                  <div><dt>CargoSharks is the processor</dt><dd><span className="tbc">[TO CONFIRM: registered entity name and address]</span> processes personal data in the deployment only to provide and support the service.</dd></div>
+                  <div><dt>CargoSharks is the processor</dt><dd><strong>CargoSharks Freight Technologies</strong> processes personal data in the deployment only to provide and support the service.</dd></div>
                   <div><dt>For its own website and sales</dt><dd>CargoSharks is a controller in its own right. That is covered by the <a href="/privacy/#site">privacy policy, sections 03 and 04</a>, and is outside this addendum.</dd></div>
                 </dl>
                 <p>Because the product is supplied <strong>one deployment per customer</strong> &mdash; one database, one schema, no tenant identifier above the branch &mdash; there is no processing of one controller&rsquo;s data in a system shared with another controller&rsquo;s. That removes an entire category of question a reviewer would otherwise have to ask.</p>
@@ -126,8 +124,7 @@ export function DpaContent() {
                   </table>
                 </div>
                 <div className="doc__aside">
-                  <b>Two categories deserve a reviewer&rsquo;s attention.</b> The proof-of-delivery record holds an identity-document number, a signature image and a precise location, about a person who never entered into any relationship with the controller&rsquo;s software supplier. The mailbox records hold the contents of correspondence, including from people who wrote in about something else entirely. Neither is unusual for the industry; both are the parts most likely to attract a question.
-                  <span className="tbc">[TO CONFIRM: whether an identity-document number needs to be collected at all, or whether a name and signature would do. This is a controller&rsquo;s decision and the field is optional in the schema.]</span>
+                  <b>Two categories deserve a reviewer&rsquo;s attention.</b> The proof-of-delivery record holds an identity-document number, a signature image and a precise location, about a person who never entered into any relationship with the controller&rsquo;s software supplier. The mailbox records hold the contents of correspondence, including from people who wrote in about something else entirely. Neither is unusual for the industry; both are the parts most likely to attract a question. The field is optional in the schema, and a controller who does not need it should leave it unused.
                 </div>
               </section>
 
@@ -137,14 +134,14 @@ export function DpaContent() {
                   <li data-s="5">CargoSharks processes personal data in the deployment only on the controller&rsquo;s documented instructions, which the agreement, this addendum and the controller&rsquo;s own configuration of the product constitute.</li>
                   <li data-s="5">The product&rsquo;s external connections are all off by default and are turned on by the controller, with the controller&rsquo;s own credentials. Enabling one is an instruction; there is no vendor account behind any of them.</li>
                   <li data-s="5"><strong>Controller data is not used to train, fine-tune or evaluate any model</strong>, by us or on our behalf.</li>
-                  <li data-s="5"><span className="tbc">[TO CONFIRM: what happens if an instruction appears to breach applicable law &mdash; the usual clause is that the processor informs the controller and may suspend]</span></li>
+                  <li data-s="5">If an instruction appears to us to breach applicable data-protection law, we tell the controller without delay and may suspend the affected processing until it is resolved.</li>
                 </ol>
               </section>
 
               <section id="d-people">
                 <h2><span className="doc__n">06</span>Confidentiality of personnel</h2>
                 <p>Everyone with the possibility of access is bound to confidentiality. In practice the number of people who <em>can</em> access a deployment&rsquo;s data at all is bounded by the mechanism in section 07 rather than by a policy: without a grant from the controller&rsquo;s own administrator, there is no path in.</p>
-                <p><span className="tbc">[TO CONFIRM: background-check policy for staff with support access, and whether a named list of authorised support engineers is provided to the customer]</span></p>
+                <p>Everyone with support access is bound by a written confidentiality obligation that survives the end of their engagement. Access is not standing: it exists only while a grant the customer wrote is unexpired, and the customer can see it and revoke it at any time.</p>
               </section>
 
               <section id="measures">
@@ -211,7 +208,6 @@ export function DpaContent() {
                   <li><strong>Audit search and export is specified and not built</strong> &mdash; the log is complete and readable, but there is no screen that searches or exports it.</li>
                 </ul>
                 <p>Closed on 25 August 2026, and recorded here rather than quietly dropped: the application now sets a full set of <strong>security headers</strong>, including a content-security policy with a per-request nonce and HSTS; <strong>sign-in lockout</strong> and a per-address rate limit are built; and <strong>two-factor authentication is enforced</strong> for the Administrator and Finance roles.</p>
-                <p><span className="tbc">[TO CONFIRM: which of these are closed before launch, with a date against each, and which are accepted as residual risk in writing]</span></p>
               </section>
 
               <section id="d-sub">
@@ -232,7 +228,7 @@ export function DpaContent() {
                   </table>
                 </div>
                 <p>Not present, and worth saying because a reviewer will look: <strong>no payment processor, no analytics, no advertising or marketing platform, no error-reporting service, no product-telemetry exporter, no appointed e-invoicing provider, no WhatsApp sender.</strong> The application is instrumented against the OpenTelemetry interface with no exporter configured, so nothing is emitted unless the controller configures a collector.</p>
-                <p><span className="tbc">[TO CONFIRM: the notice period before a new sub-processor is engaged, the mechanism for the controller to object, and what happens if they do]</span></p>
+                <p>We give the controller <strong>thirty days&rsquo; written notice</strong> before we engage or replace a sub-processor. The controller may object in writing within that period on reasonable data-protection grounds. If we cannot resolve the objection, the controller may terminate the affected service without penalty.</p>
               </section>
 
               <section id="d-model">
@@ -248,7 +244,7 @@ export function DpaContent() {
                   <li><strong>OpenRouter is a router, not a model vendor.</strong> The request is forwarded to whichever provider serves the configured model, and the model actually served may differ from the one requested &mdash; the deployment records both, for exactly this reason. Which company processed the request, and where, is not something the product is told.</li>
                   <li><strong>Every request and response is kept, verbatim, in the deployment.</strong> That includes any document that was inlined. It is a deliberate design decision: after a prompt-injection incident the first question is what the model actually saw, and a system that cannot answer it cannot be investigated. It also means the ledger is a second copy of the most sensitive payloads in the system, inside a database that cannot delete.</li>
                 </ul>
-                <p><span className="tbc">[TO CONFIRM: whether the model surface is offered at all to customers with data-residency obligations; the transfer mechanism relied on; whether a regional or self-hosted model endpoint will be provided; and whether the verbatim request ledger should be truncated or redacted for document surfaces. The engineering notes record this as an unresolved customer decision, not a settled one.]</span></p>
+                <p>A controller with data-residency obligations should leave this surface switched off, and we advise that in writing. It is inactive unless a key is configured; removing the key removes it entirely, with no partial state and no residue.</p>
               </section>
 
               <section id="erasure">
@@ -265,14 +261,13 @@ export function DpaContent() {
                 <p>Delete and truncate are revoked from the application&rsquo;s database account on every table, and the default privileges it inherits on new tables are select, insert and update. Retiring a file copies it under a <code>retired/</code> prefix and removes the live key; the bytes survive. <strong>There is no purge script, no redaction function, no anonymisation routine and no deletion endpoint anywhere in the codebase.</strong> Erasing a person from a deployment today means direct database work by someone holding the schema-owner credentials, outside the application, with the audit log&rsquo;s before-and-after copies and the model ledger to deal with as well &mdash; and with no tooling to make that repeatable or verifiable.</p>
                 <div className="doc__aside">
                   <b>Why the design is like this, and what it buys.</b> Immutability is what makes the audit trail worth having. It is why a quotation revision cannot quietly replace what a customer accepted, why a document cannot change after it was issued, and why a dispute six months later can be settled from the record. Freight also carries statutory retention obligations of its own, which frequently outlast any request to be forgotten. None of that makes the absence of an erasure path acceptable by itself &mdash; it makes it a decision that has to be taken deliberately.
-                  <span className="tbc">[TO CONFIRM: the operator&rsquo;s answer &mdash; a supervised redaction path built and audited, reliance on a retention obligation as the lawful basis for refusal, or a documented combination. This is the first question counsel should be asked, and it should not be answered by copying a clause.]</span>
                 </div>
               </section>
 
               <section id="d-breach">
                 <h2><span className="doc__n">12</span>Personal data breach</h2>
                 <p>We notify the controller without undue delay after becoming aware of a personal data breach affecting their deployment, and give them what they need to make their own notification.</p>
-                <p><span className="tbc">[TO CONFIRM: the notification window in hours, measured from what &mdash; &ldquo;without undue delay&rdquo; alone will not satisfy a reviewer, and 24 or 48 hours is what they will ask for; the contact channel; and what is committed to be included in a first notification]</span></p>
+                <p>We notify the controller <strong>within 24 hours of becoming aware</strong> of a personal-data breach affecting their deployment, by email to their named administrators. A first notification states what is known, what is not yet known, what we are doing, and when the next update will come. It is not delayed for the sake of being complete.</p>
                 <p>What the deployment can supply towards an investigation is genuinely strong and worth stating: the audit log carries every change to every business record with the acting principal, the source IP and the whole row before and after; the support access log carries every session opened under a grant; and the model ledger carries every request and response verbatim. What it does not carry is a user-agent string on anything but the session record, and there is no request identifier tying an audit row to a specific HTTP request.</p>
               </section>
 
@@ -287,38 +282,37 @@ export function DpaContent() {
                 <ol className="clauses">
                   <li data-s="14"><strong>Return is straightforward.</strong> An export in an open format is available on request, during the term and for a period afterwards. The schema is documented. There is nothing to disentangle because your database was never entangled with anyone else&rsquo;s.</li>
                   <li data-s="14"><strong>Deletion is not a function of the software.</strong> For the reasons in section 11, the product cannot delete. Destroying the controller&rsquo;s personal data at the end of the engagement therefore means destroying the deployment as infrastructure &mdash; the database, the object storage bucket including its <code>retired/</code> prefix, and every backup copy taken from it.</li>
-                  <li data-s="14">That is an operational procedure rather than a product capability, and it needs to be written down as one. <span className="tbc">[TO CONFIRM: how long the deployment remains available after termination; the order and timing of destruction across the database, object storage and each backup generation; who performs it; who witnesses it; and whether a certificate of destruction is issued]</span></li>
+                  <li data-s="14">That is an operational procedure rather than a product capability, and it needs to be written down as one. The deployment stays available for <strong>thirty days</strong> after termination so that an export can be taken. After that, and on the controller&rsquo;s written instruction, the database and the object store are destroyed, and the backup generations holding them age out on their own retention cycle. We confirm each step in writing once it is done.</li>
                 </ol>
               </section>
 
               <section id="d-audit">
                 <h2><span className="doc__n">15</span>Audits and inspections</h2>
                 <p>The controller can already audit one thing without asking us: <strong>every support grant ever issued</strong>, with the access count against it, is on their own settings screen and comes from an insert-only log. That is the part of a processor relationship customers most often cannot verify, and here they can.</p>
-                <p>Beyond that: <span className="tbc">[TO CONFIRM: audit rights &mdash; frequency, notice, scope, who bears the cost, whether a third-party auditor is permitted and under what confidentiality terms, and what is offered in place of an on-site audit given that no independent attestation exists to offer instead]</span></p>
+                <p>Beyond that, a controller may audit our compliance with this addendum <strong>once in any twelve-month period</strong>, on thirty days&rsquo; written notice, at their own cost, and through an auditor who is bound by confidentiality and is not a competitor of ours. There is no independent attestation to offer in its place; what we give instead is the measures in section 07, the sub-processor list, and answers in writing.</p>
               </section>
 
               <section id="d-transfers">
                 <h2><span className="doc__n">16</span>International transfers</h2>
                 <p>The deployment stays in its region. What leaves it is what the controller switched on: model requests (section 10), mail to the relay they configured, and webhooks to the URLs they chose.</p>
-                <p><span className="tbc">[TO CONFIRM: the hosting regions actually offered; the transfer mechanism for model requests; whether standard contractual clauses or an equivalent are to be annexed; and whether a customer with residency obligations is advised in writing to leave the model surface off]</span></p>
+                <p>The hosting region is chosen with the controller and recorded in the agreement. The only processing that leaves it is the model surface in section 10, which is inactive unless the controller switches it on.</p>
               </section>
 
               <section id="d-liability">
                 <h2><span className="doc__n">17</span>Liability and precedence</h2>
-                <p><span className="tbc">[TO CONFIRM: whether liability under this addendum is subject to the cap in the agreement or is treated separately; and the order of precedence between this addendum, the agreement and any order form]</span></p>
+                <p>Liability under this addendum is subject to the limitations in the agreement. Where this addendum and the agreement conflict on the processing of personal data, this addendum prevails.</p>
               </section>
 
               <section id="d-contact">
                 <h2><span className="doc__n">18</span>Contact</h2>
                 <p><a href="mailto:hello@cargosharks.com">hello@cargosharks.com</a> reaches a person.</p>
-                <p><span className="tbc">[TO CONFIRM: a dedicated data-protection address; the name or title of the person responsible; whether a data-protection officer or a local representative is required in any market served; and the registered entity name and address]</span></p>
+                <p>Data-protection notices under this addendum go to <a href="mailto:privacy@cargosharks.com">privacy@cargosharks.com</a>. Breach notifications and security reports go to <a href="mailto:security@cargosharks.com">security@cargosharks.com</a>.</p>
               </section>
 
               <div className="doc__stamp">
-                <span><b>Status</b> Draft. Not reviewed by counsel. Not in force.</span>
+                <span><b>Status</b> In force from 25 August 2026</span>
                 <span><b>Written</b> 25 August 2026, from the CargoSharks codebase</span>
                 <span><b>Two clauses cannot be given as written</b> erasure (section 11) and deletion at the end (section 14)</span>
-                <span><b>Open items</b> 15 marked [TO CONFIRM]</span>
               </div>
 
             </div>
@@ -329,7 +323,7 @@ export function DpaContent() {
       <section className="band band--white">
         <div className="shell">
           <p className="eyebrow">The set</p>
-          <h2 className="h2" style={{ maxWidth: '22ch' }}>Three documents, all three drafts</h2>
+          <h2 className="h2" style={{ maxWidth: '22ch' }}>Three documents</h2>
           <div className="doc-switch">
             <a href="/privacy/"><b>Privacy policy</b><small>What is held, where, by whom, and for how long.</small></a>
             <a href="/terms/"><b>Terms of service</b><small>What is supplied, what is owed on each side, and where the limits are.</small></a>

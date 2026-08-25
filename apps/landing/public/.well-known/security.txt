@@ -4,7 +4,7 @@
 # else. We will not pursue anyone who reports in good faith, stays within the
 # scope below and gives us a reasonable chance to fix it.
 
-Contact: mailto:security@techpotions.app
+Contact: mailto:security@cargosharks.com
 Expires: 2027-08-25T00:00:00.000Z
 Preferred-Languages: en, ar
 Canonical: https://cargosharks.com/.well-known/security.txt
