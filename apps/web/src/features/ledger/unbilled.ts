@@ -44,7 +44,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 
-export interface UnbilledJob {
+interface UnbilledJob {
   readonly jobId: string
   readonly reference: string
   readonly status: string

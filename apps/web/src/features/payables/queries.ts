@@ -301,7 +301,7 @@ export async function payablesAgeing(
 
 // --- one bill, and the argument about it -----------------------------------
 
-export interface SupplierMatchRow {
+interface SupplierMatchRow {
   readonly id: string
   readonly chargeLineId: string
   readonly jobId: string
@@ -314,7 +314,7 @@ export interface SupplierMatchRow {
   readonly accruedCurrency: string
 }
 
-export interface SupplierLineRow {
+interface SupplierLineRow {
   readonly id: string
   readonly description: string
   readonly chargeTypeId: string | null

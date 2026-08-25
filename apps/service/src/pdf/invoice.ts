@@ -31,7 +31,7 @@
 
 import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
 
-export interface InvoiceLineView {
+interface InvoiceLineView {
   readonly descriptionEn: string
   readonly descriptionAr: string | null
   readonly quantity: string

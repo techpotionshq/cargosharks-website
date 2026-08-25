@@ -43,7 +43,7 @@ export interface MilestoneView {
   readonly note?: string | null
 }
 
-export interface ContainerView {
+interface ContainerView {
   readonly containerNo: string
   readonly type: string
   readonly sealNo: string | null
@@ -231,7 +231,7 @@ export interface QuoteOptionView {
   readonly lines: readonly QuoteLineView[]
 }
 
-export interface QuoteLineView {
+interface QuoteLineView {
   readonly chargeCode: string
   readonly nameEn: string
   readonly nameAr: string

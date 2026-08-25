@@ -30,7 +30,7 @@ import {
   type PlaceView,
 } from './document-kit'
 
-export interface ManifestHouseView {
+interface ManifestHouseView {
   readonly houseBillNumber: string | null
   readonly jobReference: string
   readonly shipperName: string

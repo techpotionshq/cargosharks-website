@@ -122,7 +122,7 @@ export function fingerprint(request: ModelRequest, model: string, promptVersion:
  * Read as the system actor, since a coordinator's own branch scope would show
  * them a fraction of the spend and let the cap pass when it should not.
  */
-export async function monthToDateUsd(): Promise<number> {
+async function monthToDateUsd(): Promise<number> {
   const [row] = await withActor(systemActor(), (tx: Tx) =>
     tx
       .select({ spent: sql<string>`coalesce(sum(${aiInvocations.costUsd}), 0)::text` })

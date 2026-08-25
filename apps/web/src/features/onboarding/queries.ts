@@ -18,7 +18,7 @@ import { pilotEnquiries, pilotJobs } from '@/lib/pilot/fixtures'
 
 export type SetupStepKey = 'users' | 'customers' | 'rateCards' | 'enquiries' | 'jobs'
 
-export interface SetupStep {
+interface SetupStep {
   readonly key: SetupStepKey
   readonly done: boolean
   readonly count: number

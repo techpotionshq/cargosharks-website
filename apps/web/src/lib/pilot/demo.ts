@@ -36,7 +36,7 @@ import { cookies } from 'next/headers'
 import type { Session } from '@/lib/session'
 import { PILOT_PORTAL_CUSTOMER } from '@/lib/pilot/fixtures'
 
-export type DemoPersonaKey = 'operations' | 'customer' | 'agent'
+type DemoPersonaKey = 'operations' | 'customer' | 'agent'
 
 export interface DemoPersona {
   readonly key: DemoPersonaKey

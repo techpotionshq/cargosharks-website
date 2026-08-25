@@ -45,7 +45,7 @@ import {
   type IssuingEntity,
 } from './document-kit'
 
-export interface QuotationLineView {
+interface QuotationLineView {
   readonly chargeNameEn: string
   readonly chargeNameAr: string | null
   /** What the operator typed over the charge type's own name, where they did. */

@@ -28,7 +28,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 
-export interface CreditOverrideRow {
+interface CreditOverrideRow {
   readonly id: string
   readonly jobId: string | null
   readonly invoiceId: string | null

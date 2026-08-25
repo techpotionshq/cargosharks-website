@@ -111,8 +111,6 @@ const NODES: Record<string, LonLat> = {
   mauritius: [58.0, -20.0],
 }
 
-export type SeaNode = keyof typeof NODES
-
 /**
  * Which waypoints a ship can sail between directly.
  *

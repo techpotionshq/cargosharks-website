@@ -54,13 +54,13 @@ import { echo, fail, failWith, succeed, type ActionState } from '@/lib/form-stat
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
 
-export interface IntegrationFieldView {
+interface IntegrationFieldView {
   readonly name: string
   readonly value: string | undefined
   readonly source: SettingSource
 }
 
-export interface IntegrationSecretView {
+interface IntegrationSecretView {
   readonly name: string
   /** Whether a value exists in either layer. Never the value itself. */
   readonly isSet: boolean

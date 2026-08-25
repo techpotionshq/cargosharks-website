@@ -98,7 +98,7 @@ export interface QuietHours {
   readonly to: number
 }
 
-export const DEFAULT_QUIET_HOURS: QuietHours = {
+const DEFAULT_QUIET_HOURS: QuietHours = {
   enabled: true,
   from: QUIET_FROM_HOUR,
   to: QUIET_TO_HOUR,

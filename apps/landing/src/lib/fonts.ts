@@ -17,21 +17,21 @@ import { IBM_Plex_Mono, IBM_Plex_Sans_Arabic, Manrope } from 'next/font/google'
  * identically.
  */
 
-export const manrope = Manrope({
+const manrope = Manrope({
   subsets: ['latin'],
   variable: '--font-manrope',
   display: 'swap',
   weight: ['400', '500', '600', '700', '800'],
 })
 
-export const plexMono = IBM_Plex_Mono({
+const plexMono = IBM_Plex_Mono({
   subsets: ['latin'],
   variable: '--font-plex-mono',
   display: 'swap',
   weight: ['400', '500', '600'],
 })
 
-export const plexArabic = IBM_Plex_Sans_Arabic({
+const plexArabic = IBM_Plex_Sans_Arabic({
   subsets: ['arabic'],
   variable: '--font-plex-arabic',
   display: 'swap',

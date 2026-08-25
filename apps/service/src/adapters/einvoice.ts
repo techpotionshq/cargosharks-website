@@ -61,7 +61,7 @@ interface AspResponse {
  * it in — a URL, a bearer token, and a JSON acknowledgement. The parts that
  * would justify a per-provider file are the parts the standard already fixes.
  */
-export function aspTransmit(url: string, apiKey: string): EInvoiceTransmit {
+function aspTransmit(url: string, apiKey: string): EInvoiceTransmit {
   return {
     key: 'asp',
 

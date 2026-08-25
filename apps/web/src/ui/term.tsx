@@ -28,7 +28,7 @@ import type { ReactNode } from 'react'
  * written "demurrage" in one sentence and "Demurrage" at the head of a column
  * and still resolve to one definition.
  */
-export const GLOSSARY = {
+const GLOSSARY = {
   demurrage:
     'A daily charge the shipping line adds when your container stays at the port longer than the free days allowed.',
   detention:

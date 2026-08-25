@@ -255,7 +255,7 @@ export async function saveCargoLine(_previous: ActionState, form: FormData): Pro
 // --- issuing ---------------------------------------------------------------
 
 const KINDS = ['house_bill', 'delivery_order', 'packing_list', 'customs_pack'] as const
-export type DocumentKind = (typeof KINDS)[number]
+type DocumentKind = (typeof KINDS)[number]
 
 /**
  * Allocate the house bill number, if the branch numbers its own.

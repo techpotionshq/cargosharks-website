@@ -65,7 +65,7 @@ export interface ImapOptions {
 const CONNECT_TIMEOUT_MS = 15_000
 const SOCKET_TIMEOUT_MS = 60_000
 
-export class ImapError extends Error {
+class ImapError extends Error {
   constructor(
     message: string,
     readonly mailbox: string,

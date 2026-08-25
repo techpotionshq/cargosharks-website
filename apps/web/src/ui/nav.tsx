@@ -18,7 +18,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Icon, type IconName } from './icon'
 
-export interface NavLink {
+interface NavLink {
   readonly href: string
   readonly label: string
   readonly icon: IconName

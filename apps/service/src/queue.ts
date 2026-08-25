@@ -54,8 +54,6 @@ export const JOBS = {
   scheduledReport: 'scheduled-report',
 } as const
 
-export type JobName = (typeof JOBS)[keyof typeof JOBS]
-
 /**
  * Retry with exponential backoff. FR-AD-06 requires it for outbound webhooks,
  * and it is the right default for every call that leaves the building.

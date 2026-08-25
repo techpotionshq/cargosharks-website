@@ -18,7 +18,7 @@ import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
 import { EmptyState, PageHeader } from './layout'
 
-export interface RegisterFilter {
+interface RegisterFilter {
   readonly label: string
   readonly href: string
   readonly count?: number

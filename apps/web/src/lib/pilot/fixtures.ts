@@ -1161,7 +1161,7 @@ export function pilotJob(id: string, now = Date.now()): JobDetail | undefined {
   return jobDetail(seed, now)
 }
 
-export function pilotJobByReference(reference: string, now = Date.now()): JobDetail | undefined {
+function pilotJobByReference(reference: string, now = Date.now()): JobDetail | undefined {
   const normalised = reference.trim().toUpperCase()
   const seed = JOB_SEEDS.find((s) => {
     const year = new Date(now).getFullYear()

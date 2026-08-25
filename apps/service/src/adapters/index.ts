@@ -224,7 +224,7 @@ export async function carrierTracking(
 }
 
 /** The e-invoice transmitter. `none` until a deployment appoints a provider. */
-export async function eInvoiceTransmit(
+async function eInvoiceTransmit(
   log?: (o: unknown, m: string) => void,
 ): Promise<EInvoiceTransmit> {
   const settings = await integration('einvoice')
@@ -342,7 +342,7 @@ export async function noteMailboxError(id: string, message: string | null): Prom
  * other port is a settings row now and is resolved per use, on the reasoning
  * at the top of this file.
  */
-export interface Adapters {
+interface Adapters {
   readonly customsFiling: CustomsFiling
 }
 
