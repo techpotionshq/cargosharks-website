@@ -6,6 +6,7 @@
  * is a connection string, a storage adapter and a DNS change (§3.1).
  */
 
+import { readFileSync } from 'node:fs'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import * as schema from './schema/index'
@@ -36,9 +37,96 @@ export interface PoolConfig {
   readonly pooled?: boolean
 }
 
+/**
+ * Whether the connection string points somewhere the packets never leave.
+ *
+ * A unix socket has no hostname at all, which is why the empty string counts:
+ * `postgres:///qabandi` is as local as it gets.
+ */
+function isLoopback(connectionString: string): boolean {
+  try {
+    const { hostname } = new URL(connectionString)
+    return (
+      hostname === '' || hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+    )
+  } catch {
+    // An unparseable string is somebody else's error to report, and guessing
+    // "local" here would be the unsafe guess.
+    return false
+  }
+}
+
+/**
+ * TLS to the database — and, more usefully, making its absence a decision.
+ *
+ * This was listed as an open gap in `docs/compliance/Security_Measures.md` §6
+ * for a plain reason: nothing in the connection string or in this file asked
+ * for TLS, so whether the traffic was encrypted depended entirely on where the
+ * database happened to be that week. A reviewer cannot audit "it depends", and
+ * neither can we.
+ *
+ * Four states, and the fourth is the point:
+ *
+ *   - `disable` — no TLS, deliberately. The right answer when the database is
+ *     on the far end of a private network the operator controls, and it is
+ *     recorded as a choice rather than inferred from a silence.
+ *   - `require` — encrypted, certificate not verified. Stops passive capture;
+ *     does not stop an active man in the middle. Most managed providers on a
+ *     private link sit here.
+ *   - `verify-full` — encrypted and the certificate checked against
+ *     `DATABASE_CA_CERT`. The only setting that survives a hostile network.
+ *   - unset — allowed anywhere the packets stay on the machine, and a hard
+ *     refusal in production against a remote host. Starting anyway would mean
+ *     shipping credentials in clear across somebody's network because nobody
+ *     got round to picking, which is exactly the failure this is here to make
+ *     impossible.
+ *
+ * A `sslmode=` already in the connection string wins outright: it is the
+ * standard way to say this, `node-postgres` honours it, and quietly overriding
+ * an operator's explicit parameter is how a "secure by default" flag ends up
+ * downgrading a connection somebody had already secured.
+ */
+export function resolveSsl(connectionString: string): pg.PoolConfig['ssl'] {
+  if (/[?&]sslmode=/i.test(connectionString)) return undefined
+
+  const mode = (process.env.DATABASE_SSL ?? '').trim().toLowerCase()
+
+  if (mode === 'disable') return undefined
+  if (mode === 'require') return { rejectUnauthorized: false }
+  if (mode === 'verify-full') {
+    const caPath = process.env.DATABASE_CA_CERT
+    if (!caPath) {
+      throw new Error(
+        'DATABASE_SSL is "verify-full" but DATABASE_CA_CERT is not set. Point it at the ' +
+          "certificate authority bundle for the database's certificate — verification without " +
+          'a CA to verify against is just `require` wearing a stricter name.',
+      )
+    }
+    return { rejectUnauthorized: true, ca: readFileSync(caPath, 'utf8') }
+  }
+  if (mode !== '') {
+    throw new Error(
+      `DATABASE_SSL is "${mode}", which is not one of disable, require or verify-full. ` +
+        'Unset it to accept the default, which is refusal in production against a remote host.',
+    )
+  }
+
+  if (process.env.NODE_ENV === 'production' && !isLoopback(connectionString)) {
+    throw new Error(
+      'DATABASE_SSL is not set and the database is not local, so this would connect in clear ' +
+        'text across a network in production. Set DATABASE_SSL to verify-full (with ' +
+        'DATABASE_CA_CERT), to require, or to disable if the link is private and that is a ' +
+        'decision somebody has actually made.',
+    )
+  }
+
+  return undefined
+}
+
 export function createPool(config: PoolConfig): pg.Pool {
   const pool = new pg.Pool({
     connectionString: config.connectionString,
+    ssl: resolveSsl(config.connectionString),
     max: config.max ?? 10,
     // Fail fast rather than queue behind a dead database.
     connectionTimeoutMillis: 10_000,
