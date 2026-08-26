@@ -1,7 +1,7 @@
 import { expect, test as setup } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { MODE, STORAGE_STATE } from './support/harness'
+import { MODE, STORAGE_STATE, collectPageErrors } from './support/harness'
 import { totp } from './support/totp'
 
 /**
@@ -93,6 +93,18 @@ setup('authenticate', async ({ page, baseURL }) => {
     nothing to do: `EnrolPage` redirects to `/dashboard` for a principal whose
     role never required a factor or who already holds one.
   */
+  /*
+    Attached before the navigation, because hydration is now a suspect.
+
+    The last run narrowed this to one fact: the submit puts the form into its
+    pending state and *no POST is ever made*. React therefore ran — it changed
+    the label — and then the dispatch produced no request. A fetch that is
+    refused or throws says so in the browser console and nowhere else: not in
+    the server log, which recorded one line all run, and not on the page, which
+    is why three rounds of reading the page could not see it.
+  */
+  const browserErrors = collectPageErrors(page)
+
   await page.goto('/two-factor/enrol')
 
   if (new URL(page.url()).pathname.startsWith('/two-factor/enrol')) {
@@ -112,19 +124,25 @@ setup('authenticate', async ({ page, baseURL }) => {
     */
     const posts: string[] = []
     const began = Date.now()
+
+    /*
+      Every POST, not only the ones to this path.
+
+      Narrowing to `/two-factor` would report "none reached the server" for a
+      request that did reach it somewhere else — a locale-prefixed path, an
+      auth endpoint — which is the same sentence for two opposite findings.
+      The path is in the line instead, so a request going somewhere unexpected
+      names where.
+    */
     page.on('response', (response) => {
-      const url = new URL(response.url())
-      if (response.request().method() === 'POST' && url.pathname.startsWith('/two-factor')) {
-        posts.push(`${response.status()} after ${Date.now() - began}ms`)
-      }
+      if (response.request().method() !== 'POST') return
+      const { pathname } = new URL(response.url())
+      posts.push(`${response.status()} ${pathname} after ${Date.now() - began}ms`)
     })
     page.on('requestfailed', (request) => {
-      if (
-        request.method() === 'POST' &&
-        new URL(request.url()).pathname.startsWith('/two-factor')
-      ) {
-        posts.push(`failed: ${request.failure()?.errorText ?? 'unknown'}`)
-      }
+      if (request.method() !== 'POST') return
+      const { pathname } = new URL(request.url())
+      posts.push(`failed ${pathname}: ${request.failure()?.errorText ?? 'unknown'}`)
     })
 
     const enrol = page.locator('form').filter({ has: page.locator('input[name="password"]') })
@@ -184,6 +202,7 @@ setup('authenticate', async ({ page, baseURL }) => {
         `two-factor enrolment did not begin — ` +
           `alert: ${alert || '(none)'}; ` +
           `action POSTs: ${posts.length ? posts.join(', ') : '(none reached the server)'}; ` +
+          `browser: ${browserErrors.length ? browserErrors.join(' | ') : '(quiet)'}; ` +
           `main reads: ${main || '(empty)'}`,
       )
     }
