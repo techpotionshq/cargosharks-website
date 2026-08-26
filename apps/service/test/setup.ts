@@ -17,11 +17,17 @@
  * machine with no `.env` the whole suite died at import with
  * "process.exit unexpectedly called with 1" and a stack naming `config.ts`.
  *
- * That is exactly what CI is: a checkout with no `.env`. The suite had
+ * That is exactly what CI was: a checkout with no `.env`. The suite had
  * therefore never been able to run there, and it went unnoticed because the
  * web unit tests failed earlier in the same job and the service step was
  * skipped rather than reached. Fixing the web failure is what surfaced this
  * one.
+ *
+ * CI now copies `.env.ci` into place before any suite runs, so
+ * `INTERNAL_API_SECRET` arrives from there. `DATABASE_URL` still does not —
+ * the unit job has no database on purpose — and neither is supplied on a
+ * developer's machine that has never been configured. These stay as the floor
+ * under both.
  *
  * These are deliberately not read from anywhere and deliberately look fake.
  * Nothing here connects: the database-backed suites gate on

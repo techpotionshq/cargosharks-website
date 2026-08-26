@@ -63,6 +63,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Every job configures itself from one committed file, rather than from
+      # its own `env:` block. The blocks drifted, and the drift was invisible:
+      # `apps/service` parses `process.env` at import and exits 1 when the shape
+      # is wrong, so its suite died before a single test body ran and had never
+      # once executed in CI. `.env.ci` says what it holds and what it
+      # deliberately does not — connection strings and the signing key stay in
+      # the workflow, beside the things that create them.
+      - name: Configure the environment
+        run: cp .env.ci .env
+
       - name: Formatting
         run: pnpm format:check
 
@@ -92,6 +102,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       # The engines: six charge calculations, one clock, one working-calendar
       # duration function. No database is configured here deliberately — if
@@ -152,6 +165,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Configure the environment
+        run: cp .env.ci .env
+
       # The same `01-roles.sql` the local container mounts, applied the way a
       # managed instance needs it. The two paths cannot drift, which is the
       # point of `db:provision` existing at all.
@@ -164,13 +180,42 @@ jobs:
       - name: Seed reference data and the permission matrix
         run: pnpm db:seed
 
+      # The suites get a database of their own — the rule `.env.example` has
+      # stated all along, and CI was the last place still breaking it.
+      #
+      # Both suites below *write*: `test:db` inserts fixtures and asserts over
+      # them, and the mutation suites `coverage` measures post invoices and
+      # payments. Pointing them at `qabandi` meant the database this job had
+      # just proved it could build from an empty server was then mutated by the
+      # first suite, seeded on top by `db:seed-demo`, and read by the second —
+      # three steps sharing one database in an order nothing enforced. That is
+      # a flake waiting for a slow day, and it makes a coverage figure that
+      # nobody can reproduce.
+      #
+      # `qabandi_test` is built by the same three commands and thrown away with
+      # the runner. `qabandi` stays untouched after `db:seed`, which is the
+      # migration proof this job is named for.
+      #
+      # `ADMIN_DATABASE_URL` names `postgres` rather than the database being
+      # created: `db:provision` connects with it *first* and then issues the
+      # CREATE DATABASE, so it cannot name a database that does not exist yet.
+      - name: Provision, migrate and seed the test database
+        env:
+          ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+        run: |
+          pnpm db:provision
+          pnpm db:migrate
+          pnpm db:seed
+
       # The suite connects as `app_user` — no BYPASSRLS, no ownership. Running
       # it as the owner would pass while proving nothing, so the two URLs below
       # are deliberately different roles.
       - name: RLS policies and the negative matrix
         env:
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
         run: pnpm test:db
 
       # Coverage runs *here*, in the job that has a database, rather than
@@ -198,13 +243,23 @@ jobs:
       # this is the same combination rather than a new one. It runs after the
       # policy matrix so that suite still measures a database holding only what
       # a real deployment starts with.
+      #
+      # It loads into `qabandi_test` for the same reason the suites do:
+      # `db:seed-demo` writes as `app_user` through `withActor` — deliberately,
+      # because a seed that runs as the owner can insert rows no policy would
+      # allow — which makes it a mutation like any other.
       - name: Load the demo dataset
+        env:
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
         run: pnpm db:seed-demo
 
       - name: Coverage
         env:
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
         run: pnpm coverage
 
       # When the gate refuses, say by how much.
@@ -278,6 +333,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Install browsers
         run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
@@ -368,6 +426,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Configure the environment
+        run: cp .env.ci .env
+
       - name: Install browsers
         run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
 
@@ -446,6 +507,9 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Build every package
         run: pnpm build
