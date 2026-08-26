@@ -20,6 +20,7 @@ import { Register, RecordLink } from '@/ui/register'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
+import { todayIn } from '@/lib/time'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -37,7 +38,7 @@ export default async function InvoicesPage({
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIn()
 
   const [rows, summary] = await Promise.all([
     listInvoices(session.actor, status),

@@ -30,6 +30,7 @@ export * from './ai'
 export * from './extraction'
 export * from './grouping'
 export * from './assistant'
+export * from './time'
 
 /**
  * `./import` is deliberately *not* re-exported here.

@@ -18,6 +18,7 @@ import { assessCredit, isNearLimit, toScale, type CreditAssessment } from '@qaba
 import { creditOverrides, creditStanding, principals, withActor, type Actor } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotCreditOverrides, pilotCreditStanding } from '@/lib/pilot/fixtures'
+import { todayIn } from '@/lib/time'
 
 interface CreditOverrideRow {
   readonly id: string
@@ -75,7 +76,7 @@ export async function creditView(
     : await creditStanding(actor, customerId, branchId)
   const assessment = assessCredit(standing)
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIn()
 
   const overrides = usePilotFixtures()
     ? pilotCreditOverrides(customerId)

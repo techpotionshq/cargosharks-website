@@ -42,6 +42,7 @@ import {
   succeed,
   type ActionState,
 } from '@/lib/form-state'
+import { dayIn } from '@/lib/time'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -254,8 +255,8 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
               // is a string with holes in it and cannot format a date. The date
               // only, since an arrival estimate accurate to the minute is a
               // precision the shipping line does not have.
-              previousEta: before.eta ? before.eta.toISOString().slice(0, 10) : 'not set',
-              eta: row.eta ? row.eta.toISOString().slice(0, 10) : 'not set',
+              previousEta: before.eta ? dayIn(before.eta) : 'not set',
+              eta: row.eta ? dayIn(row.eta) : 'not set',
             },
           })
         }

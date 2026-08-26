@@ -34,6 +34,7 @@ import { Button, EmptyState, PageHeader } from '@/ui/layout'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { dayIn } from '@/lib/time'
 
 const OP_TONE = { INSERT: 'positive', UPDATE: 'info', DELETE: 'critical' } as const
 const OPERATIONS = ['INSERT', 'UPDATE', 'DELETE'] as const
@@ -43,7 +44,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 function daysAgo(days: number): string {
   const date = new Date()
   date.setUTCDate(date.getUTCDate() - days)
-  return date.toISOString().slice(0, 10)
+  return dayIn(date)
 }
 
 export async function generateMetadata(): Promise<Metadata> {
