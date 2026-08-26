@@ -2,6 +2,7 @@ import { expect, test as setup } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { MODE, STORAGE_STATE } from './support/harness'
+import { totp } from './support/totp'
 
 /**
  * Sign in once, reuse the session for every test.
@@ -56,6 +57,76 @@ setup('authenticate', async ({ page, baseURL }) => {
   */
   await page.waitForURL((url) => !url.pathname.startsWith('/sign-in'), { timeout: 30_000 })
   expect(page.url(), 'sign-in did not authenticate').not.toContain('/sign-in')
+
+  /*
+    The second factor, because the role this account holds demands one.
+
+    `administrator` and `finance` carry `requires_two_factor` (FR-ID-06), and
+    the shells send an unenrolled principal to `/two-factor/enrol` before any
+    screen renders. So signing in was never enough, and the way that failed is
+    worth recording: this step passed, every dependent spec ran, and forty-eight
+    of them failed reporting empty registers and a missing assistant panel.
+    `db:diagnose` proved the rows were there and readable, which ruled out the
+    two obvious causes and left no explanation at all — until the harness was
+    made to print what the page actually said, and every register turned out to
+    read "Set up two-factor authentication".
+
+    The assertions above could not see it. Sign-in genuinely succeeded, the
+    redirect away from `/sign-in` genuinely happened, and the interstitial has
+    an `h1` like every other screen, so "authenticated" and "authenticated and
+    then stopped at a gate" were indistinguishable.
+
+    Enrolling through the product's own two screens rather than seeding a secret
+    into the database: it needs no production code to grow a test-only door, and
+    it means the mandatory-2FA path — which `schema/auth.ts` records as having
+    once been shipped with a schema that could not have supported it, because
+    nothing ever ran the flow — is exercised on every seeded run.
+  */
+  /*
+    Navigated to rather than waited for, which is the race-free half.
+
+    Where sign-in lands is not reliably the enrol screen: the shells render the
+    gate *in place* — the failing run showed `/enquiries` answering 200 with
+    "Set up two-factor authentication" as its whole main region — so a redirect
+    is not guaranteed and `waitForURL` above can resolve on an intermediate hop.
+    Asking for the page directly settles it, and costs nothing when there is
+    nothing to do: `EnrolPage` redirects to `/dashboard` for a principal whose
+    role never required a factor or who already holds one.
+  */
+  await page.goto('/two-factor/enrol')
+
+  if (new URL(page.url()).pathname.startsWith('/two-factor/enrol')) {
+    const enrol = page.locator('form').filter({ has: page.locator('input[name="password"]') })
+    await enrol.locator('input[name="password"]').fill(password)
+    await enrol.locator('button[type="submit"]').click()
+
+    /*
+      The secret in text, behind the "enter it manually" disclosure — the same
+      string the QR encodes, and the only way to read it without a camera.
+
+      The `<summary>` has to be clicked first. A closed `<details>` hides its
+      content from the accessibility tree, so `toBeVisible()` on the code inside
+      it is false however present the string is — which is a failure that reads
+      as "enrolment issued no secret" when the secret is right there.
+    */
+    const disclosure = page
+      .locator('details')
+      .filter({ has: page.locator('code') })
+      .first()
+    await disclosure.locator('summary').click()
+
+    const secret = disclosure.locator('code')
+    await expect(secret, 'enrolment issued no secret').toBeVisible({ timeout: 15_000 })
+    const base32 = ((await secret.textContent()) ?? '').trim()
+    expect(base32, 'the issued secret is not base32').toMatch(/^[A-Z2-7\s]+$/i)
+
+    const code = page.locator('input[name="code"]')
+    await code.fill(totp(base32))
+    await page.locator('form').filter({ has: code }).locator('button[type="submit"]').click()
+
+    await page.waitForURL((url) => !url.pathname.startsWith('/two-factor'), { timeout: 30_000 })
+    expect(page.url(), 'the second factor was not accepted').not.toContain('/two-factor')
+  }
 
   mkdirSync(dirname(STORAGE_STATE), { recursive: true })
   await page.context().storageState({ path: STORAGE_STATE })
