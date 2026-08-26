@@ -39,6 +39,23 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const OPERATIONS = new Set(['INSERT', 'UPDATE', 'DELETE'])
 const LIMIT = 10_000
 
+/**
+ * The table name, made safe to sit inside a quoted `content-disposition`.
+ *
+ * `table` reaches the query through drizzle's `eq()`, so it was never a SQL
+ * concern — but it also reached the filename raw, and that header is a quoted
+ * string. A value carrying a `"` closes the quote and appends a second
+ * `filename=` parameter, which browsers disagree about resolving: `?table=x";
+ * filename="report.html` is a download that names itself something other than
+ * what this route produced. Node rejects a CRLF in a header value, so the
+ * ceiling is that spoof rather than a split response, but the fix is one line
+ * and the alternative is relying on a runtime check to hold.
+ *
+ * Conservative on purpose: audited tables are `snake_case` identifiers, so
+ * anything outside that set is not a table name this export can be for.
+ */
+const slug = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '') || 'all'
+
 export async function GET(request: Request) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
@@ -78,6 +95,11 @@ export async function GET(request: Request) {
     'table',
     'record_id',
     'principal',
+    // Both names rather than the reader's one. The search matches either, so a
+    // file that carried only the English name could not be checked against the
+    // Arabic term that produced it — and an export is evidence, which is the
+    // wrong place to drop half the record on a locale's behalf.
+    'principal_ar',
     'principal_type',
     'branch',
     'ip',
@@ -96,6 +118,7 @@ export async function GET(request: Request) {
       row.tableName,
       row.rowId,
       row.principalName ?? 'system',
+      row.principalNameAr ?? '',
       row.principalType ?? 'system',
       row.branchCode ?? '',
       row.ip ?? '',
@@ -110,7 +133,7 @@ export async function GET(request: Request) {
   return new NextResponse(body, {
     headers: {
       'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename="audit-${filters.table ?? 'all'}-${stamp}.csv"`,
+      'content-disposition': `attachment; filename="audit-${filters.table ? slug(filters.table) : 'all'}-${stamp}.csv"`,
       'cache-control': 'private, no-store',
     },
   })
