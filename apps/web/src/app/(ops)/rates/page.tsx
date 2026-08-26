@@ -18,7 +18,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
   laneMargins,
@@ -46,6 +46,8 @@ export default async function RatesPage({
 }: {
   searchParams: Promise<{ direction?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { direction } = await searchParams
 
@@ -147,7 +149,7 @@ export default async function RatesPage({
                   <TD className="text-ink-muted">
                     {locale === 'ar' ? card.counterpartyAr : card.counterparty}
                   </TD>
-                  <TD className="text-ink-muted">{formatDate(card.validTo, locale)}</TD>
+                  <TD className="text-ink-muted">{formatDate(card.validTo, locale, timeZone)}</TD>
                   {/*
                     Zero days left is today, and it still reads as a number
                     rather than as "expired" — the card is valid until the end
@@ -320,9 +322,9 @@ export default async function RatesPage({
                   )}
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">
-                  {formatDate(new Date(row.validFrom), locale)}
+                  {formatDate(new Date(row.validFrom), locale, timeZone)}
                   {row.validTo
-                    ? ` — ${formatDate(new Date(row.validTo), locale)}`
+                    ? ` — ${formatDate(new Date(row.validTo), locale, timeZone)}`
                     : ` — ${t('openEnded')}`}
                 </TD>
                 <TD>

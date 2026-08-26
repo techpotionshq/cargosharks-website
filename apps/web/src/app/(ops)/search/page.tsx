@@ -14,7 +14,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { MIN_QUERY_LENGTH, search, totalHits } from '@/features/search/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -36,6 +36,8 @@ export default async function SearchPage({
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { q } = await searchParams
   const query = (q ?? '').trim()
@@ -160,7 +162,7 @@ export default async function SearchPage({
                         </Badge>
                       </TD>
                       <TD align="end" numeric>
-                        {formatDay(job.eta, locale)}
+                        {formatDay(job.eta, locale, timeZone)}
                       </TD>
                     </TR>
                   ))}

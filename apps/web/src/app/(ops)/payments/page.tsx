@@ -8,7 +8,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listPayments, paymentSummary } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -24,6 +24,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function PaymentsPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const t = await getTranslations('payments')
   const resolved = await getLocale()
@@ -71,7 +73,7 @@ export default async function PaymentsPage() {
             return (
               <TR key={row.id} flag={unallocated > 0 ? 'caution' : undefined}>
                 <TD className="whitespace-nowrap text-ink">
-                  {formatDate(new Date(row.receivedOn), locale)}
+                  {formatDate(new Date(row.receivedOn), locale, timeZone)}
                 </TD>
                 <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
                 <TD className="ref text-ink-muted">{row.reference ?? '—'}</TD>

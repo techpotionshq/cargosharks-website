@@ -13,7 +13,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { listApiKeys, listWebhookEndpoints } from '@/features/admin/api-keys'
@@ -36,6 +36,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ApiKeysPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
@@ -99,10 +101,10 @@ export default async function ApiKeysPage() {
                   </TD>
                   <TD className="text-ink-muted">{key.customerName ?? '—'}</TD>
                   <TD className="whitespace-nowrap text-ink-muted">
-                    {key.lastUsedAt ? formatDate(key.lastUsedAt, locale) : t('neverUsed')}
+                    {key.lastUsedAt ? formatDate(key.lastUsedAt, locale, timeZone) : t('neverUsed')}
                   </TD>
                   <TD className="whitespace-nowrap text-ink-muted">
-                    {key.expiresAt ? formatDate(key.expiresAt, locale) : t('noExpiry')}
+                    {key.expiresAt ? formatDate(key.expiresAt, locale, timeZone) : t('noExpiry')}
                   </TD>
                   <TD>
                     {key.revokedAt ? (
@@ -193,7 +195,7 @@ export default async function ApiKeysPage() {
                       </span>
                     ) : endpoint.lastDeliveredAt ? (
                       <span className="text-ink-muted">
-                        {formatDate(endpoint.lastDeliveredAt, locale)}
+                        {formatDate(endpoint.lastDeliveredAt, locale, timeZone)}
                       </span>
                     ) : (
                       <span className="text-ink-subtle">{t('nothingYet')}</span>

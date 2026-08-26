@@ -13,7 +13,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getJobDetail } from '@/features/jobs/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -53,6 +53,8 @@ import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
   const job = await getJobDetail(session.actor, id)
@@ -254,7 +256,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 actualAt: m.actualAt,
                 note: m.note ?? null,
               }))}
-              formatDate={(date) => formatDateTime(date, locale)}
+              formatDate={(date) => formatDateTime(date, locale, timeZone)}
               labels={{
                 planned: tTrack('milestoneStates.planned'),
                 revised: tTrack('milestoneStates.revised'),
@@ -286,9 +288,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {job.bookingNumber ?? '—'}
               </Field>
               <Field label={t('vessel')}>{job.vesselOrFlight ?? '—'}</Field>
-              <Field label={t('etd')}>{formatDate(job.etd, locale)}</Field>
+              <Field label={t('etd')}>{formatDate(job.etd, locale, timeZone)}</Field>
               <Field label={job.ata ? t('ata') : t('eta')}>
-                {formatDate(job.ata ?? job.eta, locale)}
+                {formatDate(job.ata ?? job.eta, locale, timeZone)}
               </Field>
               <Field label={t('customerReference')} mono>
                 {job.customerReference ?? '—'}
@@ -589,10 +591,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       {container.sealNo ?? '—'}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
-                      {formatDate(container.dischargedAt, locale)}
+                      {formatDate(container.dischargedAt, locale, timeZone)}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
-                      {formatDate(container.gateOutAt, locale)}
+                      {formatDate(container.gateOutAt, locale, timeZone)}
                     </TD>
                   </TR>
                 ))}

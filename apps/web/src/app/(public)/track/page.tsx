@@ -21,7 +21,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { trackShipment } from '@/features/tracking/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { getBrand } from '@/lib/brand'
@@ -43,6 +43,8 @@ export default async function TrackPage({
 }: {
   searchParams: Promise<{ reference?: string; verifier?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const params = await searchParams
   const reference = params.reference?.trim() ?? ''
   const verifier = params.verifier?.trim() ?? ''
@@ -154,7 +156,7 @@ export default async function TrackPage({
                 <span className="numeric text-[0.8125rem] text-ink-muted">
                   {result.ata ? t('arrived') : t('eta')}{' '}
                   <span className="font-semibold text-ink">
-                    {formatDate(result.ata ?? result.eta, locale)}
+                    {formatDate(result.ata ?? result.eta, locale, timeZone)}
                   </span>
                 </span>
               </div>
@@ -174,9 +176,9 @@ export default async function TrackPage({
                 </span>
               </Field>
               <Field label={t('vessel')}>{result.vesselOrFlight ?? '—'}</Field>
-              <Field label={t('departed')}>{formatDate(result.etd, locale)}</Field>
+              <Field label={t('departed')}>{formatDate(result.etd, locale, timeZone)}</Field>
               <Field label={result.ata ? t('arrived') : t('eta')}>
-                {formatDate(result.ata ?? result.eta, locale)}
+                {formatDate(result.ata ?? result.eta, locale, timeZone)}
               </Field>
             </dl>
 
@@ -209,7 +211,7 @@ export default async function TrackPage({
                   revisedAt: m.revisedAt,
                   actualAt: m.actualAt,
                 }))}
-                formatDate={(date) => formatDateTime(date, locale)}
+                formatDate={(date) => formatDateTime(date, locale, timeZone)}
                 labels={{
                   planned: t('milestoneStates.planned'),
                   revised: t('milestoneStates.revised'),

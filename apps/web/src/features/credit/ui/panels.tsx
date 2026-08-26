@@ -16,7 +16,7 @@
  * one disappears the day after it is used.
  */
 
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -49,6 +49,8 @@ export async function CreditStandingCard({
   readonly branchId: string
   readonly className?: string
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [t, locale] = await Promise.all([getTranslations('credit'), getLocale()])
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
@@ -149,7 +151,7 @@ export async function CreditStandingCard({
           <TBody>
             {view.overrides.map((o) => (
               <TR key={o.id}>
-                <TD>{formatDate(o.approvedAt, lang)}</TD>
+                <TD>{formatDate(o.approvedAt, lang, timeZone)}</TD>
                 <TD>{lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}</TD>
                 <TD>
                   {o.expiresOn ? (

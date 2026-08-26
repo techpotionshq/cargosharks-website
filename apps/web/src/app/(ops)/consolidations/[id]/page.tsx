@@ -13,7 +13,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import {
@@ -43,6 +43,8 @@ export default async function ConsolidationDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
 
@@ -142,10 +144,10 @@ export default async function ConsolidationDetailPage({
               {[consol.originName, consol.destinationName].filter(Boolean).join(' → ') || '—'}
             </Field>
             <Field label={t('etd')} mono>
-              {formatDate(consol.etd, locale)}
+              {formatDate(consol.etd, locale, timeZone)}
             </Field>
             <Field label={t('eta')} mono>
-              {formatDate(consol.eta, locale)}
+              {formatDate(consol.eta, locale, timeZone)}
             </Field>
             <Field label={tc('status')}>
               <Badge tone={consol.status === 'open' ? 'info' : 'muted'}>

@@ -19,7 +19,7 @@
 
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -37,6 +37,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function SupportAccessPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   /*
     `notFound`, not a forbidden page — the same rule the users screen follows.
@@ -134,7 +136,9 @@ export default async function SupportAccessPage() {
                     </Badge>
                   </TD>
                   <TD className="text-ink-muted">{entry.grantedBy}</TD>
-                  <TD className="tabular-nums">{formatDateTime(entry.createdAt, locale)}</TD>
+                  <TD className="tabular-nums">
+                    {formatDateTime(entry.createdAt, locale, timeZone)}
+                  </TD>
                   <TD>
                     <Badge
                       tone={state === 'live' ? 'caution' : state === 'revoked' ? 'info' : 'muted'}

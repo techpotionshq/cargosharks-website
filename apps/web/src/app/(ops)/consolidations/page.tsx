@@ -8,7 +8,7 @@
  */
 
 import Link from 'next/link'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
@@ -21,6 +21,8 @@ import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 
 export default async function ConsolidationsPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [rows, t, tc, tMode] = await Promise.all([
     listConsolidations(session.actor),
@@ -101,7 +103,7 @@ export default async function ConsolidationsPage() {
                     {Number(row.volumeCbm).toFixed(2)}
                   </TD>
                   <TD align="end" numeric className="text-ink-muted">
-                    {formatDate(row.etd, locale)}
+                    {formatDate(row.etd, locale, timeZone)}
                   </TD>
                   <TD align="end">
                     <span className="inline-flex items-center gap-1.5">

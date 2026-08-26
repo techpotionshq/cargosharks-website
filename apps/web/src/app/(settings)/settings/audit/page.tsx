@@ -24,7 +24,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { auditTableCounts, listAudit } from '@/features/admin/queries'
@@ -57,6 +57,8 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<{ table?: string; op?: string; q?: string; from?: string; to?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const params = await searchParams
   const t = await getTranslations('audit')
@@ -219,7 +221,7 @@ export default async function AuditPage({
               <TD className="whitespace-nowrap">
                 <span className="text-ink">{formatRelative(row.at, locale, now)}</span>
                 <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
-                  {formatDateTime(row.at, locale)}
+                  {formatDateTime(row.at, locale, timeZone)}
                 </span>
               </TD>
               <TD>

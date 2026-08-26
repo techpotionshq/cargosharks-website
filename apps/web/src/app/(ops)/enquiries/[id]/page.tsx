@@ -19,7 +19,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -36,6 +36,8 @@ import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
   const comparison = await getQuoteComparison(session.actor, id)
@@ -280,7 +282,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 />
 
                 <p className={`mt-3 text-[0.6875rem] text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
-                  {t('validUntil')} {formatDate(option.validUntil, locale)}
+                  {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
                 </p>
               </div>
             </div>

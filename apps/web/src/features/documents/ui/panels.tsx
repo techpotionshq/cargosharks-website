@@ -14,7 +14,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { formatDate } from '@/lib/format'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -250,6 +250,8 @@ export async function DocumentActionsCard({
   readonly dutyAction?: ReactNode
   readonly className?: string
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [t, locale] = await Promise.all([getTranslations('documentActions'), getLocale()])
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
@@ -350,7 +352,9 @@ export async function DocumentActionsCard({
                 <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-1.5">
                   <span className="text-[0.75rem] text-ink-muted">
                     {houseBillSurrenderedAt
-                      ? t('surrenderedOn', { date: formatDate(houseBillSurrenderedAt, lang) })
+                      ? t('surrenderedOn', {
+                          date: formatDate(houseBillSurrenderedAt, lang, timeZone),
+                        })
                       : t('surrenderHint')}
                   </span>
                   {!houseBillSurrenderedAt && mayRelease ? (

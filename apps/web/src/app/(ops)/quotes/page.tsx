@@ -11,7 +11,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listQuotes, quoteStatusCounts } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -40,6 +40,8 @@ export default async function QuotesPage({
 }: {
   searchParams: Promise<{ status?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { status } = await searchParams
   const t = await getTranslations('quotes')
@@ -138,7 +140,7 @@ export default async function QuotesPage({
                   {margin === null ? '—' : `${margin.toFixed(1)}%`}
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">
-                  {row.validUntil ? formatDate(new Date(row.validUntil), locale) : '—'}
+                  {row.validUntil ? formatDate(new Date(row.validUntil), locale, timeZone) : '—'}
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">{row.preparedBy ?? '—'}</TD>
               </TR>

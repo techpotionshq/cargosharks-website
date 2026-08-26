@@ -22,9 +22,11 @@
  * rather than two: `lib/time.ts` owns the default because the *arithmetic*
  * needed it first, and a second copy here is how the two halves drift apart.
  *
- * The formatters below take a zone rather than reading this, so a reader's own
- * setting reaches them. It remains the default for every caller that has not
- * been given one yet.
+ * The formatters below take a zone rather than reading this. Every call site
+ * now passes one — pages and panels ask `getTimeZone()`, which `next-intl`
+ * resolves per request from the principal's column — so this is the fallback
+ * for a caller with no request behind it (a test, a script) rather than the
+ * value most dates are rendered in.
  */
 export const TIME_ZONE = DEFAULT_TIME_ZONE
 

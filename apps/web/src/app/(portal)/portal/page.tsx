@@ -11,7 +11,7 @@
  * in front of it, rather than a different design.
  */
 
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listPortalShipments } from '@/features/portal/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -24,6 +24,8 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 
 export default async function PortalHome() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const shipments = await listPortalShipments(session.actor)
 
@@ -89,7 +91,7 @@ export default async function PortalHome() {
                   <div className="text-end">
                     <p className="eyebrow mb-1">{tJob('eta')}</p>
                     <p className="numeric text-[0.9375rem] font-semibold text-ink">
-                      {formatDay(shipment.eta, locale)}
+                      {formatDay(shipment.eta, locale, timeZone)}
                     </p>
                     <p className="numeric text-[0.6875rem] text-ink-subtle">
                       {formatRelative(shipment.eta, locale, now)}
