@@ -348,7 +348,35 @@ export async function openFirstRecordAndAssertHealthy(
   const board = await page.goto(register, { waitUntil: 'domcontentloaded' })
   expect(board?.status(), `${register} responded ${board?.status()}`).toBeLessThan(400)
 
+  /*
+    When there is no row, say what there *was* instead.
+
+    `${register} rendered no record to open` was the whole message for nine
+    registers at once, and it is compatible with every cause: no rows in the
+    database, rows the principal cannot see, an empty state, an error boundary,
+    or rows that render without links. Ruling the first two out took a separate
+    database diagnostic and three CI runs, and the message would still have been
+    the same afterwards.
+
+    So the failure now carries the page's own account of itself — how many links
+    of any kind it holds, what its main region actually says, and anything the
+    console reported. That is the difference between "a register is empty" and
+    "the register says `No enquiries match this view`", which point at opposite
+    fixes and are indistinguishable from the assertion alone.
+  */
   const row = page.locator(`a[href^="${register}/"]`).first()
+  if (!(await row.count())) {
+    const anchors = await page.locator('a').count()
+    const main = ((await page.locator('main').first().textContent()) ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 400)
+    throw new Error(
+      `${register} rendered no record to open — ` +
+        `${anchors} link(s) on the page, main reads: ${main || '(empty)'}` +
+        (errors.length ? `\nconsole: ${errors.join(' | ')}` : ''),
+    )
+  }
   await expect(row, `${register} rendered no record to open`).toBeVisible()
 
   const href = (await row.getAttribute('href')) ?? `${register}/?`
