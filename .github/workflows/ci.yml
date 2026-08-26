@@ -456,6 +456,23 @@ jobs:
           pnpm db:create-user --email e2e@qabandi.test --name "E2E Operator"
           --role administrator --password "$E2E_PASSWORD"
 
+      # What the database holds, and what this account can see of it — into the
+      # job summary, before anything renders.
+      #
+      # This suite failed with 48 specs reporting an empty register and no way
+      # to tell which of the two causes it was: the seed wrote nothing, or the
+      # rows are there and RLS is filtering them out for the account the suite
+      # signs in as. Those need opposite fixes and the failure text is identical
+      # for both. `db:seed-demo` does print counts, but at the head of a log
+      # whose readable tail is the Postgres container dump, which put the answer
+      # out of reach for four runs of guessing.
+      #
+      # `continue-on-error` because a diagnostic must never be the thing that
+      # fails the job it is explaining.
+      - name: Dataset and scope
+        continue-on-error: true
+        run: pnpm db:diagnose --as "$E2E_EMAIL"
+
       # `next start` runs as production, so `instrumentation.ts` refuses to boot
       # without a signing key — which is what it is there for. Both end-to-end
       # jobs were never given one, so the web server died on every restart

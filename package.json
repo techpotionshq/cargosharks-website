@@ -36,6 +36,7 @@
     "db:seed": "pnpm --filter @qabandi/db seed",
     "db:create-user": "pnpm --filter @qabandi/db create-user",
     "db:seed-demo": "pnpm --filter @qabandi/db seed-demo",
+    "db:diagnose": "pnpm --filter @qabandi/db diagnose",
     "db:up": "docker compose -f compose.dev.yaml up -d db",
     "db:down": "docker compose -f compose.dev.yaml down",
     "db:reset": "docker compose -f compose.dev.yaml down -v && docker compose -f compose.dev.yaml up -d db",
