@@ -106,7 +106,8 @@
     "total": "Total",
     "currency": "Currency",
     "notes": "Notes",
-    "description": "Description"
+    "description": "Description",
+    "timeZone": "Time zone"
   },
   "search": {
     "title": "Search",

@@ -35,6 +35,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { cookies } from 'next/headers'
 import type { Session } from '@/lib/session'
 import { PILOT_PORTAL_CUSTOMER } from '@/lib/pilot/fixtures'
+import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type DemoPersonaKey = 'operations' | 'customer' | 'agent'
 
@@ -255,6 +256,7 @@ function sessionFor(persona: DemoPersona, pilot: Session): Session {
       nameAr: persona.nameAr,
       email: persona.email,
       locale: 'en',
+      timezone: DEFAULT_TIME_ZONE,
     },
     // Not `allPermissionKeys()`, and not a trimmed subset of it either — the
     // real thing is empty. See the note at the top of the file.

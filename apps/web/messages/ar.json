@@ -106,7 +106,8 @@
     "total": "الإجمالي",
     "currency": "العملة",
     "notes": "ملاحظات",
-    "description": "الوصف"
+    "description": "الوصف",
+    "timeZone": "المنطقة الزمنية"
   },
   "search": {
     "title": "بحث",

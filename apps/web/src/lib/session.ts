@@ -15,6 +15,7 @@ import { and, eq, gt } from 'drizzle-orm'
 import { allPermissionKeys } from '@qabandi/core'
 import { usePilotFixtures, useDemoLogin } from '@/lib/pilot/source'
 import { demoSession } from '@/lib/pilot/demo'
+import { DEFAULT_TIME_ZONE, resolveTimeZone } from '@/lib/time'
 import {
   authSession,
   principalBranchRoles,
@@ -34,6 +35,8 @@ export interface Session {
     readonly nameAr: string | null
     readonly email: string
     readonly locale: 'en' | 'ar'
+    /** The zone this principal reads dates in — `lib/time.ts`. */
+    readonly timezone: string
   }
   /** Permission keys across every branch the principal holds a role in. */
   readonly permissions: ReadonlySet<string>
@@ -85,6 +88,7 @@ const PILOT_SESSION: Session = {
     */
     email: 'operations@cargosharks.example',
     locale: 'en',
+    timezone: DEFAULT_TIME_ZONE,
   },
   // `allPermissionKeys()`, not `permissionKeys()`. The latter returns only the
   // keys the state machines reference, so this principal held every
@@ -146,6 +150,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
         nameAr: principals.nameAr,
         email: principals.email,
         locale: principals.locale,
+        timezone: principals.timezone,
         type: principals.type,
         customerId: principals.customerId,
         partnerId: principals.partnerId,
@@ -208,6 +213,10 @@ export const getSession = cache(async (): Promise<Session | null> => {
         nameAr: row.nameAr,
         email: row.email,
         locale: row.locale,
+        // Resolved rather than trusted: tzdata drops zones, and a principal
+        // carrying one the runtime no longer knows must read dates in the
+        // default rather than throw on every page.
+        timezone: resolveTimeZone(row.timezone),
       },
       permissions,
       branchRoles,

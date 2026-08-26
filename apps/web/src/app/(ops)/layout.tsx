@@ -33,7 +33,7 @@ import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
-import { LanguageSwitch, ThemeSwitch } from '@/ui/preferences'
+import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
 
 export default async function OpsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -345,6 +345,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                 {tApp('pilot')}
               </span>
             ) : null}
+            <TimeZoneSwitch current={session.principal.timezone} />
             <ThemeSwitch current={theme} />
             <LanguageSwitch />
           </div>

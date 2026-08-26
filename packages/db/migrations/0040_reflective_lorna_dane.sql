@@ -1,0 +1,1 @@
+ALTER TABLE "principals" ADD COLUMN "timezone" text DEFAULT 'Asia/Kuwait' NOT NULL;
