@@ -55,6 +55,24 @@ describe('the audit export', () => {
   })
 
   /*
+    `table` is the one filter that reaches a header rather than only the query.
+
+    It is safe in the query — drizzle compares it with `eq()` — so the risk was
+    never SQL. It is that `content-disposition` is a quoted string: a `"` in the
+    value closes the quote and a second `filename=` follows it, and browsers do
+    not agree on which one wins. The download then names itself something this
+    route did not produce. The whole parameter list has to stay one `filename=`.
+  */
+  it('refuses to let the table filter name the file something else', async () => {
+    const headers = await head(`?table=${encodeURIComponent('x";filename="report.html')}`)
+    const disposition = headers.get('content-disposition') ?? ''
+    expect(disposition).toMatch(
+      /^attachment; filename="audit-[a-zA-Z0-9_-]*-\d{4}-\d{2}-\d{2}\.csv"$/,
+    )
+    expect(disposition.match(/filename=/g)).toHaveLength(1)
+  })
+
+  /*
     Read as bytes, and it has to be.
 
     `Response.text()` runs the WHATWG "UTF-8 decode", which *strips* a leading
@@ -72,7 +90,7 @@ describe('the audit export', () => {
   it('writes the header row every downstream reader keys on', async () => {
     const first = (await body()).replace(/^﻿/, '').split('\r\n')[0]
     expect(first).toBe(
-      '"id","at_utc","operation","table","record_id","principal","principal_type","branch","ip"',
+      '"id","at_utc","operation","table","record_id","principal","principal_ar","principal_type","branch","ip"',
     )
   })
 
@@ -108,6 +126,24 @@ describe('the audit export', () => {
   it('returns only a header for a period before anything was written', async () => {
     const lines = (await body('?from=2000-01-01&to=2000-01-02')).trimEnd().split('\r\n')
     expect(lines).toHaveLength(1)
+  })
+
+  /*
+    The Arabic half of the search, which had nothing to return it.
+
+    `listAudit` matches `q` against `nameEn` *and* `nameAr`, but the row it
+    built carried only the English name — so an Arabic search either found
+    nothing, or found rows whose principal column named somebody else. The
+    fixture predicate had the same hole, which is why no test caught it.
+  */
+  it('finds an entry by an Arabic principal name, and carries that name out', async () => {
+    const rows = (await body()).trimEnd().split('\r\n').slice(1)
+    const arabic = rows.map((row) => row.split('","')[6]).find((name) => name)
+    expect(arabic, 'no fixture row carried an Arabic principal name').toBeTruthy()
+
+    const found = (await body(`?q=${encodeURIComponent(arabic!)}`)).trimEnd().split('\r\n').slice(1)
+    expect(found.length).toBeGreaterThan(0)
+    for (const row of found) expect(row.split('","')[6]).toBe(arabic)
   })
 
   it('finds an entry by a term in its record id', async () => {

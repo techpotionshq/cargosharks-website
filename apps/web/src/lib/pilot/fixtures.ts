@@ -5221,6 +5221,7 @@ export function pilotAudit(now = Date.now(), filters: AuditFilters = {}): AuditR
     tableName: seed.table,
     rowId: seed.row,
     principalName: seed.person === null ? null : PEOPLE[seed.person]!.en,
+    principalNameAr: seed.person === null ? null : PEOPLE[seed.person]!.ar,
     /*
         Null principal is the *system* writing — the free-time sweep raising a
         clock and the charge line it wrote by itself. That pair is the audit
@@ -5238,7 +5239,7 @@ export function pilotAudit(now = Date.now(), filters: AuditFilters = {}): AuditR
       if (from !== undefined && at < from) return false
       if (to !== undefined && at > to) return false
       if (!term) return true
-      return [row.rowId, row.principalName, row.ip].some((field) =>
+      return [row.rowId, row.principalName, row.principalNameAr, row.ip].some((field) =>
         (field ?? '').toLowerCase().includes(term),
       )
     })

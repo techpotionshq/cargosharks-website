@@ -193,6 +193,27 @@ describe('resolving an integration', () => {
       expect(resolved.hasSecret.password).toBe(true)
     })
 
+    /**
+     * The environment alone is enough, and the assistant dock depends on it.
+     *
+     * `assistantConfigured()` asks this function whether the `ai` spec has an
+     * `apiKey`, and `assistant-dock.tsx` draws no launcher when it does not —
+     * "no key, no dock". The pilot fixtures answer with a row; a real
+     * deployment that has never opened the settings screen, and the seeded
+     * end-to-end job, have only `OPENROUTER_API_KEY`. If presence ever became
+     * row-only, both would lose the dock silently: the feature would still be
+     * built, tested and in the nav, and simply never appear.
+     */
+    it('reports a credential present from the environment with no row at all', () => {
+      const ai = integrationSpec('ai')!
+      const resolved = resolveIntegration(ai, undefined, { OPENROUTER_API_KEY: 'from-the-env' })
+
+      expect(resolved.hasSecret.apiKey).toBe(true)
+      // Presence only — the environment's value is never carried as ciphertext.
+      expect(resolved.sealed.apiKey).toBeUndefined()
+      expect(JSON.stringify(resolved)).not.toContain('from-the-env')
+    })
+
     it('counts a required credential as missing only when neither layer has one', () => {
       const einvoice = integrationSpec('einvoice')!
 

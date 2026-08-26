@@ -1027,6 +1027,7 @@ export interface AuditRow {
   readonly tableName: string
   readonly rowId: string
   readonly principalName: string | null
+  readonly principalNameAr: string | null
   readonly principalType: string | null
   readonly branchCode: string | null
   readonly ip: string | null

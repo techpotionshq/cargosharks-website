@@ -404,6 +404,16 @@ export interface AuditRow {
   readonly tableName: string
   readonly rowId: string
   readonly principalName: string | null
+  /*
+    The Arabic name is selected because the search already matches it.
+
+    `q` tests `nameEn` *and* `nameAr`, so a reader searching an Arabic name got
+    back rows whose principal column then showed the English one — a result set
+    that looks unrelated to what was typed. Carrying both lets the screen show
+    the name in the reader's own language and the export carry both, which is
+    the rule this product states everywhere else.
+  */
+  readonly principalNameAr: string | null
   readonly principalType: string | null
   readonly branchCode: string | null
   readonly ip: string | null
@@ -483,6 +493,7 @@ export async function listAudit(actor: Actor, filters: AuditFilters = {}): Promi
         tableName: auditLog.tableName,
         rowId: auditLog.rowId,
         principalName: principals.nameEn,
+        principalNameAr: principals.nameAr,
         principalType: auditLog.principalType,
         branchCode: branches.code,
         ip: auditLog.ip,

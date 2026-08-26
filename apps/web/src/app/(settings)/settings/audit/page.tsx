@@ -226,7 +226,11 @@ export default async function AuditPage({
               </TD>
               <TD className="ref whitespace-nowrap text-ink">{row.tableName}</TD>
               <TD className="whitespace-nowrap">
-                <span className="text-ink">{row.principalName ?? t('system')}</span>
+                <span className="text-ink">
+                  {(locale === 'ar' && row.principalNameAr
+                    ? row.principalNameAr
+                    : row.principalName) ?? t('system')}
+                </span>
                 <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
                   {row.principalType}
                 </span>
