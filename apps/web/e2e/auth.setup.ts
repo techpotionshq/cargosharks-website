@@ -96,6 +96,37 @@ setup('authenticate', async ({ page, baseURL }) => {
   await page.goto('/two-factor/enrol')
 
   if (new URL(page.url()).pathname.startsWith('/two-factor/enrol')) {
+    /*
+      What the server action actually did, because the page cannot say.
+
+      With the grant in 0039 the enrolment no longer fails — it does not
+      *finish*. The form sits on its own pending label, no `Alert` is rendered
+      because the action never returned one, and the server logs nothing
+      because nothing threw. Every observation is an absence, which is the one
+      shape a screenshot cannot narrate.
+
+      A server action is a POST to this same path, so recording the responses
+      and the failures turns "it hung" into a status code, a duration, or a
+      transport error by name. Attached before the submit, because the request
+      it needs to see is the one that click makes.
+    */
+    const posts: string[] = []
+    const began = Date.now()
+    page.on('response', (response) => {
+      const url = new URL(response.url())
+      if (response.request().method() === 'POST' && url.pathname.startsWith('/two-factor')) {
+        posts.push(`${response.status()} after ${Date.now() - began}ms`)
+      }
+    })
+    page.on('requestfailed', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname.startsWith('/two-factor')
+      ) {
+        posts.push(`failed: ${request.failure()?.errorText ?? 'unknown'}`)
+      }
+    })
+
     const enrol = page.locator('form').filter({ has: page.locator('input[name="password"]') })
     await enrol.locator('input[name="password"]').fill(password)
     await enrol.locator('button[type="submit"]').click()
@@ -151,7 +182,9 @@ setup('authenticate', async ({ page, baseURL }) => {
         .slice(0, 300)
       throw new Error(
         `two-factor enrolment did not begin — ` +
-          `alert: ${alert || '(none)'}; main reads: ${main || '(empty)'}`,
+          `alert: ${alert || '(none)'}; ` +
+          `action POSTs: ${posts.length ? posts.join(', ') : '(none reached the server)'}; ` +
+          `main reads: ${main || '(empty)'}`,
       )
     }
 
