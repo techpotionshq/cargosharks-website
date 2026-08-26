@@ -113,6 +113,31 @@ setup('authenticate', async ({ page, baseURL }) => {
       .locator('details')
       .filter({ has: page.locator('code') })
       .first()
+
+    /*
+      When enrolment did not begin, say what the page said instead.
+
+      Clicking a `<summary>` that is not there spends the whole timeout and
+      reports `locator.click: Test timeout of 30000ms exceeded` — which names
+      the line and not one thing about the cause. This runs in the setup
+      project, so every dependent spec skips and that sentence becomes the
+      job's entire account of itself. `beginEnrolment` returns its reason as an
+      `Alert` on this same page; reading it is the difference between "the
+      password was refused" and "enrolment failed for some other reason",
+      which point at opposite fixes.
+    */
+    if (!(await disclosure.count())) {
+      const alert = ((await page.locator('[role="alert"]').first().textContent()) ?? '').trim()
+      const main = ((await page.locator('main').first().textContent()) ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300)
+      throw new Error(
+        `two-factor enrolment did not begin — ` +
+          `alert: ${alert || '(none)'}; main reads: ${main || '(empty)'}`,
+      )
+    }
+
     await disclosure.locator('summary').click()
 
     const secret = disclosure.locator('code')

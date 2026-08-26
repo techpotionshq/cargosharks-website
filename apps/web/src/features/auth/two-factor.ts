@@ -130,7 +130,20 @@ export async function beginEnrolment(
       body: { password },
       headers: await headers(),
     })
-  } catch {
+  } catch (error) {
+    /*
+      The operator sees one message; the reason is written down.
+
+      `enableTwoFactor` fails the same way for a wrong password and for
+      everything that is not one — a session the call cannot see, a plugin that
+      is not registered, a write the database refused. Showing them apart would
+      tell whoever is guessing which half they got right, so the message stays
+      as it is. Keeping them apart *in the log* costs nothing and is the whole
+      difference between a diagnosis and a shrug: a seeded end-to-end run spent
+      its entire job timing out on an enrolment that never began, and the only
+      account of why had been discarded here.
+    */
+    console.error({ error }, 'two-factor enrolment could not begin')
     return { error: t('errorPasswordWrong') }
   }
 
