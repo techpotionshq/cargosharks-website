@@ -78,6 +78,7 @@ export default defineConfig({
         'packages/db/src/create-*.ts',
         'packages/db/src/tenant-new.ts',
         'packages/db/src/migrate.ts',
+        'packages/db/src/diagnose.ts',
         '**/verify-*.ts',
         'apps/service/src/index.ts',
         'apps/service/src/workers/index.ts',
