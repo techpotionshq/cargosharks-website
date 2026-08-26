@@ -126,7 +126,22 @@ export async function TimeZoneSwitch({
   const options = TIME_ZONES.includes(current) ? TIME_ZONES : [current, ...TIME_ZONES]
 
   return (
-    <form action={setTimeZonePreference} className="inline-flex items-center gap-1">
+    /*
+      Desktop chrome only, like the pilot badge beside it.
+
+      A 412px header has no room for a zone picker: added unconditionally it
+      pushed the assistant launcher to x=466 in a 412px viewport — off-screen,
+      and unclickable, which is exactly how the mobile assistant specs failed.
+      The header is already at its width budget, which is why the badge next to
+      this one is `lg:` too.
+
+      The cost is honest: a phone cannot change the setting. It is still
+      *honoured* there, because the zone is a column on the principal rather
+      than a property of the device, so choosing it once at a desk is enough. A
+      settings screen is the right home for it on a phone, and is follow-up
+      rather than something to squeeze into this row.
+    */
+    <form action={setTimeZonePreference} className="hidden items-center gap-1 lg:inline-flex">
       <label className="sr-only" htmlFor="preferences-time-zone">
         {t('timeZone')}
       </label>
