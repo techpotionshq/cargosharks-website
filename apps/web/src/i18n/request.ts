@@ -12,6 +12,8 @@
 
 import { getRequestConfig } from 'next-intl/server'
 import { cookies } from 'next/headers'
+import { getSession } from '@/lib/session'
+import { TIME_ZONE_COOKIE, resolveTimeZone } from '@/lib/time'
 
 export const LOCALES = ['en', 'ar'] as const
 export type Locale = (typeof LOCALES)[number]
@@ -28,6 +30,30 @@ export function directionOf(locale: Locale): 'rtl' | 'ltr' {
   return locale === 'ar' ? 'rtl' : 'ltr'
 }
 
+/**
+ * The zone every `next-intl` date is rendered in.
+ *
+ * The signed-in principal's column first, the cookie second, Kuwait last. That
+ * order is what makes the setting follow a person rather than a browser: the
+ * cookie is written when they choose, but a colleague signing in from the
+ * warehouse machine for the first time has no cookie and should still read
+ * their own zone.
+ *
+ * Wrapped, because this runs for *every* request including the public tracking
+ * page, and a request-config that throws takes down the whole application
+ * rather than one screen. A database that cannot answer costs the reader their
+ * preferred zone, not the page.
+ */
+async function requestTimeZone(cookieValue: string | undefined): Promise<string> {
+  try {
+    const session = await getSession()
+    if (session) return session.principal.timezone
+  } catch {
+    // Fall through to the cookie.
+  }
+  return resolveTimeZone(cookieValue)
+}
+
 export default getRequestConfig(async () => {
   const store = await cookies()
   const cookieLocale = store.get(LOCALE_COOKIE)?.value
@@ -36,7 +62,7 @@ export default getRequestConfig(async () => {
   return {
     locale,
     messages: (await import(`../../messages/${locale}.json`)).default,
-    timeZone: 'Asia/Kuwait',
+    timeZone: await requestTimeZone(store.get(TIME_ZONE_COOKIE)?.value),
     formats: {
       dateTime: {
         short: { day: '2-digit', month: 'short', year: 'numeric' },

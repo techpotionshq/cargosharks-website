@@ -24,9 +24,13 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import {
   SEED_CURRENCIES,
+  allocate,
   chargeableWeight,
   customsValue as computeCustomsValue,
+  dec,
   estimateDuty,
+  money,
+  toDb,
   type CurrencySpec,
   type DutiableLine,
   type TariffLine,
@@ -397,10 +401,38 @@ export async function loadCustomsPackView(
 
       Not because that is accurate — it is not — but because a per-line duty
       column with one value on the first row and blanks below is a document the
-      broker cannot use, and because the *total* is right either way. Where the
-      lines carry their own values this is skipped entirely.
+      broker cannot use. Where the lines carry their own values this is skipped
+      entirely.
+
+      Split by `allocate` rather than by hand. This was
+      `(Number(goods) * Number(weight)) / totalGross` per line, each rounded on
+      its own, and independently rounded shares do not sum to the total — the
+      comment here used to claim they did. On a customs pack that matters twice
+      over: the footer is what a broker reconciles against, and the declaration
+      is a document somebody signs.
     */
-    const totalGross = job.cargo.reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0)
+    const totalGross = job.cargo.reduce((acc, c) => acc.plus(dec(c.grossWeightKg ?? 0)), dec(0))
+
+    /*
+      No cargo means nothing to divide, and `allocate` rejects an empty split
+      rather than inventing one. The old arithmetic hid that case behind
+      `Math.max(1, length)`, which answered a question nobody had asked.
+    */
+    const shareOf =
+      goods === null || job.cargo.length === 0
+        ? null
+        : new Map(
+            allocate(
+              money(goods, currency),
+              job.cargo.map((c) => ({
+                jobId: String(c.lineNo),
+                grossWeightKg: c.grossWeightKg ?? 0,
+              })),
+              totalGross.isZero() ? 'equal' : 'gross_weight',
+              spec,
+            ).shares.map((share) => [share.jobId, share.share]),
+          )
+
     const dutiable: DutiableLine[] = job.cargo.map((line) => ({
       hsCode: line.hsCode,
       /*
@@ -418,12 +450,7 @@ export async function loadCustomsPackView(
         from the cargo row below, and `unmatched` reports HS codes.
       */
       description: String(line.lineNo),
-      value:
-        goods === null
-          ? '0'
-          : totalGross > 0
-            ? ((Number(goods) * Number(line.grossWeightKg ?? 0)) / totalGross).toFixed(6)
-            : (Number(goods) / Math.max(1, job.cargo.length)).toFixed(6),
+      value: shareOf ? toDb(shareOf.get(String(line.lineNo))!) : '0',
     }))
 
     const estimate = estimateDuty(dutiable, tariff, {

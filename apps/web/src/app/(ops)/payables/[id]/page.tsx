@@ -14,7 +14,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { getSupplierInvoice } from '@/features/payables/queries'
@@ -41,6 +41,8 @@ const STATUS_TONE: Record<string, Tone> = {
 }
 
 export default async function SupplierInvoicePage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
 
@@ -134,8 +136,10 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
                 {t(`statuses.${bill.status}` as 'statuses.received')}
               </Badge>
             </Field>
-            <Field label={t('invoiceDate')}>{formatDate(bill.invoiceDate, locale)}</Field>
-            <Field label={t('due')}>{bill.dueOn ? formatDate(bill.dueOn, locale) : '—'}</Field>
+            <Field label={t('invoiceDate')}>{formatDate(bill.invoiceDate, locale, timeZone)}</Field>
+            <Field label={t('due')}>
+              {bill.dueOn ? formatDate(bill.dueOn, locale, timeZone) : '—'}
+            </Field>
             <Field label={t('total')}>{money(bill.total, bill.currency)}</Field>
             <Field label={t('paid')}>{money(bill.amountPaid, bill.currency)}</Field>
             {/*

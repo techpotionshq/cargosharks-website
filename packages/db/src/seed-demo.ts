@@ -44,7 +44,7 @@
  * removable with `--reset`, which deletes only rows this file created.
  */
 
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
@@ -54,6 +54,8 @@ import {
   chargeLines,
   chargeTypes,
   commodities,
+  consolChargeLines,
+  consolidations,
   countries,
   customerContacts,
   customers,
@@ -327,6 +329,38 @@ const SHIPMENTS = [
     pieces: 310,
     mbl: 'CMAU9911234',
     hbl: 'QBD-HBL-24004',
+  },
+  {
+    /*
+      The second house under the same master — the other half of KWI-CON-0001.
+
+      Same vessel, same voyage, same master bill and the same sailing dates as
+      KWI-JOB-0004, because that is what makes the two of them one
+      consolidation rather than two shipments that happen to rhyme. Different
+      customer and different commodity, because that is what makes it worth
+      consolidating: two shippers who could not fill a container alone.
+    */
+    ref: 'KWI-JOB-0008',
+    branch: 'KWI',
+    customer: 'SABPET',
+    mode: 'sea_lcl',
+    direction: 'import',
+    origin: 'INNSA',
+    destination: 'KWSWK',
+    goods: 'MACH',
+    status: 'in_transit',
+    incoterm: 'FOB',
+    carrier: 'CMACGM',
+    agent: 'INDAG',
+    vessel: 'CMA CGM NABUCCO',
+    voyage: '0PG3R',
+    etdDays: -8,
+    etaDays: 6,
+    weight: '6400.000',
+    volume: '19.000',
+    pieces: 180,
+    mbl: 'CMAU9911234',
+    hbl: 'QBD-HBL-24008',
   },
   {
     ref: 'KWI-JOB-0005',
@@ -1407,6 +1441,116 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           paymentId: payment!.id,
           invoiceId: invoice!.id,
           amount: String(paid),
+        })
+      }
+    }
+  }
+
+  // --- one groupage master, so the register has something to open ----------
+  //
+  // `db:seed-demo` filled every register except this one, and the gap was
+  // invisible in the place it mattered: the pilot fixtures *do* carry
+  // consolidations, so `/consolidations/[id]` rendered offline and was swept
+  // green, while the same screen had never once been asked of a database. The
+  // full-mode route run found it the first time it got far enough to look.
+  //
+  // Two houses rather than one, and a master cost left unallocated, because
+  // those are the two things the screen exists to show: what is under the
+  // master, and what it has not yet cost each of them.
+
+  const CONSOLIDATION_REF = 'KWI-CON-0001'
+
+  const [existingConsolidation] = await tx
+    .select({ id: consolidations.id })
+    .from(consolidations)
+    .where(eq(consolidations.reference, CONSOLIDATION_REF))
+    .limit(1)
+
+  if (!existingConsolidation) {
+    const houses = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(inArray(jobs.reference, ['KWI-JOB-0004', 'KWI-JOB-0008']))
+
+    if (houses.length) {
+      const consolidationBranchId = branchBy.get('KWI')!
+
+      const [consolidation] = await tx
+        .insert(consolidations)
+        .values({
+          reference: CONSOLIDATION_REF,
+          branchId: consolidationBranchId,
+          status: 'open',
+          mode: 'sea_lcl',
+          tradeDirection: 'import',
+          // The master bill is the consolidation's; each house carries its own
+          // house bill and quotes this one as the sailing it moves under.
+          masterBillNumber: 'CMAU9911234',
+          bookingNumber: 'CMA-BKG-558120',
+          carrierPartnerId: partner.get('CMACGM') ?? null,
+          vesselName: 'CMA CGM NABUCCO',
+          voyageNumber: '0PG3R',
+          originId: place.get('INNSA')!,
+          destinationId: place.get('KWSWK')!,
+          etd: days(-8),
+          eta: days(6),
+          atd: days(-8),
+          ownerId: owner(3),
+          notes: 'Weekly Nhava Sheva groupage. Manifest closes 48h before ETA.',
+          createdAt: days(-14),
+        })
+        .returning({ id: consolidations.id })
+
+      const consolidationId = consolidation!.id
+
+      await tx
+        .update(jobs)
+        .set({ consolidationId })
+        .where(
+          inArray(
+            jobs.id,
+            houses.map((house: { id: string }) => house.id),
+          ),
+        )
+
+      /*
+        The master freight, bought once and not yet divided.
+
+        Left with `allocated_at` null on purpose: an unallocated master cost is
+        what the register counts as outstanding work, so the row arrives on the
+        screen with something to do rather than as a finished record nobody
+        needs to look at. Allocating it is the operator's action, and the
+        allocation engine is what should write the house lines — seeding them
+        by hand here would put rows in `charge_lines` that no allocation ever
+        produced.
+
+        `consol_allocation_shares` stays empty for the same reason: the schema
+        reserves it for a split stated by hand, and this one divides by volume,
+        which the system already holds.
+      */
+      const freight =
+        chargeRows.find((row: { key: string }) => row.key === 'ocean_freight') ?? chargeRows[0]
+
+      if (freight) {
+        await tx.insert(consolChargeLines).values({
+          consolidationId,
+          branchId: consolidationBranchId,
+          direction: 'cost',
+          chargeTypeId: freight.id,
+          description: 'Master ocean freight — Nhava Sheva to Shuwaikh',
+          basis: 'flat',
+          quantity: '1',
+          rate: '1850.000000',
+          amount: '1850.000000',
+          currency: 'USD',
+          // Base is amount x rate (`core/accounting.ts`), so 1850 USD at 0.307
+          // is 567.950 KWD. KWD carries three decimals; the column holds six.
+          fxRate: '0.307000',
+          fxRateAt: days(-8),
+          amountBase: '567.950000',
+          baseCurrency: 'KWD',
+          counterpartyPartnerId: partner.get('CMACGM') ?? null,
+          allocationBasis: 'volume',
         })
       }
     }

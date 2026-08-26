@@ -35,6 +35,7 @@ import { checkCredit, creditOverrides, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import { todayIn } from '@/lib/time'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -88,7 +89,7 @@ export async function recordCreditOverride(
   const data = parsed.data
   assertInBranch(session, data.branchId)
 
-  if (data.expiresOn && data.expiresOn < new Date().toISOString().slice(0, 10)) {
+  if (data.expiresOn && data.expiresOn < todayIn()) {
     return fail({ expiresOn: 'That date has already passed' }, echo(form))
   }
 

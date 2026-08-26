@@ -8,7 +8,7 @@
  */
 
 import Link from 'next/link'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listSettlements, listSettleablePartners } from '@/features/payables/queries'
 import { SettlementDialog } from '@/features/payables/ui/dialogs'
@@ -37,6 +37,8 @@ export default async function SettlementsPage({
 }: {
   searchParams: Promise<{ partner?: string; status?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const filters = await searchParams
 
@@ -95,7 +97,8 @@ export default async function SettlementsPage({
                   </TD>
                   <TD className="text-ink-muted">{row.partnerName}</TD>
                   <TD className="text-ink-muted">
-                    {formatDate(row.periodFrom, locale)} — {formatDate(row.periodTo, locale)}
+                    {formatDate(row.periodFrom, locale, timeZone)} —{' '}
+                    {formatDate(row.periodTo, locale, timeZone)}
                   </TD>
                   <TD align="end" numeric>
                     {money(row.receivableTotal, row.currency)}

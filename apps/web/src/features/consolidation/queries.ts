@@ -21,13 +21,15 @@ import {
   consolAllocationShares,
   consolChargeLines,
   consolidations,
+  consolidationStatusEnum,
   customers,
   jobs,
   locations,
   partners,
-  withActor,
   type Actor,
+  withActor,
 } from '@qabandi/db'
+import { enumFilter } from '@/lib/filters'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotAllocationShares,
@@ -64,7 +66,11 @@ export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
 ): Promise<ConsolidationSummary[]> {
-  if (usePilotFixtures()) return pilotConsolidations(Date.now(), filters)
+  // Narrowed before the fixtures branch so both modes answer an unknown filter
+  // the same way — see `lib/filters.ts`.
+  const status = enumFilter(consolidationStatusEnum.enumValues, filters.status)
+
+  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status })
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -112,9 +118,7 @@ export async function listConsolidations(
       .leftJoin(origin, eq(origin.id, consolidations.originId))
       .leftJoin(destination, eq(destination.id, consolidations.destinationId))
       .where(
-        filters.status
-          ? eq(consolidations.status, filters.status as 'open')
-          : sql`${consolidations.status} <> 'cancelled'`,
+        status ? eq(consolidations.status, status) : sql`${consolidations.status} <> 'cancelled'`,
       )
       .orderBy(desc(consolidations.etd), desc(consolidations.createdAt))
       .limit(200)

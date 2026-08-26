@@ -285,7 +285,26 @@ export function collectPageErrors(page: Page): string[] {
     */
     if (/_next\/hmr/.test(text) || /_next\/hmr/.test(from)) return
     if (/ERR_INVALID_HTTP_RESPONSE|WebSocket connection to/i.test(text)) return
-    if (/Failed to load resource/i.test(text) && /\/_next\//.test(from)) return
+
+    /*
+      An aborted `/_next/` fetch — and only an aborted one.
+
+      This rule used to excuse *every* failed resource under `/_next/`, which
+      is the single place it must not. A chunk that 404s is how React silently
+      fails to hydrate, and the header of `playwright.config.ts` records what
+      that costs: the page renders perfectly, because the HTML is
+      server-rendered, and the first test that needs a working form times out
+      with nothing on the screen to explain it. The one place the browser says
+      so is the console line this was discarding.
+
+      What is genuine noise is a cancelled request. Next prefetches route
+      chunks on hover and on viewport, and a navigation that lands before the
+      prefetch does aborts it — the browser logs that whether or not anything
+      is wrong. `ERR_ABORTED` means the browser gave up asking, not that the
+      server could not answer, so a status code or any other transport error
+      goes through and fails the spec.
+    */
+    if (/net::ERR_ABORTED/i.test(text) && /\/_next\//.test(from)) return
 
     /*
       The assistant saying it is unavailable, which is an answer, not a fault.

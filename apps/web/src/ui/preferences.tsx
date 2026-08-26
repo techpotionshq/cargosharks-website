@@ -13,9 +13,10 @@
 
 import { getLocale } from 'next-intl/server'
 import { getTranslations } from 'next-intl/server'
-import { setLocalePreference, setThemePreference } from '@/lib/preferences'
+import { setLocalePreference, setThemePreference, setTimeZonePreference } from '@/lib/preferences'
 import type { ThemeChoice } from '@/lib/theme'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
+import { TIME_ZONES, describeTimeZone } from '@/lib/time'
 import { Icon } from './icon'
 
 export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' | 'chrome' }) {
@@ -93,6 +94,87 @@ export async function ThemeSwitch({
           </button>
         )
       })}
+    </form>
+  )
+}
+
+/**
+ * The time-zone picker.
+ *
+ * A `<select>` and a submit, rather than a control that posts on change: the
+ * same no-JavaScript rule the two switches above follow, and the reason is the
+ * same one — the tracking page is opened on a phone on a port road. A select
+ * that needs an `onChange` handler to do anything is a select that does nothing
+ * until a bundle arrives.
+ *
+ * The list is a menu rather than the vocabulary. `resolveTimeZone` accepts any
+ * zone the runtime knows, so a principal whose zone was set from a longer list
+ * — or by an administrator — keeps it, and it is shown here as the selected
+ * option even when `TIME_ZONES` does not name it.
+ */
+export async function TimeZoneSwitch({
+  current,
+  tone = 'ink',
+}: {
+  readonly current: string
+  readonly tone?: 'ink' | 'chrome'
+}) {
+  const t = await getTranslations('common')
+  const locale = await getLocale()
+
+  // A stored zone outside the menu still needs an option to be selected on.
+  const options = TIME_ZONES.includes(current) ? TIME_ZONES : [current, ...TIME_ZONES]
+
+  return (
+    /*
+      Desktop chrome only, like the pilot badge beside it.
+
+      A 412px header has no room for a zone picker: added unconditionally it
+      pushed the assistant launcher to x=466 in a 412px viewport — off-screen,
+      and unclickable, which is exactly how the mobile assistant specs failed.
+      The header is already at its width budget, which is why the badge next to
+      this one is `lg:` too.
+
+      The cost is honest: a phone cannot change the setting. It is still
+      *honoured* there, because the zone is a column on the principal rather
+      than a property of the device, so choosing it once at a desk is enough. A
+      settings screen is the right home for it on a phone, and is follow-up
+      rather than something to squeeze into this row.
+    */
+    <form action={setTimeZonePreference} className="hidden items-center gap-1 lg:inline-flex">
+      <label className="sr-only" htmlFor="preferences-time-zone">
+        {t('timeZone')}
+      </label>
+      <Icon
+        name="clock"
+        size={16}
+        className={tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'}
+      />
+      <select
+        id="preferences-time-zone"
+        name="timeZone"
+        defaultValue={current}
+        dir="ltr"
+        className={`h-8 rounded-sm border-0 bg-transparent px-1 text-[0.8125rem] font-medium focus:outline-none ${
+          tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'
+        }`}
+      >
+        {options.map((zone) => (
+          <option key={zone} value={zone}>
+            {describeTimeZone(zone, locale)}
+          </option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        className={`inline-flex h-8 items-center rounded-sm px-2 text-[0.8125rem] font-medium transition-colors ${
+          tone === 'chrome'
+            ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
+            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+        }`}
+      >
+        {t('save')}
+      </button>
     </form>
   )
 }

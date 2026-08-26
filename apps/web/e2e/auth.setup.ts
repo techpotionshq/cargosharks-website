@@ -145,6 +145,18 @@ setup('authenticate', async ({ page, baseURL }) => {
       posts.push(`failed ${pathname}: ${request.failure()?.errorText ?? 'unknown'}`)
     })
 
+    /*
+      Requests as well as responses, because the two answer different
+      questions and only one of them was being asked. A POST that has been
+      issued and is still open produces no `response` and no `requestfailed`,
+      which reads identically to a submit that was never wired up at all.
+    */
+    const sent: string[] = []
+    page.on('request', (request) => {
+      if (request.method() !== 'POST') return
+      sent.push(new URL(request.url()).pathname)
+    })
+
     const enrol = page.locator('form').filter({ has: page.locator('input[name="password"]') })
     await enrol.locator('input[name="password"]').fill(password)
     await enrol.locator('button[type="submit"]').click()
@@ -175,7 +187,24 @@ setup('authenticate', async ({ page, baseURL }) => {
       password was refused" and "enrolment failed for some other reason",
       which point at opposite fixes.
     */
-    const alerted = page.locator('[role="alert"]').first()
+    /*
+      Every `[role="alert"]` *except* the one Next.js puts on every page.
+
+      `__next-route-announcer__` is injected on hydration to announce client
+      navigations to a screen reader. It is empty until there is something to
+      announce, and it is one pixel square rather than `display: none` —
+      because a hidden live region announces nothing — so Playwright considers
+      it visible. The race below therefore resolved on it in about seven
+      milliseconds, `count()` on the disclosure ran before the action could
+      possibly have returned, and the failure reported an empty alert, no POST
+      and a quiet console: three absences that were all just "too early".
+
+      That is what made this look like a product fault for three rounds. The
+      POST had been sent and was still in flight; the response listener had
+      nothing to report yet, so "(none reached the server)" was true of the
+      response and false of the request.
+    */
+    const alerted = page.locator('[role="alert"]:not(#__next-route-announcer__)').first()
 
     /*
       Wait for whichever arrives — the secret, or the reason there is none.
@@ -201,7 +230,13 @@ setup('authenticate', async ({ page, baseURL }) => {
       throw new Error(
         `two-factor enrolment did not begin — ` +
           `alert: ${alert || '(none)'}; ` +
-          `action POSTs: ${posts.length ? posts.join(', ') : '(none reached the server)'}; ` +
+          `action POSTs: ${
+            posts.length
+              ? posts.join(', ')
+              : sent.length
+                ? `${sent.length} sent, none answered: ${sent.join(', ')}`
+                : '(none sent)'
+          }; ` +
           `browser: ${browserErrors.length ? browserErrors.join(' | ') : '(quiet)'}; ` +
           `main reads: ${main || '(empty)'}`,
       )

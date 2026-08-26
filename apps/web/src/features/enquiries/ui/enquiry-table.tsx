@@ -15,7 +15,7 @@
  */
 
 import Link from 'next/link'
-import { getTranslations } from 'next-intl/server'
+import { getTimeZone, getTranslations } from 'next-intl/server'
 import type { EnquirySummary } from '@/lib/pilot/types'
 import { formatDateTime, formatMoney, formatRelative } from '@/lib/format'
 import { Badge, enquiryTone, slaTone } from '@/ui/status'
@@ -37,6 +37,8 @@ export async function EnquiryTable({
    */
   readonly showMargin?: boolean
 }) {
+  const timeZone = await getTimeZone()
+
   const t = await getTranslations('enquiry')
   const tc = await getTranslations('common')
   const tMode = await getTranslations('mode')
@@ -145,7 +147,7 @@ export async function EnquiryTable({
                 {row.firstRespondedAt ? (
                   <span
                     className="text-positive"
-                    title={formatDateTime(row.firstRespondedAt, locale)}
+                    title={formatDateTime(row.firstRespondedAt, locale, timeZone)}
                   >
                     <Icon name="check" size={13} className="inline align-[-2px]" />{' '}
                     {formatRelative(row.firstRespondedAt, locale, now)}
@@ -159,7 +161,7 @@ export async function EnquiryTable({
                           ? 'font-medium text-caution'
                           : 'text-ink-muted'
                     }
-                    title={formatDateTime(row.slaDueAt, locale)}
+                    title={formatDateTime(row.slaDueAt, locale, timeZone)}
                   >
                     {formatRelative(row.slaDueAt, locale, now)}
                     {breached ? ` · ${t('overdue')}` : ''}

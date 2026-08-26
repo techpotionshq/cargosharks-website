@@ -9,7 +9,7 @@
  */
 
 import Link from 'next/link'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
   listPayableInvoices,
@@ -46,6 +46,8 @@ export default async function PayablesPage({
 }: {
   searchParams: Promise<{ status?: string; partner?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const filters = await searchParams
 
@@ -166,7 +168,7 @@ export default async function PayablesPage({
                           {row.reference}
                         </Link>
                         <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
-                          {formatDate(row.invoiceDate, locale)}
+                          {formatDate(row.invoiceDate, locale, timeZone)}
                         </span>
                       </TD>
                       <TD className="text-ink-muted">{row.partnerName}</TD>
@@ -187,7 +189,7 @@ export default async function PayablesPage({
                         {money(row.varianceBase, row.baseCurrency)}
                       </TD>
                       <TD align="end" numeric className="text-ink-muted">
-                        {row.dueOn ? formatDate(row.dueOn, locale) : '—'}
+                        {row.dueOn ? formatDate(row.dueOn, locale, timeZone) : '—'}
                       </TD>
                       <TD align="end">
                         <span className="inline-flex items-center gap-1.5">
@@ -248,7 +250,9 @@ export default async function PayablesPage({
                   <TR key={payment.id}>
                     <TD className="font-medium text-ink">{payment.partnerName}</TD>
                     <TD className="whitespace-nowrap text-ink-muted">
-                      {payment.paidOn ? formatDate(new Date(payment.paidOn), locale) : '—'}
+                      {payment.paidOn
+                        ? formatDate(new Date(payment.paidOn), locale, timeZone)
+                        : '—'}
                     </TD>
                     <TD className="ref text-ink-muted">{payment.reference ?? '—'}</TD>
                     <TD align="end" numeric>

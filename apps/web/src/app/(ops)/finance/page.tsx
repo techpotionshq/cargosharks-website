@@ -17,7 +17,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
   invoiceSummary,
@@ -55,6 +55,8 @@ const BUCKET_COLOR: Record<AgeingBucket['key'], string> = {
 }
 
 export default async function FinancePage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
 
   const [ageing, invoices, payments, debtors, exports] = await Promise.all([
@@ -282,7 +284,7 @@ export default async function FinancePage() {
                           title={debtor.oldestDueOn ?? undefined}
                         >
                           {debtor.oldestDueOn
-                            ? formatDate(new Date(debtor.oldestDueOn), locale)
+                            ? formatDate(new Date(debtor.oldestDueOn), locale, timeZone)
                             : '—'}
                         </span>
                       )}
@@ -378,10 +380,7 @@ export default async function FinancePage() {
             </THead>
             <TBody>
               {exports.map((row) => {
-                const period = `${formatDate(new Date(row.periodFrom), locale)} — ${formatDate(
-                  new Date(row.periodTo),
-                  locale,
-                )}`
+                const period = `${formatDate(new Date(row.periodFrom), locale, timeZone)} — ${formatDate(new Date(row.periodTo), locale, timeZone)}`
                 return (
                   <TR key={row.id}>
                     <TD className="font-medium whitespace-nowrap text-ink">{period}</TD>

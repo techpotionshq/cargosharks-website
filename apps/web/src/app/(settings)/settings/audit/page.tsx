@@ -24,7 +24,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { auditTableCounts, listAudit } from '@/features/admin/queries'
@@ -34,6 +34,7 @@ import { Button, EmptyState, PageHeader } from '@/ui/layout'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { dayIn } from '@/lib/time'
 
 const OP_TONE = { INSERT: 'positive', UPDATE: 'info', DELETE: 'critical' } as const
 const OPERATIONS = ['INSERT', 'UPDATE', 'DELETE'] as const
@@ -43,7 +44,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 function daysAgo(days: number): string {
   const date = new Date()
   date.setUTCDate(date.getUTCDate() - days)
-  return date.toISOString().slice(0, 10)
+  return dayIn(date)
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -56,6 +57,8 @@ export default async function AuditPage({
 }: {
   searchParams: Promise<{ table?: string; op?: string; q?: string; from?: string; to?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const params = await searchParams
   const t = await getTranslations('audit')
@@ -218,7 +221,7 @@ export default async function AuditPage({
               <TD className="whitespace-nowrap">
                 <span className="text-ink">{formatRelative(row.at, locale, now)}</span>
                 <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
-                  {formatDateTime(row.at, locale)}
+                  {formatDateTime(row.at, locale, timeZone)}
                 </span>
               </TD>
               <TD>

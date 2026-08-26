@@ -69,6 +69,7 @@ import {
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { failWith, succeed, type ActionState } from '@/lib/form-state'
+import { dayIn, todayIn } from '@/lib/time'
 
 /**
  * What pricing can answer with.
@@ -251,7 +252,7 @@ export async function priceEnquiry(_previous: ActionState, form: FormData): Prom
       live then — quoting it off today's tariff and watching it lapse before
       the booking is the exact failure `validity` exists to prevent.
     */
-      const on = enquiry.readyOn ?? new Date().toISOString().slice(0, 10)
+      const on = enquiry.readyOn ?? todayIn()
 
       const lane = {
         mode: enquiry.mode,
@@ -393,7 +394,7 @@ export async function priceEnquiry(_previous: ActionState, form: FormData): Prom
       */
           totalSell: toScale(totals.revenue, lookup),
           totalCost: toScale(totals.cost, lookup),
-          validUntil: validUntil.toISOString().slice(0, 10),
+          validUntil: dayIn(validUntil),
           snapshot: {
             pricedAt: pricedAt.toISOString(),
             marginPct: totals.grossPercent ? Number(totals.grossPercent.toFixed(2)) : 0,

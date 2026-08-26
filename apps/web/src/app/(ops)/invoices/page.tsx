@@ -11,7 +11,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { invoiceSummary, listInvoices } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -20,6 +20,7 @@ import { Register, RecordLink } from '@/ui/register'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
+import { todayIn } from '@/lib/time'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -31,13 +32,15 @@ export default async function InvoicesPage({
 }: {
   searchParams: Promise<{ status?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { status } = await searchParams
   const t = await getTranslations('invoices')
   const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIn()
 
   const [rows, summary] = await Promise.all([
     listInvoices(session.actor, status),
@@ -146,12 +149,12 @@ export default async function InvoicesPage({
                   {formatMoney({ amount: balance, currency: row.currency }, locale)}
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">
-                  {row.issuedAt ? formatDate(row.issuedAt, locale) : '—'}
+                  {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD
                   className={`whitespace-nowrap ${overdue ? 'font-semibold text-critical' : 'text-ink-muted'}`}
                 >
-                  {row.dueOn ? formatDate(new Date(row.dueOn), locale) : '—'}
+                  {row.dueOn ? formatDate(new Date(row.dueOn), locale, timeZone) : '—'}
                 </TD>
               </TR>
             )

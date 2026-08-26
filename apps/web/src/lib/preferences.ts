@@ -15,6 +15,10 @@ import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { isLocale, LOCALE_COOKIE, type Locale } from '@/i18n/request'
 import { THEME_COOKIE, type ThemeChoice } from '@/lib/theme'
+import { TIME_ZONE_COOKIE, resolveTimeZone } from '@/lib/time'
+import { getSession } from '@/lib/session'
+import { eq } from 'drizzle-orm'
+import { principals, withActor } from '@qabandi/db'
 
 /** A year: a language choice is not a session-scoped decision. */
 const MAX_AGE = 60 * 60 * 24 * 365
@@ -48,5 +52,47 @@ export async function setThemePreference(formData: FormData): Promise<void> {
       httpOnly: false,
     })
   }
+  revalidatePath('/', 'layout')
+}
+
+/**
+ * The reader's time zone — stored twice, on purpose.
+ *
+ * The cookie is what `i18n/request.ts` can read without a query, and it is the
+ * only half the public tracking page has. The column is the durable one: a
+ * preference that lives only in a cookie is lost on a new machine, and the
+ * person most likely to sign in from somewhere else is the one whose zone is
+ * not the default.
+ *
+ * The write is scoped to the principal's own row, which `principals_scope`
+ * already permits — its first clause is `id = app.principal_id()`, and with no
+ * `with check` Postgres applies the same expression to the updated row. No new
+ * policy, and no way to set anybody else's zone.
+ *
+ * A signed-out reader still gets the cookie. That is the tracking page, which
+ * has no principal to store anything against and still has to show an ETA in a
+ * zone the reader recognises.
+ */
+export async function setTimeZonePreference(formData: FormData): Promise<void> {
+  const timeZone = resolveTimeZone(String(formData.get('timeZone') ?? ''))
+
+  const store = await cookies()
+  store.set(TIME_ZONE_COOKIE, timeZone, {
+    maxAge: MAX_AGE,
+    sameSite: 'lax',
+    path: '/',
+    httpOnly: false,
+  })
+
+  const session = await getSession()
+  if (session) {
+    await withActor(session.actor, async (tx) => {
+      await tx
+        .update(principals)
+        .set({ timezone: timeZone })
+        .where(eq(principals.id, session.principal.id))
+    })
+  }
+
   revalidatePath('/', 'layout')
 }

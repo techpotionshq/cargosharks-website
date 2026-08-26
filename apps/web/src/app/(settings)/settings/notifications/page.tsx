@@ -14,7 +14,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { listChannelSettings, listDeliveries, listTemplates } from '@/features/admin/notifications'
@@ -35,6 +35,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function NotificationsPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
 
@@ -281,7 +283,7 @@ export default async function NotificationsPage() {
                   <TD className="ref whitespace-nowrap text-ink">{row.eventKey}</TD>
                   <TD className="max-w-xs truncate text-ink-muted">{row.recipient ?? '—'}</TD>
                   <TD className="whitespace-nowrap text-ink-muted">
-                    {formatDateTime(row.sentAt ?? row.createdAt, locale)}
+                    {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
                   </TD>
                   <TD>
                     <span className="flex flex-col gap-0.5">

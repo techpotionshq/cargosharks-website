@@ -17,7 +17,20 @@
  * either alone.
  */
 
-export const TIME_ZONE = 'Asia/Kuwait'
+/**
+ * Kept as the name the rest of the app already imports, and now one value
+ * rather than two: `lib/time.ts` owns the default because the *arithmetic*
+ * needed it first, and a second copy here is how the two halves drift apart.
+ *
+ * The formatters below take a zone rather than reading this. Every call site
+ * now passes one — pages and panels ask `getTimeZone()`, which `next-intl`
+ * resolves per request from the principal's column — so this is the fallback
+ * for a caller with no request behind it (a test, a script) rather than the
+ * value most dates are rendered in.
+ */
+export const TIME_ZONE = DEFAULT_TIME_ZONE
+
+import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type Locale = 'en' | 'ar'
 
@@ -102,6 +115,7 @@ export function formatNumber(value: number, locale: Locale): string {
 export function formatDate(
   value: Date | string | number | null | undefined,
   locale: Locale,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
   const date = toDate(value)
   if (!date) return '—'
@@ -109,13 +123,14 @@ export function formatDate(
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    timeZone: TIME_ZONE,
+    timeZone,
   }).format(date)
 }
 
 export function formatDateTime(
   value: Date | string | number | null | undefined,
   locale: Locale,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
   const date = toDate(value)
   if (!date) return '—'
@@ -125,20 +140,21 @@ export function formatDateTime(
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: TIME_ZONE,
+    timeZone,
   }).format(date)
 }
 
 export function formatDay(
   value: Date | string | number | null | undefined,
   locale: Locale,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
   const date = toDate(value)
   if (!date) return '—'
   return new Intl.DateTimeFormat(intlLocale(locale), {
     day: '2-digit',
     month: 'short',
-    timeZone: TIME_ZONE,
+    timeZone,
   }).format(date)
 }
 
@@ -153,6 +169,7 @@ export function formatDay(
 export function formatTime(
   value: Date | string | number | null | undefined,
   locale: Locale,
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
   const date = toDate(value)
   if (!date) return '—'
@@ -160,7 +177,7 @@ export function formatTime(
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: TIME_ZONE,
+    timeZone,
   }).format(date)
 }
 

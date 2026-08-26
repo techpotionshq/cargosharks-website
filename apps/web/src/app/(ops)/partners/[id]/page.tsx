@@ -16,7 +16,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getPartnerDetail, listPartnerCredentials } from '@/features/network/queries'
 import {
@@ -49,6 +49,8 @@ export async function generateMetadata({
 }
 
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
   const partner = await getPartnerDetail(session.actor, id)
@@ -213,7 +215,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                       </Badge>
                     </TD>
                     <TD className="whitespace-nowrap text-ink-muted">
-                      {job.eta ? formatDate(job.eta, locale) : '—'}
+                      {job.eta ? formatDate(job.eta, locale, timeZone) : '—'}
                     </TD>
                   </TR>
                 ))}
@@ -366,7 +368,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                           <span className="text-ink-subtle">—</span>
                         ) : superseded ? (
                           <span className="text-ink-subtle">
-                            {formatDate(new Date(row.expiresOn), locale)}
+                            {formatDate(new Date(row.expiresOn), locale, timeZone)}
                           </span>
                         ) : (
                           <Badge
@@ -374,7 +376,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                               lapsed ? 'critical' : row.daysRemaining! <= 60 ? 'caution' : 'muted'
                             }
                           >
-                            {formatDate(new Date(row.expiresOn), locale)}
+                            {formatDate(new Date(row.expiresOn), locale, timeZone)}
                           </Badge>
                         )}
                       </TD>

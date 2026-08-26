@@ -22,7 +22,7 @@
 import type { Metadata, Route } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
@@ -50,6 +50,8 @@ export async function generateMetadata({
 }
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
   const quote = await getQuoteDetail(session.actor, id)
@@ -128,7 +130,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       */}
       {expired && !['accepted', 'rejected'].includes(quote.status) ? (
         <Notice tone="caution" icon="clock" className="mb-4">
-          {t('expired', { on: formatDate(new Date(quote.validUntil!), locale) })}
+          {t('expired', { on: formatDate(new Date(quote.validUntil!), locale, timeZone) })}
         </Notice>
       ) : null}
 
@@ -152,7 +154,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         />
         <Metric
           label={t('validUntil')}
-          value={quote.validUntil ? formatDate(new Date(quote.validUntil), locale) : '—'}
+          value={quote.validUntil ? formatDate(new Date(quote.validUntil), locale, timeZone) : '—'}
           icon="calendar"
           tone={expired ? 'caution' : 'neutral'}
           hint={t('validUntilHint')}
@@ -238,12 +240,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <Field label={t('branch')}>{quote.branchCode ?? '—'}</Field>
               <Field label={t('preparedBy')}>{quote.preparedBy ?? '—'}</Field>
               <Field label={t('sentAt')}>
-                {quote.sentAt ? formatDateTime(quote.sentAt, locale) : t('notSent')}
+                {quote.sentAt ? formatDateTime(quote.sentAt, locale, timeZone) : t('notSent')}
               </Field>
               <Field label={t('decidedAt')}>
-                {quote.decidedAt ? formatDateTime(quote.decidedAt, locale) : '—'}
+                {quote.decidedAt ? formatDateTime(quote.decidedAt, locale, timeZone) : '—'}
               </Field>
-              <Field label={t('created')}>{formatDateTime(quote.createdAt, locale)}</Field>
+              <Field label={t('created')}>
+                {formatDateTime(quote.createdAt, locale, timeZone)}
+              </Field>
             </dl>
             {quote.notes ? (
               <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">

@@ -34,16 +34,19 @@ import {
   chargeTypes,
   invoices,
   jobs,
+  partners,
   partnerSettlementLines,
   partnerSettlements,
-  partners,
+  settlementStatusEnum,
   supplierInvoiceLines,
   supplierInvoiceMatches,
   supplierInvoices,
+  supplierInvoiceStatusEnum,
   supplierPayments,
-  withActor,
   type Actor,
+  withActor,
 } from '@qabandi/db'
+import { enumFilter, uuidFilter } from '@/lib/filters'
 import {
   D,
   SEED_CURRENCIES,
@@ -102,7 +105,18 @@ export async function listSupplierInvoices(
   actor: Actor,
   filters: { readonly status?: string; readonly partnerId?: string } = {},
 ): Promise<SupplierInvoiceRow[]> {
-  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), filters)
+  /*
+    Narrowed before the fixtures branch, not after.
+
+    Both modes must answer an unknown filter the same way. Narrowing only on
+    the database path would leave `?status=xyz` returning the empty set offline
+    and the whole register against Postgres — the fixtures-versus-database
+    divergence that already cost this repository a screen nobody had tested.
+  */
+  const status = enumFilter(supplierInvoiceStatusEnum.enumValues, filters.status)
+  const partnerId = uuidFilter(filters.partnerId)
+
+  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), { status, partnerId })
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -172,10 +186,8 @@ export async function listSupplierInvoices(
       .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
       .where(
         and(
-          filters.status
-            ? eq(supplierInvoices.status, filters.status as 'received')
-            : sql`${supplierInvoices.status} <> 'void'`,
-          filters.partnerId ? eq(supplierInvoices.partnerId, filters.partnerId) : undefined,
+          status ? eq(supplierInvoices.status, status) : sql`${supplierInvoices.status} <> 'void'`,
+          partnerId ? eq(supplierInvoices.partnerId, partnerId) : undefined,
         ),
       )
       .orderBy(desc(supplierInvoices.invoiceDate), desc(supplierInvoices.createdAt))
@@ -881,7 +893,10 @@ export async function listSettlements(
   actor: Actor,
   filters: { readonly partnerId?: string; readonly status?: string } = {},
 ): Promise<SettlementRow[]> {
-  if (usePilotFixtures()) return pilotSettlements(Date.now(), filters)
+  const status = enumFilter(settlementStatusEnum.enumValues, filters.status)
+  const partnerId = uuidFilter(filters.partnerId)
+
+  if (usePilotFixtures()) return pilotSettlements(Date.now(), { status, partnerId })
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -906,9 +921,9 @@ export async function listSettlements(
       .innerJoin(partners, eq(partners.id, partnerSettlements.partnerId))
       .where(
         and(
-          filters.partnerId ? eq(partnerSettlements.partnerId, filters.partnerId) : undefined,
-          filters.status
-            ? eq(partnerSettlements.status, filters.status as 'draft')
+          partnerId ? eq(partnerSettlements.partnerId, partnerId) : undefined,
+          status
+            ? eq(partnerSettlements.status, status)
             : sql`${partnerSettlements.status} <> 'void'`,
         ),
       )

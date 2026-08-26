@@ -14,7 +14,7 @@
 
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listMailboxes, mailboxKeyConfigured } from '@/features/admin/mailboxes'
@@ -32,6 +32,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MailboxesPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   /*
     Its own key, not the layout's admission. A row here carries the credential
@@ -115,8 +117,10 @@ export default async function MailboxesPage() {
                   <span className="text-muted"> · {row.archiveFolder}</span>
                 ) : null}
               </TD>
-              <TD>{row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale) : '—'}</TD>
-              <TD>{row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale) : '—'}</TD>
+              <TD>{row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale, timeZone) : '—'}</TD>
+              <TD>
+                {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}
+              </TD>
               <TD>
                 {!row.isActive ? (
                   <Badge tone="muted">{tc('inactive')}</Badge>

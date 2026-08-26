@@ -8,7 +8,7 @@
  */
 
 import Link from 'next/link'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listJobs, listRunningClocks } from '@/features/jobs/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -40,6 +40,8 @@ export default async function JobsPage({
 }: {
   searchParams: Promise<{ filter?: string; status?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const params = await searchParams
   const filter = (FILTERS.find((f) => f.key === params.filter)?.key ?? 'live') as Filter
@@ -293,10 +295,12 @@ export default async function JobsPage({
 
                     <TD align="end" numeric>
                       {job.ata ? (
-                        <span className="text-positive">{formatDay(job.ata, locale)}</span>
+                        <span className="text-positive">
+                          {formatDay(job.ata, locale, timeZone)}
+                        </span>
                       ) : (
                         <>
-                          <span className="block">{formatDay(job.eta, locale)}</span>
+                          <span className="block">{formatDay(job.eta, locale, timeZone)}</span>
                           <span className="block text-[0.6875rem] text-ink-subtle">
                             {formatRelative(job.eta, locale, now)}
                           </span>
