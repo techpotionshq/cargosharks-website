@@ -267,6 +267,13 @@
       "when": 1787673946716,
       "tag": "0038_steady_roughhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787746669449,
+      "tag": "0039_bouncy_captain_britain",
+      "breakpoints": true
     }
   ]
 }

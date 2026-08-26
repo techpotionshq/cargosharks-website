@@ -126,8 +126,25 @@ setup('authenticate', async ({ page, baseURL }) => {
       password was refused" and "enrolment failed for some other reason",
       which point at opposite fixes.
     */
+    const alerted = page.locator('[role="alert"]').first()
+
+    /*
+      Wait for whichever arrives — the secret, or the reason there is none.
+
+      Reading the page the instant the submit is clicked reports on a form that
+      is still submitting: the first run of this check caught the button on its
+      own `Please wait…` label and would have called a merely slow enrolment a
+      failed one. Racing the two outcomes keeps the wait that `toBeVisible`
+      always gave while still ending on the error rather than on a timeout, and
+      the `catch` is deliberate — the report below is the point, so a race that
+      resolves to neither must fall through to it rather than throw here.
+    */
+    await expect(disclosure.or(alerted).first())
+      .toBeVisible({ timeout: 20_000 })
+      .catch(() => {})
+
     if (!(await disclosure.count())) {
-      const alert = ((await page.locator('[role="alert"]').first().textContent()) ?? '').trim()
+      const alert = ((await alerted.textContent()) ?? '').trim()
       const main = ((await page.locator('main').first().textContent()) ?? '')
         .replace(/\s+/g, ' ')
         .trim()
