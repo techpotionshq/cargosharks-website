@@ -1,31 +1,36 @@
-# Both halves of the product, from one file.
+# All three halves of the product, from one file.
 #
 # Lives at the repository root because Coolify's Dockerfile build pack looks
 # for `./Dockerfile` by default and the build context has to be the workspace
-# root regardless — each app depends on three workspace packages and the
-# lockfile, none of which are reachable from inside its own directory.
+# root regardless — each app depends on workspace packages and the lockfile,
+# none of which are reachable from inside its own directory.
 #
-# ## Two images, one Dockerfile
+# ## Three images, one Dockerfile
 #
-# The product is two containers and it does not work as one. `apps/web` serves
-# the interface; `apps/service` renders every PDF through Chromium, signs
-# storage links, and runs the scheduled workers — free-time accrual, SLA
-# escalation, notification dispatch, the FX feed. A deployment with only the
-# web image has no documents, no accounting export, and no clock running on
-# anything.
+# `apps/web` serves the interface; `apps/service` renders every PDF through
+# Chromium, signs storage links, and runs the scheduled workers — free-time
+# accrual, SLA escalation, notification dispatch, the FX feed. A deployment
+# with only the web image has no documents, no accounting export, and no clock
+# running on anything. `apps/landing` is the marketing site — a static export,
+# nothing in it reads a database or a session, so it ships as plain files
+# behind the repo's own zero-dependency static server (§ landing runtime,
+# below); Coolify's Traefik does the routing in front of it, same as the
+# other two.
 #
 #   target (unset)    the web image, port 3000  — the default, so an existing
 #                     deployment that names no target is unchanged
 #   --target service  the service image, port 3001
+#   --target landing  the marketing site, port 3002
 #
-# `compose.prod.yaml` names both, and that is how they are deployed: one
+# `compose.prod.yaml` names all three, and that is how they are deployed: one
 # Coolify stack, one network, so `SERVICE_URL=http://service:3001` resolves
 # with nothing to configure. See `docs/Deployment_Coolify.md` — that URL being
 # internal is the one rule, because `/internal` impersonates principals.
 #
 # The web image stays the *last* stage deliberately. Docker builds the final
-# stage when no target is given, and the service stage is not a dependency of
-# it — so a web build costs nothing extra and never installs Chromium.
+# stage when no target is given, and neither the service nor the landing stage
+# is a dependency of it — so a web build costs nothing extra and never
+# installs Chromium.
 
 # --- shared base -----------------------------------------------------------
 # Node 22 to match `engines` in the root manifest. `corepack` pins pnpm to the
@@ -48,6 +53,7 @@ FROM base AS build
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
 COPY apps/service/package.json apps/service/
 COPY apps/web/package.json apps/web/
+COPY apps/landing/package.json apps/landing/
 COPY packages/brand/package.json packages/brand/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
@@ -68,6 +74,14 @@ RUN pnpm --filter @qabandi/web build \
 # and shares every layer above it with the web image.
 FROM build AS service-build
 RUN pnpm --filter @qabandi/service build
+
+# --- landing build -----------------------------------------------------
+# Same reasoning as `service-build`: reuse the install rather than repeat it.
+# `next build` here writes to `apps/landing/out` — `output: 'export'` in
+# `apps/landing/next.config.ts` — and `postbuild.mjs` then puts `404.html` at
+# the export root, which `scripts/preview.mjs` serves on every unmatched path.
+FROM build AS landing-build
+RUN pnpm --filter @qabandi/landing build
 
 # --- service runtime -------------------------------------------------------
 # Chromium is installed here rather than pulled through npm: it is the only
@@ -147,6 +161,30 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.SERVICE_PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/service/dist/index.js"]
+
+# --- landing runtime ---------------------------------------------------
+# `apps/landing/scripts/preview.mjs` rather than a new dependency: it already
+# serves `out/` the way a static host does — no rewrites, no SPA fallback, a
+# real 404 with a 404 status — and it imports nothing but Node's own `http`
+# and `fs`. Traefik is the router in front of this container (Coolify's, not
+# ours to configure here); this stage's only job is to answer on its port with
+# the right file.
+#
+# From the plain image, not `base` — this stage never runs `pnpm`, so there is
+# no reason for corepack or a pnpm shim to be sitting in a production image.
+FROM node:22-bookworm-slim AS landing
+WORKDIR /app
+COPY --from=landing-build --chown=node:node /app/apps/landing/out ./out
+COPY --chown=node:node apps/landing/scripts/preview.mjs ./scripts/preview.mjs
+
+USER node
+ENV PORT=3002
+EXPOSE 3002
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3002)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "scripts/preview.mjs"]
 
 # --- runtime ---------------------------------------------------------------
 # The web image, and the last stage in the file — see the note at the top.

@@ -1,11 +1,11 @@
-# Deploying to Coolify — two containers, one private network
+# Deploying to Coolify — three containers, one private network
 
 **Operations note · v1.0 · Internal**
 
 | | |
 |---|---|
-| **Question answered** | The product is two containers that talk to each other. What does that look like on Coolify, and what must never be exposed? |
-| **Applies to** | `Dockerfile` (two build targets) and `compose.prod.yaml` |
+| **Question answered** | The product is `web` and `service`, talking to each other, plus `landing`, which talks to neither. What does that look like on Coolify, and what must never be exposed? |
+| **Applies to** | `Dockerfile` (three build targets) and `compose.prod.yaml` |
 | **Companion to** | `Operations_Findings.md`, which records what broke the first time |
 
 ---
@@ -49,10 +49,16 @@ handlers verify an HMAC over exactly what the provider signed. The helper
 behind them, `apps/web/src/lib/service-proxy.ts`, forwards those two prefixes
 and answers 404 to everything else.
 
-So one domain, on `web`. Configure WhatsApp and the mail provider with
-`https://app.example.com/webhooks/whatsapp` and `…/webhooks/email`; hand
-customers `https://app.example.com/api/v1`. `/internal` is unreachable from
-outside not because something refuses it but because no route leads there.
+So one domain on `web` for the service's traffic. Configure WhatsApp and the
+mail provider with `https://app.example.com/webhooks/whatsapp` and
+`…/webhooks/email`; hand customers `https://app.example.com/api/v1`.
+`/internal` is unreachable from outside not because something refuses it but
+because no route leads there.
+
+`landing` gets a domain too, separately — it is the public marketing site, not
+part of this proxy chain, and shares no request path with `web`. Point the
+product's root domain at it and `app.` (or similar) at `web`; nothing in
+either container assumes anything about the other's hostname.
 
 The in-code guard stays as defence in depth: the service refuses any
 `/internal` request carrying proxy forwarding headers (`X-Forwarded-For`,
@@ -63,16 +69,17 @@ deployment where something on the *private* network legitimately adds
 forwarding headers — a service mesh, a sidecar. It is not a way to make a
 public route work, and there is no longer a reason to want one.
 
-## 3. One stack, not two applications
+## 3. One stack, not three applications
 
-Deploy both containers from `compose.prod.yaml` — build pack **Docker
+Deploy all three containers from `compose.prod.yaml` — build pack **Docker
 Compose**, compose location `/compose.prod.yaml`. Coolify puts the stack on
 one bridge network and Docker DNS resolves a service by the name it carries in
 that file, so `SERVICE_URL=http://service:3001` is true by construction rather
 than by a setting somebody has to remember. The shared secret is also declared
-once: two applications means `INTERNAL_API_SECRET` typed into two places, and
-the failure when those drift is a 401 the web app reports to an operator as
-"the document could not be generated".
+once: separate `web` and `service` applications means `INTERNAL_API_SECRET`
+typed into two places, and the failure when those drift is a 401 the web app
+reports to an operator as "the document could not be generated". `landing`
+takes no environment at all, so it has nothing to drift.
 
 That file is deliberately not `compose.dev.yaml`, which is the local
 dependency stack — Postgres with a password of `postgres`, MinIO with a
