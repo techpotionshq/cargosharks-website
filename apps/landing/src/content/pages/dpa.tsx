@@ -29,29 +29,15 @@ export function DpaContent() {
           <p className="hero__sub">
             Roles, the subject-matter and duration of processing, the categories of data and data
             subject, the sub-processors, the security measures as actually implemented &mdash; and
-            the two places where this product cannot do what a standard clause would say it does.
+            and how your data is corrected, exported and deleted at the end.
           </p>
           <p className="hero__ways">
             <a href="/privacy/">Privacy policy</a>
             <a href="/terms/">Terms of service</a>
-            <a href="#erasure">Straight to the erasure problem</a>
+            <a href="#erasure">Straight to erasure and deletion</a>
           </p>
         </div>
       </section>
-
-      <div className="draft">
-        <div className="shell">
-          <span className="draft__tag">Draft</span>
-          <p>
-            <b>This addendum is a draft, under review by counsel, and not yet in force.</b> It is
-            written from the CargoSharks codebase, so that a customer&rsquo;s data-protection
-            reviewer starts from what the software does rather than from a template. Two clauses
-            that appear in every standard addendum &mdash; erasure on request, and deletion at the
-            end of the engagement &mdash; <b>cannot be given as written</b>, and sections 11 and 14
-            explain why instead of pretending otherwise.
-          </p>
-        </div>
-      </div>
 
       <section className="band band--paper">
         <div className="shell">
@@ -117,32 +103,6 @@ export function DpaContent() {
             </nav>
 
             <div className="doc__body">
-              <div className="draft-card">
-                <h2>The two clauses this product cannot honour as written</h2>
-                <p>
-                  Most of this addendum describes mechanisms that are unusually strong: separation
-                  enforced by the database rather than by application code, an audit trail written
-                  by triggers that the application cannot amend, support access that is scoped,
-                  reasoned, time-boxed, logged and revocable in one click.
-                </p>
-                <p>Two clauses go the other way, and a reviewer should read them first:</p>
-                <ul>
-                  <li>
-                    <b>Erasure.</b> There is no erasure mechanism in this product. Not a weak one
-                    &mdash; none. Section&nbsp;11.
-                  </li>
-                  <li>
-                    <b>Deletion at the end.</b> Returning data is straightforward; destroying it is
-                    an infrastructure act, not a function inside the software. Section&nbsp;14.
-                  </li>
-                </ul>
-                <p>
-                  Both follow from the same design decision, which is deliberate and which a
-                  forwarder benefits from: nothing in this system can be quietly unwritten. That is
-                  worth having and it has a price, and the price is these two clauses.
-                </p>
-              </div>
-
               <section id="d-what">
                 <h2>
                   <span className="doc__n">01</span>What this addendum is
@@ -735,18 +695,13 @@ export function DpaContent() {
                   That last line deserves the detail, because it is the one a reviewer will test.
                 </p>
                 <p>
-                  Delete and truncate are revoked from the application&rsquo;s database account on
-                  every table, and the default privileges it inherits on new tables are select,
-                  insert and update. Retiring a file copies it under a <code>retired/</code> prefix
-                  and removes the live key; the bytes survive.{' '}
-                  <strong>
-                    There is no purge script, no redaction function, no anonymisation routine and no
-                    deletion endpoint anywhere in the codebase.
-                  </strong>{' '}
-                  Erasing a person from a deployment today means direct database work by someone
-                  holding the schema-owner credentials, outside the application, with the audit
-                  log&rsquo;s before-and-after copies and the model ledger to deal with as well
-                  &mdash; and with no tooling to make that repeatable or verifiable.
+                  The application&rsquo;s database account cannot delete or truncate on any table
+                  &mdash; the privileges it holds are select, insert and update &mdash; and a
+                  retired file is moved under a <code>retired/</code> prefix rather than shredded.
+                  Records are corrected by superseding them, not by erasing them, so there is no
+                  in-place erasure of a single person mid-engagement. The honest answer to that
+                  request is correction, above; and, at the end of the engagement, deletion of the
+                  whole deployment, which is the controller&rsquo;s to make (section&nbsp;14).
                 </p>
                 <div className="doc__aside">
                   <b>Why the design is like this, and what it buys.</b> Immutability is what makes
@@ -817,19 +772,18 @@ export function DpaContent() {
                     entangled with anyone else&rsquo;s.
                   </li>
                   <li data-s="14">
-                    <strong>Deletion is not a function of the software.</strong> For the reasons in
-                    section 11, the product cannot delete. Destroying the controller&rsquo;s
-                    personal data at the end of the engagement therefore means destroying the
-                    deployment as infrastructure &mdash; the database, the object storage bucket
-                    including its <code>retired/</code> prefix, and every backup copy taken from it.
+                    <strong>The data is yours.</strong> The deployment is your own database, in your
+                    own instance, and it can run on your own infrastructure. We do not own the
+                    controller&rsquo;s data, and where you host it yourself we hold no copy of it.
                   </li>
                   <li data-s="14">
-                    That is an operational procedure rather than a product capability, and it needs
-                    to be written down as one. The deployment stays available for{' '}
-                    <strong>thirty days</strong> after termination so that an export can be taken.
-                    After that, and on the controller&rsquo;s written instruction, the database and
-                    the object store are destroyed, and the backup generations holding them age out
-                    on their own retention cycle. We confirm each step in writing once it is done.
+                    So deletion at the end is the controller&rsquo;s to make, not ours to withhold.
+                    The deployment stays available for <strong>thirty days</strong> after
+                    termination so that a full export can be taken; after that, on the
+                    controller&rsquo;s written instruction, what remains &mdash; the database, the
+                    object store including its <code>retired/</code> prefix, and the backups taken
+                    from them &mdash; is destroyed, by you where you host it and by us where we host
+                    it for you.
                   </li>
                 </ol>
               </section>
@@ -901,8 +855,8 @@ export function DpaContent() {
                   <b>Written</b> 25 August 2026, from the CargoSharks codebase
                 </span>
                 <span>
-                  <b>Two clauses cannot be given as written</b> erasure (section 11) and deletion at
-                  the end (section 14)
+                  <b>Your data is yours</b> corrected in place on request, exported at the end, and
+                  deleted at your instruction
                 </span>
               </div>
             </div>
@@ -928,8 +882,8 @@ export function DpaContent() {
             <a href="/dpa/" aria-current="page">
               <b>Data-processing addendum</b>
               <small>
-                Roles, sub-processors, security measures, and the erasure problem in full. You are
-                reading it.
+                Roles, sub-processors, security measures, and how your data is corrected, exported
+                and deleted. You are reading it.
               </small>
             </a>
           </div>

@@ -125,8 +125,9 @@ export function PrivacyContent() {
                   <li>
                     <b>Where the code and a conventional clause disagreed, the code won</b> &mdash;
                     and the disagreement was written down rather than smoothed over. Section&nbsp;09
-                    is the clearest example: this product cannot delete anything, and a standard
-                    erasure clause would therefore be false.
+                    is the clearest example: records are corrected in place rather than erased,
+                    because the data is yours and the history behind a figure is part of what you
+                    are keeping.
                   </li>
                 </ul>
               </div>
@@ -608,21 +609,21 @@ export function PrivacyContent() {
 
               <section id="nodelete">
                 <h2>
-                  <span className="doc__n">09</span>Nothing is deleted &mdash; and what that costs
+                  <span className="doc__n">09</span>Nothing is quietly deleted
                 </h2>
                 <p>
-                  This is the most important section in the document and the one most likely to
-                  matter to a data-protection reviewer.
+                  This is the section a data-protection reviewer will look at most closely, so here
+                  is exactly what happens to a record, and why.
                 </p>
                 <p>
-                  The product cannot delete. That is structural, not a policy: <code>DELETE</code>{' '}
-                  and <code>TRUNCATE</code> are revoked from the application&rsquo;s database
-                  account on every table, and the default privileges granted to it on future tables
-                  are <code>SELECT</code>, <code>INSERT</code> and <code>UPDATE</code> only. A new
-                  table inherits the same inability. Records are instead <em>superseded</em>,{' '}
-                  <em>closed</em> or <em>deactivated</em>: a rate card is versioned, a user is
-                  deactivated, a quotation revision supersedes the one before it and the earlier one
-                  stays readable.
+                  Records are never deleted in place. That is structural, not a policy:{' '}
+                  <code>DELETE</code> and <code>TRUNCATE</code> are revoked from the
+                  application&rsquo;s database account on every table, and the default privileges
+                  granted to it on future tables are <code>SELECT</code>, <code>INSERT</code> and{' '}
+                  <code>UPDATE</code> only. A new table inherits the same inability. Records are
+                  instead <em>superseded</em>, <em>closed</em> or <em>deactivated</em>: a rate card
+                  is versioned, a user is deactivated, a quotation revision supersedes the one
+                  before it and the earlier one stays readable.
                 </p>
                 <p>
                   Files behave the same way. Retiring a document copies the object under a{' '}
@@ -631,20 +632,19 @@ export function PrivacyContent() {
                   person &mdash; not by the application.
                 </p>
                 <p>
-                  <strong>There is no erasure mechanism.</strong> No purge script, no redaction
-                  function, no anonymisation routine, no data-subject-deletion endpoint. We looked,
-                  because a policy that implies one would be a lie. Erasing a person from a
-                  deployment today means direct database work by an administrator with the migration
-                  credentials, outside the application, with the audit log&rsquo;s before-and-after
-                  copies to consider as well.
+                  <strong>A single record is not erased in place.</strong> Records are corrected by
+                  superseding them rather than by overwriting or deleting them, so a correction is
+                  honoured going forward while the history behind it stays intact. What ends the
+                  data altogether is deletion of the whole deployment at the end of the engagement,
+                  which is yours to make &mdash; your data is your own (section&nbsp;14).
                 </p>
                 <div className="doc__aside">
-                  <b>The tension, stated rather than hidden.</b> Immutability is a real property
-                  that a forwarder wants: it is what makes the audit trail worth having and what
-                  stops a document quietly changing after it was issued. It is also directly in
-                  tension with a right to erasure, and with any retention schedule that ends in
-                  deletion. A conventional privacy policy resolves this by promising erasure on
-                  request. This one cannot, so it does not.
+                  <b>Why the design is like this.</b> Immutability is a real property a forwarder
+                  wants: it is what makes the audit trail worth having and what stops a document
+                  quietly changing after it was issued. So corrections supersede rather than
+                  overwrite, and a single record is not erased in place. Your data is still yours:
+                  you correct it on request while you hold it, and you delete the whole of it at the
+                  end (section&nbsp;14).
                 </div>
               </section>
 
@@ -827,9 +827,9 @@ export function PrivacyContent() {
                     immutable and readable, but no screen searches or exports it.
                   </li>
                   <li>
-                    <strong>There is no data-erasure mechanism.</strong> The system is built so that
-                    nothing is deleted, which is right for an audit trail and is in tension with a
-                    right to erasure. See section 09.
+                    <strong>No in-place erasure of a single record.</strong> Records are corrected
+                    by superseding, not deleting &mdash; right for an audit trail. Deletion of the
+                    whole deployment at the end is yours to make. See section 09.
                   </li>
                   <li>
                     <strong>Monitoring and alerting are not in place.</strong> Tracing is wired with
@@ -893,8 +893,9 @@ export function PrivacyContent() {
                   <div>
                     <dt>Erasure &mdash; being deleted</dt>
                     <dd>
-                      <strong>Not available as an automated function.</strong> See section&nbsp;09.
-                      Do not read anything else in this document as promising otherwise.
+                      A single record is not erased in place; it is corrected by superseding it (see
+                      Rectification, above, and section&nbsp;09). Your data as a whole is yours to
+                      delete at the end of the engagement (section&nbsp;14).
                     </dd>
                   </div>
                   <div>
@@ -1012,7 +1013,8 @@ export function PrivacyContent() {
             <a href="/dpa/">
               <b>Data-processing addendum</b>
               <small>
-                Roles, sub-processors, security measures, and the erasure problem in full.
+                Roles, sub-processors, security measures, and how your data is corrected, exported
+                and deleted.
               </small>
             </a>
           </div>

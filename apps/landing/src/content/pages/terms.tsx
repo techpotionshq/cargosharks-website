@@ -657,20 +657,17 @@ export function TermsContent() {
                     for a period afterwards &mdash; see section 05.
                   </li>
                   <li data-s="17">
-                    <strong>Returning your data is straightforward. Destroying it is not.</strong>{' '}
-                    The product cannot delete: the application&rsquo;s database account holds no
-                    delete permission on any table, retired files are moved rather than removed, and
-                    there is no purge, redaction or anonymisation routine anywhere in the codebase.
-                    Destruction at the end of the agreement therefore means destroying the
-                    deployment and its backups as infrastructure, not running a function inside the
-                    product.
+                    <strong>Your data is yours.</strong> The deployment is your own database, in
+                    your own instance, and it can run on your own infrastructure. We do not own your
+                    data, and where you host it yourself we hold no copy of it &mdash; so deletion
+                    at the end is yours to make, not ours to withhold.
                   </li>
                   <li data-s="17">
                     The deployment stays up for <strong>thirty days</strong> after termination so
-                    that you can take a full export. After that, and on your written instruction,
-                    the database and the object store are destroyed and the backup generations
-                    holding them age out on their own retention cycle. We confirm each step in
-                    writing.
+                    that you can take a full export. After that, on your written instruction, what
+                    remains &mdash; the database, the object store and the backups taken from them
+                    &mdash; is destroyed, by you where you host it and by us where we host it for
+                    you.
                   </li>
                 </ol>
               </section>
@@ -757,7 +754,8 @@ export function TermsContent() {
             <a href="/dpa/">
               <b>Data-processing addendum</b>
               <small>
-                Roles, sub-processors, security measures, and the erasure problem in full.
+                Roles, sub-processors, security measures, and how your data is corrected, exported
+                and deleted.
               </small>
             </a>
           </div>
