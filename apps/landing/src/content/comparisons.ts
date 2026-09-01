@@ -139,8 +139,8 @@ const SHARED_ASKS: { question: Bi; ours: Bi; tell: Bi }[] = [
       ar: 'قاعدة البيانات لمن، وهل يمكنني أخذ نسخة من بياناتي بعد ظهر الثلاثاء دون طلب؟',
     },
     ours: {
-      en: 'PostgreSQL, and yes. The tenancy rules are in the schema rather than in our application, which is also what makes the answer to the first half of that question boring.',
-      ar: 'PostgreSQL، ونعم. قواعد الفصل بين المستأجرين في بنية القاعدة لا في تطبيقنا، وهو أيضاً ما يجعل جواب الشطر الأول ممِلاً.',
+      en: 'PostgreSQL, and yes. The separation between customers is enforced by the database itself rather than by our application, which is also what makes the answer to the first half of that question boring.',
+      ar: 'PostgreSQL، ونعم. الفصل بين العملاء تفرضه قاعدة البيانات نفسها لا تطبيقنا، وهو أيضاً ما يجعل جواب الشطر الأول ممِلاً.',
     },
     tell: {
       en: 'Listen for a named engine and an export you can trigger yourself. “We can arrange an extract” is a different answer from “here is the button”, and the difference is what leaving costs you in three years.',
@@ -418,8 +418,8 @@ export const comparisons: Comparison[] = [
           ar: 'عدّاد لا يشغّله أحد. ينتهي وقت السماح، وتشغيل العدّاد مهمة أحدهم وليس مهمة أحد، فيظهر بعد أسابيع على فاتورة مورّد. أما السجل الذي يعرف مرحلة التفريغ فيشغّل العدّاد بنفسه ويكتب بند التكلفة وهو يعمل.',
         },
         {
-          en: 'Two people, one rate. Rate cards in a shared workbook overlap, and the version that goes out is whichever one the person quoting had open. In a schema two cards cannot cover one lane at one time.',
-          ar: 'شخصان وسعر واحد. بطاقات الأسعار في مصنّف مشترك تتداخل، والنسخة التي تخرج هي التي كانت مفتوحة أمام من يسعّر. أما في بنية القاعدة فلا يمكن لبطاقتين تغطية مسار واحد في وقت واحد.',
+          en: 'Two people, one rate. Rate cards in a shared workbook overlap, and the version that goes out is whichever one the person quoting had open. In the database, two cards cannot cover one lane at one time.',
+          ar: 'شخصان وسعر واحد. بطاقات الأسعار في مصنّف مشترك تتداخل، والنسخة التي تخرج هي التي كانت مفتوحة أمام من يسعّر. أما في قاعدة البيانات فلا يمكن لبطاقتين تغطية مسار واحد في وقت واحد.',
         },
         {
           en: 'Nobody can say who changed it. A spreadsheet has one truth and no history, so the question of when a date moved and who moved it has no answer at all — where a file with 80 audit triggers has a boring one.',

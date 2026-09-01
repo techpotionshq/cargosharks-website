@@ -272,8 +272,8 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'الطرد نفسه والوزن نفسه، وخمسة أرقام مختلفة على الفاتورة: 200 كجم جواً مقابل 1,200 كجم بحراً مجمّعاً — ستة أضعاف على منصة لم يتغيّر وزنها. والقواسم صفوف بيانات لا ثوابت في الشيفرة: ناقلٌ ينتقل من القاسم 6000 إلى 5000 تعديلٌ يجريه المسؤول لا إصدارٌ برمجي.'
-          : 'Same pallet, same weight, five different numbers on the invoice: 200 kg by air against 1,200 by sea LCL — a six-fold spread on a box whose weight never changed. The divisors are seed rows rather than constants: an airline moving from a 6,000 divisor to a 5,000 one is an administrator’s edit, not a release (FR-AD-03).'}
+          ? 'الطرد نفسه والوزن نفسه، وخمسة أرقام مختلفة على الفاتورة: 200 كجم جواً مقابل 1,200 كجم بحراً مجمّعاً — ستة أضعاف على منصة لم يتغيّر وزنها. والقواسم إعدادات يغيّرها المسؤول لا أرقام مثبّتة في البرنامج: نقل ناقلٍ من القاسم 6000 إلى 5000 تعديلٌ لا إصدار جديد.'
+          : 'Same pallet, same weight, five different numbers on the invoice: 200 kg by air against 1,200 by sea LCL — a six-fold spread on a box whose weight never changed. The divisors are settings an administrator can change, not numbers baked into the software: moving an airline from a 6,000 divisor to a 5,000 one is an edit, not a new release.'}
       </figcaption>
     </figure>
   )
@@ -396,8 +396,8 @@ export function AccrualStair({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'العدّاد يشغّله وصول المرحلة، لا تذكُّر أحدهم. الأيام الخمسة الأولى مجانية لأن الناقل قال ذلك؛ وفي اليوم السادس يُكتب بند تكلفة على الشحنة نفسها بالمبلغ الذي سيظهر لاحقاً على فاتورة المورّد. وحين تكون تعرفة الناقل تصاعدية فتلك صفوف شرائح في المحرّك نفسه لا حسابٌ آخر. هذه أرقام البيانات المُعدّة في النسخة التجريبية.'
-          : 'The counter is started by a milestone arriving, not by somebody remembering. The first five days are free because the carrier said so; on the sixth a charge line is written against the job itself, for the amount that will later appear on a supplier invoice. Where a carrier’s tariff escalates rather than running flat, that is a row of per-diem tiers in the same engine and not a different calculation. These are the demo’s own seeded figures.'}
+          ? 'العدّاد يشغّله وصول المرحلة، لا تذكُّر أحدهم. الأيام الخمسة الأولى مجانية لأن الناقل قال ذلك؛ وفي اليوم السادس يُكتب بند تكلفة على الشحنة نفسها بالمبلغ الذي سيظهر لاحقاً على فاتورة المورّد. وحين تكون تعرفة الناقل تصاعدية فتلك مجرّد جدول أسعار مختلف لا حسابٌ آخر. هذه أرقام النسخة التجريبية نفسها.'
+          : 'The counter is started by a milestone arriving, not by somebody remembering. The first five days are free because the carrier said so; on the sixth a charge line is written against the job itself, for the amount that will later appear on a supplier invoice. Where a carrier’s tariff escalates rather than running flat, that is just a different rate table, not a different calculation. These are the demo’s own figures.'}
       </figcaption>
     </figure>
   )
@@ -954,8 +954,8 @@ export function ChargeWaffle({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'كل مربّع نوع تكلفة، وكل مجموعة الدالة التي يُحسب بها — مرّروا المؤشّر لاسمه. الرسم كله عن جملة واحدة: الإعداد صفوف لا شيفرة. رسم إضافي جديد صفٌّ يسمّي إحدى هذه الدوال الست، يضيفه المسؤول، ولا إصدار برمجي له.'
-          : 'Each square is a charge type and each group the function it is computed by — hover one for its name. The whole drawing is about a single sentence: configuration is rows, not code. A new accessorial is a row naming one of these six functions, added by an administrator, with no release behind it.'}
+          ? 'كل مربّع نوع تكلفة، وكل مجموعة طريقة تسعيره — مرّروا المؤشّر لاسمه. الرسم كله عن فكرة واحدة: إضافة رسم إعدادٌ لا تغيير برمجي. رسمٌ إضافي جديد يضيفه المسؤول باختيار إحدى طرق التسعير الست، ولا إصدار برمجي له.'
+          : 'Each square is a charge type and each group the way it is priced — hover one for its name. The whole drawing is about a single idea: adding a charge is a setting, not a code change. A new accessorial is added by an administrator, choosing one of these six ways to price it, with no release behind it.'}
       </figcaption>
     </figure>
   )

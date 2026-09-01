@@ -244,8 +244,14 @@ export function OwnDatabase({ lang }: { lang: Lang }) {
             {lang === 'ar' ? 'الشكل الذي لم نبنِه' : 'The shape we did not build'}
           </text>
 
-          {/* One table, a customer column, and every row depending on a query
-              remembering it. Drawn as a grid because that is what it is. */}
+          {/* One table, a tenant column, and every row depending on a query
+              remembering it. Drawn as a grid because that is what it is.
+
+              The column is labelled `tenant_id` rather than `customer_id` on
+              purpose: the real schema *does* carry a `customer_id` (the
+              forwarder's own client, for the customer portal), so borrowing that
+              name for the shape we did not build would collide with a real,
+              differently-purposed column and confuse anyone who greps for it. */}
           <rect x="556" y="80" width="380" height="128" className="illo-table" />
           {[0, 1, 2, 3].map((row) => (
             <line
@@ -259,7 +265,7 @@ export function OwnDatabase({ lang }: { lang: Lang }) {
           ))}
           <rect x="556" y="80" width="86" height="128" className="illo-col" />
           <text x="599" y="72" textAnchor="middle" className="cmp-note">
-            customer_id
+            tenant_id
           </text>
           <text x="556" y="238" className="cmp-axis-label">
             {lang === 'ar'

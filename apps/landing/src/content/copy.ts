@@ -284,8 +284,8 @@ export const nav: {
             href: '/privacy/#roles',
             label: { en: 'Roles and access', ar: 'الأدوار والصلاحيات' },
             blurb: {
-              en: 'Who sees which branch, enforced in the schema',
-              ar: 'من يرى أي فرع، مفروضاً في بنية القاعدة',
+              en: 'Who sees which branch, enforced by the database itself',
+              ar: 'من يرى أي فرع، مفروضاً في قاعدة البيانات نفسها',
             },
           },
           {
@@ -610,8 +610,8 @@ export const capabilities = {
       icon: 'money',
       title: { en: 'Three decimals, all the way down', ar: 'ثلاث خانات عشرية، من الطرف إلى الطرف' },
       body: {
-        en: 'The dinar has three decimal places. Money is decimal in the database, decimal in the engines and a string on the wire — never a floating-point number, and never rounded to two on its way to a screen.',
-        ar: 'للدينار ثلاث خانات عشرية. الحساب عشري في قاعدة البيانات وفي المحرّكات، ونص على الشبكة — لا رقم عائم، ولا تقريب إلى خانتين في طريقه إلى الشاشة.',
+        en: 'The dinar has three decimal places. Every amount is kept and calculated in full and never rounded to two on its way to a screen — so the third decimal, which is real money in Kuwait, is never quietly dropped.',
+        ar: 'للدينار ثلاث خانات عشرية. كل مبلغ يُحفَظ ويُحسَب بالكامل، ولا يُقرَّب إلى خانتين في طريقه إلى الشاشة — فلا تضيع الخانة الثالثة بهدوء، وهي مالٌ حقيقي في الكويت.',
       },
     },
     {
@@ -620,8 +620,8 @@ export const capabilities = {
       icon: 'rates',
       title: { en: 'Rate cards that cannot collide', ar: 'بطاقات أسعار لا تتصادم' },
       body: {
-        en: 'Priced by lane, mode and carrier, with validity dates. Two cards cannot cover one route at one time — the constraint is in the schema, so it is not a rule somebody remembers.',
-        ar: 'التسعير حسب المسار والوسيلة والناقل، بتواريخ صلاحية. ولا يمكن لبطاقتين أن تغطّيا مساراً واحداً في وقت واحد — القيد في بنية القاعدة، لا قاعدة يتذكّرها أحد.',
+        en: 'Priced by lane, mode and carrier, with validity dates. Two cards cannot cover one route at one time — the database itself refuses it, so it is not a rule somebody has to remember.',
+        ar: 'التسعير حسب المسار والوسيلة والناقل، بتواريخ صلاحية. ولا يمكن لبطاقتين أن تغطّيا مساراً واحداً في وقت واحد — قاعدة البيانات نفسها ترفض ذلك، فليست قاعدة يتذكّرها أحد.',
       },
     },
     {

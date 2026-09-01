@@ -154,8 +154,8 @@ export const leads: Record<string, Lead> = {
           ar: 'شخصان يسعّران من مصنّف واحد سيرسلان في النهاية سعرين لمسار واحد، والنسخة التي تخرج هي التي كانت مفتوحة أمام من يسعّر. ولا ينتبه أحد إلى أن يضعهما العميل جنباً إلى جنب.',
         },
         instead: {
-          en: 'A rate card carries a lane, a mode, a carrier and validity dates, and the schema will not accept two that cover the same route at the same time.',
-          ar: 'بطاقة السعر تحمل مساراً ووسيلة وناقلاً وتواريخ صلاحية، وبنية القاعدة لا تقبل بطاقتين تغطّيان المسار نفسه في الوقت نفسه.',
+          en: 'A rate card carries a lane, a mode, a carrier and validity dates, and the database itself will not accept two that cover the same route at the same time.',
+          ar: 'بطاقة السعر تحمل مساراً ووسيلة وناقلاً وتواريخ صلاحية، وقاعدة البيانات نفسها لا تقبل بطاقتين تغطّيان المسار نفسه في الوقت نفسه.',
         },
       },
       {
