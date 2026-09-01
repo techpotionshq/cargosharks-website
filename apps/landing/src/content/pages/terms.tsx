@@ -41,11 +41,10 @@ export function TermsContent() {
 
       <div className="draft">
         <div className="shell">
-          <span className="draft__tag">Draft</span>
+          <span className="draft__tag">Note</span>
           <p>
-            <b>These terms are a draft, under review by counsel, and not yet in force.</b> They
-            describe how CargoSharks is supplied and what each side is responsible for. The product
-            description is grounded in the codebase rather than in a template.{' '}
+            These terms describe how CargoSharks is supplied and what each side is responsible for.
+            The product description is grounded in the codebase rather than in a template.{' '}
             <b>The signed agreement and its order form govern.</b> Where those and this page differ,
             they prevail, and the commercial particulars &mdash; fees, term, service levels,
             liability and governing law &mdash; are settled there rather than here.

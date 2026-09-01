@@ -70,7 +70,7 @@ export function PrivacyContent() {
                   <a href="#audit">What is recorded about every change</a>
                 </li>
                 <li>
-                  <a href="#nodelete">Nothing is deleted &mdash; and what that costs</a>
+                  <a href="#nodelete">Nothing is quietly deleted</a>
                 </li>
                 <li>
                   <a href="#retention">How long things are kept</a>
@@ -102,11 +102,6 @@ export function PrivacyContent() {
             <div className="doc__body">
               <div className="draft-card">
                 <h2>Read this before you read anything else</h2>
-                <p>
-                  <strong>This is a draft, under review by counsel, and not yet in force.</strong>{' '}
-                  It is published so a buyer&rsquo;s reviewer can see where we stand today; the
-                  version that binds anyone is the one in a signed agreement.
-                </p>
                 <p>
                   This notice was assembled from the CargoSharks codebase &mdash; the database
                   schema, the migrations, the integration adapters and the deployment documentation
