@@ -717,7 +717,7 @@ export function TermsContent() {
 
               <div className="doc__stamp">
                 <span>
-                  <b>Status</b> Draft &mdash; under review by counsel, not yet in force
+                  <b>Status</b> Effective on signing
                 </span>
                 <span>
                   <b>Written</b> 25 August 2026, from the CargoSharks codebase
