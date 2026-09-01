@@ -194,7 +194,6 @@ export default async function SignInPage({
               password={demoPassword()}
               labels={{
                 title: t('demo.title'),
-                body: t('demo.body'),
                 password: t('demo.password'),
               }}
             />
