@@ -1194,10 +1194,12 @@ export function ScopeSpan({ lang }: { lang: Lang }) {
  * The site offers a fifteen-day pilot in four places and has never once shown
  * what the fifteen days are. That plan exists, it is specific, and it is dull
  * in the way a real plan is dull — which is exactly why printing it is worth
- * more than another sentence promising that it exists. The three demo-ready
- * markers are the document's own, in its own words.
+ * more than another sentence promising that it exists. Three of the blocks are
+ * flagged `demoReady` — days 8–9, 12 and 13 — because the document marks them as
+ * the moments the pilot has something to show in the room; the chart draws them
+ * in the accent colour so that spine of the plan survives into the picture.
  */
-const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
+const PILOT: { from: number; to: number; block: Bi; done: Bi; demoReady?: boolean }[] = [
   {
     from: 1,
     to: 2,
@@ -1233,6 +1235,7 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
       en: 'owner, status and an SLA clock on every enquiry',
       ar: 'مالك وحالة وعدّاد لكل استفسار',
     },
+    demoReady: true,
   },
   {
     from: 10,
@@ -1245,6 +1248,7 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
     to: 12,
     block: { en: 'Tracking', ar: 'التتبّع' },
     done: { en: 'public tracking page and customer portal', ar: 'صفحة تتبّع عامة وبوابة للعميل' },
+    demoReady: true,
   },
   {
     from: 13,
@@ -1254,6 +1258,7 @@ const PILOT: { from: number; to: number; block: Bi; done: Bi }[] = [
       en: 'a customs hold and a demurrage clock, live',
       ar: 'تعليق جمركي وعدّاد أرضيات يعملان',
     },
+    demoReady: true,
   },
   {
     from: 14,
@@ -1335,7 +1340,14 @@ export function PilotGantt({ lang }: { lang: Lang }) {
                 <text x="0" y={y + 4} className="cmp-track-label">
                   {block.block[lang]}
                 </text>
-                <rect x={x} y={y - 11} width={width} height="20" className="fig-gantt" rx="2" />
+                <rect
+                  x={x}
+                  y={y - 11}
+                  width={width}
+                  height="20"
+                  className={block.demoReady ? 'fig-gantt fig-gantt--moment' : 'fig-gantt'}
+                  rx="2"
+                />
                 <text
                   x={noteOnLeft ? x - 14 : barEnd + 14}
                   y={y + 4}
@@ -1352,8 +1364,8 @@ export function PilotGantt({ lang }: { lang: Lang }) {
 
       <figcaption>
         {lang === 'ar'
-          ? 'خمسة عشر يوم عمل تبدأ يوم تصل بياناتكم لا يوم التوقيع، بأجر ثابت. الخطة نفسها التي نعمل بها، ومملّة بالقدر الذي تكون عليه خطة حقيقية: يومان لقراءة بطاقة أسعاركم، ويوم كامل للعربية، ويوم أخير للتجربة على نظام لا يعمل فيه الإنترنت. لا شيء يُبنى فيها يُرمى بعدها.'
-          : 'Fifteen working days that start the day your data arrives rather than the day you sign, for a fixed fee. It is the plan we actually work to, and it is dull in the way a real plan is dull: two days to read your rate card, a whole day for Arabic, and a last day rehearsing against a room with no internet. Nothing built in it is thrown away.'}
+          ? 'خمسة عشر يوم عمل تبدأ يوم تصل بياناتكم لا يوم التوقيع، بأجر ثابت. الخطة نفسها التي نعمل بها، ومملّة بالقدر الذي تكون عليه خطة حقيقية: يومان لقراءة بطاقة أسعاركم، ويوم كامل للعربية، ويوم أخير للتجربة على نظام لا يعمل فيه الإنترنت. لا شيء يُبنى فيها يُرمى بعدها. والأشرطة الكهرمانية الثلاثة هي اللحظات التي تصبح فيها الخطة جاهزة للعرض — الأيام ٨–٩ و١٢ و١٣.'
+          : 'Fifteen working days that start the day your data arrives rather than the day you sign, for a fixed fee. It is the plan we actually work to, and it is dull in the way a real plan is dull: two days to read your rate card, a whole day for Arabic, and a last day rehearsing against a room with no internet. Nothing built in it is thrown away. The three amber bars are the moments the plan is demo-ready — days 8–9, 12 and 13.'}
       </figcaption>
     </figure>
   )

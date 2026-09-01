@@ -103,6 +103,11 @@ export function PrivacyContent() {
               <div className="draft-card">
                 <h2>Read this before you read anything else</h2>
                 <p>
+                  <strong>This is a draft, under review by counsel, and not yet in force.</strong>{' '}
+                  It is published so a buyer&rsquo;s reviewer can see where we stand today; the
+                  version that binds anyone is the one in a signed agreement.
+                </p>
+                <p>
                   This notice was assembled from the CargoSharks codebase &mdash; the database
                   schema, the migrations, the integration adapters and the deployment documentation
                   &mdash; by reading what they do and writing it down. That makes it unusually
@@ -453,9 +458,8 @@ export function PrivacyContent() {
                           router rather than a model vendor: it forwards the request to whichever
                           model is configured and may serve a different one, which is why the
                           deployment records the model actually served alongside the one requested.
-                          The default model is <code>minimax/minimax-m3</code>. The default driver
-                          is <strong>none</strong> &mdash; nothing is sent anywhere until a customer
-                          supplies a key.
+                          The default driver is <strong>none</strong> &mdash; nothing is sent
+                          anywhere until a customer supplies a key.
                         </td>
                         <td>
                           Three surfaces. <strong>Enquiry reading:</strong> the subject and body
@@ -833,9 +837,9 @@ export function PrivacyContent() {
                   </li>
                   <li>
                     <strong>No independent audit has been performed.</strong> No penetration test,
-                    no SOC 2, no ISO 27001. The counts quoted on this site &mdash; 88 tables, 197
-                    policies, 80 audit triggers &mdash; are counted against a live database by the
-                    project&rsquo;s own tests, which is verification, not attestation.
+                    no SOC 2, no ISO 27001. The security properties described here are checked
+                    against a live database by the project&rsquo;s own tests, which is verification,
+                    not attestation.
                   </li>
                 </ul>
                 <p>
@@ -975,7 +979,7 @@ export function PrivacyContent() {
 
               <div className="doc__stamp">
                 <span>
-                  <b>Status</b> In force from 25 August 2026
+                  <b>Status</b> Draft &mdash; under review by counsel, not yet in force
                 </span>
                 <span>
                   <b>Written</b> 25 August 2026, from the CargoSharks codebase

@@ -41,10 +41,11 @@ export function TermsContent() {
 
       <div className="draft">
         <div className="shell">
-          <span className="draft__tag">Note</span>
+          <span className="draft__tag">Draft</span>
           <p>
-            These terms describe how CargoSharks is supplied and what each side is responsible for.
-            The product description is grounded in the codebase rather than in a template.{' '}
+            <b>These terms are a draft, under review by counsel, and not yet in force.</b> They
+            describe how CargoSharks is supplied and what each side is responsible for. The product
+            description is grounded in the codebase rather than in a template.{' '}
             <b>The signed agreement and its order form govern.</b> Where those and this page differ,
             they prevail, and the commercial particulars &mdash; fees, term, service levels,
             liability and governing law &mdash; are settled there rather than here.
@@ -559,17 +560,16 @@ export function TermsContent() {
                   <span className="doc__n">13</span>Confidentiality
                 </h2>
                 <p>
-                  Each side keeps the other&rsquo;s confidential information confidential, and uses
-                  it only for the purpose it was given. Your rate cards and your customer list are
-                  the most commercially sensitive things in the deployment, and they are yours.
-                </p>
-                <p>
                   Each side keeps the other&rsquo;s confidential information in confidence, uses it
                   only to perform the agreement, and does not disclose it except to people who need
                   it and are under the same obligation. This does not cover information that is
                   public through no fault of the receiver, was already held without an obligation,
                   or must be disclosed by law. The obligation survives the agreement. A separate
                   non-disclosure agreement, where one is signed, takes precedence.
+                </p>
+                <p>
+                  Your rate cards and your customer list are the most commercially sensitive things
+                  in the deployment, and they are yours.
                 </p>
                 <p>
                   Naming you as a reference customer requires your written permission, and is not
@@ -610,25 +610,21 @@ export function TermsContent() {
                     We warrant that the software will perform materially as described in the
                     documentation supplied with it, and that the description of the product in
                     sections 03, 05, 09, 10 and 11 above is accurate as at the date of this
-                    document.
+                    document. If it does not, tell us and we will fix it &mdash; that is the remedy;
+                    beyond that warranty and anything that cannot be excluded by law, the software
+                    is supplied as it is.
                   </li>
                   <li data-s="15">
                     <strong>No certification is warranted.</strong> There is no SOC&nbsp;2 report,
                     no ISO&nbsp;27001 certificate, no penetration test and no independent security
-                    audit. The figures quoted publicly &mdash; 88 tables, 197 policies, 80 audit
-                    triggers &mdash; are counted against a live database by the project&rsquo;s own
-                    tests. That is verification by us; it is not attestation by anyone else.
+                    audit. The security properties described are checked against a live database by
+                    the project&rsquo;s own tests. That is verification by us; it is not attestation
+                    by anyone else.
                   </li>
                   <li data-s="15">
                     The product does not give tax, customs or legal advice. A duty estimate is an
                     estimate from a tariff table, kept beside the assessed figure precisely so the
                     two can be seen to differ.
-                  </li>
-                  <li data-s="15">
-                    We warrant that the software will perform materially as described in the
-                    documentation. If it does not, tell us and we will fix it &mdash; that is the
-                    remedy. Beyond that warranty and anything that cannot be excluded by law, the
-                    software is supplied as it is.
                   </li>
                 </ol>
               </section>
@@ -725,7 +721,7 @@ export function TermsContent() {
 
               <div className="doc__stamp">
                 <span>
-                  <b>Status</b> In force from 25 August 2026
+                  <b>Status</b> Draft &mdash; under review by counsel, not yet in force
                 </span>
                 <span>
                   <b>Written</b> 25 August 2026, from the CargoSharks codebase

@@ -154,10 +154,10 @@ export const nav: {
           },
           {
             href: '/what-we-do/#modes',
-            label: { en: 'Five transport modes', ar: 'خمس وسائل شحن' },
+            label: { en: 'Four transport modes', ar: 'أربع وسائل شحن' },
             blurb: {
-              en: 'Sea, air, road, rail and courier on one file',
-              ar: 'بحري وجوي وبري وسككي وبريد سريع على سجل واحد',
+              en: 'Sea, air, road and courier on one file',
+              ar: 'بحري وجوي وبري وبريد سريع على سجل واحد',
             },
           },
           {
@@ -358,7 +358,7 @@ export const hero = {
    * Two lines, not five.
    *
    * This ran to a forty-word sentence listing seven stages, under a mono eyebrow
-   * reading "KUWAIT · SEA, AIR, ROAD, RAIL, COURIER" with a pulsing dot beside
+   * reading "KUWAIT · SEA, AIR, ROAD, COURIER" with a pulsing dot beside
    * it. The list is what the page below is for; the eyebrow was the house style
    * of every generated landing page in the category. Both are gone. What is
    * left is the sentence a forwarder would use.
@@ -378,8 +378,8 @@ export const hero = {
    * here is what an eyebrow is for: where this thing is from and what it covers.
    */
   eyebrow: {
-    en: 'Kuwait · sea, air, road, rail, courier',
-    ar: 'الكويت · بحري وجوي وبري وسككي وبريد سريع',
+    en: 'Kuwait · sea, air, road, courier',
+    ar: 'الكويت · بحري وجوي وبري وبريد سريع',
   },
   primary: { en: 'Open the live demo', ar: 'افتحوا النسخة التجريبية' },
   secondary: { en: 'See what it does', ar: 'اطّلعوا على ما يفعله' },
@@ -407,7 +407,7 @@ export const hero = {
  * can be asked to check.
  */
 export const proof: { value: string; label: Bi }[] = [
-  { value: '5', label: { en: 'transport modes', ar: 'وسائل شحن' } },
+  { value: '4', label: { en: 'transport modes', ar: 'وسائل شحن' } },
   { value: '197', label: { en: 'row-level policies', ar: 'سياسة أمان على مستوى الصف' } },
   { value: '80', label: { en: 'audit triggers', ar: 'مُشغِّل تدقيق' } },
   { value: '2,727', label: { en: 'strings, EN + AR', ar: 'نص واجهة بالعربية والإنجليزية' } },
@@ -545,13 +545,19 @@ export const work = {
 }
 
 /**
- * The five modes, as a strip under the hero.
+ * The four modes, as a strip under the hero.
  *
- * `proof` already counts them — "5 transport modes" — and a count is a claim a
+ * `proof` already counts them — "4 transport modes" — and a count is a claim a
  * reader has to take on trust. Naming them costs one line and settles the
  * question a forwarder is actually asking, which is not *how many* but *is mine
- * one of them*. An air-only broker reading "5" scrolls on; the same broker
+ * one of them*. An air-only broker reading "4" scrolls on; the same broker
  * reading "Air" does not.
+ *
+ * Sea is carried as two container types — FCL and LCL — so `modeEnum` in
+ * `packages/db` holds five values for these four modes; the strip lists the
+ * modes a forwarder books, not the enum rows. There is no rail: the product
+ * has no rail rating rule or milestone template, so the strip does not claim
+ * one.
  *
  * `key` maps to a Phosphor glyph in `Modes.tsx`, the same split `steps.icon`
  * uses and for the same reason: this file stays data.
@@ -560,7 +566,6 @@ export const modes: { key: string; label: Bi }[] = [
   { key: 'sea', label: { en: 'Sea', ar: 'بحري' } },
   { key: 'air', label: { en: 'Air', ar: 'جوي' } },
   { key: 'road', label: { en: 'Road', ar: 'بري' } },
-  { key: 'rail', label: { en: 'Rail', ar: 'سككي' } },
   { key: 'courier', label: { en: 'Courier', ar: 'بريد سريع' } },
 ]
 

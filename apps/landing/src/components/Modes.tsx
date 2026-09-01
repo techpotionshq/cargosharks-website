@@ -2,7 +2,7 @@ import { Reveal } from '@/components/Reveal'
 import { type Lang, modes, modesNote, proof } from '@/content/copy'
 
 /**
- * The five modes and the five counts, on one hairline band.
+ * The four modes and the five counts, on one hairline band.
  *
  * These were two sections. The modes had thin icons and a mono caption; the
  * counts were a five-cell strip with figures at 2.1rem — the "stats bar" every
@@ -25,7 +25,6 @@ const MODE_GLYPH = {
   sea: 'sea',
   air: 'air',
   road: 'road',
-  rail: 'rail',
   courier: 'courier',
 } as const
 
@@ -36,8 +35,8 @@ export function Modes({ lang }: { lang: Lang }) {
         <p className="tracked text-[0.6rem] text-ink-faint">{modesNote[lang]}</p>
 
         {/* The modes as words, divided by hairlines. They had a Phosphor glyph
-            each — a boat, a plane, a truck, a train, a parcel — which is five
-            pictograms saying exactly what the five words beside them said. */}
+            each — a boat, a plane, a truck, a parcel — which is four
+            pictograms saying exactly what the four words beside them said. */}
         <ul className="flex flex-wrap items-center justify-center">
           {modes.map((mode, index) => (
             <li

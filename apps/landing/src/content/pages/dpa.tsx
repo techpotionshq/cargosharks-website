@@ -41,13 +41,14 @@ export function DpaContent() {
 
       <div className="draft">
         <div className="shell">
-          <span className="draft__tag">Note</span>
+          <span className="draft__tag">Draft</span>
           <p>
-            This addendum is written from the CargoSharks codebase, so that a customer&rsquo;s
-            data-protection reviewer starts from what the software does rather than from a template.
-            Two clauses that appear in every standard addendum &mdash; erasure on request, and
-            deletion at the end of the engagement &mdash; <b>cannot be given as written</b>, and
-            sections 11 and 14 explain why instead of pretending otherwise.
+            <b>This addendum is a draft, under review by counsel, and not yet in force.</b> It is
+            written from the CargoSharks codebase, so that a customer&rsquo;s data-protection
+            reviewer starts from what the software does rather than from a template. Two clauses
+            that appear in every standard addendum &mdash; erasure on request, and deletion at the
+            end of the engagement &mdash; <b>cannot be given as written</b>, and sections 11 and 14
+            explain why instead of pretending otherwise.
           </p>
         </div>
       </div>
@@ -403,9 +404,10 @@ export function DpaContent() {
                           Permissions per role and branch, checked in the application as well as in
                           the database on the stated principle that neither is trusted alone.
                           Sessions are opaque database-backed references, twelve hours, revocable
-                          immediately. Two-factor available.{' '}
-                          <strong>Lockout after repeated failures is not built</strong>; rate
-                          limiting is.
+                          immediately. Two-factor authentication is enforced for the Administrator
+                          and Finance roles.{' '}
+                          <strong>Lockout after repeated failures is built</strong>, as is
+                          per-address rate limiting.
                         </td>
                       </tr>
                       <tr>
@@ -471,9 +473,9 @@ export function DpaContent() {
                       <tr>
                         <th scope="row">Verification</th>
                         <td>
-                          The counts &mdash; 88 tables, 197 policies, 80 audit triggers &mdash; are
-                          asserted by the project&rsquo;s own test suite against a live PostgreSQL
-                          18.6, and a new table with no policy fails the build. That is verification
+                          Row-level security is applied to every business table and an audit trigger
+                          to every business table, asserted by the project&rsquo;s own test suite
+                          &mdash; a new table with no policy fails the build. That is verification
                           by the supplier.{' '}
                           <strong>It is not an independent attestation, and none exists.</strong>
                         </td>
@@ -566,9 +568,8 @@ export function DpaContent() {
                       <tr>
                         <th scope="row">Model provider</th>
                         <td>
-                          <strong>OpenRouter</strong>, and whichever model it routes to. Default
-                          model <code>minimax/minimax-m3</code>. Off unless the controller supplies
-                          a key.
+                          <strong>OpenRouter</strong>, and whichever model the controller configures
+                          it to route to. Off unless the controller supplies a key.
                         </td>
                         <td>
                           See section&nbsp;10 &mdash; it is the row that needs more than a cell.
@@ -859,14 +860,10 @@ export function DpaContent() {
                   <span className="doc__n">16</span>International transfers
                 </h2>
                 <p>
-                  The deployment stays in its region. What leaves it is what the controller switched
-                  on: model requests (section 10), mail to the relay they configured, and webhooks
-                  to the URLs they chose.
-                </p>
-                <p>
-                  The hosting region is chosen with the controller and recorded in the agreement.
-                  The only processing that leaves it is the model surface in section 10, which is
-                  inactive unless the controller switches it on.
+                  The deployment stays in the region chosen with the controller and recorded in the
+                  agreement. What leaves it is only what the controller switched on: model requests
+                  (section 10), mail to the relay they configured, and webhooks to the URLs they
+                  chose &mdash; and the model surface is inactive unless the controller enables it.
                 </p>
               </section>
 
@@ -898,7 +895,7 @@ export function DpaContent() {
 
               <div className="doc__stamp">
                 <span>
-                  <b>Status</b> In force from 25 August 2026
+                  <b>Status</b> Draft &mdash; under review by counsel, not yet in force
                 </span>
                 <span>
                   <b>Written</b> 25 August 2026, from the CargoSharks codebase

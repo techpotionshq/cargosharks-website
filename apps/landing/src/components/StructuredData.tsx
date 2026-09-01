@@ -92,7 +92,7 @@ export function SiteSchema({ lang }: { lang: 'en' | 'ar' }) {
           */
           featureList: [
             'Bilingual Arabic and English interface and documents',
-            'Sea, air, road, rail and courier',
+            'Sea, air, road and courier',
             'Rate cards by lane, mode and carrier',
             'Milestones with planned, revised and actual times',
             'Free-time and demurrage tracking',

@@ -4460,6 +4460,14 @@
 .doc-page .band--navy .fig-gantt {
   fill: var(--blue-light);
 }
+/* The three blocks the pilot plan marks demo-ready, drawn in the accent so that
+   spine of the plan survives into the picture. */
+.doc-page .fig-gantt--moment {
+  fill: var(--amber);
+}
+.doc-page .band--navy .fig-gantt--moment {
+  fill: var(--amber-on-dark);
+}
 
 /* The allocation split: a proportional bar over a reconciling table. The three
    segments step down in weight so the largest driver reads first; the last
