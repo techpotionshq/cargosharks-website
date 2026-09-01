@@ -4033,3 +4033,682 @@
 .doc-page .band--navy .cmp-node {
   fill: var(--navy-ink-muted);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The computed figures (`figures.tsx`) and the drawn illustrations
+   (`illustrations.tsx`).
+
+   These two files were added in one commit and shipped referencing a whole
+   `.fig-*` and `.illo-*` layer that was never written — so every figure on
+   `/what-we-do/`, `/compare/` and the per-competitor pages rendered raw. The
+   failure is the exact one the `.cmp-set` note above warns about: an SVG shape
+   with no fill declared paints solid black, so a bar chart came out as black
+   slabs, and an HTML matrix with no cell styling came out as a grid of blank
+   squares. This block is that missing layer, drawn from the same tokens as
+   `.cmp-*` so a figure is right on whichever band it sits on.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The line above a drawing that names what it measures. Prose, not a caption:
+   it sits inside the panel and reads as the figure's own title. */
+.doc-page .fig-title {
+  margin: 0 0 clamp(12px, 1.6vw, 18px);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.doc-page .band--navy .fig-title {
+  color: var(--navy-ink);
+}
+
+/* Shared SVG marks. Gridlines are quieter than an axis; the rule is the one
+   emphasised reference line a figure hangs its argument on. */
+.doc-page .fig-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.doc-page .band--navy .fig-grid {
+  stroke: color-mix(in oklab, var(--navy-ink-muted) 22%, transparent);
+}
+.doc-page .fig-rule {
+  stroke: var(--ink-subtle);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+.doc-page .band--navy .fig-rule {
+  stroke: var(--navy-ink-muted);
+}
+
+/* The numbers printed on bars and rows: mono and tabular so a column of them
+   lines up, and heavier than a label so the figure reads value-first. */
+.doc-page .fig-value {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  fill: var(--ink);
+}
+.doc-page .fig-value--sm {
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--ink-muted);
+}
+.doc-page .band--navy .fig-value {
+  fill: var(--white);
+}
+.doc-page .band--navy .fig-value--sm {
+  fill: var(--navy-ink-muted);
+}
+
+/* Chargeable-weight columns. The lead bar is the surprising one (sea LCL, six
+   times air on the same box); the ghost bar is FCL, which has no volumetric
+   step and so is drawn as an outline rather than a height that would read as
+   "cheapest". */
+.doc-page .fig-bar {
+  fill: color-mix(in oklab, var(--blue) 55%, var(--paper-raised));
+}
+.doc-page .fig-bar--lead {
+  fill: var(--blue);
+}
+.doc-page .fig-bar--ghost {
+  fill: color-mix(in oklab, var(--ink-subtle) 10%, transparent);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.doc-page .band--navy .fig-bar {
+  fill: color-mix(in oklab, var(--blue-light) 45%, var(--navy-800));
+}
+.doc-page .band--navy .fig-bar--lead {
+  fill: var(--blue-light);
+}
+.doc-page .band--navy .fig-bar--ghost {
+  fill: color-mix(in oklab, var(--navy-ink-muted) 12%, transparent);
+  stroke: var(--navy-line);
+}
+
+/* The demurrage stair: free time as ground, the accrual as a filled step. */
+.doc-page .fig-free {
+  fill: color-mix(in oklab, var(--ink-subtle) 9%, transparent);
+}
+.doc-page .fig-area {
+  fill: color-mix(in oklab, var(--blue) 12%, transparent);
+}
+.doc-page .fig-step {
+  stroke: var(--blue);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.doc-page .band--navy .fig-free {
+  fill: color-mix(in oklab, var(--navy-ink-muted) 12%, transparent);
+}
+.doc-page .band--navy .fig-area {
+  fill: color-mix(in oklab, var(--blue-light) 16%, transparent);
+}
+.doc-page .band--navy .fig-step {
+  stroke: var(--blue-light);
+}
+
+/* Milestone strips: a track with intermediate dots; the ends are `.cmp-mark`. */
+.doc-page .fig-strip {
+  stroke: var(--line-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.doc-page .fig-strip__dot {
+  fill: var(--ink-subtle);
+}
+.doc-page .band--navy .fig-strip {
+  stroke: var(--navy-line);
+}
+.doc-page .band--navy .fig-strip__dot {
+  fill: var(--navy-ink-muted);
+}
+
+/* The duty matrix. Each granted cell is a filled disc, each withheld one a
+   faint ring — without this, the `<span>` in every cell has no size and the
+   whole table reads as empty. */
+.doc-page .fig-tablewrap {
+  margin-top: clamp(6px, 1vw, 12px);
+}
+.doc-page .fig-matrix {
+  width: 100%;
+  border-collapse: collapse;
+}
+.doc-page .fig-matrix th,
+.doc-page .fig-matrix td {
+  padding: 13px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+.doc-page .fig-matrix thead th {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-subtle);
+  vertical-align: bottom;
+}
+.doc-page .fig-matrix th[scope='row'],
+.doc-page .fig-matrix thead th:first-child {
+  text-align: start;
+}
+.doc-page .fig-matrix th[scope='row'] {
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.doc-page .fig-matrix td span[aria-hidden='true'] {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.doc-page .fig-matrix td.is-on span[aria-hidden='true'] {
+  background: var(--blue);
+}
+.doc-page .fig-matrix td.is-off span[aria-hidden='true'] {
+  border: 1.5px solid var(--line-strong);
+  opacity: 0.55;
+}
+.doc-page .band--navy .fig-matrix th,
+.doc-page .band--navy .fig-matrix td {
+  border-color: var(--navy-line);
+}
+.doc-page .band--navy .fig-matrix thead th {
+  color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-matrix th[scope='row'] {
+  color: var(--white);
+}
+.doc-page .band--navy .fig-matrix td.is-on span[aria-hidden='true'] {
+  background: var(--blue-light);
+}
+.doc-page .band--navy .fig-matrix td.is-off span[aria-hidden='true'] {
+  border-color: var(--navy-ink-muted);
+}
+
+/* The charge catalogue as a waffle: one group per rating basis, one cell per
+   charge type. */
+.doc-page .fig-waffle {
+  margin-top: clamp(6px, 1vw, 12px);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: clamp(20px, 2.4vw, 32px);
+}
+.doc-page .fig-waffle__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+}
+.doc-page .fig-waffle__label b {
+  font-size: 0.95rem;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.doc-page .fig-waffle__cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-page .fig-waffle__cell {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--blue) 22%, transparent);
+  border: 1px solid color-mix(in oklab, var(--blue) 40%, transparent);
+}
+.doc-page .band--navy .fig-waffle__label {
+  border-color: var(--navy-line);
+  color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-waffle__label b {
+  color: var(--white);
+}
+.doc-page .band--navy .fig-waffle__cell {
+  background: color-mix(in oklab, var(--blue-light) 26%, transparent);
+  border-color: color-mix(in oklab, var(--blue-light) 45%, transparent);
+}
+
+/* Currency chips, and the two-place-vs-three-place comparison. The `--three`
+   chips are the Gulf currencies the whole figure is about; the `--lost` side
+   is the amount a two-decimal system keeps, with the dropped fils marked. */
+.doc-page .fig-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: clamp(6px, 1vw, 12px) 0 clamp(20px, 2.4vw, 30px);
+  padding: 0;
+  list-style: none;
+}
+.doc-page .fig-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  font-size: 0.82rem;
+}
+.doc-page .fig-chip b {
+  font-family: var(--mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.doc-page .fig-chip span {
+  font-size: 0.72rem;
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.doc-page .fig-chip--three {
+  border-color: var(--blue);
+  background: color-mix(in oklab, var(--blue) 8%, var(--paper));
+}
+.doc-page .fig-chip--three b {
+  color: var(--blue);
+}
+.doc-page .band--navy .fig-chip {
+  border-color: var(--navy-line);
+  background: color-mix(in oklab, var(--navy-800) 60%, var(--navy-900));
+}
+.doc-page .band--navy .fig-chip b {
+  color: var(--navy-ink);
+}
+.doc-page .band--navy .fig-chip--three {
+  border-color: var(--blue-light);
+  background: color-mix(in oklab, var(--blue-light) 14%, var(--navy-900));
+}
+.doc-page .band--navy .fig-chip--three b {
+  color: var(--blue-light);
+}
+
+.doc-page .fig-place {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(14px, 1.8vw, 22px);
+}
+@media (min-width: 640px) {
+  .doc-page .fig-place {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.doc-page .fig-place__side {
+  padding: clamp(18px, 2.2vw, 26px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.doc-page .fig-place__side--lost {
+  border-style: dashed;
+  background: color-mix(in oklab, var(--amber) 5%, var(--paper));
+}
+.doc-page .fig-place__label {
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+.doc-page .fig-place__amount {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.doc-page .fig-place__cur {
+  margin-inline-end: 6px;
+  font-size: 0.6em;
+  font-weight: 500;
+  color: var(--ink-subtle);
+}
+.doc-page .fig-place__amount b {
+  color: var(--blue);
+  font-weight: 700;
+}
+.doc-page .fig-place__gone {
+  color: var(--amber);
+}
+.doc-page .fig-place__note {
+  margin: 14px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+.doc-page .band--navy .fig-place__side {
+  border-color: var(--navy-line);
+  background: color-mix(in oklab, var(--navy-800) 60%, var(--navy-900));
+}
+.doc-page .band--navy .fig-place__side--lost {
+  background: color-mix(in oklab, var(--amber-on-dark) 8%, var(--navy-900));
+}
+.doc-page .band--navy .fig-place__amount {
+  color: var(--white);
+}
+.doc-page .band--navy .fig-place__amount b {
+  color: var(--blue-light);
+}
+.doc-page .band--navy .fig-place__gone {
+  color: var(--amber-on-dark);
+}
+.doc-page .band--navy .fig-place__label {
+  color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-place__note {
+  color: var(--navy-ink-muted);
+}
+
+/* The scope span: an unbroken bar of the six states, and the five exclusions
+   drawn detached and outlined so the gap between them reads as the argument. */
+.doc-page .fig-span {
+  fill: color-mix(in oklab, var(--blue) 82%, transparent);
+}
+.doc-page .fig-span__label {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  fill: var(--white);
+}
+.doc-page .fig-span--out {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.3;
+  stroke-dasharray: 4 4;
+}
+/* The exclusion labels are the longest text in any figure ("Master carrier
+   documents") in the narrowest cells, so they alone drop a size to keep from
+   colliding with the block beside them. */
+.doc-page .fig-out-label {
+  font-size: 10.5px;
+  letter-spacing: 0;
+}
+.doc-page .band--navy .fig-span {
+  fill: var(--blue-light);
+}
+.doc-page .band--navy .fig-span--out {
+  stroke: var(--navy-line);
+}
+
+/* The pilot gantt bars, and the tighter note font the long "what is done"
+   lines need to sit beside a bar without running off the panel. */
+.doc-page .fig-gantt {
+  fill: var(--blue);
+}
+.doc-page .fig-gantt-note {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.doc-page .band--navy .fig-gantt {
+  fill: var(--blue-light);
+}
+
+/* The allocation split: a proportional bar over a reconciling table. The three
+   segments step down in weight so the largest driver reads first; the last
+   column of the table is the posted figure and carries the emphasis. */
+.doc-page .fig-split {
+  display: flex;
+  gap: 3px;
+  height: 66px;
+  margin: clamp(6px, 1vw, 12px) 0 clamp(22px, 2.6vw, 32px);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+.doc-page .fig-split__seg {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 14px;
+  color: var(--white);
+}
+.doc-page .fig-split__seg b {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.doc-page .fig-split__seg span {
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+.doc-page .fig-split__seg--1 {
+  background: var(--blue);
+}
+.doc-page .fig-split__seg--2 {
+  background: color-mix(in oklab, var(--blue) 60%, var(--paper-raised));
+  color: var(--ink);
+}
+.doc-page .fig-split__seg--3 {
+  background: color-mix(in oklab, var(--blue) 30%, var(--paper-raised));
+  color: var(--ink);
+}
+.doc-page .band--navy .fig-split__seg--2 {
+  background: color-mix(in oklab, var(--blue-light) 55%, var(--navy-800));
+  color: var(--white);
+}
+.doc-page .band--navy .fig-split__seg--3 {
+  background: color-mix(in oklab, var(--blue-light) 28%, var(--navy-800));
+  color: var(--white);
+}
+
+.doc-page .fig-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.doc-page .fig-table th,
+.doc-page .fig-table td {
+  padding: 10px 12px;
+  text-align: end;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.doc-page .fig-table thead th {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-subtle);
+}
+.doc-page .fig-table th[scope='row'],
+.doc-page .fig-table thead th:first-child {
+  text-align: start;
+}
+.doc-page .fig-table th[scope='row'] {
+  font-weight: 600;
+  color: var(--ink);
+}
+.doc-page .fig-table tfoot th,
+.doc-page .fig-table tfoot td {
+  border-top: 2px solid var(--line-strong);
+  border-bottom: none;
+  font-weight: 600;
+}
+.doc-page .fig-num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.doc-page .fig-num--soft {
+  color: var(--ink-subtle);
+}
+.doc-page .fig-num--strong {
+  color: var(--blue);
+  font-weight: 600;
+}
+.doc-page .band--navy .fig-table th,
+.doc-page .band--navy .fig-table td {
+  border-color: var(--navy-line);
+}
+.doc-page .band--navy .fig-table thead th {
+  color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-table th[scope='row'] {
+  color: var(--white);
+}
+.doc-page .band--navy .fig-table tfoot th,
+.doc-page .band--navy .fig-table tfoot td {
+  border-top-color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-num {
+  color: var(--navy-ink);
+}
+.doc-page .band--navy .fig-num--soft {
+  color: var(--navy-ink-muted);
+}
+.doc-page .band--navy .fig-num--strong {
+  color: var(--blue-light);
+}
+
+/* ── The drawn illustrations (`illustrations.tsx`) ─────────────────────────── */
+
+/* Stacked quotation versions: the live sheet is on top, bordered in blue; the
+   superseded ones stay legible underneath. */
+.doc-page .illo-sheet {
+  fill: var(--white);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.doc-page .illo-sheet--live {
+  fill: var(--white);
+  stroke: var(--blue);
+  stroke-width: 1.5;
+}
+.doc-page .illo-line {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.doc-page .illo-tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  fill: var(--ink-muted);
+}
+.doc-page .illo-brace {
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+.doc-page .illo-trail {
+  font-family: var(--mono);
+  font-size: 12px;
+  fill: var(--ink-muted);
+}
+.doc-page .illo-trail--who {
+  fill: var(--ink);
+}
+.doc-page .illo-trail--key {
+  fill: var(--blue);
+}
+.doc-page .band--navy .illo-sheet {
+  fill: color-mix(in oklab, var(--navy-800) 70%, var(--navy-900));
+  stroke: var(--navy-line);
+}
+.doc-page .band--navy .illo-sheet--live {
+  fill: color-mix(in oklab, var(--navy-800) 88%, var(--navy-900));
+  stroke: var(--blue-light);
+}
+.doc-page .band--navy .illo-line {
+  stroke: var(--navy-line);
+}
+.doc-page .band--navy .illo-tag {
+  fill: var(--navy-ink-muted);
+}
+.doc-page .band--navy .illo-brace {
+  stroke: var(--navy-ink-muted);
+}
+.doc-page .band--navy .illo-trail {
+  fill: var(--navy-ink-muted);
+}
+.doc-page .band--navy .illo-trail--who {
+  fill: var(--white);
+}
+.doc-page .band--navy .illo-trail--key {
+  fill: var(--blue-light);
+}
+
+/* One-database-per-customer: three cylinders we build, against the single
+   shared table with a customer column that we did not. */
+.doc-page .illo-db {
+  fill: color-mix(in oklab, var(--blue) 10%, var(--paper));
+  stroke: var(--blue);
+  stroke-width: 1.3;
+}
+.doc-page .illo-db--top {
+  fill: color-mix(in oklab, var(--blue) 18%, var(--paper));
+}
+.doc-page .illo-table {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.3;
+}
+.doc-page .illo-col {
+  fill: color-mix(in oklab, var(--amber) 14%, transparent);
+}
+.doc-page .band--navy .illo-db {
+  fill: color-mix(in oklab, var(--blue-light) 14%, var(--navy-900));
+  stroke: var(--blue-light);
+}
+.doc-page .band--navy .illo-db--top {
+  fill: color-mix(in oklab, var(--blue-light) 24%, var(--navy-900));
+}
+.doc-page .band--navy .illo-table {
+  stroke: var(--navy-line);
+}
+.doc-page .band--navy .illo-col {
+  fill: color-mix(in oklab, var(--amber-on-dark) 18%, transparent);
+}
+
+/* The quay: a decorative horizon at one hairline weight, `aria-hidden`. */
+.doc-page .illo-quay {
+  margin: clamp(20px, 3vw, 40px) 0 0;
+}
+.doc-page .illo-quay__deck {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+.doc-page .illo-quay__water {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.doc-page .illo-quay__crane,
+.doc-page .illo-quay__hull {
+  stroke: var(--ink-subtle);
+  stroke-width: 1.5;
+  fill: none;
+}
+.doc-page .illo-quay__box {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.doc-page .band--navy .illo-quay__deck {
+  stroke: var(--navy-line);
+}
+.doc-page .band--navy .illo-quay__water {
+  stroke: color-mix(in oklab, var(--navy-ink-muted) 30%, transparent);
+}
+.doc-page .band--navy .illo-quay__crane,
+.doc-page .band--navy .illo-quay__hull {
+  stroke: var(--navy-ink-muted);
+}
+.doc-page .band--navy .illo-quay__box {
+  stroke: var(--navy-line);
+}

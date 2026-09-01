@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import type { Bi, Lang } from '@/content/copy'
 
 /**
@@ -32,10 +31,10 @@ import type { Bi, Lang } from '@/content/copy'
  *      with a shape. Nothing below carries a vendor's name, a price, or a
  *      number attributed to anyone but us.
  *
- * Every figure names the file its numbers came from, in mono, at the foot of
- * its own panel. That line is not decoration: it is the difference between a
- * chart and an assertion, and it is the same discipline as the `checked` date
- * on `comparisons.ts`.
+ * These are buyer-facing pages, so a figure states what it measures in plain
+ * language and stops there — the file a number is transcribed from is recorded
+ * in the source comments above each drawing, not printed under it, where a repo
+ * path means nothing to a reader and reads as a leak.
  *
  * ## How they are drawn
  *
@@ -55,11 +54,6 @@ import type { Bi, Lang } from '@/content/copy'
  * names its own greys can only ever be right on one surface, and half of these
  * sit on `band--navy`.
  */
-
-/** Mono, small, and the same on every figure: where the numbers came from. */
-function Source({ children }: { children: ReactNode }) {
-  return <p className="fig-source">{children}</p>
-}
 
 /** The line above a drawing that says what is being measured. */
 function Title({ lang, text }: { lang: Lang; text: Bi }) {
@@ -274,8 +268,6 @@ export function ChargeableColumns({ lang }: { lang: Lang }) {
             )
           })}
         </svg>
-
-        <Source>packages/core/src/chargeable.ts · SEED_CHARGEABLE_RULES</Source>
       </div>
 
       <figcaption>
@@ -400,8 +392,6 @@ export function AccrualStair({ lang }: { lang: Lang }) {
             KWD
           </text>
         </svg>
-
-        <Source>packages/core/src/clocks.ts · packages/db/src/seed-demo.ts</Source>
       </div>
 
       <figcaption>
@@ -543,8 +533,6 @@ export function AllocationSplit({ lang }: { lang: Lang }) {
             </tfoot>
           </table>
         </div>
-
-        <Source>packages/core/src/allocation.ts · largest-remainder</Source>
       </div>
 
       <figcaption>
@@ -654,8 +642,6 @@ export function DutyMatrix({ lang }: { lang: Lang }) {
             </tbody>
           </table>
         </div>
-
-        <Source>packages/db/src/seed.ts · ROLE_PERMISSIONS</Source>
       </div>
 
       <figcaption>
@@ -848,8 +834,6 @@ export function MilestoneStrips({ lang }: { lang: Lang }) {
             {lang === 'ar' ? 'مراحل' : 'steps'}
           </text>
         </svg>
-
-        <Source>packages/db/src/seed.ts · MILESTONES</Source>
       </div>
 
       <figcaption>
@@ -966,8 +950,6 @@ export function ChargeWaffle({ lang }: { lang: Lang }) {
             </div>
           ))}
         </div>
-
-        <Source>packages/db/src/seed.ts · CHARGE_TYPES · packages/core/src/rating.ts</Source>
       </div>
 
       <figcaption>
@@ -1047,8 +1029,8 @@ export function MinorUnits({ lang }: { lang: Lang }) {
             </p>
             <p className="fig-place__note">
               {lang === 'ar'
-                ? 'numeric(19,6) في القاعدة، Decimal في المحرّكات، نصٌّ على الشبكة'
-                : 'numeric(19,6) in the database, Decimal in the engines, a string on the wire'}
+                ? 'الخانات الثلاث محفوظة من قاعدة البيانات حتى الفاتورة، بلا تقريب'
+                : 'All three decimals kept, from the database through to the invoice'}
             </p>
           </div>
           <div className="fig-place__side fig-place__side--lost">
@@ -1068,8 +1050,6 @@ export function MinorUnits({ lang }: { lang: Lang }) {
             </p>
           </div>
         </div>
-
-        <Source>packages/db/src/seed.ts · CURRENCIES · packages/core/src/money.ts</Source>
       </div>
 
       <figcaption>
@@ -1180,7 +1160,7 @@ export function ScopeSpan({ lang }: { lang: Lang }) {
                   x={trackStart + index * width + (width - 12) / 2}
                   y="226"
                   textAnchor="middle"
-                  className="cmp-axis-label"
+                  className="cmp-axis-label fig-out-label"
                 >
                   {item[lang]}
                 </text>
@@ -1193,8 +1173,6 @@ export function ScopeSpan({ lang }: { lang: Lang }) {
               : 'outside the product by decision — not on the roadmap'}
           </text>
         </svg>
-
-        <Source>/what-we-do/ §02 and §07 · packages/core/src/states.ts</Source>
       </div>
 
       <figcaption>
@@ -1345,21 +1323,31 @@ export function PilotGantt({ lang }: { lang: Lang }) {
             const x = day(block.from)
             const width = day(block.to + 1) - x - 6
 
+            // The "done" note sits after the bar, except for blocks late in the
+            // fortnight: their bar is so far right that a note beside it would
+            // run off the panel, so those notes sit to the left of the bar
+            // instead. Without this the last four rows overflowed the drawing.
+            const barEnd = x + width
+            const noteOnLeft = barEnd > (trackStart + trackEnd) / 2
+
             return (
               <g key={block.block.en}>
                 <text x="0" y={y + 4} className="cmp-track-label">
                   {block.block[lang]}
                 </text>
                 <rect x={x} y={y - 11} width={width} height="20" className="fig-gantt" rx="2" />
-                <text x={x + width + 14} y={y + 4} className="cmp-axis-label">
+                <text
+                  x={noteOnLeft ? x - 14 : barEnd + 14}
+                  y={y + 4}
+                  textAnchor={noteOnLeft ? 'end' : 'start'}
+                  className="cmp-axis-label fig-gantt-note"
+                >
                   {block.done[lang]}
                 </text>
               </g>
             )
           })}
         </svg>
-
-        <Source>docs/Qabandi_Pilot_15_Day.md §4</Source>
       </div>
 
       <figcaption>

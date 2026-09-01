@@ -168,8 +168,6 @@ export function LayeredRecord({ lang }: { lang: Lang }) {
               : 'written by a database trigger, not by the application'}
           </text>
         </svg>
-
-        <p className="fig-source">packages/db · superseded_by · app.attach_audit</p>
       </div>
 
       <figcaption>
@@ -274,8 +272,6 @@ export function OwnDatabase({ lang }: { lang: Lang }) {
               : 'respectable engineering, and a different promise'}
           </text>
         </svg>
-
-        <p className="fig-source">packages/db/src/actor.ts · one deployment per customer</p>
       </div>
 
       <figcaption>
