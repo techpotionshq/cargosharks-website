@@ -103,6 +103,16 @@ export default async function SignInPage({
       }))
     : []
 
+  /*
+    On the public demo the operations view is the one a prospect wants first,
+    so its credentials seed the form's fields — one click to sign in. A persona
+    tile above overwrites them; a real deployment passes nothing, and the
+    fields open empty.
+  */
+  const operations = DEMO_PERSONAS.find((persona) => persona.key === 'operations')
+  const demoDefaults =
+    demo && operations ? { email: operations.email, password: demoPassword() } : undefined
+
   return (
     /* Full viewport: there is no header above this any more to subtract. */
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
@@ -207,6 +217,7 @@ export default async function SignInPage({
                 submit: t('submit'),
                 submitting: t('submitting'),
               }}
+              defaults={demoDefaults}
             />
           </div>
 

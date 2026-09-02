@@ -20,6 +20,17 @@ interface Labels {
   readonly submitting: string
 }
 
+/**
+ * Credentials to seed the fields with on first render — the public demo only,
+ * where the operations persona is pre-filled so a prospect can sign in with one
+ * click. A submission that comes back with an error keeps what was typed
+ * (`state.email`) ahead of these.
+ */
+interface Defaults {
+  readonly email: string
+  readonly password: string
+}
+
 const FIELD =
   'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
 
@@ -36,7 +47,13 @@ function Submit({ labels }: { readonly labels: Labels }) {
   )
 }
 
-export function SignInForm({ labels }: { readonly labels: Labels }) {
+export function SignInForm({
+  labels,
+  defaults,
+}: {
+  readonly labels: Labels
+  readonly defaults?: Defaults
+}) {
   const [state, action] = useActionState<SignInState, FormData>(signIn, {})
 
   return (
@@ -61,7 +78,7 @@ export function SignInForm({ labels }: { readonly labels: Labels }) {
           name="email"
           id="sign-in-email"
           required
-          defaultValue={state.email ?? ''}
+          defaultValue={state.email ?? defaults?.email ?? ''}
           autoComplete="username"
           dir="ltr"
           className={FIELD}
@@ -75,6 +92,7 @@ export function SignInForm({ labels }: { readonly labels: Labels }) {
           name="password"
           id="sign-in-password"
           required
+          defaultValue={defaults?.password ?? ''}
           autoComplete="current-password"
           dir="ltr"
           className={FIELD}

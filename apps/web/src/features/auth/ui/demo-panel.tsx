@@ -3,12 +3,12 @@
 /**
  * The demo credentials, on the screen — the public demo only.
  *
- * A compact card, not a section: a labelled header row with the shared
- * password, and a row of small round icons for the three views. A prospect
- * picks a view by its icon; clicking one fills the form's own email and
- * password fields below, so the form's single "Sign in" button is the only
- * one on the screen. The addresses never show — the icon and its tooltip are
- * how a view is chosen.
+ * One compact strip, not a section: the "demo" eyebrow and the shared password
+ * on the lead edge, three small icon buttons for the three views pushed to the
+ * trailing edge. A prospect picks a view by its icon (its name is the tooltip
+ * and the `aria-label`); clicking one fills the form's own email and password
+ * fields below, so the form's single "Sign in" button is the only one on the
+ * screen. The addresses never show.
  *
  * A client component because the fields belong to `SignInForm`, a sibling.
  * Their values are set by id — assigning `.value` on an uncontrolled input is
@@ -57,32 +57,29 @@ export function DemoPanel({
   }
 
   return (
-    <div className="mt-6 rounded-md border border-line bg-surface-sunken px-3.5 py-3">
-      {/* Header: label on the lead edge, shared password on the trailing one. */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="eyebrow flex items-center gap-1.5 text-brand">
-          <Icon name="live" size={13} />
-          {labels.title}
-        </span>
-        <span className="flex items-center gap-1.5 text-[0.75rem] text-ink-muted">
-          <span className="eyebrow">{labels.password}</span>
-          <code dir="ltr" className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-ink">
-            {password}
-          </code>
-        </span>
-      </div>
+    <div className="mt-4 flex items-center gap-2 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5">
+      <span className="eyebrow flex items-center gap-1 text-brand">
+        <Icon name="live" size={11} />
+        {labels.title}
+      </span>
+      <code
+        dir="ltr"
+        className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-[0.6875rem] text-ink-muted ring-1 ring-line ring-inset"
+      >
+        {password}
+      </code>
 
-      {/* The three views. Small, filled, one row. */}
-      <div className="mt-3 flex items-center gap-2">
+      {/* The three views, small and pushed to the trailing edge. */}
+      <div className="ms-auto flex items-center gap-1">
         {personas.map((persona) => (
           <div key={persona.email} className="group relative">
             <button
               type="button"
               onClick={() => fill(persona.email)}
               aria-label={`${persona.role} — ${persona.name}`}
-              className="flex size-8 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink transition-colors hover:bg-brand hover:text-on-brand"
+              className="flex size-6 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink transition-colors hover:bg-brand hover:text-on-brand"
             >
-              <Icon name={persona.icon} size={15} />
+              <Icon name={persona.icon} size={13} />
             </button>
             {/*
               The view's name, revealed by pointer or keyboard
@@ -91,7 +88,7 @@ export function DemoPanel({
             */}
             <span
               role="tooltip"
-              className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-[0.75rem] font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-[0.6875rem] font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               {persona.role}
             </span>
