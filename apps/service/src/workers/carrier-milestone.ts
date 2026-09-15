@@ -99,8 +99,7 @@ export async function writeCarrierMilestone(
     from the neighbouring direction is a better answer than none. Same shape as
     the notification dispatcher's branch override, for the same reason.
   */
-  const template =
-    candidates.find((row) => row.direction === job.tradeDirection) ?? candidates[0]
+  const template = candidates.find((row) => row.direction === job.tradeDirection) ?? candidates[0]
 
   if (!template) {
     /*

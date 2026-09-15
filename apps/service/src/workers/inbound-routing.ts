@@ -86,7 +86,10 @@ export function identifyingDomain(address: string): string | null {
   const at = address.trim().toLowerCase().lastIndexOf('@')
   if (at < 1) return null
 
-  const domain = address.trim().toLowerCase().slice(at + 1)
+  const domain = address
+    .trim()
+    .toLowerCase()
+    .slice(at + 1)
   if (!domain || !domain.includes('.')) return null
 
   return PUBLIC_MAIL_DOMAINS.has(domain) ? null : domain

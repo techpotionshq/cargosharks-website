@@ -9,8 +9,16 @@
  * Every amount stays a *string* from `numeric(19,6)` to the formatter. Parsing
  * money into a JavaScript number to render it is how 1234.565 becomes
  * 1234.5649999999998 on a quotation.
+ *
+ * Each read has two implementations behind `usePilotFixtures()`: the seeded
+ * pilot dataset, and the real tables. Same signature, same return type, and
+ * the filters are applied on both sides — a demo where clicking a status tab
+ * changes nothing reads as broken rather than as empty. See
+ * `lib/pilot/source.ts` for why the switch is an environment variable rather
+ * than a fork of these queries.
  */
 
+import 'server-only'
 import { asc, desc, eq, sql } from 'drizzle-orm'
 import {
   accountingExports,
@@ -24,6 +32,21 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotAccountingExports,
+  pilotHasQuotes,
+  pilotInvoiceDetail,
+  pilotInvoiceSummary,
+  pilotInvoices,
+  pilotPaymentSummary,
+  pilotPayments,
+  pilotQuoteDetail,
+  pilotQuoteStatusCounts,
+  pilotQuotes,
+  pilotReceivablesAgeing,
+  pilotTopDebtors,
+} from '@/lib/pilot/fixtures'
 
 // --- quotations ------------------------------------------------------------
 
@@ -45,6 +68,8 @@ export interface QuoteRow {
 }
 
 export async function listQuotes(actor: Actor, status?: string): Promise<QuoteRow[]> {
+  if (usePilotFixtures()) return pilotQuotes(Date.now(), status)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -77,6 +102,8 @@ export async function listQuotes(actor: Actor, status?: string): Promise<QuoteRo
 export async function quoteStatusCounts(
   actor: Actor,
 ): Promise<{ status: string; count: number }[]> {
+  if (usePilotFixtures()) return pilotQuoteStatusCounts()
+
   return withActor(actor, async (tx) =>
     tx
       .select({ status: quotes.status, count: sql<number>`count(*)::int` })
@@ -105,6 +132,8 @@ export interface InvoiceRow {
 }
 
 export async function listInvoices(actor: Actor, status?: string): Promise<InvoiceRow[]> {
+  if (usePilotFixtures()) return pilotInvoices(Date.now(), status)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -145,6 +174,8 @@ export async function invoiceSummary(actor: Actor): Promise<{
   outstanding: string
   currency: string | null
 }> {
+  if (usePilotFixtures()) return pilotInvoiceSummary()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -193,6 +224,8 @@ export interface PaymentRow {
 }
 
 export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
+  if (usePilotFixtures()) return pilotPayments()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -224,6 +257,8 @@ export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
 export async function paymentSummary(
   actor: Actor,
 ): Promise<{ count: number; received: string; unallocated: number; currency: string | null }> {
+  if (usePilotFixtures()) return pilotPaymentSummary()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -249,6 +284,8 @@ export async function paymentSummary(
 
 /** Whether anything has ever been quoted — used by the empty states. */
 export async function hasQuotes(actor: Actor): Promise<boolean> {
+  if (usePilotFixtures()) return pilotHasQuotes()
+
   return withActor(actor, async (tx) => {
     const [row] = await tx.select({ id: quotes.id }).from(quotes).limit(1)
     return Boolean(row)
@@ -276,6 +313,8 @@ export interface AgeingBucket {
 export async function receivablesAgeing(
   actor: Actor,
 ): Promise<{ buckets: AgeingBucket[]; total: string; currency: string | null }> {
+  if (usePilotFixtures()) return pilotReceivablesAgeing()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       with open_invoices as (
@@ -339,6 +378,8 @@ export interface DebtorRow {
 }
 
 export async function topDebtors(actor: Actor, limit = 8): Promise<DebtorRow[]> {
+  if (usePilotFixtures()) return pilotTopDebtors(Date.now(), limit)
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select c.id                                            as "customerId",
@@ -399,6 +440,10 @@ export interface QuoteDetail {
 }
 
 export async function getQuoteDetail(actor: Actor, id: string): Promise<QuoteDetail | undefined> {
+  // An unknown id comes back `undefined` on both sides, which the page turns
+  // into a 404 — the same answer RLS gives for another branch's quotation.
+  if (usePilotFixtures()) return pilotQuoteDetail(id)
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select q.id, q.reference, q.enquiry_id as "enquiryId", e.reference as "enquiryReference",
@@ -483,6 +528,8 @@ export async function getInvoiceDetail(
   actor: Actor,
   id: string,
 ): Promise<InvoiceDetail | undefined> {
+  if (usePilotFixtures()) return pilotInvoiceDetail(id)
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select i.id, i.series_no as "seriesNo", i.status::text as status,
@@ -554,6 +601,10 @@ export async function listAccountingExports(
   actor: Actor,
   limit = 12,
 ): Promise<AccountingExportRow[]> {
+  // Sliced rather than passed on: the builder takes no limit, and `limit` here
+  // is the SQL `limit` — honouring it keeps the two modes the same shape.
+  if (usePilotFixtures()) return pilotAccountingExports().slice(0, limit)
+
   return withActor(actor, async (tx) =>
     tx
       .select({

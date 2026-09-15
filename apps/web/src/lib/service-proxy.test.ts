@@ -4,7 +4,11 @@ import { proxyToService } from './service-proxy'
 const fetchMock = vi.fn()
 
 function upstream(body = '{}', init: ResponseInit = {}): Response {
-  return new Response(body, { status: 200, headers: { 'content-type': 'application/json' }, ...init })
+  return new Response(body, {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    ...init,
+  })
 }
 
 beforeEach(() => {

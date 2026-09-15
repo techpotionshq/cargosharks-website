@@ -9,7 +9,7 @@
  * is the failure mode of every variance report that has ever been switched off.
  */
 
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -55,8 +55,7 @@ export async function SupplierInvoiceLinesCard({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const mayMatch =
-    can(session, 'payable.record') && ['received', 'disputed'].includes(bill.status)
+  const mayMatch = can(session, 'payable.record') && ['received', 'disputed'].includes(bill.status)
 
   return (
     <Card className={className} padding="none">
@@ -190,6 +189,8 @@ export async function PartnerAccountCard({
   readonly account: PartnerAccount
   readonly className?: string
 }) {
+  const timeZone = await getTimeZone()
+
   const [t] = await Promise.all([getTranslations('settlements')])
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -234,7 +235,11 @@ export async function PartnerAccountCard({
           </dl>
 
           {statement.lines.length === 0 ? (
-            <EmptyState icon="finance" title={t('nothingOpen')} description={t('nothingOpenHint')} />
+            <EmptyState
+              icon="finance"
+              title={t('nothingOpen')}
+              description={t('nothingOpenHint')}
+            />
           ) : (
             <TableShell minWidth="none">
               <THead>
@@ -251,7 +256,7 @@ export async function PartnerAccountCard({
                   const signed = Number(line.signedAmount.amount.toString())
                   return (
                     <TR key={line.id}>
-                      <TD className="text-ink-muted">{formatDate(line.date, locale)}</TD>
+                      <TD className="text-ink-muted">{formatDate(line.date, locale, timeZone)}</TD>
                       <TD>
                         <span className="font-mono text-[0.8125rem]">{line.reference}</span>
                         <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">

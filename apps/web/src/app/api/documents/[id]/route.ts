@@ -48,10 +48,7 @@ import { eq } from 'drizzle-orm'
 import { assets, documents, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })

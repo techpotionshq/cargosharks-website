@@ -65,9 +65,7 @@ describe.skipIf(!enabled)('job register', () => {
       expect(home.length).toBeGreaterThan(0)
       expect(away.length).toBeGreaterThan(0)
       expect(away.every((job) => job.branchCode === 'FXA')).toBe(true)
-      expect((await getJobDetail(bothBranchesActor, AWAY_JOB))?.reference).toBe(
-        'FXA-JOB-FIXTURE-1',
-      )
+      expect((await getJobDetail(bothBranchesActor, AWAY_JOB))?.reference).toBe('FXA-JOB-FIXTURE-1')
     })
 
     /** Another branch's shipment is *not found*, not forbidden. */

@@ -52,21 +52,17 @@ import { integrationSpec } from '@qabandi/core'
 /** How long a resolved snapshot is reused. See the note above on the number. */
 const CACHE_MS = 30_000
 
-let cache: { at: number; map: Map<string, ResolvedIntegration> } | undefined
-
 /**
- * Drop the cache.
+ * The snapshot, held for `CACHE_MS`.
  *
- * For tests, which must not inherit a snapshot from each other. There is
- * deliberately no route that calls this: a save takes effect within the window
- * above, and an endpoint whose only job is to shave thirty seconds off that
- * would be a second way for `apps/web` to reach into the service's memory —
- * one more thing to authenticate, and one more thing to be wrong when a
- * deployment runs two service replicas and the ping reaches one of them.
+ * Nothing clears it on demand, and that is the decision rather than an
+ * omission: a save takes effect within the window above, and an endpoint whose
+ * only job is to shave thirty seconds off that would be a second way for
+ * `apps/web` to reach into the service's memory — one more thing to
+ * authenticate, and one more thing to be wrong when a deployment runs two
+ * service replicas and the ping reaches one of them.
  */
-export function invalidateSettings(): void {
-  cache = undefined
-}
+let cache: { at: number; map: Map<string, ResolvedIntegration> } | undefined
 
 async function snapshot(): Promise<Map<string, ResolvedIntegration>> {
   const now = Date.now()

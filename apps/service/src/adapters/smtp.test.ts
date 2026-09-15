@@ -310,7 +310,9 @@ function header(message: string, name: string): string {
   const headers = message.split('\r\n\r\n')[0]!
   // Unfold continuations before matching, exactly as a client would.
   const unfolded = headers.replace(/\r\n[ \t]/g, '\r\n ')
-  const line = unfolded.split('\r\n').find((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`))
+  const line = unfolded
+    .split('\r\n')
+    .find((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`))
   return line ? line.slice(name.length + 1).trim() : ''
 }
 

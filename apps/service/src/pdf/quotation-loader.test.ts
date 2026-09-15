@@ -240,7 +240,13 @@ describe.skipIf(!enabled)('assembling a quotation', () => {
 
   it('reads the lines in the order they were priced', async () => {
     const id = await quote()
-    await line(id, { sortOrder: 2, amount: '204.500', rate: '204.500', basis: 'flat', quantity: '1' })
+    await line(id, {
+      sortOrder: 2,
+      amount: '204.500',
+      rate: '204.500',
+      basis: 'flat',
+      quantity: '1',
+    })
     await line(id, { sortOrder: 1 })
 
     const view = await loadQuotationView(actor, id)

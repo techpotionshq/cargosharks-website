@@ -43,6 +43,8 @@ import {
   type Actor,
   type Tx,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotEnquiryProposals } from '@/lib/pilot/fixtures'
 
 /** One proposal, as the panel shows it. */
 export interface EnquiryProposal {
@@ -69,6 +71,16 @@ export async function enquiryProposals(
   actor: Actor,
   enquiryId: string,
 ): Promise<EnquiryProposal[]> {
+  /*
+    The queue is seeded like everything else offline — and it has to be, not
+    just for the crash: `ProposalsPanel` awaits this on every enquiry file, so
+    an un-branched read here took the whole screen down rather than showing an
+    empty panel. One enquiry on the fixture board arrived by mail and carries
+    proposals; the rest return nothing, and the panel renders nothing, which is
+    what it does against a real database too.
+  */
+  if (usePilotFixtures()) return pilotEnquiryProposals(enquiryId)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -117,11 +129,7 @@ export const DIRECTIONS = ['import', 'export', 'cross_trade']
  * location resolved outside it is a location resolved under different
  * visibility rules than the one the update will use.
  */
-export async function resolveProposal(
-  tx: Tx,
-  field: string,
-  raw: string,
-): Promise<Resolution> {
+export async function resolveProposal(tx: Tx, field: string, raw: string): Promise<Resolution> {
   const value = raw.trim()
 
   switch (field) {

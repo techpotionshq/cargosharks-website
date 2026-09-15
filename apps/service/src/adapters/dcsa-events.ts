@@ -124,7 +124,7 @@ const EVENT_MAP: Readonly<Record<string, Mapping>> = {
 }
 
 /** The carrier's current estimates, for `jobs.etd` / `jobs.eta`. */
-export interface CarrierEstimates {
+interface CarrierEstimates {
   readonly etd?: Date
   readonly eta?: Date
 }

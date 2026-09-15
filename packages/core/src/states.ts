@@ -310,7 +310,10 @@ export function entryPermission<S extends string>(m: Machine<S>, to: S): string 
   if (required.size > 1) {
     throw new Error(
       `${m.name}: reaching "${to}" requires different permissions depending on where it is ` +
-        `reached from (${[...required].map((r) => r ?? 'none').sort().join(', ')}). ` +
+        `reached from (${[...required]
+          .map((r) => r ?? 'none')
+          .sort()
+          .join(', ')}). ` +
         'Use assertTransition, which knows the path taken.',
     )
   }

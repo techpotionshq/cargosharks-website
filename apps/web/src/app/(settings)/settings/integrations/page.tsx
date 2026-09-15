@@ -27,15 +27,12 @@
 
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { INTEGRATION_GROUPS } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
-import {
-  IntegrationDialog,
-  ToggleIntegrationButton,
-} from '@/features/admin/ui/integration-dialogs'
+import { IntegrationDialog, ToggleIntegrationButton } from '@/features/admin/ui/integration-dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -48,6 +45,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function IntegrationsPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   /*
     Its own key, and a stricter one than the rest of settings. A row here is
@@ -248,7 +247,7 @@ export default async function IntegrationsPage() {
 
                             {integration.lastOkAt ? (
                               <Field label={t('lastOk')} className="lg:col-span-3">
-                                {formatDateTime(integration.lastOkAt, locale)}
+                                {formatDateTime(integration.lastOkAt, locale, timeZone)}
                               </Field>
                             ) : null}
                           </Grid>
@@ -265,7 +264,9 @@ export default async function IntegrationsPage() {
                             emptiness.
                           */
                           <p className="text-[0.8125rem] text-ink-muted">
-                            {driverLabel ? t('offHint', { driver: driverLabel }) : t('offHintPlain')}
+                            {driverLabel
+                              ? t('offHint', { driver: driverLabel })
+                              : t('offHintPlain')}
                           </p>
                         )}
 

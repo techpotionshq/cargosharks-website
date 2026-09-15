@@ -83,10 +83,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
    * into a test about billing. What matters here is the ledger row's shape —
    * direction, accrual, invoice_id — which is what `unbilled.ts` reads.
    */
-  async function aLine(
-    jobId: string,
-    over: Record<string, unknown> = {},
-  ): Promise<string> {
+  async function aLine(jobId: string, over: Record<string, unknown> = {}): Promise<string> {
     return withActor(bothBranchesActor, async (tx) => {
       const [row] = await tx
         .insert(chargeLines)
@@ -151,7 +148,12 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
   it('drafts an invoice from the lines and stamps them billed', async () => {
     const jobId = await aJob()
     const first = await aLine(jobId)
-    const second = await aLine(jobId, { description: 'Terminal handling', rate: '80.000', amount: '80.000', amountBase: '80.000' })
+    const second = await aLine(jobId, {
+      description: 'Terminal handling',
+      rate: '80.000',
+      amount: '80.000',
+      amountBase: '80.000',
+    })
 
     const state = await billJob({}, form({ jobId }))
 
@@ -233,7 +235,13 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
   it('refuses a shipment billing in two currencies, and writes nothing', async () => {
     const jobId = await aJob()
     const kwd = await aLine(jobId)
-    const usd = await aLine(jobId, { currency: 'USD', rate: '200.000', amount: '200.000', fxRate: '0.307', amountBase: '61.400' })
+    const usd = await aLine(jobId, {
+      currency: 'USD',
+      rate: '200.000',
+      amount: '200.000',
+      fxRate: '0.307',
+      amountBase: '61.400',
+    })
 
     const state = await billJob({}, form({ jobId }))
 

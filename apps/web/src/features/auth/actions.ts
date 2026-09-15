@@ -14,10 +14,15 @@
  * own language.
  */
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { auth, MIN_PASSWORD_LENGTH } from '@/lib/auth'
+import { useDemoLogin } from '@/lib/pilot/source'
+import { demoPasswordMatches, demoPersonaByEmail, startDemoSession } from '@/lib/pilot/demo'
+import { clearSignInAttempts, recordSignInAttempt } from '@/lib/throttle'
+import { clearSignInFailures, readLockout, recordSignInFailure } from './lockout'
+import { applySetCookie } from './cookies'
 
 export interface SignInState {
   readonly error?: string
@@ -33,6 +38,80 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
 
   if (!email || !password) return { error: t('errorMissing'), email }
 
+  /*
+    The per-address budget, spent before anything else looks at the request —
+    FR-ID-05, `lib/throttle.ts`.
+
+    First, and counting every attempt rather than only the failures, because
+    what it bounds is the rate of the whole conversation. An attacker walking a
+    list of addresses to see which ones exist never causes a single failed
+    password check against a real account, so the lockout below would never
+    see them.
+
+    The message is safe to be specific about: it describes the caller, not the
+    account, and reveals nothing about whether the address was one of ours.
+  */
+  const address = await clientAddress()
+  const throttle = recordSignInAttempt(address)
+  if (!throttle.allowed) {
+    return { error: t('errorThrottled', { minutes: throttle.minutesRemaining }), email }
+  }
+
+  /*
+    The public demo's three personas — `QABANDI_DEMO_LOGIN=1`, off by default
+    and impossible to reach without the pilot fixtures as well (`useDemoLogin`
+    in `lib/pilot/source.ts`).
+
+    Placed before Better Auth rather than beside it because on that deployment
+    there is no database and therefore no `auth_user` to authenticate against;
+    a demo address would otherwise take a round trip through a library that
+    cannot answer. Anything that is *not* one of the three addresses falls
+    straight through to the real path below, unchanged — including the failure
+    message, which stays the same one for "no such user" and "wrong password"
+    so the form is not an enumeration oracle here either.
+  */
+  if (useDemoLogin()) {
+    const persona = demoPersonaByEmail(email)
+    if (persona && demoPasswordMatches(password)) {
+      await startDemoSession(persona)
+      // Not `/dashboard`. Which shell a persona belongs to is the entire point
+      // of having three of them; `homeFor()` states the same mapping for every
+      // other entry point.
+      redirect(persona.home)
+    }
+  }
+
+  /*
+    The account lock — FR-ID-05, policy in `core/lockout.ts`.
+
+    Checked *before* the password, which is the entire point: after five
+    failures the sixth guess must cost an attacker a refusal rather than a
+    comparison. Skipped under the pilot fixtures, where there is no database
+    and therefore no `auth_user` to read.
+
+    ## The oracle this one does concede, and why
+
+    Everything else in this file works to make an unknown address
+    indistinguishable from a wrong password. This message breaks that: only a
+    real account can be locked, so being told about a lock confirms the address
+    exists.
+
+    It is conceded deliberately, for a price an attacker has to pay in full.
+    Reaching the message costs five failed attempts against that one address,
+    and the per-address budget spent above allows ten in fifteen minutes — so
+    enumerating a list is slow, loud, and self-limiting.
+
+    The alternative is worse in a way that is easy to underrate: refusing a
+    correct password with "wrong email or password" and no further explanation.
+    That is indistinguishable from the product being broken. It generates a
+    support call, and the fix somebody reaches for under that pressure is to
+    turn the lockout off.
+  */
+  const lock = await readLockout(email)
+  if (lock?.locked) {
+    return { error: t('errorLocked', { minutes: lock.minutesRemaining }), email }
+  }
+
   let response: Response
   try {
     // `asResponse` gives back the real Response, headers included, which is the
@@ -45,10 +124,31 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
     // Better Auth throws APIError for bad credentials. Deliberately one
     // message for "no such user" and "wrong password": distinguishing them
     // turns the form into an account-enumeration oracle (FR-ID-04).
+    await countFailure(email)
     return { error: t('errorInvalid'), email }
   }
 
-  if (!response.ok) return { error: t('errorInvalid'), email }
+  if (!response.ok) {
+    await countFailure(email)
+    return { error: t('errorInvalid'), email }
+  }
+
+  /*
+    Cleared on the way through, not afterwards.
+
+    `redirect()` below throws to unwind, so anything placed after it never
+    runs — an operator would sign in successfully and stay one mistake from a
+    lock, permanently, and nothing would ever say so.
+
+    Cleared on a two-factor hand-off as well as on a completed sign-in, because
+    the password *was* right. The second factor keeps its own counters
+    (`auth_two_factor.failed_verification_count`), and holding a password
+    lockout open against somebody who has just proved the password would let a
+    stranger who knows only the address lock out an account that is, by this
+    point, demonstrably defended by something they do not have.
+  */
+  await clearSignInFailures(email)
+  clearSignInAttempts(address)
 
   const store = await cookies()
   // `getSetCookie` is the one accessor that keeps multiple Set-Cookie headers
@@ -56,7 +156,72 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   // silently corrupts any cookie whose attributes contain a comma.
   for (const header of response.headers.getSetCookie()) applySetCookie(store, header)
 
+  /*
+    The account has TOTP, so nothing is signed in yet — FR-ID-06.
+
+    Better Auth answers a 2FA account with `twoFactorRedirect: true` and a
+    short-lived challenge cookie *instead of* a session, and both are already
+    carried across above. Reading the body is the only way to tell that apart
+    from an ordinary success: the status is 200 either way, and treating it as
+    one would send the operator to a dashboard their cookie cannot open, which
+    bounces them back to sign-in in a loop that looks exactly like a broken
+    password.
+
+    Guarded so a body that is not JSON — a proxy error page, a future version
+    that answers differently — falls through to the normal path rather than
+    throwing on the success route.
+  */
+  if (await isTwoFactorChallenge(response)) redirect('/two-factor')
+
   redirect('/dashboard')
+}
+
+/** Did Better Auth ask for the second factor rather than open a session? */
+async function isTwoFactorChallenge(response: Response): Promise<boolean> {
+  try {
+    // Cloned: the body is a stream and reading it here must not consume the
+    // one the caller may still need.
+    const body: unknown = await response.clone().json()
+    return typeof body === 'object' && body !== null && 'twoFactorRedirect' in body
+      ? Boolean((body as { twoFactorRedirect?: unknown }).twoFactorRedirect)
+      : false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Count a failure, and never let counting one break the sign-in form.
+ *
+ * Wrapped because this runs on the path that is already failing. If the
+ * database is unreachable, the operator should get "wrong email or password"
+ * — which is true, and which they can act on — rather than an unhandled
+ * exception on the one screen that has to work before anything else does.
+ *
+ * A no-op under the pilot fixtures — `lockout.ts` guards that itself.
+ */
+async function countFailure(email: string): Promise<void> {
+  try {
+    await recordSignInFailure(email)
+  } catch (error) {
+    // Logged rather than swallowed silently: a lockout that has quietly
+    // stopped counting is a control that reports itself as present and is not.
+    console.error({ error }, 'sign-in failure could not be recorded')
+  }
+}
+
+/**
+ * The caller's address, as the proxy reported it.
+ *
+ * The same first-hop reading as `clientIp` in `lib/session.ts`. It is only as
+ * trustworthy as the proxy in front of the application, which is why nothing
+ * that matters rests on it alone — the durable half of FR-ID-05 is the account
+ * lock, and that is keyed on the address that was typed, not the one that
+ * connected.
+ */
+async function clientAddress(): Promise<string | null> {
+  const store = await headers()
+  return store.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
 }
 
 /**
@@ -89,38 +254,6 @@ export async function signOut(): Promise<void> {
     })
   }
   redirect('/sign-in')
-}
-
-/**
- * Copy one `Set-Cookie` header into Next's cookie store.
- *
- * Parsed rather than passed through because Next owns the outgoing headers on
- * a server action; the attributes that matter for a session cookie are carried
- * across and the rest are Better Auth's defaults anyway.
- */
-function applySetCookie(store: Awaited<ReturnType<typeof cookies>>, header: string): void {
-  const [pair, ...attributes] = header.split(';')
-  const index = pair?.indexOf('=') ?? -1
-  if (!pair || index < 0) return
-
-  const name = pair.slice(0, index).trim()
-  const value = decodeURIComponent(pair.slice(index + 1).trim())
-
-  const options: Parameters<typeof store.set>[2] = { path: '/' }
-  for (const attribute of attributes) {
-    const [rawKey, rawValue] = attribute.split('=')
-    const key = rawKey?.trim().toLowerCase()
-    const attributeValue = rawValue?.trim()
-    if (key === 'path' && attributeValue) options.path = attributeValue
-    else if (key === 'max-age' && attributeValue) options.maxAge = Number(attributeValue)
-    else if (key === 'domain' && attributeValue) options.domain = attributeValue
-    else if (key === 'samesite' && attributeValue)
-      options.sameSite = attributeValue.toLowerCase() as 'lax' | 'strict' | 'none'
-    else if (key === 'httponly') options.httpOnly = true
-    else if (key === 'secure') options.secure = true
-  }
-
-  store.set(name, value, options)
 }
 
 // --- password reset ----------------------------------------------------------

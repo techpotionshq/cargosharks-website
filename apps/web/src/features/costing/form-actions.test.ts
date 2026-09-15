@@ -226,15 +226,17 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
 
     it('refuses a rate that is not a number', async () => {
       const jobId = await freshJob()
-      expect((await saveChargeLine({}, lineForm(jobId, { rate: 'a lot' }))).errors?.rate)
-        .toBeDefined()
+      expect(
+        (await saveChargeLine({}, lineForm(jobId, { rate: 'a lot' }))).errors?.rate,
+      ).toBeDefined()
     })
 
     /** `numeric(19,6)` — seven decimals is not a rate, it is a paste error. */
     it('refuses a rate with more precision than the column holds', async () => {
       const jobId = await freshJob()
-      expect((await saveChargeLine({}, lineForm(jobId, { rate: '1.1234567' }))).errors?.rate)
-        .toBeDefined()
+      expect(
+        (await saveChargeLine({}, lineForm(jobId, { rate: '1.1234567' }))).errors?.rate,
+      ).toBeDefined()
     })
 
     it('insists on a charge type', async () => {
@@ -245,8 +247,9 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
 
     it('refuses a basis it does not model', async () => {
       const jobId = await freshJob()
-      expect((await saveChargeLine({}, lineForm(jobId, { basis: 'per_smile' }))).errors?.basis)
-        .toBeDefined()
+      expect(
+        (await saveChargeLine({}, lineForm(jobId, { basis: 'per_smile' }))).errors?.basis,
+      ).toBeDefined()
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {
@@ -255,10 +258,7 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
 
     /** Not-found rather than forbidden, and said rather than thrown. */
     it('says the shipment is no longer visible', async () => {
-      const state = await saveChargeLine(
-        {},
-        lineForm('00000000-0000-7000-8000-0000000000c1'),
-      )
+      const state = await saveChargeLine({}, lineForm('00000000-0000-7000-8000-0000000000c1'))
       expect(state.message).toContain('no longer visible')
     })
 
@@ -326,11 +326,13 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       const line = await latestLine(jobId)
 
       const invoiceId = await withActor(systemActor, async (tx) => {
-        const [invoice] = await tx.execute(
-          `insert into invoices (branch_id, customer_id, status, currency, subtotal, tax_amount, total, tax_treatment)
+        const [invoice] = await tx
+          .execute(
+            `insert into invoices (branch_id, customer_id, status, currency, subtotal, tax_amount, total, tax_treatment)
            values ('${HOME_BRANCH}', '${CUSTOMER}', 'draft', 'KWD', 100, 0, 100, 'out_of_scope')
            returning id`,
-        ).then((r) => r.rows as { id: string }[])
+          )
+          .then((r) => r.rows as { id: string }[])
         await tx
           .update(chargeLines)
           .set({ invoiceId: invoice!.id })

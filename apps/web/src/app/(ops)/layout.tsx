@@ -18,6 +18,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { getSession } from '@/lib/session'
+import { needsTwoFactorEnrolment } from '@/features/auth/enrolment'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { THEME_COOKIE, isThemeChoice } from '@/lib/theme'
@@ -32,13 +33,28 @@ import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
-import { LanguageSwitch, ThemeSwitch } from '@/ui/preferences'
+import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
 
 export default async function OpsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
   if (!session) redirect('/sign-in')
   if (session.actor.type === 'customer_contact') redirect('/portal')
   if (session.actor.type === 'agent_contact') redirect('/agent')
+
+  /*
+    The second factor, enforced — FR-ID-06.
+
+    Before the navigation is built and before any query runs, because an
+    administrator who has not enrolled must not reach a screen at all. Until
+    now this was a label: `requiresTwoFactor` was computed on every request,
+    drawn as an icon on the users screen, and read by nothing that could stop
+    anybody.
+
+    The predicate is shared with `(settings)` and with the enrolment page
+    itself (`features/auth/enrolment.ts`), so the guard and the screen it
+    guards cannot drift apart.
+  */
+  if (await needsTwoFactorEnrolment(session)) redirect('/two-factor/enrol')
 
   const t = await getTranslations('nav')
   const ta = await getTranslations('assistant')
@@ -329,6 +345,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                 {tApp('pilot')}
               </span>
             ) : null}
+            <TimeZoneSwitch current={session.principal.timezone} />
             <ThemeSwitch current={theme} />
             <LanguageSwitch />
           </div>

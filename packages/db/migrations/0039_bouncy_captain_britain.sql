@@ -1,0 +1,50 @@
+-- Better Auth owns the lifecycle of its own rows, and could not end one.
+--
+-- `0004_rls.sql` revokes `delete, truncate` from `app_user` on every table in
+-- `public`, and `01-roles.sql` withholds DELETE from tables created later. That
+-- is the "nothing is deleted" invariant made structural, and it is right: a
+-- business record carries `superseded_by`, `closed_at` or `is_active`, and the
+-- role cannot execute a delete path that would lose one.
+--
+-- The five `auth_*` tables were caught by that sweep as collateral. They are
+-- not business records — `schema/auth.ts` declares them with `systemTable`
+-- precisely because they are "Owned by Better Auth", carry no branch scope and
+-- get no audit trigger, since one over credential rows would copy secrets into
+-- the log. Their contents are credentials and ephemera whose whole lifecycle
+-- the library manages, and it manages the end of that lifecycle with DELETE.
+--
+-- The symptom was mandatory enrolment: `enableTwoFactor` clears any prior
+-- secret before issuing a new one, so every attempt died on
+--
+--     delete from "auth_two_factor" where "user_id" = $1
+--     ERROR:  permission denied for table auth_two_factor
+--
+-- and the server action never resolved. FR-ID-06 has therefore never been
+-- satisfiable against a real database: `roles.requires_two_factor` gates every
+-- screen for Administrator and Finance, and the one flow that clears the gate
+-- could not complete. The seeded end-to-end run met it as 188 skipped specs
+-- behind a setup that timed out on a form still reading "Please wait…".
+--
+-- Two of the three are security-relevant rather than merely broken:
+--
+--   * `auth_session` — `deleteSession` is how sign-out revokes. Without the
+--     grant the row survives the request that was supposed to end it, so
+--     signing out stops presenting the cookie without invalidating what the
+--     cookie names. That is the difference between a session ended and a
+--     session merely forgotten by one browser.
+--   * `auth_verification` — one-time values are consumed by deleting them. A
+--     value that cannot be consumed is a value that can be presented twice.
+--   * `auth_two_factor` — enrolment, above.
+--
+-- `auth_user` and `auth_account` are deliberately left revoked. The library can
+-- delete a user and an account; this product does not, principals reference
+-- `auth_user.id`, and "nothing is deleted" should keep meaning what it says
+-- exactly where a record has a person behind it. If a deletion path is ever
+-- wanted there it should arrive as a decision, with a migration of its own.
+--
+-- TRUNCATE stays revoked on all five. Nothing in the library issues one, and it
+-- is the statement that empties a credential table in one step.
+
+grant delete on auth_two_factor to app_user;
+grant delete on auth_session to app_user;
+grant delete on auth_verification to app_user;

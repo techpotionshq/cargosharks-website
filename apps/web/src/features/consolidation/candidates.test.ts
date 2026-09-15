@@ -83,7 +83,12 @@ describe.skipIf(!enabled)('forming a consolidation from a suggestion', () => {
         .insert(locations)
         .values([
           { kind: 'seaport', nameEn: `Grouping Origin ${tag}`, countryCode: 'CN', unlocode: null },
-          { kind: 'seaport', nameEn: `Grouping Destination ${tag}`, countryCode: 'KW', unlocode: null },
+          {
+            kind: 'seaport',
+            nameEn: `Grouping Destination ${tag}`,
+            countryCode: 'KW',
+            unlocode: null,
+          },
         ])
         .returning({ id: locations.id }),
     )

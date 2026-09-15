@@ -20,7 +20,7 @@
 
 import { Icon } from './icon'
 
-export interface TimelineMilestone {
+interface TimelineMilestone {
   readonly code: string
   readonly name: string
   readonly plannedAt: Date | null

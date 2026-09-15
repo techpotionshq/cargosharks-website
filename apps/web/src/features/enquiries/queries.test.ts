@@ -67,9 +67,7 @@ async function seed(values: Record<string, unknown> = {}): Promise<string> {
 }
 
 const find = async (id: string, filters = {}) =>
-  (await listEnquiries(bothBranchesActor, { limit: 200, ...filters })).find(
-    (row) => row.id === id,
-  )
+  (await listEnquiries(bothBranchesActor, { limit: 200, ...filters })).find((row) => row.id === id)
 
 describe.skipIf(!enabled)('the enquiry queue’s reads', () => {
   beforeAll(async () => {

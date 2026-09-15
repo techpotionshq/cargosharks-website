@@ -17,7 +17,7 @@
  * here goes through `withActor`, and the trigger records it.
  */
 
-import { asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, lt, or, sql } from 'drizzle-orm'
 import {
   auditLog,
   branches,
@@ -37,6 +37,22 @@ import {
   workingCalendars,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotAudit,
+  pilotAuditTableCounts,
+  pilotBranches,
+  pilotCalendarOptions,
+  pilotCalendars,
+  pilotChargeTypes,
+  pilotDutyRates,
+  pilotEngineRules,
+  pilotMilestoneTemplates,
+  pilotReferenceCounts,
+  pilotReferenceSample,
+  pilotRoles,
+  pilotUsers,
+} from '@/lib/pilot/fixtures'
 
 // --- people ----------------------------------------------------------------
 
@@ -55,6 +71,8 @@ export interface UserRow {
 }
 
 export async function listUsers(actor: Actor): Promise<UserRow[]> {
+  if (usePilotFixtures()) return pilotUsers()
+
   return withActor(actor, async (tx) => {
     const people = await tx
       .select({
@@ -111,6 +129,8 @@ export async function listRoles(
 ): Promise<
   { key: string; nameEn: string; nameAr: string; requiresTwoFactor: boolean; permissions: number }[]
 > {
+  if (usePilotFixtures()) return pilotRoles()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -166,6 +186,8 @@ export interface BranchRow {
 }
 
 export async function listBranches(actor: Actor): Promise<BranchRow[]> {
+  if (usePilotFixtures()) return pilotBranches()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -230,6 +252,8 @@ export interface ReferenceTable {
  * error surfaces three screens away as "no rate found".
  */
 export async function referenceCounts(actor: Actor): Promise<ReferenceTable[]> {
+  if (usePilotFixtures()) return pilotReferenceCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -262,6 +286,8 @@ export async function listChargeTypes(actor: Actor): Promise<
     costAccountCode: string | null
   }[]
 > {
+  if (usePilotFixtures()) return pilotChargeTypes()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -295,6 +321,8 @@ export async function listReferenceSample(actor: Actor): Promise<{
   countries: { code: string; nameEn: string }[]
   milestones: number
 }> {
+  if (usePilotFixtures()) return pilotReferenceSample()
+
   return withActor(actor, async (tx) => {
     const [
       incotermRows,
@@ -376,9 +404,42 @@ export interface AuditRow {
   readonly tableName: string
   readonly rowId: string
   readonly principalName: string | null
+  /*
+    The Arabic name is selected because the search already matches it.
+
+    `q` tests `nameEn` *and* `nameAr`, so a reader searching an Arabic name got
+    back rows whose principal column then showed the English one — a result set
+    that looks unrelated to what was typed. Carrying both lets the screen show
+    the name in the reader's own language and the export carry both, which is
+    the rule this product states everywhere else.
+  */
+  readonly principalNameAr: string | null
   readonly principalType: string | null
   readonly branchCode: string | null
   readonly ip: string | null
+}
+
+/**
+ * What a reader is allowed to narrow the audit trail by — `FR-AD-02`.
+ *
+ * Every field is optional and they compose with `and`, so the filters read the
+ * way somebody investigating actually thinks: this table, that person, last
+ * week. `q` is the free-text half and deliberately searches the columns a
+ * question arrives phrased in — a job reference somebody was handed, the name
+ * of the person they are asking about, an address from a security alert —
+ * rather than offering four boxes for a reader who does not yet know which one
+ * holds their answer.
+ */
+export interface AuditFilters {
+  readonly table?: string
+  readonly op?: string
+  /** Matched against the record id, the principal's name and the address. */
+  readonly q?: string
+  /** `YYYY-MM-DD`, inclusive. */
+  readonly from?: string
+  /** `YYYY-MM-DD`, inclusive — the whole of that day, not midnight. */
+  readonly to?: string
+  readonly limit?: number
 }
 
 /**
@@ -388,7 +449,41 @@ export interface AuditRow {
  * only version worth having: a write that bypasses the application is still
  * recorded, and a developer cannot forget to log one.
  */
-export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[]> {
+export async function listAudit(actor: Actor, filters: AuditFilters = {}): Promise<AuditRow[]> {
+  const limit = filters.limit ?? 150
+  if (usePilotFixtures()) return pilotAudit(Date.now(), filters)
+
+  /*
+    `to` is exclusive of the day *after* rather than inclusive of `to`.
+
+    `at` is a timestamp, so `at <= '2026-08-25'` compares against midnight and
+    silently drops everything that happened during the day the reader asked
+    for — which on the audit trail means an investigation concludes the action
+    never happened. Adding a day and using `<` keeps the whole of the closing
+    day without needing the column truncated, so the index still applies.
+  */
+  const dayAfter = (date: string) => {
+    const next = new Date(`${date}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    return next
+  }
+
+  const term = filters.q?.trim()
+  const conditions = [
+    filters.table ? eq(auditLog.tableName, filters.table) : undefined,
+    filters.op ? eq(auditLog.op, filters.op) : undefined,
+    filters.from ? gte(auditLog.at, new Date(`${filters.from}T00:00:00Z`)) : undefined,
+    filters.to ? lt(auditLog.at, dayAfter(filters.to)) : undefined,
+    term
+      ? or(
+          ilike(auditLog.rowId, `%${term}%`),
+          ilike(principals.nameEn, `%${term}%`),
+          ilike(principals.nameAr, `%${term}%`),
+          sql`${auditLog.ip}::text ilike ${`%${term}%`}`,
+        )
+      : undefined,
+  ].filter(Boolean)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -398,6 +493,7 @@ export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[
         tableName: auditLog.tableName,
         rowId: auditLog.rowId,
         principalName: principals.nameEn,
+        principalNameAr: principals.nameAr,
         principalType: auditLog.principalType,
         branchCode: branches.code,
         ip: auditLog.ip,
@@ -405,15 +501,17 @@ export async function listAudit(actor: Actor, table?: string): Promise<AuditRow[
       .from(auditLog)
       .leftJoin(principals, eq(principals.id, auditLog.principalId))
       .leftJoin(branches, eq(branches.id, auditLog.branchId))
-      .where(table ? eq(auditLog.tableName, table) : undefined)
+      .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(auditLog.at))
-      .limit(150),
+      .limit(limit),
   )
 }
 
 export async function auditTableCounts(
   actor: Actor,
 ): Promise<{ tableName: string; count: number }[]> {
+  if (usePilotFixtures()) return pilotAuditTableCounts()
+
   return withActor(actor, async (tx) =>
     tx
       .select({ tableName: auditLog.tableName, count: sql<number>`count(*)::int` })
@@ -434,6 +532,8 @@ export async function auditTableCounts(
 export async function listCalendarOptions(
   actor: Actor,
 ): Promise<{ value: string; label: string }[]> {
+  if (usePilotFixtures()) return pilotCalendarOptions()
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({ id: workingCalendars.id, name: workingCalendars.nameEn })
@@ -462,6 +562,8 @@ export interface MilestoneTemplateRow {
 
 /** The plan a job of each shape is booked with — FR-JB-02. */
 export async function listMilestoneTemplates(actor: Actor): Promise<MilestoneTemplateRow[]> {
+  if (usePilotFixtures()) return pilotMilestoneTemplates()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -501,6 +603,8 @@ export interface CalendarRow {
 
 /** Working weeks, with how many closures each one carries — NFR-03. */
 export async function listCalendars(actor: Actor): Promise<CalendarRow[]> {
+  if (usePilotFixtures()) return pilotCalendars()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -544,6 +648,8 @@ export interface DutyRateRow {
  * and stops at the first one it starts with.
  */
 export async function listDutyRates(actor: Actor): Promise<DutyRateRow[]> {
+  if (usePilotFixtures()) return pilotDutyRates()
+
   return withActor(actor, (tx) =>
     tx
       .select({
@@ -593,6 +699,8 @@ export async function listEngineRules(actor: Actor): Promise<{
   chargeable: EngineRuleRow[]
   freeTime: EngineRuleRow[]
 }> {
+  if (usePilotFixtures()) return pilotEngineRules()
+
   return withActor(actor, async (tx) => {
     const chargeable = await tx.execute(sql`
       select r.id, r.mode::text as mode, r.branch_id as "branchId", b.code as "branchCode",

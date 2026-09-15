@@ -27,8 +27,11 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   SEED_CURRENCIES,
+  allocate,
   customsValue,
+  dec,
   estimateDuty,
+  toDb,
   type CurrencySpec,
   type DutiableLine,
   type TariffLine,
@@ -152,14 +155,48 @@ export async function estimateJobDuty(
       yet, because `job_cargo` holds no value column and adding one before
       anybody has asked for it would be a column nobody fills in.
     */
-    const totalGross = cargo.reduce((acc, c) => acc + Number(c.grossWeightKg ?? 0), 0)
-    const lines: DutiableLine[] = cargo.map((c) => ({
+    /*
+      Split by the engine that already knows how, not by hand.
+
+      This was `(Number(value.amount) * Number(weight)) / totalGross` per line,
+      each rounded on its own — which is the one thing an apportionment must not
+      do. Independently rounded shares do not sum to the total: 1000 across three
+      equal lines gives 333.333333 three times and declares 999.999999. The
+      comment above promised the total was right either way; it was not.
+
+      `allocate` is the groupage engine, and its contract is exactly the one
+      needed here — floor every share to the currency's minor unit, then hand the
+      remaining units to the largest fractional remainders. It sums exactly, it
+      is deterministic, and it is already tested. The basis names say `jobId` and
+      `grossWeightKg` because houses are what it usually divides across; a cargo
+      line is the same shape of thing, and the index is a stable key because the
+      rows arrive in one query's order.
+    */
+    const targets = cargo.map((c, index) => ({
+      jobId: String(index),
+      grossWeightKg: c.grossWeightKg ?? 0,
+    }))
+
+    /*
+      Weightless cargo splits equally rather than dividing by zero.
+
+      The old code guarded the same case with `totalGross > 0`. Kept, because a
+      proportional basis over drivers that are all zero has no answer, and an
+      equal split is the honest one — every line contributed the same nothing.
+    */
+    const totalGross = targets.reduce((acc, t) => acc.plus(dec(t.grossWeightKg)), dec(0))
+    const split = allocate(
+      value,
+      targets,
+      totalGross.isZero() ? 'equal' : 'gross_weight',
+      currencySpec,
+    )
+    const shareOf = new Map(split.shares.map((share) => [share.jobId, share.share]))
+
+    const lines: DutiableLine[] = cargo.map((c, index) => ({
       hsCode: c.hsCode,
       description: c.descriptionEn,
-      value:
-        totalGross > 0
-          ? ((Number(value.amount) * Number(c.grossWeightKg ?? 0)) / totalGross).toFixed(6)
-          : (Number(value.amount) / cargo.length).toFixed(6),
+      value: toDb(shareOf.get(String(index))!),
     }))
 
     const on = new Date()
@@ -168,7 +205,9 @@ export async function estimateJobDuty(
       currency,
       on,
       spec: currencySpec,
-      ...(data.useGeneralRate ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' } : {}),
+      ...(data.useGeneralRate
+        ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' }
+        : {}),
     })
 
     const basis = {

@@ -12,6 +12,8 @@ import { getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import type { OpenShipmentRow } from '@/lib/pilot/types'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import {
   addContainer,
@@ -356,23 +358,27 @@ export async function CustomsDialog({
  * the shared per-request cache would mean every page paid for it.
  */
 async function loadOpenShipments(session: Awaited<ReturnType<typeof requireSession>>) {
-  const { withActor, jobs, customers } = await import('@qabandi/db')
-  const { and, asc, eq, notInArray } = await import('drizzle-orm')
+  const rows: readonly OpenShipmentRow[] = usePilotFixtures()
+    ? (await import('@/lib/pilot/fixtures')).pilotOpenShipments()
+    : await (async () => {
+        const { withActor, jobs, customers } = await import('@qabandi/db')
+        const { and, asc, eq, notInArray } = await import('drizzle-orm')
 
-  return withActor(session.actor, async (tx) => {
-    const rows = await tx
-      .select({ id: jobs.id, reference: jobs.reference, customer: customers.legalNameEn })
-      .from(jobs)
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .where(and(notInArray(jobs.status, ['closed', 'cancelled', 'completed'])))
-      .orderBy(asc(jobs.reference))
-      .limit(300)
+        return withActor(session.actor, (tx) =>
+          tx
+            .select({ id: jobs.id, reference: jobs.reference, customer: customers.legalNameEn })
+            .from(jobs)
+            .leftJoin(customers, eq(customers.id, jobs.customerId))
+            .where(and(notInArray(jobs.status, ['closed', 'cancelled', 'completed'])))
+            .orderBy(asc(jobs.reference))
+            .limit(300),
+        )
+      })()
 
-    return rows.map((row) => ({
-      value: row.id,
-      label: row.customer ? `${row.reference} — ${row.customer}` : row.reference,
-    }))
-  })
+  return rows.map((row) => ({
+    value: row.id,
+    label: row.customer ? `${row.reference} — ${row.customer}` : row.reference,
+  }))
 }
 
 /**
@@ -479,10 +485,7 @@ export async function MilestoneDialog({
   if (!can(session, 'job.update')) return null
   if (milestones.length === 0) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('jobActions'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('jobActions'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'jobId', value: jobId },

@@ -58,7 +58,14 @@ export async function AccountingExportDialog({
       options: options.branches,
       defaultValue: [...session.branchRoles.keys()][0],
     },
-    { kind: 'date', name: 'from', label: t('from'), span: 6, required: true, defaultValue: period.from },
+    {
+      kind: 'date',
+      name: 'from',
+      label: t('from'),
+      span: 6,
+      required: true,
+      defaultValue: period.from,
+    },
     { kind: 'date', name: 'to', label: t('to'), span: 6, required: true, defaultValue: period.to },
     post
       ? { kind: 'note', text: t('postWarning'), tone: 'caution' }

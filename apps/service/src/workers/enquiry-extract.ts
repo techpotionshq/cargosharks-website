@@ -431,7 +431,8 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
  * model that only read the body would miss what a coordinator reads first.
  */
 export function mailFor(subject: string | null, body: string): string {
-  const trimmed = body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
+  const trimmed =
+    body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
   return subject ? `Subject: ${subject}\n\n${trimmed}` : trimmed
 }
 

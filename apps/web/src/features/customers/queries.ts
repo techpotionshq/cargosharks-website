@@ -3,6 +3,12 @@
  *
  * Every query runs under the caller's actor, so RLS decides what a coordinator
  * in Kuwait sees without this file mentioning branches at all.
+ *
+ * Each read has a second implementation behind `usePilotFixtures()`, taken
+ * before `withActor` rather than inside it — the point of fixture mode is that
+ * no database is reached at all, and a branch inside the transaction would
+ * still have opened one. Same signature, same return type, so the switch is an
+ * environment variable and no page changes. See `lib/pilot/source.ts`.
  */
 
 import { cache } from 'react'
@@ -15,6 +21,13 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotCustomer,
+  pilotCustomers,
+  pilotFormReference,
+  pilotHasAnyCustomer,
+} from '@/lib/pilot/fixtures'
 
 export interface CustomerRow {
   readonly id: string
@@ -44,6 +57,10 @@ export interface CustomerDetail extends CustomerRow {
 }
 
 export async function listCustomers(actor: Actor, search?: string): Promise<CustomerRow[]> {
+  // The search term goes through: a register whose box does nothing is a
+  // register the room reads as broken.
+  if (usePilotFixtures()) return pilotCustomers(search)
+
   return withActor(actor, async (tx) => {
     const term = search?.trim()
     const filter = term
@@ -80,8 +97,10 @@ export async function listCustomers(actor: Actor, search?: string): Promise<Cust
 }
 
 export const getCustomer = cache(
-  async (actor: Actor, customerId: string): Promise<CustomerDetail | null> =>
-    withActor(actor, async (tx) => {
+  async (actor: Actor, customerId: string): Promise<CustomerDetail | null> => {
+    if (usePilotFixtures()) return pilotCustomer(customerId)
+
+    return withActor(actor, async (tx) => {
       const [row] = await tx
         .select({
           id: customers.id,
@@ -126,7 +145,8 @@ export const getCustomer = cache(
         .orderBy(asc(branches.code))
 
       return { ...row, terms }
-    }),
+    })
+  },
 )
 
 export interface BranchOption {
@@ -152,8 +172,10 @@ export interface FormReference {
  * the same request. React's `cache` is a per-request memo, not a shared one:
  * two requests never see each other's data, so this is safe under RLS.
  */
-export const loadFormReference = cache(async (actor: Actor): Promise<FormReference> =>
-  withActor(actor, async (tx) => {
+export const loadFormReference = cache(async (actor: Actor): Promise<FormReference> => {
+  if (usePilotFixtures()) return pilotFormReference()
+
+  return withActor(actor, async (tx) => {
     const branchRows = await tx
       .select({
         id: branches.id,
@@ -171,8 +193,8 @@ export const loadFormReference = cache(async (actor: Actor): Promise<FormReferen
       .orderBy(asc(countries.nameEn))
 
     return { branches: branchRows, countries: countryRows }
-  }),
-)
+  })
+})
 
 /**
  * Whether the operator has any customers yet.
@@ -181,6 +203,8 @@ export const loadFormReference = cache(async (actor: Actor): Promise<FormReferen
  * count: the answer is a boolean and the table could be long.
  */
 export async function hasAnyCustomer(actor: Actor): Promise<boolean> {
+  if (usePilotFixtures()) return pilotHasAnyCustomer()
+
   return withActor(actor, async (tx) => {
     const [row] = await tx.select({ id: customers.id }).from(customers).limit(1)
     return Boolean(row)

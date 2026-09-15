@@ -109,7 +109,9 @@ describe('SigV4, against the published vectors', () => {
     expect(url).toContain('X-Amz-Expires=86400')
     expect(url).toContain('X-Amz-SignedHeaders=host')
     // The credential scope is URL-encoded, slashes included.
-    expect(url).toContain('X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request')
+    expect(url).toContain(
+      'X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request',
+    )
   })
 })
 
@@ -176,10 +178,16 @@ afterEach(() => {
 describe('the S3 driver', () => {
   it('puts an object and reports its size and checksum', async () => {
     const calls = stubFetch()
-    const result = await store().put('jobs/AQ-1/hbl.pdf', Buffer.from('pdf bytes'), 'application/pdf')
+    const result = await store().put(
+      'jobs/AQ-1/hbl.pdf',
+      Buffer.from('pdf bytes'),
+      'application/pdf',
+    )
 
     expect(calls[0]!.method).toBe('PUT')
-    expect(calls[0]!.url).toBe('https://acct.r2.cloudflarestorage.com/qabandi-docs/jobs/AQ-1/hbl.pdf')
+    expect(calls[0]!.url).toBe(
+      'https://acct.r2.cloudflarestorage.com/qabandi-docs/jobs/AQ-1/hbl.pdf',
+    )
     expect(calls[0]!.headers['content-type']).toBe('application/pdf')
     // R2 rejects an unsigned payload on a header-authenticated request.
     expect(calls[0]!.headers['x-amz-content-sha256']).toMatch(/^[0-9a-f]{64}$/)

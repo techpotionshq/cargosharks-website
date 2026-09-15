@@ -31,6 +31,8 @@ import {
   systemActor,
   withActor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
 
 /**
  * Resolved once per request.
@@ -43,6 +45,21 @@ import {
 export const assistantConfigured = cache(async (): Promise<boolean> => {
   const spec = integrationSpec('ai')
   if (!spec) return false
+
+  /*
+    Only the row comes from fixtures. `resolveIntegration` still decides.
+
+    The alternative — `if (usePilotFixtures()) return true` — would be a second
+    answer to "is the assistant configured", and this question already has a
+    resolver whose whole job is to merge a row over the environment over the
+    catalogue. Handing it the fixture row keeps one implementation, so a change
+    to what counts as configured cannot take effect in one mode and not the
+    other.
+  */
+  if (usePilotFixtures()) {
+    const row = pilotIntegrationSettings().find((candidate) => candidate.key === 'ai')
+    return resolveIntegration(spec, row).hasSecret.apiKey === true
+  }
 
   try {
     /*

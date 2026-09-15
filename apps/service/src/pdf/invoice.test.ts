@@ -21,7 +21,7 @@ const base: InvoiceView = {
   total: '8940.500000',
   amountPaid: '0',
   notes: null,
-  customer: { nameEn: 'Kuwait National Petroleum', nameAr: 'شركة البترول الوطنية' },
+  customer: { nameEn: 'Sabahiya Petroleum', nameAr: 'شركة الصباحية للبترول' },
   branch: {
     legalNameEn: 'Al-Qabandi Kuwait',
     legalNameAr: 'القبندي الكويت',
@@ -74,13 +74,29 @@ describe('invoice document', () => {
   })
 
   it('sets the direction and language for Arabic', () => {
-    expect(renderInvoiceHtml(base, 'ar')).toContain('<html lang="ar" dir="rtl">')
-    expect(renderInvoiceHtml(base, 'en')).toContain('<html lang="en" dir="ltr">')
+    expect(renderInvoiceHtml(base, 'ar')).toContain('<html lang="ar" dir="rtl"')
+    expect(renderInvoiceHtml(base, 'en')).toContain('<html lang="en" dir="ltr"')
+  })
+
+  /**
+   * A document is printed, and paper has no colour scheme.
+   *
+   * The brand stylesheet carries dark values under `prefers-color-scheme`, so
+   * without the pin an invoice rendered on a machine reporting a dark scheme
+   * would print white type on a near-black A4 page — and the first anyone
+   * would know is a customer's toner. See `pdf/brand.ts`.
+   */
+  it('pins the document to the light theme, and takes its colours from the brand', () => {
+    const html = renderInvoiceHtml(base, 'en')
+    expect(html).toContain('data-theme="light"')
+    expect(html).toContain('--qb-brand:')
+    // The bug this replaced: a former default brand's maroon, on every invoice.
+    expect(html).not.toContain('#8c1d18')
   })
 
   it('prefers the Arabic name where one exists', () => {
     const html = renderInvoiceHtml(base, 'ar')
-    expect(html).toContain('شركة البترول الوطنية')
+    expect(html).toContain('شركة الصباحية للبترول')
     expect(html).toContain('أجرة الشحن البحري')
   })
 

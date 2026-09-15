@@ -79,7 +79,10 @@ function encodePath(path: string): string {
 
 /** `YYYYMMDDTHHMMSSZ` and its date half, which is all SigV4 asks for. */
 function stamps(now: Date): { amzDate: string; dateStamp: string } {
-  const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const amzDate = now
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '')
   return { amzDate, dateStamp: amzDate.slice(0, 8) }
 }
 

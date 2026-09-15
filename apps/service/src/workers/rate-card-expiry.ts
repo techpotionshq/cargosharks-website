@@ -127,12 +127,7 @@ function render(cards: readonly ExpiringRateCard[], locale: 'en' | 'ar'): string
   const lines = shown.map((card) => {
     const lane = locale === 'ar' ? card.laneAr : card.lane
     const who = locale === 'ar' ? card.counterpartyAr : card.counterparty
-    const side =
-      locale === 'ar'
-        ? card.direction === 'buy'
-          ? 'شراء'
-          : 'بيع'
-        : card.direction
+    const side = locale === 'ar' ? (card.direction === 'buy' ? 'شراء' : 'بيع') : card.direction
     return `- ${lane} · ${card.mode} · ${side} · ${who} · ${card.validTo}`
   })
 

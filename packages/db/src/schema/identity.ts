@@ -188,6 +188,19 @@ export const principals = pgTable(
     nameEn: text('name_en').notNull(),
     nameAr: text('name_ar'),
     locale: localeEnum('locale').notNull().default('en'),
+    /**
+     * The zone this principal reads dates in — §11, alongside `locale`.
+     *
+     * An IANA identifier rather than an offset, because an offset cannot say
+     * when daylight saving starts and half this product's counterparties keep
+     * it. Text rather than an enum for the same reason `currencies` is a table:
+     * the list belongs to tzdata, which ships with the runtime and changes
+     * without asking us.
+     *
+     * Defaulted rather than nullable so every read has an answer, and defaulted
+     * to Kuwait because that is the zone every existing row was written under.
+     */
+    timezone: text('timezone').notNull().default('Asia/Kuwait'),
     phone: text('phone'),
     /** Set for customer_contact; drives the portal RLS branch of the policy. */
     customerId: ref('customer_id'),

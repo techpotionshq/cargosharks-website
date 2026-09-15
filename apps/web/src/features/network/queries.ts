@@ -10,6 +10,16 @@
 
 import { asc, eq, ilike, or, sql } from 'drizzle-orm'
 import { locations, partners, withActor, type Actor } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { demoPartnerName } from '@/lib/pilot/demo'
+import {
+  pilotLocations,
+  pilotNetworkCounts,
+  pilotPartner,
+  pilotPartnerCredentials,
+  pilotPartnerTypeCounts,
+  pilotPartners,
+} from '@/lib/pilot/fixtures'
 
 export interface PartnerRow {
   readonly id: string
@@ -27,6 +37,9 @@ export interface PartnerRow {
 }
 
 export async function listPartners(actor: Actor, search?: string): Promise<PartnerRow[]> {
+  // Search carried through, on the same two columns the `where` below matches.
+  if (usePilotFixtures()) return pilotPartners(search)
+
   return withActor(actor, async (tx) => {
     const term = search?.trim()
     return tx
@@ -71,6 +84,8 @@ export interface LocationRow {
 }
 
 export async function listLocations(actor: Actor, search?: string): Promise<LocationRow[]> {
+  if (usePilotFixtures()) return pilotLocations(search)
+
   return withActor(actor, async (tx) => {
     const term = search?.trim()
     return tx
@@ -101,6 +116,8 @@ export async function listLocations(actor: Actor, search?: string): Promise<Loca
 }
 
 export async function countNetwork(actor: Actor): Promise<{ partners: number; locations: number }> {
+  if (usePilotFixtures()) return pilotNetworkCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select (select count(*) from partners where is_active)::int  as partners,
@@ -113,6 +130,8 @@ export async function countNetwork(actor: Actor): Promise<{ partners: number; lo
 
 /** Partner types, for the filter strip. Derived so a new enum value shows up. */
 export async function partnerTypeCounts(actor: Actor): Promise<{ type: string; count: number }[]> {
+  if (usePilotFixtures()) return pilotPartnerTypeCounts()
+
   return withActor(actor, async (tx) =>
     tx
       .select({ type: partners.type, count: sql<number>`count(*)::int` })
@@ -174,6 +193,8 @@ export async function getPartnerDetail(
   actor: Actor,
   id: string,
 ): Promise<PartnerDetail | undefined> {
+  if (usePilotFixtures()) return pilotPartner(id)
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select p.id, p.code, p.type::text as type,
@@ -238,11 +259,16 @@ export async function getPartnerDetail(
  * Null rather than a throw where the principal carries no partner: a header is
  * not worth failing a page over, and the shell simply omits the name.
  */
-export async function agentPartnerName(
-  actor: Actor,
-  locale: 'en' | 'ar',
-): Promise<string | null> {
+export async function agentPartnerName(actor: Actor, locale: 'en' | 'ar'): Promise<string | null> {
   if (!actor.partnerId) return null
+
+  /*
+    The fixtures have no partner register, and until the demo login landed no
+    fixture actor carried a `partner_id` at all — so this went to `withActor`
+    on a deployment with no database and took the whole agent shell down with
+    it. The demo's agent persona is the one row there is to resolve.
+  */
+  if (usePilotFixtures()) return demoPartnerName(actor.partnerId, locale)
 
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -290,6 +316,14 @@ export async function listPartnerCredentials(
   actor: Actor,
   partnerId: string,
 ): Promise<{ coverage: PartnerCoverageRow[]; compliance: PartnerComplianceRow[] }> {
+  /*
+    The `daysRemaining` normalisation below stays behind the branch on purpose.
+    It exists because `expires_on - current_date` comes back from the driver as
+    a string; the fixture builder computes the number itself, so running it
+    over fixture rows would be arithmetic on a shape that never had the fault.
+  */
+  if (usePilotFixtures()) return pilotPartnerCredentials(partnerId)
+
   return withActor(actor, async (tx) => {
     const coverage = await tx.execute(sql`
       select c.id, c.mode::text as mode, c.transit_days as "transitDays",

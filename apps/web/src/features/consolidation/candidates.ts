@@ -27,6 +27,8 @@ import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { customers, jobs, locations, withActor, type Actor } from '@qabandi/db'
 import { clusterShipments, type GroupableShipment, type ShipmentCluster } from '@qabandi/core'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotGroupableShipments } from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'candidate_origin')
 const destination = alias(locations, 'candidate_destination')
@@ -45,6 +47,14 @@ export async function consolidationCandidates(
   actor: Actor,
   limit = 400,
 ): Promise<ShipmentCluster[]> {
+  /*
+    The fixture stops at the shipments and `clusterShipments` still runs — the
+    clustering is the thing this screen is showing, it is pure, and it has to
+    be the same call in both modes. A fixture that returned finished clusters
+    would be a demo of a second implementation nobody ships.
+  */
+  if (usePilotFixtures()) return clusterShipments(pilotGroupableShipments())
+
   const rows = await withActor(actor, async (tx) =>
     tx
       .select({

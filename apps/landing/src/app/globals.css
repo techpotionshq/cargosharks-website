@@ -1,0 +1,387 @@
+@import 'tailwindcss';
+@import './palette.css';
+
+/**
+ * The marketing site's stylesheet.
+ *
+ * Two rules, and the first one changed.
+ *
+ * **1. Colour lives in `palette.css`, and only there.** This site used to
+ * derive every value from `@qabandi/brand`'s `--qb-*` ramps, so that an
+ * operator re-skinning the product would not find the marketing page in
+ * somebody else's blue. That is the right rule for `apps/web` and the PDF
+ * renderer, and it is still enforced there. It was the wrong rule here: every
+ * colour ended up two or three `color-mix()` calls deep, and a palette you
+ * cannot see is a palette you cannot tune. `scripts/check-brand.mjs` allows
+ * `palette.css` by name and nothing else, so a literal in a component still
+ * fails the build.
+ *
+ * **2. Logical properties only.** `ms-`, `me-`, `ps-`, `pe-`, `start-`,
+ * `end-`, `text-start`. The Arabic page is the same components with `dir="rtl"`
+ * on the document and nothing else — no forked stylesheet, no mirrored
+ * markup — which only holds if nothing here knows left from right.
+ *
+ * ---
+ *
+ * **The page is light now, and that is the change everything else follows
+ * from.**
+ *
+ * It was near-black navy end to end, with a blue radial glow behind the
+ * headline, glass panels over it and a grid of rounded cards below. Every one
+ * of those is a real technique and all of them together are the house style of
+ * every generated landing page on the internet — which is a problem for a page
+ * whose entire argument is that this software was built by people who have
+ * seen a demurrage invoice. It looked generated.
+ *
+ * The sites this was rebuilt against — CargoWise, Stripe, tentrucks and
+ * Terminal — share a different set of decisions, and the overlap is striking:
+ * a light page, dark bands used as punctuation rather than as the ground,
+ * headline weights around 500 rather than 800, tracking near `-0.02em` rather
+ * than `-0.04em`, real photography carrying the colour, hairlines instead of
+ * card borders, and small radii instead of pills. None of that is fashion. A
+ * light page with one saturated photograph on it has somewhere for the eye to
+ * rest; a dark page with a glow behind every heading does not.
+ *
+ * So: paper is the ground, ink is near-black, the brand blue is for things you
+ * can click, amber is reserved for the one thread the page is actually about —
+ * a clock running — and the dark tokens are still here, used deliberately, for
+ * the three bands that are meant to feel like a different room.
+ */
+
+@theme inline {
+  /* Light ground. */
+  --color-paper: var(--pg-paper);
+  --color-paper-sunk: var(--pg-paper-sunk);
+  --color-paper-lift: var(--pg-paper-lift);
+
+  --color-ink: var(--pg-ink);
+  --color-ink-dim: var(--pg-ink-dim);
+  --color-ink-faint: var(--pg-ink-faint);
+
+  --color-line: var(--pg-line);
+  --color-line-strong: var(--pg-line-strong);
+
+  /* Dark bands. Named for the surface they sit on rather than for a shade, so
+     a component says what it means and a re-skin has one place to answer. */
+  --color-void: var(--pg-void);
+  --color-void-lift: var(--pg-void-lift);
+  --color-on-void: var(--pg-on-void);
+  --color-on-void-dim: var(--pg-on-void-dim);
+  --color-on-void-faint: var(--pg-on-void-faint);
+  --color-void-line: var(--pg-void-line);
+
+  --color-blue: var(--pg-blue);
+  --color-blue-ink: var(--pg-blue-ink);
+  --color-blue-lit: var(--pg-blue-lit);
+  --color-amber: var(--pg-amber);
+  --color-positive: var(--pg-positive);
+  --color-on-brand: var(--pg-on-brand);
+
+  --font-display: var(--pg-font-display);
+  --font-sans: var(--pg-font-sans);
+  --font-mono: var(--pg-font-mono);
+
+  /* The page's own rhythm. Three values, used everywhere, so the vertical
+     spacing is a decision taken once rather than per section. */
+  --spacing-band: 7rem;
+  --spacing-band-sm: 4.5rem;
+}
+
+/**
+ * Faces stay with the brand even though colour no longer does.
+ *
+ * `@qabandi/brand` is still the right home for these: the supplied wordmark is
+ * Manrope ExtraBold converted to outlines, so the page and the mark are the
+ * same typeface rather than a near match, and `apps/web` sets Arabic in the
+ * same IBM Plex Sans Arabic. A palette is a look; a typeface here is a fact
+ * about an asset that ships.
+ */
+:root {
+  --pg-font-display: var(--font-manrope), var(--qb-font-display);
+  --pg-font-sans: var(--font-manrope), var(--qb-font-sans);
+  --pg-font-mono: var(--font-plex-mono), var(--qb-font-mono);
+}
+
+/**
+ * Arabic swaps the two Latin faces out and leaves the rest of the page alone.
+ *
+ * The mono stays at the head of the stack rather than being replaced: font
+ * fallback is per character, so a label reading "01 — الاستفسار" keeps the
+ * product's own label face for the digits and falls through to the Arabic for
+ * the words. What cannot survive is the tracking those labels carry —
+ * letter-spacing prises Arabic joins apart, which is exactly what a
+ * machine-translated page looks like — so it is zeroed for RTL and nowhere else.
+ */
+[dir='rtl'] {
+  --pg-font-display: var(--font-plex-arabic), var(--qb-font-arabic);
+  --pg-font-sans: var(--font-plex-arabic), var(--qb-font-arabic);
+  --pg-font-mono: var(--font-plex-mono), var(--font-plex-arabic), var(--qb-font-arabic);
+}
+
+[dir='rtl'] .tracked {
+  letter-spacing: 0;
+}
+
+/* Arabic sets a touch larger and looser: the script has no ascender rhythm to
+   carry a tight leading, and the same size reads smaller than the Latin. */
+[dir='rtl'] h1,
+[dir='rtl'] h2 {
+  line-height: 1.28;
+  letter-spacing: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--pg-paper);
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background: var(--pg-paper);
+  color: var(--pg-ink);
+  font-family: var(--pg-font-sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--pg-blue);
+  color: var(--pg-on-brand);
+}
+
+:focus-visible {
+  outline: 2px solid var(--pg-blue);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/**
+ * One content column, one gutter, everywhere — including off this app.
+ *
+ * The previous site had four different maximum widths and the header aligned
+ * to none of them, so every section started at a slightly different place and
+ * the page read as several pages stapled together. This is the fix: the header,
+ * every section and the footer all measure from `.shell`.
+ *
+ * **The numbers are not chosen here.** They are `--shell` and `--gutter` from
+ * `pages.css`, copied to the pixel, because the five imported documents use
+ * that stylesheet and share this header. A visitor who clicks from the home
+ * page to `/what-we-do/` must not watch the logo step forty pixels sideways —
+ * that reads as having left the site, which is the opposite of what a marketing
+ * page is for.
+ */
+.shell {
+  width: 100%;
+  max-width: 75rem;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
+/**
+ * The measure the product frames run to.
+ *
+ * `.shell` is the *text* measure and it is not moving. But a 1440-wide capture
+ * inside a 1200-wide column is a screenshot of a screenshot — the sidebar
+ * labels land at about nine pixels, and the whole point of showing the product
+ * is that somebody can read it. Concentric with `.shell`: same centre, same
+ * gutter, so the page still reads as one column with the pictures breathing out
+ * of it.
+ */
+.shell-wide {
+  width: 100%;
+  max-width: 84rem;
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 56px);
+}
+
+/** Mono, small, wide — the product's own convention for a label. */
+.tracked {
+  font-family: var(--pg-font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/** Tabular figures, so a counting number does not jitter its own width. */
+.figures {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/**
+ * A rule that fades out at both ends, for section joins.
+ */
+.rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--pg-line) 18%,
+    var(--pg-line) 82%,
+    transparent
+  );
+}
+
+/** The same, on a dark band. */
+.rule-dark {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--pg-void-line) 18%,
+    var(--pg-void-line) 82%,
+    transparent
+  );
+}
+
+/**
+ * The bottom of a product capture, dissolved.
+ *
+ * A frame tall enough to reach the fold ends on a hard edge there, which tells
+ * the reader the page has finished. Fading the last of it into the background
+ * says the opposite. A mask rather than an overlay, so a shadow under the frame
+ * is not cut in half by an opaque rectangle.
+ */
+.floor {
+  mask-image: linear-gradient(to bottom, black 68%, transparent 99%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floor {
+    mask-image: none;
+  }
+}
+
+/**
+ * The header, in one colour.
+ *
+ * It used to inspect what was behind it and invert — a white panel over the
+ * dark bands, a dark one over the paper — driven by a registered `--tone`
+ * custom property so the surface, the borders, the type and both lockups moved
+ * together. It worked, and it was wrong: a bar that changes colour twice on the
+ * way down a page draws attention to itself at four moments that have nothing
+ * to do with what the reader is doing, and the crossing is unavoidably ugly
+ * because every path from white to near-black goes through the grey where the
+ * type has no contrast against its own panel.
+ *
+ * Dark everywhere is not a compromise for that problem, it is the better
+ * answer. The bar is the one piece of chrome on the site; chrome that stays put
+ * is chrome you stop noticing, which is the whole job. It also deletes the
+ * scroll listener that measured band rectangles, the `data-tone` attributes the
+ * sections carried for it, the second lockup, and about eighty lines of
+ * `color-mix()` — none of which the page misses.
+ *
+ * What is left is one translucent dark panel. The blur is doing the work that
+ * the inversion was: the photograph moves under it at the top of the page and
+ * the product screenshot moves under it further down, so it still reads as
+ * being *on* the page rather than bolted over it.
+ */
+.bar {
+  background: color-mix(in srgb, var(--pg-void) 82%, transparent);
+  border-color: var(--pg-void-line);
+}
+
+.bar-hover:hover {
+  background: color-mix(in srgb, var(--pg-on-void) 9%, transparent);
+}
+
+.bar-pill {
+  background: color-mix(in srgb, var(--pg-on-void) 12%, transparent);
+}
+
+/**
+ * The calculator's sliders.
+ *
+ * `accent-color` gets a usable thumb for one line of CSS and stops there: it
+ * cannot be sized, it cannot be given a hit area larger than it looks, and it
+ * cannot respond to being grabbed. This is the only control on the site a
+ * reader actually operates, so it is worth the two vendor selectors — a thumb
+ * that grows under the cursor and again while it is held is the difference
+ * between a slider that works and one that feels like it works.
+ *
+ * Both prefixes are spelled out because they cannot be combined: a selector
+ * list containing one vendor's pseudo-element is discarded whole by the other,
+ * so `::-webkit-slider-thumb, ::-moz-range-thumb {}` styles neither.
+ */
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--pg-blue);
+  border: 3px solid var(--pg-paper);
+  box-shadow: 0 1px 4px color-mix(in oklab, var(--pg-ink) 30%, transparent);
+  cursor: grab;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--pg-blue);
+  border: 3px solid var(--pg-paper);
+  cursor: grab;
+  transition: transform 0.15s ease;
+}
+
+.slider:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.slider:hover::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+.slider:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+  cursor: grabbing;
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--pg-blue) 18%, transparent);
+}
+.slider:active::-moz-range-thumb {
+  transform: scale(1.25);
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider::-webkit-slider-thumb,
+  .slider::-moz-range-thumb {
+    transition: none;
+  }
+}
+
+/**
+ * Arabic inside an English document.
+ *
+ * The 404 sets both languages on one page, and `dir="rtl"` alone is not enough:
+ * the English document's font stack is Manrope, Manrope has no Arabic, and the
+ * browser falls through to whatever it has — on macOS that is Geeza Pro, which
+ * is the face every machine-translated page in this market is set in. Naming
+ * the Arabic stack explicitly puts it back in IBM Plex Sans Arabic, the same
+ * face the product uses.
+ */
+.arabic {
+  font-family: var(--font-plex-arabic), var(--qb-font-arabic);
+  letter-spacing: 0;
+}
+
+/**
+ * The column an Arabic block sits in — on the wrapper, never on the RTL element
+ * itself.
+ *
+ * A `dir="rtl"` block narrower than its parent resolves its auto margins in its
+ * own direction, so constraining the paragraph directly pinned it to the far
+ * right of the viewport, half a screen from the English it translates. An LTR
+ * wrapper holds the measure and starts where the English starts; the RTL child
+ * fills it and sets its text from the right.
+ */
+.arabic-block {
+  max-width: 46ch;
+}

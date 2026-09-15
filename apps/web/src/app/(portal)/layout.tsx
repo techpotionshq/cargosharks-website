@@ -14,6 +14,7 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { getSession } from '@/lib/session'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
+import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { LanguageSwitch } from '@/ui/preferences'
@@ -53,13 +54,27 @@ export default async function PortalLayout({ children }: { children: React.React
             </Link>
             <LanguageSwitch />
             <span className="mx-1 hidden h-6 w-px bg-line sm:block" />
-            <Link
-              href="/sign-in"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-            >
-              <Icon name="sign-out" size={16} />
-              <span className="hidden sm:inline">{tc('signOut')}</span>
-            </Link>
+            {/*
+              A form and a server action, not a link to `/sign-in` — the same
+              correction the agent shell already carries, and this was the last
+              shell still linking.
+
+              The sign-in page redirects anyone who already has a session, so
+              the link was a round trip straight back to the portal: the button
+              said "sign out" and nothing was signed out. Only the action
+              clears the cookie.
+            */}
+            <form action={signOut}>
+              <button
+                type="submit"
+                title={tc('signOut')}
+                aria-label={tc('signOut')}
+                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
+              >
+                <Icon name="sign-out" size={16} />
+                <span className="hidden sm:inline">{tc('signOut')}</span>
+              </button>
+            </form>
           </nav>
         </div>
       </header>

@@ -24,7 +24,13 @@ import {
 const FIELD =
   'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
 
-function Submit({ label, pendingLabel }: { readonly label: string; readonly pendingLabel: string }) {
+function Submit({
+  label,
+  pendingLabel,
+}: {
+  readonly label: string
+  readonly pendingLabel: string
+}) {
   const { pending } = useFormStatus()
   return (
     <button

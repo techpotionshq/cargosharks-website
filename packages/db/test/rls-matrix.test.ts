@@ -398,13 +398,33 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
    * assertion is not the same act as deleting a document. The audit trigger
    * records the retraction either way.
    *
+   * The three `auth_*` tables are the second exception, granted in 0039 and
+   * argued there. They are not business tables at all — `schema/auth.ts`
+   * declares them with `systemTable` because they are owned by Better Auth,
+   * carry no branch scope, and deliberately get no audit trigger, since one
+   * over credential rows would copy secrets into the log. The library ends the
+   * lifecycle of its own rows with DELETE, and until 0039 it could not: every
+   * enrolment died on `permission denied for table auth_two_factor`, which is
+   * why `FR-ID-06` had never once completed against a real database.
+   *
+   * `auth_user` and `auth_account` are absent from this list on purpose. The
+   * library can delete both and this product does not, `principals` references
+   * `auth_user.id`, and the invariant should keep meaning what it says exactly
+   * where a record has a person behind it. If either ever appears here it is a
+   * finding, not a follow-on.
+   *
    * Listed here by name rather than by relaxing the query, on the same
    * principle as the unconditional-write test above: an exception that has
    * been argued for is a line in this array, and anything else is a finding.
    * A new table appearing here means somebody granted DELETE without saying
    * why, which is exactly what this test exists to catch.
    */
-  const DELETE_GRANTED = ['supplier_invoice_matches']
+  const DELETE_GRANTED = [
+    'supplier_invoice_matches',
+    'auth_two_factor',
+    'auth_session',
+    'auth_verification',
+  ]
 
   it('grants DELETE on no business table but the argued exception', async () => {
     const result = await migrator.execute(sql`

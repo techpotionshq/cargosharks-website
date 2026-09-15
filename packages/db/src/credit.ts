@@ -158,10 +158,7 @@ export async function creditStanding(
       // Through `convert` rather than multiplying by hand: it is the one place
       // that checks the rate's `from` matches the money's currency, which is
       // exactly the mistake an inverted rate would otherwise hide.
-      outstanding = add(
-        outstanding,
-        convert(owed, fxRate(invoice.currency, currency, rate, asOf)),
-      )
+      outstanding = add(outstanding, convert(owed, fxRate(invoice.currency, currency, rate, asOf)))
     }
 
     return {
@@ -268,10 +265,7 @@ export async function creditOverridesFor(
       })
       .from(creditOverrides)
       .where(
-        and(
-          eq(creditOverrides.customerId, customerId),
-          eq(creditOverrides.branchId, branchId),
-        ),
+        and(eq(creditOverrides.customerId, customerId), eq(creditOverrides.branchId, branchId)),
       )
       .orderBy(desc(creditOverrides.approvedAt)),
   )

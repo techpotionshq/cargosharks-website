@@ -152,7 +152,10 @@ export interface PaymentInput {
    * FX, and it is the single most common reason a hand-built journal fails to
    * balance. Empty for a receipt on account.
    */
-  readonly allocations: readonly { readonly invoiceSeriesNo: string; readonly baseAmount: Numeric }[]
+  readonly allocations: readonly {
+    readonly invoiceSeriesNo: string
+    readonly baseAmount: Numeric
+  }[]
 }
 
 /**
@@ -200,7 +203,10 @@ export interface SupplierPaymentInput {
    * The mirror of the receipt's allocations, and realised FX falls out of the
    * difference in exactly the same way — see `receiptEntry`.
    */
-  readonly allocations: readonly { readonly supplierReference: string; readonly baseAmount: Numeric }[]
+  readonly allocations: readonly {
+    readonly supplierReference: string
+    readonly baseAmount: Numeric
+  }[]
 }
 
 /**
@@ -955,7 +961,11 @@ function required(value: string | null | undefined, what: string, why: string): 
   return value.trim()
 }
 
-function totalOf(lines: readonly JournalLine[], side: 'debit' | 'credit', base: CurrencyCode): Money {
+function totalOf(
+  lines: readonly JournalLine[],
+  side: 'debit' | 'credit',
+  base: CurrencyCode,
+): Money {
   return lines.length === 0
     ? zero(base)
     : sum(

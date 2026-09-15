@@ -34,6 +34,8 @@ import { z } from 'zod'
 import { branches, hasSecretKey, mailboxes, sealSecret, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotMailboxes } from '@/lib/pilot/fixtures'
 import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 
 export interface MailboxRow {
@@ -62,6 +64,8 @@ export interface MailboxRow {
 export async function listMailboxes(): Promise<MailboxRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+
+  if (usePilotFixtures()) return pilotMailboxes()
 
   return withActor(session.actor, (tx) =>
     tx
@@ -206,10 +210,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
     */
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes('mailboxes_address_unique')) {
-      return fail(
-        { username: 'This mailbox is already connected on that host.' },
-        safeEcho(),
-      )
+      return fail({ username: 'This mailbox is already connected on that host.' }, safeEcho())
     }
     throw error
   }

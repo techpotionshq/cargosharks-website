@@ -47,11 +47,7 @@ function display(amount: string, currency: string, locale: 'en' | 'ar'): string 
  * a missing-message crash: a new worker shipping before its label does should
  * degrade to a slightly ugly row, not to a blank screen on the job file.
  */
-const SOURCES = [
-  'consol_allocation',
-  'consol_allocation_reversal',
-  'free_time_clock',
-] as const
+const SOURCES = ['consol_allocation', 'consol_allocation_reversal', 'free_time_clock'] as const
 
 type KnownSource = (typeof SOURCES)[number]
 
@@ -183,9 +179,7 @@ export async function JobLedgerCard({
                     {display(line.amountBase, line.baseCurrency, locale)}
                   </TD>
                   <TD>
-                    <Badge tone={verdict.tone}>
-                      {t(`match.${verdict.key}` as 'match.agreed')}
-                    </Badge>
+                    <Badge tone={verdict.tone}>{t(`match.${verdict.key}` as 'match.agreed')}</Badge>
                     {line.matchCount > 0 ? (
                       <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle tabular-nums">
                         {display(line.matchedAmount, line.currency, locale)}

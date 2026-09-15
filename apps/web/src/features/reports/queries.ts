@@ -49,6 +49,9 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotMarginByDimension } from '@/lib/pilot/fixtures'
+import { dayIn } from '@/lib/time'
 
 /** What a management report can be cut by. */
 export type ReportDimension = 'branch' | 'customer' | 'lane' | 'mode' | 'owner'
@@ -87,7 +90,7 @@ export interface ReportPeriod {
  * anything.
  */
 export function yearToDate(today = new Date()): ReportPeriod {
-  const iso = today.toISOString().slice(0, 10)
+  const iso = dayIn(today)
   return { from: `${iso.slice(0, 4)}-01-01`, to: iso }
 }
 
@@ -96,6 +99,8 @@ export async function marginByDimension(
   dimension: ReportDimension,
   period: ReportPeriod,
 ): Promise<ReportRow[]> {
+  if (usePilotFixtures()) return pilotMarginByDimension(dimension, period)
+
   return withActor(actor, async (tx) => {
     /*
       One `sum` per direction rather than a join per direction.

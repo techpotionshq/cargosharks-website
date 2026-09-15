@@ -190,9 +190,9 @@ export async function captureProofOfDelivery(
       .returning({ id: proofOfDelivery.id })
 
     if (photoAssetIds.length > 0) {
-      await tx.insert(podPhotos).values(
-        photoAssetIds.map((assetId, sortOrder) => ({ podId: pod!.id, assetId, sortOrder })),
-      )
+      await tx
+        .insert(podPhotos)
+        .values(photoAssetIds.map((assetId, sortOrder) => ({ podId: pod!.id, assetId, sortOrder })))
     }
 
     /*

@@ -20,6 +20,7 @@
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts",
     "seed-demo": "tsx src/seed-demo.ts",
+    "diagnose": "tsx src/diagnose.ts",
     "test": "vitest run",
     "provision": "tsx src/provision.ts",
     "create-user": "tsx src/create-user.ts",

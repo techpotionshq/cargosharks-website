@@ -154,9 +154,9 @@ describe('closing a period', () => {
 
     it('asks for a branch and a period when either is missing', async () => {
       expect((await createAccountingExport({}, form({}))).message).toContain('branch and a period')
-      expect(
-        (await createAccountingExport({}, period({ to: '' }))).message,
-      ).toContain('branch and a period')
+      expect((await createAccountingExport({}, period({ to: '' }))).message).toContain(
+        'branch and a period',
+      )
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
@@ -167,7 +167,10 @@ describe('closing a period', () => {
     })
 
     it('refuses a period that ends before it starts', async () => {
-      const state = await createAccountingExport({}, period({ from: '2026-01-31', to: '2026-01-01' }))
+      const state = await createAccountingExport(
+        {},
+        period({ from: '2026-01-31', to: '2026-01-01' }),
+      )
       expect(state.message).toContain('ends before it starts')
       expect(fetchMock).not.toHaveBeenCalled()
     })

@@ -106,7 +106,8 @@
     "total": "Total",
     "currency": "Currency",
     "notes": "Notes",
-    "description": "Description"
+    "description": "Description",
+    "timeZone": "Time zone"
   },
   "search": {
     "title": "Search",
@@ -136,31 +137,17 @@
     "subtitle": "Everything live across Kuwait and Dubai, oldest problem first.",
     "openEnquiries": "Open enquiries",
     "openEnquiriesHint": "{unassigned} unassigned",
-    "slaBreached": "SLA breached",
-    "slaBreachedHint": "Unanswered past their window",
-    "dueToday": "Due today",
-    "dueTodayHint": "Answer before the clock runs out",
     "liveJobs": "Live shipments",
-    "liveJobsHint": "{arriving} arriving this week",
     "accruing": "Demurrage accruing",
-    "accruingHint": "{containers} containers past free time",
     "winRate": "Win rate",
     "winRateHint": "{quoted} quotes this month",
     "avgMargin": "Average margin",
-    "avgMarginHint": "Known at quoting, not at month-end",
     "medianResponse": "Median response",
-    "medianResponseHint": "From enquiry to quotation",
     "enquiryTrend": "Enquiries received",
-    "enquiryTrendHint": "Last 14 days",
-    "jobsByStatus": "Shipments by stage",
     "jobsByMode": "By mode",
     "topLanes": "Busiest lanes",
-    "topLanesHint": "By shipment count",
     "exceptions": "Exceptions",
-    "exceptionsHint": "Oldest first — the one nobody has looked at",
     "slaWatch": "SLA watch",
-    "slaWatchHint": "Unanswered enquiries, closest to breach first",
-    "arrivals": "Arriving this week",
     "noExceptions": "Nothing outstanding.",
     "noExceptionsHint": "Every open shipment is running to plan.",
     "quotesEyebrow": "Commercial",
@@ -207,7 +194,6 @@
     "slaWatchExplain": "Enquiries still waiting for a first reply, soonest deadline first.",
     "allAnswered": "Everyone has had a reply.",
     "avgMarginExplain": "What we keep on an average quotation, before overheads.",
-    "marginWord": "What is left after paying carriers and agents",
     "jobsByModeExplain": "How the shipments currently moving are travelling.",
     "modeReadout": "{mode} carries {share}% of what is moving right now.",
     "topLanesExplain": "The routes you ship most often, by number of shipments.",
@@ -599,7 +585,19 @@
       "bilingual": "English and Arabic throughout, including the documents you issue."
     },
     "forgotPassword": "Forgotten your password?",
-    "resetDone": "Your password has been changed. Sign in with the new one."
+    "resetDone": "Your password has been changed. Sign in with the new one.",
+    "demo": {
+      "title": "Demo access",
+      "body": "A live demo on sample data. Choose whose view to sign in as — the same system, seen from three sides.",
+      "password": "Password",
+      "personas": {
+        "operations": "The operations board",
+        "customer": "The customer portal",
+        "agent": "The agent view"
+      }
+    },
+    "errorThrottled": "Too many sign-in attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+    "errorLocked": "Too many failed attempts. This account is locked. Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "forgotPassword": {
     "title": "Forgotten password",
@@ -1055,7 +1053,14 @@
     "noneYet": "Nothing recorded yet",
     "noneYetHint": "Entries appear as soon as anything is written.",
     "forbidden": "You cannot view the audit log",
-    "forbiddenHint": "Your role does not include admin.audit.read."
+    "forbiddenHint": "Your role does not include admin.audit.read.",
+    "searchPlaceholder": "Record, person or address",
+    "exportCsv": "Export CSV",
+    "noMatch": "Nothing matches that search",
+    "noMatchHint": "Change the term, or widen the period.",
+    "last7": "Last 7 days",
+    "last30": "Last 30 days",
+    "entries": "Entries"
   },
   "enquiryForm": {
     "open": "New enquiry",
@@ -2055,6 +2060,7 @@
     "noCharges": "No master costs yet",
     "noChargesHint": "Per-house margin is a fiction until the master cost is split.",
     "allocationNote": "A split writes an ordinary charge line onto every house, so job profitability, invoicing and the accounting export need to know nothing about consolidation. Reversing posts the negative rather than deleting, because the lines may already sit on an issued invoice.",
+    "shares": "Split across {count, plural, one {# house} other {# houses}}",
     "statuses": {
       "open": "Open",
       "closed": "Closed",
@@ -3187,6 +3193,34 @@
     "modes": {
       "sea_lcl": "Sea LCL",
       "air": "Air"
+    }
+  },
+  "twoFactor": {
+    "errorMissing": "Enter the 6-digit code from your authenticator app.",
+    "errorInvalid": "That code is not correct. Check your authenticator app and try again.",
+    "errorPasswordMissing": "Enter your password.",
+    "errorPasswordWrong": "That password is not correct.",
+    "title": "Two-factor authentication",
+    "subtitle": "Enter the 6-digit code from your authenticator app.",
+    "code": "Authentication code",
+    "submit": "Verify",
+    "submitting": "Verifying…",
+    "backupHint": "If you cannot use your authenticator app, enter one of your backup codes.",
+    "back": "Back to sign in",
+    "enrol": {
+      "title": "Set up two-factor authentication",
+      "subtitle": "Your role needs a second factor. Set it up now to continue.",
+      "password": "Password",
+      "passwordHint": "Enter your password again. This makes sure that the account is yours.",
+      "begin": "Continue",
+      "beginning": "Please wait…",
+      "scan": "Scan this code with your authenticator app. Then enter the 6-digit code that it shows.",
+      "manual": "Cannot scan? Enter this key by hand",
+      "backupTitle": "Backup codes",
+      "backupHint": "Keep these codes in a safe place. Each code works one time. You see them one time only.",
+      "code": "Authentication code",
+      "submit": "Turn on two-factor",
+      "submitting": "Turning on…"
     }
   }
 }

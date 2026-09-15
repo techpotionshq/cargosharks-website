@@ -120,7 +120,7 @@ for (const [key, file] of [...enforced].sort()) {
 
   console.error(
     `${file}: '${key}' is enforced but not declared in ${STATES}.\n` +
-      "  No role is seeded with it — including `administrator`, which is granted\n" +
+      '  No role is seeded with it — including `administrator`, which is granted\n' +
       '  `allPermissionKeys()` and nothing else — so the screen it gates is\n' +
       '  unreachable rather than refused. Add it to ADMIN_PERMISSIONS, or put a\n' +
       '  `requires:` on the transition that earns it (FR-ID-03).',

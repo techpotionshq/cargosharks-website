@@ -134,3 +134,30 @@ describe('the key itself', () => {
     expect(() => seal('x')).toThrow(SecretKeyError)
   })
 })
+
+/**
+ * GCM lets a tag be truncated, and a truncated tag is a cheaper forgery.
+ *
+ * Without `authTagLength` on the cipher, Node verifies against whatever length
+ * `setAuthTag` is handed — so an attacker who can rewrite the row also chooses
+ * how hard their forgery has to be, and four bytes is a one-in-four-billion
+ * check rather than a 128-bit one. Naming the length moves that choice back to
+ * us.
+ *
+ * The first case is the one that would silently regress: it passes both with
+ * and without the fix for the wrong reason unless the tag is *valid* and
+ * merely short, so it is built by truncating a real tag rather than by
+ * inventing one.
+ */
+describe('the authentication tag', () => {
+  it('refuses a tag shorter than the one it writes', () => {
+    const [scheme, iv, tag, body] = seal('a mailbox password').split(':')
+    const truncated = Buffer.from(tag!, 'base64').subarray(0, 4).toString('base64')
+
+    expect(() => open([scheme, iv, truncated, body].join(':'))).toThrow(SealedSecretError)
+  })
+
+  it('still opens a secret sealed with the full tag', () => {
+    expect(open(seal('a mailbox password'))).toBe('a mailbox password')
+  })
+})

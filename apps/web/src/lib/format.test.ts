@@ -87,7 +87,9 @@ describe('formatMoney', () => {
    * a CLDR revision look like a regression in our formatting, so match either.
    */
   it('compacts at and above ten thousand', () => {
-    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(/25k/i)
+    expect(formatMoney({ amount: 25_000, currency: 'KWD' }, 'en', { compact: true })).toMatch(
+      /25k/i,
+    )
   })
 
   /**

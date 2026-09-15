@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Product** | Cargolane — digital freight platform |
+| **Product** | CargoSharks — digital freight platform |
 | **Prepared by** | techpotions |
 | **Prepared for** | `[Customer]` |
 | **Date** | `[date]` |

@@ -16,6 +16,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
+import { brandMailDomain, getBrand } from '@/lib/brand'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listRoles, listUsers } from '@/features/admin/queries'
@@ -193,9 +194,15 @@ export default async function UsersPage() {
         <Card className="lg:col-span-5">
           <CardHeader icon="admin" eyebrow={t('eyebrow')} title={t('addTitle')} />
           <p className="mt-4 text-[0.8125rem] text-ink-muted">{t('addBody')}</p>
+          {/*
+            The domain comes from the brand for the same reason the sidebar
+            does: this is a sample an administrator copies and edits, and one
+            reading another company's domain is both wrong and a small leak of
+            who else runs this product.
+          */}
           <pre className="ref mt-4 overflow-x-auto rounded-md bg-surface-sunken p-3 text-[0.75rem] leading-relaxed text-ink">
             {`pnpm db:create-user \\
-  --email person@qabandi.com \\
+  --email person@${brandMailDomain(getBrand())} \\
   --name "Full Name" \\
   --role coordinator \\
   --branch KWI`}

@@ -49,7 +49,7 @@ import {
 import { Icon, type IconName } from './icon'
 import { Modal, ModalCancel, type ModalSize } from './modal'
 
-export interface BaseField {
+interface BaseField {
   readonly name: string
   readonly label: string
   readonly span?: Span
@@ -143,7 +143,7 @@ export type FieldSpec =
       readonly tone?: 'info' | 'caution'
     }
 
-export interface RecordDialogLabels {
+interface RecordDialogLabels {
   readonly open: string
   readonly title: string
   readonly description?: string

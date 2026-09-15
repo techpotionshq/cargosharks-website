@@ -26,12 +26,7 @@
  */
 
 import { eq } from 'drizzle-orm'
-import {
-  INTEGRATIONS,
-  integrationSpec,
-  isLiveDriver,
-  type IntegrationSpec,
-} from '@qabandi/core'
+import { INTEGRATIONS, integrationSpec, isLiveDriver, type IntegrationSpec } from '@qabandi/core'
 import type { Tx } from './actor'
 import { integrationSettings, type IntegrationSettings } from './schema/settings'
 

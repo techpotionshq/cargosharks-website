@@ -1,7 +1,8 @@
 import { expect, test as setup } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { MODE, STORAGE_STATE } from './support/harness'
+import { MODE, STORAGE_STATE, collectPageErrors } from './support/harness'
+import { totp } from './support/totp'
 
 /**
  * Sign in once, reuse the session for every test.
@@ -56,6 +57,205 @@ setup('authenticate', async ({ page, baseURL }) => {
   */
   await page.waitForURL((url) => !url.pathname.startsWith('/sign-in'), { timeout: 30_000 })
   expect(page.url(), 'sign-in did not authenticate').not.toContain('/sign-in')
+
+  /*
+    The second factor, because the role this account holds demands one.
+
+    `administrator` and `finance` carry `requires_two_factor` (FR-ID-06), and
+    the shells send an unenrolled principal to `/two-factor/enrol` before any
+    screen renders. So signing in was never enough, and the way that failed is
+    worth recording: this step passed, every dependent spec ran, and forty-eight
+    of them failed reporting empty registers and a missing assistant panel.
+    `db:diagnose` proved the rows were there and readable, which ruled out the
+    two obvious causes and left no explanation at all — until the harness was
+    made to print what the page actually said, and every register turned out to
+    read "Set up two-factor authentication".
+
+    The assertions above could not see it. Sign-in genuinely succeeded, the
+    redirect away from `/sign-in` genuinely happened, and the interstitial has
+    an `h1` like every other screen, so "authenticated" and "authenticated and
+    then stopped at a gate" were indistinguishable.
+
+    Enrolling through the product's own two screens rather than seeding a secret
+    into the database: it needs no production code to grow a test-only door, and
+    it means the mandatory-2FA path — which `schema/auth.ts` records as having
+    once been shipped with a schema that could not have supported it, because
+    nothing ever ran the flow — is exercised on every seeded run.
+  */
+  /*
+    Navigated to rather than waited for, which is the race-free half.
+
+    Where sign-in lands is not reliably the enrol screen: the shells render the
+    gate *in place* — the failing run showed `/enquiries` answering 200 with
+    "Set up two-factor authentication" as its whole main region — so a redirect
+    is not guaranteed and `waitForURL` above can resolve on an intermediate hop.
+    Asking for the page directly settles it, and costs nothing when there is
+    nothing to do: `EnrolPage` redirects to `/dashboard` for a principal whose
+    role never required a factor or who already holds one.
+  */
+  /*
+    Attached before the navigation, because hydration is now a suspect.
+
+    The last run narrowed this to one fact: the submit puts the form into its
+    pending state and *no POST is ever made*. React therefore ran — it changed
+    the label — and then the dispatch produced no request. A fetch that is
+    refused or throws says so in the browser console and nowhere else: not in
+    the server log, which recorded one line all run, and not on the page, which
+    is why three rounds of reading the page could not see it.
+  */
+  const browserErrors = collectPageErrors(page)
+
+  await page.goto('/two-factor/enrol')
+
+  if (new URL(page.url()).pathname.startsWith('/two-factor/enrol')) {
+    /*
+      What the server action actually did, because the page cannot say.
+
+      With the grant in 0039 the enrolment no longer fails — it does not
+      *finish*. The form sits on its own pending label, no `Alert` is rendered
+      because the action never returned one, and the server logs nothing
+      because nothing threw. Every observation is an absence, which is the one
+      shape a screenshot cannot narrate.
+
+      A server action is a POST to this same path, so recording the responses
+      and the failures turns "it hung" into a status code, a duration, or a
+      transport error by name. Attached before the submit, because the request
+      it needs to see is the one that click makes.
+    */
+    const posts: string[] = []
+    const began = Date.now()
+
+    /*
+      Every POST, not only the ones to this path.
+
+      Narrowing to `/two-factor` would report "none reached the server" for a
+      request that did reach it somewhere else — a locale-prefixed path, an
+      auth endpoint — which is the same sentence for two opposite findings.
+      The path is in the line instead, so a request going somewhere unexpected
+      names where.
+    */
+    page.on('response', (response) => {
+      if (response.request().method() !== 'POST') return
+      const { pathname } = new URL(response.url())
+      posts.push(`${response.status()} ${pathname} after ${Date.now() - began}ms`)
+    })
+    page.on('requestfailed', (request) => {
+      if (request.method() !== 'POST') return
+      const { pathname } = new URL(request.url())
+      posts.push(`failed ${pathname}: ${request.failure()?.errorText ?? 'unknown'}`)
+    })
+
+    /*
+      Requests as well as responses, because the two answer different
+      questions and only one of them was being asked. A POST that has been
+      issued and is still open produces no `response` and no `requestfailed`,
+      which reads identically to a submit that was never wired up at all.
+    */
+    const sent: string[] = []
+    page.on('request', (request) => {
+      if (request.method() !== 'POST') return
+      sent.push(new URL(request.url()).pathname)
+    })
+
+    const enrol = page.locator('form').filter({ has: page.locator('input[name="password"]') })
+    await enrol.locator('input[name="password"]').fill(password)
+    await enrol.locator('button[type="submit"]').click()
+
+    /*
+      The secret in text, behind the "enter it manually" disclosure — the same
+      string the QR encodes, and the only way to read it without a camera.
+
+      The `<summary>` has to be clicked first. A closed `<details>` hides its
+      content from the accessibility tree, so `toBeVisible()` on the code inside
+      it is false however present the string is — which is a failure that reads
+      as "enrolment issued no secret" when the secret is right there.
+    */
+    const disclosure = page
+      .locator('details')
+      .filter({ has: page.locator('code') })
+      .first()
+
+    /*
+      When enrolment did not begin, say what the page said instead.
+
+      Clicking a `<summary>` that is not there spends the whole timeout and
+      reports `locator.click: Test timeout of 30000ms exceeded` — which names
+      the line and not one thing about the cause. This runs in the setup
+      project, so every dependent spec skips and that sentence becomes the
+      job's entire account of itself. `beginEnrolment` returns its reason as an
+      `Alert` on this same page; reading it is the difference between "the
+      password was refused" and "enrolment failed for some other reason",
+      which point at opposite fixes.
+    */
+    /*
+      Every `[role="alert"]` *except* the one Next.js puts on every page.
+
+      `__next-route-announcer__` is injected on hydration to announce client
+      navigations to a screen reader. It is empty until there is something to
+      announce, and it is one pixel square rather than `display: none` —
+      because a hidden live region announces nothing — so Playwright considers
+      it visible. The race below therefore resolved on it in about seven
+      milliseconds, `count()` on the disclosure ran before the action could
+      possibly have returned, and the failure reported an empty alert, no POST
+      and a quiet console: three absences that were all just "too early".
+
+      That is what made this look like a product fault for three rounds. The
+      POST had been sent and was still in flight; the response listener had
+      nothing to report yet, so "(none reached the server)" was true of the
+      response and false of the request.
+    */
+    const alerted = page.locator('[role="alert"]:not(#__next-route-announcer__)').first()
+
+    /*
+      Wait for whichever arrives — the secret, or the reason there is none.
+
+      Reading the page the instant the submit is clicked reports on a form that
+      is still submitting: the first run of this check caught the button on its
+      own `Please wait…` label and would have called a merely slow enrolment a
+      failed one. Racing the two outcomes keeps the wait that `toBeVisible`
+      always gave while still ending on the error rather than on a timeout, and
+      the `catch` is deliberate — the report below is the point, so a race that
+      resolves to neither must fall through to it rather than throw here.
+    */
+    await expect(disclosure.or(alerted).first())
+      .toBeVisible({ timeout: 20_000 })
+      .catch(() => {})
+
+    if (!(await disclosure.count())) {
+      const alert = ((await alerted.textContent()) ?? '').trim()
+      const main = ((await page.locator('main').first().textContent()) ?? '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300)
+      throw new Error(
+        `two-factor enrolment did not begin — ` +
+          `alert: ${alert || '(none)'}; ` +
+          `action POSTs: ${
+            posts.length
+              ? posts.join(', ')
+              : sent.length
+                ? `${sent.length} sent, none answered: ${sent.join(', ')}`
+                : '(none sent)'
+          }; ` +
+          `browser: ${browserErrors.length ? browserErrors.join(' | ') : '(quiet)'}; ` +
+          `main reads: ${main || '(empty)'}`,
+      )
+    }
+
+    await disclosure.locator('summary').click()
+
+    const secret = disclosure.locator('code')
+    await expect(secret, 'enrolment issued no secret').toBeVisible({ timeout: 15_000 })
+    const base32 = ((await secret.textContent()) ?? '').trim()
+    expect(base32, 'the issued secret is not base32').toMatch(/^[A-Z2-7\s]+$/i)
+
+    const code = page.locator('input[name="code"]')
+    await code.fill(totp(base32))
+    await page.locator('form').filter({ has: code }).locator('button[type="submit"]').click()
+
+    await page.waitForURL((url) => !url.pathname.startsWith('/two-factor'), { timeout: 30_000 })
+    expect(page.url(), 'the second factor was not accepted').not.toContain('/two-factor')
+  }
 
   mkdirSync(dirname(STORAGE_STATE), { recursive: true })
   await page.context().storageState({ path: STORAGE_STATE })

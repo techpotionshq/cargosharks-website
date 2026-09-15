@@ -15,11 +15,9 @@ import { useEffect, useState } from 'react'
  * This component replaces the entire document — it renders its own `<html>`
  * and `<body>`. That means:
  *
- *   - **No stylesheet.** The root layout imports the CSS and emits the brand
- *     tokens as custom properties; neither ran. So the styles are inline, and
- *     the colours are literals rather than `var(--brand)`, which would resolve
- *     to nothing. This is the one file in the repository where a hex value is
- *     correct, and `pnpm lint` should stay aware of that.
+ *   - **No stylesheet, and no brand.** See the note below — this is the one
+ *     file in the repository that may hold a colour literal, and
+ *     `scripts/check-brand.mjs` allows it by name on that basis.
  *   - **No `NextIntlClientProvider`.** The locale is read from the cookie the
  *     language switch sets, and the strings are inline. Two languages, twelve
  *     words each — a translation catalogue this screen cannot load anyway.
@@ -33,6 +31,33 @@ import { useEffect, useState } from 'react'
  * engineer can find. The message itself is deliberately not shown: the current
  * one names an environment variable and explains a signing-key weakness, which
  * is precisely what should not be readable by whoever hits the page.
+ *
+ * ## Why the colours are literals, and why they are all grey
+ *
+ * Three separate doors are shut, and it is worth writing them down because
+ * each looks openable from a distance:
+ *
+ *   1. **The tokens are not in the document.** `<style id="qb-brand">` belongs
+ *      to the root layout, and the root layout is the thing that just threw —
+ *      it is not merely unstyled here, it is *not rendered*. `var(--qb-brand)`
+ *      resolves to nothing, and a `background` that resolves to nothing is a
+ *      transparent button.
+ *   2. **`getBrand()` cannot be called.** Next requires the root error
+ *      boundary to be a Client Component, and `@/lib/brand` is `server-only`
+ *      by construction.
+ *   3. **Importing `resolveBrand()` here would be worse than the bug.** It
+ *      would put the brand into the *client* bundle, frozen at build time —
+ *      and "nothing brand-related is bundled into client JavaScript" is the
+ *      property that makes a re-skin an environment variable rather than a
+ *      deployment. Trading that away to colour one button is not a trade.
+ *
+ * So a literal it is. What it may **not** be is a *company's* colour. This
+ * button was `#8c1d18`, Al-Qabandi's maroon, left behind when the default
+ * brand became CargoSharks — so the one screen that renders when everything
+ * else has failed greeted every operator with a competitor's red. The palette
+ * is now warm neutrals only, and the primary action takes the same near-black
+ * as the body text: it belongs to nobody, it reads as a button in either
+ * language, and it is right for whichever operator is running.
  */
 
 const STRINGS = {
@@ -114,8 +139,9 @@ export default function GlobalError({
               padding: '0 1rem',
               border: 'none',
               borderRadius: '2px',
-              background: '#8c1d18',
-              color: '#fff',
+              // The body ink, not a brand colour — see the header.
+              background: '#1c1917',
+              color: '#fbfaf9',
               fontSize: '0.9375rem',
               fontWeight: 600,
               cursor: 'pointer',

@@ -1,4 +1,4 @@
-# Cargolane
+# CargoSharks
 
 **Freight forwarding software built in the Gulf, for the Gulf.**
 Arabic and English from the first line of code. Your brand, your database, your data.
@@ -16,7 +16,7 @@ None of that is a technology problem. It is a *system of record* problem, and it
 
 ---
 
-### What Cargolane does about it
+### What CargoSharks does about it
 
 ![One record carries a shipment from enquiry to invoice — nothing is retyped along the way.](../assets/art/loop.svg)
 
@@ -66,4 +66,4 @@ Carrier tracking is built for Maersk, Hapag-Lloyd and CMA CGM but runs on your o
 ---
 
 **techpotions** · Built with AL-QABANDI & PARTNERS Co. (Shipping & Forwarding), Kuwait
-hello@cargolane.com · cargolane.com
+hello@cargosharks.com · cargosharks.com

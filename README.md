@@ -78,25 +78,29 @@ QABANDI_PILOT_FIXTURES=1 pnpm --filter @qabandi/web dev
 ```
 
 That is the default whenever `DATABASE_URL` is unset, so a laptop with nothing
-provisioned runs the pilot screens — including the day-15 rehearsal in a room
-with no network. It refuses to engage in production against a configured
-database. Everything behind it is the real query path, chosen one branch
-earlier in `apps/web/src/lib/pilot/source.ts`.
+provisioned runs the whole interface — including a rehearsal in a room with no
+network. It refuses to engage in production against a configured database.
+Everything behind it is the real query path, chosen one branch earlier in
+`apps/web/src/lib/pilot/source.ts`.
 
-**It is a subset, and the subset is enforced.** The fixtures were written for
-the screens the pilot needed. The register queries behind finance, payables,
-network, operations, reference and most of settings — and a secondary query on
-the dashboard, jobs and enquiries boards — still go straight to `withActor`,
-so those routes want a database and error without one rather than degrading.
-The list lives in
-`apps/web/e2e/support/harness.ts` as `NEEDS_DATABASE`, one entry per route
-naming the query responsible, and the end-to-end run reports each of them as
-skipped-with-a-reason — so the gap is visible in the pipeline rather than
-implied by an absence. Each entry is retired by giving its query the
-`usePilotFixtures()` branch every other feature already has.
+**It is the whole interface, and that is enforced.** Every screen the
+application serves renders with no database, and three checks keep it true
+rather than trusting that it is: `scripts/check-fixtures.mjs` fails `pnpm lint`
+on a read that reaches `withActor` without a `usePilotFixtures()` branch; the
+end-to-end sweep visits every route offline; and `routes.spec.ts` reads the
+build's own route manifest and fails on a screen no list mentions.
 
-**For a full instance — a demo a prospect can be given a URL to — load the
-demo dataset**, which populates every table an evaluation touches:
+It was a subset until recently, and the way it went wrong is worth stating.
+`NEEDS_DATABASE` in `apps/web/e2e/support/harness.ts` named twenty register
+queries as the cause; every one of them had a fixture branch already. The
+actual cause was four reads written in `ui/dialogs.tsx` and `ledger/unbilled.ts`
+instead of in a slice's `queries.ts` — and because the map's entries are routes
+the suite *skips*, nothing could tell that the diagnosis was wrong. The map is
+empty now and a test fails if an entry is ever added that is not true.
+
+**For a customer's own instance — theirs, with their branding, before their
+records land — load the demo dataset**, which populates every table an
+evaluation touches:
 
 ```bash
 pnpm db:up && pnpm db:migrate && pnpm db:seed
@@ -172,18 +176,44 @@ Dependency direction is `core ← db ← {web, service}` and is enforced by
 | `pnpm test:db` | migrations, policies and the RLS negative matrix |
 | `pnpm test:e2e` | every screen, both languages, desktop and mobile |
 | `pnpm tenant:new` | provision a deployment end to end — database, roles, schema, seed, first administrator |
+| `pnpm brand:new` | write a client brand file, register it, and name what is still a placeholder |
 | `pnpm fleet:status` | what schema version is every deployment on, and is each reachable |
 | `pnpm fleet:migrate` | apply migrations across the fleet, sequentially, with a report |
 | `pnpm fleet:backup` | dump every deployment |
 | `pnpm fleet:restore-drill` | dump, restore into a scratch database, verify, drop |
 
-## Running more than one deployment
+## Provisioning a customer
 
 The product is sold deployment-per-customer — one database, one schema, no
 `tenant_id` above `branch_id`. That is the right shape for this market and it
 is a data-sovereignty answer as well as an architecture, but it moves a cost
-onto whoever operates it, and the cost is linear in customers unless the
+onto whoever operates it. At three customers, standing one up by hand is an
+afternoon. At fifteen it is a full-time job, and the difference between a
+supportable business and an unsupportable one is entirely whether the
 operations are scripted.
+
+They are scripted. Step 0 is the one that has to be read before the second
+customer, not after.
+
+### 0. Decide the deployment shape — once, and before customer number two
+
+`app_user` and `app_migrator` are PostgreSQL **roles**, and roles are
+cluster-wide rather than per-database. So "a database per customer" and "an
+instance per customer" are not the same decision, and only one of them works:
+
+| Shape | Safe |
+|---|---|
+| One PostgreSQL instance per tenant | Yes |
+| Shared cluster, one database per tenant | **No** — `db:provision` for tenant B rewrites tenant A's passwords, and tenant A stops working |
+
+This was hit twice in one afternoon locally and is recorded as `OP-11` in
+[`docs/Operations_Findings.md`](docs/Operations_Findings.md) §7. A shared
+cluster needs per-tenant role names — `app_user_<key>` — which is a change to
+`infra/postgres/init/01-roles.sql`, `provision.ts` and every connection string.
+One instance per tenant avoids the problem and costs more. There is no third
+option, and deciding by default means deciding on the broken one.
+
+### 1. Register the tenant, and put its credentials in the environment
 
 `fleet.example.json` is the manifest. Copy it to `fleet.json` — gitignored,
 because it names customers — and add a record per deployment. **Connection
@@ -191,18 +221,144 @@ strings are not in it.** They are read from the environment by convention from
 each tenant's key, so no customer credential is ever committed:
 
 ```
-QABANDI_<KEY>_DATABASE_URL             app_user
-QABANDI_<KEY>_MIGRATION_DATABASE_URL   app_migrator
-QABANDI_<KEY>_ADMIN_DATABASE_URL       superuser, provisioning and dumps only
+QABANDI_<KEY>_DATABASE_URL             app_user — the running application
+QABANDI_<KEY>_MIGRATION_DATABASE_URL   app_migrator — migrations only
+QABANDI_<KEY>_ADMIN_DATABASE_URL       superuser — provisioning and dumps only
 ```
+
+`<KEY>` is the tenant key upper-cased with hyphens as underscores, so
+`acme-logistics` reads `QABANDI_ACME_LOGISTICS_DATABASE_URL`. `tenant:new`
+refuses to start until all three are set, and names the ones that are missing.
+
+The three-way split is not ceremony. A manifest holding fifteen production
+passwords is a file that ends up in a chat message the first time somebody
+onboards, and the whole point of the per-tenant model is that one customer's
+credentials never reach another customer's data.
+
+**Dumps are taken through the admin connection.** `app_user` holds
+`nobypassrls` and cannot read outside its own branches, so a dump taken as the
+application role is silently partial — the most dangerous artefact in this
+area, because it restores without complaint.
+
+### 2. One command
 
 ```bash
-pnpm tenant:new --key acme --name "Acme Logistics" \
-                --admin-email ops@acme.com --brand acme --region ae
+pnpm tenant:new --key acme --name "Acme Logistics LLC" \
+                --admin-email ops@acme.com --region ae \
+                --scaffold-brand --primary "#0b5fff" --accent "#12203a"
 ```
 
-`--dry-run` prints the sequence without touching anything. `--seed-demo` loads
-the evaluation dataset, for a demo instance rather than a customer's own.
+In order, that scaffolds and registers the brand, creates the database and both
+roles, applies every migration as `app_migrator`, seeds the reference rows and
+the permission matrix, creates the first operating entity, creates the first
+administrator, and adds the tenant to `fleet.json`.
+
+Each step is one of the existing scripts spawned with that tenant's
+environment, rather than a reimplementation. So there is exactly one
+provisioning path in this repository, and the fleet cannot drift from the
+single-deployment instructions further up this file.
+
+| Flag | |
+|---|---|
+| `--dry-run` | prints the whole sequence and touches nothing |
+| `--seed-demo` | loads the evaluation dataset — for a demo instance, never a customer's own |
+| `--scaffold-brand` | write the client's brand file; needs `--primary`, takes `--accent` |
+| `--brand <key>` | use a brand that already exists instead of scaffolding one |
+| `--branch-code` | defaults to the key upper-cased, which is what a single-office operator meant anyway |
+| `--currency` | the first branch's currency |
+| `--region` | the branch country, and the answer to a residency question |
+
+The administrator password is printed once. It is not stored.
+
+**The brand is scaffolded first, and that ordering is load-bearing.** Every
+later step runs with `BRAND` set, and `resolveBrand` refuses an unregistered
+key rather than falling back — so a run that left the brand until last would
+fail on the first step that touched it.
+
+### 3. The brand
+
+A brand can also be written on its own, for a client whose identity arrives
+before their deployment does:
+
+```bash
+pnpm brand:new --key acme --name-en "Acme Logistics LLC" \
+               --primary "#0b5fff" --accent "#12203a" --logo-svg mark.svg
+```
+
+It writes `packages/brand/src/brands/acme.ts`, registers it in `resolve.ts`,
+formats both, and then **prints every value it had to leave as a placeholder**
+— the Arabic legal name, the commercial registration number, the artwork. That
+same list is written into the generated file's header, so the file never reads
+as finished when it is not. `--name-ar`, `--legal-en`, `--address-ar`,
+`--support-email`, `--monogram`, `--favicon`, `--established` and the rest fill
+them in; `pnpm brand:new` with no arguments lists all of them.
+
+**The colour arithmetic is the part worth trusting.** A brand manual states a
+hex, not an OKLCH angle. `hexRamp` converts it and lowers the peak chroma to
+the most an eleven-stop ramp can carry before a stop clips — the judgement the
+header of `brands/qabandi.ts` records in prose. Done by hand there, it produced
+0.19 against a measured 0.213; the tolerance in `palette.ts` reproduces that at
+0.1895, and a test pins it so the constant cannot later be tidied to a rounder
+number. The generated file keeps the client's hex rather than the OKLCH it
+resolves to, because a hex can be checked against the brand manual and three
+decimals cannot.
+
+**An unregistered `BRAND` refuses to start.** It used to resolve to
+CargoSharks, so a deployment provisioned with `--brand acme` and no `acme.ts`
+started, worked, and put the supplier's identity on every screen the client
+showed a customer and every PDF they sent one. Nobody reports a product that
+looks fine. `resolveBrand` now throws, both applications resolve the brand at
+module scope, and the failure is a refusal to boot naming the keys that would
+have worked.
+
+An **unset** `BRAND` is still legitimate and still means CargoSharks — a demo,
+a preview deployment, a fixture run, a laptop. Nothing enforces it at boot,
+which is why it is step 4 below and why `pnpm doctor` reports it.
+
+### 4. What is deliberately not automated
+
+`tenant:new` prints these when it finishes. None of them can be inferred, and
+each has been a real failure:
+
+1. **`BETTER_AUTH_SECRET`, per tenant** — `openssl rand -base64 32`. The
+   application refuses to start in production without one, because the fallback
+   is a shared signing key and a session minted on any deployment would then be
+   accepted on every other.
+2. **`BRAND=<key>`** on the running process. Scaffolding writes the file;
+   setting the variable is what makes the deployment wear it.
+3. **`QABANDI_TENANT=<key>`**, so telemetry can tell this deployment from the
+   others.
+4. **A backup, and a rehearsed restore** — `pnpm fleet:backup <key>`. A backup
+   nobody has restored is a hypothesis.
+5. **Confirm `/api/health`** answers, and reports no migration drift.
+
+Then run `pnpm doctor` against the deployment's environment. It opens no
+database — a doctor that needs the patient healthy is not much use — and
+reports what is configured, what each missing thing costs, and whether `BRAND`
+is unset, registered, or a key that will refuse to boot.
+
+### 5. Deploy the two containers
+
+[`docs/Deployment_Coolify.md`](docs/Deployment_Coolify.md) is the full
+procedure. The two rules that matter: deploy `compose.prod.yaml` as one stack
+so `SERVICE_URL=http://service:3001` is true by construction, and give a domain
+to `web` and to `web` only — `/internal` authenticates the caller and then lets
+that caller name the principal to act as, so it must never be reachable from
+outside.
+
+The marketing site (`apps/landing`) is not part of a customer deployment and
+never has been. It is a separate static app, the `Dockerfile` builds only
+`@qabandi/web` and `@qabandi/service`, and `compose.prod.yaml` declares no
+container for it. There is nothing to disable per client.
+
+### 6. Running the fleet afterwards
+
+```bash
+pnpm fleet:status          # what schema version is everyone on, and is each reachable
+pnpm fleet:migrate         # apply migrations across the fleet, with a report
+pnpm fleet:backup          # dump every deployment
+pnpm fleet:restore-drill   # dump, restore into a scratch database, verify, drop
+```
 
 **`fleet:migrate` runs sequentially and does not stop on a failure.** Parallel
 migration is a way to take every customer down at once instead of one at a
@@ -210,22 +366,10 @@ time; stopping halfway leaves the fleet split with no report of which half is
 which. It continues, names every tenant and its outcome, reports version drift
 across the fleet, and exits non-zero.
 
-**`fleet:restore-drill` is the one to schedule.** A backup nobody has restored
-is a hypothesis. The drill restores into a scratch database and checks the
-content rather than the exit status — including that the RLS policies survived,
-because a restore that drops them produces a database that looks perfect and
-enforces nothing.
-
-**Before customer number two, read `Operations_Findings.md` §7.** `app_user` and
-`app_migrator` are PostgreSQL roles, which are cluster-wide rather than
-per-database — so `db:provision` for a second tenant on the same cluster
-rewrites the first tenant's passwords. One instance per tenant avoids it; a
-shared cluster needs per-tenant role names first.
-
-Dumps are taken through the **admin** connection. `app_user` holds
-`nobypassrls` and cannot read outside its own branches, so a dump taken as the
-application role is silently partial — which is the most dangerous artefact in
-this area.
+**`fleet:restore-drill` is the one to schedule.** The drill restores into a
+scratch database and checks the content rather than the exit status —
+including that the RLS policies survived, because a restore that drops them
+produces a database that looks perfect and enforces nothing.
 
 ## The documents
 
@@ -308,33 +452,62 @@ parameter, so **no component in `apps/web` contains a colour literal, a company
 name or a logo path.**
 
 `packages/brand` holds one object — identity, two hue specifications, logo
-geometry, typography, letterhead. Both themes, all three tonal ramps, every
-semantic colour and the chart series are derived from it, emitted as CSS custom
-properties in the root layout, and consumed through ordinary Tailwind utilities
-(`bg-surface`, `text-brand`, `border-line`) whose *values* resolve at run time.
-A re-skin therefore needs no rebuild:
+geometry, typography, letterhead. Both themes, all three tonal ramps and every
+semantic colour are derived from it, emitted as CSS custom properties in the
+root layout, and consumed through ordinary Tailwind utilities (`bg-surface`,
+`text-brand`, `border-line`) whose *values* resolve at run time. A re-skin
+therefore needs no rebuild:
 
 ```bash
 BRAND_NAME_EN="Meridian Logistics" BRAND_MONOGRAM=M \
 BRAND_PRIMARY_HUE=155 BRAND_ACCENT_HUE=25 BRAND_RADIUS=4 pnpm dev
 ```
 
-A second operator properly is one file under `packages/brand/src/brands/`,
-registered in `resolve.ts`, then `BRAND=<key>`. `/settings/brand` renders the
-resolved tokens and the variable that overrides each one, so the claim is
-inspectable rather than asserted.
+Onboarding an operator properly is one file under
+`packages/brand/src/brands/`, registered in `resolve.ts`, then `BRAND=<key>`.
+`pnpm brand:new` writes and registers both from the hex on the brand manual,
+and names every value it had to leave as a placeholder — see
+[Provisioning a customer](#provisioning-a-customer) §3. Two are registered.
+The default is
+`cargosharks`, the product's own identity, so a demo, a preview deployment or an
+unconfigured checkout does not wear a client's name and colours; `qabandi` is
+the worked example of the whitelabel path, a real identity with a red primary
+and a navy chrome arrived at without touching `apps/web`. `/settings/brand`
+renders the resolved tokens and the variable that overrides each one, so the
+claim is inspectable rather than asserted.
+
+**A customer-facing deployment must set `BRAND` explicitly.** The default is
+the supplier's own identity, which is exactly what `NFR-16` says must not
+appear in front of an operator's customers.
+
+A `BRAND` naming a key nobody wrote is a refusal to boot: `resolveBrand`
+throws rather than falling back, because falling back is how a client
+deployment once wore the supplier identity on every screen and every PDF it
+issued. An **unset** `BRAND` still resolves to CargoSharks, and nothing
+enforces that at boot — it is a demo, a preview or a laptop as often as it is
+an oversight. So it belongs in the deployment checklist, and `pnpm doctor`
+reports it. `.env.example` ships `BRAND` commented out deliberately: an
+unconfigured checkout should wear the supplier's brand, not a client's.
 
 Two things deliberately do *not* follow the brand:
 
 - **Status colours.** Positive, caution, critical, info and muted are reserved
   for state. A board where "held" is calm because it matched a corporate palette
-  is worse than useless. A brand hue within ~15° of one of them will read as
-  that status — move the brand hue, not the status.
-- **Chart series.** Four slots, assigned in order and never cycled. Slots 1 and
-  2 follow the brand's own hues; 3 and 4 are fixed support hues. All four are
-  validated for lightness band, chroma floor, adjacent-pair separation under
-  simulated protanopia and deuteranopia, and contrast against both surfaces —
-  in both themes. Changing a support hue means re-running that validation.
+  is worse than useless. A brand hue within ~15° of one of the four coloured
+  ones will read as that status — move the brand hue, not the status. `muted`
+  carries so little chroma that its hue is not visible, so it does not constrain
+  anything. `collidesWithStatus` in `palette.ts` tests the two that have to
+  *interrupt*, `critical` and `positive`: a brand reading faintly
+  informational costs nothing, and a brand reading as a customs hold costs an
+  operator the one colour that was meant to stop them.
+- **Chart series.** Four slots, assigned in order and never cycled, and **not**
+  derived from the brand: a brand hue that collides with `critical` would put
+  alarm on an ordinary series. All four are fixed in `DEFAULT_CHART_SLOTS`,
+  chosen at least 30° clear of every coloured status hue, and validated for
+  lightness band, chroma floor, adjacent-pair separation under simulated
+  protanopia and deuteranopia, and contrast against both surfaces — in both
+  themes. A brand may supply its own `chart` array; neither registered brand
+  does, and changing a hue means re-running that validation.
 
 ## Integration settings
 

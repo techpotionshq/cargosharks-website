@@ -63,7 +63,20 @@ vi.mock('next/headers', () => ({
   headers: async () => ({ get: (name: string) => harness.headers.get(name) ?? null }),
 }))
 
-vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => harness.pilot }))
+/*
+  Both predicates, not just the one this file used to care about.
+
+  `getSession` calls `useDemoLogin()` as well now, and a `vi.mock` factory
+  replaces the whole module — so mocking only `usePilotFixtures` did not leave
+  the other export in place, it deleted it, and every test through this path
+  threw `No "useDemoLogin" export is defined`. `false` is the default the demo
+  gate ships with, so these tests keep asserting the behaviour a deployment
+  without it gets.
+*/
+vi.mock('@/lib/pilot/source', () => ({
+  usePilotFixtures: () => harness.pilot,
+  useDemoLogin: () => false,
+}))
 
 const {
   authSession,
@@ -159,9 +172,9 @@ describe.skipIf(!enabled)('resolving a session', () => {
       await tx.update(principals).set({ isActive: true }).where(eq(principals.id, PRINCIPAL))
       await tx.update(principals).set({ isActive: false }).where(eq(principals.id, RETIRED))
 
-      const [calendar] = await tx.execute(
-        `select id from working_calendars where key = 'kuwait' limit 1`,
-      ).then((r) => r.rows as { id: string }[])
+      const [calendar] = await tx
+        .execute(`select id from working_calendars where key = 'kuwait' limit 1`)
+        .then((r) => r.rows as { id: string }[])
 
       for (const [id, code] of [
         [BRANCH_A, 'SEA'],
@@ -395,7 +408,7 @@ describe.skipIf(!enabled)('resolving a session', () => {
 
       const session = await getSession()
 
-      expect(session?.principal.email).toBe('operations@qabandi.local')
+      expect(session?.principal.email).toBe('operations@cargosharks.example')
       expect(session?.actor.branchIds).toHaveLength(2)
     })
 

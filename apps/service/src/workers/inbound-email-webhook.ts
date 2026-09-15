@@ -151,10 +151,7 @@ async function note(id: string, reason: string, asOf: Date): Promise<void> {
  * Exported for its own tests: this is the only function in the file with
  * branches worth pinning, and pinning them needs no database.
  */
-export function toInboundMessage(
-  payload: Record<string, unknown>,
-  asOf: Date,
-): InboundMessage {
+export function toInboundMessage(payload: Record<string, unknown>, asOf: Date): InboundMessage {
   if (looksPostmark(payload)) return fromPostmark(payload, asOf)
   if (looksNeutral(payload)) return fromNeutral(payload, asOf)
 
@@ -183,11 +180,7 @@ function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
     on Bcc — and matching a branch on the sender's typing rather than on the
     envelope is how mail lands in the wrong office.
   */
-  const mailbox =
-    str(p.OriginalRecipient) ||
-    str(toFull[0]?.Email) ||
-    firstAddress(str(p.To)) ||
-    ''
+  const mailbox = str(p.OriginalRecipient) || str(toFull[0]?.Email) || firstAddress(str(p.To)) || ''
 
   if (mailbox === '') {
     throw new Error('The Postmark receipt names no recipient, so no branch can own it.')
@@ -211,13 +204,11 @@ function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
     inReplyTo: headerOf(p.Headers, 'In-Reply-To') || undefined,
     references: splitReferences(headerOf(p.Headers, 'References')),
     automatic: automaticByHeaders(p.Headers),
-    attachments: asRecords(p.Attachments).map(
-      (a): InboundAttachment => ({
-        filename: str(a.Name) || 'attachment',
-        contentType: str(a.ContentType) || 'application/octet-stream',
-        content: Buffer.from(str(a.Content), 'base64'),
-      }),
-    ),
+    attachments: asRecords(p.Attachments).map((a): InboundAttachment => ({
+      filename: str(a.Name) || 'attachment',
+      contentType: str(a.ContentType) || 'application/octet-stream',
+      content: Buffer.from(str(a.Content), 'base64'),
+    })),
   }
 }
 
@@ -237,13 +228,11 @@ function fromNeutral(p: Record<string, unknown>, asOf: Date): InboundMessage {
     // The neutral shape may say so outright; a provider adapter that parsed
     // the headers itself has nowhere else to put the fact.
     automatic: p.automatic === true,
-    attachments: asRecords(p.attachments).map(
-      (a): InboundAttachment => ({
-        filename: str(a.filename) || 'attachment',
-        contentType: str(a.contentType) || 'application/octet-stream',
-        content: Buffer.from(str(a.contentBase64), 'base64'),
-      }),
-    ),
+    attachments: asRecords(p.attachments).map((a): InboundAttachment => ({
+      filename: str(a.filename) || 'attachment',
+      contentType: str(a.contentType) || 'application/octet-stream',
+      content: Buffer.from(str(a.contentBase64), 'base64'),
+    })),
   }
 }
 
@@ -274,7 +263,9 @@ const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.map(str).filter((s) => s !== '') : []
 
 const asRecords = (v: unknown): Record<string, unknown>[] =>
-  Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null) : []
+  Array.isArray(v)
+    ? v.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+    : []
 
 /** `"Faisal <a@b.com>"` -> `"a@b.com"`. Providers are inconsistent about this. */
 function firstAddress(value: string): string {
@@ -309,7 +300,10 @@ function headerOf(headers: unknown, name: string): string {
 
 /** `References:` is whitespace-separated angle-addresses. */
 const splitReferences = (value: string): string[] =>
-  value.split(/\s+/).map((s) => s.trim()).filter((s) => s !== '')
+  value
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
 
 /**
  * An invalid date becomes the time we processed it, rather than an exception.

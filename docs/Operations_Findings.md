@@ -1,6 +1,6 @@
 # Operations Findings — What Broke, and What It Taught Us
 
-**Deployment, fleet and reliability notes · v1.2 · Internal**
+**Deployment, fleet and reliability notes · v1.3 · Internal**
 
 | | |
 |---|---|
@@ -11,6 +11,7 @@
 | **Status** | Every fault below is fixed unless marked **Open**. |
 | **v1.1** | Adds §10, the notification chain — four breaks in one path, and what finding them changed about how a feature is called finished. |
 | **v1.2** | Adds §11, the first day the inbound mailbox and the model ran against real services — a feedback loop, a provider quirk that impersonated flakiness, and what test databases nobody empties do to tests. |
+| **v1.3** | Adds `OP-33` to §7 and records what changed around `OP-11`: provisioning is now a runbook in the README, and the brand file it kept forgetting is scaffolded rather than remembered. |
 
 > **The finding in one line:** eleven faults were found in one day of running the system in anger, and nine of them were in the paths that stand a deployment up rather than in the product — which is exactly the half a second customer exercises first.
 
@@ -173,7 +174,7 @@ the outage expensive. It now goes to stderr.
 
 ---
 
-## 7. Open — the fleet problem nobody has hit yet
+## 7. Open — the two nobody has hit yet
 
 `OP-11` **Open. `db:provision` resets cluster-global role passwords.**
 
@@ -191,6 +192,45 @@ afternoon locally.
 (simple, more expensive), or per-tenant role names such as `app_user_<key>`
 (cheaper, and a change to `01-roles.sql`, `provision.ts` and every connection
 string).
+
+**Since.** The provisioning path either side of this is now scripted end to
+end and documented as a runbook in the README — `pnpm tenant:new` composes
+every step, `pnpm brand:new` writes the brand file that used to be left to a
+human, and `pnpm doctor` reports an unset or unregistered `BRAND` before a
+deployment meets it. The role-name decision above is the one thing in this
+area still waiting on a human.
+
+---
+
+`OP-33` **Open. `chromeRamp` selects a ramp that nothing reads.**
+
+Found while adding `brand:new`. `defineBrand` resolves `spec.chromeRamp` into
+`ThemeSpec.chrome` and passes it to both theme builders; neither reads that
+field. `lightTheme` and `darkTheme` each build the rail from `spec.hue`, which
+is `neutralHue`. So `chromeRamp` — set deliberately by both registered brands,
+documented at length on `ThemeSpec.chrome`, and exposed as
+`BRAND_CHROME_RAMP` — changes no rendered colour.
+
+It went inert when the light rail was deliberately changed from the chrome
+ramp's darkest stop to a near-white, and the field was left behind. Two
+consequences, and the second is the one with teeth:
+
+- `rampOf()` in `resolve.ts` infers the ramp by comparing `light.chrome`
+  against a ramp's `950` stop. `light.chrome` is now
+  `oklch(0.988 0.003 hue)`, so the comparison can never be true and the
+  function always answers `primary`.
+- That function exists to stop an environment hue override from silently
+  returning the sidebar to the primary ramp — its own comment names `qabandi`,
+  whose primary is a red, as the case that forced it. The guard is written and
+  does not work. It is harmless only because the value it computes is itself
+  ignored.
+
+**Nothing looks wrong today**, because the whole path is inert and the rail is
+a neutral tinted by `neutralHue` either way. The decision is whether the dark
+rail should read from the chrome ramp again — a visible change on every
+deployment — or whether `chromeRamp`, `BRAND_CHROME_RAMP` and `rampOf` should
+be deleted as dead configuration. Either is small. Leaving it is the option
+that keeps a documented knob that does nothing.
 
 ---
 

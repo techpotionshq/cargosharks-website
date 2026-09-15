@@ -28,7 +28,7 @@
  * about, the second commits three parties to each other's timing.
  */
 
-import { getTranslations, getLocale } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -39,6 +39,8 @@ import { consolidationCandidates } from '../candidates'
 import { FormClusterButton } from './form-cluster-button'
 
 export async function CandidatesPanel() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [clusters, t, locale] = await Promise.all([
     consolidationCandidates(session.actor),
@@ -91,13 +93,16 @@ export async function CandidatesPanel() {
                 {cluster.earliest ? (
                   <>
                     {' · '}
-                    {formatDate(cluster.earliest, lang)}
+                    {formatDate(cluster.earliest, lang, timeZone)}
                     {cluster.latest && cluster.latest.getTime() !== cluster.earliest.getTime()
-                      ? ` – ${formatDate(cluster.latest, lang)}`
+                      ? ` – ${formatDate(cluster.latest, lang, timeZone)}`
                       : ''}
                   </>
                 ) : (
-                  <>{' · '}{t('undated')}</>
+                  <>
+                    {' · '}
+                    {t('undated')}
+                  </>
                 )}
               </p>
 

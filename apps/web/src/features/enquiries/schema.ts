@@ -7,7 +7,6 @@
  * ends, that a ready date is not in the past.
  */
 
-import { z } from 'zod'
 import { insertEnquiry, isoDate } from '@qabandi/db'
 
 export const createEnquirySchema = insertEnquiry
@@ -44,5 +43,3 @@ export const createEnquirySchema = insertEnquiry
       path: ['destinationId'],
     },
   )
-
-export type CreateEnquiryInput = z.infer<typeof createEnquirySchema>

@@ -1,3 +1,13 @@
+# Third-party actions are pinned to full commit SHAs, with the version they
+# were at in the trailing comment. Please do not "tidy" them back to `@v4`.
+#
+# A tag is mutable: whoever owns the action can repoint it, and both
+# `tj-actions/changed-files` and `trivy-action` have been repointed in real
+# supply-chain attacks. These workflows hold a `GITHUB_TOKEN` and, in the
+# database jobs, live connection strings, so an action that changes under us
+# changes what can read those. Dependabot understands pinned SHAs and will
+# raise the bumps as pull requests, which is where a version change belongs.
+#
 # The pipeline — Architecture §13.
 #
 # Nothing in this repository ran on a commit before this file existed. That is
@@ -40,18 +50,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Every job configures itself from one committed file, rather than from
+      # its own `env:` block. The blocks drifted, and the drift was invisible:
+      # `apps/service` parses `process.env` at import and exits 1 when the shape
+      # is wrong, so its suite died before a single test body ran and had never
+      # once executed in CI. `.env.ci` says what it holds and what it
+      # deliberately does not — connection strings and the signing key stay in
+      # the workflow, beside the things that create them.
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Formatting
         run: pnpm format:check
@@ -70,18 +90,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       # The engines: six charge calculations, one clock, one working-calendar
       # duration function. No database is configured here deliberately — if
@@ -129,18 +152,21 @@ jobs:
       DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       # The same `01-roles.sql` the local container mounts, applied the way a
       # managed instance needs it. The two paths cannot drift, which is the
@@ -154,13 +180,42 @@ jobs:
       - name: Seed reference data and the permission matrix
         run: pnpm db:seed
 
+      # The suites get a database of their own — the rule `.env.example` has
+      # stated all along, and CI was the last place still breaking it.
+      #
+      # Both suites below *write*: `test:db` inserts fixtures and asserts over
+      # them, and the mutation suites `coverage` measures post invoices and
+      # payments. Pointing them at `qabandi` meant the database this job had
+      # just proved it could build from an empty server was then mutated by the
+      # first suite, seeded on top by `db:seed-demo`, and read by the second —
+      # three steps sharing one database in an order nothing enforced. That is
+      # a flake waiting for a slow day, and it makes a coverage figure that
+      # nobody can reproduce.
+      #
+      # `qabandi_test` is built by the same three commands and thrown away with
+      # the runner. `qabandi` stays untouched after `db:seed`, which is the
+      # migration proof this job is named for.
+      #
+      # `ADMIN_DATABASE_URL` names `postgres` rather than the database being
+      # created: `db:provision` connects with it *first* and then issues the
+      # CREATE DATABASE, so it cannot name a database that does not exist yet.
+      - name: Provision, migrate and seed the test database
+        env:
+          ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+        run: |
+          pnpm db:provision
+          pnpm db:migrate
+          pnpm db:seed
+
       # The suite connects as `app_user` — no BYPASSRLS, no ownership. Running
       # it as the owner would pass while proving nothing, so the two URLs below
       # are deliberately different roles.
       - name: RLS policies and the negative matrix
         env:
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
         run: pnpm test:db
 
       # Coverage runs *here*, in the job that has a database, rather than
@@ -175,15 +230,67 @@ jobs:
       # The floor in vitest.config.ts is set just under what this achieves.
       # Raise it when coverage rises; a threshold that is never raised stops
       # meaning anything.
+
+      # The coverage run needs the demo dataset, not just the reference seed.
+      #
+      # `src/features/imports/*.test.ts` asserts against `KWSWK` — Shuwaikh —
+      # and that location is created by `db:seed-demo`, not by `db:seed`. Six
+      # assertions there had nothing to fail against, which is why the coverage
+      # step died before writing a report and the job reported "No files were
+      # found with the provided path: coverage/" rather than a threshold miss.
+      #
+      # The seeded end-to-end job already loads it in exactly this position, so
+      # this is the same combination rather than a new one. It runs after the
+      # policy matrix so that suite still measures a database holding only what
+      # a real deployment starts with.
+      #
+      # It loads into `qabandi_test` for the same reason the suites do:
+      # `db:seed-demo` writes as `app_user` through `withActor` — deliberately,
+      # because a seed that runs as the owner can insert rows no policy would
+      # allow — which makes it a mutation like any other.
+      - name: Load the demo dataset
+        env:
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+        run: pnpm db:seed-demo
+
       - name: Coverage
         env:
-          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi
-          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi
+          DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
+          TEST_DATABASE_URL: postgres://app_user:ci_user@127.0.0.1:5432/qabandi_test
+          TEST_MIGRATION_DATABASE_URL: postgres://app_migrator:ci_migrator@127.0.0.1:5432/qabandi_test
         run: pnpm coverage
+
+      # When the gate refuses, say by how much.
+      #
+      # `pnpm coverage` prints a full per-file table and then exits 1 with the
+      # thresholds it missed — but that is thousands of lines up in a log whose
+      # tail is the Postgres container dump, so in practice the answer to "how
+      # far off are we" costs a download of the artifact. The four numbers that
+      # decide the gate are the ones worth having at the end of the log, next to
+      # the failure, where the person reading it already is.
+      #
+      # `if: failure()` so it costs nothing on a green run, and reads the
+      # `json-summary` reporter that `vitest.config.ts` already emits.
+      # Written to the job summary as well as stdout, and the summary is the half
+      # that matters. A failing job's log tail is the Postgres service
+      # container's own output — roughly two hundred lines the runner prints at
+      # teardown — so anything a step logs is pushed out of reach of whoever is
+      # reading the failure through the API rather than the web UI. The summary
+      # is attached to the check itself and survives that.
+      - name: Coverage totals
+        if: failure()
+        run: >-
+          node -e "const t=require('./coverage/coverage-summary.json').total;
+          const rows=['lines','statements','functions','branches'].map(k=>k.padEnd(11)+String(t[k].pct)+'%  ('+t[k].covered+'/'+t[k].total+')');
+          console.log(rows.join('\n'));
+          require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+          '### Coverage totals\n\n\`\`\`\n'+rows.join('\n')+'\n\`\`\`\n')"
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage
           path: coverage/
@@ -214,18 +321,21 @@ jobs:
       E2E_PORT: '3100'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Install browsers
         run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
@@ -233,13 +343,34 @@ jobs:
       # Built and served as production, not `next dev`: RTL, brand tokens and
       # server components all behave differently under the dev server, and it
       # is the production build these tests are supposed to protect.
+      # `next start` runs as production, so `instrumentation.ts` refuses to boot
+      # without a signing key — which is what it is there for. Both end-to-end
+      # jobs were never given one, so the web server died on every restart
+      # attempt and Playwright failed on "Timed out waiting for webServer"
+      # without a single test having run. The symptom named the timeout and not
+      # the cause, which is why this went unfixed for four runs.
+      #
+      # Generated per run rather than pinned: a fixed base64 string sitting in a
+      # workflow file is a key that looks real, gets copied into a deployment,
+      # and signs sessions somebody else can mint.
+      - name: Generate a signing key for this run
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
       - name: Build
         run: pnpm --filter @qabandi/web build
 
       - name: Run
         run: pnpm test:e2e
 
-      - uses: actions/upload-artifact@v4
+      # The failed specs, into the job summary. The log's last two hundred lines
+      # are the runner printing the service container's output at teardown, so
+      # what Playwright wrote is out of reach of anyone reading the failure
+      # through the API rather than the web UI.
+      - name: Failing specs
+        if: failure()
+        run: node scripts/e2e-summary.mjs
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-offline
@@ -282,18 +413,21 @@ jobs:
       BETTER_AUTH_URL: http://127.0.0.1:3100
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Install browsers
         run: pnpm --filter @qabandi/web exec playwright install --with-deps chromium
@@ -322,13 +456,60 @@ jobs:
           pnpm db:create-user --email e2e@qabandi.test --name "E2E Operator"
           --role administrator --password "$E2E_PASSWORD"
 
+      # `next start` runs as production, so `instrumentation.ts` refuses to boot
+      # without a signing key — which is what it is there for. Both end-to-end
+      # jobs were never given one, so the web server died on every restart
+      # attempt and Playwright failed on "Timed out waiting for webServer"
+      # without a single test having run. The symptom named the timeout and not
+      # the cause, which is why this went unfixed for four runs.
+      #
+      # Generated per run rather than pinned: a fixed base64 string sitting in a
+      # workflow file is a key that looks real, gets copied into a deployment,
+      # and signs sessions somebody else can mint.
+      - name: Generate a signing key for this run
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
       - name: Build
         run: pnpm --filter @qabandi/web build
 
       - name: Run
         run: pnpm test:e2e
 
-      - uses: actions/upload-artifact@v4
+      # The failed specs, into the job summary. The log's last two hundred lines
+      # are the runner printing the service container's output at teardown, so
+      # what Playwright wrote is out of reach of anyone reading the failure
+      # through the API rather than the web UI.
+      - name: Failing specs
+        if: failure()
+        run: node scripts/e2e-summary.mjs
+
+      # What the database held and what the signed-in account could see of it.
+      #
+      # Placed *after* the suite rather than before it, and that position is the
+      # whole point. A register that renders nothing has two causes needing
+      # opposite fixes — the seed wrote nothing, or the rows are there and RLS
+      # is filtering them out for this principal — and `/jobs rendered no record
+      # to open` cannot tell them apart.
+      #
+      # It ran before the build first, which was useless: Playwright writes tens
+      # of thousands of lines, so by the end of the job the answer was ~50,000
+      # lines above the tail and reachable only through the web UI. That is the
+      # same mistake the coverage totals made, and the same fix — put the number
+      # where the person reading the failure already is. `$GITHUB_STEP_SUMMARY`
+      # covers the browser; the end of the log covers everyone else.
+      #
+      # The suite reads far more than it writes, so a count taken afterwards is
+      # still the dataset the screens were rendering from.
+      #
+      # `if: always()` so a green run records the same baseline, and
+      # `continue-on-error` because a diagnostic must never be the thing that
+      # fails the job it is explaining.
+      - name: Dataset and scope
+        if: always()
+        continue-on-error: true
+        run: pnpm db:diagnose --as "$E2E_EMAIL"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-full
@@ -340,18 +521,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
         with:
           version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Configure the environment
+        run: cp .env.ci .env
 
       - name: Build every package
         run: pnpm build

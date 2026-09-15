@@ -391,10 +391,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       const id = await enquiry(on)
       const withdrawn = await card(on, 'sell', [{ rate: '300.000' }])
       await withActor(bothBranchesActor, (tx) =>
-        tx
-          .update(rateCards)
-          .set({ supersededById: withdrawn })
-          .where(eq(rateCards.id, withdrawn)),
+        tx.update(rateCards).set({ supersededById: withdrawn }).where(eq(rateCards.id, withdrawn)),
       )
 
       const state = await priceEnquiry({}, form({ enquiryId: id }))
@@ -633,9 +630,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       try {
         await expect(
           priceEnquiry({}, form({ enquiryId: await enquiry(await lane()) })),
-        ).rejects.toThrow(
-          'quote.send',
-        )
+        ).rejects.toThrow('quote.send')
       } finally {
         harness.session = session
       }

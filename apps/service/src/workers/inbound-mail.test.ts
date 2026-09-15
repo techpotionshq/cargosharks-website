@@ -19,7 +19,12 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { identifyingDomain, inboundStorageKey, isAutomaticMail, referencesIn } from './inbound-routing'
+import {
+  identifyingDomain,
+  inboundStorageKey,
+  isAutomaticMail,
+  referencesIn,
+} from './inbound-routing'
 
 // --- reference extraction ----------------------------------------------------
 
@@ -77,9 +82,9 @@ describe('referencesIn', () => {
   })
 
   it('is empty for a cold enquiry that quotes nothing', () => {
-    expect(referencesIn('Rates Shanghai to Shuwaikh?', 'Please quote 2x40HC ready 25 Aug.')).toEqual(
-      [],
-    )
+    expect(
+      referencesIn('Rates Shanghai to Shuwaikh?', 'Please quote 2x40HC ready 25 Aug.'),
+    ).toEqual([])
   })
 
   it('does not match a reference glued to surrounding text', () => {
@@ -191,7 +196,12 @@ describe('isAutomaticMail', () => {
    * costs a customer, where a bounce let through costs one junk row.
    */
   it('does not refuse a stranger with an unusual subject', () => {
-    for (const subject of ['urgent!!!', 'Re: Re: Re: rates', 'RFQ — returned goods to sender', '']) {
+    for (const subject of [
+      'urgent!!!',
+      'Re: Re: Re: rates',
+      'RFQ — returned goods to sender',
+      '',
+    ]) {
       expect(isAutomaticMail({ from: 'stranger@unknown-shipper.test', subject })).toBe(false)
     }
   })
@@ -351,9 +361,7 @@ const messagesOn = (enquiryId: string) =>
   withActor(sys, (tx) => tx.select().from(messages).where(eq(messages.enquiryId, enquiryId)))
 
 const enquiriesFromRun = () =>
-  withActor(sys, (tx) =>
-    tx.select().from(enquiries).where(eq(enquiries.branchId, BRANCH)),
-  )
+  withActor(sys, (tx) => tx.select().from(enquiries).where(eq(enquiries.branchId, BRANCH)))
 
 /**
  * The enquiry this case just caused, found by the subject it was filed under.
@@ -516,10 +524,7 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
 
       // Deactivated rather than deleted (§5.5), and so a real poll on this
       // database never tries to reach `imap.invalid`.
-      await tx
-        .update(mailboxes)
-        .set({ isActive: false })
-        .where(eq(mailboxes.branchId, BRANCH))
+      await tx.update(mailboxes).set({ isActive: false }).where(eq(mailboxes.branchId, BRANCH))
     })
   })
 
@@ -542,7 +547,7 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
     /** Collects what would have been queued, instead of reaching for pg-boss. */
     const collector = () => {
       const queued: { branchId: string; assetId: string; partnerId: string }[] = []
-      return { queued, enqueue: async (input: typeof queued[number]) => void queued.push(input) }
+      return { queued, enqueue: async (input: (typeof queued)[number]) => void queued.push(input) }
     }
 
     it('queues an attachment from a known supplier for reading', async () => {
@@ -713,7 +718,10 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
 
     const [receipt] = await withActor(sys, (tx) =>
       tx
-        .select({ processedAt: inboundWebhookEvents.processedAt, error: inboundWebhookEvents.error })
+        .select({
+          processedAt: inboundWebhookEvents.processedAt,
+          error: inboundWebhookEvents.error,
+        })
         .from(inboundWebhookEvents)
         .where(eq(inboundWebhookEvents.externalId, bounce.externalId)),
     )
@@ -844,7 +852,11 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
     await runInboundMailPoll(
       new Date('2026-08-18T07:32:00Z'),
       sourceOf(
-        mail({ subject: `Re: ${enquiry.reference}`, from: 'fatima@known-shipper.test', body: 'Any news?' }),
+        mail({
+          subject: `Re: ${enquiry.reference}`,
+          from: 'fatima@known-shipper.test',
+          body: 'Any news?',
+        }),
       ),
     )
 

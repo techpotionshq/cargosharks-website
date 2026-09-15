@@ -30,7 +30,7 @@ import type { ReactNode } from 'react'
 import { CHART_SERIES_VARS } from '@qabandi/brand'
 
 /** Slot N, in fixed assignment order. Beyond the last slot, callers fold. */
-export function seriesColor(index: number): string {
+function seriesColor(index: number): string {
   return CHART_SERIES_VARS[index] ?? 'var(--qb-muted)'
 }
 

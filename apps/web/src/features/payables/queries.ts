@@ -34,16 +34,19 @@ import {
   chargeTypes,
   invoices,
   jobs,
+  partners,
   partnerSettlementLines,
   partnerSettlements,
-  partners,
+  settlementStatusEnum,
   supplierInvoiceLines,
   supplierInvoiceMatches,
   supplierInvoices,
+  supplierInvoiceStatusEnum,
   supplierPayments,
-  withActor,
   type Actor,
+  withActor,
 } from '@qabandi/db'
+import { enumFilter, uuidFilter } from '@/lib/filters'
 import {
   D,
   SEED_CURRENCIES,
@@ -61,6 +64,19 @@ import {
   type Statement,
   type StatementEntry,
 } from '@qabandi/core'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotPartnerAccount,
+  pilotPayableAgeing,
+  pilotPayableInvoices,
+  pilotPayablesSummary,
+  pilotSettleablePartners,
+  pilotSettlement,
+  pilotSettlements,
+  pilotSupplierInvoice,
+  pilotSupplierInvoices,
+  pilotSupplierPayments,
+} from '@/lib/pilot/fixtures'
 
 const spec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
@@ -89,6 +105,19 @@ export async function listSupplierInvoices(
   actor: Actor,
   filters: { readonly status?: string; readonly partnerId?: string } = {},
 ): Promise<SupplierInvoiceRow[]> {
+  /*
+    Narrowed before the fixtures branch, not after.
+
+    Both modes must answer an unknown filter the same way. Narrowing only on
+    the database path would leave `?status=xyz` returning the empty set offline
+    and the whole register against Postgres — the fixtures-versus-database
+    divergence that already cost this repository a screen nobody had tested.
+  */
+  const status = enumFilter(supplierInvoiceStatusEnum.enumValues, filters.status)
+  const partnerId = uuidFilter(filters.partnerId)
+
+  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), { status, partnerId })
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -157,10 +186,8 @@ export async function listSupplierInvoices(
       .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
       .where(
         and(
-          filters.status
-            ? eq(supplierInvoices.status, filters.status as 'received')
-            : sql`${supplierInvoices.status} <> 'void'`,
-          filters.partnerId ? eq(supplierInvoices.partnerId, filters.partnerId) : undefined,
+          status ? eq(supplierInvoices.status, status) : sql`${supplierInvoices.status} <> 'void'`,
+          partnerId ? eq(supplierInvoices.partnerId, partnerId) : undefined,
         ),
       )
       .orderBy(desc(supplierInvoices.invoiceDate), desc(supplierInvoices.createdAt))
@@ -187,6 +214,8 @@ export interface PayablesSummary {
  * screen would mean it is looked at monthly rather than daily.
  */
 export async function payablesSummary(actor: Actor): Promise<PayablesSummary> {
+  if (usePilotFixtures()) return pilotPayablesSummary()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -236,6 +265,20 @@ export async function payablesAgeing(
   actor: Actor,
   asOf = new Date(),
 ): Promise<{ readonly currency: string; readonly ageing: Ageing }> {
+  /*
+    The fixture stops at the items and `ageItems` still runs, exactly as it
+    does below. The bucketing is the part a finance manager is being shown, so
+    a demo path that returned a pre-computed `Ageing` would be demonstrating
+    arithmetic the product does not run.
+
+    The seeds are cut from `asOf` rather than from now, so asking for the
+    ageing at a past date moves the due dates with it instead of reporting
+    today's buckets under yesterday's heading.
+  */
+  if (usePilotFixtures()) {
+    return { currency: 'KWD', ageing: ageItems(pilotPayableAgeing(asOf.getTime()), 'KWD', asOf) }
+  }
+
   return withActor(actor, async (tx) => {
     const [branch] = await tx
       .select({ baseCurrency: branches.baseCurrency })
@@ -270,7 +313,7 @@ export async function payablesAgeing(
 
 // --- one bill, and the argument about it -----------------------------------
 
-export interface SupplierMatchRow {
+interface SupplierMatchRow {
   readonly id: string
   readonly chargeLineId: string
   readonly jobId: string
@@ -283,7 +326,7 @@ export interface SupplierMatchRow {
   readonly accruedCurrency: string
 }
 
-export interface SupplierLineRow {
+interface SupplierLineRow {
   readonly id: string
   readonly description: string
   readonly chargeTypeId: string | null
@@ -334,6 +377,19 @@ export async function getSupplierInvoice(
   actor: Actor,
   id: string,
 ): Promise<SupplierInvoiceDetail | undefined> {
+  /*
+    The fixture stops at the three selects, and `compareToAccrual` and
+    `summariseInvoice` still run over them — see `composeSupplierInvoice`. The
+    verdict on a line is the whole content of this screen, so a demo path that
+    stated one would be showing a judgement the product did not make.
+  */
+  if (usePilotFixtures()) {
+    const rows = pilotSupplierInvoice(id)
+    return rows === undefined
+      ? undefined
+      : composeSupplierInvoice(rows.bill, rows.lines, rows.matches)
+  }
+
   return withActor(actor, async (tx) => {
     const [bill] = await tx
       .select({
@@ -418,89 +474,147 @@ export async function getSupplierInvoice(
               ),
             )
 
-    const baseSpec = spec(bill.baseCurrency)
-    const partnerTolerance = tolerance(bill.partnerTolerancePercent, bill.partnerToleranceAbsolute)
+    return composeSupplierInvoice(bill, lineRows, matchRows)
+  })
+}
 
-    const lines: SupplierLineRow[] = lineRows.map((line) => {
-      const matches = matchRows
-        .filter((m) => m.lineId === line.id)
-        .map((m): SupplierMatchRow => ({
-          id: m.id,
-          chargeLineId: m.chargeLineId,
-          jobId: m.jobId,
-          jobReference: m.jobReference,
-          chargeTypeName: m.chargeTypeName,
-          claimed: m.claimed,
-          accruedBase: m.accruedBase,
-          accruedAmount: m.accruedAmount,
-          accruedCurrency: m.accruedCurrency,
-        }))
+/**
+ * The bill, its lines and its matches, judged — and the one place that happens.
+ *
+ * Extracted so the fixture path runs it too. Every figure below is reached by
+ * `compareToAccrual` and `summariseInvoice`; nothing here decides a verdict or
+ * a variance, which is what keeps the offline demo and a deployment against a
+ * real database answering the same question the same way.
+ */
+function composeSupplierInvoice(
+  bill: SupplierBillHeader,
+  lineRows: readonly SupplierBillLine[],
+  matchRows: readonly SupplierBillMatch[],
+): SupplierInvoiceDetail {
+  const baseSpec = spec(bill.baseCurrency)
+  const partnerTolerance = tolerance(bill.partnerTolerancePercent, bill.partnerToleranceAbsolute)
 
-      /*
-        Both sides in base currency — see the header. `numeric` strings are
-        multiplied by `Decimal` inside `core`, never here, and never by
-        `Number`.
-      */
-      const billedBase = decimalTimes(line.amount, bill.fxRate)
-      const accruedBase = sumStrings(matches.map((m) => m.accruedBase))
+  const lines: SupplierLineRow[] = lineRows.map((line) => {
+    const matches = matchRows
+      .filter((m) => m.lineId === line.id)
+      .map((m): SupplierMatchRow => ({
+        id: m.id,
+        chargeLineId: m.chargeLineId,
+        jobId: m.jobId,
+        jobReference: m.jobReference,
+        chargeTypeName: m.chargeTypeName,
+        claimed: m.claimed,
+        accruedBase: m.accruedBase,
+        accruedAmount: m.accruedAmount,
+        accruedCurrency: m.accruedCurrency,
+      }))
 
-      const tol = resolveTolerance(
-        tolerance(line.tolerancePercent, line.toleranceAbsolute),
-        partnerTolerance,
-      )
-      const outcome = compareToAccrual(
-        { amount: toDecimal(accruedBase), currency: bill.baseCurrency },
-        { amount: toDecimal(billedBase), currency: bill.baseCurrency },
-        tol,
-        baseSpec,
-      )
+    /*
+      Both sides in base currency — see the header. `numeric` strings are
+      multiplied by `Decimal` inside `core`, never here, and never by
+      `Number`.
+    */
+    const billedBase = decimalTimes(line.amount, bill.fxRate)
+    const accruedBase = sumStrings(matches.map((m) => m.accruedBase))
 
-      return {
-        id: line.id,
-        description: line.description,
-        chargeTypeId: line.chargeTypeId,
-        chargeTypeName: line.chargeTypeName,
-        jobId: line.jobId,
-        jobReference: line.jobReference,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        amount: line.amount,
-        taxAmount: line.taxAmount,
-        billedBase,
-        accruedBase,
-        matches,
-        verdict: outcome.verdict,
-        varianceBase: outcome.variance.amount.toString(),
-        variancePercent: outcome.variancePercent?.toString() ?? null,
-        allowedBase: outcome.allowed.amount.toString(),
-        needsReview: outcome.needsReview,
-      }
-    })
+    const tol = resolveTolerance(
+      tolerance(line.tolerancePercent, line.toleranceAbsolute),
+      partnerTolerance,
+    )
+    const outcome = compareToAccrual(
+      { amount: toDecimal(accruedBase), currency: bill.baseCurrency },
+      { amount: toDecimal(billedBase), currency: bill.baseCurrency },
+      tol,
+      baseSpec,
+    )
 
     return {
-      ...bill,
-      lines,
-      summary: summariseInvoice(
-        lines.map((l) => ({
-          id: l.id,
-          description: l.description,
-          billed: l.billedBase,
-          accrued: l.accruedBase,
-          matchCount: l.matches.length,
-          /*
-            The allowance is re-expressed as an absolute limit rather than
-            recomputed. `compareToAccrual` has already resolved partner over
-            charge type for this line, and handing `summariseInvoice` the
-            resolved figure is what keeps the totals row and the line rows
-            agreeing about which lines are in trouble.
-          */
-          tolerance: tolerance('0', l.allowedBase),
-        })),
-        bill.baseCurrency,
-        baseSpec,
-      ),
+      id: line.id,
+      description: line.description,
+      chargeTypeId: line.chargeTypeId,
+      chargeTypeName: line.chargeTypeName,
+      jobId: line.jobId,
+      jobReference: line.jobReference,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      amount: line.amount,
+      taxAmount: line.taxAmount,
+      billedBase,
+      accruedBase,
+      matches,
+      verdict: outcome.verdict,
+      varianceBase: outcome.variance.amount.toString(),
+      variancePercent: outcome.variancePercent?.toString() ?? null,
+      allowedBase: outcome.allowed.amount.toString(),
+      needsReview: outcome.needsReview,
     }
   })
+
+  return {
+    ...bill,
+    lines,
+    summary: summariseInvoice(
+      lines.map((l) => ({
+        id: l.id,
+        description: l.description,
+        billed: l.billedBase,
+        accrued: l.accruedBase,
+        matchCount: l.matches.length,
+        /*
+          The allowance is re-expressed as an absolute limit rather than
+          recomputed. `compareToAccrual` has already resolved partner over
+          charge type for this line, and handing `summariseInvoice` the
+          resolved figure is what keeps the totals row and the line rows
+          agreeing about which lines are in trouble.
+        */
+        tolerance: tolerance('0', l.allowedBase),
+      })),
+      bill.baseCurrency,
+      baseSpec,
+    ),
+  }
+}
+
+/*
+  The three row shapes `composeSupplierInvoice` takes.
+
+  Written out rather than inferred from the selects above because the fixture
+  builds them too, and a structural type inferred from a Drizzle query is not
+  something another module can state. The tolerance columns are inputs to
+  `resolveTolerance` and not part of `SupplierInvoiceDetail`; the rest of the
+  header is spread into the return unchanged.
+*/
+type SupplierBillHeader = Omit<SupplierInvoiceDetail, 'lines' | 'summary'> & {
+  readonly partnerTolerancePercent: string | null
+  readonly partnerToleranceAbsolute: string | null
+}
+
+interface SupplierBillLine {
+  readonly id: string
+  readonly description: string
+  readonly chargeTypeId: string | null
+  readonly chargeTypeName: string | null
+  readonly tolerancePercent: string | null
+  readonly toleranceAbsolute: string | null
+  readonly jobId: string | null
+  readonly jobReference: string | null
+  readonly quantity: string
+  readonly unitPrice: string
+  readonly amount: string
+  readonly taxAmount: string
+}
+
+interface SupplierBillMatch {
+  readonly id: string
+  readonly lineId: string
+  readonly chargeLineId: string
+  readonly claimed: string
+  readonly jobId: string
+  readonly jobReference: string
+  readonly chargeTypeName: string
+  readonly accruedBase: string
+  readonly accruedAmount: string
+  readonly accruedCurrency: string
 }
 
 // --- payments --------------------------------------------------------------
@@ -518,6 +632,8 @@ export interface SupplierPaymentRow {
 }
 
 export async function listSupplierPayments(actor: Actor): Promise<SupplierPaymentRow[]> {
+  if (usePilotFixtures()) return pilotSupplierPayments()
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -549,6 +665,8 @@ export async function listPayableInvoices(
   actor: Actor,
   partnerId: string,
 ): Promise<{ readonly id: string; readonly reference: string; readonly outstanding: string }[]> {
+  if (usePilotFixtures()) return pilotPayableInvoices(partnerId)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -597,6 +715,26 @@ export async function getPartnerAccount(
   partnerId: string,
   asOf = new Date(),
 ): Promise<PartnerAccount | undefined> {
+  /*
+    The fixture stops at the entries. `buildStatement`, `netPosition` and
+    `ageItems` all still run over them in `accountOf` below — the netting is
+    the argument this card makes, and a fixture that arrived with a residual
+    already computed would be making it on the product's behalf.
+  */
+  if (usePilotFixtures()) {
+    const rows = pilotPartnerAccount(partnerId)
+    return rows === undefined
+      ? undefined
+      : accountOf(
+          rows.partnerId,
+          rows.partnerName,
+          rows.customerId,
+          rows.currency,
+          rows.entries,
+          asOf,
+        )
+  }
+
   return withActor(actor, async (tx) => {
     const [partner] = await tx
       .select({
@@ -689,31 +827,48 @@ export async function getPartnerAccount(
       })),
     ]
 
-    const statement = buildStatement(entries, currency)
-
-    return {
-      partnerId: partner.id,
-      partnerName: partner.name,
-      currency,
-      customerId: partner.customerId,
-      statement,
-      net: netPosition(statement.receivable, statement.payable, currency),
-      receivableAgeing: ageItems(
-        entries
-          .filter((e) => e.kind === 'invoice')
-          .map((e) => ({ outstanding: e.outstanding ?? e.amount, dueOn: e.dueOn })),
-        currency,
-        asOf,
-      ),
-      payableAgeing: ageItems(
-        entries
-          .filter((e) => e.kind === 'bill')
-          .map((e) => ({ outstanding: e.outstanding ?? e.amount, dueOn: e.dueOn })),
-        currency,
-        asOf,
-      ),
-    }
+    return accountOf(partner.id, partner.name, partner.customerId, currency, entries, asOf)
   })
+}
+
+/**
+ * The statement, the net position and both ageings — the one place they are
+ * computed, so the fixture path computes them the same way.
+ *
+ * The two ageings are drawn from the *entries* rather than from the statement
+ * lines, and the difference matters: a statement line carries a running
+ * balance, and bucketing balances rather than open amounts would age the
+ * relationship instead of the documents.
+ */
+function accountOf(
+  partnerId: string,
+  partnerName: string,
+  customerId: string | null,
+  currency: string,
+  entries: readonly StatementEntry[],
+  asOf: Date,
+): PartnerAccount {
+  const statement = buildStatement(entries, currency)
+
+  const ageingOf = (kind: StatementEntry['kind']): Ageing =>
+    ageItems(
+      entries
+        .filter((e) => e.kind === kind)
+        .map((e) => ({ outstanding: e.outstanding ?? e.amount, dueOn: e.dueOn })),
+      currency,
+      asOf,
+    )
+
+  return {
+    partnerId,
+    partnerName,
+    currency,
+    customerId,
+    statement,
+    net: netPosition(statement.receivable, statement.payable, currency),
+    receivableAgeing: ageingOf('invoice'),
+    payableAgeing: ageingOf('bill'),
+  }
 }
 
 export interface SettlementRow {
@@ -738,6 +893,11 @@ export async function listSettlements(
   actor: Actor,
   filters: { readonly partnerId?: string; readonly status?: string } = {},
 ): Promise<SettlementRow[]> {
+  const status = enumFilter(settlementStatusEnum.enumValues, filters.status)
+  const partnerId = uuidFilter(filters.partnerId)
+
+  if (usePilotFixtures()) return pilotSettlements(Date.now(), { status, partnerId })
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -761,9 +921,9 @@ export async function listSettlements(
       .innerJoin(partners, eq(partners.id, partnerSettlements.partnerId))
       .where(
         and(
-          filters.partnerId ? eq(partnerSettlements.partnerId, filters.partnerId) : undefined,
-          filters.status
-            ? eq(partnerSettlements.status, filters.status as 'draft')
+          partnerId ? eq(partnerSettlements.partnerId, partnerId) : undefined,
+          status
+            ? eq(partnerSettlements.status, status)
             : sql`${partnerSettlements.status} <> 'void'`,
         ),
       )
@@ -794,6 +954,15 @@ export async function getSettlement(
   actor: Actor,
   id: string,
 ): Promise<SettlementDetail | undefined> {
+  /*
+    No core call behind this one: `settlement.ts` did its arithmetic when the
+    statement was drawn and the row carries the answer, so the fixture returns
+    the finished shape. Every figure on it comes from the same builder the
+    register row came from, which is what stops the header of this page
+    disagreeing with the row the reader clicked a second ago.
+  */
+  if (usePilotFixtures()) return pilotSettlement(id)
+
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .select({
@@ -858,6 +1027,8 @@ export async function getSettlement(
 export async function listSettleablePartners(
   actor: Actor,
 ): Promise<{ readonly id: string; readonly name: string; readonly currency: string }[]> {
+  if (usePilotFixtures()) return pilotSettleablePartners()
+
   return withActor(actor, async (tx) =>
     tx
       .select({

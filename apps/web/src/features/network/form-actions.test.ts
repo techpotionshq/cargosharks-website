@@ -193,12 +193,15 @@ describe.skipIf(!enabled)('the network', () => {
     })
 
     it('refuses a type the platform does not model', async () => {
-      expect((await savePartner({}, partnerForm({ type: 'consultant' }))).errors?.type).toBeDefined()
+      expect(
+        (await savePartner({}, partnerForm({ type: 'consultant' }))).errors?.type,
+      ).toBeDefined()
     })
 
     it('insists on a legal name', async () => {
-      expect((await savePartner({}, partnerForm({ legalNameEn: 'X' }))).errors?.legalNameEn)
-        .toBeDefined()
+      expect(
+        (await savePartner({}, partnerForm({ legalNameEn: 'X' }))).errors?.legalNameEn,
+      ).toBeDefined()
     })
 
     /** An unchecked box arrives absent, not as `false`. */
@@ -279,10 +282,16 @@ describe.skipIf(!enabled)('the network', () => {
      */
     it('reports a UN/LOCODE already recorded rather than raising', async () => {
       const unlocode = `KW${(Date.now() + 1).toString(36).toUpperCase().slice(-3)}`
-      const first = await saveLocation({}, placeForm({ unlocode, nameEn: 'First Port', kind: 'seaport' }))
+      const first = await saveLocation(
+        {},
+        placeForm({ unlocode, nameEn: 'First Port', kind: 'seaport' }),
+      )
       expect(first.errors).toBeUndefined()
 
-      const second = await saveLocation({}, placeForm({ unlocode, nameEn: 'Second Port', kind: 'seaport' }))
+      const second = await saveLocation(
+        {},
+        placeForm({ unlocode, nameEn: 'Second Port', kind: 'seaport' }),
+      )
       expect(second.errors?.unlocode).toContain('already recorded')
     })
 
@@ -304,13 +313,13 @@ describe.skipIf(!enabled)('the network', () => {
           .where(eq(locations.nameEn, `Place ${RUN} Before`)),
       )
 
-      await saveLocation(
-        {},
-        placeForm({ locationId: existing!.id, nameEn: `Place ${RUN} After` }),
-      )
+      await saveLocation({}, placeForm({ locationId: existing!.id, nameEn: `Place ${RUN} After` }))
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ nameEn: locations.nameEn }).from(locations).where(eq(locations.id, existing!.id)),
+        tx
+          .select({ nameEn: locations.nameEn })
+          .from(locations)
+          .where(eq(locations.id, existing!.id)),
       )
       expect(row?.nameEn).toBe(`Place ${RUN} After`)
     })
@@ -355,13 +364,19 @@ describe.skipIf(!enabled)('the network', () => {
     it('retires a place through the same action', async () => {
       await saveLocation({}, placeForm({ nameEn: `Retire ${RUN}` }))
       const [existing] = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ id: locations.id }).from(locations).where(eq(locations.nameEn, `Retire ${RUN}`)),
+        tx
+          .select({ id: locations.id })
+          .from(locations)
+          .where(eq(locations.nameEn, `Retire ${RUN}`)),
       )
 
       await setNetworkActive({}, form({ kind: 'location', id: existing!.id }))
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
-        tx.select({ isActive: locations.isActive }).from(locations).where(eq(locations.id, existing!.id)),
+        tx
+          .select({ isActive: locations.isActive })
+          .from(locations)
+          .where(eq(locations.id, existing!.id)),
       )
       expect(row?.isActive).toBe(false)
     })

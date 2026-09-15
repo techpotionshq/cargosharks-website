@@ -20,9 +20,18 @@
  * Latin in Arabic (`-u-nu-latn`) for the same reason `lib/format.ts` does it:
  * Eastern Arabic numerals are unreadable to half the office and unparseable by
  * everything downstream.
+ *
+ * ## The colours come from the brand
+ *
+ * `:root` used to be five hex values ending in `--brand:#8c1d18`. See
+ * `./brand.ts` for why that was a customer-visible bug rather than a tidiness
+ * one; the short version is that the maroon belongs to one client and the
+ * invoice is issued by whichever operator `BRAND` selects.
  */
 
-export interface InvoiceLineView {
+import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
+
+interface InvoiceLineView {
   readonly descriptionEn: string
   readonly descriptionAr: string | null
   readonly quantity: string
@@ -169,10 +178,10 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
       : ''
 
   return `<!doctype html>
-<html lang="${locale}" dir="${dir}">
+<html lang="${locale}" dir="${dir}" ${PRINT_THEME_ATTR}>
 <meta charset="utf-8">
 <style>
-  :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --brand:#8c1d18; }
+${documentBrandCss()}
   * { box-sizing: border-box; }
   body {
     font-family: 'Noto Sans', 'Noto Sans Arabic', 'KacstOne', 'Liberation Sans', sans-serif;
@@ -194,7 +203,7 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
   tfoot .label { text-align: end; color: var(--muted); }
   tfoot .grand td { border-top: 1.5px solid var(--ink); font-weight: 600; font-size: 11pt; }
   .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center;
-           font-size: 34pt; color: rgba(140,29,24,.12); font-weight: 700; transform: rotate(-18deg); }
+           font-size: 34pt; color: var(--brand-wash); font-weight: 700; transform: rotate(-18deg); }
   .notes { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid var(--line);
            color: var(--muted); font-size: 9pt; }
 </style>

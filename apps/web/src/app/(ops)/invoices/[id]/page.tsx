@@ -22,7 +22,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import { InvoiceLineDialog, InvoiceStatusActions } from '@/features/ledger/ui/invoice-actions'
@@ -49,6 +49,8 @@ export async function generateMetadata({
 }
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
   const invoice = await getInvoiceDetail(session.actor, id)
@@ -111,7 +113,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       {overdue ? (
         <Notice tone="critical" className="mb-4">
-          {t('overdueSince', { on: formatDate(new Date(invoice.dueOn!), locale) })}
+          {t('overdueSince', { on: formatDate(new Date(invoice.dueOn!), locale, timeZone) })}
         </Notice>
       ) : null}
 
@@ -132,7 +134,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         />
         <Metric
           label={t('dueOn')}
-          value={invoice.dueOn ? formatDate(new Date(invoice.dueOn), locale) : '—'}
+          value={invoice.dueOn ? formatDate(new Date(invoice.dueOn), locale, timeZone) : '—'}
           icon="calendar"
           tone={overdue ? 'critical' : 'neutral'}
         />
@@ -218,7 +220,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 {invoice.language === 'ar' ? t('languages.ar') : t('languages.en')}
               </Field>
               <Field label={t('issuedAt')}>
-                {invoice.issuedAt ? formatDateTime(invoice.issuedAt, locale) : t('notIssued')}
+                {invoice.issuedAt
+                  ? formatDateTime(invoice.issuedAt, locale, timeZone)
+                  : t('notIssued')}
               </Field>
               <Field label={t('issuedBy')}>{invoice.issuedBy ?? '—'}</Field>
             </dl>
@@ -251,7 +255,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                         {allocation.reference ?? t('noReference')}
                       </p>
                       <p className="text-[0.75rem] text-ink-subtle">
-                        {formatDate(new Date(allocation.receivedOn), locale)} ·{' '}
+                        {formatDate(new Date(allocation.receivedOn), locale, timeZone)} ·{' '}
                         {tp(`methods.${allocation.method}` as 'methods.cash')}
                       </p>
                     </div>

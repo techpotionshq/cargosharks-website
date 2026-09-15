@@ -43,7 +43,7 @@ import type { CustomsDeclaration, CustomsFiling } from '../ports/index'
  * if something ever does, it should fail loudly at the first attempt rather
  * than at the first audit.
  */
-export const manualCustomsFiling: CustomsFiling = {
+const manualCustomsFiling: CustomsFiling = {
   key: 'manual',
 
   file(): Promise<CustomsDeclaration> {

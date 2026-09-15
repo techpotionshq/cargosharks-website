@@ -28,7 +28,7 @@ import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { runImport, type ImportState } from '../actions'
 
-export interface FieldSummary {
+interface FieldSummary {
   readonly key: string
   readonly label: string
   readonly required: boolean

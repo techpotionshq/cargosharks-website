@@ -101,4 +101,3 @@ export function unavailableFileStore(reason: string): FileStore {
     retire: refuse,
   }
 }
-

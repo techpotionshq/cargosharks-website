@@ -27,7 +27,7 @@
  */
 
 import Link from 'next/link'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { getMapData, getOpsOverview } from '@/features/dashboard/queries'
 import { getSetupState, type SetupStepKey } from '@/features/onboarding/queries'
@@ -61,6 +61,8 @@ function partOfDay(now: Date, timeZone: string): 'morning' | 'afternoon' | 'even
 }
 
 export default async function DashboardPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const overview = await getOpsOverview(session.actor)
   const setup = await getSetupState(session.actor)
@@ -382,8 +384,8 @@ export default async function DashboardPage() {
 
               <ul className="mt-4">
                 <EventRow
-                  time={nextArrival.etd ? formatTime(nextArrival.etd, locale) : '—'}
-                  date={nextArrival.etd ? formatDay(nextArrival.etd, locale) : undefined}
+                  time={nextArrival.etd ? formatTime(nextArrival.etd, locale, timeZone) : '—'}
+                  date={nextArrival.etd ? formatDay(nextArrival.etd, locale, timeZone) : undefined}
                   title={t('events.departed')}
                   detail={t('events.departedDetail', {
                     place: nameOf(nextArrival.originName, nextArrival.originNameAr),
@@ -391,8 +393,8 @@ export default async function DashboardPage() {
                   tone="positive"
                 />
                 <EventRow
-                  time={nextArrival.eta ? formatTime(nextArrival.eta, locale) : '—'}
-                  date={nextArrival.eta ? formatDay(nextArrival.eta, locale) : undefined}
+                  time={nextArrival.eta ? formatTime(nextArrival.eta, locale, timeZone) : '—'}
+                  date={nextArrival.eta ? formatDay(nextArrival.eta, locale, timeZone) : undefined}
                   title={t('events.arriving')}
                   detail={
                     nextArrival.vesselOrFlight

@@ -39,7 +39,7 @@ import { systemActor, webhookDeliveries, webhookEndpoints, withActor } from '@qa
 export const MAX_ATTEMPTS = 6
 
 /** Consecutive days of total failure before an endpoint is switched off. */
-export const DISABLE_AFTER_DAYS = 7
+const DISABLE_AFTER_DAYS = 7
 
 /** One batch, so a backlog does not hold the worker for ever. */
 const BATCH = 50

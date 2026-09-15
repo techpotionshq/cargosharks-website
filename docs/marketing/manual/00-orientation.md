@@ -6,7 +6,7 @@
 
 ## 1. Signing in
 
-Go to your company's Cargolane address — it is on your own domain, something
+Go to your company's CargoSharks address — it is on your own domain, something
 like `ops.yourcompany.com`. You will see a sign-in page with your company's logo
 on it.
 

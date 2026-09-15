@@ -6,6 +6,11 @@
  * wants to know what is stuck at customs, and the coordinator wants to know
  * what paperwork is missing. Kept in one slice because all three read `jobs`
  * and would otherwise duplicate the same joins three ways.
+ *
+ * Each read has a fixture implementation taken before `withActor`, so the
+ * three registers and their filter strips work with no database at all. The
+ * scope argument goes through to the builder: a "Held" tab that shows the same
+ * rows as "Live" is a demo the room stops believing.
  */
 
 import { asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
@@ -22,6 +27,15 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotCustomsCounts,
+  pilotCustomsRows,
+  pilotDocumentCounts,
+  pilotDocumentRows,
+  pilotExceptionCounts,
+  pilotExceptionRows,
+} from '@/lib/pilot/fixtures'
 
 // --- exceptions ------------------------------------------------------------
 
@@ -54,6 +68,8 @@ export async function listExceptions(
   actor: Actor,
   scope: 'open' | 'closed' | 'all' = 'open',
 ): Promise<ExceptionRow[]> {
+  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope)
+
   return withActor(actor, async (tx) => {
     const filter =
       scope === 'open'
@@ -94,6 +110,8 @@ export async function listExceptions(
 export async function exceptionCounts(
   actor: Actor,
 ): Promise<{ open: number; closed: number; overdue: number }> {
+  if (usePilotFixtures()) return pilotExceptionCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -131,6 +149,8 @@ export async function listCustoms(
   actor: Actor,
   scope: 'live' | 'released' | 'all' = 'live',
 ): Promise<CustomsRow[]> {
+  if (usePilotFixtures()) return pilotCustomsRows(Date.now(), scope)
+
   return withActor(actor, async (tx) => {
     const filter =
       scope === 'live'
@@ -169,6 +189,8 @@ export async function listCustoms(
 export async function customsCounts(
   actor: Actor,
 ): Promise<{ live: number; released: number; held: number }> {
+  if (usePilotFixtures()) return pilotCustomsCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
@@ -209,6 +231,8 @@ export interface DocumentRow {
  * customer is holding the old one.
  */
 export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
+  if (usePilotFixtures()) return pilotDocumentRows()
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -239,6 +263,8 @@ export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
 export async function documentCounts(
   actor: Actor,
 ): Promise<{ total: number; released: number; draft: number }> {
+  if (usePilotFixtures()) return pilotDocumentCounts()
+
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select count(*)::int                                        as total,

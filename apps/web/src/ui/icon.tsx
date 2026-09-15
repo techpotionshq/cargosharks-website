@@ -150,7 +150,7 @@ const MIRRORED = new Set<IconName>([
   'tracking',
 ])
 
-export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
+type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
 
 export interface IconProps {
   readonly name: IconName

@@ -13,7 +13,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { getSettlement } from '@/features/payables/queries'
@@ -39,6 +39,8 @@ const DIRECTION_TONE: Record<string, Tone> = {
 }
 
 export default async function SettlementPage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
 
@@ -104,7 +106,8 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
               </Badge>
             </Field>
             <Field label={t('period')}>
-              {formatDate(settlement.periodFrom, locale)} — {formatDate(settlement.periodTo, locale)}
+              {formatDate(settlement.periodFrom, locale, timeZone)} —{' '}
+              {formatDate(settlement.periodTo, locale, timeZone)}
             </Field>
             <Field label={t('theyOweUs')}>{money(settlement.receivableTotal)}</Field>
             <Field label={t('weOweThem')}>{money(settlement.payableTotal)}</Field>
@@ -126,9 +129,9 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
 
           {settlement.agreedAt ? (
             <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
-              {t('agreedOn', { when: formatDateTime(settlement.agreedAt, locale) })}
+              {t('agreedOn', { when: formatDateTime(settlement.agreedAt, locale, timeZone) })}
               {settlement.settledAt
-                ? ` · ${t('settledOn', { when: formatDateTime(settlement.settledAt, locale) })}`
+                ? ` · ${t('settledOn', { when: formatDateTime(settlement.settledAt, locale, timeZone) })}`
                 : ''}
             </p>
           ) : null}
@@ -145,7 +148,11 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
           </div>
 
           {settlement.lines.length === 0 ? (
-            <EmptyState icon="invoices" title={t('noDocuments')} description={t('noDocumentsHint')} />
+            <EmptyState
+              icon="invoices"
+              title={t('noDocuments')}
+              description={t('noDocumentsHint')}
+            />
           ) : (
             <TableShell className="border-t border-line" minWidth="none">
               <THead>

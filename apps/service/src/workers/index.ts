@@ -21,10 +21,7 @@ import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
 import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extract'
 import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
-import {
-  runInboundEmailWebhook,
-  type InboundEmailWebhookInput,
-} from './inbound-email-webhook'
+import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>

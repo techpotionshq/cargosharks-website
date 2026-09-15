@@ -52,6 +52,7 @@ import {
   type Tx,
 } from '@qabandi/db'
 import { ASSISTANT_LIMITS } from '@qabandi/core'
+import { dayIn, todayIn } from '@qabandi/core'
 
 /** The arguments a model produced, already parsed from its JSON. */
 export type ToolArgs = Record<string, unknown>
@@ -482,12 +483,7 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
         than inventing a column keeps the assistant's answer identical to the
         board's.
       */
-        .where(
-          and(
-            isNull(equipment.emptyReturnedAt),
-            lte(freeTimeClocks.endsOn, horizon.toISOString().slice(0, 10)),
-          ),
-        )
+        .where(and(isNull(equipment.emptyReturnedAt), lte(freeTimeClocks.endsOn, dayIn(horizon))))
         .orderBy(freeTimeClocks.endsOn)
         .limit(limit)
     )
@@ -497,7 +493,7 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
 async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknown> {
   const customer = text(args, 'customer')
   const limit = count(args, 'limit', 20)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayIn()
 
   return withActor(actor, (tx: Tx) => {
     const filters = [

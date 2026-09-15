@@ -38,11 +38,7 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 import { createEnquirySchema } from './schema'
-import {
-  enquiryColumn,
-  resolveProposal,
-  type ResolutionFailure,
-} from './proposals'
+import { enquiryColumn, resolveProposal, type ResolutionFailure } from './proposals'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -302,10 +298,7 @@ async function nextReference(
  * working on it or whether it has been forgotten; `rating` is the difference.
  * And a cancelled enquiry that stays `new` is chased for ever.
  */
-export async function advanceEnquiry(
-  _previous: ActionState,
-  form: FormData,
-): Promise<ActionState> {
+export async function advanceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
 
   // This file reads FormData directly, like its siblings above.

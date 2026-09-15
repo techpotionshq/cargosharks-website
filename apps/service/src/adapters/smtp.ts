@@ -66,7 +66,7 @@ interface Reply {
   readonly lines: readonly string[]
 }
 
-export class SmtpError extends Error {
+class SmtpError extends Error {
   constructor(
     message: string,
     readonly code?: number,

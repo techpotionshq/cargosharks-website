@@ -39,15 +39,7 @@ import { CurrencyMismatchError } from './errors'
 // The same `YYYY-MM-DD` a free-time clock uses. Imported rather than restated
 // so an override's expiry and an accrual's day cannot mean different things.
 import type { CalendarDate } from './clocks'
-import {
-  add,
-  compare,
-  isZero,
-  subtract,
-  zero,
-  type CurrencyCode,
-  type Money,
-} from './money'
+import { add, compare, isZero, subtract, zero, type CurrencyCode, type Money } from './money'
 
 /**
  * What a customer owes this branch, and what they are allowed to owe.
@@ -101,10 +93,7 @@ export interface CreditAssessment {
  * @throws CurrencyMismatchError where the limit and the exposure are not in
  * the same currency. Converting silently is the one thing this must not do.
  */
-export function assessCredit(
-  position: CreditPosition,
-  proposed?: Money | null,
-): CreditAssessment {
+export function assessCredit(position: CreditPosition, proposed?: Money | null): CreditAssessment {
   const currency = position.outstanding.currency
 
   if (proposed && proposed.currency !== currency) {
@@ -239,11 +228,9 @@ export function isNearLimit(assessment: CreditAssessment): boolean {
   if (!assessment.limit || assessment.blocked) return false
   if (isZero(assessment.limit)) return false
 
-  return (
-    assessment.exposure.amount
-      .dividedBy(assessment.limit.amount)
-      .greaterThanOrEqualTo(CREDIT_WARNING_RATIO)
-  )
+  return assessment.exposure.amount
+    .dividedBy(assessment.limit.amount)
+    .greaterThanOrEqualTo(CREDIT_WARNING_RATIO)
 }
 
 /**

@@ -277,7 +277,9 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
 
       expect(await recorded(id)).toHaveLength(1)
-      expect(harness.sent).toEqual([{ name: JOBS.inboundEmail, data: { eventId: expect.any(String) } }])
+      expect(harness.sent).toEqual([
+        { name: JOBS.inboundEmail, data: { eventId: expect.any(String) } },
+      ])
     })
 
     /**
@@ -310,10 +312,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       })
       await post('/email', emailRaw, { 'x-webhook-signature': sign(emailRaw, EMAIL_SECRET) })
 
-      expect(harness.sent.map((job) => job.name)).toEqual([
-        JOBS.inboundWhatsApp,
-        JOBS.inboundEmail,
-      ])
+      expect(harness.sent.map((job) => job.name)).toEqual([JOBS.inboundWhatsApp, JOBS.inboundEmail])
     })
 
     /** The same id from two providers is two events, not a collision. */

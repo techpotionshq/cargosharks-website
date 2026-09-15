@@ -18,7 +18,14 @@ import { addConsolCharge, saveConsolidation } from '../form-actions'
 
 const MODES = ['sea_lcl', 'air', 'sea_fcl', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
-const BASES = ['volume', 'chargeable_weight', 'gross_weight', 'packages', 'equal', 'manual'] as const
+const BASES = [
+  'volume',
+  'chargeable_weight',
+  'gross_weight',
+  'packages',
+  'equal',
+  'manual',
+] as const
 
 export interface ConsolidationDefaults {
   readonly id?: string
@@ -207,7 +214,11 @@ export async function ConsolidationDialog({
   )
 }
 
-export async function ConsolChargeDialog({ consolidationId }: { readonly consolidationId: string }) {
+export async function ConsolChargeDialog({
+  consolidationId,
+}: {
+  readonly consolidationId: string
+}) {
   const session = await requireSession()
   if (!can(session, 'consol.write')) return null
 

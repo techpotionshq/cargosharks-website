@@ -44,6 +44,7 @@ import {
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import { dayIn, todayIn } from '@/lib/time'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -453,7 +454,7 @@ export async function completeMilestone(
             reference: job.reference,
             milestone: milestone.nameEn,
             milestoneAr: milestone.nameAr,
-            reachedAt: (reachedAt ?? new Date()).toISOString().slice(0, 10),
+            reachedAt: dayIn(reachedAt ?? new Date()),
           },
         })
       }
@@ -718,18 +719,6 @@ export async function releaseDocument(form: FormData): Promise<void> {
 
 /* ------------------------------------------------------------- free time */
 
-/**
- * Today, in the branch's own day.
- *
- * Kuwait is UTC+3, so for the first three hours of a local day the server's
- * UTC date is still yesterday's. It makes no difference to a two-year bound,
- * but a date helper that is quietly wrong for three hours a day is the kind
- * that gets reused somewhere it does matter.
- */
-function todayInKuwait(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait' }).format(new Date())
-}
-
 const clockSchema = z.object({
   clockId: z.uuid().optional(),
   jobId: z.uuid(),
@@ -808,7 +797,7 @@ export async function saveFreeTimeClock(
     stops the bill — the operator who typed it is the one who can correct it,
     and they are standing here.
   */
-  if (!isPlausibleClockStart(data.startsOn, todayInKuwait())) {
+  if (!isPlausibleClockStart(data.startsOn, todayIn())) {
     return fail(
       {
         startsOn: `Check the year — a clock cannot start more than ${

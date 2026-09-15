@@ -461,7 +461,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
       const id = await job()
       await party(id, { role: 'notify', nameEn: 'Notify Party', sortOrder: 0 })
       await party(id, { role: 'consignee', nameEn: 'TO ORDER', sortOrder: 0 })
-      await party(id, { role: 'shipper', nameEn: 'Shanghai Everbright', sortOrder: 0 })
+      await party(id, { role: 'shipper', nameEn: 'Shanghai Hongqiao', sortOrder: 0 })
 
       const view = await loadJobDocumentView(actor, id)
 
@@ -483,7 +483,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
       const id = await job()
       await party(id, {
         role: 'shipper',
-        nameEn: 'Shanghai Everbright Ltd.',
+        nameEn: 'Shanghai Hongqiao Ltd.',
         nameAr: 'شنغهاي إيفربرايت',
         address: 'No. 88 Pudong Avenue\nBuilding C, Floor 12',
         city: 'Shanghai',
@@ -1081,13 +1081,13 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
     it('names the shipper and consignee off the bill', async () => {
       const master = await consolidation()
       const house = await job({ consolidationId: master })
-      await party(house, { role: 'shipper', nameEn: 'Shanghai Everbright' })
+      await party(house, { role: 'shipper', nameEn: 'Shanghai Hongqiao' })
       await party(house, { role: 'consignee', nameEn: 'Gulf Trading Co.' })
       await party(house, { role: 'notify', nameEn: 'Notify Party' })
 
       const [line] = (await loadConsolidationDocumentView(actor, master)).houses
 
-      expect(line?.shipperName).toBe('Shanghai Everbright')
+      expect(line?.shipperName).toBe('Shanghai Hongqiao')
       expect(line?.consigneeName).toBe('Gulf Trading Co.')
       expect(line?.notifyName).toBe('Notify Party')
     })

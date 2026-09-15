@@ -115,11 +115,7 @@ const capabilities = [
   },
   {
     name: 'Container tracking',
-    keys: [
-      'DCSA_MAERSK_CONSUMER_KEY',
-      'DCSA_HAPAG_CLIENT_ID',
-      'DCSA_CMACGM_API_KEY',
-    ],
+    keys: ['DCSA_MAERSK_CONSUMER_KEY', 'DCSA_HAPAG_CLIENT_ID', 'DCSA_CMACGM_API_KEY'],
     /*
       One key is enough here, unlike everywhere else on this list.
 
@@ -264,12 +260,8 @@ console.log(
     ? `  Note: ${integrationNames.length} integrations — ${integrationNames.join(', ')} —`
     : '  Note: the integrations above',
 )
-console.log(
-  '        can also be configured at Settings › Integrations, and a saved value wins',
-)
-console.log(
-  '        over the variable above. This script reads no database, so a capability',
-)
+console.log('        can also be configured at Settings › Integrations, and a saved value wins')
+console.log('        over the variable above. This script reads no database, so a capability')
 console.log('        marked missing here may already be configured there.')
 
 // Auth secret: not required to boot in development, and refused at boot in
@@ -284,6 +276,59 @@ if (isSet('BETTER_AUTH_SECRET')) {
   console.log(`${dash} BETTER_AUTH_SECRET is unset or still a placeholder`)
   console.log('       fine in development; production refuses to start without it')
   console.log('       generate one per tenant:  openssl rand -base64 32')
+}
+
+/*
+  The brand, and the two ways it goes wrong.
+
+  Unset is the quiet one: the deployment wears CargoSharks, which is right
+  for a demo and a preview and wrong for a client, whose name and colours
+  then appear on nothing they send a customer. Nothing enforces it at boot,
+  so it can only be caught by a report somebody reads.
+
+  Set to a key nobody wrote is the loud one, and it is loud on purpose:
+  `resolveBrand` refuses it rather than falling back, so the application does
+  not start at all. This is a better place to learn that than a deploy log.
+
+  The registry is read out of `resolve.ts` rather than listed here, for the
+  same reason the integrations note gives above: a list typed into this file
+  is a list that goes stale, and this script cannot import TypeScript.
+*/
+console.log('')
+console.log('Brand')
+
+let brandKeys = []
+try {
+  const registry = readFileSync(join('packages', 'brand', 'src', 'resolve.ts'), 'utf8')
+  const open = registry.indexOf('{', registry.indexOf('export const BRANDS'))
+  brandKeys = registry
+    .slice(open + 1, registry.indexOf('}', open))
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith(','))
+    .map((line) => line.split(':')[0].trim().replaceAll("'", ''))
+    .filter(Boolean)
+} catch {
+  // An unreadable registry only makes the line below less specific.
+}
+
+const brand = env.BRAND
+
+if (!brand) {
+  console.log(`${dash} BRAND is unset`)
+  console.log('       this deployment wears CargoSharks, the supplier brand — right for a')
+  console.log('       demo, a preview or a laptop, and wrong for a client. A client')
+  console.log('       deployment sets BRAND=<key>; nothing enforces that at boot.')
+} else if (brandKeys.length > 0 && !brandKeys.includes(brand)) {
+  blocking++
+  console.log(`${cross} BRAND=${brand} is not a registered brand`)
+  console.log('       the application refuses to start rather than fall back to ours')
+  console.log(`       registered: ${brandKeys.join(', ')}`)
+  console.log(
+    `       write it:   pnpm brand:new --key ${brand} --name-en "<name>" --primary "#rrggbb"`,
+  )
+} else {
+  console.log(`${tick} BRAND=${brand}`)
 }
 
 // Migration expectations, read from the journal rather than a database.

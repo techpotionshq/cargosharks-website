@@ -14,7 +14,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { MIN_QUERY_LENGTH, search, totalHits } from '@/features/search/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -36,6 +36,8 @@ export default async function SearchPage({
 }: {
   searchParams: Promise<{ q?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { q } = await searchParams
   const query = (q ?? '').trim()
@@ -61,20 +63,14 @@ export default async function SearchPage({
   */
   if (results && count === 1) {
     const exactJob = results.jobs.find((job) => equalsLoosely(job.matchedValue, query))
-    const exactContainer = results.containers.find((row) =>
-      equalsLoosely(row.containerNo, query),
-    )
+    const exactContainer = results.containers.find((row) => equalsLoosely(row.containerNo, query))
     const target = exactJob?.id ?? exactContainer?.jobId
     if (target) redirect(`/jobs/${target}`)
   }
 
   return (
     <>
-      <PageHeader
-        eyebrow={tc('operations')}
-        title={t('title')}
-        description={t('subtitle')}
-      />
+      <PageHeader eyebrow={tc('operations')} title={t('title')} description={t('subtitle')} />
 
       {/*
         The box again, carrying the query.
@@ -106,11 +102,7 @@ export default async function SearchPage({
         </Card>
       ) : count === 0 ? (
         <Card>
-          <EmptyState
-            icon="search"
-            title={t('empty', { query })}
-            description={t('emptyHint')}
-          />
+          <EmptyState icon="search" title={t('empty', { query })} description={t('emptyHint')} />
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
@@ -170,7 +162,7 @@ export default async function SearchPage({
                         </Badge>
                       </TD>
                       <TD align="end" numeric>
-                        {formatDay(job.eta, locale)}
+                        {formatDay(job.eta, locale, timeZone)}
                       </TD>
                     </TR>
                   ))}

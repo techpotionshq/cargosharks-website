@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/q.mjs:*)",
+      "Bash(pnpm q:*)",
+      "Bash(node scripts/check-boundaries.mjs)",
+      "Bash(node scripts/check-migrations.mjs)",
+      "Bash(node scripts/check-messages.mjs)",
+      "Bash(node scripts/check-links.mjs)",
+      "Bash(node scripts/check-schedules.mjs)",
+      "Bash(node scripts/check-permissions.mjs)",
+      "Bash(node scripts/check-brand.mjs)",
+      "Bash(node scripts/doctor.mjs)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm typecheck:*)",
+      "Bash(pnpm test:core:*)",
+      "Bash(pnpm format:check:*)",
+      "Bash(pnpm doctor:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git branch:*)"
+    ],
+    "ask": [
+      "Bash(pnpm test:db:*)",
+      "Bash(pnpm test:e2e:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm db:migrate:*)",
+      "Bash(pnpm db:seed:*)",
+      "Bash(pnpm db:generate:*)",
+      "Bash(node scripts/q.mjs gate --full)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/q-hook.mjs",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

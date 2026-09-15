@@ -45,7 +45,7 @@ import {
   type IssuingEntity,
 } from './document-kit'
 
-export interface QuotationLineView {
+interface QuotationLineView {
   readonly chargeNameEn: string
   readonly chargeNameAr: string | null
   /** What the operator typed over the charge type's own name, where they did. */
@@ -326,11 +326,7 @@ ${lines}
 
 ${terms ? `<div class="cols">${terms}</div>` : ''}
 ${quote.notes ? `<div class="terms"><h2>${esc(t.notes)}</h2>${escBlock(quote.notes)}</div>` : ''}
-${
-  conditions
-    ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(conditions)}</div>`
-    : ''
-}
+${conditions ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(conditions)}</div>` : ''}
 </body>`,
     QUOTATION_CSS,
   )

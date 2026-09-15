@@ -184,7 +184,7 @@ async function build(): Promise<Fixture> {
         {
           jobId: job!.id,
           role: 'shipper',
-          nameEn: 'Shanghai Everbright Ltd.',
+          nameEn: 'Shanghai Hongqiao Ltd.',
           address: 'No. 88 Pudong Avenue\nBuilding C, Floor 12',
           city: 'Shanghai',
           country: 'CN',
@@ -415,7 +415,9 @@ async function checkDuty(fixture: Fixture): Promise<void> {
     nobody classified is exactly the behaviour the engine refuses.
   */
   if (estimate.unmatched.length !== 1) {
-    throw new Error(`expected the unclassified line to be reported, got ${estimate.unmatched.length}`)
+    throw new Error(
+      `expected the unclassified line to be reported, got ${estimate.unmatched.length}`,
+    )
   }
   ok('unclassified reported', 'no rate invented for a code the tariff does not carry')
 
@@ -427,7 +429,10 @@ async function checkDuty(fixture: Fixture): Promise<void> {
   if (exempt.lines[0]?.matchedPrefix !== '30') {
     throw new Error(`chapter-level exemption did not match: ${JSON.stringify(exempt.lines[0])}`)
   }
-  ok('chapter match', `30 → ${exempt.lines[0].ratePercent}% (${exempt.lines[0].matchedDescription})`)
+  ok(
+    'chapter match',
+    `30 → ${exempt.lines[0].ratePercent}% (${exempt.lines[0].matchedDescription})`,
+  )
 
   await withActor(actor, async (tx) => {
     await tx.insert(customsStages).values({
@@ -844,11 +849,7 @@ async function setAccounts(
   })
 }
 
-async function runDraft(request: {
-  branchId: string
-  from: string
-  to: string
-}): Promise<void> {
+async function runDraft(request: { branchId: string; from: string; to: string }): Promise<void> {
   try {
     const result = await buildAccountingExport(actor, request)
     ok(

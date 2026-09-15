@@ -36,10 +36,10 @@ const destination = alias(locations, 'destination')
  * `KWI-2026-01041` and nothing on the screen explains the connection, which
  * reads as a wrong answer rather than a right one.
  */
-export type JobMatch =
+type JobMatch =
   'reference' | 'masterBill' | 'houseBill' | 'booking' | 'customerReference' | 'customer'
 
-export interface JobHit {
+interface JobHit {
   readonly id: string
   readonly reference: string
   readonly status: string
@@ -56,7 +56,7 @@ export interface JobHit {
   readonly matchedValue: string
 }
 
-export interface ContainerHit {
+interface ContainerHit {
   readonly containerNo: string
   readonly type: string
   readonly jobId: string
@@ -64,7 +64,7 @@ export interface ContainerHit {
   readonly jobStatus: string
 }
 
-export interface CustomerHit {
+interface CustomerHit {
   /**
    * Null on fixtures, where a customer is a name on a job rather than a row.
    *

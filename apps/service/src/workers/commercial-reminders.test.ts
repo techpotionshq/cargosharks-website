@@ -175,7 +175,6 @@ describe.skipIf(!enabled)('the reminders nobody clicks', () => {
           primaryBranchId: BRANCH,
         })
         .onConflictDoNothing()
-
     })
   })
 

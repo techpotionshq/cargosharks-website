@@ -4,7 +4,9 @@
  * Two levels, in order of how much a client is changing:
  *
  *   1. **A registered brand** — `BRAND=qabandi`. A second operator adds one
- *      file under `brands/` and registers it. This is the intended path.
+ *      file under `brands/` and registers it. This is the intended path, and
+ *      `qabandi` is the worked example of it: a real identity, a red primary
+ *      and a navy chrome, arrived at without touching `apps/web`.
  *   2. **Environment overrides** — `BRAND_PRIMARY_HUE=210`. For a pilot that
  *      needs re-skinning between two meetings on the same afternoon, and for
  *      preview deployments that should not look like production.
@@ -15,14 +17,60 @@
  */
 
 import { defineBrand } from './define'
+import { cargosharksBrand } from './brands/cargosharks'
 import { qabandiBrand } from './brands/qabandi'
 import type { Brand } from './types'
 
 export const BRANDS: Record<string, Brand> = {
+  cargosharks: cargosharksBrand,
   qabandi: qabandiBrand,
 }
 
-export const DEFAULT_BRAND_KEY = 'qabandi'
+/**
+ * The product's own brand, not a client's.
+ *
+ * An unconfigured environment — a demo, a preview deployment, a developer's
+ * machine, the fixture run every screenshot is taken from — used to default to
+ * a live client's identity, which put their name and their red into every
+ * image and every sample PDF the product produced. The default is now the
+ * thing that owns the product; a client is `BRAND=<key>` and one file.
+ */
+export const DEFAULT_BRAND_KEY = 'cargosharks'
+
+/**
+ * The brand a `BRAND` value names, or a refusal.
+ *
+ * This used to be `BRANDS[key] ?? cargosharksBrand`, and that fallback is the
+ * whole reason the function exists now. An unregistered key is almost always a
+ * client whose brand file was never written — `tenant:new --brand acme` with
+ * no `brands/acme.ts` — and falling back silently meant the deployment
+ * started, worked, and wore *the supplier's* identity on every screen, every
+ * emailed notification and every invoice that left the building. Nobody
+ * reports a product that looks fine. They report it months later, from a
+ * customer.
+ *
+ * So an unrecognised key stops the process. Both applications resolve the
+ * brand at module scope, which makes this a refusal to boot with a readable
+ * reason — the kind of failure a deployment checklist can actually catch.
+ *
+ * An *unset* `BRAND` is still legitimate and still means CargoSharks: that is
+ * a demo, a preview deployment, a fixture run, a developer's machine, and none
+ * of those is a client.
+ */
+function registered(key: string | undefined): Brand {
+  if (key === undefined) return cargosharksBrand
+
+  const brand = BRANDS[key]
+  if (brand === undefined) {
+    throw new Error(
+      `BRAND="${key}" is not a registered brand. ` +
+        `Known: ${Object.keys(BRANDS).sort().join(', ')}.\n` +
+        'Add packages/brand/src/brands/<key>.ts and register it in BRANDS above. ' +
+        'pnpm brand:new --key <key> --name-en "<name>" --primary "#rrggbb" writes both.',
+    )
+  }
+  return brand
+}
 
 type Env = Record<string, string | undefined>
 
@@ -58,7 +106,7 @@ function str(env: Env, key: string): string | undefined {
  * leave the sidebar behind.
  */
 export function resolveBrand(env: Env = ambientEnv()): Brand {
-  const base = BRANDS[str(env, 'BRAND') ?? DEFAULT_BRAND_KEY] ?? qabandiBrand
+  const base = registered(str(env, 'BRAND'))
 
   const primaryHue = num(env, 'BRAND_PRIMARY_HUE')
   const primaryChroma = num(env, 'BRAND_PRIMARY_CHROMA')
@@ -128,7 +176,8 @@ export function resolveBrand(env: Env = ambientEnv()): Brand {
      * Both of these have to be carried across explicitly. They are not
      * recoverable from the resolved ramps, and letting them fall back to their
      * defaults would mean that overriding one hue silently returns the sidebar
-     * to the primary ramp — for this brand, a red one.
+     * to the primary ramp — which for `qabandi`, the case that found this, is
+     * a red one.
      */
     chromeRamp: chromeRamp ?? rampOf(base),
     neutralHue: neutralHue ?? hueOf(base.palette.neutral[500]),

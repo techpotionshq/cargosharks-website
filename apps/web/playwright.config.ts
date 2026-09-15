@@ -50,7 +50,21 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }], ['list']] : [['list']],
+  /*
+    The JSON report is what makes a CI failure readable from outside the web UI.
+    The `github` reporter writes workflow annotations, which the checks API does
+    not return; the HTML report is an artifact, and artifact downloads are not
+    always reachable. A machine-readable file lets the workflow print the failed
+    specs into the job summary, where they survive both.
+  */
+  reporter: process.env.CI
+    ? [
+        ['github'],
+        ['html', { open: 'never' }],
+        ['json', { outputFile: 'playwright-report/results.json' }],
+        ['list'],
+      ]
+    : [['list']],
   timeout: 30_000,
   expect: { timeout: 10_000 },
 
@@ -120,6 +134,18 @@ export default defineConfig({
             // DATABASE_URL in a developer's shell would otherwise turn this
             // suite red for a reason that has nothing to do with the code.
             DATABASE_URL: '',
+            /*
+              The service, cleared for exactly the same reason.
+
+              `api/assistant` answers 503 immediately when SERVICE_URL is unset
+              and otherwise spends up to fifteen seconds trying to reach it. A
+              developer whose `.env.local` names a service they are not running
+              gets nine assistant failures that CI — where the variable is
+              unset — never sees. Found by running this suite locally after the
+              assistant screens joined the offline sweep.
+            */
+            SERVICE_URL: '',
+            INTERNAL_API_SECRET: '',
           }),
     },
   },

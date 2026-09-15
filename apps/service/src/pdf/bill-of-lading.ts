@@ -121,7 +121,8 @@ const STRINGS = {
       'bill of lading the merchant expressly accepts and agrees to all its terms whether printed, stamped ' +
       'or written. In witness whereof the number of original bills of lading stated above has been signed, ' +
       'one of which being accomplished the others to stand void.',
-    reverse: 'The terms and conditions printed on the reverse side form part of this bill of lading.',
+    reverse:
+      'The terms and conditions printed on the reverse side form part of this bill of lading.',
     signedFor: 'Signed for the carrier',
     signedShipper: 'Shipper or agent',
     termsTitle: 'Terms and conditions of carriage',
@@ -271,7 +272,8 @@ function renderFace(
 
   const place = (p: JobDocumentView['origin']): string =>
     p
-      ? bdi(esc(localised(p.nameEn, p.nameAr, locale))) + (p.unlocode ? ` ${ltr(esc(p.unlocode))}` : '')
+      ? bdi(esc(localised(p.nameEn, p.nameAr, locale))) +
+        (p.unlocode ? ` ${ltr(esc(p.unlocode))}` : '')
       : '—'
 
   /*

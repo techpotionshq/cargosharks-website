@@ -88,11 +88,7 @@ describe('resolving an integration', () => {
 
   describe('a row over the environment', () => {
     it('lets a stored value win', () => {
-      const resolved = resolveIntegration(
-        smtp,
-        row({ settings: { host: 'relay.row.test' } }),
-        ENV,
-      )
+      const resolved = resolveIntegration(smtp, row({ settings: { host: 'relay.row.test' } }), ENV)
 
       expect(resolved.settings.host).toBe('relay.row.test')
       expect(resolved.sources.host).toBe('row')
@@ -138,11 +134,10 @@ describe('resolving an integration', () => {
      * saving a host name has not asked for mail to start going out.
      */
     it('does not take over the driver by existing', () => {
-      const resolved = resolveIntegration(
-        smtp,
-        row({ settings: { host: 'relay.row.test' } }),
-        { ...ENV, MAIL_DRIVER: 'log' },
-      )
+      const resolved = resolveIntegration(smtp, row({ settings: { host: 'relay.row.test' } }), {
+        ...ENV,
+        MAIL_DRIVER: 'log',
+      })
 
       expect(resolved.driver).toBe('log')
       expect(resolved.driverSource).toBe('env')
@@ -198,12 +193,33 @@ describe('resolving an integration', () => {
       expect(resolved.hasSecret.password).toBe(true)
     })
 
+    /**
+     * The environment alone is enough, and the assistant dock depends on it.
+     *
+     * `assistantConfigured()` asks this function whether the `ai` spec has an
+     * `apiKey`, and `assistant-dock.tsx` draws no launcher when it does not —
+     * "no key, no dock". The pilot fixtures answer with a row; a real
+     * deployment that has never opened the settings screen, and the seeded
+     * end-to-end job, have only `OPENROUTER_API_KEY`. If presence ever became
+     * row-only, both would lose the dock silently: the feature would still be
+     * built, tested and in the nav, and simply never appear.
+     */
+    it('reports a credential present from the environment with no row at all', () => {
+      const ai = integrationSpec('ai')!
+      const resolved = resolveIntegration(ai, undefined, { OPENROUTER_API_KEY: 'from-the-env' })
+
+      expect(resolved.hasSecret.apiKey).toBe(true)
+      // Presence only — the environment's value is never carried as ciphertext.
+      expect(resolved.sealed.apiKey).toBeUndefined()
+      expect(JSON.stringify(resolved)).not.toContain('from-the-env')
+    })
+
     it('counts a required credential as missing only when neither layer has one', () => {
       const einvoice = integrationSpec('einvoice')!
 
-      expect(resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'asp' }), {}).missing).toContain(
-        'apiKey',
-      )
+      expect(
+        resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'asp' }), {}).missing,
+      ).toContain('apiKey')
       expect(
         resolveIntegration(einvoice, row({ key: 'einvoice', driver: 'none' }), {}).missing,
       ).toEqual([])

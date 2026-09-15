@@ -49,7 +49,12 @@ async function main(): Promise<void> {
   console.log('bucket:', process.env.S3_BUCKET, 'at', process.env.S3_ENDPOINT)
 
   const stored = await fileStore.put(KEY, BODY, 'text/plain; charset=utf-8')
-  console.log('put   :', stored.storageKey, `${stored.byteSize} bytes`, stored.checksum.slice(0, 12))
+  console.log(
+    'put   :',
+    stored.storageKey,
+    `${stored.byteSize} bytes`,
+    stored.checksum.slice(0, 12),
+  )
 
   const read = await fileStore.get(stored.storageKey)
   if (!read.equals(BODY)) throw new Error('what came back is not what went in')
@@ -67,7 +72,10 @@ async function main(): Promise<void> {
   if ((await response.text()) !== BODY.toString()) {
     throw new Error('signed URL served different bytes')
   }
-  console.log('sign  : fetched by URL,', response.headers.get('content-disposition') ?? 'no filename')
+  console.log(
+    'sign  : fetched by URL,',
+    response.headers.get('content-disposition') ?? 'no filename',
+  )
 
   await fileStore.retire(stored.storageKey)
   const gone = await fileStore

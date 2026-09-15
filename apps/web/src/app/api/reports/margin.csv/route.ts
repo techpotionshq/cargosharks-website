@@ -13,17 +13,16 @@
  * below. An XLSX writer would be a dependency earning its place only if
  * somebody needed formatting, and nobody has asked.
  *
- * ## The BOM is not optional
- *
- * Excel on Windows reads a CSV without a byte-order mark in the system ANSI
- * codepage, which turns every Arabic customer name into mojibake. Three bytes
- * fix it, and this product ships to a market where half the customer names are
- * Arabic. The same reasoning as `accounting/export.ts`.
+ * The byte-order mark, the CRLF endings and the formula guard are all in
+ * `lib/csv.ts`, with the reasoning for each. They were written here first and
+ * then again in the audit export, which is one copy too many for a guard
+ * against spreadsheet injection.
  */
 
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
+import { csvDocument } from '@/lib/csv'
 import {
   REPORT_DIMENSIONS,
   marginByDimension,
@@ -34,20 +33,6 @@ import {
 export const dynamic = 'force-dynamic'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-/**
- * RFC 4180 quoting, plus the formula guard.
- *
- * A field beginning `=`, `+`, `-` or `@` is executed as a formula by Excel and
- * by Sheets when the file is opened — a customer named `=cmd|...` is a
- * spreadsheet injection, and the name came from an operator's keyboard. The
- * leading apostrophe is the standard defence and is invisible in the cell.
- */
-function cell(value: string | number | null | undefined): string {
-  const text = String(value ?? '')
-  const guarded = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text
-  return `"${guarded.replace(/"/g, '""')}"`
-}
 
 export async function GET(request: Request) {
   const session = await getSession()
@@ -99,27 +84,20 @@ export async function GET(request: Request) {
     'period_to',
   ]
 
-  const lines = [
-    header.map(cell).join(','),
-    ...rows.map((row) =>
-      [
-        row.labelEn,
-        row.labelAr ?? '',
-        row.jobCount,
-        row.revenue,
-        row.cost,
-        row.grossProfit,
-        row.currency,
-        period.from,
-        period.to,
-      ]
-        .map(cell)
-        .join(','),
-    ),
-  ]
-
-  // CRLF, because that is what RFC 4180 says and what Excel expects.
-  const body = `﻿${lines.join('\r\n')}\r\n`
+  const body = csvDocument(
+    header,
+    rows.map((row) => [
+      row.labelEn,
+      row.labelAr ?? '',
+      row.jobCount,
+      row.revenue,
+      row.cost,
+      row.grossProfit,
+      row.currency,
+      period.from,
+      period.to,
+    ]),
+  )
 
   return new NextResponse(body, {
     headers: {

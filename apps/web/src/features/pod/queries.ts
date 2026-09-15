@@ -27,6 +27,8 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotJobEquipmentOptions, pilotProofOfDelivery } from '@/lib/pilot/fixtures'
 
 export interface PodPhotoRow {
   readonly id: string
@@ -55,6 +57,14 @@ export interface PodRow {
 }
 
 export async function jobProofOfDelivery(actor: Actor, jobId: string): Promise<PodRow[]> {
+  /*
+    The pair below is why the job file — the screen the whole product is built
+    around — still needed a database in fixture mode: `getJobDetail` has had
+    its branch since the fixtures landed, and these two did not, so one
+    un-branched read took the page down with it.
+  */
+  if (usePilotFixtures()) return pilotProofOfDelivery(jobId)
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -124,6 +134,8 @@ export async function jobEquipmentOptions(
   actor: Actor,
   jobId: string,
 ): Promise<{ value: string; label: string }[]> {
+  if (usePilotFixtures()) return pilotJobEquipmentOptions(jobId)
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({

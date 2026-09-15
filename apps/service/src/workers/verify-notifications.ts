@@ -163,7 +163,10 @@ async function main(): Promise<void> {
     }),
   )
 
-  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, '')
+    .slice(0, 14)
   const code = `VERIFY-${stamp}`
 
   try {

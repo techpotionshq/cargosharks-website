@@ -14,7 +14,7 @@
 
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { getSupplierInvoice } from '@/features/payables/queries'
@@ -40,11 +40,9 @@ const STATUS_TONE: Record<string, Tone> = {
   void: 'muted',
 }
 
-export default async function SupplierInvoicePage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function SupplierInvoicePage({ params }: { params: Promise<{ id: string }> }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { id } = await params
 
@@ -138,8 +136,10 @@ export default async function SupplierInvoicePage({
                 {t(`statuses.${bill.status}` as 'statuses.received')}
               </Badge>
             </Field>
-            <Field label={t('invoiceDate')}>{formatDate(bill.invoiceDate, locale)}</Field>
-            <Field label={t('due')}>{bill.dueOn ? formatDate(bill.dueOn, locale) : '—'}</Field>
+            <Field label={t('invoiceDate')}>{formatDate(bill.invoiceDate, locale, timeZone)}</Field>
+            <Field label={t('due')}>
+              {bill.dueOn ? formatDate(bill.dueOn, locale, timeZone) : '—'}
+            </Field>
             <Field label={t('total')}>{money(bill.total, bill.currency)}</Field>
             <Field label={t('paid')}>{money(bill.amountPaid, bill.currency)}</Field>
             {/*
@@ -149,11 +149,7 @@ export default async function SupplierInvoicePage({
               them, and this column would hide both if it were a subtraction.
             */}
             <Field label={t('varianceBase', { currency: bill.baseCurrency })}>
-              <span
-                className={
-                  varianceValue > 0 ? 'font-semibold text-critical' : 'text-ink'
-                }
-              >
+              <span className={varianceValue > 0 ? 'font-semibold text-critical' : 'text-ink'}>
                 {money(bill.summary.variance.amount.toString(), bill.baseCurrency)}
               </span>
             </Field>
@@ -172,11 +168,7 @@ export default async function SupplierInvoicePage({
           ) : null}
         </Card>
 
-        <SupplierInvoiceLinesCard
-          className="lg:col-span-12"
-          bill={bill}
-          candidates={candidates}
-        />
+        <SupplierInvoiceLinesCard className="lg:col-span-12" bill={bill} candidates={candidates} />
       </Grid>
     </>
   )

@@ -1,11 +1,11 @@
-# Deploying to Coolify — two containers, one private network
+# Deploying to Coolify — three containers, one private network
 
 **Operations note · v1.0 · Internal**
 
 | | |
 |---|---|
-| **Question answered** | The product is two containers that talk to each other. What does that look like on Coolify, and what must never be exposed? |
-| **Applies to** | `Dockerfile` (two build targets) and `compose.prod.yaml` |
+| **Question answered** | The product is `web` and `service`, talking to each other, plus `landing`, which talks to neither. What does that look like on Coolify, and what must never be exposed? |
+| **Applies to** | `Dockerfile` (three build targets) and `compose.prod.yaml` |
 | **Companion to** | `Operations_Findings.md`, which records what broke the first time |
 
 ---
@@ -49,10 +49,16 @@ handlers verify an HMAC over exactly what the provider signed. The helper
 behind them, `apps/web/src/lib/service-proxy.ts`, forwards those two prefixes
 and answers 404 to everything else.
 
-So one domain, on `web`. Configure WhatsApp and the mail provider with
-`https://app.example.com/webhooks/whatsapp` and `…/webhooks/email`; hand
-customers `https://app.example.com/api/v1`. `/internal` is unreachable from
-outside not because something refuses it but because no route leads there.
+So one domain on `web` for the service's traffic. Configure WhatsApp and the
+mail provider with `https://app.example.com/webhooks/whatsapp` and
+`…/webhooks/email`; hand customers `https://app.example.com/api/v1`.
+`/internal` is unreachable from outside not because something refuses it but
+because no route leads there.
+
+`landing` gets a domain too, separately — it is the public marketing site, not
+part of this proxy chain, and shares no request path with `web`. Point the
+product's root domain at it and `app.` (or similar) at `web`; nothing in
+either container assumes anything about the other's hostname.
 
 The in-code guard stays as defence in depth: the service refuses any
 `/internal` request carrying proxy forwarding headers (`X-Forwarded-For`,
@@ -63,16 +69,17 @@ deployment where something on the *private* network legitimately adds
 forwarding headers — a service mesh, a sidecar. It is not a way to make a
 public route work, and there is no longer a reason to want one.
 
-## 3. One stack, not two applications
+## 3. One stack, not three applications
 
-Deploy both containers from `compose.prod.yaml` — build pack **Docker
+Deploy all three containers from `compose.prod.yaml` — build pack **Docker
 Compose**, compose location `/compose.prod.yaml`. Coolify puts the stack on
 one bridge network and Docker DNS resolves a service by the name it carries in
 that file, so `SERVICE_URL=http://service:3001` is true by construction rather
 than by a setting somebody has to remember. The shared secret is also declared
-once: two applications means `INTERNAL_API_SECRET` typed into two places, and
-the failure when those drift is a 401 the web app reports to an operator as
-"the document could not be generated".
+once: separate `web` and `service` applications means `INTERNAL_API_SECRET`
+typed into two places, and the failure when those drift is a 401 the web app
+reports to an operator as "the document could not be generated". `landing`
+takes no environment at all, so it has nothing to drift.
 
 That file is deliberately not `compose.dev.yaml`, which is the local
 dependency stack — Postgres with a password of `postgres`, MinIO with a
@@ -220,3 +227,69 @@ both *from the service*: proof the request crossed the private network and
 the service answered. A `503 service_not_configured` on either means the web
 container has no `SERVICE_URL`; a `502` means it has one and the service is
 not listening there.
+
+---
+
+## 7. The public demo
+
+A demo deployment is the same two containers with the database taken away and
+one flag turned on. Nothing is forked and nothing is a special build: it is the
+release image reading a different environment, which is the only arrangement
+that keeps a demo honest about what the product does.
+
+```
+QABANDI_PILOT_FIXTURES=1
+QABANDI_DEMO_LOGIN=1
+QABANDI_DEMO_PASSWORD=…            # optional; unset it is `cargosharks-demo`
+BETTER_AUTH_SECRET=…               # still required — it keys the persona cookie
+BRAND=                             # leave unset: the default is CargoSharks
+```
+
+and, deliberately, **no `DATABASE_URL`**. `usePilotFixtures()` refuses to engage
+when `NODE_ENV=production` *and* a connection string is present, so a demo that
+is handed one silently stops being a demo and starts serving an empty database.
+Leaving it out is what makes the flag mean anything.
+
+`RUN_MIGRATIONS` and `MIGRATION_DATABASE_URL` must be unset. There is nothing to
+migrate.
+
+### What the visitor meets
+
+Without `QABANDI_DEMO_LOGIN`, fixture mode short-circuits session resolution to
+one internal principal and there is no sign-in screen at all — right for the
+day-15 rehearsal, wrong for a public URL, where the sign-in screen is part of
+what is being shown. With it, the visitor gets the product's own sign-in form
+and three personas:
+
+| | Lands on | Holds |
+|---|---|---|
+| `operations@cargosharks.example` | `/dashboard` | every permission key |
+| `customer@gulfsteel.example` | `/portal` | no branch, no role, no permission |
+| `agent@everbright.example` | `/agent` | no branch, no role, no permission |
+
+The last two are not a simplification. A real customer or agent contact holds
+exactly that — `roles` is seven *internal* roles and `create-user.ts` assigns
+one only to staff — so the demo's portal login provably cannot open the
+operations board, which is the claim the marketing site spends a section
+making. Signing in as the customer and trying is the demonstration.
+
+The password is printed on the sign-in screen, click-to-fill. A demo whose
+credentials are not on the screen is a demo nobody enters.
+`QABANDI_DEMO_PASSWORD` exists for the other case: a demo reachable only by
+people who were told the password.
+
+### What it is not
+
+`timingSafeEqual` on the password and an HMAC on the persona cookie are there so
+that a visitor cannot switch from the customer portal to the operations board by
+editing a cookie — which would refute the tenancy claim on the very deployment
+built to demonstrate it. That is the whole of the threat model. **It is a demo
+gate, not a security boundary**, and it guards seeded fixtures with the password
+written a few centimetres above the field. Nothing real is behind it, and
+nothing real should ever be put behind it.
+
+`QABANDI_DEMO_LOGIN` must never be set on a customer's deployment. It is
+inert there — it cannot engage without `usePilotFixtures()`, which a configured
+production database already refuses — but a flag that depends on another flag
+for its safety is a flag to leave alone.
+

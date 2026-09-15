@@ -202,10 +202,7 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
     */
     if (!enabled) return
     await withActor(systemActor, (tx) =>
-      tx
-        .update(freeTimeClocks)
-        .set({ endsOn: '2033-12-31' })
-        .where(eq(freeTimeClocks.jobId, JOB)),
+      tx.update(freeTimeClocks).set({ endsOn: '2033-12-31' }).where(eq(freeTimeClocks.jobId, JOB)),
     )
   })
 
@@ -339,7 +336,10 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
 
       const [line] = await linesFor(id)
       const [type] = await withActor(actor, (tx) =>
-        tx.select({ key: chargeTypes.key }).from(chargeTypes).where(eq(chargeTypes.id, line!.chargeTypeId!)),
+        tx
+          .select({ key: chargeTypes.key })
+          .from(chargeTypes)
+          .where(eq(chargeTypes.id, line!.chargeTypeId!)),
       )
       expect(type?.key).toBe('storage')
     })

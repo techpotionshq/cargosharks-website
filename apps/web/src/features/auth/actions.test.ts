@@ -30,6 +30,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { __resetThrottle } from '@/lib/throttle'
 
 const harness = vi.hoisted(() => ({
   redirected: null as string | null,
@@ -39,6 +40,12 @@ const harness = vi.hoisted(() => ({
   signInEmail: vi.fn(),
   requestPasswordReset: vi.fn(),
   resetPassword: vi.fn(),
+  /** What the proxy says the caller's address is. Null means no header. */
+  forwardedFor: null as string | null,
+  /** The lockout counters, stubbed — the engine itself is proved in `core`. */
+  readLockout: vi.fn(),
+  recordSignInFailure: vi.fn(),
+  clearSignInFailures: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -56,6 +63,27 @@ vi.mock('next/headers', () => ({
     set: (name: string, value: string, options: Record<string, unknown>) =>
       harness.set.push({ name, value, options }),
   }),
+  // `signIn` reads `x-forwarded-for` to spend the per-address budget
+  // (FR-ID-05). Without this the whole file fails on a missing export rather
+  // than on anything it means to assert.
+  headers: async () => ({
+    get: (name: string) => (name === 'x-forwarded-for' ? harness.forwardedFor : null),
+  }),
+}))
+
+/*
+  The database half of the lockout, stubbed.
+
+  `core/lockout.ts` proves the policy against no infrastructure and
+  `lib/throttle.test.ts` proves the budget. What is left for this file is the
+  wiring — that a lock is consulted before the password, that a failure is
+  counted, that a success clears the run — and stubbing the three calls is what
+  keeps that assertion about wiring rather than about Postgres.
+*/
+vi.mock('./lockout', () => ({
+  readLockout: (...args: unknown[]) => harness.readLockout(...args),
+  recordSignInFailure: (...args: unknown[]) => harness.recordSignInFailure(...args),
+  clearSignInFailures: (...args: unknown[]) => harness.clearSignInFailures(...args),
 }))
 
 /** The message keys stand in for the sentences, so an assertion names the case. */
@@ -109,6 +137,15 @@ describe('signing in and out', () => {
     harness.cookies = []
     harness.deleted = []
     harness.set = []
+    /*
+      No address by default, which is the case that fails open — see
+      `lib/throttle.ts`. Tests that care about the budget set one, and the
+      module-level counter is cleared between them so a test never inherits
+      what the previous one spent.
+    */
+    harness.forwardedFor = null
+    harness.readLockout.mockResolvedValue(null)
+    __resetThrottle()
   })
 
   afterEach(() => {
@@ -179,7 +216,9 @@ describe('signing in and out', () => {
     })
 
     it('decodes a cookie value the library percent-encoded', async () => {
-      harness.signInEmail.mockResolvedValue(responseWith(['qabandi.session_token=a%2Bb%3Dc; Path=/']))
+      harness.signInEmail.mockResolvedValue(
+        responseWith(['qabandi.session_token=a%2Bb%3Dc; Path=/']),
+      )
 
       await navigating(() => signIn({}, form({ email: 'a@b.test', password: 'x' })))
 
@@ -230,6 +269,108 @@ describe('signing in and out', () => {
       await signIn({}, form({ email: 'a@b.test', password: 'x' }))
 
       expect(harness.set).toEqual([])
+    })
+  })
+
+  /*
+    Guessing, and what it costs — FR-ID-05.
+
+    The policy lives in `core/lockout.ts` and the budget in `lib/throttle.ts`,
+    both proved against no infrastructure. What is asserted here is only the
+    wiring, which is the half that was missing: the counters existed on the
+    role and nothing ever read them.
+  */
+  describe('repeated attempts', () => {
+    it('refuses a locked account without checking the password at all', async () => {
+      harness.readLockout.mockResolvedValue({
+        locked: true,
+        until: new Date(),
+        minutesRemaining: 12,
+      })
+
+      const state = await signIn({}, form({ email: 'a@b.test', password: 'x' }))
+
+      expect(state.error).toBe('signIn.errorLocked:{"minutes":12}')
+      // The whole point of checking first. A refusal that still spends a
+      // password comparison is a refusal an attacker can time.
+      expect(harness.signInEmail).not.toHaveBeenCalled()
+    })
+
+    it('lets a lock that has expired through', async () => {
+      harness.readLockout.mockResolvedValue({ locked: false, until: null, minutesRemaining: 0 })
+      harness.signInEmail.mockResolvedValue(responseWith(['qabandi.session_token=abc; Path=/']))
+
+      const { to } = await navigating(() => signIn({}, form({ email: 'a@b.test', password: 'x' })))
+
+      expect(to).toBe('/dashboard')
+    })
+
+    it('counts a wrong password against the account', async () => {
+      harness.signInEmail.mockResolvedValue(responseWith([], false))
+
+      await signIn({}, form({ email: 'a@b.test', password: 'wrong' }))
+
+      expect(harness.recordSignInFailure).toHaveBeenCalledWith('a@b.test')
+    })
+
+    it('counts a thrown rejection too, not only a 401', async () => {
+      harness.signInEmail.mockRejectedValue(new Error('APIError'))
+
+      await signIn({}, form({ email: 'a@b.test', password: 'wrong' }))
+
+      expect(harness.recordSignInFailure).toHaveBeenCalledWith('a@b.test')
+    })
+
+    /*
+      Cleared on the way through rather than after the redirect. `redirect()`
+      throws to unwind, so anything placed after it never runs — and the
+      operator would stay one mistake from a lock, permanently.
+    */
+    it('clears the run once the password was right', async () => {
+      harness.signInEmail.mockResolvedValue(responseWith(['qabandi.session_token=abc; Path=/']))
+
+      await navigating(() => signIn({}, form({ email: 'a@b.test', password: 'right' })))
+
+      expect(harness.clearSignInFailures).toHaveBeenCalledWith('a@b.test')
+    })
+
+    it('does not count a success as a failure', async () => {
+      harness.signInEmail.mockResolvedValue(responseWith(['qabandi.session_token=abc; Path=/']))
+
+      await navigating(() => signIn({}, form({ email: 'a@b.test', password: 'right' })))
+
+      expect(harness.recordSignInFailure).not.toHaveBeenCalled()
+    })
+
+    /*
+      A failure to *record* a failure must not become a failure to sign in.
+      This runs on the path that is already going wrong, and the operator needs
+      the message they can act on rather than a stack trace on the one screen
+      that has to work before any other.
+    */
+    it('still answers when the counter cannot be written', async () => {
+      harness.signInEmail.mockResolvedValue(responseWith([], false))
+      harness.recordSignInFailure.mockRejectedValue(new Error('database is down'))
+
+      const state = await signIn({}, form({ email: 'a@b.test', password: 'x' }))
+
+      expect(state.error).toBe('signIn.errorInvalid')
+    })
+
+    it('spends the per-address budget before it reaches the account', async () => {
+      harness.forwardedFor = '203.0.113.9'
+      harness.signInEmail.mockResolvedValue(responseWith([], false))
+
+      // Ten are allowed; the eleventh is refused without a lookup.
+      for (let i = 0; i < 10; i += 1) {
+        await signIn({}, form({ email: `a${i}@b.test`, password: 'x' }))
+      }
+
+      harness.readLockout.mockClear()
+      const state = await signIn({}, form({ email: 'a@b.test', password: 'x' }))
+
+      expect(state.error).toMatch(/^signIn\.errorThrottled/)
+      expect(harness.readLockout).not.toHaveBeenCalled()
     })
   })
 

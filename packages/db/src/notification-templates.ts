@@ -145,7 +145,7 @@ charge is ours until the container moves.
     `
 مرحباً {{recipientName}}
 
-تنتهي الفترة المجانية للحاوية {{containerNo}} ({{reference}}) بتاريخ {{expiresOn}}،
+ينتهي وقت السماح للحاوية {{containerNo}} ({{reference}}) بتاريخ {{expiresOn}}،
 أي خلال {{daysRemaining}} يوم من اليوم.
 
 وبعد ذلك يبدأ احتساب {{kind}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع هذه

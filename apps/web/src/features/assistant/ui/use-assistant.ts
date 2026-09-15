@@ -125,7 +125,24 @@ export function useAssistant(active: boolean): Assistant {
     deliberate click.
   */
   useEffect(() => {
-    if (active) refreshThreads()
+    /*
+      Inactive is not loading, and saying otherwise leaves a skeleton forever.
+
+      `loadingThreads` starts true so the inbox draws a placeholder rather than
+      an empty list on the way to its first answer. Nothing cleared it when the
+      fetch never happened — and on `/assistant` with no model key the surface
+      is never active, so the page's `h1` sat behind that flag permanently: a
+      grey bar where the title goes, on every unconfigured deployment. It went
+      unseen because `/assistant` was in no route list, which is the same gap
+      `unswept()` in the e2e harness now fails on.
+    */
+    if (!active) {
+      setLoadingThreads(false)
+      return
+    }
+
+    setLoadingThreads(true)
+    refreshThreads()
   }, [active, refreshThreads])
 
   /**

@@ -86,7 +86,7 @@ export interface CarrierSettings {
  * knows nothing about where they came from, which is what lets it be tested
  * against a stubbed `fetch` with no environment at all.
  */
-export function dcsaCredentials(settings: CarrierSettings): Record<string, DcsaCredential> {
+function dcsaCredentials(settings: CarrierSettings): Record<string, DcsaCredential> {
   const credentials: Record<string, DcsaCredential> = {}
 
   for (const [carrier, entry] of Object.entries(DCSA_SETTINGS)) {

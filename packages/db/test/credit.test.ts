@@ -34,7 +34,8 @@ const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const { withActor } = await import('../src/actor')
-const { creditStanding, creditOverridesFor, checkCredit, noExposure } = await import('../src/credit')
+const { creditStanding, creditOverridesFor, checkCredit, noExposure } =
+  await import('../src/credit')
 const { branches, principals } = await import('../src/schema/identity')
 const { customers, customerBranchTerms, creditOverrides } = await import('../src/schema/commercial')
 const { invoices } = await import('../src/schema/finance')
@@ -181,7 +182,6 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
         ])
         .onConflictDoNothing()
     })
-
   })
 
   afterAll(async () => {
@@ -192,9 +192,7 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
       tx
         .update(invoices)
         .set({ status: 'paid' })
-        .where(
-          and(eq(invoices.branchId, BRANCH), isNotNull(invoices.seriesNo)),
-        ),
+        .where(and(eq(invoices.branchId, BRANCH), isNotNull(invoices.seriesNo))),
     )
   })
 

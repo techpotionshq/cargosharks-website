@@ -23,7 +23,7 @@
  * job — the draft still has to be approved and issued exactly as before.
  */
 
-import { getTranslations, getLocale } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -35,6 +35,8 @@ import { unbilledRevenue } from '../unbilled'
 import { BillJobButton } from './bill-job-button'
 
 export async function UnbilledPanel() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [summary, t, locale] = await Promise.all([
     unbilledRevenue(session.actor),
@@ -78,7 +80,9 @@ export async function UnbilledPanel() {
               <TR key={row.jobId}>
                 <TD className="ref">{row.reference}</TD>
                 <TD>{row.customerName ?? <span className="text-ink-subtle">—</span>}</TD>
-                <TD numeric align="end">{row.lines}</TD>
+                <TD numeric align="end">
+                  {row.lines}
+                </TD>
                 <TD numeric align="end">
                   {money(row.amountBase, row.baseCurrency)}
                   {mixed ? (
@@ -87,7 +91,7 @@ export async function UnbilledPanel() {
                     </Badge>
                   ) : null}
                 </TD>
-                <TD>{formatDate(row.oldestAt, lang)}</TD>
+                <TD>{formatDate(row.oldestAt, lang, timeZone)}</TD>
                 <TD>
                   {billable && !mixed ? (
                     <BillJobButton jobId={row.jobId} label={t('bill')} />

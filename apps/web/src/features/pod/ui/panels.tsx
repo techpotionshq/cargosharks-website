@@ -12,7 +12,7 @@
  * about.
  */
 
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -34,6 +34,8 @@ export async function ProofOfDeliveryCard({
   readonly equipment: readonly { value: string; label: string }[]
   readonly className?: string
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const [t, locale] = await Promise.all([getTranslations('pod'), getLocale()])
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
@@ -97,7 +99,9 @@ export async function ProofOfDeliveryCard({
                       {pod.receivedByIdNumber}
                     </Field>
                   ) : null}
-                  <Field label={t('deliveredAt')}>{formatDateTime(pod.deliveredAt, lang)}</Field>
+                  <Field label={t('deliveredAt')}>
+                    {formatDateTime(pod.deliveredAt, lang, timeZone)}
+                  </Field>
                   {pod.capturedByEn ? (
                     <Field label={t('capturedBy')}>
                       {lang === 'ar' ? (pod.capturedByAr ?? pod.capturedByEn) : pod.capturedByEn}

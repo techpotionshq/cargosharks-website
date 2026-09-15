@@ -6,11 +6,11 @@
  * internal-only by policy, because the house list names which other customers
  * shipped on the same vessel.
  *
- * No pilot-fixture branch. The fixtures were written for the screens the pilot
- * needed and consolidation was not one of them, so these routes want a
- * database and say so rather than degrading — the same treatment finance,
- * network and reference already get, and recorded in `e2e/support/harness.ts`
- * as `NEEDS_DATABASE` so the gap shows in the pipeline.
+ * Both the register and the file read from fixtures when there is no database.
+ * The file's totals are *reduced* from its houses and charges in one place
+ * below rather than stated by either path — the register's house count and the
+ * master file's house list are the same fact, and a demo where they differ is
+ * the one thing on the screen that could not be true.
  */
 
 import 'server-only'
@@ -21,13 +21,22 @@ import {
   consolAllocationShares,
   consolChargeLines,
   consolidations,
+  consolidationStatusEnum,
   customers,
   jobs,
   locations,
   partners,
-  withActor,
   type Actor,
+  withActor,
 } from '@qabandi/db'
+import { enumFilter } from '@/lib/filters'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotAllocationShares,
+  pilotAttachableJobs,
+  pilotConsolidation,
+  pilotConsolidations,
+} from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'consol_origin')
 const destination = alias(locations, 'consol_destination')
@@ -57,6 +66,12 @@ export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
 ): Promise<ConsolidationSummary[]> {
+  // Narrowed before the fixtures branch so both modes answer an unknown filter
+  // the same way — see `lib/filters.ts`.
+  const status = enumFilter(consolidationStatusEnum.enumValues, filters.status)
+
+  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status })
+
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
@@ -103,9 +118,7 @@ export async function listConsolidations(
       .leftJoin(origin, eq(origin.id, consolidations.originId))
       .leftJoin(destination, eq(destination.id, consolidations.destinationId))
       .where(
-        filters.status
-          ? eq(consolidations.status, filters.status as 'open')
-          : sql`${consolidations.status} <> 'cancelled'`,
+        status ? eq(consolidations.status, status) : sql`${consolidations.status} <> 'cancelled'`,
       )
       .orderBy(desc(consolidations.etd), desc(consolidations.createdAt))
       .limit(200)
@@ -156,6 +169,11 @@ export async function getConsolidation(
   actor: Actor,
   id: string,
 ): Promise<ConsolidationDetail | undefined> {
+  if (usePilotFixtures()) {
+    const rows = pilotConsolidation(id)
+    return rows === undefined ? undefined : consolidationOf(rows.row, rows.houses, rows.charges)
+  }
+
   return withActor(actor, async (tx) => {
     const carrier = alias(partners, 'carrier')
     const coload = alias(partners, 'coload')
@@ -242,30 +260,47 @@ export async function getConsolidation(
       .where(eq(consolChargeLines.consolidationId, id))
       .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
 
-    const totals = houses.reduce(
-      (acc, h) => ({
-        volume: acc.volume + Number(h.volumeCbm ?? 0),
-        gross: acc.gross + Number(h.grossWeightKg ?? 0),
-      }),
-      { volume: 0, gross: 0 },
-    )
-
-    return {
-      ...(row as unknown as ConsolidationSummary),
-      branchId: row.branchId,
-      carrierName: row.carrierName,
-      coloadPartnerName: row.coloadPartnerName,
-      bookingNumber: row.bookingNumber,
-      notes: row.notes,
-      closedAt: row.closedAt,
-      houseCount: houses.length,
-      volumeCbm: totals.volume.toFixed(3),
-      grossWeightKg: totals.gross.toFixed(3),
-      unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
-      houses: houses as ConsolidationHouse[],
-      charges: charges as ConsolidationCharge[],
-    }
+    return consolidationOf(row, houses as ConsolidationHouse[], charges as ConsolidationCharge[])
   })
+}
+
+/** The master's row, with the four figures that are sums over what is under it. */
+type ConsolidationHead = Omit<
+  ConsolidationDetail,
+  'houseCount' | 'volumeCbm' | 'grossWeightKg' | 'unallocatedCount' | 'houses' | 'charges'
+>
+
+/**
+ * The master file, totalled — and the one place those totals are reached.
+ *
+ * Shared by both branches so the fixture cannot state a volume its own houses
+ * do not add up to. The sums go through `Number` rather than `Decimal`, which
+ * is the one place in this file that is acceptable: a cubic metre is not
+ * money, and the figure is a manifest total printed to three places, not a
+ * balance anything reconciles against.
+ */
+function consolidationOf(
+  row: ConsolidationHead,
+  houses: readonly ConsolidationHouse[],
+  charges: readonly ConsolidationCharge[],
+): ConsolidationDetail {
+  const totals = houses.reduce(
+    (acc, h) => ({
+      volume: acc.volume + Number(h.volumeCbm ?? 0),
+      gross: acc.gross + Number(h.grossWeightKg ?? 0),
+    }),
+    { volume: 0, gross: 0 },
+  )
+
+  return {
+    ...row,
+    houseCount: houses.length,
+    volumeCbm: totals.volume.toFixed(3),
+    grossWeightKg: totals.gross.toFixed(3),
+    unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
+    houses,
+    charges,
+  }
 }
 
 /**
@@ -280,6 +315,10 @@ export async function listAttachableJobs(
   actor: Actor,
   consolidationId: string,
 ): Promise<{ readonly id: string; readonly label: string }[]> {
+  // Awaited beside `getConsolidation` on the master file, so it needs the same
+  // branch: fixing one read alone only moves the failure down the page.
+  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId)
+
   return withActor(actor, async (tx) => {
     const [consol] = await tx
       .select({ branchId: consolidations.branchId, mode: consolidations.mode })
@@ -313,56 +352,50 @@ export async function listAttachableJobs(
   })
 }
 
-/** The cargo figures every allocation basis reads from. */
-export async function loadAllocationTargets(
-  actor: Actor,
-  consolidationId: string,
-): Promise<
-  {
-    readonly jobId: string
-    readonly reference: string
-    readonly chargeableWeightKg: string | null
-    readonly volumeCbm: string | null
-    readonly grossWeightKg: string | null
-    readonly packages: number | null
-  }[]
-> {
-  return withActor(actor, async (tx) => {
-    const rows = await tx
-      .select({
-        jobId: jobs.id,
-        reference: jobs.reference,
-        chargeableWeightKg: jobs.chargeableWeightKg,
-        volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        packages: sql<number>`(
-          select coalesce(sum(c.package_count), 0)::int from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-      })
-      .from(jobs)
-      .where(eq(jobs.consolidationId, consolidationId))
-      .orderBy(asc(jobs.reference))
-
-    return rows
-  })
+/** One house's slice of one allocated master cost. */
+export interface ConsolAllocationShare {
+  readonly consolChargeLineId: string
+  readonly jobId: string
+  readonly jobReference: string
+  readonly shareAmount: string
 }
 
-/** Where an allocated cost landed — the answer to "why is this on my job?". */
+/**
+ * Where every allocated cost on one master landed — the answer to "why is this
+ * on my job?".
+ *
+ * The whole master in one read rather than one read per charge. The file page
+ * draws every cost it holds, and a per-charge query would put a round trip
+ * behind each row of a list that is already on the screen — the shares are two
+ * columns and there are as many of them as houses times allocated costs, which
+ * on the largest master in the seed is fifteen rows.
+ *
+ * `shareCount` on the charge already says how many there are. This says who
+ * they were, and it is the only place the answer exists: the allocation writes
+ * a charge line onto each house and a share row here, and the house's line
+ * says "Allocated from consolidation" without naming the master it came from.
+ */
 export async function listAllocationShares(
   actor: Actor,
-  consolChargeLineId: string,
-): Promise<{ readonly jobReference: string; readonly shareAmount: string }[]> {
+  consolidationId: string,
+): Promise<readonly ConsolAllocationShare[]> {
+  if (usePilotFixtures()) return pilotAllocationShares(consolidationId)
+
   return withActor(actor, async (tx) =>
     tx
-      .select({ jobReference: jobs.reference, shareAmount: consolAllocationShares.shareAmount })
+      .select({
+        consolChargeLineId: consolAllocationShares.consolChargeLineId,
+        jobId: jobs.id,
+        jobReference: jobs.reference,
+        shareAmount: consolAllocationShares.shareAmount,
+      })
       .from(consolAllocationShares)
       .innerJoin(jobs, eq(jobs.id, consolAllocationShares.jobId))
-      .where(eq(consolAllocationShares.consolChargeLineId, consolChargeLineId))
+      .innerJoin(
+        consolChargeLines,
+        eq(consolChargeLines.id, consolAllocationShares.consolChargeLineId),
+      )
+      .where(eq(consolChargeLines.consolidationId, consolidationId))
       .orderBy(asc(jobs.reference)),
   )
 }

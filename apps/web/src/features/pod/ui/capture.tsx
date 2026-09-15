@@ -106,7 +106,18 @@ export function PodCaptureForm({
     ctx.lineWidth = 2
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#101828'
+    /*
+      The ink comes from the brand, but from the *neutral ramp* rather than
+      `--qb-ink`, and the difference is the whole point. A canvas cannot hold a
+      `var()`, so the element carries the colour and the context reads back
+      what the browser resolved. What must not happen is the stroke following
+      the theme: this pad produces a PNG that is filed against the delivery and
+      later printed on white paper, so a driver signing at a gate at night
+      would sign in near-white and hand over a blank page. The neutral stops
+      are emitted once at `:root` and do not move between light and dark, so
+      the signature stays dark and still carries the operator's neutral tint.
+    */
+    ctx.strokeStyle = getComputedStyle(canvas).color
   }, [])
 
   const pointAt = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -215,6 +226,8 @@ export function PodCaptureForm({
             onPointerUp={end}
             onPointerCancel={end}
             className="block h-32 w-full touch-none rounded-sm"
+            // The pen's colour, read back by the drawing effect. See there.
+            style={{ color: 'var(--qb-neutral-900)' }}
             aria-label={t('signature')}
           />
         </div>

@@ -128,9 +128,7 @@ describe('clustering loose shipments', () => {
    */
   it('keeps a chain of near-daily shipments together', () => {
     const clusters = clusterShipments(
-      [0, 3, 6, 9, 12].map((day) =>
-        shipment({ readyOn: new Date(Date.UTC(2026, 8, 1 + day)) }),
-      ),
+      [0, 3, 6, 9, 12].map((day) => shipment({ readyOn: new Date(Date.UTC(2026, 8, 1 + day)) })),
     )
 
     expect(clusters).toHaveLength(1)

@@ -36,15 +36,11 @@ import 'server-only'
  */
 
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
-import {
-  chargeLines,
-  customers,
-  jobs,
-  withActor,
-  type Actor,
-} from '@qabandi/db'
+import { chargeLines, customers, jobs, withActor, type Actor } from '@qabandi/db'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotUnbilledJobs, pilotUnbilledLines } from '@/lib/pilot/fixtures'
 
-export interface UnbilledJob {
+interface UnbilledJob {
   readonly jobId: string
   readonly reference: string
   readonly status: string
@@ -73,16 +69,9 @@ export interface UnbilledSummary {
   readonly jobCount: number
 }
 
-/**
- * Every shipment carrying revenue nobody has billed, worst first.
- *
- * No branch filter: `withActor` means RLS applies one, and a second copy here
- * would be a rule to forget. Ordered by amount rather than by age, because the
- * question this screen answers is "what is worth doing first" — and a
- * three-month-old 12 KWD line is not it.
- */
-export async function unbilledRevenue(actor: Actor, limit = 100): Promise<UnbilledSummary> {
-  const rows = await withActor(actor, async (tx) =>
+/** The aggregate itself, kept whole so the fixture branch does not indent it. */
+async function selectUnbilled(actor: Actor, limit: number) {
+  return withActor(actor, async (tx) =>
     tx
       .select({
         jobId: jobs.id,
@@ -131,10 +120,30 @@ export async function unbilledRevenue(actor: Actor, limit = 100): Promise<Unbill
       .orderBy(desc(sql`sum("charge_lines"."amount_base")`))
       .limit(limit),
   )
+}
 
-  const totalBase = rows
-    .reduce((sum, row) => sum + Number(row.amountBase ?? 0), 0)
-    .toFixed(3)
+/**
+ * Every shipment carrying revenue nobody has billed, worst first.
+ *
+ * No branch filter: `withActor` means RLS applies one, and a second copy here
+ * would be a rule to forget. Ordered by amount rather than by age, because the
+ * question this screen answers is "what is worth doing first" — and a
+ * three-month-old 12 KWD line is not it.
+ */
+export async function unbilledRevenue(actor: Actor, limit = 100): Promise<UnbilledSummary> {
+  /*
+    The fixture arm returns the grouped rows and stops there, so the total and
+    the summary below are computed once for both modes. That matters more here
+    than in a register: `totalBase` is a `toFixed(3)` over a mixed-currency sum
+    — a known flaw of this query, argued in `pilotUnbilledJobs` — and a second
+    copy of it would be a second place for the two answers to disagree about
+    the same wrong number.
+  */
+  const rows = usePilotFixtures()
+    ? pilotUnbilledJobs(Date.now(), limit)
+    : await selectUnbilled(actor, limit)
+
+  const totalBase = rows.reduce((sum, row) => sum + Number(row.amountBase ?? 0), 0).toFixed(3)
 
   return {
     jobs: rows.map((row) => ({ ...row, oldestAt: new Date(row.oldestAt) })) as UnbilledJob[],
@@ -156,6 +165,8 @@ export interface UnbilledLine {
 
 /** The lines behind one shipment's figure, in the order they were written. */
 export async function unbilledLinesFor(actor: Actor, jobId: string): Promise<UnbilledLine[]> {
+  if (usePilotFixtures()) return pilotUnbilledLines(jobId)
+
   return withActor(actor, async (tx) =>
     tx
       .select({

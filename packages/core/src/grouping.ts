@@ -213,7 +213,10 @@ export function clusterShipments(
     do first, and the answer is the one with the most freight on it.
   */
   return clusters.sort(
-    (a, b) => b.totalCbm - a.totalCbm || b.shipments.length - a.shipments.length || a.key.localeCompare(b.key),
+    (a, b) =>
+      b.totalCbm - a.totalCbm ||
+      b.shipments.length - a.shipments.length ||
+      a.key.localeCompare(b.key),
   )
 }
 
@@ -231,8 +234,13 @@ export function clusterShipments(
  * anchor a window, because "no date" is compatible with every date and would
  * otherwise merge every window on the lane into one.
  */
-function splitByWindow(lot: readonly GroupableShipment[], windowDays: number): GroupableShipment[][] {
-  const dated = lot.filter((s) => s.readyOn !== null).sort((a, b) => a.readyOn!.getTime() - b.readyOn!.getTime())
+function splitByWindow(
+  lot: readonly GroupableShipment[],
+  windowDays: number,
+): GroupableShipment[][] {
+  const dated = lot
+    .filter((s) => s.readyOn !== null)
+    .sort((a, b) => a.readyOn!.getTime() - b.readyOn!.getTime())
   const undated = lot.filter((s) => s.readyOn === null)
 
   const windows: GroupableShipment[][] = []

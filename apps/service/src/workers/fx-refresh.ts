@@ -96,9 +96,7 @@ export async function runFxRefresh(): Promise<FxRefreshResult> {
         .map((row) => row.code.toUpperCase())
         .filter((code) => known.has(code))
         .sort(),
-      wanted: tracked
-        .filter((row) => row.isTracked)
-        .map((row) => row.code.toUpperCase()),
+      wanted: tracked.filter((row) => row.isTracked).map((row) => row.code.toUpperCase()),
     }
   })
 

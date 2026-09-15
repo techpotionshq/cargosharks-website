@@ -125,7 +125,13 @@ export function CreateApiKeyForm({
   )
 }
 
-export function RevokeApiKeyButton({ keyId, label }: { readonly keyId: string; readonly label: string }) {
+export function RevokeApiKeyButton({
+  keyId,
+  label,
+}: {
+  readonly keyId: string
+  readonly label: string
+}) {
   const [state, action] = useActionState<ActionState, FormData>(revokeApiKey, {})
 
   return (
@@ -232,7 +238,9 @@ export function CreateWebhookForm({
             </p>
           ))
         : null}
-      {state.message ? <p className="mt-2 text-[0.8125rem] text-critical">{state.message}</p> : null}
+      {state.message ? (
+        <p className="mt-2 text-[0.8125rem] text-critical">{state.message}</p>
+      ) : null}
 
       {secret ? (
         <div className="mt-4 rounded-sm border border-caution/40 bg-caution-soft/50 p-3">

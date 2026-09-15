@@ -12,6 +12,11 @@ build/
 .env
 .env.*
 !.env.example
+# CI's own configuration, committed on purpose. It holds no secret: local
+# addresses, a throwaway internal token, and the settings that are the same
+# wherever there is a database. The connection strings and the signing key
+# stay in the workflow.
+!.env.ci
 
 # test / tooling output
 coverage/

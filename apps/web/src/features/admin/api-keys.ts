@@ -32,6 +32,8 @@ import { z } from 'zod'
 import { apiKeys, customers, principals, webhookEndpoints, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
 import { echo, fail, fieldErrors, failWith, succeed, type ActionState } from '@/lib/form-state'
 
 export interface ApiKeyRow {
@@ -52,6 +54,8 @@ export interface ApiKeyRow {
 export async function listApiKeys(): Promise<ApiKeyRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+
+  if (usePilotFixtures()) return pilotApiKeys()
 
   return withActor(session.actor, (tx) =>
     tx
@@ -99,10 +103,7 @@ const keySchema = z.object({
  * Applying a slow KDF to it would add latency to every API request and no
  * security. The comment is what is wrong here, not the code.
  */
-export async function createApiKey(
-  _previous: ActionState,
-  form: FormData,
-): Promise<ActionState> {
+export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
@@ -206,6 +207,8 @@ export interface WebhookEndpointRow {
 export async function listWebhookEndpoints(): Promise<WebhookEndpointRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+
+  if (usePilotFixtures()) return pilotWebhookEndpoints()
 
   const rows = await withActor(session.actor, (tx) =>
     tx.execute(sql`

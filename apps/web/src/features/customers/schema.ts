@@ -81,9 +81,6 @@ export const customerFormSchema = insertCustomer
     defaultIncoterm: optionalText,
   })
 
-export type CustomerFormInput = z.input<typeof customerFormSchema>
-export type CustomerFormValues = z.output<typeof customerFormSchema>
-
 export const updateCustomerSchema = customerFormSchema.extend({
   customerId: z.uuid(),
 })

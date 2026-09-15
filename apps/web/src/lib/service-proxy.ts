@@ -69,7 +69,13 @@ const HOP_BY_HOP = new Set([
  * fetch decompresses the body but leaves the header in place, and a browser
  * that believes it would try to inflate plain JSON.
  */
-const NOT_RESTREAMED = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'keep-alive'])
+const NOT_RESTREAMED = new Set([
+  'content-encoding',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+])
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))

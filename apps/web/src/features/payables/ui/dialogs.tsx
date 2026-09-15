@@ -215,7 +215,11 @@ export async function ReadBillDialog({
   defaults,
   variant = 'secondary',
 }: {
-  readonly defaults?: { readonly branchId?: string; readonly partnerId?: string; readonly jobId?: string }
+  readonly defaults?: {
+    readonly branchId?: string
+    readonly partnerId?: string
+    readonly jobId?: string
+  }
   readonly variant?: 'primary' | 'secondary' | 'ghost'
 }) {
   const session = await requireSession()
@@ -394,10 +398,7 @@ export async function MatchDialog({
   const session = await requireSession()
   if (!can(session, 'payable.record')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('payableForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('payableForm'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'supplierInvoiceId', value: billId },
@@ -463,10 +464,7 @@ export async function BillDecisionDialog({
   const permission = action === 'approve' ? 'payable.approve' : 'payable.record'
   if (!can(session, permission)) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('payableForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('payableForm'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'supplierInvoiceId', value: billId },
@@ -619,10 +617,7 @@ export async function AllocatePaymentDialog({
   const session = await requireSession()
   if (!can(session, 'payable.pay')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('payableForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('payableForm'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'supplierPaymentId', value: paymentId },
@@ -830,10 +825,7 @@ export async function PartnerToleranceDialog({
   const session = await requireSession()
   if (!can(session, 'partner.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('settlementForm'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('settlementForm'), getTranslations('common')])
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'partnerId', value: partnerId },

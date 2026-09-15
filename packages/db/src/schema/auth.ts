@@ -15,7 +15,7 @@
  * the library's 2026 advisory history.
  */
 
-import { boolean, text } from 'drizzle-orm/pg-core'
+import { boolean, integer, text } from 'drizzle-orm/pg-core'
 import { timestamps, tsz } from './columns'
 import { systemTable } from './table'
 
@@ -35,6 +35,32 @@ export const authUser = authTable('auth_user', {
   banReason: text('ban_reason'),
   banExpires: tsz('ban_expires'),
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+
+  /*
+    Sign-in lockout — FR-ID-05. The policy is `lockout.ts` in `core`; these
+    three columns are the only state it needs.
+
+    Here rather than in a table of their own, and that is the whole design
+    decision. A throttle keyed on whatever address was typed grows a row for
+    every address an attacker invents, from an endpoint that requires no
+    credential — `rate_limit_buckets` was dropped in `0035` for being exactly
+    that shape with nobody reading it. Counters hung on the account can only
+    exist for accounts that exist, so the table is bounded by the staff list.
+
+    The unknown-address case is covered instead by the per-address throttle in
+    `apps/web/src/lib/throttle.ts`, which holds no rows at all. Locking only
+    real accounts would otherwise answer the question the sign-in form works
+    hard not to answer (FR-ID-04): whether an address is one of ours.
+
+    Not `banned` / `ban_expires`, which sit two fields up and would appear to
+    fit. Those mirror `principals.is_active` — an administrator's decision
+    about a person. Overloading them would mean a lock lifting at 09:15 also
+    quietly reinstating somebody who was suspended in March.
+  */
+  failedSignInCount: integer('failed_sign_in_count').notNull().default(0),
+  lastFailedSignInAt: tsz('last_failed_sign_in_at'),
+  lockedUntil: tsz('locked_until'),
+
   ...timestamps,
 })
 
@@ -91,4 +117,32 @@ export const authTwoFactor = authTable('auth_two_factor', {
     .references(() => authUser.id),
   secret: text('secret').notNull(),
   backupCodes: text('backup_codes').notNull(),
+
+  /*
+    Three columns the library writes and this table did not have.
+
+    They are not new requirements — they are the plugin's own schema, and their
+    absence is why enrolment could never have succeeded: Better Auth's enable
+    and verify handlers write `verified` and read it back, so the first operator
+    to scan a QR code would have met an undefined-column error. Nothing caught
+    it because nothing ever ran the flow. FR-ID-06 named mandatory two-factor
+    for Administrator and Finance, `roles.requires_two_factor` carried the flag,
+    the settings screen displayed it — and no code path enforced it or enrolled
+    anybody, so the gap stayed theoretical and the schema drifted underneath it.
+
+    `verified` defaults to true, which reads backwards and is the library's
+    choice rather than ours: a row is only created at the moment a secret is
+    issued, and the enable handler immediately writes `false` when verification
+    is required. The default matters only for rows written by something other
+    than the plugin, of which there are none.
+
+    `failed_verification_count` and `locked_until` are the plugin's own lockout
+    on the six digits — separate from, and complementary to, the password
+    lockout in `core/lockout.ts`. Guessing a TOTP code and guessing a password
+    are different attacks against the same account and each needs its own
+    counter.
+  */
+  verified: boolean('verified').notNull().default(true),
+  failedVerificationCount: integer('failed_verification_count').notNull().default(0),
+  lockedUntil: tsz('locked_until'),
 })

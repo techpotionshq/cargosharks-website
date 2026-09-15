@@ -28,7 +28,7 @@
 
 import { chromium, type Browser } from 'playwright-core'
 
-export interface RenderRequest {
+interface RenderRequest {
   /** Fully-formed HTML — the caller renders the template, this prints it. */
   readonly html: string
   readonly locale: 'en' | 'ar'

@@ -224,7 +224,7 @@ const QUERY_PARAM: Readonly<Record<TrackingQuery['type'], string>> = {
  * must still print in November exactly as it was issued, and silently
  * rewriting it to suit an API would be the integration editing history.
  */
-export function normaliseReference(reference: string): string {
+function normaliseReference(reference: string): string {
   return reference.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 }
 
@@ -445,7 +445,7 @@ interface TokenResponse {
  * account. Form-encoded and not JSON — that is what the grant type specifies
  * and what the gateway parses.
  */
-export async function fetchDcsaToken(
+async function fetchDcsaToken(
   profile: DcsaCarrierProfile,
   credential: DcsaCredential,
 ): Promise<{ token: string; expiresInSeconds: number }> {

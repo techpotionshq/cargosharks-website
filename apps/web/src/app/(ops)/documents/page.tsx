@@ -8,7 +8,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { documentCounts, listDocuments } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -30,6 +30,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function DocumentsPage() {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const t = await getTranslations('documents')
   const tc = await getTranslations('common')
@@ -100,7 +102,7 @@ export default async function DocumentsPage() {
               </TD>
               <TD className="whitespace-nowrap text-ink-muted">{row.authorName ?? '—'}</TD>
               <TD className="whitespace-nowrap text-ink-muted">
-                {formatDateTime(row.createdAt, locale)}
+                {formatDateTime(row.createdAt, locale, timeZone)}
               </TD>
             </TR>
           ))}

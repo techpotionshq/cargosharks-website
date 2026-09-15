@@ -216,7 +216,10 @@ describe.skipIf(!enabled)('customers', () => {
 
     it('refuses a branch the desk does not hold', async () => {
       await expect(
-        createCustomer({}, customerForm({ primaryBranchId: '00000000-0000-7000-8000-0000000000cb' })),
+        createCustomer(
+          {},
+          customerForm({ primaryBranchId: '00000000-0000-7000-8000-0000000000cb' }),
+        ),
       ).rejects.toThrow('branch:')
     })
 
@@ -252,10 +255,7 @@ describe.skipIf(!enabled)('customers', () => {
     it('changes the terms it already had', async () => {
       const { code, row } = await existing({ paymentTermsDays: '30' })
 
-      await updateCustomer(
-        {},
-        customerForm({ customerId: row.id, code, paymentTermsDays: '60' }),
-      )
+      await updateCustomer({}, customerForm({ customerId: row.id, code, paymentTermsDays: '60' }))
 
       expect((await termsFor(row.id, HOME_BRANCH))?.paymentTermsDays).toBe(60)
     })
@@ -304,10 +304,7 @@ describe.skipIf(!enabled)('customers', () => {
     /** Invisible under RLS is not-found, with no enumeration signal. */
     it('treats a customer it cannot see as missing', async () => {
       await expect(
-        updateCustomer(
-          {},
-          customerForm({ customerId: '00000000-0000-7000-8000-0000000000cf' }),
-        ),
+        updateCustomer({}, customerForm({ customerId: '00000000-0000-7000-8000-0000000000cf' })),
       ).rejects.toThrow('not_found')
     })
   })

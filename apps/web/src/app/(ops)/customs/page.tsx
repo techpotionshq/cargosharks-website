@@ -8,7 +8,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getLocale, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { customsCounts, listCustoms } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -28,6 +28,8 @@ export default async function CustomsPage({
 }: {
   searchParams: Promise<{ scope?: string }>
 }) {
+  const timeZone = await getTimeZone()
+
   const session = await requireSession()
   const { scope } = await searchParams
   const view = scope === 'released' ? 'released' : scope === 'all' ? 'all' : 'live'
@@ -113,7 +115,7 @@ export default async function CustomsPage({
                 </TD>
                 <TD className="ref whitespace-nowrap text-ink">{row.declarationNo ?? '—'}</TD>
                 <TD className="whitespace-nowrap text-ink-muted">
-                  {row.filedAt ? formatDateTime(row.filedAt, locale) : '—'}
+                  {row.filedAt ? formatDateTime(row.filedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD
                   className={`whitespace-nowrap ${breached ? 'font-semibold text-critical' : 'text-ink-muted'}`}

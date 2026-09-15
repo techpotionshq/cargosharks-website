@@ -291,8 +291,9 @@ describe.skipIf(!enabled)('granting support access', () => {
     })
 
     it('insists the reason names the ticket or the request', async () => {
-      expect((await grantSupportAccess({}, grantForm({ reason: 'help' }))).errors?.reason)
-        .toBeDefined()
+      expect(
+        (await grantSupportAccess({}, grantForm({ reason: 'help' }))).errors?.reason,
+      ).toBeDefined()
     })
 
     it('reports field errors rather than throwing on an empty form', async () => {

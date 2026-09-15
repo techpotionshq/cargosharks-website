@@ -42,6 +42,9 @@ interface Options {
   readonly dryRun: boolean
   readonly branchCode: string
   readonly currency?: string
+  readonly scaffoldBrand: boolean
+  readonly primary?: string
+  readonly accent?: string
 }
 
 function parseArgs(argv: string[]): Options {
@@ -58,6 +61,7 @@ function parseArgs(argv: string[]): Options {
     throw new Error(
       'Usage: pnpm tenant:new --key <key> --name "<name>" --admin-email <email> ' +
         '[--admin-name "<name>"] [--brand <brand>] [--region <region>] ' +
+        '[--scaffold-brand --primary "#rrggbb" [--accent "#rrggbb"]] ' +
         '[--seed-demo] [--dry-run]',
     )
   }
@@ -69,10 +73,27 @@ function parseArgs(argv: string[]): Options {
     throw new Error(`--key must be lower-case letters, digits and hyphens: got "${key}"`)
   }
 
+  const scaffoldBrand = argv.includes('--scaffold-brand')
+
+  if (scaffoldBrand && !get('primary')) {
+    throw new Error(
+      '--scaffold-brand needs --primary "#rrggbb", the corporate colour. ' +
+        'Everything else about a brand has a defensible default. A colour does ' +
+        'not, and a deployment that guesses one wears an identity belonging to ' +
+        'somebody else.',
+    )
+  }
+
   return {
     key,
     name,
-    brand: get('brand'),
+    /*
+      Scaffolding without --brand means the brand key is the tenant key,
+      which is what somebody typing one command meant. It is settled here
+      rather than defaulted later because it is also what puts BRAND into
+      the environment every composed step below runs with.
+    */
+    brand: get('brand') ?? (scaffoldBrand ? key : undefined),
     region: get('region'),
     adminEmail,
     adminName: get('admin-name') ?? 'Administrator',
@@ -85,6 +106,9 @@ function parseArgs(argv: string[]): Options {
       .replace(/[^A-Z0-9]/g, '')
       .slice(0, 10),
     currency: get('currency'),
+    scaffoldBrand,
+    primary: get('primary'),
+    accent: get('accent'),
   }
 }
 
@@ -170,6 +194,33 @@ async function main(): Promise<void> {
 
   console.log(`Provisioning ${options.name} (${options.key})`)
   if (options.dryRun) console.log('Dry run — nothing will be written.\n')
+
+  /*
+    The brand comes first, and the ordering is load-bearing.
+
+    `resolveBrand` refuses an unregistered key rather than falling back to
+    the supplier brand, and every step below runs with BRAND set. So a run
+    that scaffolded the brand last would fail on the first step that touched
+    it — and a run that never scaffolded one at all used to succeed, quietly,
+    and hand the client a deployment wearing our identity.
+  */
+  if (options.scaffoldBrand) {
+    step(
+      'scaffolding the brand',
+      [
+        'brand:new',
+        '--key',
+        options.brand ?? options.key,
+        '--name-en',
+        options.name,
+        '--primary',
+        options.primary ?? '',
+        ...(options.accent ? ['--accent', options.accent] : []),
+      ],
+      env,
+      options.dryRun,
+    )
+  }
 
   step('creating the database and both roles', ['db:provision'], env, options.dryRun)
   step('applying migrations', ['db:migrate'], env, options.dryRun)
