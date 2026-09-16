@@ -28,8 +28,10 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 const {
   branches,
   chargeLines,
+  customerBranchTerms,
   customers,
   enquiries,
+  invoices,
   jobs,
   principals,
   quotes,
@@ -182,6 +184,31 @@ describe.skipIf(!enabled)('the finance read tools', () => {
           isAccrual: false,
         },
       ])
+
+      // Credit terms and one issued, unpaid invoice — a 10,000 limit against
+      // 3,000 outstanding, so the customer is comfortably within it.
+      await tx.insert(customerBranchTerms).values({
+        customerId: CUSTOMER,
+        branchId: BRANCH,
+        creditLimit: '10000.000',
+        creditCurrency: 'KWD',
+        isOnHold: false,
+      })
+
+      await tx.insert(invoices).values({
+        branchId: BRANCH,
+        customerId: CUSTOMER,
+        seriesNo: `${CODE}-INV1`,
+        status: 'issued',
+        currency: 'KWD',
+        subtotal: '3000.000',
+        taxAmount: '0.000',
+        total: '3000.000',
+        amountPaid: '0.000',
+        taxTreatment: 'out_of_scope',
+        issuedAt: new Date('2026-08-01T12:00:00Z'),
+        dueOn: '2026-08-31',
+      })
     })
   })
 
@@ -198,6 +225,44 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       // Only the non-accrual revenue line — the 999 accrual is left out.
       expect(mine!.lines).toBe(1)
       expect(Number(mine!.amountBase)).toBeCloseTo(150, 3)
+    })
+  })
+
+  describe('get_customer_credit', () => {
+    it('reports the standing per branch, with limit, outstanding and headroom', async () => {
+      const result = (await runTool(actor, 'get_customer_credit', { customer: `${CODE}-C` })) as {
+        found: boolean
+        customer: string
+        branches: {
+          branch: string
+          currency: string
+          outstanding: string
+          limit: string | null
+          headroom: string | null
+          outcome: string
+          blocked: boolean
+          onHold: boolean
+        }[]
+      }
+
+      expect(result.found).toBe(true)
+      // Only the one branch the actor can see — RLS scopes the terms rows.
+      expect(result.branches).toHaveLength(1)
+      const branch = result.branches[0]!
+      expect(branch.currency).toBe('KWD')
+      expect(Number(branch.outstanding)).toBeCloseTo(3000, 3)
+      expect(Number(branch.limit)).toBeCloseTo(10000, 3)
+      expect(Number(branch.headroom)).toBeCloseTo(7000, 3)
+      expect(branch.outcome).toBe('within_limit')
+      expect(branch.blocked).toBe(false)
+      expect(branch.onHold).toBe(false)
+    })
+
+    it('reports a customer it cannot find as not found', async () => {
+      const result = (await runTool(actor, 'get_customer_credit', {
+        customer: 'NO-SUCH-CUSTOMER-XYZ',
+      })) as { found: boolean }
+      expect(result.found).toBe(false)
     })
   })
 

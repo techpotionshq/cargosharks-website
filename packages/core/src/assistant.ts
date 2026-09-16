@@ -228,6 +228,23 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     }),
   },
   {
+    name: 'get_customer_credit',
+    kind: 'read',
+    /*
+      Per branch, not one figure. Credit limits are agreed per legal entity, so
+      a customer can be well inside their limit in Kuwait and on hold in Dubai —
+      and the tool takes no branch (none of them do; RLS decides what is
+      visible), so it answers for every branch the asker can see rather than
+      guessing which one they meant.
+    */
+    description:
+      'A customer’s credit standing at each branch you can see: what they owe, their limit, the headroom left, and whether they are over the limit or on hold. Use for "can this customer book more", "are they on hold" and any credit question.',
+    parameters: objectSchema(
+      { customer: { type: 'string', description: 'The customer, by name or code.' } },
+      ['customer'],
+    ),
+  },
+  {
     name: 'get_supplier_variance',
     kind: 'read',
     description:

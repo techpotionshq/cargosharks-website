@@ -32,6 +32,8 @@ import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from 'drizz
 import {
   branches,
   chargeLines,
+  creditStanding,
+  customerBranchTerms,
   customers,
   customsStages,
   enquiries,
@@ -52,7 +54,14 @@ import {
   type Actor,
   type Tx,
 } from '@qabandi/db'
-import { ASSISTANT_LIMITS, emptyLedgerMargin, jobMargin, toScale } from '@qabandi/core'
+import {
+  ASSISTANT_LIMITS,
+  assessCredit,
+  emptyLedgerMargin,
+  isNearLimit,
+  jobMargin,
+  toScale,
+} from '@qabandi/core'
 import { dayIn, todayIn } from '@qabandi/core'
 
 /** The arguments a model produced, already parsed from its JSON. */
@@ -154,6 +163,8 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return supplierVariance(actor, args)
     case 'get_margin':
       return margin(actor, args)
+    case 'get_customer_credit':
+      return customerCredit(actor, args)
     default:
       throw new Error(`There is no tool called ${name}.`)
   }
@@ -727,6 +738,74 @@ async function margin(actor: Actor, args: ToolArgs): Promise<unknown> {
       billedCost: toScale(result.billedCost),
     }
   })
+}
+
+/**
+ * A customer's credit standing, at every branch the asker can see.
+ *
+ * Per branch and not one figure, because a credit limit is agreed per legal
+ * entity — a customer can be inside their limit in Kuwait and on hold in Dubai.
+ * The tool takes no branch (RLS decides what is visible), so it reads the
+ * customer's `customer_branch_terms` rows, which the policy has already narrowed
+ * to the branches this principal may see, and answers for each.
+ *
+ * The position and the decision both come from the shared engine —
+ * `creditStanding` in `@qabandi/db`, `assessCredit` in `core` — the same pair
+ * the customer screen uses, so the assistant cannot give a different answer
+ * about whether a customer may book. One transaction resolves the customer and
+ * lists the branches; `creditStanding` opens its own per branch, which is a
+ * handful of reads on a question asked rarely.
+ */
+async function customerCredit(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const query = text(args, 'customer')
+  if (!query) return { found: false }
+
+  const resolved = await withActor(actor, async (tx: Tx) => {
+    const [customer] = await tx
+      .select({ id: customers.id, name: customers.legalNameEn })
+      .from(customers)
+      .where(or(ilike(customers.code, query), ilike(customers.legalNameEn, `%${query}%`)))
+      // Prefer an exact code match over a name that merely contains the text.
+      .orderBy(sql`case when lower(${customers.code}) = lower(${query}) then 0 else 1 end`)
+      .limit(1)
+
+    if (!customer) return null
+
+    // The branches this customer trades at — RLS has already dropped any the
+    // asker may not see, which is exactly the "each branch you can see" scope.
+    const terms = await tx
+      .select({ branchId: customerBranchTerms.branchId, branch: branches.legalNameEn })
+      .from(customerBranchTerms)
+      .innerJoin(branches, eq(branches.id, customerBranchTerms.branchId))
+      .where(eq(customerBranchTerms.customerId, customer.id))
+      .orderBy(branches.legalNameEn)
+
+    return { customer, terms }
+  })
+
+  if (!resolved) return { found: false, customer: query }
+
+  const branchStandings = []
+  for (const term of resolved.terms) {
+    const standing = await creditStanding(actor, resolved.customer.id, term.branchId)
+    const assessment = assessCredit(standing)
+    branchStandings.push({
+      branch: term.branch,
+      currency: standing.currency,
+      outstanding: toScale(standing.outstanding),
+      limit: standing.limit ? toScale(standing.limit) : null,
+      headroom: assessment.headroom ? toScale(assessment.headroom) : null,
+      outcome: assessment.outcome,
+      blocked: assessment.blocked,
+      nearLimit: isNearLimit(assessment),
+      onHold: standing.onHold,
+      // Non-empty means the figure above is a floor: a foreign invoice could
+      // not be converted, so the real exposure is at least this.
+      unconvertible: standing.unconvertible,
+    })
+  }
+
+  return { found: true, customer: resolved.customer.name, branches: branchStandings }
 }
 
 /**
