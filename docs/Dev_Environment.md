@@ -104,15 +104,15 @@ leaking, not on feature count. The user wants the whole list done, quickly.
 
 1. Quote drafting — the model writes the covering note; `rating.ts` keeps the
    arithmetic. Drafting is the feature; sending is not.
-2. Assistant tools — mostly shipped. `list_unbilled`, `list_quotes_expiring`,
-   `get_margin` and `get_customer_credit` now read through `ai/tools.ts`,
-   alongside `search`, `get_job`, `list_jobs`, `list_enquiries`,
-   `list_exceptions`, `list_free_time`, `list_overdue_invoices` and
-   `get_supplier_variance` — all reads, all under the asker's actor — plus
-   `propose_transition`, which offers a confirm button and changes nothing.
-   Each new tool reuses the engine the matching screen uses (`unbilled.ts`,
-   `jobMargin`, `creditStanding`) so the assistant cannot give a second answer.
-   `list_consolidation_candidates` is the one still to add.
+2. ~~Assistant tools~~ — **shipped.** `list_unbilled`, `list_quotes_expiring`,
+   `get_margin`, `get_customer_credit` and `list_consolidation_candidates` now
+   read through `ai/tools.ts`, alongside `search`, `get_job`, `list_jobs`,
+   `list_enquiries`, `list_exceptions`, `list_free_time`,
+   `list_overdue_invoices` and `get_supplier_variance` — all reads, all under
+   the asker's actor — plus `propose_transition`, which offers a confirm button
+   and changes nothing. Each new tool reuses the engine the matching screen uses
+   (`unbilled.ts`, `jobMargin`, `creditStanding`, `clusterShipments`) so the
+   assistant cannot give a second answer to a question the screen answers.
 3. Credit control on a schedule, with dunning through the outbox.
 4. Document classification on upload — the lowest-stakes model call, and every
    correction is labelled data.
