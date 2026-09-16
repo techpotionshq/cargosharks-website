@@ -3264,5 +3264,12 @@
     "title": "الإشعارات",
     "empty": "لا جديد لديك.",
     "markAllRead": "تعليم الكل كمقروء"
+  },
+  "enquiryAutomation": {
+    "label": "الأتمتة",
+    "acknowledged": "تم إبلاغ العميل",
+    "fieldsRead": "{count, plural, zero {قُرئت # حقول} one {قُرئ حقل واحد} two {قُرئ حقلان} few {قُرئت # حقول} many {قُرئ # حقلاً} other {قُرئ # حقل}}",
+    "fieldsWithPending": "{read} حقول مقروءة، {pending} بانتظار التأكيد",
+    "rateRequests": "{sent} طلبات أسعار · {replied} ورد ردها"
   }
 }

@@ -3264,5 +3264,12 @@
     "title": "Notifications",
     "empty": "You're all caught up.",
     "markAllRead": "Mark all read"
+  },
+  "enquiryAutomation": {
+    "label": "Automation",
+    "acknowledged": "Customer acknowledged",
+    "fieldsRead": "{count, plural, one {# field read} other {# fields read}}",
+    "fieldsWithPending": "{read} fields read, {pending} to confirm",
+    "rateRequests": "{sent} rate requests · {replied} replied"
   }
 }

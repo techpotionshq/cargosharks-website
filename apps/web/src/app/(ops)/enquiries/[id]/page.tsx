@@ -32,6 +32,7 @@ import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
+import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automation-strip'
 import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
@@ -133,6 +134,13 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         shipment whose weight is still null. It renders nothing when nothing is
         pending, so it costs a settled enquiry no vertical space.
       */}
+      {/*
+        The glance above the panels: what the automations did on this enquiry —
+        acknowledged the customer, read N fields, asked N agents — so the machine
+        working on the file is visible, not inferred from three separate panels.
+      */}
+      <EnquiryAutomationStrip enquiryId={id} />
+
       <ProposalsPanel enquiryId={id} />
 
       {/*
