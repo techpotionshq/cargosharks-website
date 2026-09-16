@@ -118,10 +118,14 @@ leaking, not on feature count. The user wants the whole list done, quickly.
    correction is labelled data.
 5. Exception triage — free text into a code and a severity.
 6. Rate-card column mapping — still the cheapest useful AI feature.
-7. **The evaluation harness, before any further model surface.** The AI design
-   document puts it first; three surfaces shipped without it — the two
-   extractions and the assistant. The corpus is accumulating in
-   `ai_invocations` and in rejected proposals meanwhile.
+7. ~~The evaluation harness~~ — **shipped (first cut).** `pnpm --filter
+   @qabandi/service ai:eval` replays the `ai_invocations` corpus through the pure
+   parsers and scores parse-ok, reconcile, self-consistency, field coverage and
+   confidence — no model spend, no golden set needed — with `--compare <a> <b>`
+   to diff two prompt versions. Covers `invoice_extract` and `enquiry_extract`;
+   the label-based pass (agreement with what a coordinator accepted, from
+   rejected proposals) is the additive second cut, and a per-field golden set is
+   the richer form the doc envisions after that.
 
 **Excluded, by decision:** WhatsApp inbound (still a dead letter; leave it) and
 backfilling historical enquiries (not needed in a dev environment).

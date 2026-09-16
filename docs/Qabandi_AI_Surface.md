@@ -497,10 +497,12 @@ exists.
 **What actually happened, 21–23 August 2026.** The order was not followed.
 The ledger, the port and supplier-invoice extraction (step 4) shipped first
 on 21 August, the assistant (step 6) the same day, enquiry extraction (step 5)
-on 22 August, and the review panel on 23 August. Steps 1 to 3 — the harness,
-rate-card mapping and document classification — are not built. The annotations
-below say which is which; the reasoning for the original order is left
-standing because it is still the reasoning for what remains.
+on 22 August, and the review panel on 23 August. The harness (step 1) shipped in
+September as a replay-through-parsers scorer (`pnpm ai:eval`; see the annotation
+on step 1). Steps 2 and 3 — rate-card mapping and document classification —
+remain unbuilt. The annotations below say which is which; the reasoning for the
+original order is left standing because it is still the reasoning for what
+remains.
 
 1. **The evaluation harness, before any model call.** A golden set of real
    messages and scans with expected structured output, scored per field, run
@@ -510,11 +512,18 @@ standing because it is still the reasoning for what remains.
    is worth confirming now that the raw MIME of inbound mail is retained,
    since `InboundMessage` hands the worker flattened text and the corpus wants
    the original.
-   *Not built.* There is no golden set and no scoring script. What exists is
-   the raw material: every call's request and response verbatim in
-   `ai_invocations`, keyed by `prompt_version` and `input_hash`, and every
-   accept or reject in `extraction_proposals`. `verify:model` exercises a live
-   key against a generated invoice and is a smoke test, not an evaluation.
+   *First cut shipped, September 2026.* `pnpm --filter @qabandi/service ai:eval`
+   (`apps/service/src/ai/replay.ts` + `packages/core/src/evaluation.ts`) replays
+   the `ai_invocations` corpus through the same pure parsers the workers use and
+   scores parse-ok, reconcile, self-consistency, field coverage and confidence,
+   with `--compare` to diff two `prompt_version`s — no model spend and no golden
+   set required, which is what let it ship before the golden set exists. What is
+   *still* to build is the richer form this note envisioned: a hand-labelled
+   golden set scored per field, and the label-based pass that reads
+   `extraction_proposals` for agreement with what a coordinator accepted. The
+   raw material for both is retained (request and response verbatim, keyed by
+   `prompt_version` and `input_hash`; every accept or reject). `verify:model`
+   remains a live-key smoke test, distinct from this.
 2. **Rate-card column mapping.** Output type unchanged, validation unchanged,
    human still confirms. Days of work, immediate relief on the FR-RT-09 path
    that every agent onboarding runs through, and no corpus required because
