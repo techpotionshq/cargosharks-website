@@ -209,6 +209,25 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     }),
   },
   {
+    name: 'list_unbilled',
+    kind: 'read',
+    description:
+      'Shipments carrying revenue that was earned but never invoiced, largest first, with the amount in the branch base currency. Use for "what have we not billed", "unbilled revenue" and anything about revenue leaking.',
+    parameters: objectSchema({
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
+    name: 'list_quotes_expiring',
+    kind: 'read',
+    description:
+      'Sent quotations approaching the end of their validity, soonest first, with the customer and the quoted total. Use for "which quotes are about to lapse" and following up before a price expires.',
+    parameters: objectSchema({
+      withinDays: { type: 'integer', minimum: 0, maximum: 60 },
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
     name: 'get_supplier_variance',
     kind: 'read',
     description:

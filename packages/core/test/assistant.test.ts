@@ -68,6 +68,21 @@ describe('the tool manifest', () => {
     expect(assistantTool('delete_everything')).toBeUndefined()
   })
 
+  /*
+    The finance reads are offered to everyone and gated by nothing but RLS —
+    the same contract every read tool holds, asserted by name so adding one
+    that quietly carries a `requires` (and so disappears from a coordinator's
+    assistant) fails here rather than in the field.
+  */
+  it('offers the finance read tools to everyone, gated only by RLS', () => {
+    const offered = new Set(toolsFor(readOnly).map((tool) => tool.name))
+    for (const name of ['list_unbilled', 'list_quotes_expiring']) {
+      expect(offered.has(name)).toBe(true)
+      expect(assistantTool(name)?.kind).toBe('read')
+      expect(assistantTool(name)?.requires).toBeUndefined()
+    }
+  })
+
   it('keeps the loop bounded', () => {
     expect(ASSISTANT_LIMITS.maxTurns).toBeGreaterThan(0)
     expect(ASSISTANT_LIMITS.maxTurns).toBeLessThanOrEqual(10)

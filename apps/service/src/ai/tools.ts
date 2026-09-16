@@ -28,7 +28,7 @@
  * not see it. The narrow projection is a second fence behind RLS.
  */
 
-import { and, desc, eq, ilike, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import {
   chargeLines,
   customers,
@@ -145,6 +145,10 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return listFreeTime(actor, args)
     case 'list_overdue_invoices':
       return listOverdueInvoices(actor, args)
+    case 'list_unbilled':
+      return listUnbilled(actor, args)
+    case 'list_quotes_expiring':
+      return listQuotesExpiring(actor, args)
     case 'get_supplier_variance':
       return supplierVariance(actor, args)
     default:
@@ -520,6 +524,98 @@ async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknow
       .orderBy(invoices.dueOn)
       .limit(limit)
   })
+}
+
+/**
+ * Revenue earned and never invoiced — the quietest leak.
+ *
+ * The same shape and the same filter as `/finance`'s unbilled register
+ * (`features/ledger/unbilled.ts`): revenue lines with no `invoice_id` that are
+ * not accruals, grouped per shipment and ranked by base-currency amount. Read
+ * against the same definition so the assistant never disagrees with the screen
+ * about what is unbilled — a second definition here is a second answer to
+ * "what have we not billed", and money questions cannot have two.
+ */
+async function listUnbilled(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+
+  return withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        shipment: jobs.reference,
+        status: jobs.status,
+        customer: customers.legalNameEn,
+        lines: sql<number>`count(*)::int`,
+        amountBase: sql<string>`sum(${chargeLines.amountBase})::text`,
+        baseCurrency: sql<string>`min(${chargeLines.baseCurrency})`,
+        /*
+          More than one currency on a shipment means it cannot become a single
+          invoice — the register surfaces that rather than letting somebody find
+          it at the click, and the assistant should be able to say so too.
+        */
+        currencies: sql<string[]>`array_agg(distinct ${chargeLines.currency})`,
+      })
+      .from(chargeLines)
+      .innerJoin(jobs, eq(jobs.id, chargeLines.jobId))
+      .leftJoin(customers, eq(customers.id, jobs.customerId))
+      .where(
+        and(
+          eq(chargeLines.direction, 'revenue'),
+          isNull(chargeLines.invoiceId),
+          // An accrual is our own estimate of a cost still to come; it has no
+          // business on a customer invoice.
+          eq(chargeLines.isAccrual, false),
+        ),
+      )
+      .groupBy(jobs.id, jobs.reference, jobs.status, customers.legalNameEn)
+      .orderBy(desc(sql`sum(${chargeLines.amountBase})`))
+      .limit(limit),
+  )
+}
+
+/**
+ * Sent quotations about to lapse — the follow-up a busy desk forgets.
+ *
+ * The same window as the `quote.expiring` reminder worker: `sent` only, a
+ * validity still in the future, within the horizon. `sent` because a draft was
+ * never offered and an accepted, rejected or superseded quote has had its
+ * answer. The default seven days is wider than the worker's three so the
+ * assistant can answer "what is coming up this week", not only "what fires
+ * tonight".
+ */
+async function listQuotesExpiring(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+  const withinDays = Number.isFinite(Number(args.withinDays)) ? Number(args.withinDays) : 7
+  const today = todayIn()
+  const horizon = new Date()
+  horizon.setUTCDate(horizon.getUTCDate() + Math.max(0, Math.min(60, withinDays)))
+
+  return withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        reference: quotes.reference,
+        status: quotes.status,
+        customer: customers.legalNameEn,
+        validUntil: quotes.validUntil,
+        total: quotes.totalSell,
+        currency: quotes.currency,
+      })
+      .from(quotes)
+      .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+      .leftJoin(customers, eq(customers.id, enquiries.customerId))
+      .where(
+        and(
+          eq(quotes.status, 'sent'),
+          isNotNull(quotes.validUntil),
+          lte(quotes.validUntil, dayIn(horizon)),
+          // Not already lapsed — an expired quote needs a conversation, not a
+          // countdown, exactly as the reminder worker draws the line.
+          gt(quotes.validUntil, today),
+        ),
+      )
+      .orderBy(quotes.validUntil)
+      .limit(limit),
+  )
 }
 
 /**
