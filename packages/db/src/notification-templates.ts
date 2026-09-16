@@ -80,6 +80,37 @@ Open it in Qabandi to assign it and start the response clock.
 `,
   ),
 
+  // --- enquiry.received (customer) ------------------------------------------
+  t(
+    'enquiry.received',
+    'en',
+    'We have your enquiry {{reference}}',
+    `
+Hello {{recipientName}}
+
+Thank you — we have received your enquiry and logged it as {{reference}}.
+
+Our team is reviewing it and will come back to you shortly. Please quote this
+reference in any reply.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'enquiry.received',
+    'ar',
+    'استلمنا استفسارك {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+شكراً لك، لقد استلمنا استفسارك وسجّلناه برقم {{reference}}.
+
+يقوم فريقنا بمراجعته وسيعود إليك قريباً. يُرجى ذكر هذا الرقم في أي مراسلة.
+
+{{senderName}}
+`,
+  ),
+
   // --- enquiry.sla_breached (internal) --------------------------------------
   t(
     'enquiry.sla_breached',

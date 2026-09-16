@@ -951,6 +951,29 @@ async function createEnquiry(
     payload: { reference: row!.reference },
   })
 
+  /*
+    The customer's acknowledgement — FR-NT-01, and the loop breaker is which
+    address it can reach.
+
+    Raised only when the sender resolved to a customer, because the dispatcher
+    sends it to that customer's *on-file* contact, never to the raw address the
+    mail came from. An unknown sender opens an enquiry a coordinator triages by
+    hand and hears nothing automatic — which is the rule `Operations_Findings
+    §11` was written in blood for: acknowledge whoever wrote in, and the day a
+    mail daemon writes in, its bounce is the next thing acknowledged. Bounces
+    and auto-replies never reach here anyway (`isAutomaticMail` files them
+    before this), so this is the second lock on the same door.
+  */
+  if (customerId) {
+    await tx.insert(notificationOutbox).values({
+      branchId: branch.id,
+      eventKey: 'enquiry.received',
+      enquiryId: row!.id,
+      customerId,
+      payload: { reference: row!.reference },
+    })
+  }
+
   return { enquiryId: row!.id, jobId: null, created: true }
 }
 

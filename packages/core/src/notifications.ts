@@ -88,6 +88,23 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     summary: 'A new enquiry has arrived and needs an owner.',
     fields: ['reference'],
   }),
+  /*
+    The customer-facing twin of `enquiry.created` — FR-NT-01.
+
+    `enquiry.created` tells the desk to pick the enquiry up; this tells the
+    customer we have it, and hands them the reference to quote back. Raised only
+    for an enquiry opened from a matched customer's own contact, never for the
+    raw sender of inbound mail — that distinction is the loop breaker
+    (`Operations_Findings §11`): the day an acknowledgement went to whoever wrote
+    in, a mail daemon wrote in, and its bounce was the next thing acknowledged.
+  */
+  event({
+    key: 'enquiry.received',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A customer’s enquiry has been received, and acknowledged to them.',
+    fields: ['reference'],
+  }),
   event({
     key: 'enquiry.sla_breached',
     audience: 'internal',
