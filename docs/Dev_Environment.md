@@ -88,6 +88,18 @@ leaking, not on feature count. The user wants the whole list done, quickly.
 - The bounce guard on inbound mail, and the `reasoning`-field fallback in the
   model adapter.
 
+**Shipped since (September 2026):**
+
+- Rate procurement — *Request rates* on an enquiry emails the covering agents,
+  the model reads each reply (a number in the body, a PDF tariff, a spreadsheet)
+  into `rate_requests`, and the enquiry screen ranks them cheapest-first in dinar
+  for a one-click buy card; plus the nightly auto-refresh that re-fires an RFQ
+  before a buy card lapses (FR-RT-10/11).
+- Supplier-invoice variance auto-flag — a bill captured against a job raises an
+  internal alert when a line is billed over the accrual tolerance, on the
+  extraction write path (FR-FN-09). Over-billing only; caught before finance
+  approves, not at month-end.
+
 **Next, in the order agreed:**
 
 1. Quote drafting — the model writes the covering note; `rating.ts` keeps the
