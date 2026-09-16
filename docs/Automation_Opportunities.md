@@ -57,25 +57,26 @@ refresh themselves.
 
 ---
 
-## 2. Supplier-invoice variance → auto-flag  ·  *money left on the table*
+## 2. Supplier-invoice variance → auto-flag — **shipped**
 
-**What it does.** An agent bills 460 for something quoted at 400. The engine that
-catches this — `core/matching.ts`, comparing quoted vs accrued vs billed — is
-**written and tested today**, and `invoice-extract` already reads supplier
-invoices off inbound mail into `supplier_invoice_lines`. The missing piece is the
-alert: when a read invoice exceeds the tolerance a partner or charge type already
-carries (`variance_tolerance_*` columns exist on both), raise it to finance
-instead of letting it flow into the job's P&L.
+**What it does.** When the AI reads a supplier invoice, the capturing transaction
+compares each charge type's billed total against what the job accrued for that
+partner, and raises an internal `supplier_invoice.variance_flagged` alert to the
+branch's staff when a line is billed over the tolerance the partner or charge
+type carries. Over-billing only — under-billing stays on the payables review
+screen. The agent who billed 460 for a cost accrued at 400 is caught before
+finance approves the bill, not at month-end when the margin is already booked.
 
-**The win.** Overbilling is caught at the door, not at month-end when the margin
-is already booked. This is the automation that pays for the others.
+**What it reused.** `core/matching.ts` (the accrued-vs-billed comparison, already
+tested) behind a new pure `varianceAlert`, `invoice-extract`'s write path, the
+`variance_tolerance_*` columns already on partners and charge types, and the
+notification outbox. No schema change and no migration — the columns were waiting.
 
-**What it reuses.** `matching.ts`, `invoice-extract`, the `variance_tolerance`
-columns (a strong signal this was the intended use), and the notification outbox
-for the alert.
-
-**Effort.** Medium. The comparison and the extraction exist; the work is the
-tolerance check and the alert surface. A week or two.
+**One decision worth recording.** The comparison runs in the invoice's own
+currency and skips an accrual booked in another currency, rather than converting
+at extraction time: `matching.ts` warns that an ad-hoc rate turns a variance into
+an FX movement in disguise, and the extraction path stamps no rate. A
+cross-currency line still surfaces on the review screen once a person matches it.
 
 ---
 
@@ -102,24 +103,31 @@ bulk-accept action over proposals that already exist.
 
 ---
 
-## 4. Carrier milestone tracking  ·  *biggest "wow", heaviest lift*
+## 4. Carrier milestone tracking — **built, switched off**
 
-**What it does.** The `CarrierTracking` port is declared in the service and
-**completely unused** — a shaped hole waiting for an implementation. Wiring it to
-a liner/carrier feed would auto-advance a shipment's milestones (loaded, sailed,
-arrived) and notify the customer, instead of an operator refreshing a carrier
-website and updating the job by hand.
+**What it does.** Auto-advances a sea shipment's milestones (loaded, sailed,
+discharged) and revises its ETA by asking the carrier directly over DCSA, instead
+of an operator refreshing a carrier website and typing the date onto the job.
 
 **The win.** The job status is true without anyone maintaining it, and the
 customer hears "your container sailed" without asking. This is the demo that
 makes a forwarder feel the platform is *watching the shipment for them*.
 
-**The catch.** It needs a real carrier integration (or an aggregator), which is an
-external dependency with its own onboarding — unlike everything above, the hard
-half is *not* already in the tree. High value, but scope it as its own project.
+**Status — the whole path is in the tree and tested.** `adapters/carrier-tracking.ts`
+resolves the driver, `adapters/dcsa-tracking.ts` speaks DCSA to Maersk,
+Hapag-Lloyd and CMA CGM, `workers/carrier-poll.ts` polls the fleet hourly, and
+`workers/carrier-milestone.ts` writes each milestone under the one rule that
+matters — a feed never overrules a hand-entered date. It ships **off**:
+`carrierTracking` defaults to `manual`, and it lights up when an administrator
+sets the driver to `dcsa` and pastes one carrier's key at Settings › Integrations.
 
-**What it reuses.** The port abstraction, the milestone model, and the customer
-notification path. Everything except the feed itself.
+**The catch, revised.** An earlier version of this note called the port
+"completely unused" and the integration "the heaviest lift." Neither is true any
+more — the code is done. What remains is not a build but a **credential**: the
+client registering with a carrier (all three are self-serve and free). An
+aggregator was built here first and removed — it priced per container and pushed
+events by a webhook that could move a discharge date; carrier-direct DCSA is free
+and answers on demand, which is why the only step left is a key.
 
 ---
 
@@ -160,13 +168,14 @@ model.
 ## How to sequence this
 
 1. ~~**§1 Rate-expiry refresh**~~ — **shipped.** Made §0 self-sustaining.
-2. **§2 Invoice variance** — the one with money in it, and the next to build. Do
-   it when there's a fortnight.
-3. **§3 Enquiry auto-ack** — cheap, and it's the customer-facing polish that
-   demos well.
+2. ~~**§2 Invoice variance**~~ — **shipped.** The one with money in it; over-billing
+   is caught at the door now, not at month-end.
+3. **§3 Enquiry auto-ack** — cheap, the customer-facing polish that demos well.
+   In progress.
 4. **§5 / §6** — small surfacing wins to slot between the larger pieces.
-5. **§4 Carrier tracking** — plan it separately; it's the only one whose hard
-   half isn't already written.
+5. **§4 Carrier tracking** — **built, off.** No longer a build: register with one
+   carrier and flip the driver to `dcsa`.
 
-Every item except §4 is a build against tested foundations. That is the whole
-argument: the platform was designed so these were short.
+The remaining builds (§5, §6) are changes against tested foundations, and §4 is
+not a build at all. That is the whole argument: the platform was designed so
+these were short.
