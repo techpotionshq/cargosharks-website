@@ -109,6 +109,7 @@ import type {
   NotificationDeliveryRow,
   NotificationSwitchRow,
   NotificationTemplateRow,
+  NotificationView,
   OpenEnquiryRow,
   OpenShipmentRow,
   OpsOverview,
@@ -1466,6 +1467,114 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       customerName: CUSTOMERS[8]!.en,
     },
   ]
+}
+
+// --- the topbar bell -------------------------------------------------------
+
+/**
+ * What the notification bell shows on the demo, with no database behind it.
+ *
+ * These are the *internal* events — the ones a `notification-dispatch` fans to
+ * the `in_app` channel and a customer never sees — already rendered, because
+ * the live path renders them from a template row that fixture mode does not
+ * have. So they are written out here in full, in the reader's language, the
+ * same promise the search box keeps: a bell that only lit up against Postgres
+ * is a bell the client never watches fill.
+ *
+ * Anchored to real fixture records — the customs hold on `job-1041`, the
+ * genuinely overdue enquiry — so opening one lands on the screen it is about
+ * rather than a dead link, and so the board and the bell tell one story.
+ */
+export function pilotNotifications(locale: 'en' | 'ar', now = Date.now()): NotificationView[] {
+  const year = new Date(now).getFullYear()
+  const pick = (en: string, ar: string): string => (locale === 'ar' ? ar : en)
+
+  // The same enquiry the queue shows breaching, so the alert and the register
+  // agree; falls back to null rather than inventing a reference.
+  const overdue = pilotEnquiries(now).find(
+    (e) => e.firstRespondedAt === null && e.slaDueAt !== null && e.slaDueAt.getTime() < now,
+  )
+
+  const items: NotificationView[] = [
+    {
+      id: 'ntf-1',
+      eventKey: 'exception.opened',
+      title: pick(
+        `Customs hold on KWI-${year}-01041`,
+        `احتجاز جمركي على KWI-${year}-01041`,
+      ),
+      body: pick(
+        'Origin certificate needs chamber attestation before release — on the exception register, resolution clock running.',
+        'تتطلب شهادة المنشأ تصديق الغرفة قبل الإفراج — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
+      ),
+      href: '/jobs/job-1041',
+      createdAt: hours(now, -0.4),
+      read: false,
+    },
+    {
+      id: 'ntf-2',
+      eventKey: 'free_time.expiring',
+      title: pick(
+        `Detention on TCLU7627384 in 2 day(s) — KWI-${year}-01036`,
+        `بدء احتساب الاحتجاز على TCLU7627384 خلال يومين — KWI-${year}-01036`,
+      ),
+      body: pick(
+        'Free time runs out on Thursday. After that 12.500 KWD per day, ours until the container moves.',
+        'ينتهي وقت السماح يوم الخميس، وبعده 12.500 دينار عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+      ),
+      href: '/jobs/job-1036',
+      createdAt: hours(now, -3),
+      read: false,
+    },
+    {
+      id: 'ntf-3',
+      eventKey: 'enquiry.sla_breached',
+      title: pick(
+        `Overdue first response — ${overdue?.reference ?? `ENQ-KWI-${year}-0007`}`,
+        `تأخر الرد الأول — ${overdue?.reference ?? `ENQ-KWI-${year}-0007`}`,
+      ),
+      body: pick(
+        'Past the agreed time for a first response and still unanswered. It needs a reply now.',
+        'تجاوز المدة المتفق عليها للرد الأول ولم يُرد عليه بعد. يحتاج إلى رد الآن.',
+      ),
+      href: overdue ? `/enquiries/${overdue.id}` : '/enquiries',
+      createdAt: hours(now, -6),
+      read: false,
+    },
+    {
+      id: 'ntf-4',
+      eventKey: 'rate_card.expiring',
+      title: pick(
+        '3 rate card(s) lapse within 30 days',
+        'انتهاء صلاحية 3 من بطاقات الأسعار خلال 30 يوماً',
+      ),
+      body: pick(
+        'The first lapses next week. Renew before a lane is quoted from memory.',
+        'أولها الأسبوع المقبل. جدّدها قبل أن يُسعَّر أي خط بالتقدير.',
+      ),
+      // A digest about the whole desk, not one shipment — nothing to open.
+      href: null,
+      createdAt: at(now, -1, 7),
+      read: true,
+    },
+    {
+      id: 'ntf-5',
+      eventKey: 'supplier_invoice.variance_flagged',
+      title: pick(
+        `Over-billed: Rumaithiya Lines — 32.500 KWD`,
+        `فاتورة أعلى من المستحق: خطوط الرميثية — 32.500 دينار`,
+      ),
+      body: pick(
+        `On DXB-${year}-02019: 2 line(s) billed over what the job accrued. Review before it is approved for payment.`,
+        `على DXB-${year}-02019: بندان محتسبان بأعلى مما استحق على الشحنة. راجعها قبل اعتمادها للدفع.`,
+      ),
+      href: '/jobs/job-2019',
+      createdAt: at(now, -1, 16),
+      read: true,
+    },
+  ]
+
+  return items
 }
 
 // --- enquiries -------------------------------------------------------------

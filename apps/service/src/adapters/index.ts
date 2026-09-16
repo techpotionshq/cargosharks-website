@@ -70,6 +70,7 @@ import { manualFxSource, resolveFxSource } from './fx'
 import { modelProviderFrom, noModel } from './model'
 
 export { sendMail } from './smtp'
+export { inAppChannel } from './in-app'
 
 /**
  * A resolver that must not be able to take the deployment down.

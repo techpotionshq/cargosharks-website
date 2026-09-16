@@ -148,10 +148,17 @@ describe('notification templates', () => {
     }
   })
 
-  it('signs every message with the branch that sent it', () => {
+  it('signs every outbound message with the branch that sent it', () => {
     // Multi-entity is a selling point (§5.3). A template that hard-coded one
     // company name would sign a Dubai shipment as the Kuwait entity.
-    for (const t of NOTIFICATION_TEMPLATES) {
+    //
+    // In-app is exempt, and it is the one channel that should be: it is read by
+    // the person it is about, in a panel that already names who is signed in,
+    // so a "{{senderName}}" line would be a signature on a note to oneself —
+    // the same mail-merge-that-escaped this rule exists to catch, arriving from
+    // the other direction. The rule is about correspondence leaving the
+    // building; the bell never does.
+    for (const t of NOTIFICATION_TEMPLATES.filter((t) => t.channel !== 'in_app')) {
       expect(t.body, `${t.eventKey} (${t.locale})`).toContain('{{senderName}}')
     }
   })

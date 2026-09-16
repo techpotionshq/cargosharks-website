@@ -34,7 +34,7 @@
 
 export interface NotificationTemplateSeed {
   readonly eventKey: string
-  readonly channel: 'email'
+  readonly channel: 'email' | 'in_app'
   readonly locale: 'en' | 'ar'
   readonly subject: string
   readonly body: string
@@ -47,6 +47,31 @@ function t(
   body: string,
 ): NotificationTemplateSeed {
   return { eventKey, channel: 'email', locale, subject, body: body.trim() }
+}
+
+/**
+ * The same event, worded for the topbar bell instead of a customer's inbox.
+ *
+ * In-app notifications are read by the person they are *about*, in a panel that
+ * already shows who is signed in — so they carry no "Hello {{recipientName}}"
+ * and no "{{senderName}}" sign-off. Those are the grammar of a letter to
+ * someone else, and repeating them in a self-addressed alert reads as a mail
+ * merge that escaped. The body is one sentence, because the reader is three
+ * feet from the record and one click from opening it.
+ *
+ * Only the internal events get one — `notification-dispatch` never fans a
+ * customer-audience event to `in_app`, because a customer has no bell to read
+ * it. So there is deliberately no in-app row here for `quote.sent`,
+ * `invoice.issued` and their kind, and the coverage test only requires the
+ * `email` channel for every event for the same reason.
+ */
+function ia(
+  eventKey: string,
+  locale: 'en' | 'ar',
+  subject: string,
+  body: string,
+): NotificationTemplateSeed {
+  return { eventKey, channel: 'in_app', locale, subject, body: body.trim() }
 }
 
 export const NOTIFICATION_TEMPLATES: readonly NotificationTemplateSeed[] = [
@@ -586,5 +611,98 @@ reference so that we can match it.
 
 {{senderName}}
 `,
+  ),
+
+  // ==========================================================================
+  // In-app — the six internal events, worded for the topbar bell (see `ia`).
+  //
+  // Subjects are the headline the bell shows collapsed; bodies are the one line
+  // it shows open. No greeting, no signature — this is read by the person it is
+  // about. Each uses a subset of the event's fields; the email row above still
+  // uses the rest, so no declared field goes unused.
+  // ==========================================================================
+
+  // --- enquiry.created ------------------------------------------------------
+  ia(
+    'enquiry.created',
+    'en',
+    'New enquiry {{reference}}',
+    'Received and waiting for an owner. Open it to assign it and start the response clock.',
+  ),
+  ia(
+    'enquiry.created',
+    'ar',
+    'استفسار جديد {{reference}}',
+    'تم استلامه وينتظر الإسناد. افتحه لإسناده وبدء احتساب زمن الاستجابة.',
+  ),
+
+  // --- enquiry.sla_breached -------------------------------------------------
+  ia(
+    'enquiry.sla_breached',
+    'en',
+    'Overdue first response — {{reference}}',
+    'Past the agreed time for a first response and still unanswered. It needs a reply now.',
+  ),
+  ia(
+    'enquiry.sla_breached',
+    'ar',
+    'تأخر الرد الأول — {{reference}}',
+    'تجاوز المدة المتفق عليها للرد الأول ولم يُرد عليه بعد. يحتاج إلى رد الآن.',
+  ),
+
+  // --- free_time.expiring ---------------------------------------------------
+  ia(
+    'free_time.expiring',
+    'en',
+    '{{kind}} on {{containerNo}} in {{daysRemaining}} day(s) — {{reference}}',
+    'Free time ends {{expiresOn}}. After that {{perDiem}} {{currency}} per day, ours until the container moves.',
+  ),
+  ia(
+    'free_time.expiring',
+    'ar',
+    'بدء احتساب {{kind}} على {{containerNo}} خلال {{daysRemaining}} يوم — {{reference}}',
+    'ينتهي وقت السماح بتاريخ {{expiresOn}}، وبعده {{perDiem}} {{currency}} عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+  ),
+
+  // --- rate_card.expiring ---------------------------------------------------
+  ia(
+    'rate_card.expiring',
+    'en',
+    '{{count}} rate card(s) lapse within {{horizonDays}} days',
+    'The first lapses on {{soonest}}. Renew before a lane is quoted from memory.',
+  ),
+  ia(
+    'rate_card.expiring',
+    'ar',
+    'انتهاء صلاحية {{count}} من بطاقات الأسعار خلال {{horizonDays}} يوماً',
+    'أولها بتاريخ {{soonest}}. جدّدها قبل أن يُسعَّر أي خط بالتقدير.',
+  ),
+
+  // --- exception.opened -----------------------------------------------------
+  ia(
+    'exception.opened',
+    'en',
+    '{{severity}} exception on {{reference}}',
+    '{{description}} — on the exception register, resolution clock running.',
+  ),
+  ia(
+    'exception.opened',
+    'ar',
+    'استثناء بدرجة {{severity}} على {{reference}}',
+    '{{description}} — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
+  ),
+
+  // --- supplier_invoice.variance_flagged ------------------------------------
+  ia(
+    'supplier_invoice.variance_flagged',
+    'en',
+    'Over-billed: {{partnerName}} — {{totalVariance}} {{currency}}',
+    '{{reference}} on {{jobReference}}: {{flaggedCount}} line(s) over accrual. Review before it is approved for payment.',
+  ),
+  ia(
+    'supplier_invoice.variance_flagged',
+    'ar',
+    'فاتورة أعلى من المستحق: {{partnerName}} — {{totalVariance}} {{currency}}',
+    '{{reference}} على {{jobReference}}: {{flaggedCount}} بنداً أعلى من المستحق. راجعها قبل اعتمادها للدفع.',
   ),
 ]

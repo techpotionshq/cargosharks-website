@@ -19,6 +19,26 @@ export interface Money {
   readonly currency: string
 }
 
+/**
+ * One alert as the topbar bell shows it — already rendered, already localised.
+ *
+ * Lives here rather than in the notifications slice because `fixtures.ts` (also
+ * `lib`) has to build it for the demo, and `lib` is *below* the slices: a slice
+ * may reach down for this shape, but this shape may not reach up into a slice.
+ * The slice re-exports it as `InboxItem`.
+ */
+export interface NotificationView {
+  /** The delivery row id — what mark-as-read writes against. Synthetic on fixtures. */
+  readonly id: string
+  readonly eventKey: string
+  readonly title: string
+  readonly body: string
+  /** Where opening it lands, or null for an alert about nothing openable. */
+  readonly href: string | null
+  readonly createdAt: Date
+  readonly read: boolean
+}
+
 export interface MilestoneView {
   /**
    * The row's own id, which the milestone dialog posts to `completeMilestone`.

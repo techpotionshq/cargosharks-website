@@ -3259,5 +3259,10 @@
     "description": "Rate requests the expiry sweep opened to renew a lapsing lane.",
     "lapses": "current rate lapses {date}",
     "renew": "Renew rate card"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "You're all caught up.",
+    "markAllRead": "Mark all read"
   }
 }

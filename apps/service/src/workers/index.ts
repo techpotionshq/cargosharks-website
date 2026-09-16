@@ -13,7 +13,7 @@ import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch, registerChannel } from './notification-dispatch'
-import { resolveEmailChannel } from '../adapters/index'
+import { inAppChannel, resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
@@ -79,6 +79,9 @@ export async function registerWorkers(log: {
     exists to remove, reintroduced one layer up.
   */
   registerChannel(await resolveEmailChannel(log.info.bind(log)))
+  // Static, so registered once beside the relay rather than re-resolved: the
+  // in-app channel has no configuration to reload and cannot fail to build.
+  registerChannel(inAppChannel)
 
   const work = async (name: string, handler: Handler): Promise<void> => {
     await boss.work(name, { batchSize: 1 }, handler as never)
@@ -242,6 +245,10 @@ export async function registerWorkers(log: {
       and a thousand of them.
     */
     registerChannel(await resolveEmailChannel(log.info.bind(log)))
+    // Re-asserted beside the relay, so a dispatch reached by any path has the
+    // in-app channel too. Idempotent and configuration-free, so unlike the
+    // relay above it costs nothing to repeat.
+    registerChannel(inAppChannel)
 
     for (const job of jobs) {
       const result = await runNotificationDispatch(job.data)
