@@ -245,6 +245,15 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     ),
   },
   {
+    name: 'list_consolidation_candidates',
+    kind: 'read',
+    description:
+      'Loose LCL and air shipments on the same lane that could have shared a container, grouped, largest first, with the container each group would fill. Use for "what could we consolidate", "any co-load opportunities" and finding freight bought retail that should have been bought wholesale.',
+    parameters: objectSchema({
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
     name: 'get_supplier_variance',
     kind: 'read',
     description:

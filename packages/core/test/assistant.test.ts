@@ -76,7 +76,13 @@ describe('the tool manifest', () => {
   */
   it('offers the finance read tools to everyone, gated only by RLS', () => {
     const offered = new Set(toolsFor(readOnly).map((tool) => tool.name))
-    for (const name of ['list_unbilled', 'list_quotes_expiring', 'get_margin', 'get_customer_credit']) {
+    for (const name of [
+      'list_unbilled',
+      'list_quotes_expiring',
+      'get_margin',
+      'get_customer_credit',
+      'list_consolidation_candidates',
+    ]) {
       expect(offered.has(name)).toBe(true)
       expect(assistantTool(name)?.kind).toBe('read')
       expect(assistantTool(name)?.requires).toBeUndefined()

@@ -28,7 +28,8 @@
  * not see it. The narrow projection is a second fence behind RLS.
  */
 
-import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import {
   branches,
   chargeLines,
@@ -46,6 +47,7 @@ import {
   jobMilestones,
   equipment,
   jobs,
+  locations,
   partners,
   quotes,
   supplierInvoiceLines,
@@ -57,12 +59,17 @@ import {
 import {
   ASSISTANT_LIMITS,
   assessCredit,
+  clusterShipments,
   emptyLedgerMargin,
   isNearLimit,
   jobMargin,
   toScale,
+  type GroupableShipment,
 } from '@qabandi/core'
 import { dayIn, todayIn } from '@qabandi/core'
+
+const candidateOrigin = alias(locations, 'candidate_origin')
+const candidateDestination = alias(locations, 'candidate_destination')
 
 /** The arguments a model produced, already parsed from its JSON. */
 export type ToolArgs = Record<string, unknown>
@@ -165,6 +172,8 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return margin(actor, args)
     case 'get_customer_credit':
       return customerCredit(actor, args)
+    case 'list_consolidation_candidates':
+      return consolidationCandidates(actor, args)
     default:
       throw new Error(`There is no tool called ${name}.`)
   }
@@ -806,6 +815,101 @@ async function customerCredit(actor: Actor, args: ToolArgs): Promise<unknown> {
   }
 
   return { found: true, customer: resolved.customer.name, branches: branchStandings }
+}
+
+/**
+ * Loose shipments that should have shared a container.
+ *
+ * The same query and the same engine as `/consolidations`'s candidates screen
+ * (`features/consolidation/candidates.ts` → `core/grouping.ts`): the filters
+ * are each a reason a shipment *cannot* be grouped — already consolidated,
+ * closed, cancelled, a full container, or a mode not bought by the box — and
+ * `clusterShipments` does the grouping in memory, deterministically. Read
+ * through the shared engine so the assistant's suggestion is the same one the
+ * screen would make.
+ */
+async function consolidationCandidates(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+
+  const rows = await withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        jobId: jobs.id,
+        reference: jobs.reference,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+        customerName: customers.legalNameEn,
+        mode: jobs.mode,
+        originId: jobs.originId,
+        destinationId: jobs.destinationId,
+        originName: candidateOrigin.nameEn,
+        destinationName: candidateDestination.nameEn,
+        readyOn: jobs.etd,
+        volumeCbm: jobs.volumeCbm,
+        grossWeightKg: jobs.grossWeightKg,
+        pieces: jobs.pieces,
+      })
+      .from(jobs)
+      .leftJoin(customers, eq(customers.id, jobs.customerId))
+      .leftJoin(candidateOrigin, eq(candidateOrigin.id, jobs.originId))
+      .leftJoin(candidateDestination, eq(candidateDestination.id, jobs.destinationId))
+      .where(
+        and(
+          isNull(jobs.consolidationId),
+          isNull(jobs.closedAt),
+          isNull(jobs.cancelledAt),
+          // Only the two modes bought wholesale and sold retail; a full
+          // container is already the whole box, land and courier are not
+          // bought by the container.
+          or(eq(jobs.mode, 'sea_lcl'), eq(jobs.mode, 'air')),
+          ne(jobs.status, 'cancelled'),
+          // Something to measure, or a shipment sits in a cluster making it
+          // look emptier than it is.
+          sql`(${jobs.volumeCbm} is not null or ${jobs.grossWeightKg} is not null)`,
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(400),
+  )
+
+  const shipments: GroupableShipment[] = rows.map((row) => ({
+    jobId: row.jobId,
+    reference: row.reference,
+    branchId: row.branchId,
+    customerId: row.customerId,
+    customerName: row.customerName,
+    mode: row.mode,
+    originId: row.originId,
+    destinationId: row.destinationId,
+    originName: row.originName,
+    destinationName: row.destinationName,
+    readyOn: row.readyOn ? new Date(row.readyOn) : null,
+    volumeCbm: numericOrNull(row.volumeCbm),
+    grossWeightKg: numericOrNull(row.grossWeightKg),
+    pieces: row.pieces,
+  }))
+
+  return clusterShipments(shipments)
+    .slice(0, limit)
+    .map((cluster) => ({
+      lane: `${cluster.originName ?? '—'} → ${cluster.destinationName ?? '—'}`,
+      mode: cluster.mode,
+      shipments: cluster.shipments.length,
+      customers: cluster.customerCount,
+      totalCbm: cluster.totalCbm,
+      totalKg: cluster.totalKg,
+      wouldFill: cluster.fit
+        ? `${cluster.fit.code} at ${cluster.fit.volumePercent}% volume / ${cluster.fit.weightPercent}% weight, limited by ${cluster.fit.limitedBy}`
+        : null,
+      references: cluster.shipments.map((shipment) => shipment.reference),
+    }))
+}
+
+/** `numeric` as text to a number the grouping engine can add, or null. */
+function numericOrNull(value: string | null): number | null {
+  if (value === null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 /**

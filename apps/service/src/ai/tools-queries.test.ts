@@ -33,6 +33,7 @@ const {
   enquiries,
   invoices,
   jobs,
+  locations,
   principals,
   quotes,
   withActor,
@@ -48,6 +49,8 @@ const CUSTOMER = randomUUID()
 const JOB = randomUUID()
 const CODE = `TLQ-${RUN}`
 const JOB_REF = `TLQ-JOB-${RUN}`
+const LANE_A_REF = `TLQ-LCL-A-${RUN}`
+const LANE_B_REF = `TLQ-LCL-B-${RUN}`
 
 const actor: Actor = { principalId: PRINCIPAL, type: 'internal', branchIds: [BRANCH] }
 const systemActor = { ...actor, type: 'system' as const }
@@ -209,6 +212,27 @@ describe.skipIf(!enabled)('the finance read tools', () => {
         issuedAt: new Date('2026-08-01T12:00:00Z'),
         dueOn: '2026-08-31',
       })
+
+      // Two loose LCL shipments on one lane, undated so they share a window —
+      // exactly the pair `clusterShipments` should group into one container.
+      const locs = await tx.select({ id: locations.id }).from(locations).limit(2)
+      if (locs.length < 2) throw new Error('Run `pnpm db:seed` — need two locations')
+      const [origin, destination] = locs
+
+      await tx.insert(jobs).values(
+        [LANE_A_REF, LANE_B_REF].map((reference) => ({
+          id: randomUUID(),
+          reference,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          mode: 'sea_lcl' as const,
+          tradeDirection: 'import' as const,
+          status: 'booked' as const,
+          originId: origin!.id,
+          destinationId: destination!.id,
+          volumeCbm: '10.000',
+        })),
+      )
     })
   })
 
@@ -225,6 +249,22 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       // Only the non-accrual revenue line — the 999 accrual is left out.
       expect(mine!.lines).toBe(1)
       expect(Number(mine!.amountBase)).toBeCloseTo(150, 3)
+    })
+  })
+
+  describe('list_consolidation_candidates', () => {
+    it('groups loose shipments that share a lane into one container', async () => {
+      const clusters = (await runTool(actor, 'list_consolidation_candidates', {})) as {
+        shipments: number
+        totalCbm: number
+        references: string[]
+      }[]
+
+      const mine = clusters.find((c) => c.references.includes(LANE_A_REF))
+      expect(mine).toBeDefined()
+      expect(mine!.references).toContain(LANE_B_REF)
+      expect(mine!.shipments).toBe(2)
+      expect(mine!.totalCbm).toBeCloseTo(20, 3)
     })
   })
 
