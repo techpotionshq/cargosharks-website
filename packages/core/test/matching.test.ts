@@ -21,6 +21,7 @@ import {
   toScale,
   tolerance,
   unmatched,
+  varianceAlert,
   type CurrencySpec,
 } from '../src/index'
 
@@ -194,6 +195,58 @@ describe('against the quote', () => {
     const outcome = againstQuote(kwd('400.000'), kwd('460.000'), EXACT, KWD)
     expect(outcome?.verdict).toBe('over')
     expect(toScale(outcome!.variance)).toBe('60.000')
+  })
+})
+
+describe('the variance alert to finance', () => {
+  const line = (id: string, billed: string, accrued: string, tol = EXACT) => ({
+    id,
+    description: id,
+    billed,
+    accrued,
+    matchCount: 1,
+    tolerance: tol,
+  })
+
+  const alertFor = (lines: ReturnType<typeof line>[]) =>
+    varianceAlert(summariseInvoice(lines, 'USD', USD))
+
+  it('fires only on over-billing, never on under', () => {
+    // Freight over by 200, haulage under by 200: the header nets to zero, but
+    // only the over-billing is money about to leave the building.
+    const alert = alertFor([
+      line('freight', '1200.00', '1000.00'),
+      line('haulage', '300.00', '500.00'),
+    ])
+    expect(alert.flagged).toBe(true)
+    expect(alert.overCount).toBe(1)
+    expect(alert.overLines.map((l) => l.id)).toEqual(['freight'])
+  })
+
+  it('does not fire when every line is exact or under', () => {
+    const alert = alertFor([
+      line('freight', '1000.00', '1000.00'),
+      line('haulage', '300.00', '500.00'),
+    ])
+    expect(alert.flagged).toBe(false)
+    expect(alert.overCount).toBe(0)
+    expect(toScale(alert.totalOverVariance)).toBe('0.00')
+  })
+
+  it('does not fire on a drift inside tolerance', () => {
+    const alert = alertFor([line('docs', '401.50', '400.00', tolerance('0.5', '0'))])
+    expect(alert.flagged).toBe(false)
+  })
+
+  it('names the worst line and sums only the over-variances', () => {
+    const alert = alertFor([
+      line('freight', '1200.00', '1000.00'), // over 200
+      line('thc', '260.00', '200.00'), // over 60
+      line('haulage', '300.00', '500.00'), // under, ignored in the sum
+    ])
+    expect(alert.overCount).toBe(2)
+    expect(alert.worst?.id).toBe('freight')
+    expect(toScale(alert.totalOverVariance)).toBe('260.00')
   })
 })
 

@@ -156,6 +156,51 @@ charge is ours until the container moves.
   ),
 
   /*
+    supplier_invoice.variance_flagged (internal) — FR-FN-09.
+
+    The subject carries the partner and the total, because this lands in
+    finance's inbox beside the day's other mail and the decision — query it or
+    approve it — is made from the subject or not at all. Over-billing only; the
+    review screen shows the rest.
+  */
+  t(
+    'supplier_invoice.variance_flagged',
+    'en',
+    'Over-billed: {{partnerName}} on {{jobReference}} — {{totalVariance}} {{currency}}',
+    `
+Hello {{recipientName}}
+
+Supplier invoice {{reference}} from {{partnerName}}, on job {{jobReference}}, has
+{{flaggedCount}} line(s) billed over what the job accrued — {{totalVariance}}
+{{currency}} in total.
+
+The largest is {{worstDescription}}, over by {{worstVariance}} {{currency}}.
+
+Review it in Qabandi before it is approved for payment.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'supplier_invoice.variance_flagged',
+    'ar',
+    'فاتورة مورّد أعلى من المستحق: {{partnerName}} على {{jobReference}} — {{totalVariance}} {{currency}}',
+    `
+مرحباً {{recipientName}}
+
+فاتورة المورّد {{reference}} من {{partnerName}}، على الشحنة {{jobReference}}، تتضمن
+{{flaggedCount}} بنداً محتسباً بأعلى مما استحق على الشحنة — بإجمالي فرق قدره
+{{totalVariance}} {{currency}}.
+
+أكبرها {{worstDescription}}، بزيادة قدرها {{worstVariance}} {{currency}}.
+
+يرجى مراجعتها في نظام قبندي قبل اعتمادها للدفع.
+
+{{senderName}}
+`,
+  ),
+
+  /*
     The rate-card digest (internal) — FR-RT-11.
 
     The body opens with the date it was compiled, because two digests can sit

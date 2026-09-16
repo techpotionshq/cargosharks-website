@@ -209,6 +209,35 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     summary: 'An issued invoice has passed its due date unpaid.',
     fields: ['seriesNo', 'total', 'currency', 'dueOn', 'daysOverdue'],
   }),
+
+  // --- supplier invoice ----------------------------------------------------
+  /*
+    A supplier billed over what the job accrued, caught the moment the bill was
+    read — FR-FN-09's other half. Internal, and for the reason `free_time` is:
+    this is money about to leave the building that nobody agreed to, and the
+    person who queries it before it is approved is finance, not the agent who
+    sent it. Under-billing is a P&L-accuracy question and stays on the review
+    screen rather than becoming an inbox alarm.
+
+    A new noun — `supplier_invoice.*`, never `invoice.*`, which is the
+    customer-facing receivable above.
+  */
+  event({
+    key: 'supplier_invoice.variance_flagged',
+    audience: 'internal',
+    requirement: 'FR-FN-09',
+    summary: 'A supplier invoice was read with a line billed over what the job accrued.',
+    fields: [
+      'reference',
+      'partnerName',
+      'jobReference',
+      'flaggedCount',
+      'worstDescription',
+      'worstVariance',
+      'totalVariance',
+      'currency',
+    ],
+  }),
 ]
 
 const BY_KEY = new Map(NOTIFICATION_EVENTS.map((e) => [e.key, e]))
