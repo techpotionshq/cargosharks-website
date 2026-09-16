@@ -30,6 +30,7 @@
 
 import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import {
+  branches,
   chargeLines,
   customers,
   customsStages,
@@ -51,7 +52,7 @@ import {
   type Actor,
   type Tx,
 } from '@qabandi/db'
-import { ASSISTANT_LIMITS } from '@qabandi/core'
+import { ASSISTANT_LIMITS, emptyLedgerMargin, jobMargin, toScale } from '@qabandi/core'
 import { dayIn, todayIn } from '@qabandi/core'
 
 /** The arguments a model produced, already parsed from its JSON. */
@@ -151,6 +152,8 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return listQuotesExpiring(actor, args)
     case 'get_supplier_variance':
       return supplierVariance(actor, args)
+    case 'get_margin':
+      return margin(actor, args)
     default:
       throw new Error(`There is no tool called ${name}.`)
   }
@@ -671,6 +674,58 @@ async function supplierVariance(actor: Actor, args: ToolArgs): Promise<unknown> 
     ])
 
     return { found: true, reference, billed, accrued }
+  })
+}
+
+/**
+ * The P&L on one shipment — revenue, cost and gross, in base currency.
+ *
+ * `core/margin.ts`'s `jobMargin` is the one definition of the number, the same
+ * one the costing card computes; recomputing it here would be a second opinion
+ * on the figure a commercial conversation turns on. Every amount is already in
+ * the branch base currency (`amount_base`, fixed at the rate it was taken at),
+ * so there is nothing to convert and no rate to invent.
+ */
+async function margin(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const reference = text(args, 'reference')
+  if (!reference) return { found: false }
+
+  return withActor(actor, async (tx: Tx) => {
+    const [job] = await tx
+      .select({ id: jobs.id, baseCurrency: branches.baseCurrency })
+      .from(jobs)
+      .innerJoin(branches, eq(branches.id, jobs.branchId))
+      .where(eq(jobs.reference, reference))
+      .limit(1)
+
+    // Not found and not permitted are one answer here, as everywhere — see
+    // `getJob`. RLS returns no row for another branch's shipment.
+    if (!job) return { found: false, reference }
+
+    const lines = await tx
+      .select({
+        direction: chargeLines.direction,
+        amountBase: chargeLines.amountBase,
+        isAccrual: chargeLines.isAccrual,
+      })
+      .from(chargeLines)
+      .where(eq(chargeLines.jobId, job.id))
+
+    const result =
+      lines.length === 0 ? emptyLedgerMargin(job.baseCurrency) : jobMargin(lines, job.baseCurrency)
+
+    return {
+      found: true,
+      reference,
+      currency: job.baseCurrency,
+      revenue: toScale(result.revenue),
+      cost: toScale(result.cost),
+      gross: toScale(result.gross),
+      grossPercent: result.grossPercent ? result.grossPercent.toFixed(1) : null,
+      // How much of the cost is still an estimate rather than a supplier's bill.
+      accruedCost: toScale(result.accruedCost),
+      billedCost: toScale(result.billedCost),
+    }
   })
 }
 

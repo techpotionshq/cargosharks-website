@@ -166,6 +166,21 @@ describe.skipIf(!enabled)('the finance read tools', () => {
           baseCurrency: 'KWD',
           isAccrual: true,
         },
+        // A billed cost, so the margin has both sides to reduce.
+        {
+          id: randomUUID(),
+          jobId: JOB,
+          branchId: BRANCH,
+          direction: 'cost',
+          chargeTypeId,
+          basis: 'flat',
+          rate: '400.000000',
+          amount: '400.000000',
+          currency: 'KWD',
+          amountBase: '400.000000',
+          baseCurrency: 'KWD',
+          isAccrual: false,
+        },
       ])
     })
   })
@@ -183,6 +198,37 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       // Only the non-accrual revenue line — the 999 accrual is left out.
       expect(mine!.lines).toBe(1)
       expect(Number(mine!.amountBase)).toBeCloseTo(150, 3)
+    })
+  })
+
+  describe('get_margin', () => {
+    it('reduces the job ledger to revenue, cost and gross in base currency', async () => {
+      const result = (await runTool(actor, 'get_margin', { reference: JOB_REF })) as {
+        found: boolean
+        currency: string
+        revenue: string
+        cost: string
+        gross: string
+        billedCost: string
+        accruedCost: string
+      }
+
+      expect(result.found).toBe(true)
+      expect(result.currency).toBe('KWD')
+      // Two revenue lines (150 + 999) against one 400 cost.
+      expect(Number(result.revenue)).toBeCloseTo(1149, 3)
+      expect(Number(result.cost)).toBeCloseTo(400, 3)
+      expect(Number(result.gross)).toBeCloseTo(749, 3)
+      // The cost is a bill, not an estimate.
+      expect(Number(result.billedCost)).toBeCloseTo(400, 3)
+      expect(Number(result.accruedCost)).toBeCloseTo(0, 3)
+    })
+
+    it('does not distinguish a missing job from one in another branch', async () => {
+      const result = (await runTool(actor, 'get_margin', { reference: 'NO-SUCH-JOB' })) as {
+        found: boolean
+      }
+      expect(result.found).toBe(false)
     })
   })
 

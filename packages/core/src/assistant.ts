@@ -235,6 +235,13 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     parameters: objectSchema({ reference: REFERENCE }, ['reference']),
   },
   {
+    name: 'get_margin',
+    kind: 'read',
+    description:
+      'The profit and loss on one shipment — revenue, cost, gross margin and how much of the cost is still an accrual rather than a billed figure, in the branch base currency. Use for "what did we make on", "is this job profitable" and any margin question.',
+    parameters: objectSchema({ reference: REFERENCE }, ['reference']),
+  },
+  {
     name: 'propose_transition',
     kind: 'propose',
     /*
