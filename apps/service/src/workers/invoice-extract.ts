@@ -88,7 +88,7 @@ import type { ModelContent } from '../ports/index'
  * which is possible on a single-line invoice where there is nothing to
  * reconcile against.
  */
-const CONFIDENCE_FLOOR = 0.7
+export const CONFIDENCE_FLOOR = 0.7
 
 /** Scans this large are refused rather than sent. */
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
@@ -557,7 +557,7 @@ async function loadAsset(actor: Actor, assetId: string): Promise<AssetRow> {
  * every internal principal, which makes that a formality here and not one two
  * surfaces from now.
  */
-async function loadReference(actor: Actor): Promise<Reference> {
+export async function loadReference(actor: Actor): Promise<Reference> {
   return withActor(actor, async (tx: Tx) => {
     const [codes, money] = await inSeries([
       () =>
