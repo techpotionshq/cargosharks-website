@@ -32,6 +32,7 @@ import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
+import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 
@@ -133,6 +134,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         pending, so it costs a settled enquiry no vertical space.
       */}
       <ProposalsPanel enquiryId={id} />
+
+      {/*
+        Rate procurement — the manual rate-card upload, retired for a live lane.
+        Sits above the quote comparison because it feeds it: an uncovered lane is
+        an RFQ to agents, and the buy card an accepted reply becomes is what the
+        pricing engine finds the next time this enquiry is priced.
+      */}
+      <RateRequestsPanel enquiryId={id} />
 
       {/*
         Moment 2's punchline, stated as a comparison rather than a boast: the

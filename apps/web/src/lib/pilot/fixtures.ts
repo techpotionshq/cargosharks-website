@@ -124,6 +124,9 @@ import type {
   PaymentSummary,
   PodRow,
   PortalShipment,
+  CoveringAgent,
+  RateRequestsView,
+  RenewalView,
   QuoteComparison,
   QuoteDetail,
   QuoteRow,
@@ -3131,6 +3134,7 @@ export function pilotExpiringRateCards(
         // A tariff card has no counterparty; the digest names it as such.
         counterparty: counterparty?.en ?? 'Standing tariff',
         counterpartyAr: counterparty?.ar ?? 'التعرفة المعتمدة',
+        partnerId: null,
         validTo: day(now, seed.to!),
         daysRemaining: seed.to!,
       }
@@ -8508,4 +8512,142 @@ export function pilotMailboxes(now = Date.now()): MailboxRowLike[] {
     lastMessageAt: index === 0 ? hours(now, -2) : at(now, -12, 15),
     lastError: index === 0 ? null : 'Authentication failed — the application password was rotated.',
   }))
+}
+
+/**
+ * Rate procurement, for the hosted demo — FR-RT-10.
+ *
+ * The story the panel tells at a glance: three agents were asked on a live lane,
+ * two answered and one declined, and the cheapest — normalised onto the branch's
+ * dinar — is one click from a buy card. Figures are the broker's own currency
+ * with the dinar equivalent beside them, exactly as the real query returns them.
+ */
+export function pilotRateRequests(now = Date.now()): RateRequestsView {
+  return {
+    baseCurrency: 'KWD',
+    awaiting: 1,
+    answered: 2,
+    requests: [
+      {
+        id: 'demo-rr-1',
+        partnerId: 'demo-agent-1',
+        partnerName: 'Oriental Freight Services, Ningbo',
+        status: 'parsed',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -3),
+        quotedTotal: '2450.000',
+        quotedCurrency: 'USD',
+        normalizedTotal: '751.850',
+        comparable: true,
+        isCheapest: true,
+        lineCount: 4,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: true,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-2',
+        partnerId: 'demo-agent-2',
+        partnerName: 'Gulf Line Agencies, Kuwait',
+        status: 'parsed',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -5),
+        quotedTotal: '795.000',
+        quotedCurrency: 'KWD',
+        normalizedTotal: '795.000',
+        comparable: true,
+        isCheapest: false,
+        lineCount: 3,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: true,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-3',
+        partnerId: 'demo-agent-3',
+        partnerName: 'Meridian Shipping, Shanghai',
+        status: 'declined',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -8),
+        quotedTotal: null,
+        quotedCurrency: null,
+        normalizedTotal: null,
+        comparable: false,
+        isCheapest: false,
+        lineCount: 0,
+        laneMismatch: null,
+        declinedReason: 'No allocation to Shuwaikh until next month.',
+        canPromote: false,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-4',
+        partnerId: 'demo-agent-4',
+        partnerName: 'Anchor Logistics, Jebel Ali',
+        status: 'sent',
+        sentAt: hours(now, -1),
+        respondedAt: null,
+        quotedTotal: null,
+        quotedCurrency: null,
+        normalizedTotal: null,
+        comparable: false,
+        isCheapest: false,
+        lineCount: 0,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: false,
+        rateCardId: null,
+      },
+    ],
+  }
+}
+
+/** The agents the request-rates picker offers on the demo lane. */
+export function pilotCoveringAgents(): CoveringAgent[] {
+  return [
+    { partnerId: 'demo-agent-1', name: 'Oriental Freight Services, Ningbo', type: 'agent', transitDays: 22, hasEmail: true, alreadyRequested: true },
+    { partnerId: 'demo-agent-2', name: 'Gulf Line Agencies, Kuwait', type: 'agent', transitDays: 24, hasEmail: true, alreadyRequested: true },
+    { partnerId: 'demo-agent-5', name: 'Blue Ocean Carriers, Ningbo', type: 'carrier', transitDays: 21, hasEmail: true, alreadyRequested: false },
+    { partnerId: 'demo-agent-6', name: 'Peninsula Forwarding, Dammam', type: 'agent', transitDays: null, hasEmail: false, alreadyRequested: false },
+  ]
+}
+
+/**
+ * Rate-card renewals in flight, for the hosted demo — FR-RT-11.
+ *
+ * The automation shown resting: one lane whose agent has re-quoted and is one
+ * click from a successor card, and one still out. This is the sweep doing on its
+ * own what the manual desk did by remembering to ring the agent every quarter.
+ */
+export function pilotRenewals(): RenewalView[] {
+  return [
+    {
+      id: 'demo-renewal-1',
+      partnerName: 'Oriental Freight Services, Ningbo',
+      lane: 'CNNGB → KWSWK',
+      mode: 'sea_fcl',
+      status: 'parsed',
+      oldValidTo: '2026-09-30',
+      quotedTotal: '2380.000',
+      quotedCurrency: 'USD',
+      lineCount: 4,
+      declinedReason: null,
+      canPromote: true,
+    },
+    {
+      id: 'demo-renewal-2',
+      partnerName: 'Gulf Line Agencies, Kuwait',
+      lane: 'AEJEA → KWSWK',
+      mode: 'sea_lcl',
+      status: 'sent',
+      oldValidTo: '2026-10-05',
+      quotedTotal: null,
+      quotedCurrency: null,
+      lineCount: 0,
+      declinedReason: null,
+      canPromote: false,
+    },
+  ]
 }

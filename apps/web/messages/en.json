@@ -3222,5 +3222,41 @@
       "submit": "Turn on two-factor",
       "submitting": "Turning on…"
     }
+  },
+  "rateRequests": {
+    "title": "Rates from agents",
+    "request": "Request rates",
+    "description": "{awaiting} awaiting, {answered} answered",
+    "emptyDescription": "Ask the agents who cover this lane for a rate.",
+    "empty": "No agent has been asked yet.",
+    "pickTitle": "Request rates from agents",
+    "pickDescription": "Each agent gets one email. Their reply returns here.",
+    "send": "Send requests",
+    "noAgents": "No agent covers this lane. Add coverage on the agent file.",
+    "noEmail": "No email",
+    "alreadyAsked": "Asked",
+    "transit": "days transit",
+    "cheapest": "Cheapest",
+    "accept": "Make rate card",
+    "promoted": "Rate card made",
+    "awaiting": "Awaiting reply",
+    "noFx": "No exchange rate on file",
+    "laneMismatch": "Different lane",
+    "lines": "{count, plural, one {# line} other {# lines}}",
+    "status": {
+      "sent": "Sent",
+      "responded": "Replied",
+      "parsed": "Read",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "expired": "Expired",
+      "superseded": "Replaced"
+    }
+  },
+  "renewals": {
+    "title": "Renewals in flight",
+    "description": "Rate requests the expiry sweep opened to renew a lapsing lane.",
+    "lapses": "current rate lapses {date}",
+    "renew": "Renew rate card"
   }
 }

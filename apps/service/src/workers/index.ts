@@ -19,8 +19,11 @@ import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
+import { refreshExpiringRateCards } from './rate-card-refresh'
 import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extract'
 import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
+import { extractRateReply, type ExtractRateReplyInput } from './rate-extract'
+import { sendRateRequests } from './rate-request-send'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
@@ -187,6 +190,14 @@ export async function registerWorkers(log: {
   await work(JOBS.rateCardExpiry, async () => {
     const result = await runRateCardExpiryDigest()
     if (result.raised > 0) log.info(result, 'rate-card expiry digest raised')
+    /*
+      The digest tells the desk; the refresh acts. Same nightly job and same
+      expiring list — a buy card inside the horizon opens a rate request to its
+      incumbent agent, and the minute sweep mails it. Run after the digest so a
+      failure to renew never suppresses the warning a person still needs.
+    */
+    const refreshed = await refreshExpiringRateCards()
+    if (refreshed.opened > 0) log.info(refreshed, 'rate-card refresh requests opened')
   })
 
   /*
@@ -400,6 +411,55 @@ export async function registerWorkers(log: {
         if (!settled) throw error
       }
     }
+  })
+
+  /*
+    Reading a broker's rate reply — FR-RT-10. The same settled/transient split
+    the two extraction jobs above make: no model and no budget are swallowed, a
+    hiccup goes back to the backoff. A reply that read poorly is not a failure —
+    it lands as `parsed` with issues a coordinator sees, so nothing throws for it.
+  */
+  await work(JOBS.rateExtract, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as ExtractRateReplyInput
+      try {
+        const result = await extractRateReply(input)
+        log.info(
+          {
+            rateRequestId: input.rateRequestId,
+            invocationId: result.invocationId,
+            status: result.status,
+            lines: result.lines,
+            rejected: result.rejected,
+            skipped: result.skipped,
+          },
+          result.status === 'declined' ? 'rate reply read: declined' : 'rate reply read',
+        )
+      } catch (error) {
+        const code = (error as { code?: string }).code
+        const settled = code === 'ai.not_configured' || code === 'ai.budget_exhausted'
+        log.info(
+          {
+            rateRequestId: input.rateRequestId,
+            err: error instanceof Error ? error.message : String(error),
+            retrying: !settled,
+          },
+          'rate reply extraction failed',
+        )
+        if (!settled) throw error
+      }
+    }
+  })
+
+  /*
+    Sending rate requests to agents — the near end of FR-RT-10, a drain on a
+    minute's cron. Web has no queue access, so the enquiry action writes the
+    rows and this sweep sends them; a request whose agent has no email on file is
+    skipped inside, not thrown, so one missing address never fails the sweep.
+  */
+  await work(JOBS.rateRequestSend, async () => {
+    const result = await sendRateRequests()
+    if (result.sent + result.skipped + result.failed > 0) log.info(result, 'rate requests sent')
   })
 
   for (const pending of PENDING) {

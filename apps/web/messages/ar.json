@@ -3222,5 +3222,41 @@
       "submit": "تفعيل المصادقة الثنائية",
       "submitting": "جارٍ التفعيل…"
     }
+  },
+  "rateRequests": {
+    "title": "الأسعار من الوكلاء",
+    "request": "اطلب الأسعار",
+    "description": "{awaiting} بانتظار الرد، {answered} ورد ردها",
+    "emptyDescription": "اطلب سعراً من الوكلاء الذين يغطون هذا المسار.",
+    "empty": "لم يُطلب من أي وكيل بعد.",
+    "pickTitle": "اطلب الأسعار من الوكلاء",
+    "pickDescription": "يصل كل وكيل بريد واحد. يعود رده إلى هنا.",
+    "send": "أرسل الطلبات",
+    "noAgents": "لا وكيل يغطي هذا المسار. أضف التغطية في ملف الوكيل.",
+    "noEmail": "لا بريد",
+    "alreadyAsked": "طُلب",
+    "transit": "يوم عبور",
+    "cheapest": "الأرخص",
+    "accept": "اعتمد كبطاقة",
+    "promoted": "أُنشئت البطاقة",
+    "awaiting": "بانتظار الرد",
+    "noFx": "لا سعر صرف مسجّل",
+    "laneMismatch": "مسار مختلف",
+    "lines": "{count, plural, zero {# بنود} one {بند واحد} two {بندان} few {# بنود} many {# بنداً} other {# بند}}",
+    "status": {
+      "sent": "مُرسل",
+      "responded": "ورد الرد",
+      "parsed": "مقروء",
+      "accepted": "مقبول",
+      "declined": "اعتذر",
+      "expired": "منتهٍ",
+      "superseded": "مُستبدل"
+    }
+  },
+  "renewals": {
+    "title": "تجديدات جارية",
+    "description": "طلبات أسعار فتحها فحص الانتهاء لتجديد مسار يوشك أن ينتهي.",
+    "lapses": "ينتهي السعر الحالي {date}",
+    "renew": "جدّد بطاقة الأسعار"
   }
 }

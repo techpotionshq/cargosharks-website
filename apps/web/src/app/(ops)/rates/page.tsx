@@ -35,6 +35,7 @@ import { Panel } from '@/ui/panel'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { RenewalsPanel } from '@/features/rates/ui/renewals-panel'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('rates')
@@ -105,6 +106,9 @@ export default async function RatesPage({
           hint={t('expiringHint')}
         />
       </div>
+
+      {/* ---- renewals the sweep opened, acting on the lapses below (FR-RT-11) */}
+      <RenewalsPanel />
 
       {/* ---- coverage about to lapse (FR-RT-11) --------------------------- */}
       {expiring.length > 0 ? (

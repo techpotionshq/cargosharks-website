@@ -1,0 +1,2 @@
+ALTER TABLE "rate_requests" ADD COLUMN "source_rate_card_id" uuid;--> statement-breakpoint
+ALTER TABLE "rate_requests" ADD CONSTRAINT "rate_requests_source_rate_card_id_rate_cards_id_fk" FOREIGN KEY ("source_rate_card_id") REFERENCES "public"."rate_cards"("id") ON DELETE no action ON UPDATE no action;

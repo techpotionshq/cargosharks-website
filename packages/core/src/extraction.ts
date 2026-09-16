@@ -42,8 +42,10 @@
 import {
   cellFail,
   decimal,
+  integer,
   isoDate,
   lookup,
+  oneOf,
   optional,
   text,
   validateImport,
@@ -52,9 +54,12 @@ import {
   type ImportDescriptor,
   type ImportLookups,
   type ImportReport,
+  type ImportRow,
+  type RateRowValues,
 } from './import'
 import {
   abs,
+  add,
   compare,
   dec,
   money,
@@ -66,6 +71,8 @@ import {
   type CurrencySpec,
   type Money,
 } from './money'
+import { BASES, calcCharge, type ChargeContext } from './rating'
+import { MissingChargeContextError } from './errors'
 import { AiError, confidence, type Confidence, type FieldProposal } from './ai'
 
 /* -------------------------------------------------------------------------
@@ -797,5 +804,394 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     fields,
     confidence: confidence(body.confidence ?? 0),
     unknownFields,
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Rate replies — reading a broker's quote off an email — FR-RT-10, `rate_extract`
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The other side of rate procurement, and it reuses everything above.
+ *
+ * A supplier invoice and a broker's rate reply are the same kind of document
+ * read the same way: a header, a set of charge lines, every figure a string so
+ * KWD's three decimals survive the trip through JSON. The one difference that
+ * matters is what the model is *not* asked for — the lane. We emailed this
+ * broker about a specific enquiry, so origin, destination and mode are ours,
+ * already resolved to codes, and the model that reads the reply never gets to
+ * have an opinion about which port "Jebel Ali" is. It reads charges against a
+ * lane we hand it, and `readExtractedRateReply` welds the two together into
+ * exactly the flat rows the CSV importer produces — so `groupRateCards` folds a
+ * parsed email into a rate card with no second code path (AI_Surface §rate).
+ *
+ * The allowlist in `ai.ts` still names `origin`, `destination` and `mode`,
+ * because the schema below asks the model to *restate* the lane it thinks it is
+ * quoting; a mismatch is a signal worth surfacing, not a value we store. What we
+ * store is the lane we asked about.
+ */
+export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  // Every key required — a rate reply that omits `declined` is one where we
+  // cannot tell "no charges yet" from "no thanks". See the invoice schema note
+  // above: a model may drop any key not on this list, and silence here is the
+  // expensive kind.
+  required: ['declined', 'declinedReason', 'currency', 'validFrom', 'validTo', 'lines', 'confidence'],
+  properties: {
+    declined: {
+      type: 'boolean',
+      description: 'True if the broker declined to quote this lane at all.',
+    },
+    declinedReason: {
+      type: ['string', 'null'],
+      description: 'Their stated reason for declining, verbatim, or null.',
+    },
+    currency: {
+      type: ['string', 'null'],
+      description: 'ISO 4217 code the quote is in, e.g. USD, KWD, AED. Null if unstated.',
+    },
+    validFrom: {
+      type: ['string', 'null'],
+      description: 'ISO 8601 date the rate is valid from, or null if unstated.',
+    },
+    validTo: {
+      type: ['string', 'null'],
+      description: 'ISO 8601 date the rate expires, or null for open-ended.',
+    },
+    /** The lane the model believes it read — restated for a mismatch check, never stored. */
+    origin: { type: ['string', 'null'], description: 'Origin the model read, for cross-check only.' },
+    destination: {
+      type: ['string', 'null'],
+      description: 'Destination the model read, for cross-check only.',
+    },
+    mode: { type: ['string', 'null'], description: 'Mode the model read, for cross-check only.' },
+    lines: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['chargeType', 'basis', 'rate', 'currency', 'minimum', 'maximum', 'containerType'],
+        properties: {
+          chargeType: {
+            type: ['string', 'null'],
+            description: 'Our charge type key, from the list shown, or null if it is not one.',
+          },
+          basis: {
+            type: 'string',
+            description: `How the charge is calculated: one of ${BASES.join(', ')}.`,
+          },
+          rate: { type: 'string', description: 'The amount, as printed.' },
+          currency: {
+            type: ['string', 'null'],
+            description: 'This line’s currency if it differs from the header, else null.',
+          },
+          minimum: { type: ['string', 'null'], description: 'Minimum charge, or null.' },
+          maximum: { type: ['string', 'null'], description: 'Maximum charge, or null.' },
+          containerType: {
+            type: ['string', 'null'],
+            description: 'e.g. 20GP, 40HC, where the rate is per container, else null.',
+          },
+        },
+      },
+    },
+    confidence: { type: 'number', description: 'Between 0 and 1, for the reply as a whole.' },
+  },
+}
+
+/** The raw shape of one extracted rate line, before anything is checked. */
+export interface RawRateLine {
+  readonly chargeType?: unknown
+  readonly basis?: unknown
+  readonly rate?: unknown
+  readonly currency?: unknown
+  readonly minimum?: unknown
+  readonly maximum?: unknown
+  readonly containerType?: unknown
+}
+
+export interface RawExtractedRateReply {
+  readonly declined?: unknown
+  readonly declinedReason?: unknown
+  readonly currency?: unknown
+  readonly validFrom?: unknown
+  readonly validTo?: unknown
+  readonly origin?: unknown
+  readonly destination?: unknown
+  readonly mode?: unknown
+  readonly lines?: unknown
+  readonly confidence?: unknown
+}
+
+/** The lane we asked about — the model does not get to choose it. */
+export interface RateReplyLane {
+  readonly mode: string
+  readonly originCode: string
+  readonly destinationCode: string
+}
+
+/**
+ * Modes, hard-coded for the same reason `enquiry-extract` hard-codes them:
+ * `transport_mode` is a Postgres enum, not a reference row, so this cannot
+ * drift without a migration, and `rate-extract.test.ts` pins it to the enum.
+ */
+export const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
+
+/** The header currency parser — a code we actually hold, three letters. */
+const rateCurrencyCode: CellParser<string> = lookup('currencies', { label: 'currency', length: 3 })
+
+/**
+ * The descriptor a parsed reply is validated against.
+ *
+ * The same fourteen fields the rate-card CSV carries, so a validated row *is* a
+ * `RateRowValues` and drops straight into `groupRateCards`. No aliases and no
+ * synonyms: unlike a human's spreadsheet, this grid is machine-built with the
+ * columns already in our names, so the only job left is parsing and lookup.
+ */
+export const rateReplyDescriptor: ImportDescriptor = {
+  key: 'rate-reply-lines',
+  label: 'Rate reply lines',
+  fields: [
+    { key: 'mode', label: 'Mode', required: true, parse: oneOf(MODES) },
+    {
+      key: 'originCode',
+      label: 'Origin',
+      required: true,
+      parse: lookup('locations', { label: 'location' }),
+    },
+    {
+      key: 'destinationCode',
+      label: 'Destination',
+      required: true,
+      parse: lookup('locations', { label: 'location' }),
+    },
+    { key: 'currency', label: 'Currency', required: true, parse: rateCurrencyCode },
+    { key: 'validFrom', label: 'Valid from', required: true, parse: isoDate },
+    { key: 'validTo', label: 'Valid to', required: false, parse: optional(isoDate) },
+    {
+      key: 'chargeCode',
+      label: 'Charge',
+      required: true,
+      parse: lookup('chargeTypes', { label: 'charge type' }),
+    },
+    { key: 'basis', label: 'Basis', required: true, parse: oneOf(BASES) },
+    { key: 'rate', label: 'Rate', required: true, parse: decimal() },
+    { key: 'minimum', label: 'Minimum', required: false, parse: optional(decimal()) },
+    { key: 'maximum', label: 'Maximum', required: false, parse: optional(decimal()) },
+    {
+      key: 'containerType',
+      label: 'Container',
+      required: false,
+      parse: optional(text({ max: 10 })),
+    },
+    { key: 'transitDays', label: 'Transit days', required: false, parse: optional(integer({ min: 0, max: 400 })) },
+    { key: 'notes', label: 'Notes', required: false, parse: optional(text({ max: 500 })) },
+  ],
+}
+
+/** Column order for the grid the reply is validated as. */
+const RATE_ROW_HEADERS = [
+  'mode',
+  'originCode',
+  'destinationCode',
+  'currency',
+  'validFrom',
+  'validTo',
+  'chargeCode',
+  'basis',
+  'rate',
+  'minimum',
+  'maximum',
+  'containerType',
+  'transitDays',
+  'notes',
+] as const
+
+export interface ExtractedRateReply {
+  /** The broker declined to quote — a legitimate, terminal answer (FR-RT-10). */
+  readonly declined: boolean
+  readonly declinedReason?: string
+  /** The header currency the lines default to, checked, or undefined if unstated. */
+  readonly currency?: string
+  /** The lane the model claimed to read — set only when it disagrees with ours. */
+  readonly laneMismatch?: string
+  /** The validated lines, in the exact shape `groupRateCards` consumes. */
+  readonly lines: ImportReport<RateRowValues>
+  readonly confidence: number
+  readonly headerIssues: readonly string[]
+}
+
+/**
+ * Read a broker's rate reply into rows we can price and promote.
+ *
+ * `lane` is ours — the enquiry we asked about. The model's charges are welded
+ * onto it, validated once through the descriptor above, and handed back as an
+ * `ImportReport` a caller stores as `rate_requests.response` and, on a human's
+ * accept, feeds to `groupRateCards`. A declined reply short-circuits: there is
+ * nothing to price and nothing to promote, but "no thanks" is an answer the
+ * board must show, so it is a value and not an absence.
+ */
+export function readExtractedRateReply(
+  raw: RawExtractedRateReply,
+  lookups: ImportLookups,
+  lane: RateReplyLane,
+  /**
+   * The date an unstated `validFrom` falls back to — the day the reply arrived.
+   *
+   * A human filling the CSV states a start date; an agent replying to an RFQ
+   * almost never does — they quote a rate and, at most, a "valid until". Learned
+   * from a live reply whose three good lines were all rejected for a missing
+   * start date. A rate is valid from the day it is quoted unless the agent says
+   * otherwise, so the caller passes the reply's own date and the lines validate.
+   * Omitted, the field stays required and an unstated start is a row issue, which
+   * is the right behaviour for any caller that has no date to stand in.
+   */
+  defaultValidFrom = '',
+): ExtractedRateReply {
+  const headerIssues: string[] = []
+
+  const stated = Number(raw.confidence)
+  const replyConfidence = Number.isFinite(stated) ? Math.min(1, Math.max(0, stated)) : 0
+
+  const declined = raw.declined === true
+  const declinedReason =
+    typeof raw.declinedReason === 'string' && raw.declinedReason.trim() !== ''
+      ? raw.declinedReason.trim()
+      : undefined
+
+  // The header currency the lines fall back to. Validated leniently: an unknown
+  // code is a header issue, not a hard stop, because a line may carry its own.
+  const headerCurrency =
+    typeof raw.currency === 'string' && raw.currency.trim() !== '' ? raw.currency.trim() : undefined
+
+  const validFrom =
+    typeof raw.validFrom === 'string' && raw.validFrom.trim() !== ''
+      ? raw.validFrom.trim()
+      : defaultValidFrom
+  const validTo =
+    typeof raw.validTo === 'string' && raw.validTo.trim() !== '' ? raw.validTo.trim() : ''
+
+  // A lane the model read that is not the one we asked about — surfaced, never
+  // acted on. "We asked JEA→KWI and the reply prices NSA→KWI" is a sentence a
+  // coordinator wants; silently pricing the wrong lane is the trap.
+  const claimedOrigin = asCode(raw.origin)
+  const claimedDestination = asCode(raw.destination)
+  let laneMismatch: string | undefined
+  if (
+    (claimedOrigin && claimedOrigin.toUpperCase() !== lane.originCode.toUpperCase()) ||
+    (claimedDestination && claimedDestination.toUpperCase() !== lane.destinationCode.toUpperCase())
+  ) {
+    laneMismatch = `reply reads ${claimedOrigin ?? '?'}→${claimedDestination ?? '?'}, we asked ${lane.originCode}→${lane.destinationCode}`
+  }
+
+  const rawLines = Array.isArray(raw.lines) ? (raw.lines as RawRateLine[]) : []
+  if (!declined && rawLines.length === 0) {
+    headerIssues.push('Lines: the reply is not marked declined but carries no rate lines')
+  }
+
+  const cell = (value: unknown): string =>
+    value === null || value === undefined ? '' : String(value)
+
+  const grid: string[][] = [
+    [...RATE_ROW_HEADERS],
+    ...rawLines.map((line) => [
+      lane.mode,
+      lane.originCode,
+      lane.destinationCode,
+      cell(line.currency) || (headerCurrency ?? ''),
+      validFrom,
+      validTo,
+      cell(line.chargeType),
+      cell(line.basis),
+      cell(line.rate),
+      cell(line.minimum),
+      cell(line.maximum),
+      cell(line.containerType),
+      '',
+      '',
+    ]),
+  ]
+
+  const lines = validateImport<RateRowValues>(grid, rateReplyDescriptor, { lookups })
+
+  return {
+    declined,
+    ...(declinedReason ? { declinedReason } : {}),
+    ...(headerCurrency ? { currency: headerCurrency } : {}),
+    ...(laneMismatch ? { laneMismatch } : {}),
+    lines,
+    confidence: replyConfidence,
+    headerIssues,
+  }
+}
+
+function asCode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+/**
+ * What a reply costs, per currency, priced against the enquiry.
+ *
+ * A rate card line is a rate, not a number: `120 per container` costs nothing
+ * until you know there are two of them. So the headline figure a broker's reply
+ * is ranked on is its lines priced against *this enquiry's* quantities — the
+ * `ChargeContext` the caller builds from weight, volume and container count —
+ * summed per currency. Per currency, because a Gulf quote routinely prices
+ * ocean freight in USD and local charges in KWD, and adding those without an FX
+ * rate would be a lie; the comparison view converts each currency's subtotal to
+ * base at read time, where the rate is a dated fact on the row (FR-RT-06).
+ *
+ * A line that cannot be priced for want of context — a `percent` line with no
+ * base — is counted, not guessed, so the caller can say "two of five lines
+ * could not be priced" rather than quietly under-quote.
+ */
+export interface RateReplySummary {
+  readonly totals: readonly { readonly currency: string; readonly amount: Money }[]
+  /** The single currency the reply is in, when it is in exactly one. */
+  readonly primary?: { readonly currency: string; readonly amount: Money }
+  /** Lines whose basis needed context the enquiry did not supply. */
+  readonly unpriced: number
+}
+
+export function summariseRateReply(
+  rows: readonly ImportRow<RateRowValues>[],
+  ctx: ChargeContext,
+): RateReplySummary {
+  const byCurrency = new Map<string, Money>()
+  let unpriced = 0
+
+  for (const { values } of rows) {
+    let amount: Money
+    try {
+      amount = calcCharge(
+        {
+          basis: values.basis as (typeof BASES)[number],
+          rate: dec(values.rate),
+          currency: values.currency,
+          minimum: values.minimum === null ? null : dec(values.minimum),
+          maximum: values.maximum === null ? null : dec(values.maximum),
+        },
+        ctx,
+      )
+    } catch (error) {
+      // Only a missing-context refusal is swallowed; a genuine bug still throws.
+      if (error instanceof MissingChargeContextError) {
+        unpriced += 1
+        continue
+      }
+      throw error
+    }
+
+    const running = byCurrency.get(amount.currency)
+    byCurrency.set(amount.currency, running ? add(running, amount) : amount)
+  }
+
+  const totals = [...byCurrency.entries()].map(([currency, amount]) => ({ currency, amount }))
+  return {
+    totals,
+    ...(totals.length === 1 ? { primary: totals[0] } : {}),
+    unpriced,
   }
 }

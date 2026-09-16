@@ -50,6 +50,21 @@ export const JOBS = {
     Tuesday.
   */
   enquiryExtract: 'enquiry-extract',
+  /*
+    Reading a broker's rate reply — FR-RT-10, the far end of rate procurement.
+
+    Queued for the invoice's reason, not the enquiry's: the reply is already an
+    ingested message, so a slow model cannot cost us intake, only the freshness
+    of a comparison a coordinator will look at in minutes. `ingestMessage`
+    enqueues it after commit, once a reply is matched to the RFQ it answers.
+  */
+  rateExtract: 'rate-extract',
+  /*
+    Sending rate requests — the near end. A coordinator picks agents on the
+    enquiry screen; the send fans out here so the request returns immediately
+    and one unreachable agent does not fail the others.
+  */
+  rateRequestSend: 'rate-request-send',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -140,6 +155,14 @@ export async function registerSchedules(): Promise<void> {
   */
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
+
+  /*
+    Rate-request sends — FR-RT-10, every minute. The near twin of the mail poll:
+    a coordinator picks agents on the enquiry screen, the web action writes the
+    rows, and this drains them to email within the minute. Web has no queue
+    access, so the drain is what bridges the two without a synchronous call.
+  */
+  await b.schedule(JOBS.rateRequestSend, '* * * * *')
 
   await applyCarrierPollSchedule()
 

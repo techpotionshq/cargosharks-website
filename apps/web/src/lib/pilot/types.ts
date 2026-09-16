@@ -531,6 +531,7 @@ export interface ExpiringRateCardRow {
   readonly laneAr: string
   readonly counterparty: string
   readonly counterpartyAr: string
+  readonly partnerId: string | null
   readonly validTo: string
   readonly daysRemaining: number
 }
@@ -1790,4 +1791,77 @@ export interface CreditOverrideRowLike {
   readonly exposure: string
   readonly creditLimit: string
   readonly currency: string
+}
+
+/* -------------------------------------------------------------------------
+ * Rate procurement — RFQ requests and the comparison of what came back (FR-RT-10)
+ * ---------------------------------------------------------------------- */
+
+/** One agent's request and reply, as the comparison panel reads it. */
+export interface RateRequestView {
+  readonly id: string
+  readonly partnerId: string
+  readonly partnerName: string
+  readonly status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired' | 'superseded'
+  readonly sentAt: Date | null
+  readonly respondedAt: Date | null
+  /** The broker's own figure, in their own currency. */
+  readonly quotedTotal: string | null
+  readonly quotedCurrency: string | null
+  /**
+   * The same figure converted to the branch's base currency for ranking, or
+   * null where no FX rate is on file for the pair — in which case the reply is
+   * shown but excluded from the cheapest comparison rather than mis-ranked.
+   */
+  readonly normalizedTotal: string | null
+  readonly comparable: boolean
+  /** Cheapest among the comparable, answered, non-declined replies. */
+  readonly isCheapest: boolean
+  /** Rate lines the model read that validated — what an accept would promote. */
+  readonly lineCount: number
+  /** Set where the model read a lane that disagreed with the one we asked about. */
+  readonly laneMismatch: string | null
+  readonly declinedReason: string | null
+  /** True when this reply is parsed, clean and not yet promoted to a card. */
+  readonly canPromote: boolean
+  /** The buy card this reply was promoted into, once accepted. */
+  readonly rateCardId: string | null
+}
+
+export interface RateRequestsView {
+  readonly baseCurrency: string
+  readonly requests: readonly RateRequestView[]
+  /** Requests sent, still awaiting a reply. */
+  readonly awaiting: number
+  /** Requests with a reply in — responded or parsed. */
+  readonly answered: number
+}
+
+/** A rate-card renewal in flight — an RFQ the expiry sweep opened (FR-RT-11). */
+export interface RenewalView {
+  readonly id: string
+  readonly partnerName: string
+  /** `AEJEA → KWSWK`, from the expiring card's lane. */
+  readonly lane: string
+  readonly mode: string | null
+  readonly status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired'
+  /** When the current rate lapses — the renewal deadline. */
+  readonly oldValidTo: string | null
+  readonly quotedTotal: string | null
+  readonly quotedCurrency: string | null
+  readonly lineCount: number
+  readonly declinedReason: string | null
+  readonly canPromote: boolean
+}
+
+/** An agent that covers the enquiry's lane, offered in the request-rates picker. */
+export interface CoveringAgent {
+  readonly partnerId: string
+  readonly name: string
+  readonly type: string
+  readonly transitDays: number | null
+  /** A primary contact with an email is a place an RFQ can actually go. */
+  readonly hasEmail: boolean
+  /** An RFQ is already out to this agent for this enquiry. */
+  readonly alreadyRequested: boolean
 }

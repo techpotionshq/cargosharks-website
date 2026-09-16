@@ -19,6 +19,7 @@ import {
   modeEnum,
   partnerTypeEnum,
   rateDirectionEnum,
+  rateRequestStatusEnum,
 } from './enums'
 import { branches, principals } from './identity'
 import { assets } from './files'
@@ -348,10 +349,55 @@ export const rateRequests = pgTable(
     partnerId: ref('partner_id')
       .notNull()
       .references(() => partners.id),
+    /**
+     * Where this request is in its life — FR-RT-10. The timestamps below
+     * (`sent_at`, `responded_at`) and `declined_reason` record *when* each
+     * transition happened; `status` is the single value the board and the
+     * comparison view read, so they never have to infer it from three columns.
+     */
+    status: rateRequestStatusEnum('status').notNull().default('sent'),
+    /**
+     * A short opaque code carried in the RFQ subject line. A broker's reply
+     * keeps the subject, so this maps the reply back to *this* request with no
+     * ambiguity — even when the same partner is asked twice for one enquiry.
+     */
+    token: text('token').notNull().unique(),
     sentAt: tsz('sent_at'),
+    /** When we stop waiting — drives chasing and the expiry sweep (FR-RT-11). */
+    respondBy: tsz('respond_by'),
     respondedAt: tsz('responded_at'),
+    /**
+     * The inbound reply that produced `response`, so a parsed rate can always
+     * be traced back to the raw email an operator can re-read. FK added by hand
+     * in a later migration: `messages` lives in `comms`, which imports this
+     * file, so referencing it here would be a cycle — same reason `enquiry_id`
+     * is a bare ref.
+     */
+    messageId: ref('message_id'),
     /** The quoted lines as received, before they become a rate card. */
     response: jsonb('response').$type<Record<string, unknown>>(),
+    /**
+     * The broker's headline figure, in their own currency, summed from the
+     * parsed lines at parse time. This is a sort key for the comparison view;
+     * the authority is always `response`, and cross-currency ranking normalises
+     * these through the FX source at read time, never by storing a converted
+     * number that would silently go stale.
+     */
+    quotedCurrency: text('quoted_currency').references(() => currencies.code),
+    quotedTotal: amount('quoted_total'),
+    /** The buy card promoted from an accepted response — blocks double-promotion. */
+    rateCardId: ref('rate_card_id').references(() => rateCards.id),
+    /**
+     * The expiring buy card a *refresh* request renews — FR-RT-11.
+     *
+     * A request is about a lane, and it reaches one two ways: from an enquiry
+     * (`enquiry_id`), or from a card nearing expiry (`source_rate_card_id`). One
+     * of the two is set, never both; the workers read the lane from whichever it
+     * is. This is also the dedup key — the nightly sweep asks whether a card
+     * already has a live refresh before opening another — and the provenance:
+     * "why did an RFQ go out that no coordinator sent?" is answered by the row.
+     */
+    sourceRateCardId: ref('source_rate_card_id').references(() => rateCards.id),
     declinedReason: text('declined_reason'),
     ...timestamps,
   },

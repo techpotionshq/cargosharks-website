@@ -99,6 +99,25 @@ export const quoteStatusEnum = pgEnum('quote_status', [
   'superseded',
 ])
 
+/**
+ * The life of a rate request (RFQ) sent to a broker — FR-RT-10.
+ *
+ *   sent → responded → parsed → accepted
+ *
+ * with `declined` (the broker said no), `expired` (the window closed with no
+ * usable reply) and `superseded` (a re-sent RFQ replaced this one) as the ways
+ * out. Nothing is deleted: a withdrawn request is `superseded`, never removed.
+ */
+export const rateRequestStatusEnum = pgEnum('rate_request_status', [
+  'sent',
+  'responded',
+  'parsed',
+  'accepted',
+  'declined',
+  'expired',
+  'superseded',
+])
+
 export const jobStatusEnum = pgEnum('job_status', [
   'draft',
   'booked',

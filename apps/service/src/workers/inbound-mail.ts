@@ -58,6 +58,7 @@ import {
   messageAttachments,
   messages,
   notificationOutbox,
+  rateRequests,
   systemActor,
   withActor,
   workingCalendars,
@@ -71,6 +72,7 @@ import {
   isAutomaticMail,
   referencesIn,
 } from './inbound-routing'
+import { rfqTokenIn } from './rfq-routing'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -82,6 +84,8 @@ export interface InboundMailResult {
   readonly collected: number
   readonly created: number
   readonly threaded: number
+  /** Broker replies routed to a rate request by their token — FR-RT-10. */
+  readonly rateReplies: number
   readonly duplicates: number
   /** Bounces and auto-replies: claimed so they are never re-polled, filed nowhere. */
   readonly ignored: number
@@ -110,7 +114,7 @@ export async function runInboundMailPoll(
   const sources = injected ?? (await resolveInboundMail())
 
   if (sources.length === 0) {
-    return { collected: 0, created: 0, threaded: 0, duplicates: 0, ignored: 0, failed: 0 }
+    return { collected: 0, created: 0, threaded: 0, rateReplies: 0, duplicates: 0, ignored: 0, failed: 0 }
   }
 
   const branchByMailbox = await resolveBranches()
@@ -118,6 +122,7 @@ export async function runInboundMailPoll(
   let collected = 0
   let created = 0
   let threaded = 0
+  let rateReplies = 0
   let duplicates = 0
   let ignored = 0
   let failed = 0
@@ -147,6 +152,7 @@ export async function runInboundMailPoll(
         const handled = await ingestMessage(message, branch, asOf, enqueue, undefined, billEnqueue)
         if (handled.outcome === 'created') created++
         else if (handled.outcome === 'threaded') threaded++
+        else if (handled.outcome === 'rate_reply') rateReplies++
         else if (handled.outcome === 'ignored') ignored++
         else duplicates++
       })
@@ -166,7 +172,7 @@ export async function runInboundMailPoll(
     }
   }
 
-  return { collected, created, threaded, duplicates, ignored, failed }
+  return { collected, created, threaded, rateReplies, duplicates, ignored, failed }
 }
 
 export interface BranchRef {
@@ -207,7 +213,7 @@ export async function resolveBranches(): Promise<Map<string, BranchRef>> {
   )
 }
 
-type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored'
+type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored' | 'rate_reply'
 
 /**
  * What `handleMessage` did, and what a model should read next.
@@ -222,6 +228,8 @@ interface Handled {
   readonly messageId: string | null
   /** The supplier this mail came from, where the sender resolved to exactly one. */
   readonly partnerId: string | null
+  /** The RFQ this mail answered, where it carried a token that matched one. */
+  readonly rateRequestId: string | null
 }
 
 /**
@@ -291,6 +299,27 @@ const enqueueBill: EnqueueBill = async (input) => {
 }
 
 /**
+ * Ask a model to read a broker's rate reply — FR-RT-10, `rate_extract`.
+ *
+ * The third enqueuer, and the same shape as the two above for the same reason:
+ * the reply is filed inside the transaction, the model is asked after it
+ * commits, and a queue that is down costs a stale comparison, never the record
+ * of the reply. Injected so `inbound-mail.test.ts` can assert an RFQ reply was
+ * routed without standing up pg-boss.
+ */
+export type EnqueueRateExtract = (input: {
+  branchId: string
+  rateRequestId: string
+  messageId: string
+}) => Promise<void>
+
+const enqueueRateExtract: EnqueueRateExtract = async (input) => {
+  const { JOBS, getBoss } = await import('../queue')
+  const boss = await getBoss()
+  await boss.send(JOBS.rateExtract, input)
+}
+
+/**
  * What an attachment has to be before it is worth sending to a model.
  *
  * A deliberately loose filter, because the real one is arithmetic. Anything
@@ -331,10 +360,11 @@ export async function ingestMessage(
    */
   claimed?: { readonly id: string },
   billEnqueue: EnqueueBill = enqueueBill,
+  rfqEnqueue: EnqueueRateExtract = enqueueRateExtract,
 ): Promise<Handled> {
   const claim = claimed ?? (await claimReceipt(message, branch.id))
   if (claim === 'already_processed') {
-    return { outcome: 'duplicate', enquiryId: null, messageId: null, partnerId: null }
+    return { outcome: 'duplicate', enquiryId: null, messageId: null, partnerId: null, rateRequestId: null }
   }
 
   /*
@@ -358,7 +388,7 @@ export async function ingestMessage(
         .set({ processedAt: asOf, error: 'ignored: automatic mail', updatedAt: asOf })
         .where(eq(inboundWebhookEvents.id, claim.id))
     })
-    return { outcome: 'ignored', enquiryId: null, messageId: null, partnerId: null }
+    return { outcome: 'ignored', enquiryId: null, messageId: null, partnerId: null, rateRequestId: null }
   }
 
   const stored = await storeAttachments(message, branch)
@@ -380,7 +410,25 @@ export async function ingestMessage(
       */
       const partnerId = await matchPartner(tx, message.from)
 
-      const context = target ?? (await createEnquiry(tx, message, branch, customerId, asOf))
+      /*
+        A broker's reply to a rate request we sent — FR-RT-10.
+
+        Recognised by the opaque token the send worker stamped into the subject,
+        which is stronger evidence than the enquiry reference `findTarget` reads:
+        one enquiry is sent to five agents, so only the token says *which*
+        request a reply answers. When it matches, this mail is threaded onto the
+        enquiry we asked about and **never opens a new one** — an agent's rate
+        quotation is not a customer enquiry, and letting it fall through to
+        `createEnquiry` would put a broker's price on the board as a shipment
+        request. The row is filed, the request moves to `responded`, and a model
+        reads the charges after the commit.
+      */
+      const rfqToken = rfqTokenIn(message.subject ?? null, message.body)
+      const rateRequest = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+
+      const context = rateRequest
+        ? { enquiryId: rateRequest.enquiryId, jobId: null, created: false }
+        : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf)))
 
       const [row] = await tx
         .insert(messages)
@@ -458,16 +506,33 @@ export async function ingestMessage(
         }
       }
 
+      /*
+        The request moves to `responded` in the same transaction that filed the
+        reply, so a crash between the two can never leave a stored reply against
+        a request that still reads `sent`. The model is asked after the commit.
+      */
+      if (rateRequest) {
+        await tx
+          .update(rateRequests)
+          .set({ status: 'responded', respondedAt: asOf, messageId: row!.id, updatedAt: asOf })
+          .where(eq(rateRequests.id, rateRequest.id))
+      }
+
       await tx
         .update(inboundWebhookEvents)
         .set({ processedAt: asOf, error: null, updatedAt: asOf })
         .where(eq(inboundWebhookEvents.id, claim.id))
 
       return {
-        outcome: context.created ? ('created' as const) : ('threaded' as const),
+        outcome: rateRequest
+          ? ('rate_reply' as const)
+          : context.created
+            ? ('created' as const)
+            : ('threaded' as const),
         enquiryId: context.enquiryId,
         messageId: row!.id,
         partnerId,
+        rateRequestId: rateRequest?.id ?? null,
       }
     })
 
@@ -524,6 +589,33 @@ export async function ingestMessage(
         console.error(
           { assetId, error: error instanceof Error ? error.message : String(error) },
           'inbound mail: could not queue the attachment for reading',
+        )
+      }
+    }
+
+    /*
+      A matched RFQ reply, after the commit — FR-RT-10.
+
+      The bills above already read attachments from a known supplier; this reads
+      the reply itself for the charges in its body, and writes them to the
+      request as a proposal a coordinator ranks and accepts. Wrapped like the
+      rest: a down queue leaves the reply filed and the request `responded`, and
+      a re-run of the poll cannot re-file it, because the receipt is claimed.
+    */
+    if (outcome.rateRequestId && outcome.messageId) {
+      try {
+        await rfqEnqueue({
+          branchId: branch.id,
+          rateRequestId: outcome.rateRequestId,
+          messageId: outcome.messageId,
+        })
+      } catch (error) {
+        console.error(
+          {
+            rateRequestId: outcome.rateRequestId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'inbound mail: could not queue the rate reply for reading',
         )
       }
     }
@@ -738,6 +830,35 @@ async function matchPartner(tx: any, from: string): Promise<string | null> {
     .limit(2)
 
   return byDomain.length === 1 ? byDomain[0]!.partnerId : null
+}
+
+/**
+ * The rate request a reply's token names, scoped to the branch — FR-RT-10.
+ *
+ * `token` is unique across the table, so the branch predicate is a guard rather
+ * than a tiebreak: a token that resolves to another branch's request is treated
+ * as no match, and the reply falls through to the ordinary rules. Only a request
+ * still awaiting an answer is matched — a `superseded` re-send or one already
+ * `accepted` is not reopened by a late duplicate reply, which would otherwise
+ * roll a decided request back to `responded`.
+ */
+async function findRateRequestByToken(
+  tx: any,
+  token: string,
+  branchId: string,
+): Promise<{ id: string; enquiryId: string | null } | null> {
+  const rows = await tx
+    .select({ id: rateRequests.id, enquiryId: rateRequests.enquiryId })
+    .from(rateRequests)
+    .where(
+      and(
+        eq(rateRequests.token, token),
+        eq(rateRequests.branchId, branchId),
+        sql`${rateRequests.status} in ('sent', 'responded')`,
+      ),
+    )
+    .limit(1)
+  return rows[0] ?? null
 }
 
 async function matchCustomer(tx: any, from: string): Promise<string | null> {
