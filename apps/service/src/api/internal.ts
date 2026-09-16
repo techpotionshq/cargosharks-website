@@ -42,6 +42,7 @@ import {
 import { storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 import { extractSupplierInvoice } from '../workers/invoice-extract'
+import { draftQuoteCoverNote } from '../workers/quote-cover-note'
 import { AiUnavailableError } from '../ai/ledger'
 import { ask, askStreaming } from '../ai/assistant'
 import { closeThread, historyFor, listThreads, readThread, recordExchange } from '../ai/threads'
@@ -111,6 +112,13 @@ interface ExtractInvoiceRequest {
   readonly partnerId?: string
   readonly jobId?: string | null
   readonly write?: boolean
+}
+
+interface QuoteCoverNoteRequest {
+  readonly actor?: Actor
+  readonly branchId?: string
+  readonly quoteId?: string
+  readonly locale?: 'en' | 'ar'
 }
 
 /**
@@ -841,6 +849,37 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         an error it should report as a fault. The code travels so the web app
         can say which of the two it is.
       */
+      if (error instanceof AiUnavailableError) {
+        return reply.code(503).send({ error: error.code, message: error.message })
+      }
+      throw error
+    }
+  })
+
+  app.post<{ Body: QuoteCoverNoteRequest }>('/ai/quote-cover-note', async (request, reply) => {
+    const { actor, branchId, quoteId, locale } = request.body ?? {}
+
+    if (!actor || !branchId || !quoteId) {
+      return reply.code(400).send({ error: 'incomplete_request' })
+    }
+
+    try {
+      const result = await draftQuoteCoverNote({
+        actor,
+        branchId,
+        quoteId,
+        locale: locale === 'ar' ? 'ar' : 'en',
+      })
+
+      return reply.send({
+        invocationId: result.invocationId,
+        note: result.note,
+        locale: result.locale,
+        refusal: result.refusal ?? null,
+      })
+    } catch (error) {
+      // Same 503 as the invoice route: no model, or the budget spent, is a
+      // "not offering that right now" the screen falls back from, not a fault.
       if (error instanceof AiUnavailableError) {
         return reply.code(503).send({ error: error.code, message: error.message })
       }

@@ -123,6 +123,8 @@ export type AiSurface =
   | 'assistant'
   /** A grounded reply drafted for a human to send — never sent. */
   | 'draft_reply'
+  /** A quotation's customer-facing covering note, drafted for a coordinator to edit — never sent. */
+  | 'quote_cover_note'
 
 export const AI_SURFACES: readonly AiSurface[] = [
   'enquiry_extract',
@@ -133,6 +135,7 @@ export const AI_SURFACES: readonly AiSurface[] = [
   'rate_extract',
   'assistant',
   'draft_reply',
+  'quote_cover_note',
 ]
 
 /**
@@ -145,7 +148,9 @@ export const AI_SURFACES: readonly AiSurface[] = [
  * the day the review queue stops being the only way in.
  */
 export function isWriteSurface(surface: AiSurface): boolean {
-  return surface !== 'assistant' && surface !== 'draft_reply'
+  return (
+    surface !== 'assistant' && surface !== 'draft_reply' && surface !== 'quote_cover_note'
+  )
 }
 
 /* -------------------------------------------------------------------------
@@ -512,6 +517,28 @@ export const EXTRACTABLE_FIELDS: Readonly<Record<AiSurface, readonly string[]>> 
   */
   assistant: [],
   draft_reply: [],
+  quote_cover_note: [],
+}
+
+/**
+ * Tidy a drafted covering note before it is stored.
+ *
+ * Models pad: a leading "Here is the covering note:", trailing spaces, a run of
+ * blank lines. This trims those and caps the length so a runaway generation
+ * cannot become a page of the quotation. It does not touch the prose itself —
+ * the "no figures" rule is the prompt's to keep, and stripping digits here would
+ * mangle a legitimate lane name or a date rather than enforce anything.
+ */
+export function finaliseCoverNote(text: string, maxChars = 1500): string {
+  const tidied = text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return tidied.length > maxChars ? tidied.slice(0, maxChars).trimEnd() : tidied
 }
 
 /**

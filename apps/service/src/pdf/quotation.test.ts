@@ -40,6 +40,8 @@ const base: QuotationView = {
   destinationEn: 'Shuwaikh',
   destinationAr: 'الشويخ',
   transitDays: 4,
+  coverNoteEn: null,
+  coverNoteAr: null,
   notes: null,
   inclusions: ['Ocean freight', 'Terminal handling at destination'],
   exclusions: ['Duties and taxes', 'Customs examination charges'],
@@ -300,6 +302,34 @@ describe('the quotation', () => {
       const html = renderQuotationHtml(quote({ notes: 'Line one\nLine two' }), 'en')
 
       expect(html).toContain('Line one<br>Line two')
+    })
+  })
+
+  describe('the covering note', () => {
+    it('prints the note where there is one, and nothing where there is not', () => {
+      const withNote = renderQuotationHtml(
+        quote({ coverNoteEn: 'Thank you for your enquiry on this lane.' }),
+        'en',
+      )
+      expect(withNote).toContain('Thank you for your enquiry on this lane.')
+      expect(withNote).toContain('class="cover"')
+
+      // No note, no empty block.
+      expect(renderQuotationHtml(quote(), 'en')).not.toContain('class="cover"')
+    })
+
+    it('takes the note in the reader’s language', () => {
+      const both = quote({ coverNoteEn: 'English cover note.', coverNoteAr: 'ملاحظة عربية مرافقة.' })
+      expect(renderQuotationHtml(both, 'ar')).toContain('ملاحظة عربية مرافقة.')
+      expect(renderQuotationHtml(both, 'ar')).not.toContain('English cover note.')
+    })
+
+    it('escapes and keeps the layout of the drafted prose', () => {
+      const html = renderQuotationHtml(
+        quote({ coverNoteEn: 'Line one\nLine two & <b>more</b>' }),
+        'en',
+      )
+      expect(html).toContain('Line one<br>Line two &amp; &lt;b&gt;more&lt;/b&gt;')
     })
   })
 

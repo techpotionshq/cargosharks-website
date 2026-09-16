@@ -5,6 +5,7 @@ import {
   EXTRACTABLE_FIELDS,
   admissible,
   confidence,
+  finaliseCoverNote,
   costOf,
   decideProposal,
   isValidContainerNumber,
@@ -50,6 +51,28 @@ describe('surfaces', () => {
 
   it('has a field list for every surface', () => {
     expect(Object.keys(EXTRACTABLE_FIELDS).sort()).toEqual([...AI_SURFACES].sort())
+  })
+
+  it('keeps the covering-note surface generative — it proposes no fields', () => {
+    expect(isWriteSurface('quote_cover_note')).toBe(false)
+    expect(EXTRACTABLE_FIELDS.quote_cover_note).toEqual([])
+  })
+})
+
+describe('finaliseCoverNote', () => {
+  it('trims, drops trailing spaces and collapses blank-line runs', () => {
+    const cleaned = finaliseCoverNote('  Hello   \n\n\n\nWorld  \n\n')
+    expect(cleaned).toBe('Hello\n\nWorld')
+  })
+
+  it('caps a runaway generation at the limit', () => {
+    const long = 'x'.repeat(2000)
+    expect(finaliseCoverNote(long, 100)).toHaveLength(100)
+  })
+
+  it('leaves ordinary prose untouched', () => {
+    const note = 'Thank you for your enquiry on the Shanghai to Shuwaikh lane.'
+    expect(finaliseCoverNote(note)).toBe(note)
   })
 })
 

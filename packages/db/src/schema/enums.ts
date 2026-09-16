@@ -302,6 +302,7 @@ export const aiSurfaceEnum = pgEnum('ai_surface', [
   'rate_extract',
   'assistant',
   'draft_reply',
+  'quote_cover_note',
 ])
 
 /**
