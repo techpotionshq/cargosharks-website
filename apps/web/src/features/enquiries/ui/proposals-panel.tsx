@@ -32,6 +32,7 @@ import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { enquiryProposals, type EnquiryProposal } from '../proposals'
 import { ProposalDecision } from './proposal-decision'
+import { AcceptAllProposals } from './accept-all-proposals'
 
 /**
  * The label for each field, keyed off the extraction name.
@@ -67,7 +68,18 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
 
   return (
     <Card className="mb-4" padding="none">
-      <CardHeader title={t('title')} description={decidable ? t('description') : t('readOnly')} />
+      <CardHeader
+        title={t('title')}
+        description={decidable ? t('description', { count: rows.length }) : t('readOnly')}
+        actions={
+          decidable && rows.length > 1 ? (
+            <AcceptAllProposals
+              enquiryId={enquiryId}
+              label={t('acceptAll', { count: rows.length })}
+            />
+          ) : null
+        }
+      />
       <ul className="divide-y divide-line">
         {rows.map((row) => (
           <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-3">

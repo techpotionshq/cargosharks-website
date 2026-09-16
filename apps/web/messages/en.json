@@ -3145,7 +3145,7 @@
   },
   "proposals": {
     "title": "Read from the email",
-    "description": "Check each one against the quoted line and accept it, or set the field by hand.",
+    "description": "The assistant read {count, plural, one {# field} other {# fields}} from the email — check each against the quoted line and accept, or set it by hand.",
     "readOnly": "Read from the email by the assistant. Deciding needs the assign permission.",
     "accept": "Accept",
     "reject": "Dismiss",
@@ -3165,7 +3165,8 @@
       "pieces": "Pieces",
       "dimensions": "Dimensions",
       "isDangerous": "Dangerous goods"
-    }
+    },
+    "acceptAll": "Accept all {count}"
   },
   "unbilled": {
     "title": "Earned, not yet billed",

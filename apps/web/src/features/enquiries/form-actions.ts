@@ -474,6 +474,94 @@ export async function acceptProposal(_previous: ActionState, form: FormData): Pr
 }
 
 /**
+ * Accept every open suggestion on an enquiry in one action — the one-click fill.
+ *
+ * The same rule as accepting one, applied down the list: each proposal is
+ * resolved, checked against the column as it stands *now*, and written under the
+ * coordinator's own actor — so a field a person filled between the model reading
+ * the mail and this click is left alone, not overwritten. A proposal that will
+ * not resolve, or whose column is no longer empty, is skipped and counted rather
+ * than failing the batch; the ones it could not apply stay in the queue for a
+ * person to look at. It confirms what a coordinator has already read three inches
+ * above the form, in one click instead of twelve.
+ */
+export async function acceptAllProposals(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'enquiry.assign')
+
+  const enquiryId = readField(form, 'enquiryId')
+  if (!enquiryId) return failWith('Nothing to do.')
+
+  const result = await withActor(session.actor, async (tx) => {
+    const proposals = await tx
+      .select({
+        id: extractionProposals.id,
+        field: extractionProposals.field,
+        value: extractionProposals.value,
+        confidence: extractionProposals.confidence,
+      })
+      .from(extractionProposals)
+      .where(
+        and(
+          eq(extractionProposals.targetTable, 'enquiries'),
+          eq(extractionProposals.targetId, enquiryId),
+          eq(extractionProposals.status, 'proposed'),
+        ),
+      )
+
+    let applied = 0
+    let skipped = 0
+    for (const proposal of proposals) {
+      const resolution = await resolveProposal(tx, proposal.field, proposal.value)
+      if (!resolution.ok) {
+        skipped += 1
+        continue
+      }
+      const current = await enquiryColumn(tx, enquiryId, resolution.column)
+      const verdict = decideProposal(
+        {
+          field: proposal.field,
+          value: proposal.value,
+          confidence: Number(proposal.confidence ?? 0),
+        },
+        { current, humanAuthored: current !== null, applyThreshold: 0, reviewThreshold: 0 },
+      )
+      if (verdict === 'discard') {
+        skipped += 1
+        continue
+      }
+
+      await tx
+        .update(enquiries)
+        .set({ [resolution.column]: resolution.value, updatedAt: new Date() })
+        .where(eq(enquiries.id, enquiryId))
+      await tx
+        .update(extractionProposals)
+        .set({
+          status: 'applied',
+          decidedById: session.actor.principalId,
+          decidedAt: new Date(),
+          closedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(extractionProposals.id, proposal.id))
+      applied += 1
+    }
+
+    return { applied, skipped }
+  })
+
+  revalidatePath(`/enquiries/${enquiryId}`)
+  if (result.applied === 0 && result.skipped > 0) {
+    return failWith('None could be applied — those fields have since been filled in.')
+  }
+  return succeed(String(result.applied))
+}
+
+/**
  * Rejecting one, which is a decision and is recorded as one.
  *
  * Not a delete. Nothing is deleted (§5.5), and a rejected proposal is the most
