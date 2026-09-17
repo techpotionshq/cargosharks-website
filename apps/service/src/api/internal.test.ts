@@ -50,7 +50,21 @@ vi.mock('../accounting/export', () => ({
   buildAccountingExport: vi.fn(),
   voidAccountingExport: vi.fn(),
 }))
-vi.mock('@qabandi/db', () => ({ db: {}, principals: {} }))
+/*
+  The real exports, with only the connection stubbed.
+
+  These tests exercise the auth hook, which runs before any handler, so nothing
+  here reaches the database. The mock still has to satisfy every *named import*
+  the route's handler graph pulls from `@qabandi/db` at load time — a set that
+  grows whenever a handler gains a table (a covering-note handler added
+  `locations`, and the old `{ db, principals }` stub stopped resolving). Spreading
+  the actual module resolves them all and keeps `db` — the connection — inert, so
+  the guard is tested without a database and without chasing the import list.
+*/
+vi.mock('@qabandi/db', async () => {
+  const actual = await vi.importActual<typeof import('@qabandi/db')>('@qabandi/db')
+  return { ...actual, db: {} }
+})
 
 const { internalApi } = await import('./internal')
 

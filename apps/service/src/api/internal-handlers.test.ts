@@ -164,7 +164,12 @@ vi.mock('../accounting/export', () => ({
   },
 }))
 
-vi.mock('@qabandi/db', () => ({
+// The real exports underneath, so every table a handler imports resolves (a
+// covering-note handler pulls `locations`, `customers`, `quotes`); the harness
+// stubs `db` and `withActor` on top so the tested handlers run against fakes and
+// never touch a database.
+vi.mock('@qabandi/db', async () => ({
+  ...(await vi.importActual<typeof import('@qabandi/db')>('@qabandi/db')),
   db: {
     select: () => ({
       from: () => ({
