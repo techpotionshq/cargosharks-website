@@ -24,6 +24,7 @@ import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extr
 import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
 import { extractRateReply, type ExtractRateReplyInput } from './rate-extract'
 import { sendRateRequests } from './rate-request-send'
+import { autoFanoutRateRequests } from './rate-auto-fanout'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
@@ -467,6 +468,17 @@ export async function registerWorkers(log: {
   await work(JOBS.rateRequestSend, async () => {
     const result = await sendRateRequests()
     if (result.sent + result.skipped + result.failed > 0) log.info(result, 'rate requests sent')
+  })
+
+  /*
+    Automatic rate procurement — FR-RT-10, the hands-off fan-out that feeds the
+    send drain above. Scheduled every minute but off until the `rateAutoFanout`
+    integration is switched to `auto`, so on the inert default it returns at once
+    and logs nothing. Only a sweep that actually opened rows says so.
+  */
+  await work(JOBS.rateAutoFanout, async () => {
+    const result = await autoFanoutRateRequests()
+    if (result.enabled && result.enquiries > 0) log.info(result, 'rate requests auto-fanned')
   })
 
   for (const pending of PENDING) {

@@ -65,6 +65,12 @@ export const JOBS = {
     and one unreachable agent does not fail the others.
   */
   rateRequestSend: 'rate-request-send',
+  /*
+    Automatic rate procurement — opens the RFQ rows `rateRequestSend` then mails.
+    Off unless the `rateAutoFanout` integration is switched to `auto`; the sweep
+    runs every tick and answers nothing-to-do until then.
+  */
+  rateAutoFanout: 'rate-auto-fanout',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -163,6 +169,16 @@ export async function registerSchedules(): Promise<void> {
     access, so the drain is what bridges the two without a synchronous call.
   */
   await b.schedule(JOBS.rateRequestSend, '* * * * *')
+
+  /*
+    Automatic rate procurement — FR-RT-10, every minute. Feeds the drain above:
+    an enquiry that reaches a resolvable lane has an RFQ opened to every covering
+    agent, once. Scheduled unconditionally; the handler answers nothing-to-do
+    unless the `rateAutoFanout` integration is switched to `auto`, the same way
+    `carrierPoll` and `fxIngest` stay on the schedule and idle on their inert
+    default — a cron that switches on with a setting rather than a redeploy.
+  */
+  await b.schedule(JOBS.rateAutoFanout, '* * * * *')
 
   await applyCarrierPollSchedule()
 

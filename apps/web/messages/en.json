@@ -2959,7 +2959,8 @@
       "einvoice": "E-invoice transmission",
       "inboundEmail": "Inbound mail webhook",
       "ai": "Document extraction",
-      "fileStore": "Object storage"
+      "fileStore": "Object storage",
+      "rateAutoFanout": "Automatic rate requests"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
@@ -2973,7 +2974,8 @@
       "einvoice": "The accredited provider that files an invoice with the tax authority. We are not the access point and cannot be.",
       "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
       "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
-      "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept."
+      "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept.",
+      "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on."
     },
     "drivers": {
       "smtp": {
@@ -2995,6 +2997,10 @@
       "fileStore": {
         "s3": "S3-compatible bucket",
         "memory": "In the process (lost on restart)"
+      },
+      "rateAutoFanout": {
+        "manual": "Asked by a coordinator",
+        "auto": "Fanned out automatically"
       }
     },
     "fields": {
@@ -3047,6 +3053,9 @@
         "region": "Region",
         "accessKeyId": "Access key id",
         "forcePathStyle": "Path-style addressing"
+      },
+      "rateAutoFanout": {
+        "maxAgents": "Agents per lane (max)"
       }
     },
     "secrets": {
@@ -3058,6 +3067,7 @@
       },
       "carrierPoll": {},
       "carrierTracking": {},
+      "rateAutoFanout": {},
       "carrierMaersk": {
         "consumerKey": "Consumer key",
         "clientSecret": "Client secret"

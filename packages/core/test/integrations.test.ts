@@ -98,6 +98,17 @@ describe('the integration catalogue', () => {
       expect(integrationSpec('carrierTracking')?.defaultDriver).toBe('manual')
       expect(integrationSpec('einvoice')?.defaultDriver).toBe('none')
     })
+
+    /*
+      Auto-fanout mails real agents, so it ships dark like the paid feeds: the
+      inert `manual` driver until an administrator switches it to `auto`.
+    */
+    it('defaults automatic rate procurement to off', () => {
+      const spec = integrationSpec('rateAutoFanout')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'manual')?.live).toBe(false)
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
   })
 
   describe('which drivers demand their fields', () => {

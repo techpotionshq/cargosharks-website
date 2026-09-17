@@ -520,6 +520,39 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     secrets: [{ name: 'apiKey', env: 'OPENROUTER_API_KEY', keepOnBlank: true }],
     probe: true,
   },
+
+  /*
+    Automatic rate procurement — the near end of the enquiry→quote pipeline,
+    turned on by an administrator rather than a coordinator's click.
+
+    Ships dark, and deliberately: it mails covering agents, and the dev mailbox
+    is a real inbox. `manual` is the inert default (a coordinator asks with the
+    "Request rates" picker); `auto` lets the minute sweep fan an RFQ out to every
+    covering agent the moment an enquiry carries a resolvable lane, once, with
+    the same loop-breaker the manual path uses. `maxAgents` caps the fan-out so a
+    lane forty agents cover does not become forty emails.
+  */
+  {
+    key: 'rateAutoFanout',
+    group: 'intelligence',
+    driverEnv: 'RATE_AUTOFANOUT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [
+      {
+        name: 'maxAgents',
+        kind: 'number',
+        env: 'RATE_AUTOFANOUT_MAX_AGENTS',
+        placeholder: '6',
+        min: 1,
+        max: 20,
+      },
+    ],
+    secrets: [],
+  },
 ] as const
 
 /** The order the groups appear in, and the order a deployment configures them. */
