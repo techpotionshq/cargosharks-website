@@ -3144,7 +3144,12 @@
       "list_free_time": "وقت السماح والأرضيات",
       "list_overdue_invoices": "الفواتير المتأخّرة",
       "get_supplier_variance": "فاتورة المورّد مقابل تكاليف الشحنة",
-      "propose_transition": "إجراء لتأكيده"
+      "propose_transition": "إجراء لتأكيده",
+      "list_unbilled": "الإيرادات غير المفوترة",
+      "list_quotes_expiring": "عروض الأسعار التي على وشك الانتهاء",
+      "get_margin": "هامش ربح الشحنة",
+      "get_customer_credit": "الوضع الائتماني للعميل",
+      "list_consolidation_candidates": "الشحنات القابلة للتجميع"
     },
     "toolUnknown": "السجلات",
     "suggestions": {

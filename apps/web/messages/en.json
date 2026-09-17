@@ -3144,7 +3144,12 @@
       "list_free_time": "free time and demurrage",
       "list_overdue_invoices": "overdue invoices",
       "get_supplier_variance": "the supplier's bill against the job",
-      "propose_transition": "an action for you to confirm"
+      "propose_transition": "an action for you to confirm",
+      "list_unbilled": "unbilled revenue",
+      "list_quotes_expiring": "quotations about to expire",
+      "get_margin": "the shipment's margin",
+      "get_customer_credit": "the customer's credit standing",
+      "list_consolidation_candidates": "shipments that could be consolidated"
     },
     "toolUnknown": "the records",
     "suggestions": {
