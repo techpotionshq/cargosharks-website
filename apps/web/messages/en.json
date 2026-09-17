@@ -1603,7 +1603,18 @@
       "rejected": "Reject"
     },
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "coverNote": {
+      "title": "Covering note",
+      "explain": "A short note to the customer, above the quotation. The model drafts it; you decide what it says.",
+      "english": "English",
+      "arabic": "Arabic",
+      "placeholder": "Write a covering note, or draft one with the model.",
+      "draft": "Draft with the model",
+      "drafting": "Drafting…",
+      "save": "Save note",
+      "saved": "Saved."
+    }
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",

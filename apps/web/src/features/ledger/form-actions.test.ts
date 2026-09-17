@@ -19,7 +19,7 @@
  * is the code that ships.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { desc, eq, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -69,8 +69,10 @@ const {
   allocatePayment,
   createInvoice,
   createQuote,
+  draftQuoteCoverNote,
   recordPayment,
   setInvoiceStatus,
+  setQuoteCoverNote,
   setQuoteStatus,
 } = await import('./form-actions')
 
@@ -1164,6 +1166,217 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
       )
 
       expect(state.errors?.unitPrice).toBeTruthy()
+    })
+  })
+})
+
+/**
+ * The covering note — the generative surface behind the evaluation harness.
+ *
+ * Two rules carry it, and neither is arithmetic. **Drafting goes through the
+ * service**, because the web app has no model client — so those tests stub
+ * `fetch` and assert the web action's half: it refuses off a draft, it reports
+ * a missing model, and it hands the drafted prose back on success. **Saving is
+ * a plain textarea**, real against the database, guarded so a note cannot land
+ * on a quotation that has just been sent.
+ */
+describe.skipIf(!enabled)('quotation covering note', () => {
+  const RUN = Date.now().toString(36).toUpperCase().slice(-5)
+  let seq = 0
+
+  beforeAll(() => {
+    harness.session = session
+  })
+
+  // The stub and the two env vars are per-test: a leaked `fetch` or a stray
+  // SERVICE_URL would make the next test pass or fail for the wrong reason.
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete process.env.SERVICE_URL
+    delete process.env.INTERNAL_API_SECRET
+  })
+
+  /** A fresh draft quotation, returning its id. */
+  async function draftQuote(): Promise<string> {
+    seq += 1
+    const enquiryId = await withActor({ ...actor, type: 'system' }, async (tx) => {
+      const [row] = await tx
+        .insert(enquiries)
+        .values({
+          reference: `LGT-CN-${RUN}-${seq}`,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          status: 'rating',
+          channel: 'email',
+          firstRespondedAt: new Date(),
+        })
+        .returning({ id: enquiries.id })
+      return row!.id
+    })
+    await createQuote(
+      {},
+      form({
+        enquiryId,
+        branchId: BRANCH,
+        currency: 'USD',
+        totalSell: '1000',
+        totalCost: '750',
+        validUntil: '2035-12-31',
+      }),
+    )
+    const [row] = await withActor(actor, (tx) =>
+      tx.select({ id: quotes.id }).from(quotes).where(eq(quotes.enquiryId, enquiryId)).limit(1),
+    )
+    return row!.id
+  }
+
+  const noteOf = async (quoteId: string) => {
+    const [row] = await withActor(actor, (tx) =>
+      tx
+        .select({ en: quotes.coverNoteEn, ar: quotes.coverNoteAr })
+        .from(quotes)
+        .where(eq(quotes.id, quoteId))
+        .limit(1),
+    )
+    return row!
+  }
+
+  describe('setQuoteCoverNote — the textarea a coordinator owns', () => {
+    it('saves an English note against the draft', async () => {
+      const quoteId = await draftQuote()
+
+      const state = await setQuoteCoverNote(
+        {},
+        form({ quoteId, locale: 'en', note: 'Dear customer, please find our quotation enclosed.' }),
+      )
+
+      expect(state.ok).toBeTruthy()
+      const row = await noteOf(quoteId)
+      expect(row.en).toBe('Dear customer, please find our quotation enclosed.')
+      expect(row.ar).toBeNull()
+    })
+
+    /** The two languages are separate columns; saving one leaves the other. */
+    it('keeps the languages apart', async () => {
+      const quoteId = await draftQuote()
+
+      await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: 'English note' }))
+      await setQuoteCoverNote({}, form({ quoteId, locale: 'ar', note: 'ملاحظة عربية' }))
+
+      const row = await noteOf(quoteId)
+      expect(row.en).toBe('English note')
+      expect(row.ar).toBe('ملاحظة عربية')
+    })
+
+    /** An emptied textarea clears the note rather than storing a blank string. */
+    it('stores null when the note is cleared', async () => {
+      const quoteId = await draftQuote()
+      await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: 'Something' }))
+
+      await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: '   ' }))
+
+      expect((await noteOf(quoteId)).en).toBeNull()
+    })
+
+    /**
+     * A sent quotation is a document the customer is holding. The `where` guards
+     * the status in the same statement, so a note cannot appear on a quote that
+     * has just been sent out from under the editor.
+     */
+    it('refuses to touch a note once the quotation is sent', async () => {
+      const quoteId = await draftQuote()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      const state = await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: 'Too late' }))
+
+      expect(state.message).toMatch(/draft quotation/)
+      expect((await noteOf(quoteId)).en).toBeNull()
+    })
+
+    it('rejects a note longer than the column allows', async () => {
+      const quoteId = await draftQuote()
+
+      const state = await setQuoteCoverNote(
+        {},
+        form({ quoteId, locale: 'en', note: 'x'.repeat(1501) }),
+      )
+
+      expect(state.errors?.note).toBeTruthy()
+    })
+  })
+
+  describe('draftQuoteCoverNote — the model, behind the service', () => {
+    /** A fetch that answers as the service would, with the drafted prose. */
+    const respondWith = (note: string) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ note }) })),
+      )
+
+    it('hands back the prose the service drafted', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      respondWith('We are pleased to enclose our quotation.')
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toBeUndefined()
+      expect(state.ok).toContain('We are pleased to enclose our quotation.')
+      expect(fetch).toHaveBeenCalledOnce()
+    })
+
+    /** The draft check runs before the service is ever called. */
+    it('refuses to draft once the quotation is sent, without calling the service', async () => {
+      const quoteId = await draftQuote()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      const spy = vi.fn()
+      vi.stubGlobal('fetch', spy)
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toMatch(/draft quotation/)
+      expect(spy).not.toHaveBeenCalled()
+    })
+
+    it('explains that no model is configured on a 503', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toMatch(/model is configured/i)
+    })
+
+    it('falls back to writing by hand when the service is not wired up', async () => {
+      const quoteId = await draftQuote()
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toMatch(/needs the service|by hand/i)
+    })
+
+    it('reports a timeout rather than throwing when the service hangs', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('aborted')
+        }),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toMatch(/timed out|by hand/i)
     })
   })
 })

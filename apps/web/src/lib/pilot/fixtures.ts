@@ -2305,7 +2305,21 @@ export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
       reference: `QTE-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
       // The one revision on the board, and the reason `version` is a column.
       version: seed.seq === 316 ? 2 : 1,
-      status: seed.status === 'won' ? 'accepted' : seed.status === 'lost' ? 'rejected' : 'sent',
+      /*
+        316's current version is a *draft* revision — the re-quote is being
+        prepared, its v1 already superseded below. It is the one draft on the
+        board, and it exists so the covering-note surface (draft-only) has a
+        quotation to show it on: without a draft in the fixtures the whole panel
+        would be dead in the demo and unreachable by the e2e sweep.
+      */
+      status:
+        seed.seq === 316
+          ? 'draft'
+          : seed.status === 'won'
+            ? 'accepted'
+            : seed.status === 'lost'
+              ? 'rejected'
+              : 'sent',
       currency: 'KWD',
       totalSell: numeric(sell),
       totalCost: numeric(cost),
@@ -2331,7 +2345,8 @@ export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
       the database.
     */
     return [
-      current,
+      // The draft revision in progress — never sent, so no sent or decided date.
+      { ...current, sentAt: null, decidedAt: null },
       {
         ...current,
         id: `quote-${seed.seq}-v1`,
@@ -6528,6 +6543,20 @@ export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | un
     lane: `${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}`,
     mode: seed.mode,
     notes: quoteNotes(row.id),
+    /*
+      A drafted covering note on the demo's draft quotations, so the note panel
+      is shown mid-workflow — English written, Arabic still empty and inviting a
+      draft. The model writes the prose; the figures stay owned by the pricing
+      above, so nothing here restates a total (§5.5, and the cover-note rule).
+    */
+    coverNoteEn:
+      row.status === 'draft'
+        ? `Dear ${customer.en}, thank you for your enquiry. We are pleased to enclose our ` +
+          `quotation ${row.reference} covering ${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}. ` +
+          `The rate is held until ${row.validUntil ?? 'the date shown'} and we would be glad to ` +
+          `reserve space on your confirmation.`
+        : null,
+    coverNoteAr: null,
     lines: quoteLines(row, seed.mode),
     history: rows
       .filter((other) => other.enquiryReference === row.enquiryReference && other.id !== row.id)

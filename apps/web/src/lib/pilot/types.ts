@@ -1247,6 +1247,9 @@ export interface QuoteDetail {
   readonly mode: Mode | null
   /** `priced_snapshot ->> 'notes'` — what was typed at the moment of quoting. */
   readonly notes: string | null
+  /** The covering note the model drafts and a coordinator edits — one per language. */
+  readonly coverNoteEn: string | null
+  readonly coverNoteAr: string | null
   readonly lines: readonly {
     id: string
     chargeName: string
