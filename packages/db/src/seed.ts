@@ -16,6 +16,7 @@ import { loadEnv } from './env'
 import { ADMIN_PERMISSIONS, SEED_KW_TARIFF, permissionKeys } from '@qabandi/core'
 import { createDatabase } from './client'
 import { NOTIFICATION_TEMPLATES } from './notification-templates'
+import { locationSeedRows } from './places'
 import { SYSTEM_PRINCIPAL_ID, systemActor, withActor } from './actor'
 import {
   chargeTypes,
@@ -27,6 +28,7 @@ import {
   exceptionCodes,
   documentTypes,
   incoterms,
+  locations,
   milestoneTemplates,
   notificationTemplates,
   principals,
@@ -143,6 +145,12 @@ const COUNTRIES = [
   { code: 'CN', nameEn: 'China', nameAr: 'الصين', defaultCurrency: 'CNY' },
   { code: 'GB', nameEn: 'United Kingdom', nameAr: 'المملكة المتحدة', defaultCurrency: 'GBP' },
   { code: 'US', nameEn: 'United States', nameAr: 'الولايات المتحدة', defaultCurrency: 'USD' },
+  // The transshipment and Europe/Türkiye lanes the standard ports sit on — a
+  // location's country must exist before the location does (`places.ts`).
+  { code: 'SG', nameEn: 'Singapore', nameAr: 'سنغافورة', defaultCurrency: 'SGD' },
+  { code: 'NL', nameEn: 'Netherlands', nameAr: 'هولندا', defaultCurrency: 'EUR' },
+  { code: 'DE', nameEn: 'Germany', nameAr: 'ألمانيا', defaultCurrency: 'EUR' },
+  { code: 'TR', nameEn: 'Türkiye', nameAr: 'تركيا', defaultCurrency: 'TRY' },
 ]
 
 /**
@@ -535,6 +543,10 @@ async function main(): Promise<void> {
     async (db) => {
       await db.insert(currencies).values(CURRENCIES).onConflictDoNothing()
       await db.insert(countries).values(COUNTRIES).onConflictDoNothing()
+
+      // The ports, airports and borders a lane resolves to — reference data
+      // (`places.ts`), not demo data, so every fresh instance can take a lane.
+      await db.insert(locations).values(locationSeedRows()).onConflictDoNothing()
 
       await db
         .insert(incoterms)
