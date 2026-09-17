@@ -109,6 +109,13 @@ describe('the integration catalogue', () => {
       expect(spec?.drivers?.find((d) => d.value === 'manual')?.live).toBe(false)
       expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
     })
+
+    /* Auto-accept writes to the enquiry unattended, so it too ships dark. */
+    it('defaults enquiry auto-accept to off', () => {
+      const spec = integrationSpec('enquiryAutoAccept')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
   })
 
   describe('which drivers demand their fields', () => {

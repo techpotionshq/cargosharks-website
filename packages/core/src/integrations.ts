@@ -553,6 +553,39 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     secrets: [],
   },
+
+  /*
+    Automatic acceptance of what a model read — the front of the same pipeline.
+
+    Off by default, and for a subtler reason than mailing agents: it writes to
+    the enquiry under the system's hand, so a coordinator who never opts in
+    still sees a queue they judge rather than fields that filled themselves.
+    Switched to `auto`, extraction applies a proposal only where it clears the
+    `confidence` ceiling AND the column is still empty AND it resolves without
+    ambiguity — the ambiguous ports and commodities the system refuses to guess
+    stay in the queue for a person, exactly as they do on the manual path.
+  */
+  {
+    key: 'enquiryAutoAccept',
+    group: 'intelligence',
+    driverEnv: 'ENQUIRY_AUTOACCEPT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [
+      {
+        name: 'confidence',
+        kind: 'number',
+        env: 'ENQUIRY_AUTOACCEPT_CONFIDENCE',
+        placeholder: '0.9',
+        min: 0,
+        max: 1,
+      },
+    ],
+    secrets: [],
+  },
 ] as const
 
 /** The order the groups appear in, and the order a deployment configures them. */

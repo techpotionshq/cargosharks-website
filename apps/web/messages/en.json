@@ -2960,7 +2960,8 @@
       "inboundEmail": "Inbound mail webhook",
       "ai": "Document extraction",
       "fileStore": "Object storage",
-      "rateAutoFanout": "Automatic rate requests"
+      "rateAutoFanout": "Automatic rate requests",
+      "enquiryAutoAccept": "Automatic enquiry fill"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
@@ -2975,7 +2976,8 @@
       "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
       "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
       "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept.",
-      "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on."
+      "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on.",
+      "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person."
     },
     "drivers": {
       "smtp": {
@@ -3001,6 +3003,10 @@
       "rateAutoFanout": {
         "manual": "Asked by a coordinator",
         "auto": "Fanned out automatically"
+      },
+      "enquiryAutoAccept": {
+        "manual": "Reviewed by a coordinator",
+        "auto": "Applied automatically"
       }
     },
     "fields": {
@@ -3056,6 +3062,9 @@
       },
       "rateAutoFanout": {
         "maxAgents": "Agents per lane (max)"
+      },
+      "enquiryAutoAccept": {
+        "confidence": "Confidence to apply (0–1)"
       }
     },
     "secrets": {
@@ -3068,6 +3077,7 @@
       "carrierPoll": {},
       "carrierTracking": {},
       "rateAutoFanout": {},
+      "enquiryAutoAccept": {},
       "carrierMaersk": {
         "consumerKey": "Consumer key",
         "clientSecret": "Client secret"
