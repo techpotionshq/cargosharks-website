@@ -33,7 +33,7 @@
  * comma-separated string was parsed are gone with the string.
  */
 
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 
@@ -67,7 +67,7 @@ vi.mock('../adapters/index', () => ({
   }),
 }))
 
-const { currencies, fxRates, withActor } = await import('@qabandi/db')
+const { branches, currencies, fxRates, withActor, workingCalendars } = await import('@qabandi/db')
 const { runFxRefresh } = await import('./fx-refresh')
 
 const actor: Actor = {
@@ -130,6 +130,47 @@ const track = async (codes: readonly string[]) =>
   })
 
 describe.skipIf(!enabled)('the daily FX refresh', () => {
+  /*
+    The two base currencies this suite is about — Kuwait on KWD, Dubai on AED.
+    They used to come from `db:seed-demo`'s entities, so the suite passed only
+    where that dataset had been loaded; against a plain `db:seed` there was no
+    AED branch and "asks about AED" failed. Owned here now, so the suite stands
+    up its own world.
+  */
+  beforeAll(async () => {
+    const [calendar] = await withActor(actor, (tx) =>
+      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+    )
+    if (!calendar) return
+    await withActor(actor, (tx) =>
+      tx
+        .insert(branches)
+        .values([
+          {
+            id: '00000000-0000-7000-8000-0000000000fa',
+            code: 'FXK',
+            legalNameEn: 'FX Kuwait',
+            legalNameAr: 'إف إكس الكويت',
+            country: 'KW',
+            baseCurrency: 'KWD',
+            invoiceSeries: 'FXK',
+            calendarId: calendar.id,
+          },
+          {
+            id: '00000000-0000-7000-8000-0000000000fb',
+            code: 'FXD',
+            legalNameEn: 'FX Dubai',
+            legalNameAr: 'إف إكس دبي',
+            country: 'AE',
+            baseCurrency: 'AED',
+            invoiceSeries: 'FXD',
+            calendarId: calendar.id,
+          },
+        ])
+        .onConflictDoNothing(),
+    )
+  })
+
   beforeEach(async () => {
     harness.key = 'http'
     harness.quotes = []
