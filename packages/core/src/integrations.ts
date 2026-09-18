@@ -626,6 +626,28 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     secrets: [],
   },
+
+  /*
+    Automatic drafting of the quotation — the end of the pipeline, and the point
+    it hands back to a person. When an enquiry's buy rate has been awarded and the
+    lane is covered, the same engine "Price it" runs prices it against the house
+    margin on `customer_branch_terms` and lands a *draft* quotation, cover note
+    included. It never sends: a draft is a thing a coordinator reviews and decides
+    to put in front of a customer, which is the one step the pipeline leaves human
+    by design. Off by default like the rest.
+  */
+  {
+    key: 'quoteAutoDraft',
+    group: 'intelligence',
+    driverEnv: 'QUOTE_AUTODRAFT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [],
+    secrets: [],
+  },
 ] as const
 
 /** The order the groups appear in, and the order a deployment configures them. */

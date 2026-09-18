@@ -76,6 +76,12 @@ export const JOBS = {
     Off unless `rateAutoPromote` names a strategy; the sweep idles otherwise.
   */
   rateAutoPromote: 'rate-auto-promote',
+  /*
+    Automatic quotation draft — the end of the pipeline. Prices an enquiry whose
+    buy rate was awarded and lands a draft quote. Off unless `quoteAutoDraft` is
+    switched on; the sweep idles otherwise.
+  */
+  quoteAutoDraft: 'quote-auto-draft',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -192,6 +198,14 @@ export async function registerSchedules(): Promise<void> {
     `rateAutoPromote` names a strategy, the same as its two siblings above.
   */
   await b.schedule(JOBS.rateAutoPromote, '* * * * *')
+
+  /*
+    Automatic quotation draft — FR-EQ-05, every minute. The end of the pipeline:
+    an enquiry with an awarded buy rate and a covered lane is priced against the
+    house margin and lands a draft quotation for a person to review and send.
+    Scheduled unconditionally; idles until `quoteAutoDraft` is switched on.
+  */
+  await b.schedule(JOBS.quoteAutoDraft, '* * * * *')
 
   await applyCarrierPollSchedule()
 

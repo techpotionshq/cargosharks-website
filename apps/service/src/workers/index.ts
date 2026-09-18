@@ -26,6 +26,7 @@ import { extractRateReply, type ExtractRateReplyInput } from './rate-extract'
 import { sendRateRequests } from './rate-request-send'
 import { autoFanoutRateRequests } from './rate-auto-fanout'
 import { autoPromoteRateReplies } from './rate-auto-promote'
+import { autoDraftQuotes } from './quote-auto-draft'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
@@ -490,6 +491,17 @@ export async function registerWorkers(log: {
   await work(JOBS.rateAutoPromote, async () => {
     const result = await autoPromoteRateReplies()
     if (result.enabled && result.promoted > 0) log.info(result, 'rate replies auto-awarded')
+  })
+
+  /*
+    Automatic quotation draft — the end of the pipeline (FR-EQ-05). Prices an
+    enquiry whose buy rate was awarded and lands a draft quote, cover note
+    alongside. Off until `quoteAutoDraft` is switched on; only a sweep that
+    drafted says so.
+  */
+  await work(JOBS.quoteAutoDraft, async () => {
+    const result = await autoDraftQuotes()
+    if (result.enabled && result.drafted > 0) log.info(result, 'quotations auto-drafted')
   })
 
   for (const pending of PENDING) {

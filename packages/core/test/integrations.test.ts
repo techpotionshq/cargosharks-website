@@ -126,6 +126,13 @@ describe('the integration catalogue', () => {
         expect(spec?.drivers?.find((d) => d.value === strategy)?.live).toBe(true)
       }
     })
+
+    /* Auto-draft lands a customer-facing quotation, so it too ships dark. */
+    it('defaults quote auto-draft to off', () => {
+      const spec = integrationSpec('quoteAutoDraft')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
   })
 
   describe('which drivers demand their fields', () => {
