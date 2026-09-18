@@ -116,6 +116,16 @@ describe('the integration catalogue', () => {
       expect(spec?.defaultDriver).toBe('manual')
       expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
     })
+
+    /* Auto-promote commits money, so `manual` is off and the other drivers are strategies. */
+    it('defaults auto-promote to off and offers the three strategies as live drivers', () => {
+      const spec = integrationSpec('rateAutoPromote')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'manual')?.live).toBe(false)
+      for (const strategy of ['first', 'all', 'wait']) {
+        expect(spec?.drivers?.find((d) => d.value === strategy)?.live).toBe(true)
+      }
+    })
   })
 
   describe('which drivers demand their fields', () => {

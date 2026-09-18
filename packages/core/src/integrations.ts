@@ -586,6 +586,46 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     secrets: [],
   },
+
+  /*
+    Automatic promotion of the cheapest agent reply into a buy rate card — the
+    first automated step that commits money, so the driver is not just on/off but
+    the *strategy* by which it commits:
+
+      manual  a coordinator clicks Accept (off).
+      first   promote the moment one comparable reply parses — fastest to a quote,
+              least likely to be the cheapest.
+      all     wait until no agent is still outstanding, then take the cheapest —
+              best coverage, but one silent agent holds it up.
+      wait    wait `waitHours` from the first RFQ, then take the cheapest of what
+              came back — a deadline that a silent agent cannot stall.
+
+    Whichever strategy, it takes the cheapest reply normalised to the branch's
+    base currency, and writes the identical card `acceptRateReply` writes.
+  */
+  {
+    key: 'rateAutoPromote',
+    group: 'intelligence',
+    driverEnv: 'RATE_AUTOPROMOTE_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'first', live: true },
+      { value: 'all', live: true },
+      { value: 'wait', live: true },
+    ],
+    fields: [
+      {
+        name: 'waitHours',
+        kind: 'number',
+        env: 'RATE_AUTOPROMOTE_WAIT_HOURS',
+        placeholder: '24',
+        min: 0,
+        max: 720,
+      },
+    ],
+    secrets: [],
+  },
 ] as const
 
 /** The order the groups appear in, and the order a deployment configures them. */

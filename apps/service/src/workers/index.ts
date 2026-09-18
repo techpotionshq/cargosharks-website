@@ -25,6 +25,7 @@ import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
 import { extractRateReply, type ExtractRateReplyInput } from './rate-extract'
 import { sendRateRequests } from './rate-request-send'
 import { autoFanoutRateRequests } from './rate-auto-fanout'
+import { autoPromoteRateReplies } from './rate-auto-promote'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
@@ -479,6 +480,16 @@ export async function registerWorkers(log: {
   await work(JOBS.rateAutoFanout, async () => {
     const result = await autoFanoutRateRequests()
     if (result.enabled && result.enquiries > 0) log.info(result, 'rate requests auto-fanned')
+  })
+
+  /*
+    Automatic rate award — the far end of FR-RT-10. Promotes the cheapest parsed
+    reply to a buy card on the enquiry's chosen strategy. Off until the
+    `rateAutoPromote` integration names one; only a sweep that awarded says so.
+  */
+  await work(JOBS.rateAutoPromote, async () => {
+    const result = await autoPromoteRateReplies()
+    if (result.enabled && result.promoted > 0) log.info(result, 'rate replies auto-awarded')
   })
 
   for (const pending of PENDING) {

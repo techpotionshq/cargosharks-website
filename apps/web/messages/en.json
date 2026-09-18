@@ -2961,7 +2961,8 @@
       "ai": "Document extraction",
       "fileStore": "Object storage",
       "rateAutoFanout": "Automatic rate requests",
-      "enquiryAutoAccept": "Automatic enquiry fill"
+      "enquiryAutoAccept": "Automatic enquiry fill",
+      "rateAutoPromote": "Automatic rate award"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
@@ -2977,7 +2978,8 @@
       "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
       "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept.",
       "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on.",
-      "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person."
+      "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person.",
+      "rateAutoPromote": "Promote the cheapest agent reply into a buy rate card without a coordinator's click. Choose when it commits: as soon as one reply parses, once every agent has answered, or after a wait window."
     },
     "drivers": {
       "smtp": {
@@ -3007,6 +3009,12 @@
       "enquiryAutoAccept": {
         "manual": "Reviewed by a coordinator",
         "auto": "Applied automatically"
+      },
+      "rateAutoPromote": {
+        "manual": "Awarded by a coordinator",
+        "first": "As soon as one reply parses",
+        "all": "Once every agent has answered",
+        "wait": "After a wait window"
       }
     },
     "fields": {
@@ -3065,6 +3073,9 @@
       },
       "enquiryAutoAccept": {
         "confidence": "Confidence to apply (0–1)"
+      },
+      "rateAutoPromote": {
+        "waitHours": "Wait window (hours)"
       }
     },
     "secrets": {
@@ -3078,6 +3089,7 @@
       "carrierTracking": {},
       "rateAutoFanout": {},
       "enquiryAutoAccept": {},
+      "rateAutoPromote": {},
       "carrierMaersk": {
         "consumerKey": "Consumer key",
         "clientSecret": "Client secret"

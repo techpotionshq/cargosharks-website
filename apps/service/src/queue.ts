@@ -71,6 +71,11 @@ export const JOBS = {
     runs every tick and answers nothing-to-do until then.
   */
   rateAutoFanout: 'rate-auto-fanout',
+  /*
+    Automatic rate award — promotes the cheapest parsed reply to a buy card.
+    Off unless `rateAutoPromote` names a strategy; the sweep idles otherwise.
+  */
+  rateAutoPromote: 'rate-auto-promote',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -179,6 +184,14 @@ export async function registerSchedules(): Promise<void> {
     default — a cron that switches on with a setting rather than a redeploy.
   */
   await b.schedule(JOBS.rateAutoFanout, '* * * * *')
+
+  /*
+    Automatic rate award — FR-RT-10, every minute. The far end of the fan-out:
+    once agents have replied and the enquiry's chosen strategy says it is time,
+    the cheapest reply becomes a buy card. Scheduled unconditionally; idles until
+    `rateAutoPromote` names a strategy, the same as its two siblings above.
+  */
+  await b.schedule(JOBS.rateAutoPromote, '* * * * *')
 
   await applyCarrierPollSchedule()
 
