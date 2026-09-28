@@ -80,7 +80,7 @@ cross-currency line still surfaces on the review screen once a person matches it
 
 ---
 
-## 3. Enquiry auto-acknowledge + one-click fill  ·  *first impression, every time*
+## 3. Enquiry auto-acknowledge + one-click fill — **shipped**
 
 **What it does.** An emailed enquiry already gets read: `enquiry-extract`
 proposes the twelve cargo fields (mode, lane, weight, incoterm…) into a review
@@ -98,8 +98,10 @@ auto-acknowledgement is exactly the path that once turned one bounce into 195
 enquiries (`Operations_Findings §11`), so it inherits that guard rather than
 re-earning the scar.
 
-**Effort.** Small–medium. The reply template + loop-breaker wiring, and a
-bulk-accept action over proposals that already exist.
+**Shipped.** The acknowledgement reply and the loop-breaker, and the
+`acceptAllProposals` one-click fill over the review queue. Auto-*accepting* those
+proposals with no click at all — the same rule, gated by a confidence ceiling — is
+the front of the end-to-end pipeline in §7.
 
 ---
 
@@ -165,17 +167,67 @@ model.
 
 ---
 
+## 7. End-to-end auto-pipeline — **shipped (off by default)**
+
+§0 and §3 built the manual pieces — ask agents, read replies, accept, price. Four
+gated workers now chain them so an enquiry runs to a **draft quotation** with no
+clicks, stopping one step short of the customer:
+
+- **Auto-accept extractions** (`enquiryAutoAccept`). Extraction applies a proposal
+  in the same write it files it — but only into an empty column, above a confidence
+  ceiling, and where the value resolves without ambiguity. The ambiguous port or
+  commodity is left in the queue, exactly as the manual accept refuses it. This is
+  §3's one-click fill with no click.
+- **Auto-fanout RFQs** (`rateAutoFanout`). An enquiry that reaches a resolvable
+  lane with no RFQ yet has one opened to every covering agent, feeding §0's
+  send-sweep. The complete lane is the whole gate — because extraction writes
+  proposals, not columns, a complete lane is a *confirmed* one.
+- **Auto-award** (`rateAutoPromote`). Once replies are in, the cheapest — priced to
+  the branch base currency — becomes a buy card, by a chosen strategy: `first` (the
+  moment one comparable reply parses), `all` (once no agent is still outstanding),
+  or `wait` (a set window from the first RFQ, so a silent agent cannot stall it).
+- **Auto-draft** (`quoteAutoDraft`). A covered enquiry is priced against the
+  customer's house margin and lands a **draft** quotation, covering note alongside.
+  It never sends.
+
+**The line.** A person is left only where one is owed — the ambiguous
+port/commodity, and the send to the customer. Everything between runs on a minute
+sweep, and an enquiry with an award, a quote, or an existing RFQ is each its own
+loop-breaker.
+
+**Off until switched on.** Each is an `integration_settings` driver defaulting to
+its inert value — the carrier "ships dark" idiom of §4 — because they mail real
+agents, write to enquiries unattended, and draft customer-facing quotes. An
+administrator turns each on at Settings › Integrations. The prerequisites are
+data, not code: an agent needs coverage rows and an email contact, and a customer
+needs a house margin for auto-draft to price (otherwise the enquiry is left for a
+person, not guessed at).
+
+**What it reused.** All of §0 and §3. The money-critical halves moved into
+`@qabandi/db` so a coordinator's click and the sweep write byte-for-byte the same
+rows: `promoteRateReply` (the buy card), `priceEnquiryToQuote` (the quotation, and
+the same house-margin engine "Price it" runs), and `resolveProposal` (the
+ambiguity refusal, now shared rather than copied). Every worker is DB-tested and
+carries an injectable gate so its on/off can be proved without the settings cache.
+
+---
+
 ## How to sequence this
 
 1. ~~**§1 Rate-expiry refresh**~~ — **shipped.** Made §0 self-sustaining.
 2. ~~**§2 Invoice variance**~~ — **shipped.** The one with money in it; over-billing
    is caught at the door now, not at month-end.
-3. **§3 Enquiry auto-ack** — cheap, the customer-facing polish that demos well.
-   In progress.
-4. **§5 / §6** — small surfacing wins to slot between the larger pieces.
-5. **§4 Carrier tracking** — **built, off.** No longer a build: register with one
+3. ~~**§3 Enquiry auto-ack + one-click fill**~~ — **shipped.** The customer-facing
+   polish, plus the review-queue fill.
+4. ~~**§7 End-to-end auto-pipeline**~~ — **shipped, off by default.** Auto-accept,
+   auto-fanout, auto-award and auto-draft chain §0 and §3 into a hands-off
+   enquiry→draft-quote run. What is left here is not a build but an *enablement*:
+   flip the four drivers on, give agents coverage/contacts and customers a house
+   margin, and watch one live run through.
+5. **§5 / §6** — small surfacing wins still open (free-time countdown, quote chase).
+6. **§4 Carrier tracking** — **built, off.** No longer a build: register with one
    carrier and flip the driver to `dcsa`.
 
-The remaining builds (§5, §6) are changes against tested foundations, and §4 is
-not a build at all. That is the whole argument: the platform was designed so
-these were short.
+The remaining builds (§5, §6) are changes against tested foundations, §4 is not a
+build at all, and §7 is a switch-on. That is the whole argument: the platform was
+designed so these were short.

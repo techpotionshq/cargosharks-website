@@ -68,6 +68,16 @@ either surface. Use the `verify:*` scripts rather than ad-hoc probes.
 - `apps/web/test/setup.ts` loads `.env.local` into Vitest. Without it the
   database-backed suites skip silently and report a pass — 627 tests did, for
   weeks.
+- **A local database is now an option, and it is the fast path.** A portable
+  PostgreSQL 18 (ICU `und-x-icu`, matching prod) runs at `127.0.0.1:5432`; point
+  `.env.local` at it and the same suites finish in seconds rather than minutes —
+  `test:web` ~15 s and green, `test:db` and `test:service` likewise — because a
+  query is sub-millisecond instead of a ~370 ms network round-trip. It is
+  per-developer and isolated, so the "one suite at a time" and fixture-collision
+  cautions above are the *remote* CI story, not the local loop. The remote stays
+  the shared/CI target; swap the two comment blocks at the top of `.env.local` to
+  choose. Both remote DBs were migrated to current and `qabandi_test` reset clean
+  on 2026-09-28.
 
 ## 4. The automation roadmap
 
@@ -99,11 +109,26 @@ leaking, not on feature count. The user wants the whole list done, quickly.
   internal alert when a line is billed over the accrual tolerance, on the
   extraction write path (FR-FN-09). Over-billing only; caught before finance
   approves, not at month-end.
+- Quote covering-note — the model drafts the note; the editor on the draft
+  quotation lets a coordinator draft, edit and save it per language; pricing owns
+  every figure (FR-EQ-08). Draft-gated; nothing auto-sends.
+- **The end-to-end auto-pipeline, off by default** — four gated
+  `integration_settings` drivers chain the manual pieces into a hands-off
+  enquiry→draft-quote run: `enquiryAutoAccept` (apply high-confidence,
+  unambiguous extractions), `rateAutoFanout` (RFQ every covering agent on a
+  resolved lane), `rateAutoPromote` (award the cheapest reply — `first`/`all`/`wait`
+  strategy), `quoteAutoDraft` (price against the house margin into a draft). Each
+  ships dark; a person is left only for the ambiguous port/commodity and the send.
+  The money-critical halves moved into `@qabandi/db` (`promoteRateReply`,
+  `priceEnquiryToQuote`, `resolveProposal`) so the sweep and the buttons write the
+  same rows. See `docs/Automation_Opportunities.md §7`.
 
 **Next, in the order agreed:**
 
-1. Quote drafting — the model writes the covering note; `rating.ts` keeps the
-   arithmetic. Drafting is the feature; sending is not.
+1. ~~Quote drafting~~ — **shipped.** The covering note (above) and the auto-draft
+   worker (§7): a covered enquiry is priced against the house margin into a draft
+   quotation. `rating.ts`/`priceEnquiryToQuote` keep the arithmetic. Drafting is
+   the feature; sending is not, and stays human.
 2. ~~Assistant tools~~ — **shipped.** `list_unbilled`, `list_quotes_expiring`,
    `get_margin`, `get_customer_credit` and `list_consolidation_candidates` now
    read through `ai/tools.ts`, alongside `search`, `get_job`, `list_jobs`,
