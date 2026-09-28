@@ -2973,7 +2973,7 @@
       "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
       "carrierHapag": "Covers HLCU and HLXU, and takes an id as well as a secret. Registration is self-serve at api.hlag.com.",
       "carrierCmacgm": "Covers CMDU, ANNU, APLU and CHNL. Registration is self-serve at apis.cma-cgm.net.",
-      "whatsapp": "The business number customer notifications go out from, where a deployment has one. Email is the fallback.",
+      "whatsapp": "WhatsApp through Kapso — the account key that sends replies and receives inbound enquiries. Off by default, and email is the fallback. The numbers each branch answers on are set under Settings › WhatsApp numbers.",
       "einvoice": "The accredited provider that files an invoice with the tax authority. We are not the access point and cannot be.",
       "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
       "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
@@ -2999,6 +2999,10 @@
       "einvoice": {
         "none": "Not transmitted",
         "asp": "Through a provider"
+      },
+      "whatsapp": {
+        "none": "Off (email is the fallback)",
+        "kapso": "Through Kapso"
       },
       "fileStore": {
         "s3": "S3-compatible bucket",
@@ -3055,7 +3059,7 @@
         "eventsPath": "Events path"
       },
       "whatsapp": {
-        "phoneNumberId": "Phone number id"
+        "baseUrl": "Kapso base URL"
       },
       "einvoice": {
         "url": "Provider URL"
@@ -3110,9 +3114,7 @@
         "apiKey": "API key"
       },
       "whatsapp": {
-        "accessToken": "Access token",
-        "webhookVerifyToken": "Webhook verify token",
-        "appSecret": "App secret"
+        "kapsoApiKey": "Kapso API key"
       },
       "einvoice": {
         "apiKey": "API key"

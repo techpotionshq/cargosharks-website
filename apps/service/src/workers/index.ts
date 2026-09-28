@@ -28,13 +28,16 @@ import { autoFanoutRateRequests } from './rate-auto-fanout'
 import { autoPromoteRateReplies } from './rate-auto-promote'
 import { autoDraftQuotes } from './quote-auto-draft'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
+import {
+  runInboundWhatsAppWebhook,
+  type InboundWhatsAppWebhookInput,
+} from './inbound-whatsapp-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
 /** Jobs still to be built. Named so nothing silently goes missing. */
 const PENDING: { name: string; trigger: string; requirement: string }[] = [
-  { name: JOBS.inboundWhatsApp, trigger: 'webhook', requirement: 'FR-NT-05' },
   /*
     Superseded rather than pending, and left here as a marker until the name is
     retired from `JOBS`.
@@ -344,6 +347,31 @@ export async function registerWorkers(log: {
       log.info(
         { eventId: input.eventId, outcome: result.outcome, enquiryId: result.enquiryId },
         result.reason ? `inbound email webhook: ${result.reason}` : 'inbound email webhook handled',
+      )
+    }
+  })
+
+  /*
+    The WhatsApp half of the enquiry front door — FR-EQ-02, §9 "WhatsApp".
+
+    The exact parallel of the email webhook above: `/webhooks/whatsapp` has
+    verified Kapso's signature, recorded the receipt and queued this job.
+    Failures rethrow for the same reasons — a database blink or storage refusal
+    is worth retrying, and the one thing that is not (an unreadable payload, or a
+    number with no `whatsapp_numbers` row) returns a reason rather than throwing.
+    Reused wholesale: extraction, acknowledgement and threading are `ingestMessage`,
+    shared with email, so a WhatsApp enquiry is read by the same model call and
+    files the same rows as an emailed one.
+  */
+  await work(JOBS.inboundWhatsApp, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as InboundWhatsAppWebhookInput
+      const result = await runInboundWhatsAppWebhook(input)
+      log.info(
+        { eventId: input.eventId, outcome: result.outcome, enquiryId: result.enquiryId },
+        result.reason
+          ? `inbound whatsapp webhook: ${result.reason}`
+          : 'inbound whatsapp webhook handled',
       )
     }
   })

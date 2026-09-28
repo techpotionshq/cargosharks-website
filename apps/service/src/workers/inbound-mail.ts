@@ -399,7 +399,7 @@ export async function ingestMessage(
   try {
     const outcome = await withActor(systemActor(), async (tx) => {
       const target = await findTarget(tx, message)
-      const customerId = await matchCustomer(tx, message.from)
+      const customerId = await matchCustomer(tx, message)
       /*
         The sender may be a supplier as well as — or instead of — a customer.
 
@@ -436,7 +436,7 @@ export async function ingestMessage(
           branchId: branch.id,
           jobId: context.jobId,
           enquiryId: context.enquiryId,
-          channel: 'email' as const,
+          channel: message.channel ?? 'email',
           direction: 'inbound' as const,
           subject: message.subject || null,
           body: message.body,
@@ -483,7 +483,11 @@ export async function ingestMessage(
             contentType: file.contentType,
             byteSize: file.byteSize,
             checksum: file.checksum,
-            meta: { source: 'inbound-email', mailbox: message.mailbox, oversized: file.oversized },
+            meta: {
+              source: message.channel === 'whatsapp' ? 'inbound-whatsapp' : 'inbound-email',
+              mailbox: message.mailbox,
+              oversized: file.oversized,
+            },
           })
           .returning({ id: assets.id })
 
@@ -861,7 +865,21 @@ async function findRateRequestByToken(
   return rows[0] ?? null
 }
 
-async function matchCustomer(tx: any, from: string): Promise<string | null> {
+/**
+ * Whose enquiry this is, if the sender is a known customer contact.
+ *
+ * The one place the two channels genuinely differ. Email matches on the address;
+ * WhatsApp matches on the phone number. Both refuse two matches as they refuse
+ * none — `carrier-event.ts`'s rule — because a message filed under the wrong
+ * customer is worse than one a coordinator files by hand.
+ */
+async function matchCustomer(tx: any, message: InboundMessage): Promise<string | null> {
+  return message.channel === 'whatsapp'
+    ? matchCustomerByPhone(tx, message.from)
+    : matchCustomerByEmail(tx, message.from)
+}
+
+async function matchCustomerByEmail(tx: any, from: string): Promise<string | null> {
   const address = from.trim().toLowerCase()
   if (!address.includes('@')) return null
 
@@ -890,6 +908,36 @@ async function matchCustomer(tx: any, from: string): Promise<string | null> {
     .limit(2)
 
   return byDomain.length === 1 ? byDomain[0]!.customerId : null
+}
+
+/**
+ * A customer contact by phone, compared digits-only.
+ *
+ * A number is stored however a person typed it — `+965 2220 1234`, `2220-1234` —
+ * and WhatsApp hands over the bare `9652220 1234` of an E.164 number with no
+ * punctuation and no `+`. Stripping both to digits is what makes those the same
+ * contact. There is no domain fallback the way email has one: a phone number
+ * identifies one person, not an organisation, so an unrecognised number opens an
+ * enquiry a coordinator triages rather than guessing at a customer.
+ */
+async function matchCustomerByPhone(tx: any, from: string): Promise<string | null> {
+  const digits = from.replace(/[^0-9]/g, '')
+  // Too short to identify anyone — a stray digit or two is not a phone number,
+  // and a loose match here files a stranger's message under a real customer.
+  if (digits.length < 7) return null
+
+  const rows = await tx
+    .selectDistinct({ customerId: customerContacts.customerId })
+    .from(customerContacts)
+    .where(
+      and(
+        sql`regexp_replace(coalesce(${customerContacts.phone}, ''), '[^0-9]', '', 'g') = ${digits}`,
+        eq(customerContacts.isActive, true),
+      ),
+    )
+    .limit(2)
+
+  return rows.length === 1 ? rows[0]!.customerId : null
 }
 
 /**
@@ -922,10 +970,16 @@ async function createEnquiry(
       reference,
       branchId: branch.id,
       customerId,
-      contactEmail: message.from || null,
+      /*
+        `contactEmail` holds the address for email and stays null for WhatsApp —
+        the column is an email column, and a phone number in it would resolve to
+        a customer nobody can mail. The number is on the `messages` row's
+        `fromAddress` and on the resolved customer instead.
+      */
+      contactEmail: message.channel === 'whatsapp' ? null : message.from || null,
       contactName: message.fromName ?? null,
       status: 'new' as const,
-      channel: 'email',
+      channel: message.channel ?? 'email',
       /*
         The subject, as the line the board shows.
 

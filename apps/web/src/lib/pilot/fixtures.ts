@@ -5756,11 +5756,12 @@ export function pilotIntegrationSettings(now = Date.now()): IntegrationSettingRo
       },
     ),
     row('fx', 'manual', {}, {}, { lastCheckedAt: null, lastOkAt: null }),
-    // Switched off rather than deleted, which is how a change is rolled back.
+    // Off rather than deleted, which is how a change is rolled back. The numbers
+    // this account would answer on live in `whatsappNumbers` (below), not here.
     row(
       'whatsapp',
-      null,
-      { phoneNumberId: '' },
+      'none',
+      { baseUrl: '' },
       {},
       {
         isActive: false,

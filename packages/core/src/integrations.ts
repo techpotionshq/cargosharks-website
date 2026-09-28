@@ -425,15 +425,44 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ['apiKey'],
   ),
 
+  /*
+    WhatsApp, through Kapso.
+
+    Kapso is a proxy in front of the WhatsApp Cloud API: it provisions the
+    number, receives the messages and signs a webhook this service reads at
+    `/webhooks/whatsapp`, and it takes outbound sends on a Meta-shaped endpoint.
+    So this integration holds one credential — the account's Kapso API key — and
+    a base URL to override for staging. The *numbers* the account answers on are
+    `whatsapp_numbers` rows, per branch, because a legal entity may hold its own
+    (FR-ID-01); the sending number is read from that row at send time, not here.
+
+    Ships dark, like the carriers and the auto-pipeline: `none` is the default
+    and needs no key, so a deployment that has bought no WhatsApp number sends
+    nothing and falls back to email. An administrator sets the driver to `kapso`
+    and pastes the key to switch it on. The inbound half is gated separately and
+    the same way — by whether a `whatsapp_numbers` row exists and the webhook
+    secret (`KAPSO_WEBHOOK_SECRET`) is set — so a number can receive before the
+    account is configured to reply.
+  */
   {
     key: 'whatsapp',
     group: 'platform',
-    fields: [{ name: 'phoneNumberId', kind: 'text', env: 'WHATSAPP_PHONE_NUMBER_ID', mono: true }],
-    secrets: [
-      { name: 'accessToken', env: 'WHATSAPP_ACCESS_TOKEN', keepOnBlank: true },
-      { name: 'webhookVerifyToken', env: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN', keepOnBlank: true },
-      { name: 'appSecret', env: 'WHATSAPP_APP_SECRET', keepOnBlank: true },
+    driverEnv: 'WHATSAPP_DRIVER',
+    defaultDriver: 'none',
+    drivers: [
+      { value: 'none', live: false },
+      { value: 'kapso', live: true },
     ],
+    fields: [
+      {
+        name: 'baseUrl',
+        kind: 'url',
+        env: 'KAPSO_WHATSAPP_BASE_URL',
+        mono: true,
+        placeholder: 'https://api.kapso.ai/meta/whatsapp',
+      },
+    ],
+    secrets: [{ name: 'kapsoApiKey', env: 'KAPSO_API_KEY', required: true, keepOnBlank: true }],
   },
 
   {
