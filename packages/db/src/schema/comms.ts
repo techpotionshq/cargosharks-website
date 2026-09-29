@@ -112,6 +112,76 @@ export const mailboxes = pgTable(
 )
 
 /**
+ * The WhatsApp business numbers this deployment answers on — FR-EQ-02, FR-AD-03.
+ *
+ * The mirror of `mailboxes`, one table down. An inbound email names the branch
+ * by the address it was delivered to; an inbound WhatsApp message names it by
+ * the business number that received it — Kapso puts that on every
+ * `whatsapp.message.received` as `phone_number_id`. This is the row that turns
+ * that id into the office whose enquiry queue the message belongs in.
+ *
+ * ## Why a table and not a column on `mailboxes` or the integration row
+ *
+ * A branch is a legal entity (FR-ID-01) and each may answer on its own number,
+ * exactly as each keeps its own mailbox — so this is per-branch configuration an
+ * administrator edits without a release, which is a row, not code (FR-AD-03).
+ * It is separate from the `whatsapp` integration row because that row holds the
+ * one Kapso API key the *account* sends with; this holds the many numbers the
+ * account *receives* on, and the two scale differently.
+ *
+ * ## No sealed secret here
+ *
+ * Unlike `mailboxes`, there is no credential on the row: Kapso holds the number
+ * and the WhatsApp session, and the one secret that opens the account — the
+ * Kapso API key — is the `whatsapp` integration secret, sealed there once rather
+ * than per number. So no `password_sealed`, and no format constraint to match.
+ *
+ * ## Never deleted
+ *
+ * `is_active`, like `mailboxes` (§5.5): "were we answering on that number in
+ * March, and for which office" is a post-incident question a deleted row cannot
+ * answer.
+ */
+export const whatsappNumbers = pgTable(
+  'whatsapp_numbers',
+  {
+    id: pk(),
+    /** The office whose enquiries arrive on this number. Scopes the rows RLS returns. */
+    branchId: ref('branch_id')
+      .notNull()
+      .references(() => branches.id),
+    /**
+     * The Meta/Kapso phone-number id — the opaque key, not the dialable number.
+     *
+     * This is what an inbound webhook carries as `phone_number_id`, and what an
+     * outbound send addresses as the sending number. Unique across the table
+     * (below), because branch resolution reads it and two rows for one number
+     * would file the same message under two offices.
+     */
+    phoneNumberId: text('phone_number_id').notNull(),
+    /** The E.164 number a person reads on the screen — Kapso's `display_phone_number`. */
+    displayNumber: text('display_number'),
+    /** A human label for the settings list — "DXB sales", "KWI ops". */
+    label: text('label'),
+    isActive: boolean('is_active').notNull().default(true),
+    /** When a message last arrived here, so the screen can flag a number gone quiet. */
+    lastMessageAt: tsz('last_message_at'),
+    ...timestamps,
+  },
+  (t) => [
+    index('whatsapp_numbers_branch_idx').on(t.branchId, t.isActive),
+    /*
+      One row per phone-number id.
+
+      Branch resolution matches on this column, so a second row for the same
+      number would make "which office owns this message" ambiguous — the same
+      failure `mailboxes_address_unique` guards against for a re-polled mailbox.
+    */
+    unique('whatsapp_numbers_phone_number_id_unique').on(t.phoneNumberId),
+  ],
+)
+
+/**
  * The conversation thread against a job or enquiry — FR-NT-05.
  *
  * Inbound WhatsApp and email land here alongside outbound messages, so the

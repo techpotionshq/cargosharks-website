@@ -50,6 +50,38 @@ export const JOBS = {
     Tuesday.
   */
   enquiryExtract: 'enquiry-extract',
+  /*
+    Reading a broker's rate reply — FR-RT-10, the far end of rate procurement.
+
+    Queued for the invoice's reason, not the enquiry's: the reply is already an
+    ingested message, so a slow model cannot cost us intake, only the freshness
+    of a comparison a coordinator will look at in minutes. `ingestMessage`
+    enqueues it after commit, once a reply is matched to the RFQ it answers.
+  */
+  rateExtract: 'rate-extract',
+  /*
+    Sending rate requests — the near end. A coordinator picks agents on the
+    enquiry screen; the send fans out here so the request returns immediately
+    and one unreachable agent does not fail the others.
+  */
+  rateRequestSend: 'rate-request-send',
+  /*
+    Automatic rate procurement — opens the RFQ rows `rateRequestSend` then mails.
+    Off unless the `rateAutoFanout` integration is switched to `auto`; the sweep
+    runs every tick and answers nothing-to-do until then.
+  */
+  rateAutoFanout: 'rate-auto-fanout',
+  /*
+    Automatic rate award — promotes the cheapest parsed reply to a buy card.
+    Off unless `rateAutoPromote` names a strategy; the sweep idles otherwise.
+  */
+  rateAutoPromote: 'rate-auto-promote',
+  /*
+    Automatic quotation draft — the end of the pipeline. Prices an enquiry whose
+    buy rate was awarded and lands a draft quote. Off unless `quoteAutoDraft` is
+    switched on; the sweep idles otherwise.
+  */
+  quoteAutoDraft: 'quote-auto-draft',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -140,6 +172,40 @@ export async function registerSchedules(): Promise<void> {
   */
   await b.schedule(JOBS.rateCardExpiry, '45 21 * * *')
   await b.schedule(JOBS.fxIngest, '0 5 * * *')
+
+  /*
+    Rate-request sends — FR-RT-10, every minute. The near twin of the mail poll:
+    a coordinator picks agents on the enquiry screen, the web action writes the
+    rows, and this drains them to email within the minute. Web has no queue
+    access, so the drain is what bridges the two without a synchronous call.
+  */
+  await b.schedule(JOBS.rateRequestSend, '* * * * *')
+
+  /*
+    Automatic rate procurement — FR-RT-10, every minute. Feeds the drain above:
+    an enquiry that reaches a resolvable lane has an RFQ opened to every covering
+    agent, once. Scheduled unconditionally; the handler answers nothing-to-do
+    unless the `rateAutoFanout` integration is switched to `auto`, the same way
+    `carrierPoll` and `fxIngest` stay on the schedule and idle on their inert
+    default — a cron that switches on with a setting rather than a redeploy.
+  */
+  await b.schedule(JOBS.rateAutoFanout, '* * * * *')
+
+  /*
+    Automatic rate award — FR-RT-10, every minute. The far end of the fan-out:
+    once agents have replied and the enquiry's chosen strategy says it is time,
+    the cheapest reply becomes a buy card. Scheduled unconditionally; idles until
+    `rateAutoPromote` names a strategy, the same as its two siblings above.
+  */
+  await b.schedule(JOBS.rateAutoPromote, '* * * * *')
+
+  /*
+    Automatic quotation draft — FR-EQ-05, every minute. The end of the pipeline:
+    an enquiry with an awarded buy rate and a covered lane is priced against the
+    house margin and lands a draft quotation for a person to review and send.
+    Scheduled unconditionally; idles until `quoteAutoDraft` is switched on.
+  */
+  await b.schedule(JOBS.quoteAutoDraft, '* * * * *')
 
   await applyCarrierPollSchedule()
 

@@ -263,6 +263,21 @@ async function expand(
 
         for (const channel of targets) {
           /*
+            In-app is a staff surface, and only staff.
+
+            The bell lives in the operations shell; a customer contact has no
+            inbox to read one, so an in-app delivery addressed to a customer
+            would be delivered to nothing and sit `sent` for ever. It is not a
+            suppression either — the customer is told, by mail — so it leaves no
+            row: the channel simply does not apply to this audience. Skipped
+            here rather than by omitting the seed, because "no in_app template"
+            is a failure the log should never carry for a decision that was
+            deliberate. `enquiry.sla_breached` and the other internal events
+            fall through and do get one.
+          */
+          if (channel === 'in_app' && declared.audience === 'customer') continue
+
+          /*
             Switched off — FR-NT-03.
 
             Recorded rather than skipped, and checked *before* the template is

@@ -123,6 +123,21 @@ const schema = z.object({
   */
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),
+  /*
+    Kapso signs every `whatsapp.message.received` delivery with HMAC-SHA256 over
+    the raw body, hex digest in `X-Webhook-Signature` — the same shape as the
+    inbound-email webhook below, and verified by the same `verifyHmac`. The
+    secret is the `secret_key` chosen when the Kapso webhook is registered, and
+    it lives here rather than in a row for the reason the block above gives: the
+    webhook arrives before any session exists and the check has to work on a
+    deployment whose settings table is empty.
+
+    Distinct from `WHATSAPP_APP_SECRET`, which is Meta's app secret for the
+    older direct Cloud-API webhook (`X-Hub-Signature-256`, `sha256=` prefix).
+    Kapso is the transport now; that path stays only for a deployment wired to
+    Meta directly.
+  */
+  KAPSO_WEBHOOK_SECRET: z.string().optional(),
   INBOUND_EMAIL_WEBHOOK_SECRET: z.string().optional(),
 
   /*

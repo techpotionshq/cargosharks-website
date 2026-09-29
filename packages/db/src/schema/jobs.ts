@@ -142,6 +142,19 @@ export const quotes = pgTable(
     preparedById: ref('prepared_by_id').references(() => principals.id),
     sentAt: tsz('sent_at'),
     decidedAt: tsz('decided_at'),
+    /**
+     * The customer-facing covering note, drafted by a model and edited by a
+     * coordinator before the quote is sent — one column per language.
+     *
+     * Editable prose, so it lives here rather than in `priced_snapshot`: that
+     * JSONB is the frozen pricing decision (see above), and a note a person
+     * rewrites has no business inside a record whose whole point is that it does
+     * not change. Both nullable — a quote has none until somebody drafts one,
+     * and the model writes only prose; every figure stays owned by `rating.ts`
+     * and the totals above.
+     */
+    coverNoteEn: text('cover_note_en'),
+    coverNoteAr: text('cover_note_ar'),
     ...timestamps,
   },
   (t) => [

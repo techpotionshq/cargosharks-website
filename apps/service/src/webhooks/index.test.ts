@@ -37,6 +37,8 @@ const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const WHATSAPP_SECRET = 'whatsapp-app-secret'
+/** Kapso's webhook signing secret — the one the WhatsApp POST route verifies now. */
+const KAPSO_SECRET = 'kapso-webhook-secret'
 const EMAIL_SECRET = 'inbound-email-secret'
 const VERIFY_TOKEN = 'meta-verify-token'
 
@@ -50,6 +52,9 @@ vi.mock('../config', () => ({
   config: {
     get WHATSAPP_APP_SECRET() {
       return WHATSAPP_SECRET
+    },
+    get KAPSO_WEBHOOK_SECRET() {
+      return KAPSO_SECRET
     },
     get INBOUND_EMAIL_WEBHOOK_SECRET() {
       return harness.emailSecret
@@ -236,19 +241,57 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       expect(await recorded(`raw-${RUN}`)).toHaveLength(1)
     })
 
-    /** WhatsApp prefixes its digest; the others do not. */
-    it('expects Meta’s sha256= prefix on the WhatsApp digest', async () => {
+    /**
+     * WhatsApp arrives through Kapso now: `x-webhook-signature`, a bare hex
+     * digest over the raw body keyed with the Kapso webhook secret — the same
+     * shape as the email route, not Meta's prefixed `x-hub-signature-256`.
+     */
+    it('verifies the WhatsApp delivery with Kapso’s signature, not Meta’s', async () => {
       const raw = body()
 
-      const prefixed = await post('/whatsapp', raw, {
+      const good = await post('/whatsapp', raw, {
+        'x-webhook-signature': sign(raw, KAPSO_SECRET),
+      })
+      // Meta's old header and secret must no longer be accepted here.
+      const meta = await post('/whatsapp', body(), {
         'x-hub-signature-256': sign(raw, WHATSAPP_SECRET, 'sha256='),
       })
-      const bare = await post('/whatsapp', body(), {
-        'x-hub-signature-256': sign(raw, WHATSAPP_SECRET),
+      const wrong = await post('/whatsapp', body(), {
+        'x-webhook-signature': sign(raw, 'not-the-secret'),
       })
 
-      expect(prefixed.statusCode).toBe(202)
-      expect(bare.statusCode).toBe(401)
+      expect(good.statusCode).toBe(202)
+      expect(meta.statusCode).toBe(401)
+      expect(wrong.statusCode).toBe(401)
+    })
+
+    /**
+     * Kapso deduplicates on its own `X-Idempotency-Key`, so the route keys the
+     * receipt on it in preference to anything in the body.
+     */
+    it('keys a WhatsApp receipt on Kapso’s idempotency header', async () => {
+      const raw = body({ message: { id: 'wamid.body' } })
+      const key = `idem-${RUN}`
+
+      await post('/whatsapp', raw, {
+        'x-webhook-signature': sign(raw, KAPSO_SECRET),
+        'x-idempotency-key': key,
+      })
+
+      expect(await recorded(key)).toHaveLength(1)
+    })
+
+    /** A status event (not a received message) is acknowledged and dropped. */
+    it('acknowledges a non-received WhatsApp event without enqueueing it', async () => {
+      const raw = body()
+
+      const reply = await post('/whatsapp', raw, {
+        'x-webhook-signature': sign(raw, KAPSO_SECRET),
+        'x-webhook-event': 'whatsapp.message.delivered',
+      })
+
+      expect(reply.statusCode).toBe(202)
+      expect(harness.sent).toEqual([])
     })
 
     it('reads each route’s own header and secret', async () => {
@@ -308,7 +351,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const emailRaw = body()
 
       await post('/whatsapp', whatsappRaw, {
-        'x-hub-signature-256': sign(whatsappRaw, WHATSAPP_SECRET, 'sha256='),
+        'x-webhook-signature': sign(whatsappRaw, KAPSO_SECRET),
       })
       await post('/email', emailRaw, { 'x-webhook-signature': sign(emailRaw, EMAIL_SECRET) })
 
@@ -321,9 +364,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const raw = body({ id })
 
       await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
-      await post('/whatsapp', raw, {
-        'x-hub-signature-256': sign(raw, WHATSAPP_SECRET, 'sha256='),
-      })
+      await post('/whatsapp', raw, { 'x-webhook-signature': sign(raw, KAPSO_SECRET) })
 
       const rows = await recorded(id)
       expect(rows.map((row) => row.provider).sort()).toEqual(['email', 'whatsapp'])

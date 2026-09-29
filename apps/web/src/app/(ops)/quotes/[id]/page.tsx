@@ -27,6 +27,7 @@ import { requireSession } from '@/lib/session'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
 import { QuoteLineDialog } from '@/features/ledger/ui/dialogs'
+import { CoverNoteEditor } from '@/features/ledger/ui/cover-note-editor'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
@@ -295,6 +296,31 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           ) : null}
         </div>
       </Grid>
+
+      {/*
+        The covering note — FR-EQ-08, the generative surface behind the
+        evaluation harness. Only on a draft: a sent quotation is a document the
+        customer is already holding, so its note is history like everything else
+        on it. The model drafts the prose; the pricing above owns every figure.
+      */}
+      {quote.status === 'draft' ? (
+        <Panel className="mb-4" icon="assistant" title={t('coverNote.title')} explain={t('coverNote.explain')}>
+          <CoverNoteEditor
+            quoteId={quote.id}
+            notes={{ en: quote.coverNoteEn, ar: quote.coverNoteAr }}
+            labels={{
+              english: t('coverNote.english'),
+              arabic: t('coverNote.arabic'),
+              placeholder: t('coverNote.placeholder'),
+              draft: t('coverNote.draft'),
+              drafting: t('coverNote.drafting'),
+              save: t('coverNote.save'),
+              saving: tc('saving'),
+              saved: t('coverNote.saved'),
+            }}
+          />
+        </Panel>
+      ) : null}
     </>
   )
 }

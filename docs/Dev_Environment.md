@@ -68,6 +68,16 @@ either surface. Use the `verify:*` scripts rather than ad-hoc probes.
 - `apps/web/test/setup.ts` loads `.env.local` into Vitest. Without it the
   database-backed suites skip silently and report a pass — 627 tests did, for
   weeks.
+- **A local database is now an option, and it is the fast path.** A portable
+  PostgreSQL 18 (ICU `und-x-icu`, matching prod) runs at `127.0.0.1:5432`; point
+  `.env.local` at it and the same suites finish in seconds rather than minutes —
+  `test:web` ~15 s and green, `test:db` and `test:service` likewise — because a
+  query is sub-millisecond instead of a ~370 ms network round-trip. It is
+  per-developer and isolated, so the "one suite at a time" and fixture-collision
+  cautions above are the *remote* CI story, not the local loop. The remote stays
+  the shared/CI target; swap the two comment blocks at the top of `.env.local` to
+  choose. Both remote DBs were migrated to current and `qabandi_test` reset clean
+  on 2026-09-28.
 
 ## 4. The automation roadmap
 
@@ -88,29 +98,71 @@ leaking, not on feature count. The user wants the whole list done, quickly.
 - The bounce guard on inbound mail, and the `reasoning`-field fallback in the
   model adapter.
 
+**Shipped since (September 2026):**
+
+- Rate procurement — *Request rates* on an enquiry emails the covering agents,
+  the model reads each reply (a number in the body, a PDF tariff, a spreadsheet)
+  into `rate_requests`, and the enquiry screen ranks them cheapest-first in dinar
+  for a one-click buy card; plus the nightly auto-refresh that re-fires an RFQ
+  before a buy card lapses (FR-RT-10/11).
+- Supplier-invoice variance auto-flag — a bill captured against a job raises an
+  internal alert when a line is billed over the accrual tolerance, on the
+  extraction write path (FR-FN-09). Over-billing only; caught before finance
+  approves, not at month-end.
+- Quote covering-note — the model drafts the note; the editor on the draft
+  quotation lets a coordinator draft, edit and save it per language; pricing owns
+  every figure (FR-EQ-08). Draft-gated; nothing auto-sends.
+- **Inbound WhatsApp, through Kapso** — a message to a business number becomes an
+  enquiry on the same board as an emailed one, read by the same model and
+  acknowledged on the same channel. `whatsapp_numbers` maps each Kapso
+  `phone_number_id` to a branch (Settings › WhatsApp numbers), mirroring
+  `mailboxes`; `/webhooks/whatsapp` verifies Kapso's `X-Webhook-Signature`; the
+  `inbound-whatsapp-webhook` worker shares `ingestMessage` with the email path,
+  so the FR-EQ-02 rules are not written twice. The `whatsapp` integration is a
+  Kapso driver that ships dark (off by default, email the fallback). Proven
+  end-to-end against a live Kapso number. This is the item this file's roadmap
+  once listed as *excluded*.
+- **The end-to-end auto-pipeline, off by default** — four gated
+  `integration_settings` drivers chain the manual pieces into a hands-off
+  enquiry→draft-quote run: `enquiryAutoAccept` (apply high-confidence,
+  unambiguous extractions), `rateAutoFanout` (RFQ every covering agent on a
+  resolved lane), `rateAutoPromote` (award the cheapest reply — `first`/`all`/`wait`
+  strategy), `quoteAutoDraft` (price against the house margin into a draft). Each
+  ships dark; a person is left only for the ambiguous port/commodity and the send.
+  The money-critical halves moved into `@qabandi/db` (`promoteRateReply`,
+  `priceEnquiryToQuote`, `resolveProposal`) so the sweep and the buttons write the
+  same rows. See `docs/Automation_Opportunities.md §7`.
+
 **Next, in the order agreed:**
 
-1. Quote drafting — the model writes the covering note; `rating.ts` keeps the
-   arithmetic. Drafting is the feature; sending is not.
-2. Assistant tools — `list_unbilled`, `get_margin`, `get_customer_credit`,
-   `list_quotes_expiring`, `list_consolidation_candidates`. The engines exist;
-   the assistant cannot see them. (What it *can* see, `ai/tools.ts`: `search`,
-   `get_job`, `list_jobs`, `list_enquiries`, `list_exceptions`,
-   `list_free_time`, `list_overdue_invoices`, `get_supplier_variance` — all
-   reads, all under the asker's actor — plus `propose_transition`, which
-   offers a confirm button and changes nothing. None of the five above is
-   among them.)
+1. ~~Quote drafting~~ — **shipped.** The covering note (above) and the auto-draft
+   worker (§7): a covered enquiry is priced against the house margin into a draft
+   quotation. `rating.ts`/`priceEnquiryToQuote` keep the arithmetic. Drafting is
+   the feature; sending is not, and stays human.
+2. ~~Assistant tools~~ — **shipped.** `list_unbilled`, `list_quotes_expiring`,
+   `get_margin`, `get_customer_credit` and `list_consolidation_candidates` now
+   read through `ai/tools.ts`, alongside `search`, `get_job`, `list_jobs`,
+   `list_enquiries`, `list_exceptions`, `list_free_time`,
+   `list_overdue_invoices` and `get_supplier_variance` — all reads, all under
+   the asker's actor — plus `propose_transition`, which offers a confirm button
+   and changes nothing. Each new tool reuses the engine the matching screen uses
+   (`unbilled.ts`, `jobMargin`, `creditStanding`, `clusterShipments`) so the
+   assistant cannot give a second answer to a question the screen answers.
 3. Credit control on a schedule, with dunning through the outbox.
 4. Document classification on upload — the lowest-stakes model call, and every
    correction is labelled data.
 5. Exception triage — free text into a code and a severity.
 6. Rate-card column mapping — still the cheapest useful AI feature.
-7. **The evaluation harness, before any further model surface.** The AI design
-   document puts it first; three surfaces shipped without it — the two
-   extractions and the assistant. The corpus is accumulating in
-   `ai_invocations` and in rejected proposals meanwhile.
+7. ~~The evaluation harness~~ — **shipped (first cut).** `pnpm --filter
+   @qabandi/service ai:eval` replays the `ai_invocations` corpus through the pure
+   parsers and scores parse-ok, reconcile, self-consistency, field coverage and
+   confidence — no model spend, no golden set needed — with `--compare <a> <b>`
+   to diff two prompt versions. Covers `invoice_extract` and `enquiry_extract`;
+   the label-based pass (agreement with what a coordinator accepted, from
+   rejected proposals) is the additive second cut, and a per-field golden set is
+   the richer form the doc envisions after that.
 
-**Excluded, by decision:** WhatsApp inbound (still a dead letter; leave it) and
-backfilling historical enquiries (not needed in a dev environment).
+**Excluded, by decision:** backfilling historical enquiries (not needed in a dev
+environment).
 
 **Blocked:** carrier tracking, on credentials — see §1.

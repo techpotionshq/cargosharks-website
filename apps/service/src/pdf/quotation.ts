@@ -82,6 +82,9 @@ export interface QuotationView extends IssuingEntity {
   readonly destinationEn: string | null
   readonly destinationAr: string | null
   readonly transitDays: number | null
+  /** The covering paragraph per language; render picks by locale, as elsewhere. */
+  readonly coverNoteEn: string | null
+  readonly coverNoteAr: string | null
   readonly notes: string | null
   readonly inclusions: readonly string[]
   readonly exclusions: readonly string[]
@@ -215,6 +218,7 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
   ].filter((part) => part !== '')
 
   const conditions = localised(quote.tradingConditionsEn, quote.tradingConditionsAr, locale)
+  const coverNote = localised(quote.coverNoteEn, quote.coverNoteAr, locale)
 
   // Arabic where the entity supplied it, English where it did not. A blank
   // block would read as "nothing is excluded", which is the opposite.
@@ -303,6 +307,8 @@ ${letterhead(quote, t.title, `${t.quotationNo} ${quote.reference}`, locale)}
   </div>
 </div>
 
+${coverNote ? `<div class="cover">${escBlock(coverNote)}</div>` : ''}
+
 <table>
   <thead>
     <tr>
@@ -333,6 +339,7 @@ ${conditions ? `<div class="terms"><h2>${esc(t.conditions)}</h2>${escBlock(condi
 }
 
 const QUOTATION_CSS = `
+  .cover { margin: 4mm 0 1mm; font-size: 9pt; line-height: 1.5; }
   .cols { display: flex; gap: 8mm; margin-top: 5mm; }
   .cols .col { flex: 1; }
   .cols ul { margin: 0; padding-inline-start: 4mm; color: var(--muted); font-size: 8.5pt; }

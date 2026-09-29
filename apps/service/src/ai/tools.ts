@@ -28,9 +28,13 @@
  * not see it. The narrow projection is a second fence behind RLS.
  */
 
-import { and, desc, eq, ilike, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   chargeLines,
+  creditStanding,
+  customerBranchTerms,
   customers,
   customsStages,
   enquiries,
@@ -43,6 +47,7 @@ import {
   jobMilestones,
   equipment,
   jobs,
+  locations,
   partners,
   quotes,
   supplierInvoiceLines,
@@ -51,8 +56,20 @@ import {
   type Actor,
   type Tx,
 } from '@qabandi/db'
-import { ASSISTANT_LIMITS } from '@qabandi/core'
+import {
+  ASSISTANT_LIMITS,
+  assessCredit,
+  clusterShipments,
+  emptyLedgerMargin,
+  isNearLimit,
+  jobMargin,
+  toScale,
+  type GroupableShipment,
+} from '@qabandi/core'
 import { dayIn, todayIn } from '@qabandi/core'
+
+const candidateOrigin = alias(locations, 'candidate_origin')
+const candidateDestination = alias(locations, 'candidate_destination')
 
 /** The arguments a model produced, already parsed from its JSON. */
 export type ToolArgs = Record<string, unknown>
@@ -145,8 +162,18 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return listFreeTime(actor, args)
     case 'list_overdue_invoices':
       return listOverdueInvoices(actor, args)
+    case 'list_unbilled':
+      return listUnbilled(actor, args)
+    case 'list_quotes_expiring':
+      return listQuotesExpiring(actor, args)
     case 'get_supplier_variance':
       return supplierVariance(actor, args)
+    case 'get_margin':
+      return margin(actor, args)
+    case 'get_customer_credit':
+      return customerCredit(actor, args)
+    case 'list_consolidation_candidates':
+      return consolidationCandidates(actor, args)
     default:
       throw new Error(`There is no tool called ${name}.`)
   }
@@ -523,6 +550,98 @@ async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknow
 }
 
 /**
+ * Revenue earned and never invoiced — the quietest leak.
+ *
+ * The same shape and the same filter as `/finance`'s unbilled register
+ * (`features/ledger/unbilled.ts`): revenue lines with no `invoice_id` that are
+ * not accruals, grouped per shipment and ranked by base-currency amount. Read
+ * against the same definition so the assistant never disagrees with the screen
+ * about what is unbilled — a second definition here is a second answer to
+ * "what have we not billed", and money questions cannot have two.
+ */
+async function listUnbilled(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+
+  return withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        shipment: jobs.reference,
+        status: jobs.status,
+        customer: customers.legalNameEn,
+        lines: sql<number>`count(*)::int`,
+        amountBase: sql<string>`sum(${chargeLines.amountBase})::text`,
+        baseCurrency: sql<string>`min(${chargeLines.baseCurrency})`,
+        /*
+          More than one currency on a shipment means it cannot become a single
+          invoice — the register surfaces that rather than letting somebody find
+          it at the click, and the assistant should be able to say so too.
+        */
+        currencies: sql<string[]>`array_agg(distinct ${chargeLines.currency})`,
+      })
+      .from(chargeLines)
+      .innerJoin(jobs, eq(jobs.id, chargeLines.jobId))
+      .leftJoin(customers, eq(customers.id, jobs.customerId))
+      .where(
+        and(
+          eq(chargeLines.direction, 'revenue'),
+          isNull(chargeLines.invoiceId),
+          // An accrual is our own estimate of a cost still to come; it has no
+          // business on a customer invoice.
+          eq(chargeLines.isAccrual, false),
+        ),
+      )
+      .groupBy(jobs.id, jobs.reference, jobs.status, customers.legalNameEn)
+      .orderBy(desc(sql`sum(${chargeLines.amountBase})`))
+      .limit(limit),
+  )
+}
+
+/**
+ * Sent quotations about to lapse — the follow-up a busy desk forgets.
+ *
+ * The same window as the `quote.expiring` reminder worker: `sent` only, a
+ * validity still in the future, within the horizon. `sent` because a draft was
+ * never offered and an accepted, rejected or superseded quote has had its
+ * answer. The default seven days is wider than the worker's three so the
+ * assistant can answer "what is coming up this week", not only "what fires
+ * tonight".
+ */
+async function listQuotesExpiring(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+  const withinDays = Number.isFinite(Number(args.withinDays)) ? Number(args.withinDays) : 7
+  const today = todayIn()
+  const horizon = new Date()
+  horizon.setUTCDate(horizon.getUTCDate() + Math.max(0, Math.min(60, withinDays)))
+
+  return withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        reference: quotes.reference,
+        status: quotes.status,
+        customer: customers.legalNameEn,
+        validUntil: quotes.validUntil,
+        total: quotes.totalSell,
+        currency: quotes.currency,
+      })
+      .from(quotes)
+      .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+      .leftJoin(customers, eq(customers.id, enquiries.customerId))
+      .where(
+        and(
+          eq(quotes.status, 'sent'),
+          isNotNull(quotes.validUntil),
+          lte(quotes.validUntil, dayIn(horizon)),
+          // Not already lapsed — an expired quote needs a conversation, not a
+          // countdown, exactly as the reminder worker draws the line.
+          gt(quotes.validUntil, today),
+        ),
+      )
+      .orderBy(quotes.validUntil)
+      .limit(limit),
+  )
+}
+
+/**
  * What a supplier billed, against what the job accrued.
  *
  * The figures only — the *verdict* is `core/matching.ts`'s and it has a
@@ -576,6 +695,221 @@ async function supplierVariance(actor: Actor, args: ToolArgs): Promise<unknown> 
 
     return { found: true, reference, billed, accrued }
   })
+}
+
+/**
+ * The P&L on one shipment — revenue, cost and gross, in base currency.
+ *
+ * `core/margin.ts`'s `jobMargin` is the one definition of the number, the same
+ * one the costing card computes; recomputing it here would be a second opinion
+ * on the figure a commercial conversation turns on. Every amount is already in
+ * the branch base currency (`amount_base`, fixed at the rate it was taken at),
+ * so there is nothing to convert and no rate to invent.
+ */
+async function margin(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const reference = text(args, 'reference')
+  if (!reference) return { found: false }
+
+  return withActor(actor, async (tx: Tx) => {
+    const [job] = await tx
+      .select({ id: jobs.id, baseCurrency: branches.baseCurrency })
+      .from(jobs)
+      .innerJoin(branches, eq(branches.id, jobs.branchId))
+      .where(eq(jobs.reference, reference))
+      .limit(1)
+
+    // Not found and not permitted are one answer here, as everywhere — see
+    // `getJob`. RLS returns no row for another branch's shipment.
+    if (!job) return { found: false, reference }
+
+    const lines = await tx
+      .select({
+        direction: chargeLines.direction,
+        amountBase: chargeLines.amountBase,
+        isAccrual: chargeLines.isAccrual,
+      })
+      .from(chargeLines)
+      .where(eq(chargeLines.jobId, job.id))
+
+    const result =
+      lines.length === 0 ? emptyLedgerMargin(job.baseCurrency) : jobMargin(lines, job.baseCurrency)
+
+    return {
+      found: true,
+      reference,
+      currency: job.baseCurrency,
+      revenue: toScale(result.revenue),
+      cost: toScale(result.cost),
+      gross: toScale(result.gross),
+      grossPercent: result.grossPercent ? result.grossPercent.toFixed(1) : null,
+      // How much of the cost is still an estimate rather than a supplier's bill.
+      accruedCost: toScale(result.accruedCost),
+      billedCost: toScale(result.billedCost),
+    }
+  })
+}
+
+/**
+ * A customer's credit standing, at every branch the asker can see.
+ *
+ * Per branch and not one figure, because a credit limit is agreed per legal
+ * entity — a customer can be inside their limit in Kuwait and on hold in Dubai.
+ * The tool takes no branch (RLS decides what is visible), so it reads the
+ * customer's `customer_branch_terms` rows, which the policy has already narrowed
+ * to the branches this principal may see, and answers for each.
+ *
+ * The position and the decision both come from the shared engine —
+ * `creditStanding` in `@qabandi/db`, `assessCredit` in `core` — the same pair
+ * the customer screen uses, so the assistant cannot give a different answer
+ * about whether a customer may book. One transaction resolves the customer and
+ * lists the branches; `creditStanding` opens its own per branch, which is a
+ * handful of reads on a question asked rarely.
+ */
+async function customerCredit(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const query = text(args, 'customer')
+  if (!query) return { found: false }
+
+  const resolved = await withActor(actor, async (tx: Tx) => {
+    const [customer] = await tx
+      .select({ id: customers.id, name: customers.legalNameEn })
+      .from(customers)
+      .where(or(ilike(customers.code, query), ilike(customers.legalNameEn, `%${query}%`)))
+      // Prefer an exact code match over a name that merely contains the text.
+      .orderBy(sql`case when lower(${customers.code}) = lower(${query}) then 0 else 1 end`)
+      .limit(1)
+
+    if (!customer) return null
+
+    // The branches this customer trades at — RLS has already dropped any the
+    // asker may not see, which is exactly the "each branch you can see" scope.
+    const terms = await tx
+      .select({ branchId: customerBranchTerms.branchId, branch: branches.legalNameEn })
+      .from(customerBranchTerms)
+      .innerJoin(branches, eq(branches.id, customerBranchTerms.branchId))
+      .where(eq(customerBranchTerms.customerId, customer.id))
+      .orderBy(branches.legalNameEn)
+
+    return { customer, terms }
+  })
+
+  if (!resolved) return { found: false, customer: query }
+
+  const branchStandings = []
+  for (const term of resolved.terms) {
+    const standing = await creditStanding(actor, resolved.customer.id, term.branchId)
+    const assessment = assessCredit(standing)
+    branchStandings.push({
+      branch: term.branch,
+      currency: standing.currency,
+      outstanding: toScale(standing.outstanding),
+      limit: standing.limit ? toScale(standing.limit) : null,
+      headroom: assessment.headroom ? toScale(assessment.headroom) : null,
+      outcome: assessment.outcome,
+      blocked: assessment.blocked,
+      nearLimit: isNearLimit(assessment),
+      onHold: standing.onHold,
+      // Non-empty means the figure above is a floor: a foreign invoice could
+      // not be converted, so the real exposure is at least this.
+      unconvertible: standing.unconvertible,
+    })
+  }
+
+  return { found: true, customer: resolved.customer.name, branches: branchStandings }
+}
+
+/**
+ * Loose shipments that should have shared a container.
+ *
+ * The same query and the same engine as `/consolidations`'s candidates screen
+ * (`features/consolidation/candidates.ts` → `core/grouping.ts`): the filters
+ * are each a reason a shipment *cannot* be grouped — already consolidated,
+ * closed, cancelled, a full container, or a mode not bought by the box — and
+ * `clusterShipments` does the grouping in memory, deterministically. Read
+ * through the shared engine so the assistant's suggestion is the same one the
+ * screen would make.
+ */
+async function consolidationCandidates(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const limit = count(args, 'limit', 20)
+
+  const rows = await withActor(actor, (tx: Tx) =>
+    tx
+      .select({
+        jobId: jobs.id,
+        reference: jobs.reference,
+        branchId: jobs.branchId,
+        customerId: jobs.customerId,
+        customerName: customers.legalNameEn,
+        mode: jobs.mode,
+        originId: jobs.originId,
+        destinationId: jobs.destinationId,
+        originName: candidateOrigin.nameEn,
+        destinationName: candidateDestination.nameEn,
+        readyOn: jobs.etd,
+        volumeCbm: jobs.volumeCbm,
+        grossWeightKg: jobs.grossWeightKg,
+        pieces: jobs.pieces,
+      })
+      .from(jobs)
+      .leftJoin(customers, eq(customers.id, jobs.customerId))
+      .leftJoin(candidateOrigin, eq(candidateOrigin.id, jobs.originId))
+      .leftJoin(candidateDestination, eq(candidateDestination.id, jobs.destinationId))
+      .where(
+        and(
+          isNull(jobs.consolidationId),
+          isNull(jobs.closedAt),
+          isNull(jobs.cancelledAt),
+          // Only the two modes bought wholesale and sold retail; a full
+          // container is already the whole box, land and courier are not
+          // bought by the container.
+          or(eq(jobs.mode, 'sea_lcl'), eq(jobs.mode, 'air')),
+          ne(jobs.status, 'cancelled'),
+          // Something to measure, or a shipment sits in a cluster making it
+          // look emptier than it is.
+          sql`(${jobs.volumeCbm} is not null or ${jobs.grossWeightKg} is not null)`,
+        ),
+      )
+      .orderBy(desc(jobs.createdAt))
+      .limit(400),
+  )
+
+  const shipments: GroupableShipment[] = rows.map((row) => ({
+    jobId: row.jobId,
+    reference: row.reference,
+    branchId: row.branchId,
+    customerId: row.customerId,
+    customerName: row.customerName,
+    mode: row.mode,
+    originId: row.originId,
+    destinationId: row.destinationId,
+    originName: row.originName,
+    destinationName: row.destinationName,
+    readyOn: row.readyOn ? new Date(row.readyOn) : null,
+    volumeCbm: numericOrNull(row.volumeCbm),
+    grossWeightKg: numericOrNull(row.grossWeightKg),
+    pieces: row.pieces,
+  }))
+
+  return clusterShipments(shipments)
+    .slice(0, limit)
+    .map((cluster) => ({
+      lane: `${cluster.originName ?? '—'} → ${cluster.destinationName ?? '—'}`,
+      mode: cluster.mode,
+      shipments: cluster.shipments.length,
+      customers: cluster.customerCount,
+      totalCbm: cluster.totalCbm,
+      totalKg: cluster.totalKg,
+      wouldFill: cluster.fit
+        ? `${cluster.fit.code} at ${cluster.fit.volumePercent}% volume / ${cluster.fit.weightPercent}% weight, limited by ${cluster.fit.limitedBy}`
+        : null,
+      references: cluster.shipments.map((shipment) => shipment.reference),
+    }))
+}
+
+/** `numeric` as text to a number the grouping engine can add, or null. */
+function numericOrNull(value: string | null): number | null {
+  if (value === null) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 /**

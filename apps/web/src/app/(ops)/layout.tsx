@@ -34,6 +34,8 @@ import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
+import { getInbox } from '@/features/notifications/queries'
+import { NotificationBell } from '@/features/notifications/ui/notification-bell'
 
 export default async function OpsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -70,6 +72,9 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
   // The two counts worth interrupting someone for. Everything else is a page
   // you go to; these are things that are wrong right now.
   const counts = await getNavCounts(session.actor)
+
+  // This operator's own alerts, for the bell in the header below.
+  const inbox = await getInbox(session.actor, locale)
 
   /**
    * The navigation, grouped the way the business is: what you sell, what you
@@ -345,6 +350,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                 {tApp('pilot')}
               </span>
             ) : null}
+            <NotificationBell inbox={inbox} />
             <TimeZoneSwitch current={session.principal.timezone} />
             <ThemeSwitch current={theme} />
             <LanguageSwitch />

@@ -70,6 +70,8 @@ import { manualFxSource, resolveFxSource } from './fx'
 import { modelProviderFrom, noModel } from './model'
 
 export { sendMail } from './smtp'
+export { inAppChannel } from './in-app'
+export { kapsoChannel, resolveWhatsAppChannel, KAPSO_DEFAULT_BASE_URL } from './whatsapp'
 
 /**
  * A resolver that must not be able to take the deployment down.

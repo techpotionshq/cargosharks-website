@@ -86,6 +86,8 @@ const ALL_SETTINGS_ROUTES = [
   // Both shipped after the lists were last touched and neither was ever swept.
   '/settings/api-keys',
   '/settings/mailboxes',
+  // The WhatsApp intake's counterpart to mailboxes — number → branch mapping.
+  '/settings/whatsapp-numbers',
 ] as const
 
 /**

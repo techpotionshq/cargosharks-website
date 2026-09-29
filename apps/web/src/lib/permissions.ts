@@ -110,6 +110,22 @@ export const SETTINGS_AREAS = [
     icon: 'enquiries',
   },
   /*
+    The WhatsApp business numbers the intake answers on — FR-EQ-02, FR-AD-03.
+
+    On `admin.mailboxes.write`, not a key of its own: it is the same authority as
+    the mailboxes row above — pointing the enquiry intake at an inbound endpoint
+    of one's choosing, per branch. An operator who should not be able to redirect
+    the email intake should not be able to redirect the WhatsApp one either, and a
+    separate key would be a matrix row with no distinction anyone could explain.
+    Unlike mailboxes it carries no credential — the Kapso key is an integration.
+  */
+  {
+    key: 'whatsappNumbers',
+    href: '/settings/whatsapp-numbers',
+    permission: 'admin.mailboxes.write',
+    icon: 'enquiries',
+  },
+  /*
     The credentials this deployment reaches its suppliers with — FR-AD-03.
 
     Its own key, and the strictest reasoning on this list. The mailbox entry

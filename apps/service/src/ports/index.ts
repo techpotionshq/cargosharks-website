@@ -203,7 +203,25 @@ export interface InboundMessage {
    * it: better a stable hash than a new enquiry every minute forever.
    */
   readonly externalId: string
-  /** Which configured mailbox received it — this is what names the branch. */
+  /**
+   * Which channel this arrived on. Absent means email — the original and the
+   * default, so every existing caller and every stored receipt reads unchanged.
+   *
+   * It exists because `ingestMessage` is shared by the email intake and the
+   * WhatsApp one (FR-EQ-02, both directions of §9). The two disagree in only a
+   * few places — the `channel` stamped on the `messages` row and the enquiry,
+   * and whether the sender is matched to a customer by email address or by phone
+   * — and this is the discriminator those branches read. Everything else about
+   * what becomes an enquiry is identical, which is the whole point of one path.
+   */
+  readonly channel?: 'email' | 'whatsapp'
+  /**
+   * Which configured inbox received it — this is what names the branch.
+   *
+   * An email address for the email channel (matched against `mailboxes`); a
+   * WhatsApp business `phone_number_id` for the WhatsApp channel (matched
+   * against `whatsapp_numbers`, by the worker, before this shape is built).
+   */
   readonly mailbox: string
   readonly from: string
   readonly fromName?: string

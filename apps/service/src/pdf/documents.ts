@@ -189,6 +189,8 @@ export async function loadQuotationView(actor: Actor, quoteId: string): Promise<
         currency: quotes.currency,
         totalSell: quotes.totalSell,
         validUntil: quotes.validUntil,
+        coverNoteEn: quotes.coverNoteEn,
+        coverNoteAr: quotes.coverNoteAr,
         sentAt: quotes.sentAt,
         createdAt: quotes.createdAt,
         pricedSnapshot: quotes.pricedSnapshot,
@@ -282,6 +284,11 @@ export async function loadQuotationView(actor: Actor, quoteId: string): Promise<
       originAr: row.originAr,
       destinationAr: row.destinationAr,
       transitDays: typeof snapshot.transitDays === 'number' ? snapshot.transitDays : null,
+      // A live column, unlike the snapshot fields above: the covering note is
+      // editable prose a coordinator revises on the draft, not a frozen part of
+      // the pricing decision.
+      coverNoteEn: row.coverNoteEn,
+      coverNoteAr: row.coverNoteAr,
       notes: typeof snapshot.notes === 'string' ? snapshot.notes : null,
       inclusions: list('inclusions'),
       /*

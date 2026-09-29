@@ -34,7 +34,7 @@
 
 export interface NotificationTemplateSeed {
   readonly eventKey: string
-  readonly channel: 'email'
+  readonly channel: 'email' | 'in_app'
   readonly locale: 'en' | 'ar'
   readonly subject: string
   readonly body: string
@@ -47,6 +47,31 @@ function t(
   body: string,
 ): NotificationTemplateSeed {
   return { eventKey, channel: 'email', locale, subject, body: body.trim() }
+}
+
+/**
+ * The same event, worded for the topbar bell instead of a customer's inbox.
+ *
+ * In-app notifications are read by the person they are *about*, in a panel that
+ * already shows who is signed in — so they carry no "Hello {{recipientName}}"
+ * and no "{{senderName}}" sign-off. Those are the grammar of a letter to
+ * someone else, and repeating them in a self-addressed alert reads as a mail
+ * merge that escaped. The body is one sentence, because the reader is three
+ * feet from the record and one click from opening it.
+ *
+ * Only the internal events get one — `notification-dispatch` never fans a
+ * customer-audience event to `in_app`, because a customer has no bell to read
+ * it. So there is deliberately no in-app row here for `quote.sent`,
+ * `invoice.issued` and their kind, and the coverage test only requires the
+ * `email` channel for every event for the same reason.
+ */
+function ia(
+  eventKey: string,
+  locale: 'en' | 'ar',
+  subject: string,
+  body: string,
+): NotificationTemplateSeed {
+  return { eventKey, channel: 'in_app', locale, subject, body: body.trim() }
 }
 
 export const NOTIFICATION_TEMPLATES: readonly NotificationTemplateSeed[] = [
@@ -75,6 +100,37 @@ Open it in Qabandi to assign it and start the response clock.
 تم استلام الاستفسار {{reference}} ولم يُسنَد إلى مسؤول بعد.
 
 افتحه في نظام قبندي لإسناده وبدء احتساب زمن الاستجابة.
+
+{{senderName}}
+`,
+  ),
+
+  // --- enquiry.received (customer) ------------------------------------------
+  t(
+    'enquiry.received',
+    'en',
+    'We have your enquiry {{reference}}',
+    `
+Hello {{recipientName}}
+
+Thank you — we have received your enquiry and logged it as {{reference}}.
+
+Our team is reviewing it and will come back to you shortly. Please quote this
+reference in any reply.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'enquiry.received',
+    'ar',
+    'استلمنا استفسارك {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+شكراً لك، لقد استلمنا استفسارك وسجّلناه برقم {{reference}}.
+
+يقوم فريقنا بمراجعته وسيعود إليك قريباً. يُرجى ذكر هذا الرقم في أي مراسلة.
 
 {{senderName}}
 `,
@@ -150,6 +206,51 @@ charge is ours until the container moves.
 
 وبعد ذلك يبدأ احتساب {{kind}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع هذه
 التكلفة علينا إلى أن تتحرك الحاوية.
+
+{{senderName}}
+`,
+  ),
+
+  /*
+    supplier_invoice.variance_flagged (internal) — FR-FN-09.
+
+    The subject carries the partner and the total, because this lands in
+    finance's inbox beside the day's other mail and the decision — query it or
+    approve it — is made from the subject or not at all. Over-billing only; the
+    review screen shows the rest.
+  */
+  t(
+    'supplier_invoice.variance_flagged',
+    'en',
+    'Over-billed: {{partnerName}} on {{jobReference}} — {{totalVariance}} {{currency}}',
+    `
+Hello {{recipientName}}
+
+Supplier invoice {{reference}} from {{partnerName}}, on job {{jobReference}}, has
+{{flaggedCount}} line(s) billed over what the job accrued — {{totalVariance}}
+{{currency}} in total.
+
+The largest is {{worstDescription}}, over by {{worstVariance}} {{currency}}.
+
+Review it in Qabandi before it is approved for payment.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'supplier_invoice.variance_flagged',
+    'ar',
+    'فاتورة مورّد أعلى من المستحق: {{partnerName}} على {{jobReference}} — {{totalVariance}} {{currency}}',
+    `
+مرحباً {{recipientName}}
+
+فاتورة المورّد {{reference}} من {{partnerName}}، على الشحنة {{jobReference}}، تتضمن
+{{flaggedCount}} بنداً محتسباً بأعلى مما استحق على الشحنة — بإجمالي فرق قدره
+{{totalVariance}} {{currency}}.
+
+أكبرها {{worstDescription}}، بزيادة قدرها {{worstVariance}} {{currency}}.
+
+يرجى مراجعتها في نظام قبندي قبل اعتمادها للدفع.
 
 {{senderName}}
 `,
@@ -510,5 +611,98 @@ reference so that we can match it.
 
 {{senderName}}
 `,
+  ),
+
+  // ==========================================================================
+  // In-app — the six internal events, worded for the topbar bell (see `ia`).
+  //
+  // Subjects are the headline the bell shows collapsed; bodies are the one line
+  // it shows open. No greeting, no signature — this is read by the person it is
+  // about. Each uses a subset of the event's fields; the email row above still
+  // uses the rest, so no declared field goes unused.
+  // ==========================================================================
+
+  // --- enquiry.created ------------------------------------------------------
+  ia(
+    'enquiry.created',
+    'en',
+    'New enquiry {{reference}}',
+    'Received and waiting for an owner. Open it to assign it and start the response clock.',
+  ),
+  ia(
+    'enquiry.created',
+    'ar',
+    'استفسار جديد {{reference}}',
+    'تم استلامه وينتظر الإسناد. افتحه لإسناده وبدء احتساب زمن الاستجابة.',
+  ),
+
+  // --- enquiry.sla_breached -------------------------------------------------
+  ia(
+    'enquiry.sla_breached',
+    'en',
+    'Overdue first response — {{reference}}',
+    'Past the agreed time for a first response and still unanswered. It needs a reply now.',
+  ),
+  ia(
+    'enquiry.sla_breached',
+    'ar',
+    'تأخر الرد الأول — {{reference}}',
+    'تجاوز المدة المتفق عليها للرد الأول ولم يُرد عليه بعد. يحتاج إلى رد الآن.',
+  ),
+
+  // --- free_time.expiring ---------------------------------------------------
+  ia(
+    'free_time.expiring',
+    'en',
+    '{{kind}} on {{containerNo}} in {{daysRemaining}} day(s) — {{reference}}',
+    'Free time ends {{expiresOn}}. After that {{perDiem}} {{currency}} per day, ours until the container moves.',
+  ),
+  ia(
+    'free_time.expiring',
+    'ar',
+    'بدء احتساب {{kind}} على {{containerNo}} خلال {{daysRemaining}} يوم — {{reference}}',
+    'ينتهي وقت السماح بتاريخ {{expiresOn}}، وبعده {{perDiem}} {{currency}} عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+  ),
+
+  // --- rate_card.expiring ---------------------------------------------------
+  ia(
+    'rate_card.expiring',
+    'en',
+    '{{count}} rate card(s) lapse within {{horizonDays}} days',
+    'The first lapses on {{soonest}}. Renew before a lane is quoted from memory.',
+  ),
+  ia(
+    'rate_card.expiring',
+    'ar',
+    'انتهاء صلاحية {{count}} من بطاقات الأسعار خلال {{horizonDays}} يوماً',
+    'أولها بتاريخ {{soonest}}. جدّدها قبل أن يُسعَّر أي خط بالتقدير.',
+  ),
+
+  // --- exception.opened -----------------------------------------------------
+  ia(
+    'exception.opened',
+    'en',
+    '{{severity}} exception on {{reference}}',
+    '{{description}} — on the exception register, resolution clock running.',
+  ),
+  ia(
+    'exception.opened',
+    'ar',
+    'استثناء بدرجة {{severity}} على {{reference}}',
+    '{{description}} — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
+  ),
+
+  // --- supplier_invoice.variance_flagged ------------------------------------
+  ia(
+    'supplier_invoice.variance_flagged',
+    'en',
+    'Over-billed: {{partnerName}} — {{totalVariance}} {{currency}}',
+    '{{reference}} on {{jobReference}}: {{flaggedCount}} line(s) over accrual. Review before it is approved for payment.',
+  ),
+  ia(
+    'supplier_invoice.variance_flagged',
+    'ar',
+    'فاتورة أعلى من المستحق: {{partnerName}} — {{totalVariance}} {{currency}}',
+    '{{reference}} على {{jobReference}}: {{flaggedCount}} بنداً أعلى من المستحق. راجعها قبل اعتمادها للدفع.',
   ),
 ]

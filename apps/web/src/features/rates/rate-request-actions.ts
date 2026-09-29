@@ -1,0 +1,112 @@
+'use server'
+
+/**
+ * Requesting rates from agents, and turning the winning reply into a buy card —
+ * the two writes of rate procurement, FR-RT-10.
+ *
+ * `requestRates` writes one `rate_requests` row per agent a coordinator picked,
+ * each `sent` with its own token; the service's minute sweep mails them (web has
+ * no queue). `acceptRateReply` is the accept path the extraction deliberately
+ * left to a person: it folds a parsed reply's lines into a versioned buy card
+ * with `groupRateCards` — the exact function the CSV importer uses — under the
+ * coordinator's own actor, so the audit trail answers *who awarded this rate*.
+ */
+
+import { randomBytes } from 'node:crypto'
+import { revalidatePath } from 'next/cache'
+import { and, eq, ne } from 'drizzle-orm'
+import { enquiries, promoteRateReply, rateRequests, withActor } from '@qabandi/db'
+import { requireSession } from '@/lib/session'
+import { assertCan } from '@/lib/permissions'
+import { failWith, succeed, type ActionState } from '@/lib/form-state'
+
+/** A token that survives a mail round-trip — hex, matched by `rfq-routing.ts`. */
+function newToken(): string {
+  return randomBytes(12).toString('hex')
+}
+
+/**
+ * Send an RFQ to each picked agent.
+ *
+ * The rows land `sent`; the service drains and mails them. An agent already on
+ * this enquiry is skipped rather than asked twice — the picker greys them out,
+ * and this is the guard behind that in case two coordinators pick at once.
+ */
+export async function requestRates(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'rate.card.write')
+
+  const enquiryId = String(form.get('enquiryId') ?? '').trim()
+  const partnerIds = form
+    .getAll('partnerId')
+    .map((v) => String(v).trim())
+    .filter(Boolean)
+
+  if (!enquiryId) return failWith('This enquiry is missing.')
+  if (partnerIds.length === 0) return failWith('Pick at least one agent to ask.')
+
+  const count = await withActor(session.actor, async (tx) => {
+    const [enquiry] = await tx
+      .select({ branchId: enquiries.branchId })
+      .from(enquiries)
+      .where(eq(enquiries.id, enquiryId))
+      .limit(1)
+    if (!enquiry) return 0
+
+    const existing = new Set(
+      (
+        await tx
+          .select({ partnerId: rateRequests.partnerId })
+          .from(rateRequests)
+          .where(
+            and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')),
+          )
+      ).map((r) => r.partnerId),
+    )
+
+    const fresh = partnerIds.filter((id) => !existing.has(id))
+    if (fresh.length === 0) return 0
+
+    await tx.insert(rateRequests).values(
+      fresh.map((partnerId) => ({
+        branchId: enquiry.branchId,
+        enquiryId,
+        partnerId,
+        status: 'sent' as const,
+        token: newToken(),
+      })),
+    )
+    return fresh.length
+  })
+
+  revalidatePath(`/enquiries/${enquiryId}`)
+  return succeed(String(count))
+}
+
+/**
+ * Promote a parsed reply into a versioned buy card, and mark it accepted.
+ *
+ * The promotion itself — the grouping, the code resolution, the renewal clamp —
+ * lives in `promoteRateReply` (`@qabandi/db`), shared with the service's
+ * auto-promote sweep so a buy rate comes out identical whether a coordinator
+ * awarded it or the machine did. This is the thin half a click needs: the
+ * permission, and turning the result into a form state.
+ */
+export async function acceptRateReply(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'rate.card.write')
+
+  const rateRequestId = String(form.get('rateRequestId') ?? '').trim()
+  const enquiryId = String(form.get('enquiryId') ?? '').trim()
+  if (!rateRequestId) return failWith('This rate request is missing.')
+
+  const result = await withActor(session.actor, (tx) =>
+    promoteRateReply(tx, rateRequestId, session.principal.id),
+  )
+
+  if (!result.ok) return failWith(result.message)
+
+  if (enquiryId) revalidatePath(`/enquiries/${enquiryId}`)
+  revalidatePath('/rates')
+  return succeed(result.cardId)
+}

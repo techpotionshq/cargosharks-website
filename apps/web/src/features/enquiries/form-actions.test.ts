@@ -36,7 +36,8 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { enquiries, notificationOutbox, withActor } = await import('@qabandi/db')
+const { aiInvocations, enquiries, extractionProposals, notificationOutbox, withActor } =
+  await import('@qabandi/db')
 
 const {
   AWAY_BRANCH,
@@ -49,8 +50,13 @@ const {
   world,
 } = await import('@/lib/testing/fixtures')
 
-const { submitEnquiry, assignEnquiryAction, respondEnquiryAction, closeEnquiryAction } =
-  await import('./form-actions')
+const {
+  submitEnquiry,
+  assignEnquiryAction,
+  respondEnquiryAction,
+  closeEnquiryAction,
+  acceptAllProposals,
+} = await import('./form-actions')
 
 const session = {
   actor: bothBranchesActor,
@@ -417,6 +423,145 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(after.status).toBe('won')
       // Nothing was lost, so there is nothing to explain.
       expect(after.lostReason).toBeNull()
+    })
+  })
+
+  /**
+   * The one-click fill — accepting every open suggestion at once.
+   *
+   * The rule that carries it is never-overwrite: a field a person filled between
+   * the model reading the mail and this click is left alone, not overwritten,
+   * and an unresolvable suggestion is skipped and counted rather than failing
+   * the batch. Both are checked against real rows, because both are `where`
+   * clauses and a state machine the database enforces.
+   */
+  describe('accepting what a model read, in one click', () => {
+    // Every proposal cites the invocation that produced it — the column is not null.
+    let invocationId: string
+    beforeAll(async () => {
+      invocationId = await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        const [row] = await tx
+          .insert(aiInvocations)
+          .values({
+            branchId: HOME_BRANCH,
+            principalId: bothBranchesActor.principalId,
+            surface: 'enquiry_extract',
+            modelRequested: 'test-model',
+            promptVersion: 'test',
+            inputHash: `accept-all-${Date.now()}`,
+          })
+          .returning({ id: aiInvocations.id })
+        return row!.id
+      })
+    })
+
+    async function propose(enquiryId: string, entries: readonly { field: string; value: string }[]) {
+      await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        for (const entry of entries) {
+          await tx.insert(extractionProposals).values({
+            branchId: HOME_BRANCH,
+            invocationId,
+            targetTable: 'enquiries',
+            targetId: enquiryId,
+            field: entry.field,
+            value: entry.value,
+            status: 'proposed',
+            confidence: '0.9',
+          })
+        }
+      })
+    }
+
+    const fieldsOf = async (enquiryId: string) => {
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            incoterm: enquiries.incoterm,
+            pieces: enquiries.pieces,
+            grossWeightKg: enquiries.grossWeightKg,
+          })
+          .from(enquiries)
+          .where(eq(enquiries.id, enquiryId))
+          .limit(1),
+      )
+      return row!
+    }
+
+    const statuses = (enquiryId: string) =>
+      withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ field: extractionProposals.field, status: extractionProposals.status })
+          .from(extractionProposals)
+          .where(eq(extractionProposals.targetId, enquiryId)),
+      )
+
+    it('applies every open suggestion and closes each one', async () => {
+      const row = await raise()
+      await propose(row.id, [
+        { field: 'incoterm', value: 'CIF' },
+        { field: 'grossWeightKg', value: '1200.500' },
+        { field: 'pieces', value: '10' },
+      ])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      // `succeed(String(applied))` — three applied, tokenised.
+      expect(state.ok).toMatch(/^3:/)
+      const fields = await fieldsOf(row.id)
+      expect(fields.incoterm).toBe('CIF')
+      expect(Number(fields.grossWeightKg)).toBeCloseTo(1200.5, 3)
+      expect(fields.pieces).toBe(10)
+      expect((await statuses(row.id)).every((p) => p.status === 'applied')).toBe(true)
+    })
+
+    /**
+     * The field a person already filled is left as they left it, and the
+     * proposal for it stays open for them to look at.
+     */
+    it('does not overwrite a field a person has already filled', async () => {
+      const row = await raise({ incoterm: 'FOB' })
+      await propose(row.id, [
+        { field: 'incoterm', value: 'CIF' },
+        { field: 'pieces', value: '5' },
+      ])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      // One applied (pieces), one skipped (incoterm was authored).
+      expect(state.ok).toMatch(/^1:/)
+      const fields = await fieldsOf(row.id)
+      expect(fields.incoterm).toBe('FOB')
+      expect(fields.pieces).toBe(5)
+    })
+
+    /** A suggestion that will not resolve is skipped, not fatal to the rest. */
+    it('skips an unresolvable suggestion and applies the others', async () => {
+      const row = await raise()
+      await propose(row.id, [
+        { field: 'origin', value: 'Nowhereville-on-Sea' },
+        { field: 'pieces', value: '7' },
+      ])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      expect(state.ok).toMatch(/^1:/)
+      expect((await fieldsOf(row.id)).pieces).toBe(7)
+    })
+
+    /** When nothing could be applied, it says so rather than claiming success. */
+    it('reports when every suggestion was already overtaken', async () => {
+      const row = await raise({ incoterm: 'FOB' })
+      await propose(row.id, [{ field: 'incoterm', value: 'CIF' }])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      expect(state.ok).toBeUndefined()
+      expect(state.message).toMatch(/None could be applied/)
+    })
+
+    it('asks for an enquiry when none was named', async () => {
+      const state = await acceptAllProposals({}, form({}))
+      expect(state.message).toBe('Nothing to do.')
     })
   })
 })

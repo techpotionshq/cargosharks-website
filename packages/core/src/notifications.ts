@@ -88,6 +88,23 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     summary: 'A new enquiry has arrived and needs an owner.',
     fields: ['reference'],
   }),
+  /*
+    The customer-facing twin of `enquiry.created` — FR-NT-01.
+
+    `enquiry.created` tells the desk to pick the enquiry up; this tells the
+    customer we have it, and hands them the reference to quote back. Raised only
+    for an enquiry opened from a matched customer's own contact, never for the
+    raw sender of inbound mail — that distinction is the loop breaker
+    (`Operations_Findings §11`): the day an acknowledgement went to whoever wrote
+    in, a mail daemon wrote in, and its bounce was the next thing acknowledged.
+  */
+  event({
+    key: 'enquiry.received',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A customer’s enquiry has been received, and acknowledged to them.',
+    fields: ['reference'],
+  }),
   event({
     key: 'enquiry.sla_breached',
     audience: 'internal',
@@ -208,6 +225,35 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     requirement: 'FR-NT-01',
     summary: 'An issued invoice has passed its due date unpaid.',
     fields: ['seriesNo', 'total', 'currency', 'dueOn', 'daysOverdue'],
+  }),
+
+  // --- supplier invoice ----------------------------------------------------
+  /*
+    A supplier billed over what the job accrued, caught the moment the bill was
+    read — FR-FN-09's other half. Internal, and for the reason `free_time` is:
+    this is money about to leave the building that nobody agreed to, and the
+    person who queries it before it is approved is finance, not the agent who
+    sent it. Under-billing is a P&L-accuracy question and stays on the review
+    screen rather than becoming an inbox alarm.
+
+    A new noun — `supplier_invoice.*`, never `invoice.*`, which is the
+    customer-facing receivable above.
+  */
+  event({
+    key: 'supplier_invoice.variance_flagged',
+    audience: 'internal',
+    requirement: 'FR-FN-09',
+    summary: 'A supplier invoice was read with a line billed over what the job accrued.',
+    fields: [
+      'reference',
+      'partnerName',
+      'jobReference',
+      'flaggedCount',
+      'worstDescription',
+      'worstVariance',
+      'totalVariance',
+      'currency',
+    ],
   }),
 ]
 

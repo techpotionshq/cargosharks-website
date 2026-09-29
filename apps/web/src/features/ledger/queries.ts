@@ -425,6 +425,9 @@ export interface QuoteDetail {
   readonly lane: string | null
   readonly mode: string | null
   readonly notes: string | null
+  /** The covering note the model drafts and a coordinator edits — one per language. */
+  readonly coverNoteEn: string | null
+  readonly coverNoteAr: string | null
   readonly lines: readonly {
     id: string
     chargeName: string
@@ -458,6 +461,7 @@ export async function getQuoteDetail(actor: Actor, id: string): Promise<QuoteDet
                   else o.name_en || ' → ' || d.name_en end as lane,
              e.mode::text as mode,
              q.priced_snapshot ->> 'notes' as notes,
+             q.cover_note_en as "coverNoteEn", q.cover_note_ar as "coverNoteAr",
              coalesce((
                select json_agg(json_build_object(
                         'id', ql.id, 'chargeName', ct.name_en, 'description', ql.description,

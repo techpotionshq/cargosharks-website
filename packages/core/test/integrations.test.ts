@@ -98,6 +98,41 @@ describe('the integration catalogue', () => {
       expect(integrationSpec('carrierTracking')?.defaultDriver).toBe('manual')
       expect(integrationSpec('einvoice')?.defaultDriver).toBe('none')
     })
+
+    /*
+      Auto-fanout mails real agents, so it ships dark like the paid feeds: the
+      inert `manual` driver until an administrator switches it to `auto`.
+    */
+    it('defaults automatic rate procurement to off', () => {
+      const spec = integrationSpec('rateAutoFanout')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'manual')?.live).toBe(false)
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
+
+    /* Auto-accept writes to the enquiry unattended, so it too ships dark. */
+    it('defaults enquiry auto-accept to off', () => {
+      const spec = integrationSpec('enquiryAutoAccept')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
+
+    /* Auto-promote commits money, so `manual` is off and the other drivers are strategies. */
+    it('defaults auto-promote to off and offers the three strategies as live drivers', () => {
+      const spec = integrationSpec('rateAutoPromote')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'manual')?.live).toBe(false)
+      for (const strategy of ['first', 'all', 'wait']) {
+        expect(spec?.drivers?.find((d) => d.value === strategy)?.live).toBe(true)
+      }
+    })
+
+    /* Auto-draft lands a customer-facing quotation, so it too ships dark. */
+    it('defaults quote auto-draft to off', () => {
+      const spec = integrationSpec('quoteAutoDraft')
+      expect(spec?.defaultDriver).toBe('manual')
+      expect(spec?.drivers?.find((d) => d.value === 'auto')?.live).toBe(true)
+    })
   })
 
   describe('which drivers demand their fields', () => {

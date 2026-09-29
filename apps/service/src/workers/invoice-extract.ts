@@ -35,12 +35,16 @@
  * than an empty form and no explanation.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import {
   assets,
+  chargeLines,
   chargeTypes,
   currencies,
   inSeries,
+  jobs,
+  notificationOutbox,
+  partners,
   supplierInvoiceLines,
   supplierInvoices,
   withActor,
@@ -55,13 +59,18 @@ import {
   invoiceTotal,
   money,
   reconcileInvoice,
+  resolveTolerance,
   round,
   seedCurrencyLookup,
+  summariseInvoice,
   sum,
   toDb,
+  tolerance,
+  varianceAlert,
   type ArithmeticFinding,
   type CurrencySpec,
   type ExtractedInvoice,
+  type SupplierLineInput,
 } from '@qabandi/core'
 import { INVOICE_EXTRACTION_SCHEMA } from '@qabandi/core'
 import type { ImportLookups } from '@qabandi/core/import'
@@ -79,7 +88,7 @@ import type { ModelContent } from '../ports/index'
  * which is possible on a single-line invoice where there is nothing to
  * reconcile against.
  */
-const CONFIDENCE_FLOOR = 0.7
+export const CONFIDENCE_FLOOR = 0.7
 
 /** Scans this large are refused rather than sent. */
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
@@ -340,7 +349,173 @@ async function write(
       })),
     )
 
+    /*
+      The whole reason this surface earns its return (see the header): the same
+      transaction that captured the bill also decides whether it should be
+      queried before finance approves it. Inside the tx, so a rolled-back
+      capture never leaves a variance alert behind — the transactional-outbox
+      pattern `comms.ts` describes.
+    */
+    await flagVariance(tx, input, extracted, spec, code, reference)
+
     return invoiceId
+  })
+}
+
+/* -------------------------------------------------------------------------
+ * The variance flag — FR-FN-09's alert half
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Raise a variance alert to finance when a supplier billed over the accrual.
+ *
+ * `core/matching.ts` already knows how to find the agent who billed 460 for a
+ * cost accrued at 400; this is the worker end that feeds it rows and, where a
+ * line is over tolerance, drops a `notification_outbox` row for the internal
+ * audience `supplier_invoice.variance_flagged` names.
+ *
+ * ## Three deliberate narrowings, each keeping the alert honest
+ *
+ *   - **A job must be attached.** The accrual is keyed on the job, so a bill
+ *     that arrived by mail with nobody having matched it to a shipment yet has
+ *     nothing to compare against — it surfaces on the payables review screen
+ *     once matched, not here.
+ *   - **The invoice's own currency, never converted.** `charge_lines.amount` is
+ *     summed in the currency the bill states, and a cost accrued in a different
+ *     currency is left out. Extraction does not stamp an FX rate, and inventing
+ *     one here is exactly what `matching.ts` warns turns a variance into an FX
+ *     movement in disguise — `compareToAccrual` throws on a currency mismatch
+ *     rather than let it happen.
+ *   - **Per charge type, and only where an accrual exists.** Billed lines are
+ *     summed by charge type against the cost the job accrued for that partner
+ *     and that charge type. A charge type the job never accrued (accrual zero)
+ *     is skipped rather than read as a full-value over — most legitimate costs
+ *     (a customs inspection, a demurrage day) were never pre-accrued, and
+ *     flagging every one of them is how an alert learns to be ignored.
+ *
+ * Exported for the write-path test, which drives it under a real actor against
+ * seeded rows — the query and the RLS insert are exactly what a pure test
+ * cannot reach, and `varianceAlert` already covers the decision that can.
+ */
+export async function flagVariance(
+  tx: Tx,
+  input: ExtractInvoiceInput,
+  extracted: ExtractedInvoice,
+  spec: CurrencySpec,
+  code: string,
+  reference: Reference,
+): Promise<void> {
+  if (!input.jobId) return
+
+  // Billed, summed per resolved charge type — the same resolution the line
+  // insert above made, so the two never disagree about which code a line is.
+  const billedByType = new Map<string, string[]>()
+  for (const row of extracted.lines.rows) {
+    const chargeTypeId = row.values.chargeType
+      ? reference.chargeTypeIds.get(row.values.chargeType)
+      : undefined
+    if (!chargeTypeId) continue
+    const amounts = billedByType.get(chargeTypeId) ?? []
+    amounts.push(row.values.amount)
+    billedByType.set(chargeTypeId, amounts)
+  }
+
+  const chargeTypeIds = [...billedByType.keys()]
+  if (chargeTypeIds.length === 0) return
+
+  const [[job], [partner], typeRows, accrualRows] = await inSeries([
+    () => tx.select({ reference: jobs.reference }).from(jobs).where(eq(jobs.id, input.jobId!)),
+    () =>
+      tx
+        .select({
+          name: partners.legalNameEn,
+          percent: partners.varianceTolerancePercent,
+          absolute: partners.varianceToleranceAbsolute,
+        })
+        .from(partners)
+        .where(eq(partners.id, input.partnerId)),
+    () =>
+      tx
+        .select({
+          id: chargeTypes.id,
+          name: chargeTypes.nameEn,
+          percent: chargeTypes.varianceTolerancePercent,
+          absolute: chargeTypes.varianceToleranceAbsolute,
+        })
+        .from(chargeTypes)
+        .where(inArray(chargeTypes.id, chargeTypeIds)),
+    /*
+      The provisional accrual: the cost the job booked to this partner for this
+      charge type, in the bill's own currency. `is_accrual` is not required —
+      an already-posted cost line is as valid a comparison as an accrued one,
+      and a bill against a job with no cost line at all simply finds nothing.
+    */
+    () =>
+      tx
+        .select({
+          chargeTypeId: chargeLines.chargeTypeId,
+          accrued: sql<string>`coalesce(sum(${chargeLines.amount}), '0')`,
+        })
+        .from(chargeLines)
+        .where(
+          and(
+            eq(chargeLines.jobId, input.jobId!),
+            eq(chargeLines.counterpartyPartnerId, input.partnerId),
+            eq(chargeLines.direction, 'cost'),
+            eq(chargeLines.currency, code),
+            inArray(chargeLines.chargeTypeId, chargeTypeIds),
+          ),
+        )
+        .groupBy(chargeLines.chargeTypeId),
+  ])
+
+  if (!partner) return
+
+  const partnerTol = tolerance(partner.percent, partner.absolute)
+  const typeById = new Map(typeRows.map((row) => [row.id, row]))
+  const accruedById = new Map(accrualRows.map((row) => [row.chargeTypeId, row.accrued]))
+
+  const lines: SupplierLineInput[] = []
+  for (const [chargeTypeId, amounts] of billedByType) {
+    const accrued = accruedById.get(chargeTypeId)
+    // Nothing accrued for this code — see the header's third narrowing.
+    if (accrued === undefined) continue
+    const type = typeById.get(chargeTypeId)
+    lines.push({
+      id: chargeTypeId,
+      description: type?.name ?? chargeTypeId,
+      billed: sum(
+        amounts.map((amount) => money(amount, code)),
+        code,
+      ).amount,
+      accrued,
+      matchCount: 1,
+      tolerance: resolveTolerance(
+        tolerance(type?.percent, type?.absolute),
+        partnerTol,
+      ),
+    })
+  }
+
+  if (lines.length === 0) return
+
+  const alert = varianceAlert(summariseInvoice(lines, code, spec))
+  if (!alert.flagged) return
+
+  await tx.insert(notificationOutbox).values({
+    branchId: input.branchId,
+    eventKey: 'supplier_invoice.variance_flagged',
+    jobId: input.jobId,
+    payload: {
+      reference: extracted.header.invoiceNumber,
+      partnerName: partner.name,
+      jobReference: job?.reference ?? '—',
+      flaggedCount: alert.overCount,
+      worstDescription: alert.worst?.description ?? '—',
+      worstVariance: alert.worst ? toDb(alert.worst.variance) : '0',
+      totalVariance: toDb(alert.totalOverVariance),
+      currency: code,
+    },
   })
 }
 
@@ -382,7 +557,7 @@ async function loadAsset(actor: Actor, assetId: string): Promise<AssetRow> {
  * every internal principal, which makes that a formality here and not one two
  * surfaces from now.
  */
-async function loadReference(actor: Actor): Promise<Reference> {
+export async function loadReference(actor: Actor): Promise<Reference> {
   return withActor(actor, async (tx: Tx) => {
     const [codes, money] = await inSeries([
       () =>

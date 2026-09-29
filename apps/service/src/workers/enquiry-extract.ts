@@ -71,9 +71,12 @@ import {
   incoterms as incotermsTable,
   inSeries,
   messages,
+  resolveProposal,
   systemActor,
   withActor,
+  SYSTEM_PRINCIPAL_ID,
   type Actor,
+  type Tx,
 } from '@qabandi/db'
 import {
   admissible,
@@ -86,6 +89,7 @@ import {
 } from '@qabandi/core'
 import { ENQUIRY_EXTRACTION_SCHEMA } from '@qabandi/core'
 import { invoke } from '../ai/ledger'
+import { integration, type LiveIntegration } from '../settings'
 import { ENQUIRY_PROMPT_VERSION, ENQUIRY_USER_PROMPT, enquirySystemPrompt } from '../ai/prompts'
 
 /**
@@ -126,8 +130,20 @@ export interface ExtractEnquiryResult {
   readonly refused: readonly string[]
   /** Columns already holding a value, so nothing was proposed for them. */
   readonly occupied: readonly string[]
+  /** Of the proposed, how many auto-accept applied without a person — 0 unless on. */
+  readonly applied: number
   /** Why nothing happened, in one line, where nothing did. */
   readonly skipped?: string
+}
+
+export interface ExtractEnquiryDeps {
+  /**
+   * The auto-accept gate, injected in tests. Resolved from the deployment's
+   * integration settings otherwise — behind a thirty-second cache that is
+   * deliberately un-clearable, so a test could not switch it on and off through
+   * the environment within one run.
+   */
+  readonly autoAccept?: LiveIntegration
 }
 
 /**
@@ -169,15 +185,20 @@ const COLUMN: Readonly<Record<EnquiryField, string>> = {
  * it. Those are ordinary states of a deployment and the caller logs them; only
  * a genuine failure propagates, where pg-boss's retry is the right answer.
  */
-export async function extractEnquiry(input: ExtractEnquiryInput): Promise<ExtractEnquiryResult> {
+export async function extractEnquiry(
+  input: ExtractEnquiryInput,
+  deps: ExtractEnquiryDeps = {},
+): Promise<ExtractEnquiryResult> {
   const actor = systemActor()
 
   const context = await load(actor, input)
-  if (!context) return { proposed: 0, refused: [], occupied: [], skipped: 'enquiry_not_found' }
+  if (!context) {
+    return { proposed: 0, applied: 0, refused: [], occupied: [], skipped: 'enquiry_not_found' }
+  }
 
   const source = mailFor(context.subject, context.body)
   if (source.trim() === '') {
-    return { proposed: 0, refused: [], occupied: [], skipped: 'nothing_to_read' }
+    return { proposed: 0, applied: 0, refused: [], occupied: [], skipped: 'nothing_to_read' }
   }
 
   /*
@@ -301,9 +322,14 @@ export async function extractEnquiry(input: ExtractEnquiryInput): Promise<Extrac
   }
 
   if (writable.length === 0) {
-    return { invocationId, proposed: 0, refused: refusedNames, occupied }
+    return { invocationId, proposed: 0, applied: 0, refused: refusedNames, occupied }
   }
 
+  // Resolved once, before the write, so the auto-accept branch reads one snapshot
+  // rather than a fresh one per proposal.
+  const autoAccept = deps.autoAccept ?? (await integration('enquiryAutoAccept'))
+
+  let applied = 0
   await withActor(actor, async (tx) => {
     await tx.insert(extractionProposals).values(
       writable.map(({ proposal, wasEmpty }) => ({
@@ -319,9 +345,92 @@ export async function extractEnquiry(input: ExtractEnquiryInput): Promise<Extrac
         targetWasEmpty: wasEmpty,
       })),
     )
+
+    // The auto-apply path the thresholds above were always for — off unless the
+    // integration is switched to `auto`, and even then only for a confident
+    // proposal into an empty column that resolves without ambiguity.
+    if (autoAccept.driver === 'auto') {
+      applied = await autoApplyProposals(
+        tx,
+        input.enquiryId,
+        writable,
+        clampUnit(autoAccept.number('confidence', DEFAULT_AUTOACCEPT_CONFIDENCE)),
+      )
+    }
   })
 
-  return { invocationId, proposed: writable.length, refused: refusedNames, occupied }
+  return { invocationId, proposed: writable.length, applied, refused: refusedNames, occupied }
+}
+
+/** The confidence ceiling when the setting supplies none — high, on purpose. */
+const DEFAULT_AUTOACCEPT_CONFIDENCE = 0.9
+
+/**
+ * Apply the proposals a person would have accepted anyway, in the same write.
+ *
+ * Exported so it can be tested against a real database without a model in the
+ * loop, which is the half `extractEnquiry` cannot reach cheaply. A proposal is
+ * applied only if the column was empty when the model was asked, its confidence
+ * clears the ceiling (`decideProposal` says `apply`), and it resolves without
+ * ambiguity — an ambiguous port or commodity is left `proposed` for a person,
+ * the same refusal the manual accept makes. Each application is an ordinary
+ * audited write under the system principal, and the proposal is closed as
+ * `applied`, so the audit trail answers who put the value on the shipment
+ * exactly as it does when a coordinator clicks.
+ */
+export async function autoApplyProposals(
+  tx: Tx,
+  enquiryId: string,
+  candidates: readonly { proposal: FieldProposal; wasEmpty: boolean }[],
+  confidence: number,
+): Promise<number> {
+  let applied = 0
+
+  for (const { proposal, wasEmpty } of candidates) {
+    if (!wasEmpty) continue
+
+    const verdict = decideProposal(proposal, {
+      current: null,
+      humanAuthored: false,
+      applyThreshold: confidence,
+      reviewThreshold: 0,
+    })
+    if (verdict !== 'apply') continue
+
+    const resolution = await resolveProposal(tx, proposal.field, proposal.value)
+    if (!resolution.ok) continue
+
+    await tx
+      .update(enquiries)
+      .set({ [resolution.column]: resolution.value, updatedAt: new Date() })
+      .where(eq(enquiries.id, enquiryId))
+
+    await tx
+      .update(extractionProposals)
+      .set({
+        status: 'applied',
+        decidedById: SYSTEM_PRINCIPAL_ID,
+        decidedAt: new Date(),
+        closedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(extractionProposals.targetId, enquiryId),
+          eq(extractionProposals.field, proposal.field),
+          eq(extractionProposals.status, 'proposed'),
+        ),
+      )
+
+    applied += 1
+  }
+
+  return applied
+}
+
+/** Clamp to the unit interval — a confidence outside [0,1] is a typo, not a rule. */
+function clampUnit(value: number): number {
+  return Math.min(Math.max(value, 0), 1)
 }
 
 interface Loaded {

@@ -209,10 +209,62 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     }),
   },
   {
+    name: 'list_unbilled',
+    kind: 'read',
+    description:
+      'Shipments carrying revenue that was earned but never invoiced, largest first, with the amount in the branch base currency. Use for "what have we not billed", "unbilled revenue" and anything about revenue leaking.',
+    parameters: objectSchema({
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
+    name: 'list_quotes_expiring',
+    kind: 'read',
+    description:
+      'Sent quotations approaching the end of their validity, soonest first, with the customer and the quoted total. Use for "which quotes are about to lapse" and following up before a price expires.',
+    parameters: objectSchema({
+      withinDays: { type: 'integer', minimum: 0, maximum: 60 },
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
+    name: 'get_customer_credit',
+    kind: 'read',
+    /*
+      Per branch, not one figure. Credit limits are agreed per legal entity, so
+      a customer can be well inside their limit in Kuwait and on hold in Dubai —
+      and the tool takes no branch (none of them do; RLS decides what is
+      visible), so it answers for every branch the asker can see rather than
+      guessing which one they meant.
+    */
+    description:
+      'A customer’s credit standing at each branch you can see: what they owe, their limit, the headroom left, and whether they are over the limit or on hold. Use for "can this customer book more", "are they on hold" and any credit question.',
+    parameters: objectSchema(
+      { customer: { type: 'string', description: 'The customer, by name or code.' } },
+      ['customer'],
+    ),
+  },
+  {
+    name: 'list_consolidation_candidates',
+    kind: 'read',
+    description:
+      'Loose LCL and air shipments on the same lane that could have shared a container, grouped, largest first, with the container each group would fill. Use for "what could we consolidate", "any co-load opportunities" and finding freight bought retail that should have been bought wholesale.',
+    parameters: objectSchema({
+      limit: { type: 'integer', minimum: 1, maximum: 50 },
+    }),
+  },
+  {
     name: 'get_supplier_variance',
     kind: 'read',
     description:
       'Where a supplier has billed something other than what the job accrued, with the variance per line. Use for "did the agent overcharge us" and anything about a disputed bill.',
+    parameters: objectSchema({ reference: REFERENCE }, ['reference']),
+  },
+  {
+    name: 'get_margin',
+    kind: 'read',
+    description:
+      'The profit and loss on one shipment — revenue, cost, gross margin and how much of the cost is still an accrual rather than a billed figure, in the branch base currency. Use for "what did we make on", "is this job profitable" and any margin question.',
     parameters: objectSchema({ reference: REFERENCE }, ['reference']),
   },
   {

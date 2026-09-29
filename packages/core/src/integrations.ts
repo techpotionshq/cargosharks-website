@@ -425,15 +425,44 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ['apiKey'],
   ),
 
+  /*
+    WhatsApp, through Kapso.
+
+    Kapso is a proxy in front of the WhatsApp Cloud API: it provisions the
+    number, receives the messages and signs a webhook this service reads at
+    `/webhooks/whatsapp`, and it takes outbound sends on a Meta-shaped endpoint.
+    So this integration holds one credential — the account's Kapso API key — and
+    a base URL to override for staging. The *numbers* the account answers on are
+    `whatsapp_numbers` rows, per branch, because a legal entity may hold its own
+    (FR-ID-01); the sending number is read from that row at send time, not here.
+
+    Ships dark, like the carriers and the auto-pipeline: `none` is the default
+    and needs no key, so a deployment that has bought no WhatsApp number sends
+    nothing and falls back to email. An administrator sets the driver to `kapso`
+    and pastes the key to switch it on. The inbound half is gated separately and
+    the same way — by whether a `whatsapp_numbers` row exists and the webhook
+    secret (`KAPSO_WEBHOOK_SECRET`) is set — so a number can receive before the
+    account is configured to reply.
+  */
   {
     key: 'whatsapp',
     group: 'platform',
-    fields: [{ name: 'phoneNumberId', kind: 'text', env: 'WHATSAPP_PHONE_NUMBER_ID', mono: true }],
-    secrets: [
-      { name: 'accessToken', env: 'WHATSAPP_ACCESS_TOKEN', keepOnBlank: true },
-      { name: 'webhookVerifyToken', env: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN', keepOnBlank: true },
-      { name: 'appSecret', env: 'WHATSAPP_APP_SECRET', keepOnBlank: true },
+    driverEnv: 'WHATSAPP_DRIVER',
+    defaultDriver: 'none',
+    drivers: [
+      { value: 'none', live: false },
+      { value: 'kapso', live: true },
     ],
+    fields: [
+      {
+        name: 'baseUrl',
+        kind: 'url',
+        env: 'KAPSO_WHATSAPP_BASE_URL',
+        mono: true,
+        placeholder: 'https://api.kapso.ai/meta/whatsapp',
+      },
+    ],
+    secrets: [{ name: 'kapsoApiKey', env: 'KAPSO_API_KEY', required: true, keepOnBlank: true }],
   },
 
   {
@@ -519,6 +548,134 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     secrets: [{ name: 'apiKey', env: 'OPENROUTER_API_KEY', keepOnBlank: true }],
     probe: true,
+  },
+
+  /*
+    Automatic rate procurement — the near end of the enquiry→quote pipeline,
+    turned on by an administrator rather than a coordinator's click.
+
+    Ships dark, and deliberately: it mails covering agents, and the dev mailbox
+    is a real inbox. `manual` is the inert default (a coordinator asks with the
+    "Request rates" picker); `auto` lets the minute sweep fan an RFQ out to every
+    covering agent the moment an enquiry carries a resolvable lane, once, with
+    the same loop-breaker the manual path uses. `maxAgents` caps the fan-out so a
+    lane forty agents cover does not become forty emails.
+  */
+  {
+    key: 'rateAutoFanout',
+    group: 'intelligence',
+    driverEnv: 'RATE_AUTOFANOUT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [
+      {
+        name: 'maxAgents',
+        kind: 'number',
+        env: 'RATE_AUTOFANOUT_MAX_AGENTS',
+        placeholder: '6',
+        min: 1,
+        max: 20,
+      },
+    ],
+    secrets: [],
+  },
+
+  /*
+    Automatic acceptance of what a model read — the front of the same pipeline.
+
+    Off by default, and for a subtler reason than mailing agents: it writes to
+    the enquiry under the system's hand, so a coordinator who never opts in
+    still sees a queue they judge rather than fields that filled themselves.
+    Switched to `auto`, extraction applies a proposal only where it clears the
+    `confidence` ceiling AND the column is still empty AND it resolves without
+    ambiguity — the ambiguous ports and commodities the system refuses to guess
+    stay in the queue for a person, exactly as they do on the manual path.
+  */
+  {
+    key: 'enquiryAutoAccept',
+    group: 'intelligence',
+    driverEnv: 'ENQUIRY_AUTOACCEPT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [
+      {
+        name: 'confidence',
+        kind: 'number',
+        env: 'ENQUIRY_AUTOACCEPT_CONFIDENCE',
+        placeholder: '0.9',
+        min: 0,
+        max: 1,
+      },
+    ],
+    secrets: [],
+  },
+
+  /*
+    Automatic promotion of the cheapest agent reply into a buy rate card — the
+    first automated step that commits money, so the driver is not just on/off but
+    the *strategy* by which it commits:
+
+      manual  a coordinator clicks Accept (off).
+      first   promote the moment one comparable reply parses — fastest to a quote,
+              least likely to be the cheapest.
+      all     wait until no agent is still outstanding, then take the cheapest —
+              best coverage, but one silent agent holds it up.
+      wait    wait `waitHours` from the first RFQ, then take the cheapest of what
+              came back — a deadline that a silent agent cannot stall.
+
+    Whichever strategy, it takes the cheapest reply normalised to the branch's
+    base currency, and writes the identical card `acceptRateReply` writes.
+  */
+  {
+    key: 'rateAutoPromote',
+    group: 'intelligence',
+    driverEnv: 'RATE_AUTOPROMOTE_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'first', live: true },
+      { value: 'all', live: true },
+      { value: 'wait', live: true },
+    ],
+    fields: [
+      {
+        name: 'waitHours',
+        kind: 'number',
+        env: 'RATE_AUTOPROMOTE_WAIT_HOURS',
+        placeholder: '24',
+        min: 0,
+        max: 720,
+      },
+    ],
+    secrets: [],
+  },
+
+  /*
+    Automatic drafting of the quotation — the end of the pipeline, and the point
+    it hands back to a person. When an enquiry's buy rate has been awarded and the
+    lane is covered, the same engine "Price it" runs prices it against the house
+    margin on `customer_branch_terms` and lands a *draft* quotation, cover note
+    included. It never sends: a draft is a thing a coordinator reviews and decides
+    to put in front of a customer, which is the one step the pipeline leaves human
+    by design. Off by default like the rest.
+  */
+  {
+    key: 'quoteAutoDraft',
+    group: 'intelligence',
+    driverEnv: 'QUOTE_AUTODRAFT_DRIVER',
+    defaultDriver: 'manual',
+    drivers: [
+      { value: 'manual', live: false },
+      { value: 'auto', live: true },
+    ],
+    fields: [],
+    secrets: [],
   },
 ] as const
 

@@ -346,3 +346,56 @@ export function againstQuote(
   if (quoted === null) return null
   return compareToAccrual(quoted, billed, tol, spec)
 }
+
+// --- the alert -------------------------------------------------------------
+
+/**
+ * What a variance alert to finance carries — the over-billed lines and the one
+ * fact a subject line needs.
+ *
+ * Over only, and the asymmetry is the whole point. `over` is money about to
+ * leave the building that nobody agreed to, and querying it *before* the bill
+ * is approved is the saving. `under` is a P&L-accuracy problem — real, but it
+ * is not a payment about to go out the door, so it stays on the review screen
+ * (`summary.review` carries it) rather than in an inbox that would learn to
+ * ignore an alert that fires on every rounding difference.
+ */
+export interface VarianceAlert {
+  /** True when at least one line is billed over the accrual beyond tolerance. */
+  readonly flagged: boolean
+  /** The over-tolerance lines, in the order they were given. */
+  readonly overLines: readonly LineOutcome[]
+  /** The single worst line by variance — what a subject line names. */
+  readonly worst: LineOutcome | null
+  readonly overCount: number
+  /** The summed over-variance across the flagged lines. */
+  readonly totalOverVariance: Money
+}
+
+/**
+ * Decide whether finance should be told about an already-summarised invoice.
+ *
+ * Pure and over an `InvoiceMatchSummary` the caller already built, so the "who
+ * gets pushed a warning" rule is unit-tested without a database — every verdict
+ * has already been reached by `compareToAccrual`, and this only reads them.
+ */
+export function varianceAlert(summary: InvoiceMatchSummary): VarianceAlert {
+  const overLines = summary.lines.filter((line) => line.verdict === 'over')
+
+  const worst = overLines.reduce<LineOutcome | null>(
+    (worst, line) =>
+      worst === null || compare(abs(line.variance), abs(worst.variance)) > 0 ? line : worst,
+    null,
+  )
+
+  return {
+    flagged: overLines.length > 0,
+    overLines,
+    worst,
+    overCount: overLines.length,
+    totalOverVariance: sum(
+      overLines.map((line) => line.variance),
+      summary.currency,
+    ),
+  }
+}

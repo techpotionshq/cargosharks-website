@@ -1603,7 +1603,18 @@
       "rejected": "Reject"
     },
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "coverNote": {
+      "title": "Covering note",
+      "explain": "A short note to the customer, above the quotation. The model drafts it; you decide what it says.",
+      "english": "English",
+      "arabic": "Arabic",
+      "placeholder": "Write a covering note, or draft one with the model.",
+      "draft": "Draft with the model",
+      "drafting": "Drafting…",
+      "save": "Save note",
+      "saved": "Saved."
+    }
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -1769,6 +1780,10 @@
       "mailboxes": {
         "title": "Mailboxes",
         "description": "The addresses this system reads for incoming enquiries."
+      },
+      "whatsappNumbers": {
+        "title": "WhatsApp numbers",
+        "description": "The WhatsApp business numbers this system answers on."
       },
       "integrations": {
         "title": "Integrations",
@@ -2899,6 +2914,37 @@
     "reactivateWarning": "Anything unread that has accumulated since this was stopped will arrive as enquiries.",
     "noBranchRole": "You hold no branch role, so there is no branch you can connect a mailbox for. Ask an administrator to give you a role in the office whose mail you need to read."
   },
+  "whatsappNumbers": {
+    "eyebrow": "Intake",
+    "title": "WhatsApp numbers",
+    "subtitle": "The WhatsApp business numbers this system answers on. A message to one becomes an enquiry for that branch, or joins the thread it quotes.",
+    "total": "Connected",
+    "noneYet": "No WhatsApp number is connected",
+    "noneYetHint": "Map a Kapso business number to a branch, and messages to it arrive on the enquiry board.",
+    "connect": "Add a number",
+    "connectTitle": "Add a WhatsApp number",
+    "connectSubtitle": "Messages arriving on this number become enquiries for the branch you choose.",
+    "editTitle": "Edit WhatsApp number",
+    "editSubtitle": "Change which branch this number answers for, or its label.",
+    "branch": "Branch",
+    "branchHint": "The office whose enquiries arrive on this number.",
+    "phoneNumberId": "Phone number ID",
+    "phoneNumberIdHint": "Kapso's phone_number_id for the business number — not the dialable number. Run `kapso whatsapp numbers list` to find it.",
+    "displayNumber": "Display number",
+    "displayNumberHint": "The number as people read it. Shown on this screen only.",
+    "label": "Label",
+    "labelHint": "A short name for this number — 'DXB sales', 'KWI ops'.",
+    "lastMessage": "Last message",
+    "deactivate": "Stop answering",
+    "deactivateTitle": "Stop answering on this number",
+    "deactivateSubtitle": "Messages arriving on this number will no longer become enquiries.",
+    "deactivateWarning": "Messages already filed are kept. New messages on this number are ignored until this is turned back on.",
+    "reactivate": "Start answering",
+    "reactivateTitle": "Start answering on this number",
+    "reactivateSubtitle": "Messages on this number will become enquiries again.",
+    "reactivateWarning": "Only messages arriving after this is turned on are filed; nothing missed while it was off is recovered.",
+    "noBranchRole": "You hold no branch role, so there is no branch you can map a number to. Ask an administrator for a role in the relevant office."
+  },
   "integrations": {
     "eyebrow": "Deployment",
     "title": "Integrations",
@@ -2948,7 +2994,11 @@
       "einvoice": "E-invoice transmission",
       "inboundEmail": "Inbound mail webhook",
       "ai": "Document extraction",
-      "fileStore": "Object storage"
+      "fileStore": "Object storage",
+      "rateAutoFanout": "Automatic rate requests",
+      "enquiryAutoAccept": "Automatic enquiry fill",
+      "rateAutoPromote": "Automatic rate award",
+      "quoteAutoDraft": "Automatic quotation draft"
     },
     "descriptions": {
       "smtp": "The relay every notification leaves through. Without it nothing reaches a customer and nobody can be sent a password reset.",
@@ -2958,11 +3008,15 @@
       "carrierMaersk": "Covers MAEU, MAEI, MCPU, SEAU and SEJJ. Registration is self-serve at developer.maersk.com.",
       "carrierHapag": "Covers HLCU and HLXU, and takes an id as well as a secret. Registration is self-serve at api.hlag.com.",
       "carrierCmacgm": "Covers CMDU, ANNU, APLU and CHNL. Registration is self-serve at apis.cma-cgm.net.",
-      "whatsapp": "The business number customer notifications go out from, where a deployment has one. Email is the fallback.",
+      "whatsapp": "WhatsApp through Kapso — the account key that sends replies and receives inbound enquiries. Off by default, and email is the fallback. The numbers each branch answers on are set under Settings › WhatsApp numbers.",
       "einvoice": "The accredited provider that files an invoice with the tax authority. We are not the access point and cannot be.",
       "inboundEmail": "The shared secret a mail provider signs its forwarding webhook with. Separate from the mailboxes this system reads itself.",
       "ai": "Reads supplier invoices and scans into structured rows for a person to confirm. The key switches it on; leave the model blank for the default. Billed per document, and an unread bill is simply one that gets typed.",
-      "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept."
+      "fileStore": "Where every stored document lives — the rendered invoices, the bills of lading, the scans that arrive by mail. Without it documents render but cannot be kept.",
+      "rateAutoFanout": "Fan an RFQ out to every covering agent the moment an enquiry has a resolvable lane, once, with no coordinator's click. It emails real agents, so it stays off until switched on.",
+      "enquiryAutoAccept": "Apply what a model reads off an enquiry email without a coordinator's click — but only above the confidence set here, only where the field is still empty, and never for an ambiguous port or commodity, which stay in the queue for a person.",
+      "rateAutoPromote": "Promote the cheapest agent reply into a buy rate card without a coordinator's click. Choose when it commits: as soon as one reply parses, once every agent has answered, or after a wait window.",
+      "quoteAutoDraft": "Once a buy rate is awarded and the lane is covered, draft the quotation against the customer's house margin and its covering note — as a draft. It never sends; a person reviews and puts it in front of the customer."
     },
     "drivers": {
       "smtp": {
@@ -2981,9 +3035,31 @@
         "none": "Not transmitted",
         "asp": "Through a provider"
       },
+      "whatsapp": {
+        "none": "Off (email is the fallback)",
+        "kapso": "Through Kapso"
+      },
       "fileStore": {
         "s3": "S3-compatible bucket",
         "memory": "In the process (lost on restart)"
+      },
+      "rateAutoFanout": {
+        "manual": "Asked by a coordinator",
+        "auto": "Fanned out automatically"
+      },
+      "enquiryAutoAccept": {
+        "manual": "Reviewed by a coordinator",
+        "auto": "Applied automatically"
+      },
+      "rateAutoPromote": {
+        "manual": "Awarded by a coordinator",
+        "first": "As soon as one reply parses",
+        "all": "Once every agent has answered",
+        "wait": "After a wait window"
+      },
+      "quoteAutoDraft": {
+        "manual": "Priced by a coordinator",
+        "auto": "Drafted automatically"
       }
     },
     "fields": {
@@ -3018,7 +3094,7 @@
         "eventsPath": "Events path"
       },
       "whatsapp": {
-        "phoneNumberId": "Phone number id"
+        "baseUrl": "Kapso base URL"
       },
       "einvoice": {
         "url": "Provider URL"
@@ -3036,7 +3112,17 @@
         "region": "Region",
         "accessKeyId": "Access key id",
         "forcePathStyle": "Path-style addressing"
-      }
+      },
+      "rateAutoFanout": {
+        "maxAgents": "Agents per lane (max)"
+      },
+      "enquiryAutoAccept": {
+        "confidence": "Confidence to apply (0–1)"
+      },
+      "rateAutoPromote": {
+        "waitHours": "Wait window (hours)"
+      },
+      "quoteAutoDraft": {}
     },
     "secrets": {
       "smtp": {
@@ -3047,6 +3133,10 @@
       },
       "carrierPoll": {},
       "carrierTracking": {},
+      "rateAutoFanout": {},
+      "enquiryAutoAccept": {},
+      "rateAutoPromote": {},
+      "quoteAutoDraft": {},
       "carrierMaersk": {
         "consumerKey": "Consumer key",
         "clientSecret": "Client secret"
@@ -3059,9 +3149,7 @@
         "apiKey": "API key"
       },
       "whatsapp": {
-        "accessToken": "Access token",
-        "webhookVerifyToken": "Webhook verify token",
-        "appSecret": "App secret"
+        "kapsoApiKey": "Kapso API key"
       },
       "einvoice": {
         "apiKey": "API key"
@@ -3133,7 +3221,12 @@
       "list_free_time": "free time and demurrage",
       "list_overdue_invoices": "overdue invoices",
       "get_supplier_variance": "the supplier's bill against the job",
-      "propose_transition": "an action for you to confirm"
+      "propose_transition": "an action for you to confirm",
+      "list_unbilled": "unbilled revenue",
+      "list_quotes_expiring": "quotations about to expire",
+      "get_margin": "the shipment's margin",
+      "get_customer_credit": "the customer's credit standing",
+      "list_consolidation_candidates": "shipments that could be consolidated"
     },
     "toolUnknown": "the records",
     "suggestions": {
@@ -3145,7 +3238,7 @@
   },
   "proposals": {
     "title": "Read from the email",
-    "description": "Check each one against the quoted line and accept it, or set the field by hand.",
+    "description": "The assistant read {count, plural, one {# field} other {# fields}} from the email — check each against the quoted line and accept, or set it by hand.",
     "readOnly": "Read from the email by the assistant. Deciding needs the assign permission.",
     "accept": "Accept",
     "reject": "Dismiss",
@@ -3165,7 +3258,8 @@
       "pieces": "Pieces",
       "dimensions": "Dimensions",
       "isDangerous": "Dangerous goods"
-    }
+    },
+    "acceptAll": "Accept all {count}"
   },
   "unbilled": {
     "title": "Earned, not yet billed",
@@ -3222,5 +3316,53 @@
       "submit": "Turn on two-factor",
       "submitting": "Turning on…"
     }
+  },
+  "rateRequests": {
+    "title": "Rates from agents",
+    "request": "Request rates",
+    "description": "{awaiting} awaiting, {answered} answered",
+    "emptyDescription": "Ask the agents who cover this lane for a rate.",
+    "empty": "No agent has been asked yet.",
+    "pickTitle": "Request rates from agents",
+    "pickDescription": "Each agent gets one email. Their reply returns here.",
+    "send": "Send requests",
+    "noAgents": "No agent covers this lane. Add coverage on the agent file.",
+    "noEmail": "No email",
+    "alreadyAsked": "Asked",
+    "transit": "days transit",
+    "cheapest": "Cheapest",
+    "accept": "Make rate card",
+    "promoted": "Rate card made",
+    "awaiting": "Awaiting reply",
+    "noFx": "No exchange rate on file",
+    "laneMismatch": "Different lane",
+    "lines": "{count, plural, one {# line} other {# lines}}",
+    "status": {
+      "sent": "Sent",
+      "responded": "Replied",
+      "parsed": "Read",
+      "accepted": "Accepted",
+      "declined": "Declined",
+      "expired": "Expired",
+      "superseded": "Replaced"
+    }
+  },
+  "renewals": {
+    "title": "Renewals in flight",
+    "description": "Rate requests the expiry sweep opened to renew a lapsing lane.",
+    "lapses": "current rate lapses {date}",
+    "renew": "Renew rate card"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "You're all caught up.",
+    "markAllRead": "Mark all read"
+  },
+  "enquiryAutomation": {
+    "label": "Automation",
+    "acknowledged": "Customer acknowledged",
+    "fieldsRead": "{count, plural, one {# field read} other {# fields read}}",
+    "fieldsWithPending": "{read} fields read, {pending} to confirm",
+    "rateRequests": "{sent} rate requests · {replied} replied"
   }
 }

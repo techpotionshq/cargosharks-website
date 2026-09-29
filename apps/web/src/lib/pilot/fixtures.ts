@@ -102,6 +102,7 @@ import type {
   LocationRow,
   MapData,
   MailboxRowLike,
+  WhatsappNumberRowLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -109,6 +110,7 @@ import type {
   NotificationDeliveryRow,
   NotificationSwitchRow,
   NotificationTemplateRow,
+  NotificationView,
   OpenEnquiryRow,
   OpenShipmentRow,
   OpsOverview,
@@ -124,6 +126,9 @@ import type {
   PaymentSummary,
   PodRow,
   PortalShipment,
+  CoveringAgent,
+  RateRequestsView,
+  RenewalView,
   QuoteComparison,
   QuoteDetail,
   QuoteRow,
@@ -1465,6 +1470,114 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
   ]
 }
 
+// --- the topbar bell -------------------------------------------------------
+
+/**
+ * What the notification bell shows on the demo, with no database behind it.
+ *
+ * These are the *internal* events — the ones a `notification-dispatch` fans to
+ * the `in_app` channel and a customer never sees — already rendered, because
+ * the live path renders them from a template row that fixture mode does not
+ * have. So they are written out here in full, in the reader's language, the
+ * same promise the search box keeps: a bell that only lit up against Postgres
+ * is a bell the client never watches fill.
+ *
+ * Anchored to real fixture records — the customs hold on `job-1041`, the
+ * genuinely overdue enquiry — so opening one lands on the screen it is about
+ * rather than a dead link, and so the board and the bell tell one story.
+ */
+export function pilotNotifications(locale: 'en' | 'ar', now = Date.now()): NotificationView[] {
+  const year = new Date(now).getFullYear()
+  const pick = (en: string, ar: string): string => (locale === 'ar' ? ar : en)
+
+  // The same enquiry the queue shows breaching, so the alert and the register
+  // agree; falls back to null rather than inventing a reference.
+  const overdue = pilotEnquiries(now).find(
+    (e) => e.firstRespondedAt === null && e.slaDueAt !== null && e.slaDueAt.getTime() < now,
+  )
+
+  const items: NotificationView[] = [
+    {
+      id: 'ntf-1',
+      eventKey: 'exception.opened',
+      title: pick(
+        `Customs hold on KWI-${year}-01041`,
+        `احتجاز جمركي على KWI-${year}-01041`,
+      ),
+      body: pick(
+        'Origin certificate needs chamber attestation before release — on the exception register, resolution clock running.',
+        'تتطلب شهادة المنشأ تصديق الغرفة قبل الإفراج — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
+      ),
+      href: '/jobs/job-1041',
+      createdAt: hours(now, -0.4),
+      read: false,
+    },
+    {
+      id: 'ntf-2',
+      eventKey: 'free_time.expiring',
+      title: pick(
+        `Detention on TCLU7627384 in 2 day(s) — KWI-${year}-01036`,
+        `بدء احتساب الاحتجاز على TCLU7627384 خلال يومين — KWI-${year}-01036`,
+      ),
+      body: pick(
+        'Free time runs out on Thursday. After that 12.500 KWD per day, ours until the container moves.',
+        'ينتهي وقت السماح يوم الخميس، وبعده 12.500 دينار عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+      ),
+      href: '/jobs/job-1036',
+      createdAt: hours(now, -3),
+      read: false,
+    },
+    {
+      id: 'ntf-3',
+      eventKey: 'enquiry.sla_breached',
+      title: pick(
+        `Overdue first response — ${overdue?.reference ?? `ENQ-KWI-${year}-0007`}`,
+        `تأخر الرد الأول — ${overdue?.reference ?? `ENQ-KWI-${year}-0007`}`,
+      ),
+      body: pick(
+        'Past the agreed time for a first response and still unanswered. It needs a reply now.',
+        'تجاوز المدة المتفق عليها للرد الأول ولم يُرد عليه بعد. يحتاج إلى رد الآن.',
+      ),
+      href: overdue ? `/enquiries/${overdue.id}` : '/enquiries',
+      createdAt: hours(now, -6),
+      read: false,
+    },
+    {
+      id: 'ntf-4',
+      eventKey: 'rate_card.expiring',
+      title: pick(
+        '3 rate card(s) lapse within 30 days',
+        'انتهاء صلاحية 3 من بطاقات الأسعار خلال 30 يوماً',
+      ),
+      body: pick(
+        'The first lapses next week. Renew before a lane is quoted from memory.',
+        'أولها الأسبوع المقبل. جدّدها قبل أن يُسعَّر أي خط بالتقدير.',
+      ),
+      // A digest about the whole desk, not one shipment — nothing to open.
+      href: null,
+      createdAt: at(now, -1, 7),
+      read: true,
+    },
+    {
+      id: 'ntf-5',
+      eventKey: 'supplier_invoice.variance_flagged',
+      title: pick(
+        `Over-billed: Rumaithiya Lines — 32.500 KWD`,
+        `فاتورة أعلى من المستحق: خطوط الرميثية — 32.500 دينار`,
+      ),
+      body: pick(
+        `On DXB-${year}-02019: 2 line(s) billed over what the job accrued. Review before it is approved for payment.`,
+        `على DXB-${year}-02019: بندان محتسبان بأعلى مما استحق على الشحنة. راجعها قبل اعتمادها للدفع.`,
+      ),
+      href: '/jobs/job-2019',
+      createdAt: at(now, -1, 16),
+      read: true,
+    },
+  ]
+
+  return items
+}
+
 // --- enquiries -------------------------------------------------------------
 
 interface EnquirySeed {
@@ -2193,7 +2306,21 @@ export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
       reference: `QTE-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
       // The one revision on the board, and the reason `version` is a column.
       version: seed.seq === 316 ? 2 : 1,
-      status: seed.status === 'won' ? 'accepted' : seed.status === 'lost' ? 'rejected' : 'sent',
+      /*
+        316's current version is a *draft* revision — the re-quote is being
+        prepared, its v1 already superseded below. It is the one draft on the
+        board, and it exists so the covering-note surface (draft-only) has a
+        quotation to show it on: without a draft in the fixtures the whole panel
+        would be dead in the demo and unreachable by the e2e sweep.
+      */
+      status:
+        seed.seq === 316
+          ? 'draft'
+          : seed.status === 'won'
+            ? 'accepted'
+            : seed.status === 'lost'
+              ? 'rejected'
+              : 'sent',
       currency: 'KWD',
       totalSell: numeric(sell),
       totalCost: numeric(cost),
@@ -2219,7 +2346,8 @@ export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
       the database.
     */
     return [
-      current,
+      // The draft revision in progress — never sent, so no sent or decided date.
+      { ...current, sentAt: null, decidedAt: null },
       {
         ...current,
         id: `quote-${seed.seq}-v1`,
@@ -3131,6 +3259,7 @@ export function pilotExpiringRateCards(
         // A tariff card has no counterparty; the digest names it as such.
         counterparty: counterparty?.en ?? 'Standing tariff',
         counterpartyAr: counterparty?.ar ?? 'التعرفة المعتمدة',
+        partnerId: null,
         validTo: day(now, seed.to!),
         daysRemaining: seed.to!,
       }
@@ -5628,11 +5757,12 @@ export function pilotIntegrationSettings(now = Date.now()): IntegrationSettingRo
       },
     ),
     row('fx', 'manual', {}, {}, { lastCheckedAt: null, lastOkAt: null }),
-    // Switched off rather than deleted, which is how a change is rolled back.
+    // Off rather than deleted, which is how a change is rolled back. The numbers
+    // this account would answer on live in `whatsappNumbers` (below), not here.
     row(
       'whatsapp',
-      null,
-      { phoneNumberId: '' },
+      'none',
+      { baseUrl: '' },
       {},
       {
         isActive: false,
@@ -6415,6 +6545,20 @@ export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | un
     lane: `${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}`,
     mode: seed.mode,
     notes: quoteNotes(row.id),
+    /*
+      A drafted covering note on the demo's draft quotations, so the note panel
+      is shown mid-workflow — English written, Arabic still empty and inviting a
+      draft. The model writes the prose; the figures stay owned by the pricing
+      above, so nothing here restates a total (§5.5, and the cover-note rule).
+    */
+    coverNoteEn:
+      row.status === 'draft'
+        ? `Dear ${customer.en}, thank you for your enquiry. We are pleased to enclose our ` +
+          `quotation ${row.reference} covering ${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}. ` +
+          `The rate is held until ${row.validUntil ?? 'the date shown'} and we would be glad to ` +
+          `reserve space on your confirmation.`
+        : null,
+    coverNoteAr: null,
     lines: quoteLines(row, seed.mode),
     history: rows
       .filter((other) => other.enquiryReference === row.enquiryReference && other.id !== row.id)
@@ -8508,4 +8652,163 @@ export function pilotMailboxes(now = Date.now()): MailboxRowLike[] {
     lastMessageAt: index === 0 ? hours(now, -2) : at(now, -12, 15),
     lastError: index === 0 ? null : 'Authentication failed — the application password was rotated.',
   }))
+}
+
+/**
+ * Serves `listWhatsappNumbers` — the WhatsApp business numbers the service
+ * answers on, the counterpart of the mailboxes above.
+ *
+ * The first branch's number is live; a second is switched off, on the list on
+ * purpose — it is the answer to "why did that office stop receiving WhatsApp
+ * enquiries", which hiding it would make unanswerable from this screen.
+ */
+export function pilotWhatsappNumbers(now = Date.now()): WhatsappNumberRowLike[] {
+  return BRANCHES.slice(0, 2).map((home, index) => ({
+    id: `whatsapp-${home.code.toLowerCase()}`,
+    branchId: home.id,
+    branchCode: home.code,
+    phoneNumberId: `10000000000000${index + 1}`,
+    displayNumber: index === 0 ? '+965 2200 0000' : '+971 4 000 0000',
+    label: `${home.code} enquiries`,
+    isActive: index === 0,
+    lastMessageAt: index === 0 ? hours(now, -3) : at(now, -14, 11),
+  }))
+}
+
+/**
+ * Rate procurement, for the hosted demo — FR-RT-10.
+ *
+ * The story the panel tells at a glance: three agents were asked on a live lane,
+ * two answered and one declined, and the cheapest — normalised onto the branch's
+ * dinar — is one click from a buy card. Figures are the broker's own currency
+ * with the dinar equivalent beside them, exactly as the real query returns them.
+ */
+export function pilotRateRequests(now = Date.now()): RateRequestsView {
+  return {
+    baseCurrency: 'KWD',
+    awaiting: 1,
+    answered: 2,
+    requests: [
+      {
+        id: 'demo-rr-1',
+        partnerId: 'demo-agent-1',
+        partnerName: 'Oriental Freight Services, Ningbo',
+        status: 'parsed',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -3),
+        quotedTotal: '2450.000',
+        quotedCurrency: 'USD',
+        normalizedTotal: '751.850',
+        comparable: true,
+        isCheapest: true,
+        lineCount: 4,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: true,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-2',
+        partnerId: 'demo-agent-2',
+        partnerName: 'Gulf Line Agencies, Kuwait',
+        status: 'parsed',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -5),
+        quotedTotal: '795.000',
+        quotedCurrency: 'KWD',
+        normalizedTotal: '795.000',
+        comparable: true,
+        isCheapest: false,
+        lineCount: 3,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: true,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-3',
+        partnerId: 'demo-agent-3',
+        partnerName: 'Meridian Shipping, Shanghai',
+        status: 'declined',
+        sentAt: hours(now, -20),
+        respondedAt: hours(now, -8),
+        quotedTotal: null,
+        quotedCurrency: null,
+        normalizedTotal: null,
+        comparable: false,
+        isCheapest: false,
+        lineCount: 0,
+        laneMismatch: null,
+        declinedReason: 'No allocation to Shuwaikh until next month.',
+        canPromote: false,
+        rateCardId: null,
+      },
+      {
+        id: 'demo-rr-4',
+        partnerId: 'demo-agent-4',
+        partnerName: 'Anchor Logistics, Jebel Ali',
+        status: 'sent',
+        sentAt: hours(now, -1),
+        respondedAt: null,
+        quotedTotal: null,
+        quotedCurrency: null,
+        normalizedTotal: null,
+        comparable: false,
+        isCheapest: false,
+        lineCount: 0,
+        laneMismatch: null,
+        declinedReason: null,
+        canPromote: false,
+        rateCardId: null,
+      },
+    ],
+  }
+}
+
+/** The agents the request-rates picker offers on the demo lane. */
+export function pilotCoveringAgents(): CoveringAgent[] {
+  return [
+    { partnerId: 'demo-agent-1', name: 'Oriental Freight Services, Ningbo', type: 'agent', transitDays: 22, hasEmail: true, alreadyRequested: true },
+    { partnerId: 'demo-agent-2', name: 'Gulf Line Agencies, Kuwait', type: 'agent', transitDays: 24, hasEmail: true, alreadyRequested: true },
+    { partnerId: 'demo-agent-5', name: 'Blue Ocean Carriers, Ningbo', type: 'carrier', transitDays: 21, hasEmail: true, alreadyRequested: false },
+    { partnerId: 'demo-agent-6', name: 'Peninsula Forwarding, Dammam', type: 'agent', transitDays: null, hasEmail: false, alreadyRequested: false },
+  ]
+}
+
+/**
+ * Rate-card renewals in flight, for the hosted demo — FR-RT-11.
+ *
+ * The automation shown resting: one lane whose agent has re-quoted and is one
+ * click from a successor card, and one still out. This is the sweep doing on its
+ * own what the manual desk did by remembering to ring the agent every quarter.
+ */
+export function pilotRenewals(): RenewalView[] {
+  return [
+    {
+      id: 'demo-renewal-1',
+      partnerName: 'Oriental Freight Services, Ningbo',
+      lane: 'CNNGB → KWSWK',
+      mode: 'sea_fcl',
+      status: 'parsed',
+      oldValidTo: '2026-09-30',
+      quotedTotal: '2380.000',
+      quotedCurrency: 'USD',
+      lineCount: 4,
+      declinedReason: null,
+      canPromote: true,
+    },
+    {
+      id: 'demo-renewal-2',
+      partnerName: 'Gulf Line Agencies, Kuwait',
+      lane: 'AEJEA → KWSWK',
+      mode: 'sea_lcl',
+      status: 'sent',
+      oldValidTo: '2026-10-05',
+      quotedTotal: null,
+      quotedCurrency: null,
+      lineCount: 0,
+      declinedReason: null,
+      canPromote: false,
+    },
+  ]
 }

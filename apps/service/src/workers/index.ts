@@ -13,22 +13,31 @@ import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
 import { runNotificationDispatch, registerChannel } from './notification-dispatch'
-import { resolveEmailChannel } from '../adapters/index'
+import { inAppChannel, resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierPoll } from './carrier-poll'
 import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
+import { refreshExpiringRateCards } from './rate-card-refresh'
 import { extractSupplierInvoice, type ExtractInvoiceInput } from './invoice-extract'
 import { extractEnquiry, type ExtractEnquiryInput } from './enquiry-extract'
+import { extractRateReply, type ExtractRateReplyInput } from './rate-extract'
+import { sendRateRequests } from './rate-request-send'
+import { autoFanoutRateRequests } from './rate-auto-fanout'
+import { autoPromoteRateReplies } from './rate-auto-promote'
+import { autoDraftQuotes } from './quote-auto-draft'
 import { runInboundEmailWebhook, type InboundEmailWebhookInput } from './inbound-email-webhook'
+import {
+  runInboundWhatsAppWebhook,
+  type InboundWhatsAppWebhookInput,
+} from './inbound-whatsapp-webhook'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
 
 /** Jobs still to be built. Named so nothing silently goes missing. */
 const PENDING: { name: string; trigger: string; requirement: string }[] = [
-  { name: JOBS.inboundWhatsApp, trigger: 'webhook', requirement: 'FR-NT-05' },
   /*
     Superseded rather than pending, and left here as a marker until the name is
     retired from `JOBS`.
@@ -76,6 +85,9 @@ export async function registerWorkers(log: {
     exists to remove, reintroduced one layer up.
   */
   registerChannel(await resolveEmailChannel(log.info.bind(log)))
+  // Static, so registered once beside the relay rather than re-resolved: the
+  // in-app channel has no configuration to reload and cannot fail to build.
+  registerChannel(inAppChannel)
 
   const work = async (name: string, handler: Handler): Promise<void> => {
     await boss.work(name, { batchSize: 1 }, handler as never)
@@ -187,6 +199,14 @@ export async function registerWorkers(log: {
   await work(JOBS.rateCardExpiry, async () => {
     const result = await runRateCardExpiryDigest()
     if (result.raised > 0) log.info(result, 'rate-card expiry digest raised')
+    /*
+      The digest tells the desk; the refresh acts. Same nightly job and same
+      expiring list — a buy card inside the horizon opens a rate request to its
+      incumbent agent, and the minute sweep mails it. Run after the digest so a
+      failure to renew never suppresses the warning a person still needs.
+    */
+    const refreshed = await refreshExpiringRateCards()
+    if (refreshed.opened > 0) log.info(refreshed, 'rate-card refresh requests opened')
   })
 
   /*
@@ -231,6 +251,10 @@ export async function registerWorkers(log: {
       and a thousand of them.
     */
     registerChannel(await resolveEmailChannel(log.info.bind(log)))
+    // Re-asserted beside the relay, so a dispatch reached by any path has the
+    // in-app channel too. Idempotent and configuration-free, so unlike the
+    // relay above it costs nothing to repeat.
+    registerChannel(inAppChannel)
 
     for (const job of jobs) {
       const result = await runNotificationDispatch(job.data)
@@ -328,6 +352,31 @@ export async function registerWorkers(log: {
   })
 
   /*
+    The WhatsApp half of the enquiry front door — FR-EQ-02, §9 "WhatsApp".
+
+    The exact parallel of the email webhook above: `/webhooks/whatsapp` has
+    verified Kapso's signature, recorded the receipt and queued this job.
+    Failures rethrow for the same reasons — a database blink or storage refusal
+    is worth retrying, and the one thing that is not (an unreadable payload, or a
+    number with no `whatsapp_numbers` row) returns a reason rather than throwing.
+    Reused wholesale: extraction, acknowledgement and threading are `ingestMessage`,
+    shared with email, so a WhatsApp enquiry is read by the same model call and
+    files the same rows as an emailed one.
+  */
+  await work(JOBS.inboundWhatsApp, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as InboundWhatsAppWebhookInput
+      const result = await runInboundWhatsAppWebhook(input)
+      log.info(
+        { eventId: input.eventId, outcome: result.outcome, enquiryId: result.enquiryId },
+        result.reason
+          ? `inbound whatsapp webhook: ${result.reason}`
+          : 'inbound whatsapp webhook handled',
+      )
+    }
+  })
+
+  /*
     Reading an emailed enquiry — FR-EQ-02's twelve null columns.
 
     Failures are logged and swallowed, like the invoice above and for a related
@@ -400,6 +449,87 @@ export async function registerWorkers(log: {
         if (!settled) throw error
       }
     }
+  })
+
+  /*
+    Reading a broker's rate reply — FR-RT-10. The same settled/transient split
+    the two extraction jobs above make: no model and no budget are swallowed, a
+    hiccup goes back to the backoff. A reply that read poorly is not a failure —
+    it lands as `parsed` with issues a coordinator sees, so nothing throws for it.
+  */
+  await work(JOBS.rateExtract, async (jobs) => {
+    for (const job of jobs) {
+      const input = job.data as unknown as ExtractRateReplyInput
+      try {
+        const result = await extractRateReply(input)
+        log.info(
+          {
+            rateRequestId: input.rateRequestId,
+            invocationId: result.invocationId,
+            status: result.status,
+            lines: result.lines,
+            rejected: result.rejected,
+            skipped: result.skipped,
+          },
+          result.status === 'declined' ? 'rate reply read: declined' : 'rate reply read',
+        )
+      } catch (error) {
+        const code = (error as { code?: string }).code
+        const settled = code === 'ai.not_configured' || code === 'ai.budget_exhausted'
+        log.info(
+          {
+            rateRequestId: input.rateRequestId,
+            err: error instanceof Error ? error.message : String(error),
+            retrying: !settled,
+          },
+          'rate reply extraction failed',
+        )
+        if (!settled) throw error
+      }
+    }
+  })
+
+  /*
+    Sending rate requests to agents — the near end of FR-RT-10, a drain on a
+    minute's cron. Web has no queue access, so the enquiry action writes the
+    rows and this sweep sends them; a request whose agent has no email on file is
+    skipped inside, not thrown, so one missing address never fails the sweep.
+  */
+  await work(JOBS.rateRequestSend, async () => {
+    const result = await sendRateRequests()
+    if (result.sent + result.skipped + result.failed > 0) log.info(result, 'rate requests sent')
+  })
+
+  /*
+    Automatic rate procurement — FR-RT-10, the hands-off fan-out that feeds the
+    send drain above. Scheduled every minute but off until the `rateAutoFanout`
+    integration is switched to `auto`, so on the inert default it returns at once
+    and logs nothing. Only a sweep that actually opened rows says so.
+  */
+  await work(JOBS.rateAutoFanout, async () => {
+    const result = await autoFanoutRateRequests()
+    if (result.enabled && result.enquiries > 0) log.info(result, 'rate requests auto-fanned')
+  })
+
+  /*
+    Automatic rate award — the far end of FR-RT-10. Promotes the cheapest parsed
+    reply to a buy card on the enquiry's chosen strategy. Off until the
+    `rateAutoPromote` integration names one; only a sweep that awarded says so.
+  */
+  await work(JOBS.rateAutoPromote, async () => {
+    const result = await autoPromoteRateReplies()
+    if (result.enabled && result.promoted > 0) log.info(result, 'rate replies auto-awarded')
+  })
+
+  /*
+    Automatic quotation draft — the end of the pipeline (FR-EQ-05). Prices an
+    enquiry whose buy rate was awarded and lands a draft quote, cover note
+    alongside. Off until `quoteAutoDraft` is switched on; only a sweep that
+    drafted says so.
+  */
+  await work(JOBS.quoteAutoDraft, async () => {
+    const result = await autoDraftQuotes()
+    if (result.enabled && result.drafted > 0) log.info(result, 'quotations auto-drafted')
   })
 
   for (const pending of PENDING) {

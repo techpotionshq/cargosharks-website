@@ -8,7 +8,7 @@
 | **Date** | 21 August 2026 |
 | **Question asked** | Where can this platform use a language model — email intake, rate cards, document extraction, lane selection, an assistant — what does each one cost us in risk, and in what order should they be built? |
 | **Relationship to the code** | Read against SRS §11, which defers AI intake to R2 and says why, and Architecture §10, which admits a port only with a named second implementation. Companion to `Integration_Landscape.md`: that one researches services we connect to, this one researches a capability we would add. |
-| **Status** | Research, written against the working tree at `4ff52c6` with no code changed. **Revised 23 August 2026** against `5b168b2`: three surfaces are now in the code — supplier-invoice extraction, the assistant and enquiry extraction — each behind the `ModelProvider` port and the `ai_invocations` ledger. §10 records what shipped, in which order, and what has not. The arguments stand as written; where the build departed from one, the departure is noted in place. |
+| **Status** | Research, written against the working tree at `4ff52c6` with no code changed. **Revised 23 August 2026** against `5b168b2`: three surfaces are now in the code — supplier-invoice extraction, the assistant and enquiry extraction — each behind the `ModelProvider` port and the `ai_invocations` ledger. §10 records what shipped, in which order, and what has not. The arguments stand as written; where the build departed from one, the departure is noted in place. **Revised 16 September 2026**: two more surfaces shipped — RFQ rate extraction (`workers/rate-extract.ts`, part of rate procurement) reading an agent's reply into `rate_requests.response`, and a supplier-invoice variance alert raised on the extraction write path — and the assistant prompt is now `assistant@2`, so `ai/prompts.ts` carries four prompt versions. The seam table (§3), §5 and AI-20 are corrected in place. **Revised 28 September 2026**: a sixth surface shipped — `quote_cover_note`, the model drafting a quotation's covering note (prose only; the pricing owns every figure), with an editor on the draft quote and the same draft-gate. And the extraction and rate surfaces are now wired into an off-by-default auto-pipeline — `enquiryAutoAccept` applies high-confidence, unambiguous proposals without a click, and `rateAutoFanout`/`rateAutoPromote`/`quoteAutoDraft` carry an enquiry to a draft quotation; that is orchestration of surfaces already ledgered, not new model calls (only the cover note is), and each is gated behind an `integration_settings` driver. See `docs/Automation_Opportunities.md §7`. |
 
 > **The finding in one line:** this codebase is unusually ready for a model and the reason is that nobody built it for one — the draft states, the transition table and `withActor` are already the harness — and the highest-value item is not intake but supplier-invoice extraction, which switches on a matching engine that is written, tested and sitting idle for want of rows.
 
@@ -90,7 +90,7 @@ runs.
 | Rate-card import | `core/import.ts` — `autoMap`, `validateImport`, `groupRateCards` | Proposes the column `Mapping` a human would otherwise draw by hand | Ready now; not built |
 | Uploaded documents | `assets` and `documents` — typed, versioned, release-gated | Classifies the type; extracts the fields the type implies | Ready now; not built |
 | Supplier invoices | `core/matching.ts` — tolerance, variance, over/under verdicts | Turns a PDF into the `supplier_invoice_lines` the engine needs to run at all | **Built**, Aug 2026 — `workers/invoice-extract.ts`, *Read a bill* on the payables screen and unattended from the mailbox |
-| RFQ responses | `rate_requests.response` — jsonb, "as received, before they become a rate card" | Parses the agent's reply into that column, and then into card lines | Needs corpus; not built |
+| RFQ responses | `rate_requests.response` — jsonb, "as received, before they become a rate card" | Parses the agent's reply into that column, and then into card lines | **Built**, Sep 2026 — `workers/rate-extract.ts` → `rate_requests.response`, accepted into a buy card on the enquiry screen |
 | Operator assistance | Feature queries under `withActor`; transitions under `assertCan` | Natural-language routing to those functions, in both languages | **Built**, Aug 2026 — `ai/assistant.ts`, the dock and `/assistant` |
 | Partner selection | `partner_coverage`, lane-indexed rate cards, FR-AP-08 metrics | Explains and shortlists; never scores | R2; not built |
 
@@ -226,10 +226,12 @@ which is precisely where a parsed agent reply belongs. The raw quote is
 preserved as received, the structured reading sits beside it, and promotion to
 a real rate card stays a deliberate act by somebody who can be named.
 
-**Status, 23 August 2026: not built.** `rate_mapping` and `rate_extract` are
-declared as surfaces in `core/ai.ts`, each with its allowlist in
-`EXTRACTABLE_FIELDS`, and nothing calls from either. `autoMap()` remains the
-only mapper.
+**Status, 16 September 2026: `rate_mapping` still not built; `rate_extract` has
+shipped.** Both are declared as surfaces in `core/ai.ts`, each with its allowlist
+in `EXTRACTABLE_FIELDS`. `rate_extract` now has a caller — `workers/rate-extract.ts`
+reads an agent's RFQ reply into `rate_requests.response` — but `rate_mapping`, the
+column-mapping surface this section is about, still has none: `autoMap()` remains
+the only mapper.
 
 ---
 
@@ -478,11 +480,12 @@ is better as a row an administrator can edit. A prompt is worse, because an
 evaluation result that does not describe the prompt running in production
 describes nothing — and a prompt is code with a test suite, not a setting. The
 *thresholds* around it are rows; the text is versioned where the tests are.
-*As built:* `apps/service/src/ai/prompts.ts`, three prompts at
-`invoice-extract@1`, `assistant@1` and `enquiry-extract@1`, each version
-landing in `ai_invocations.prompt_version`. The instructions are static and
-the document always arrives as a separate user-role message, never
-interpolated into them.
+*As built:* `apps/service/src/ai/prompts.ts`, four prompts at
+`invoice-extract@1`, `rate-extract@1`, `assistant@2` and `enquiry-extract@1`,
+each version landing in `ai_invocations.prompt_version`. The instructions are
+versioned in-repo — the assistant's interpolates the branch's own name, which is
+why it moved to `@2` — but the document or mail always arrives as a separate
+user-role message, never interpolated into them.
 
 ---
 
@@ -494,10 +497,12 @@ exists.
 **What actually happened, 21–23 August 2026.** The order was not followed.
 The ledger, the port and supplier-invoice extraction (step 4) shipped first
 on 21 August, the assistant (step 6) the same day, enquiry extraction (step 5)
-on 22 August, and the review panel on 23 August. Steps 1 to 3 — the harness,
-rate-card mapping and document classification — are not built. The annotations
-below say which is which; the reasoning for the original order is left
-standing because it is still the reasoning for what remains.
+on 22 August, and the review panel on 23 August. The harness (step 1) shipped in
+September as a replay-through-parsers scorer (`pnpm ai:eval`; see the annotation
+on step 1). Steps 2 and 3 — rate-card mapping and document classification —
+remain unbuilt. The annotations below say which is which; the reasoning for the
+original order is left standing because it is still the reasoning for what
+remains.
 
 1. **The evaluation harness, before any model call.** A golden set of real
    messages and scans with expected structured output, scored per field, run
@@ -507,11 +512,18 @@ standing because it is still the reasoning for what remains.
    is worth confirming now that the raw MIME of inbound mail is retained,
    since `InboundMessage` hands the worker flattened text and the corpus wants
    the original.
-   *Not built.* There is no golden set and no scoring script. What exists is
-   the raw material: every call's request and response verbatim in
-   `ai_invocations`, keyed by `prompt_version` and `input_hash`, and every
-   accept or reject in `extraction_proposals`. `verify:model` exercises a live
-   key against a generated invoice and is a smoke test, not an evaluation.
+   *First cut shipped, September 2026.* `pnpm --filter @qabandi/service ai:eval`
+   (`apps/service/src/ai/replay.ts` + `packages/core/src/evaluation.ts`) replays
+   the `ai_invocations` corpus through the same pure parsers the workers use and
+   scores parse-ok, reconcile, self-consistency, field coverage and confidence,
+   with `--compare` to diff two `prompt_version`s — no model spend and no golden
+   set required, which is what let it ship before the golden set exists. What is
+   *still* to build is the richer form this note envisioned: a hand-labelled
+   golden set scored per field, and the label-based pass that reads
+   `extraction_proposals` for agreement with what a coordinator accepted. The
+   raw material for both is retained (request and response verbatim, keyed by
+   `prompt_version` and `input_hash`; every accept or reject). `verify:model`
+   remains a live-key smoke test, distinct from this.
 2. **Rate-card column mapping.** Output type unchanged, validation unchanged,
    human still confirms. Days of work, immediate relief on the FR-RT-09 path
    that every agent onboarding runs through, and no corpus required because

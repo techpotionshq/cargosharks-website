@@ -34,6 +34,8 @@ export interface ExpiringRateCard {
   /** The agent on a buy card, the customer on a sell card. */
   readonly counterparty: string
   readonly counterpartyAr: string
+  /** The agent on a buy card — who a refresh RFQ goes to (null on a sell card). */
+  readonly partnerId: string | null
   readonly validTo: string
   readonly daysRemaining: number
 }
@@ -74,6 +76,7 @@ export async function listExpiringRateCards(
              coalesce(p.legal_name_en, c.legal_name_en, '—')       as counterparty,
              coalesce(p.legal_name_ar, p.legal_name_en,
                       c.legal_name_ar, c.legal_name_en, '—')       as "counterpartyAr",
+             rc.partner_id               as "partnerId",
              rc.valid_to::text           as "validTo",
              (rc.valid_to - ${on}::date)::int as "daysRemaining"
         from rate_cards rc

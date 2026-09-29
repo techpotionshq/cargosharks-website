@@ -349,6 +349,126 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
   return succeed(status)
 }
 
+/**
+ * Ask the model to draft the quotation's covering note — FR-... the generative
+ * surface behind the evaluation harness.
+ *
+ * Calls the service like "Read a bill" does, for the same reason: the web app
+ * has no queue and no model client, so the drafting runs in the service and the
+ * note is stored on the quote there. Only ever on a draft, and gated on
+ * `quote.send` — the permission that also governs sending it. The model writes
+ * prose; every figure stays owned by the pricing already frozen on the quote.
+ */
+export async function draftQuoteCoverNote(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+
+  const quoteId = read(form, 'quoteId')
+  const locale = read(form, 'locale') === 'ar' ? 'ar' : 'en'
+  if (!quoteId) return fail({ _: 'Nothing to draft.' })
+  assertCan(session, 'quote.send')
+
+  const [quote] = await withActor(session.actor, (tx) =>
+    tx
+      .select({ branchId: quotes.branchId, status: quotes.status })
+      .from(quotes)
+      .where(eq(quotes.id, quoteId))
+      .limit(1),
+  )
+  if (!quote) return failWith('No such quotation.')
+  if (quote.status !== 'draft') {
+    return failWith('A covering note can only be drafted on a draft quotation.')
+  }
+
+  const serviceUrl = process.env.SERVICE_URL
+  const secret = process.env.INTERNAL_API_SECRET
+  if (!serviceUrl || !secret) {
+    return failWith(
+      'Drafting a covering note needs the service. Set SERVICE_URL and ' +
+        'INTERNAL_API_SECRET; a note can still be written by hand.',
+    )
+  }
+  const base = serviceUrl.replace(/\/$/, '')
+
+  try {
+    const response = await fetch(`${base}/internal/ai/quote-cover-note`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ actor: session.actor, branchId: quote.branchId, quoteId, locale }),
+      cache: 'no-store',
+      // A model writing a paragraph, not a page — but `invoke` has no retry of
+      // its own, so this is the only ceiling.
+      signal: AbortSignal.timeout(120_000),
+    })
+
+    if (!response.ok) {
+      return failWith(
+        response.status === 503
+          ? 'No model is configured, so a covering note cannot be drafted yet. Add a key at Settings › Integrations.'
+          : 'The covering note could not be drafted. Write one by hand, or try again.',
+      )
+    }
+
+    const body = (await response.json()) as { note?: string | null; refusal?: string | null }
+    if (!body.note) return failWith(body.refusal ?? 'Nothing was drafted.')
+
+    revalidatePath(`/quotes/${quoteId}`)
+    return succeed(body.note)
+  } catch {
+    return failWith('Drafting the covering note timed out. Write one by hand, or try again.')
+  }
+}
+
+const coverNoteSchema = z.object({
+  quoteId: z.uuid(),
+  locale: z.enum(['en', 'ar']),
+  note: z.string().trim().max(1500),
+})
+
+/**
+ * Save the covering note a coordinator wrote or edited.
+ *
+ * The other half of drafting: a plain textarea, so the drafted prose is a
+ * starting point and not a decision. Only on a draft quote — a sent quotation
+ * is history — and the `where` guards that again against a race, so a note
+ * cannot appear on a quote that has just been sent.
+ */
+export async function setQuoteCoverNote(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+
+  const parsed = coverNoteSchema.safeParse({
+    quoteId: read(form, 'quoteId'),
+    locale: read(form, 'locale'),
+    note: (form.get('note') as string | null) ?? '',
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error))
+  assertCan(session, 'quote.send')
+
+  const { quoteId, locale, note } = parsed.data
+  const value = note.trim() === '' ? null : note.trim()
+
+  const [updated] = await withActor(session.actor, (tx) =>
+    tx
+      .update(quotes)
+      .set(
+        locale === 'ar'
+          ? { coverNoteAr: value, updatedAt: new Date() }
+          : { coverNoteEn: value, updatedAt: new Date() },
+      )
+      .where(and(eq(quotes.id, quoteId), eq(quotes.status, 'draft')))
+      .returning({ id: quotes.id }),
+  )
+  if (!updated) return failWith('That covering note can only be edited on a draft quotation.')
+
+  revalidatePath(`/quotes/${quoteId}`)
+  return succeed('saved')
+}
+
 // --- invoices --------------------------------------------------------------
 
 const invoiceSchema = z.object({
