@@ -112,6 +112,16 @@ leaking, not on feature count. The user wants the whole list done, quickly.
 - Quote covering-note — the model drafts the note; the editor on the draft
   quotation lets a coordinator draft, edit and save it per language; pricing owns
   every figure (FR-EQ-08). Draft-gated; nothing auto-sends.
+- **Inbound WhatsApp, through Kapso** — a message to a business number becomes an
+  enquiry on the same board as an emailed one, read by the same model and
+  acknowledged on the same channel. `whatsapp_numbers` maps each Kapso
+  `phone_number_id` to a branch (Settings › WhatsApp numbers), mirroring
+  `mailboxes`; `/webhooks/whatsapp` verifies Kapso's `X-Webhook-Signature`; the
+  `inbound-whatsapp-webhook` worker shares `ingestMessage` with the email path,
+  so the FR-EQ-02 rules are not written twice. The `whatsapp` integration is a
+  Kapso driver that ships dark (off by default, email the fallback). Proven
+  end-to-end against a live Kapso number. This is the item this file's roadmap
+  once listed as *excluded*.
 - **The end-to-end auto-pipeline, off by default** — four gated
   `integration_settings` drivers chain the manual pieces into a hands-off
   enquiry→draft-quote run: `enquiryAutoAccept` (apply high-confidence,
@@ -152,7 +162,7 @@ leaking, not on feature count. The user wants the whole list done, quickly.
    rejected proposals) is the additive second cut, and a per-field golden set is
    the richer form the doc envisions after that.
 
-**Excluded, by decision:** WhatsApp inbound (still a dead letter; leave it) and
-backfilling historical enquiries (not needed in a dev environment).
+**Excluded, by decision:** backfilling historical enquiries (not needed in a dev
+environment).
 
 **Blocked:** carrier tracking, on credentials — see §1.

@@ -1801,6 +1801,18 @@ export interface MailboxRowLike {
   readonly lastError: string | null
 }
 
+/** Mirrors `WhatsappNumberRow` from `features/admin/whatsapp-numbers.ts`. */
+export interface WhatsappNumberRowLike {
+  readonly id: string
+  readonly branchId: string
+  readonly branchCode: string
+  readonly phoneNumberId: string
+  readonly displayNumber: string | null
+  readonly label: string | null
+  readonly isActive: boolean
+  readonly lastMessageAt: Date | null
+}
+
 /** Mirrors the anonymous override row inside `CreditView`. */
 export interface CreditOverrideRowLike {
   readonly id: string

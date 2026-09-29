@@ -1781,6 +1781,10 @@
         "title": "Mailboxes",
         "description": "The addresses this system reads for incoming enquiries."
       },
+      "whatsappNumbers": {
+        "title": "WhatsApp numbers",
+        "description": "The WhatsApp business numbers this system answers on."
+      },
       "integrations": {
         "title": "Integrations",
         "description": "The relay that sends the mail, the carrier registrations that feed the board, and the provider that will transmit the invoices. A credential saved here takes effect within a minute, with no release."
@@ -2909,6 +2913,37 @@
     "reactivateSubtitle": "Unread mail already in the folder will be collected on the next check.",
     "reactivateWarning": "Anything unread that has accumulated since this was stopped will arrive as enquiries.",
     "noBranchRole": "You hold no branch role, so there is no branch you can connect a mailbox for. Ask an administrator to give you a role in the office whose mail you need to read."
+  },
+  "whatsappNumbers": {
+    "eyebrow": "Intake",
+    "title": "WhatsApp numbers",
+    "subtitle": "The WhatsApp business numbers this system answers on. A message to one becomes an enquiry for that branch, or joins the thread it quotes.",
+    "total": "Connected",
+    "noneYet": "No WhatsApp number is connected",
+    "noneYetHint": "Map a Kapso business number to a branch, and messages to it arrive on the enquiry board.",
+    "connect": "Add a number",
+    "connectTitle": "Add a WhatsApp number",
+    "connectSubtitle": "Messages arriving on this number become enquiries for the branch you choose.",
+    "editTitle": "Edit WhatsApp number",
+    "editSubtitle": "Change which branch this number answers for, or its label.",
+    "branch": "Branch",
+    "branchHint": "The office whose enquiries arrive on this number.",
+    "phoneNumberId": "Phone number ID",
+    "phoneNumberIdHint": "Kapso's phone_number_id for the business number — not the dialable number. Run `kapso whatsapp numbers list` to find it.",
+    "displayNumber": "Display number",
+    "displayNumberHint": "The number as people read it. Shown on this screen only.",
+    "label": "Label",
+    "labelHint": "A short name for this number — 'DXB sales', 'KWI ops'.",
+    "lastMessage": "Last message",
+    "deactivate": "Stop answering",
+    "deactivateTitle": "Stop answering on this number",
+    "deactivateSubtitle": "Messages arriving on this number will no longer become enquiries.",
+    "deactivateWarning": "Messages already filed are kept. New messages on this number are ignored until this is turned back on.",
+    "reactivate": "Start answering",
+    "reactivateTitle": "Start answering on this number",
+    "reactivateSubtitle": "Messages on this number will become enquiries again.",
+    "reactivateWarning": "Only messages arriving after this is turned on are filed; nothing missed while it was off is recovered.",
+    "noBranchRole": "You hold no branch role, so there is no branch you can map a number to. Ask an administrator for a role in the relevant office."
   },
   "integrations": {
     "eyebrow": "Deployment",

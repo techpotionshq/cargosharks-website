@@ -102,6 +102,7 @@ import type {
   LocationRow,
   MapData,
   MailboxRowLike,
+  WhatsappNumberRowLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -8650,6 +8651,27 @@ export function pilotMailboxes(now = Date.now()): MailboxRowLike[] {
     lastPolledAt: index === 0 ? hours(now, -1) : at(now, -11, 7),
     lastMessageAt: index === 0 ? hours(now, -2) : at(now, -12, 15),
     lastError: index === 0 ? null : 'Authentication failed — the application password was rotated.',
+  }))
+}
+
+/**
+ * Serves `listWhatsappNumbers` — the WhatsApp business numbers the service
+ * answers on, the counterpart of the mailboxes above.
+ *
+ * The first branch's number is live; a second is switched off, on the list on
+ * purpose — it is the answer to "why did that office stop receiving WhatsApp
+ * enquiries", which hiding it would make unanswerable from this screen.
+ */
+export function pilotWhatsappNumbers(now = Date.now()): WhatsappNumberRowLike[] {
+  return BRANCHES.slice(0, 2).map((home, index) => ({
+    id: `whatsapp-${home.code.toLowerCase()}`,
+    branchId: home.id,
+    branchCode: home.code,
+    phoneNumberId: `10000000000000${index + 1}`,
+    displayNumber: index === 0 ? '+965 2200 0000' : '+971 4 000 0000',
+    label: `${home.code} enquiries`,
+    isActive: index === 0,
+    lastMessageAt: index === 0 ? hours(now, -3) : at(now, -14, 11),
   }))
 }
 
