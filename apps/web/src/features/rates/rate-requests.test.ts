@@ -21,7 +21,8 @@ vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => pilot.on }))
 const { enquiries, fxRates, rateRequests, withActor } = await import('@qabandi/db')
 const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } =
   await import('@/lib/testing/fixtures')
-const { getEnquiryRateRequests, listCoveringAgents, getRenewals } = await import('./rate-requests')
+const { getEnquiryRateRequests, listCoveringAgents, getRenewals, replyCounts } =
+  await import('./rate-requests')
 
 const system = { ...bothBranchesActor, type: 'system' as const }
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
@@ -46,7 +47,7 @@ async function makeEnquiry(): Promise<string> {
 
 async function reply(
   enquiryId: string,
-  status: 'sent' | 'responded' | 'parsed',
+  status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired',
   quoted?: { total: string; currency: string },
 ) {
   seq += 1
@@ -86,6 +87,24 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     expect(view!.awaiting).toBe(1)
     const cheapest = view!.requests.find((r) => r.isCheapest)
     expect(Number(cheapest?.quotedTotal)).toBe(900)
+  })
+
+  /*
+    An accepted reply and a decline are both answers (F65). The panel read
+    "0 awaiting, 0 answered" above an accepted row; an expired request is
+    neither, because nobody replied and nobody is waiting.
+  */
+  it('counts an accepted reply and a decline as answered', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(enquiryId, 'accepted', { total: '800.000', currency: 'KWD' })
+    await reply(enquiryId, 'declined')
+    await reply(enquiryId, 'expired')
+    await reply(enquiryId, 'sent')
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    expect(view!.answered).toBe(2)
+    expect(view!.awaiting).toBe(1)
   })
 
   /**
@@ -128,6 +147,10 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     expect(view).not.toBeNull()
     expect(Array.isArray(view!.requests)).toBe(true)
     expect(typeof view!.baseCurrency).toBe('string')
+    // The demo's summary is counted by hand; it must agree with its own list.
+    expect({ awaiting: view!.awaiting, answered: view!.answered }).toEqual(
+      replyCounts(view!.requests),
+    )
   })
 })
 

@@ -407,10 +407,19 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
  * Approximate by design, and the schema comment on `quoted_total` says why: the
  * figure this produces is a *sort key* for the comparison view, not the quote.
  * The authoritative price is struck later, when a person accepts a reply and
- * `priceEnquiry` runs against the promoted card. So `pieces` doubles as the
- * container count on an FCL lane the way `pricing.ts` already reads it, weight
- * is the gross, and a `percent` line — which needs a base this context cannot
- * supply — is counted as unpriced rather than guessed.
+ * `priceEnquiry` runs against the promoted card. Weight is the gross, and a
+ * `percent` line — which needs a base this context cannot supply — is counted
+ * as unpriced rather than guessed.
+ *
+ * Sort key or not, it has to rank the right way round. On a FCL lane the
+ * container count is the enquiry's own `container_count`, as `pricing.ts`
+ * reads it — never `pieces`, which counts packages (F39). This read `pieces`
+ * after pricing had stopped doing so, and a FCL enquiry carries a container
+ * count and usually no pieces: every per-container line fell out as unpriced,
+ * a reply of USD 1,850 per 40HC + 180 per container + 60 flat was stored as
+ * USD 60, and the comparison ranked it "Cheapest" on the flat fee alone (F66).
+ * With no count at all the per-container lines stay unpriced — counted, not
+ * guessed — because a count of one would be a number nobody gave.
  */
 async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
   const rows = await tx
@@ -418,19 +427,27 @@ async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
       mode: enquiries.mode,
       grossWeightKg: enquiries.grossWeightKg,
       pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
     })
     .from(enquiries)
     .where(eq(enquiries.id, enquiryId))
     .limit(1)
   const e = rows[0]
-  if (!e) return {}
+  return e ? chargeContextFor(e) : {}
+}
 
-  const pieces = e.pieces ?? undefined
+/** The pure half of `contextFor`, exported so the rule is tested without a database. */
+export function chargeContextFor(e: {
+  readonly mode: string | null
+  readonly grossWeightKg: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+}): ChargeContext {
   const ctx: ChargeContext = {}
   if (e.grossWeightKg != null) Object.assign(ctx, { kg: e.grossWeightKg })
-  if (pieces != null) {
-    Object.assign(ctx, { units: pieces })
-    if (e.mode === 'sea_fcl') Object.assign(ctx, { containers: pieces })
+  if (e.pieces != null) Object.assign(ctx, { units: e.pieces })
+  if (e.mode === 'sea_fcl' && e.containerCount != null) {
+    Object.assign(ctx, { containers: e.containerCount })
   }
   return ctx
 }

@@ -44,7 +44,7 @@
  * into a storage key rather than on the way out.
  */
 
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import {
   assets,
   branches,
@@ -57,6 +57,7 @@ import {
   jobs,
   messageAttachments,
   messages,
+  notificationDeliveries,
   notificationOutbox,
   rateRequests,
   systemActor,
@@ -136,33 +137,69 @@ export async function runInboundMailPoll(
   let failed = 0
 
   for (const source of sources) {
+    const failedBefore = failed
+
     try {
       await source.collect(async (message) => {
         collected++
-        const branch = branchByMailbox.get(message.mailbox)
 
-        /*
-          A mailbox whose branch code matches nothing is a configuration error,
-          and it throws rather than filing the mail somewhere plausible.
-          Throwing leaves the message unflagged, so nothing is lost while
-          somebody fixes the code — and `branch_id` is not nullable on either
-          `enquiries` or `messages`, so there is no somewhere-plausible to file
-          it to in any case.
-        */
-        if (!branch) {
-          throw new Error(
-            `No active mailbox row matches ${message.mailbox}, so there is no ` +
-              'branch to file its mail under. It was most likely deactivated ' +
-              'between the poll starting and this message being handled.',
+        try {
+          const branch = branchByMailbox.get(message.mailbox)
+
+          /*
+            A mailbox whose branch code matches nothing is a configuration
+            error, and it throws rather than filing the mail somewhere
+            plausible. Throwing leaves the message unflagged, so nothing is lost
+            while somebody fixes the code — and `branch_id` is not nullable on
+            either `enquiries` or `messages`, so there is no somewhere-plausible
+            to file it to in any case.
+
+            It fails each message rather than the mailbox, like any other
+            throw: every message after it fails the same way and just as fast,
+            before anything is claimed, so aborting early would save nothing
+            worth a second rule.
+          */
+          if (!branch) {
+            throw new Error(
+              `No active mailbox row matches ${message.mailbox}, so there is no ` +
+                'branch to file its mail under. It was most likely deactivated ' +
+                'between the poll starting and this message being handled.',
+            )
+          }
+
+          const handled = await ingestMessage(
+            message,
+            branch,
+            asOf,
+            enqueue,
+            undefined,
+            billEnqueue,
           )
-        }
+          if (handled.outcome === 'created') created++
+          else if (handled.outcome === 'threaded') threaded++
+          else if (handled.outcome === 'rate_reply') rateReplies++
+          else if (handled.outcome === 'ignored') ignored++
+          else duplicates++
+        } catch (error) {
+          /*
+            One message failing costs that message, and is counted here.
 
-        const handled = await ingestMessage(message, branch, asOf, enqueue, undefined, billEnqueue)
-        if (handled.outcome === 'created') created++
-        else if (handled.outcome === 'threaded') threaded++
-        else if (handled.outcome === 'rate_reply') rateReplies++
-        else if (handled.outcome === 'ignored') ignored++
-        else duplicates++
+            Rethrown, because the throw is how the source knows not to flag it
+            — `\Seen` after a failure would lose the mail. The source catches
+            it, carries on with the next message, and rejects once the batch
+            is done (see `InboundMailSource`), which lands below.
+          */
+          failed++
+          console.error(
+            {
+              source: source.key,
+              messageId: message.externalId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'inbound mail: message failed, left unread for the next poll',
+          )
+          throw error
+        }
       })
     } catch (error) {
       /*
@@ -171,8 +208,12 @@ export async function runInboundMailPoll(
         A password that expired on the Dubai account should cost Dubai's mail
         and nothing else, and the run still reports what it managed. The
         message stays unflagged either way, so the next tick retries it.
+
+        Counted only where no message was: a source that rejects because its
+        messages failed has had each of them counted already, and counting the
+        rejection as well would report three failures for two mails.
       */
-      failed++
+      if (failed === failedBefore) failed++
       console.error(
         { source: source.key, error: error instanceof Error ? error.message : String(error) },
         'inbound mail: mailbox failed',
@@ -397,9 +438,21 @@ export async function ingestMessage(
   */
   if (isAutomaticMail(message)) {
     await withActor(systemActor(), async (tx) => {
+      const bounced = message.bounceOf
+        ? await markBounced(tx, message.bounceOf, asOf)
+        : { deliveries: 0 }
+
       await tx
         .update(inboundWebhookEvents)
-        .set({ processedAt: asOf, error: 'ignored: automatic mail', updatedAt: asOf })
+        .set({
+          processedAt: asOf,
+          error:
+            bounced.deliveries > 0
+              ? `ignored: automatic mail (bounce of ${message.bounceOf!.messageId}; ` +
+                `deliveries marked failed: ${bounced.deliveries})`
+              : 'ignored: automatic mail',
+          updatedAt: asOf,
+        })
         .where(eq(inboundWebhookEvents.id, claim.id))
     })
     return {
@@ -411,12 +464,21 @@ export async function ingestMessage(
     }
   }
 
-  const stored = await storeAttachments(message, branch)
-
   /** Asset ids worth reading as a supplier invoice, filled inside the transaction. */
   const bills: string[] = []
 
   try {
+    /*
+      Inside the `try`, so a storage failure is written on the receipt.
+
+      It used to sit one line above it. The receipt was already claimed, so
+      a bucket that refused the bytes — "Object storage is not configured" —
+      threw straight past the catch below: the row stayed unprocessed with
+      `error` empty, and the only record of why three mails were stuck behind
+      a PDF was a log line nobody was reading.
+    */
+    const stored = await storeAttachments(message, branch)
+
     const outcome = await withActor(systemActor(), async (tx) => {
       const target = await findTarget(tx, message)
       const customerId = await matchCustomer(tx, message)
@@ -653,6 +715,10 @@ export async function ingestMessage(
       next run tries again; the recorded error is what makes a message that
       fails every time findable, rather than an enquiry queue that is quietly
       one short with the reason nowhere.
+
+      Recording is best-effort. When the database itself is what failed, the
+      write fails too, and letting *that* error escape would replace the real
+      reason with "connection refused" in every log line after it.
     */
     await withActor(systemActor(), async (tx) => {
       await tx
@@ -662,6 +728,14 @@ export async function ingestMessage(
           updatedAt: asOf,
         })
         .where(eq(inboundWebhookEvents.id, claim.id))
+    }).catch((recording: unknown) => {
+      console.error(
+        {
+          receipt: claim.id,
+          error: recording instanceof Error ? recording.message : String(recording),
+        },
+        'inbound mail: could not record the failure on the receipt',
+      )
     })
     throw error
   }
@@ -732,6 +806,52 @@ async function claimReceipt(
   })
 }
 
+/**
+ * A bounce, tied back to the delivery that said `sent` — FR-NT-06.
+ *
+ * The dispatcher marks a row `sent` the moment the relay accepts it, which is
+ * all it can know at the time; the recipient's server refusing it arrives
+ * minutes later as a bounce in a polled inbox, and was until now ignored as
+ * automatic mail and forgotten. The notification then read as delivered to an
+ * address that does not exist, which is the one thing FR-NT-06's delivery
+ * states are for telling an operator.
+ *
+ * Matched on `external_ref`, which holds the `Message-ID` `sendMail` minted
+ * (see `smtp.ts`). Only `sent` and `delivered` rows move — a `failed` one is
+ * already right, and a `queued` one has not been sent, so a bounce naming it
+ * is quoting some other message and is left alone. A bounce matching nothing
+ * — mail the password-reset route sent, a row from before `external_ref`
+ * held the id, somebody else's message — changes nothing and is ignored
+ * exactly as before.
+ *
+ * The same transaction as the receipt's processed stamp, so a bounce is
+ * never marked done without its delivery having been told.
+ */
+async function markBounced(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  bounce: NonNullable<InboundMessage['bounceOf']>,
+  asOf: Date,
+): Promise<{ deliveries: number }> {
+  const rows = await tx
+    .update(notificationDeliveries)
+    .set({
+      status: 'failed' as const,
+      failedAt: asOf,
+      lastError: `bounced: ${bounce.reason}`,
+      updatedAt: asOf,
+    })
+    .where(
+      and(
+        eq(notificationDeliveries.externalRef, bounce.messageId),
+        inArray(notificationDeliveries.status, ['sent', 'delivered']),
+      ),
+    )
+    .returning({ id: notificationDeliveries.id })
+
+  return { deliveries: rows.length }
+}
+
 interface Target {
   readonly enquiryId: string | null
   readonly jobId: string | null
@@ -748,8 +868,8 @@ interface Target {
  *     subject, because their own filing depends on it too.
  *
  *  2. **`In-Reply-To` / `References` against a message we sent.** Correct, and
- *     dormant: nothing writes an outbound `messages` row yet, and `sendMail`
- *     returns the relay's queue id rather than the `Message-ID` it generated.
+ *     dormant: nothing writes an outbound `messages` row yet. (`sendMail` now
+ *     returns the `Message-ID` it generated, so the other half is in place.)
  *     It is written now because the moment outbound threading exists this
  *     starts working with no further change, and because leaving it out would
  *     make somebody rediscover the ordering rule above.

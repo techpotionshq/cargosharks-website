@@ -8,6 +8,7 @@ import {
   isSelfConsistent,
   ENQUIRY_EXTRACTION_SCHEMA,
   ENQUIRY_FIELDS,
+  proposedQuantity,
   readExtractedEnquiry,
   readExtractedInvoice,
   reconcileInvoice,
@@ -504,5 +505,70 @@ describe('the emailed enquiry', () => {
   it('refuses a response that is not the shape asked for', () => {
     expect(() => readExtractedEnquiry({ confidence: 0.9 })).toThrow(/fields/)
     expect(() => readExtractedEnquiry('nope')).toThrow(/JSON object/)
+  })
+})
+
+/*
+  F59: the model answered a container count of ":2", it was stored as-is, and
+  the accept path could never apply it. A quantity is reduced to the one figure
+  it states, or the proposal is dropped — never stored as something the accept
+  path will refuse, and never guessed at.
+*/
+describe('a quantity the model proposed', () => {
+  it.each([
+    ['containerCount', ':2', '2'],
+    ['containerCount', ' 2. ', '2'],
+    ['containerCount', '2 x 40HC', '2'],
+    ['containerCount', '3×20GP', '3'],
+    ['containerCount', "2 x 40' HC", '2'],
+    ['containerCount', '2 containers', '2'],
+    ['containerCount', '٢', '2'],
+    ['pieces', '1,200 pcs', '1200'],
+    ['pieces', '(24)', '24'],
+    ['grossWeightKg', '18,000 kg', '18000'],
+    ['grossWeightKg', '18500.5', '18500.5'],
+    ['grossWeightKg', '١٨٠٠٠ كغ', '18000'],
+    ['volumeCbm', '33.2 CBM', '33.2'],
+    ['volumeCbm', '12m3', '12'],
+    ['volumeCbm', '12 م3', '12'],
+  ])('reads %s %j as %j', (field, raw, expected) => {
+    expect(proposedQuantity(field, raw)).toBe(expected)
+  })
+
+  it.each([
+    ['containerCount', 'two'],
+    ['containerCount', '2 x 20GP + 1 x 40HC'],
+    ['containerCount', '2 x 40HC and 20GP'],
+    ['containerCount', '1.5'],
+    ['containerCount', '40 ft'],
+    ['pieces', '2-3 pallets'],
+    ['pieces', 'about 24'],
+    // Not our unit: stripping it would store a figure a thousand times small.
+    ['grossWeightKg', '18 tonnes'],
+    ['grossWeightKg', '-500'],
+    ['grossWeightKg', '18 kg / 20 kg'],
+    ['volumeCbm', '12 cu ft'],
+    ['volumeCbm', ':'],
+  ])('drops %s %j rather than store it', (field, raw) => {
+    expect(proposedQuantity(field, raw)).toBeNull()
+  })
+
+  it('leaves a field that is not a quantity exactly as written', () => {
+    expect(proposedQuantity('dimensions', '120x80x100 cm')).toBe('120x80x100 cm')
+  })
+
+  it('drops the proposal from the reading and keeps the rest', () => {
+    const extracted = readExtractedEnquiry({
+      confidence: 0.8,
+      fields: [
+        { field: 'containerCount', value: ':2', confidence: 0.9, evidence: '2 x 40HC' },
+        { field: 'pieces', value: 'some', confidence: 0.9, evidence: null },
+        { field: 'dimensions', value: '1.2 x 0.8 m', confidence: 0.9, evidence: null },
+      ],
+    })
+    expect(extracted.fields.map((f) => [f.field, f.value])).toEqual([
+      ['containerCount', '2'],
+      ['dimensions', '1.2 x 0.8 m'],
+    ])
   })
 })

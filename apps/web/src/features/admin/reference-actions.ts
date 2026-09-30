@@ -35,8 +35,10 @@ import {
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import {
+  databaseMessage,
   echo,
   fail,
+  isForeignKeyViolation,
   isUniqueViolation,
   succeed,
   type ActionState,
@@ -548,27 +550,52 @@ export async function saveFreeTimeRule(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  await withActor(session.actor, async (tx) => {
-    const values = {
-      kind: data.kind,
-      branchId: data.branchId || null,
-      mode: data.mode || null,
-      containerType: data.containerType,
-      freeDays: data.freeDays,
-      perDiem: data.perDiem,
-      currency: data.currency,
-      dayBasis: data.dayBasis,
-      isActive: data.isActive,
+  try {
+    await withActor(session.actor, async (tx) => {
+      const values = {
+        kind: data.kind,
+        branchId: data.branchId || null,
+        mode: data.mode || null,
+        containerType: data.containerType,
+        freeDays: data.freeDays,
+        perDiem: data.perDiem,
+        currency: data.currency,
+        dayBasis: data.dayBasis,
+        isActive: data.isActive,
+      }
+      if (data.ruleId) {
+        await tx
+          .update(freeTimeRules)
+          .set({ ...values, updatedAt: new Date() })
+          .where(eq(freeTimeRules.id, data.ruleId))
+      } else {
+        await tx.insert(freeTimeRules).values(values)
+      }
+    })
+  } catch (error) {
+    /*
+      F53: a container type or currency the reference tables do not hold. The
+      currency is typed, so a mistyped code reaches here; a container type or
+      branch arrives from a select, so only a stale option does. Caught rather
+      than looked up first — the foreign key already answers the question, and a
+      lookup before the write is a race. The constraint's name says which field
+      to put the sentence beside; one we do not recognise is still a 500,
+      because a field message on the wrong field would be worse than none.
+    */
+    if (isForeignKeyViolation(error)) {
+      const said = databaseMessage(error)
+      if (said.includes('free_time_rules_container_type_')) {
+        return fail({ containerType: tv('unknownContainerType') }, echo(form))
+      }
+      if (said.includes('free_time_rules_currency_')) {
+        return fail({ currency: tv('unknownCurrency') }, echo(form))
+      }
+      if (said.includes('free_time_rules_branch_id_')) {
+        return fail({ branchId: tv('chooseBranch') }, echo(form))
+      }
     }
-    if (data.ruleId) {
-      await tx
-        .update(freeTimeRules)
-        .set({ ...values, updatedAt: new Date() })
-        .where(eq(freeTimeRules.id, data.ruleId))
-    } else {
-      await tx.insert(freeTimeRules).values(values)
-    }
-  })
+    throw error
+  }
 
   revalidatePath('/reference')
   return succeed(data.kind)

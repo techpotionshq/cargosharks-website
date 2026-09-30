@@ -3123,7 +3123,8 @@
         "forcePathStyle": "العنونة بنمط المسار"
       },
       "rateAutoFanout": {
-        "maxAgents": "الحد الأقصى للوكلاء لكل مسار"
+        "maxAgents": "الحد الأقصى للوكلاء لكل مسار",
+        "maxAgeHours": "الاستفسارات الأحدث من (ساعات) فقط"
       },
       "enquiryAutoAccept": {
         "confidence": "الثقة اللازمة للتطبيق (0–1)"
@@ -3445,7 +3446,10 @@
     "mailboxKeyMissing": "لم يُضبط MAILBOX_ENCRYPTION_KEY في هذا النظام، لذلك لا يمكن تشفير كلمة مرور صندوق البريد. اضبطه وأعد التشغيل قبل إضافة صندوق بريد.",
     "unknownMergeFields": "هذا الحدث لا يوفّر {fields}. ستظهر فارغة عند الإرسال.",
     "credentialCannotBeSealed": "لا يمكن تشفير بيانات الاعتماد: {problem}",
-    "periodEndsAfterStart": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء."
+    "periodEndsAfterStart": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء.",
+    "unknownContainerType": "ليس نوع حاوية معروفاً. اختر نوعاً من القائمة.",
+    "unknownCurrency": "ليست عملة معروفة. استخدم رمزاً من ثلاثة أحرف من جدول العملات.",
+    "mailboxGone": "لم يعد صندوق البريد هذا ظاهرًا. أعد تحميل الصفحة وحاول مرة أخرى."
   },
   "costingValidation": {
     "chooseChargeType": "اختر نوع الرسم",
@@ -3849,5 +3853,25 @@
     "overpaid": "المبلغ المستلم {paid} يتجاوز الإجمالي {total} — أصدر إشعارًا دائنًا بدلًا من ذلك",
     "nothingOutstanding": "لا رصيد مستحق — الفاتورة المسددة لا مكان لها في ملف الذمم المدينة المفتوحة",
     "unknownCustomer": "لا يوجد عميل بالرمز «{value}» — استورد العملاء أولًا"
+  },
+  "timeZones": {
+    "kuwait": "الكويت",
+    "riyadh": "الرياض",
+    "bahrain": "البحرين",
+    "qatar": "قطر",
+    "baghdad": "بغداد",
+    "dubai": "دبي",
+    "muscat": "مسقط",
+    "karachi": "كراتشي",
+    "kolkata": "كولكاتا",
+    "dhaka": "دكا",
+    "singapore": "سنغافورة",
+    "hongKong": "هونغ كونغ",
+    "shanghai": "شنغهاي",
+    "istanbul": "إسطنبول",
+    "amsterdam": "أمستردام",
+    "london": "لندن",
+    "newYork": "نيويورك",
+    "utc": "التوقيت العالمي"
   }
 }

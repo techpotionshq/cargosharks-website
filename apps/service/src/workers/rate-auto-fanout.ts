@@ -25,6 +25,13 @@
  * confirmed", which is what makes it safe to ask agents without a human in the
  * loop here: we never RFQ a lane a model guessed and nobody checked.
  *
+ * ## …and a recent one
+ *
+ * A complete lane is necessary but not sufficient: the enquiry must also be
+ * younger than the integration's `maxAgeHours` (48 by default). Switching the
+ * sweep on is a decision about enquiries from now on, not a licence to mail
+ * agents about a backlog nobody has looked at in weeks (F61).
+ *
  * ## The loop-breaker
  *
  * An enquiry with any non-superseded `rate_requests` is not eligible, so the
@@ -52,6 +59,11 @@ import { integration, type LiveIntegration } from '../settings'
 const ENQUIRY_BATCH = 50
 /** The default cap on agents per lane, when the setting supplies none. */
 const DEFAULT_MAX_AGENTS = 6
+/**
+ * How old an enquiry may be and still be fanned out, when the setting supplies
+ * no other figure — see `maxAgeHours` on the integration (F61).
+ */
+const DEFAULT_MAX_AGE_HOURS = 48
 /** The pre-quote states an open enquiry can be fanned out from. */
 const OPEN_STATUSES = ['new', 'assigned', 'rating'] as const
 
@@ -102,6 +114,7 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
   if (source.driver !== 'auto') return EMPTY
 
   const maxAgents = clamp(source.number('maxAgents', DEFAULT_MAX_AGENTS), 1, 20)
+  const maxAgeHours = Math.round(clamp(source.number('maxAgeHours', DEFAULT_MAX_AGE_HOURS), 1, 720))
   const actor = systemActor()
 
   const eligible = await withActor(actor, (tx: Tx) =>
@@ -120,6 +133,16 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
           isNotNull(enquiries.mode),
           isNotNull(enquiries.originId),
           isNotNull(enquiries.destinationId),
+          /*
+            Only enquiries recent enough to be the reason the switch was
+            thrown (F61). Without this, turning `auto` on RFQ'd every open
+            enquiry with a complete lane however old — four idle ones went
+            to agents within a minute on the dev instance. An older enquiry
+            is not refused anything: a person can still ask from its screen,
+            knowing whether the customer is still waiting. Measured in the
+            database's clock, like `created_at` itself.
+          */
+          sql`${enquiries.createdAt} >= now() - make_interval(hours => ${maxAgeHours}::int)`,
           // The loop-breaker: nothing already asked on this enquiry.
           sql`not exists (
             select 1 from ${rateRequests} r

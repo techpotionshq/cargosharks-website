@@ -23,7 +23,7 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm'
-import { commodities, enquiries, locations } from './schema/index'
+import { commodities, countries, enquiries, locations } from './schema/index'
 import type { Tx } from './actor'
 
 /**
@@ -190,11 +190,41 @@ async function matchCommodity(tx: Tx, value: string): Promise<{ id: string }[]> 
   "shuaiba", never "shuwaikh" — and the one-match rule in `resolveProposal`
   still refuses a name two places share.
 */
-const sqlAnyMatch = (needle: string) =>
+const sqlPlaceMatch = (needle: string) =>
   sql`(lower(${locations.unlocode}) = ${needle}
        or lower(${locations.nameEn}) = ${needle}
        or lower(regexp_replace(${locations.nameEn}, '\\s+(port|seaport|sea port|harbour|harbor)$', '', 'i')) = ${needle}
        or lower(${locations.nameAr}) = ${needle})`
+
+/*
+  F60: the model writes a place the way an address is written — "Shuwaikh Port,
+  Kuwait" — and the trailing country defeated every comparison above, so the
+  route stayed incomplete and no rate request went out.
+
+  The country after the last comma is dropped only when it *is* the location's
+  own country, read from `countries` (code, English or Arabic name) rather than
+  a list here, so a country an administrator adds is understood without a
+  release. What is left must still match exactly by the rules above: "Shuaiba
+  Port, Kuwait" is still Shuaiba, and "Shuwaikh, China" matches nothing,
+  because a wrong country is a different place, not a typo to forgive. The
+  Arabic comma is split on too — the same model writes "الشويخ، الكويت".
+*/
+const sqlAnyMatch = (needle: string) => {
+  const comma = Math.max(needle.lastIndexOf(','), needle.lastIndexOf('،'))
+  if (comma < 0) return sqlPlaceMatch(needle)
+
+  const place = needle.slice(0, comma).trim()
+  const country = needle.slice(comma + 1).trim()
+  if (!place || !country) return sqlPlaceMatch(needle)
+
+  return sql`(${sqlPlaceMatch(needle)}
+       or (${sqlPlaceMatch(place)}
+           and exists (select 1 from ${countries}
+                        where ${countries.code} = ${locations.countryCode}
+                          and (lower(${countries.code}) = ${country}
+                               or lower(${countries.nameEn}) = ${country}
+                               or lower(${countries.nameAr}) = ${country}))))`
+}
 
 const sqlAnyCommodity = (needle: string) =>
   sql`(lower(${commodities.code}) = ${needle}

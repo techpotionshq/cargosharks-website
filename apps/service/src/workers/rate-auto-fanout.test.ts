@@ -2,9 +2,9 @@
  * Automatic rate procurement — FR-RT-10, against a real database.
  *
  * The worker opens the same `rate_requests` rows the enquiry screen's picker
- * does, so the value worth pinning is not the insert but the four gates around
+ * does, so the value worth pinning is not the insert but the gates around
  * it: it is off unless the integration says `auto`; it asks only where the lane
- * is complete; it asks each covering agent once; and it asks only agents with an
+ * is complete, and only about an enquiry younger than the window; it asks each covering agent once; and it asks only agents with an
  * email. Each of those is a `where` or a driver check, which is exactly what a
  * mocked test cannot see — so this runs the real worker and skips without a
  * database, the same contract as the other worker suites.
@@ -28,14 +28,17 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
  * cache that is deliberately un-clearable, so a test cannot switch the driver on
  * and off through the environment within one run.
  */
-const gate = (driver: string, maxAgents?: number): LiveIntegration => ({
+const gate = (
+  driver: string,
+  settings: { maxAgents?: number; maxAgeHours?: number } = {},
+): LiveIntegration => ({
   key: 'rateAutoFanout',
   driver,
   live: driver === 'auto',
   missing: [],
   fromRow: false,
   text: () => undefined,
-  number: (_name, fallback) => maxAgents ?? fallback,
+  number: (name, fallback) => settings[name as keyof typeof settings] ?? fallback,
   bool: (_name, fallback) => fallback,
   secret: () => undefined,
 })
@@ -72,6 +75,7 @@ async function makeEnquiry(fields: {
   originId?: string | null
   destinationId?: string | null
   status?: 'new' | 'assigned' | 'rating' | 'quoted'
+  createdAt?: Date
 }): Promise<string> {
   seq += 1
   return withActor(actor, async (tx) => {
@@ -85,6 +89,7 @@ async function makeEnquiry(fields: {
         mode: fields.mode === undefined ? 'sea_fcl' : fields.mode,
         originId: fields.originId === undefined ? ORIGIN : fields.originId,
         destinationId: fields.destinationId === undefined ? DEST_A : fields.destinationId,
+        ...(fields.createdAt ? { createdAt: fields.createdAt } : {}),
       })
       .returning({ id: enquiries.id })
     return row!.id
@@ -250,6 +255,30 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
     const rows = await requestsFor(id)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.token).toBe(`preexisting-${RUN}-${seq}`)
+  })
+
+  /*
+    Switching the sweep on must not mail agents about a backlog (F61). Two
+    enquiries on the same covered lane, one three days old and one fresh: only
+    the fresh one is asked, and the old one is left for a person.
+  */
+  it('fans out a fresh enquiry but leaves one older than the window', async () => {
+    const old = await makeEnquiry({ createdAt: new Date(Date.now() - 72 * 3600_000) })
+    const fresh = await makeEnquiry({})
+
+    await autoFanoutRateRequests({ source: gate('auto') })
+
+    expect(await requestsFor(old)).toEqual([])
+    expect(await requestsFor(fresh)).toHaveLength(1)
+  })
+
+  it('reads the window from the setting', async () => {
+    const id = await makeEnquiry({ createdAt: new Date(Date.now() - 72 * 3600_000) })
+
+    // A 96-hour window reaches back past the three-day-old enquiry.
+    await autoFanoutRateRequests({ source: gate('auto', { maxAgeHours: 96 }) })
+
+    expect(await requestsFor(id)).toHaveLength(1)
   })
 
   it('does not ask a covering agent that has no email', async () => {

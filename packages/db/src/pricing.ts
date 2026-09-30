@@ -127,8 +127,41 @@ export async function priceEnquiryToQuote(
     customerId: enquiry.customerId,
   }
 
+  /*
+    The buy side is the rate this enquiry's agent reply was awarded as, when
+    one was (F67). Several agents can hold a buy card on one lane, and the
+    lane lookup alone picked whichever sorted first — QUO-2026-00004 was costed
+    off an older MAERSK card while the enquiry page said the SHACO reply was
+    accepted and made a card. Awarding a rate is the decision about what the
+    shipment costs; pricing that ignores it contradicts the screen.
+
+    Decided here rather than passed in by the auto-draft sweep, so that a
+    coordinator clicking "Price it" after awarding a rate gets the same buy
+    card the machine would — one rule, both callers, which is why this
+    function exists. Only the cost side moves: a sell card, where there is one,
+    is still the price, and without one the margin is laid on the awarded cost.
+    The newest award wins if a lane was re-awarded.
+  */
+  const [awarded] = await tx
+    .execute(
+      sql`
+      select r.rate_card_id as "rateCardId"
+        from rate_requests r
+       where r.enquiry_id = ${enquiryId}
+         and r.status = 'accepted'
+         and r.rate_card_id is not null
+       order by r.updated_at desc, r.created_at desc
+       limit 1
+    `,
+    )
+    .then((r) => r.rows as unknown as { rateCardId: string }[])
+
   const sellCard = await findCoveringRateCard(tx, { ...lane, direction: 'sell' })
-  const buyCard = await findCoveringRateCard(tx, { ...lane, direction: 'buy' })
+  const buyCard = await findCoveringRateCard(tx, {
+    ...lane,
+    direction: 'buy',
+    preferCardId: awarded?.rateCardId ?? null,
+  })
 
   if (!sellCard && !buyCard) return { error: 'no_cover' }
 

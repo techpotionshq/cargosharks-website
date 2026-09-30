@@ -46,7 +46,7 @@ const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, ORIGIN, PRINCIPAL, bothBranchesActor
   await import('@/lib/testing/fixtures')
 
 const { acceptProposal, rejectProposal } = await import('./form-actions')
-const { enquiryProposals } = await import('./proposals')
+const { enquiryProposals, resolveProposal } = await import('./proposals')
 
 const session = {
   actor: bothBranchesActor,
@@ -342,5 +342,87 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
     const again = await acceptProposal({}, form({ proposalId, enquiryId }))
 
     expect(again.message).toBe('enquiriesValidation.suggestionSettled')
+  })
+})
+
+/*
+  F60: the model writes places the way an address is written — "Shuwaikh Port,
+  Kuwait" — and a trailing country used to defeat the exact match. It is
+  dropped only when it is the location's own country, and what is left must
+  still match exactly. Every place here is created by this file under a name no
+  other run can share, because the test database is never emptied and the seed's
+  own ports would otherwise decide the one-match rule for us.
+*/
+describe.skipIf(!enabled)('a place written with its country', () => {
+  const tag = Math.random().toString(36).slice(2, 8)
+  const near = `Nearharbour${tag}`
+  const far = `Farharbour${tag}`
+  const twin = `Twinquay${tag}`
+  const ids = new Map<string, string>()
+
+  beforeAll(async () => {
+    await world()
+    await withActor(bothBranchesActor, async (tx) => {
+      const rows = await tx
+        .insert(locations)
+        .values([
+          { kind: 'seaport', nameEn: `${near} Port`, nameAr: `ميناء ${tag}`, countryCode: 'KW' },
+          { kind: 'seaport', nameEn: `${far} Port`, countryCode: 'KW' },
+          // One name in two countries: the country is what tells them apart.
+          { kind: 'seaport', nameEn: twin, countryCode: 'KW' },
+          { kind: 'seaport', nameEn: twin, countryCode: 'CN' },
+        ])
+        .returning({ id: locations.id, nameEn: locations.nameEn, country: locations.countryCode })
+      for (const r of rows) ids.set(`${r.nameEn}|${r.country}`, r.id)
+    })
+  })
+
+  const resolve = (value: string) =>
+    withActor(bothBranchesActor, (tx) => resolveProposal(tx, 'origin', value))
+
+  it.each([
+    ['English country name', (n: string) => `${n} Port, Kuwait`],
+    ['country code', (n: string) => `${n} Port, KW`],
+    ['generic suffix dropped as well', (n: string) => `${n}, kuwait`],
+    ['Arabic comma and country name', (n: string) => `${n} Port، الكويت`],
+  ])('drops the location’s own country (%s)', async (_label, write) => {
+    expect(await resolve(write(near))).toEqual({
+      ok: true,
+      column: 'originId',
+      value: ids.get(`${near} Port|KW`),
+    })
+  })
+
+  it('matches the Arabic name with its country', async () => {
+    expect(await resolve(`ميناء ${tag}، الكويت`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${near} Port|KW`),
+    })
+  })
+
+  it('never lets the country make a different port match', async () => {
+    // The Shuaiba-for-Shuwaikh case: same country, different name.
+    expect(await resolve(`${far} Port, Kuwait`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${far} Port|KW`),
+    })
+  })
+
+  it('refuses a place written with a country that is not its own', async () => {
+    expect(await resolve(`${near} Port, China`)).toEqual({
+      ok: false,
+      failure: { kind: 'not_found', value: `${near} Port, China` },
+    })
+  })
+
+  it('lets the country settle a name two countries share, and refuses without it', async () => {
+    expect(await resolve(`${twin}, CN`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${twin}|CN`),
+    })
+    expect(await resolve(twin)).toEqual({
+      ok: false,
+      failure: { kind: 'ambiguous', value: twin, count: 2 },
+    })
   })
 })

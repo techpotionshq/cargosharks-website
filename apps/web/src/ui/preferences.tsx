@@ -16,7 +16,7 @@ import { getTranslations } from 'next-intl/server'
 import { setLocalePreference, setThemePreference, setTimeZonePreference } from '@/lib/preferences'
 import type { ThemeChoice } from '@/lib/theme'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { TIME_ZONES, describeTimeZone } from '@/lib/time'
+import { TIME_ZONES, describeTimeZone, timeZoneKey } from '@/lib/time'
 import { Icon } from './icon'
 
 export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' | 'chrome' }) {
@@ -120,10 +120,17 @@ export async function TimeZoneSwitch({
   readonly tone?: 'ink' | 'chrome'
 }) {
   const t = await getTranslations('common')
+  const tZone = await getTranslations('timeZones')
   const locale = await getLocale()
 
   // A stored zone outside the menu still needs an option to be selected on.
   const options = TIME_ZONES.includes(current) ? TIME_ZONES : [current, ...TIME_ZONES]
+
+  // The city in the viewer's language where the catalogue names it (F64).
+  const cityOf = (zone: string): string | undefined => {
+    const key = timeZoneKey(zone)
+    return tZone.has(key) ? tZone(key) : undefined
+  }
 
   return (
     /*
@@ -150,18 +157,23 @@ export async function TimeZoneSwitch({
         size={16}
         className={tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'}
       />
+      {/*
+        No `dir="ltr"` any more: it was there because every label was an
+        English city. The labels are now in the page's language, and an Arabic
+        label forced left-to-right puts its parenthesised offset on the wrong
+        side.
+      */}
       <select
         id="preferences-time-zone"
         name="timeZone"
         defaultValue={current}
-        dir="ltr"
         className={`h-8 rounded-sm border-0 bg-transparent px-1 text-[0.8125rem] font-medium focus:outline-none ${
           tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'
         }`}
       >
         {options.map((zone) => (
           <option key={zone} value={zone}>
-            {describeTimeZone(zone, locale)}
+            {describeTimeZone(zone, locale, cityOf(zone))}
           </option>
         ))}
       </select>

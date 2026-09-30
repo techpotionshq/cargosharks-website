@@ -24,6 +24,7 @@
  * the margin rule, the cards used.
  */
 
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 
@@ -51,15 +52,25 @@ const {
   enquiries,
   fxRates,
   locations,
+  partners,
   quoteLines,
   quotes,
   rateCardLines,
   rateCards,
+  rateRequests,
   withActor,
 } = await import('@qabandi/db')
 
-const { CUSTOMER, AWAY_CUSTOMER, HOME_BRANCH, AWAY_BRANCH, PRINCIPAL, bothBranchesActor, world } =
-  await import('@/lib/testing/fixtures')
+const {
+  CUSTOMER,
+  AWAY_CUSTOMER,
+  HOME_BRANCH,
+  AWAY_BRANCH,
+  PARTNER,
+  PRINCIPAL,
+  bothBranchesActor,
+  world,
+} = await import('@/lib/testing/fixtures')
 
 const { priceEnquiry } = await import('./pricing')
 
@@ -471,6 +482,60 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
       expect(state.message).toBe('ledgerValidation.pricingNoCover')
+    })
+
+    /**
+     * The awarded agent rate is the cost, whatever else covers the lane (F67).
+     *
+     * Two agents' buy cards on one lane: the rival is cheaper and sorts first,
+     * so the lane lookup alone takes it. The enquiry's accepted rate request names the
+     * other, and a person pressing "Price it" after awarding it must be costed
+     * off what they awarded — the sell card stays the price either way.
+     */
+    it('costs off the buy card the enquiry awarded, not a cheaper rival', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+      const awarded = await card(on, 'buy', [{ rate: '250.000' }], { partnerId: PARTNER })
+      /*
+        The lookup orders agents' cards by the `partner_id` uuid before
+        `valid_from` — the arbitrary tie-break F67 was about — so the rival's
+        id is made to sort before the fixture agent's (…c005): without the
+        award it is the card that would cost this, every run.
+      */
+      const rival = `00000000-0000-4000-8000-${randomUUID().slice(-12)}`
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(partners).values({
+          id: rival,
+          code: `AGT-P-${RUN}-${next()}`,
+          type: 'agent',
+          legalNameEn: 'Cheaper Rival',
+        }),
+      )
+      await card(on, 'buy', [{ rate: '150.000' }], {
+        partnerId: rival,
+        validFrom: '2031-02-01',
+        validity: '[2031-02-01,2031-12-31)',
+      })
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId: id,
+          partnerId: PARTNER,
+          status: 'accepted',
+          token: `p-${RUN}-${next()}`,
+          rateCardId: awarded,
+        }),
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      // Two containers at the awarded 250 — the rival's 150 would give 300.
+      expect(quote!.totalCost).toBe('500.000000')
+      expect(Number(quote!.totalSell)).toBeCloseTo(600, 3)
+      expect((quote!.snapshot as Record<string, unknown>).buyCardId).toBe(awarded)
     })
 
     /**

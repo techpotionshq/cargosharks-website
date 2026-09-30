@@ -78,15 +78,42 @@ export const TIME_ZONES: readonly string[] = [
 ]
 
 /**
+ * The catalogue key naming a zone's city — `Asia/Hong_Kong` → `hongKong`.
+ *
+ * F64: the city used to be the zone id's last segment, so an Arabic screen read
+ * "Kuwait (غرينتش+3)" — the offset translated by `Intl`, the city not.
+ * `Intl.DisplayNames` has no time-zone type, and `timeZoneName: 'longGeneric'`
+ * names a *region* rather than the city a person picked — Node gives Kuwait as
+ * "التوقيت العربي الرسمي" and Dubai as "توقيت الخليج" — with wording that
+ * depends on the ICU build. The menu is short, so its cities are catalogue
+ * entries (`timeZones.*`), written once in both languages.
+ */
+export function timeZoneKey(timeZone: string): string {
+  if (timeZone === 'UTC') return 'utc'
+  const city = timeZone.split('/').pop() ?? timeZone
+  return city
+    .split('_')
+    .map((word, i) =>
+      i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join('')
+}
+
+/**
  * How a zone is offered in the picker: `Asia/Dubai` → `Dubai (GMT+4)`.
  *
  * The offset is resolved for *now* rather than stated, so a zone that observes
  * daylight saving reads correctly in both halves of the year — London is GMT+1
  * in July and the label says so.
+ *
+ * `city` is the name in the viewer's language, from the catalogue. Without it
+ * — a zone stored from a longer list than `TIME_ZONES` — the id's own last
+ * segment is shown, which is English but is at least the zone that is set.
  */
-export function describeTimeZone(timeZone: string, locale: string = 'en'): string {
-  const city = timeZone === 'UTC' ? 'UTC' : (timeZone.split('/').pop() ?? timeZone)
-  const label = city.replace(/_/g, ' ')
+export function describeTimeZone(timeZone: string, locale: string = 'en', city?: string): string {
+  const label =
+    city ??
+    (timeZone === 'UTC' ? 'UTC' : (timeZone.split('/').pop() ?? timeZone)).replace(/_/g, ' ')
 
   try {
     const parts = new Intl.DateTimeFormat(locale, {

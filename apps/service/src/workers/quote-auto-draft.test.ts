@@ -79,14 +79,17 @@ async function makeLocation(): Promise<string> {
   return id
 }
 
-/** A covered lane: fresh ports, a buy card over them, and the enquiry on it. */
-async function coveredEnquiry(): Promise<string> {
-  const originId = await makeLocation()
-  const destinationId = await makeLocation()
-  const partnerId = randomUUID()
+/** An agent and a one-line buy card from it over a lane; returns the card. */
+async function buyCard(
+  originId: string,
+  destinationId: string,
+  rate: string,
+  validFrom: string,
+  partnerId: string = randomUUID(),
+): Promise<{ partnerId: string; cardId: string }> {
   seq += 1
 
-  await withActor(actor, async (tx) => {
+  const cardId = await withActor(actor, async (tx) => {
     await tx.insert(partners).values({
       id: partnerId,
       code: `AGT-QD-${RUN}-${seq}`,
@@ -103,8 +106,8 @@ async function coveredEnquiry(): Promise<string> {
         mode: 'sea_fcl',
         originId,
         destinationId,
-        validity: '[2020-01-01,2040-01-01)',
-        validFrom: '2020-01-01',
+        validity: `[${validFrom},2040-01-01)`,
+        validFrom,
         validTo: '2040-01-01',
         currency: 'KWD',
         createdById: SYSTEM_PRINCIPAL_ID,
@@ -115,11 +118,41 @@ async function coveredEnquiry(): Promise<string> {
       rateCardId: card!.id,
       chargeTypeId: oceanFreightId,
       basis: 'per_container',
-      rate: '500',
+      rate,
       currency: 'KWD',
       sortOrder: 0,
     })
+    return card!.id
   })
+
+  return { partnerId, cardId }
+}
+
+/**
+ * A partner id that sorts before any random one.
+ *
+ * The lane lookup orders agents' cards by `partner_id` before `valid_from` —
+ * the uuid itself, which is the arbitrary tie-break F67 was about. Giving the
+ * rival the lowest id makes it the card the lookup would take without the
+ * award, every run, rather than on the toss of two random uuids.
+ */
+const lowestPartnerId = () => `00000000-0000-4000-8000-${randomUUID().slice(-12)}`
+
+/**
+ * A covered lane: fresh ports, a buy card over them, and the enquiry on it.
+ *
+ * With `rival`, a second agent's cheaper card, which sorts first, covers the same lane
+ * and the award names the first card — the shape of QUO-2026-00004 (F67),
+ * where the lane lookup alone would pick the rival.
+ */
+async function coveredEnquiry(options: { rival?: boolean } = {}): Promise<string> {
+  const originId = await makeLocation()
+  const destinationId = await makeLocation()
+  const awardedCard = await buyCard(originId, destinationId, '500', '2020-01-01')
+  const partnerId = awardedCard.partnerId
+  if (options.rival) {
+    await buyCard(originId, destinationId, '300', '2021-01-01', lowestPartnerId())
+  }
 
   const enquiryId = await withActor(actor, async (tx) => {
     const [row] = await tx
@@ -150,6 +183,9 @@ async function coveredEnquiry(): Promise<string> {
       partnerId,
       status: 'accepted',
       token: `qd-${RUN}-${seq}`,
+      // Only the rival test depends on this link; the others price the one
+      // card on the lane either way.
+      rateCardId: options.rival ? awardedCard.cardId : null,
     }),
   )
 
@@ -241,6 +277,18 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
     expect(coverNote).toHaveBeenCalledWith(
       expect.objectContaining({ quoteId: quote!.id, locale: 'en' }),
     )
+  })
+
+  it('costs the quotation off the awarded card, not a cheaper one on the lane', async () => {
+    const id = await coveredEnquiry({ rival: true })
+
+    await autoDraftQuotes({ source: gate('auto'), draftCoverNote: vi.fn(async () => ({})) })
+
+    const quote = await draftQuote(id)
+    expect(quote).toBeDefined()
+    // The awarded 500, marked up 20% — not the rival's 300 → 360.
+    expect(quote!.totalCost).toBe('500.000000')
+    expect(quote!.totalSell).toBe('600.000000')
   })
 
   it('does nothing on its inert default', async () => {

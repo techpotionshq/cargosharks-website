@@ -1891,7 +1891,7 @@ export interface RateRequestsView {
   readonly requests: readonly RateRequestView[]
   /** Requests sent, still awaiting a reply. */
   readonly awaiting: number
-  /** Requests with a reply in — responded or parsed. */
+  /** Requests the agent replied to — responded, parsed, accepted or declined. */
   readonly answered: number
 }
 

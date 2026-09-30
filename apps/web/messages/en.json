@@ -3123,7 +3123,8 @@
         "forcePathStyle": "Path-style addressing"
       },
       "rateAutoFanout": {
-        "maxAgents": "Agents per lane (max)"
+        "maxAgents": "Agents per lane (max)",
+        "maxAgeHours": "Only enquiries newer than (hours)"
       },
       "enquiryAutoAccept": {
         "confidence": "Confidence to apply (0–1)"
@@ -3445,7 +3446,10 @@
     "mailboxKeyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a mailbox password cannot be sealed. Set it and restart before adding a mailbox.",
     "unknownMergeFields": "This event does not supply {fields}. It would send as blank.",
     "credentialCannotBeSealed": "A credential cannot be sealed: {problem}",
-    "periodEndsAfterStart": "The end date must be after the start date."
+    "periodEndsAfterStart": "The end date must be after the start date.",
+    "unknownContainerType": "Not a known container type. Choose one from the list.",
+    "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
+    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -3849,5 +3853,25 @@
     "overpaid": "Received {paid} exceeds the total {total} — raise a credit note instead",
     "nothingOutstanding": "Nothing outstanding — a settled invoice does not belong in an open receivables file",
     "unknownCustomer": "No such customer “{value}” — import customers first"
+  },
+  "timeZones": {
+    "kuwait": "Kuwait",
+    "riyadh": "Riyadh",
+    "bahrain": "Bahrain",
+    "qatar": "Qatar",
+    "baghdad": "Baghdad",
+    "dubai": "Dubai",
+    "muscat": "Muscat",
+    "karachi": "Karachi",
+    "kolkata": "Kolkata",
+    "dhaka": "Dhaka",
+    "singapore": "Singapore",
+    "hongKong": "Hong Kong",
+    "shanghai": "Shanghai",
+    "istanbul": "Istanbul",
+    "amsterdam": "Amsterdam",
+    "london": "London",
+    "newYork": "New York",
+    "utc": "UTC"
   }
 }

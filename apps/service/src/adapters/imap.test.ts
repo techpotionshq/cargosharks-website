@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { simpleParser } from 'mailparser'
-import { flattenHtml, toInboundMessage } from './imap'
+import { eachIsolated, flattenHtml, toInboundMessage } from './imap'
 
 const MAILBOX = 'kuwait@qabandi.com'
 const BIG = 25 * 1024 * 1024
@@ -327,5 +327,186 @@ describe('toInboundMessage', () => {
 
     expect(message.body).toBe('')
     expect(message.subject).toBe('(no body)')
+  })
+})
+
+// --- bounces of our own mail -------------------------------------------------
+
+/**
+ * A bounce, read back to the message of ours it reports — FR-NT-06.
+ *
+ * The dispatcher stores the `Message-ID` `sendMail` minted; a bounce quotes
+ * it in the original it attaches. These fixtures are the shapes MTAs actually
+ * send, because the failure this guards against is the quiet one: a delay
+ * warning or an out-of-office read as a bounce would mark a delivery `failed`
+ * that in fact arrived.
+ */
+describe('bounceOf', () => {
+  const OURS = '<5f0c9a3e-1111-4222-8333-944455556666@qabandi.com>'
+
+  const dsn = (
+    action: string,
+    original: { type: string; headers: string[] } = {
+      type: 'message/rfc822',
+      headers: [`Message-ID: ${OURS}`, 'Auto-Submitted: auto-generated'],
+    },
+  ): string =>
+    [
+      'Return-Path: <>',
+      'From: MAILER-DAEMON@mail.example.net (Mail Delivery System)',
+      'To: kuwait@qabandi.com',
+      `Subject: ${action === 'failed' ? 'Undelivered Mail Returned to Sender' : 'Delayed Mail (still being retried)'}`,
+      'Message-ID: <20260930100000.AB12@mail.example.net>',
+      'Date: Tue, 30 Sep 2026 10:00:00 +0000',
+      'Auto-Submitted: auto-replied',
+      'MIME-Version: 1.0',
+      'Content-Type: multipart/report; report-type=delivery-status; boundary="B1"',
+      '',
+      '--B1',
+      'Content-Type: text/plain; charset=us-ascii',
+      '',
+      'This is the mail system at host mail.example.net.',
+      '',
+      '--B1',
+      'Content-Type: message/delivery-status',
+      '',
+      'Reporting-MTA: dns; mail.example.net',
+      '',
+      'Final-Recipient: rfc822; nobody@customer.test',
+      `Action: ${action}`,
+      'Status: 5.1.1',
+      'Diagnostic-Code: smtp; 550 5.1.1 <nobody@customer.test>: Recipient address',
+      '    rejected: User unknown',
+      '',
+      '--B1',
+      `Content-Type: ${original.type}`,
+      '',
+      'From: kuwait@qabandi.com',
+      'To: nobody@customer.test',
+      'Subject: Your enquiry was received',
+      ...original.headers,
+      '',
+      'Thank you.',
+      '--B1--',
+      '',
+    ].join('\r\n')
+
+  it('reads the original Message-ID and the remote reason from a DSN', async () => {
+    const message = await normalise(dsn('failed'))
+
+    expect(message.automatic).toBe(true)
+    expect(message.bounceOf).toEqual({
+      messageId: OURS,
+      reason: '550 5.1.1 <nobody@customer.test>: Recipient address rejected: User unknown',
+    })
+    // Its own id is not the one it reports on.
+    expect(message.externalId).not.toBe(OURS)
+  })
+
+  it('reads the original from headers-only attachments too', async () => {
+    const message = await normalise(
+      dsn('failed', { type: 'text/rfc822-headers', headers: [`Message-ID: ${OURS}`] }),
+    )
+    expect(message.bounceOf?.messageId).toBe(OURS)
+  })
+
+  /**
+   * The case that must not be a bounce. A delay DSN quotes the original
+   * exactly as a failure does, and the mail usually arrives an hour later.
+   */
+  it('does not call a delay a failure', async () => {
+    const message = await normalise(dsn('delayed'))
+    expect(message.automatic).toBe(true)
+    expect(message.bounceOf).toBeUndefined()
+  })
+
+  it('reads a mail daemon’s plain-text letter, the original quoted inline', async () => {
+    const message = await normalise(
+      [
+        'From: MAILER-DAEMON@mx.example.org',
+        'To: kuwait@qabandi.com',
+        'Subject: failure notice',
+        'Message-ID: <qmail-1@mx.example.org>',
+        '',
+        'Hi. This is the qmail-send program at mx.example.org.',
+        "I'm afraid I wasn't able to deliver your message to the following addresses.",
+        '',
+        '<nobody@customer.test>:',
+        '552 5.2.2 Mailbox full',
+        '',
+        '--- Below this line is a copy of the message.',
+        '',
+        'From: kuwait@qabandi.com',
+        `Message-ID: ${OURS}`,
+        'Subject: Invoice issued',
+        '',
+      ].join('\r\n'),
+    )
+
+    expect(message.bounceOf).toEqual({ messageId: OURS, reason: '552 5.2.2 Mailbox full' })
+  })
+
+  /** An out-of-office answers our message too — and is not a delivery failure. */
+  it('is not fooled by an auto-reply that threads onto our message', async () => {
+    const message = await normalise(
+      [
+        'From: fatima@shipper.com.kw',
+        'To: kuwait@qabandi.com',
+        'Subject: Automatic reply: Your enquiry was received',
+        'Message-ID: <oof-1@shipper.com.kw>',
+        `In-Reply-To: ${OURS}`,
+        `References: ${OURS}`,
+        'Auto-Submitted: auto-replied',
+        '',
+        'I am out of the office until Sunday.',
+      ].join('\r\n'),
+    )
+
+    expect(message.automatic).toBe(true)
+    expect(message.bounceOf).toBeUndefined()
+  })
+
+  it('is absent on an ordinary enquiry', async () => {
+    const message = await normalise(
+      [
+        'From: fatima@shipper.com.kw',
+        'To: kuwait@qabandi.com',
+        'Subject: RFQ 2x40HC',
+        'Message-ID: <rfq-1@shipper.com.kw>',
+        '',
+        'Please quote.',
+      ].join('\r\n'),
+    )
+    expect(message.bounceOf).toBeUndefined()
+  })
+})
+
+// --- one message's failure ---------------------------------------------------
+
+/**
+ * The loop `collect` runs — F56.
+ *
+ * A PDF that could not be stored used to end the poll; it stayed unread, was
+ * first in line again a minute later, and every mail behind it waited. The
+ * rule is that a throw costs that message and no other.
+ */
+describe('eachIsolated', () => {
+  it('carries on past a failure and reports it', async () => {
+    const acknowledged: string[] = []
+
+    const outcome = await eachIsolated(['stuck', 'behind', 'after'], async (id) => {
+      if (id === 'stuck') throw new Error('<stuck@x>: Object storage is not configured')
+      acknowledged.push(id)
+    })
+
+    expect(acknowledged).toEqual(['behind', 'after'])
+    expect(outcome).toEqual({
+      handled: 2,
+      failures: ['<stuck@x>: Object storage is not configured'],
+    })
+  })
+
+  it('reports nothing when nothing failed', async () => {
+    expect(await eachIsolated([1, 2], async () => {})).toEqual({ handled: 2, failures: [] })
   })
 })

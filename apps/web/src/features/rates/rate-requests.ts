@@ -140,14 +140,38 @@ export async function getEnquiryRateRequests(
       requests.push(...flagged)
     }
 
-    return {
-      baseCurrency,
-      requests,
-      awaiting: requests.filter((r) => r.status === 'sent').length,
-      answered: requests.filter((r) => r.status === 'responded' || r.status === 'parsed').length,
-    }
+    return { baseCurrency, requests, ...replyCounts(requests) }
   })
 }
+
+/**
+ * The panel's "N awaiting, N answered", from the statuses on the list.
+ *
+ * "Answered" is every request the agent has replied to, whatever became of the
+ * reply: responded, parsed, accepted — and declined, because "no allocation
+ * this month" is an answer and the coordinator is no longer waiting on it. It
+ * counted only responded and parsed, so the moment a reply was accepted the
+ * summary read "0 awaiting, 0 answered" above the accepted row (F65), and a
+ * decline was never counted at all. `expired` is neither: the window closed
+ * with nothing usable, so nobody is waiting and nobody answered. Exported so
+ * the pilot fixture's figures are tested against the same rule.
+ */
+export function replyCounts(requests: readonly Pick<RateRequestView, 'status'>[]): {
+  awaiting: number
+  answered: number
+} {
+  return {
+    awaiting: requests.filter((r) => r.status === 'sent').length,
+    answered: requests.filter((r) => ANSWERED.has(r.status)).length,
+  }
+}
+
+const ANSWERED: ReadonlySet<RateRequestView['status']> = new Set<RateRequestView['status']>([
+  'responded',
+  'parsed',
+  'accepted',
+  'declined',
+])
 
 /**
  * The agents that cover this enquiry's lane — the request-rates picker.

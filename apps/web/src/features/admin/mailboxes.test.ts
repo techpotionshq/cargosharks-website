@@ -297,6 +297,33 @@ describe.skipIf(!enabled)('mailboxes', () => {
       expect(openSecret(after!.passwordSealed)).toBe('new-secret')
       expect(after?.lastError).toBeNull()
     })
+
+    /*
+      F54: an edit whose id matches no row used to report success and change
+      nothing, and an id that is not a uuid reached the database as a cast
+      error. Both are now a sentence on the form, and neither writes a row —
+      in particular the edit is never quietly turned into an insert.
+    */
+    it('refuses an edit to a mailbox that is not there, rather than reporting success', async () => {
+      const username = nextUsername()
+      const state = await saveMailbox(
+        {},
+        mailbox({ mailboxId: '00000000-0000-7000-8000-00000000ffff', username }),
+      )
+
+      expect(state.ok).toBeUndefined()
+      expect(state.errors).toEqual({ _: 'adminValidation.mailboxGone' })
+      expect(state.values?.password).toBeUndefined()
+      expect(await rowFor(username)).toBeUndefined()
+    })
+
+    it('refuses a mailbox id that is not an id, before the database sees it', async () => {
+      const username = nextUsername()
+      const state = await saveMailbox({}, mailbox({ mailboxId: 'not-a-uuid', username }))
+
+      expect(state.errors).toEqual({ _: 'adminValidation.missingMailbox' })
+      expect(await rowFor(username)).toBeUndefined()
+    })
   })
 
   describe('starting and stopping a mailbox', () => {

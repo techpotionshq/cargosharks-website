@@ -28,6 +28,17 @@ and `db:seed-demo`. It is never emptied — `DELETE` is revoked — so see §3.
 **Object storage** is Cloudflare R2, bucket `qabandi`. Verify with
 `pnpm --filter @qabandi/service verify:storage`.
 
+**Without the R2 credentials, set `FILE_STORE_DRIVER=memory` in `.env.local`.**
+The store defaults to `s3`, and an `s3` store with nothing configured refuses
+every write: each email attachment and each upload fails with *"Object storage
+is not configured"*. `memory` keeps the bytes in the process and loses them at the next restart,
+which is acceptable on a laptop and is exactly why it is never a fallback the
+code picks for you (`unavailableFileStore` in `apps/service/src/adapters/file-store.ts`
+says why). It is here and not in `.env.example` because that file deliberately
+lists no integration variables — see its "The integrations are NOT here"
+header — and an active `fileStore` row at Settings → Integrations wins over the
+variable.
+
 **The dev mailbox is real.** `freight@techpotions.app` on `mail.spacemail.com`
 (IMAP 993, SMTP 465) is a `mailboxes` row bound to the **DXB** branch. While
 the service is running, anything emailed to that address becomes an enquiry

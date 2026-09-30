@@ -108,13 +108,13 @@ const keySchema = (tv: Translate) =>
  *
  * ## Why the hash is SHA-256 and not Argon2id
  *
- * The column comment says Argon2id and `apps/service` verifies with SHA-256,
- * which is the shape that matters: this has to produce what that reads, and
- * changing the algorithm would invalidate every key already issued. It is also
- * the right call for this input — Argon2's cost exists to make *guessable*
- * secrets expensive to attack, and a 256-bit random secret is not guessable.
- * Applying a slow KDF to it would add latency to every API request and no
- * security. The comment is what is wrong here, not the code.
+ * The column comment once said Argon2id; it now says SHA-256, because
+ * `apps/service/src/api/public.ts` verifies with SHA-256 and that is the shape
+ * that matters: this has to produce what that reads, and changing the
+ * algorithm would invalidate every key already issued. It is also the right
+ * call for this input — Argon2's cost exists to make *guessable* secrets
+ * expensive to attack, and a 256-bit random secret is not guessable. Applying
+ * a slow KDF to it would add latency to every API request and no security.
  */
 export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()

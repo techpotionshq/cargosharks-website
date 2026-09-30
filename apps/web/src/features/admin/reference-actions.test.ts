@@ -826,6 +826,31 @@ describe.skipIf(!enabled)('reference configuration — FR-AD-03', () => {
       const state = await saveFreeTimeRule({}, form({ perDiem: '5', kind: 'parking' }))
       expect(state.errors?.kind).toBeDefined()
     })
+
+    /*
+      F53: these passed the schema and reached a foreign key, which used to
+      surface as a 500. Each now names its own field, and nothing is written.
+    */
+    it.each([
+      ['containerType', { containerType: `ZZ${RUN}` }, 'adminValidation.unknownContainerType'],
+      ['currency', { currency: 'ZZQ' }, 'adminValidation.unknownCurrency'],
+      ['branchId', { branchId: NOWHERE }, 'adminValidation.chooseBranch'],
+    ] as const)(
+      'refuses a %s the reference tables do not hold, beside that field',
+      async (field, over, message) => {
+        const before = (await rulesFor('detention')).length
+        const state = await saveFreeTimeRule(
+          {},
+          form({ kind: 'detention', branchId: runBranch, perDiem: '5', ...over }),
+        )
+
+        expect(state.ok).toBeUndefined()
+        expect(state.errors).toEqual({ [field]: message })
+        // The form comes back as typed, so the operator corrects one field.
+        expect(state.values?.perDiem).toBe('5')
+        expect(await rulesFor('detention')).toHaveLength(before)
+      },
+    )
   })
 
   /* ------------------------------------------------------------ permission */

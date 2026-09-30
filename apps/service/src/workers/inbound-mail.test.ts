@@ -17,8 +17,28 @@
  * enquiry from any Gmail user that customer's, with their rates attached.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+
+/*
+  Object storage that can be switched off for one case.
+
+  The live failure behind these cases was a bucket that was not configured: a
+  PDF could not be stored, the poll threw, and every mail behind it waited.
+  `fileStore` is the real one — memory, per `FILE_STORE_DRIVER` below — unless
+  a case sets `storage.refuse`, when it throws what production threw.
+*/
+const storage = vi.hoisted(() => ({ refuse: false }))
+vi.mock('../adapters/index', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../adapters/index')>()
+  return {
+    ...actual,
+    fileStore: async (...args: Parameters<typeof actual.fileStore>) => {
+      if (storage.refuse) throw new Error('Object storage is not configured')
+      return actual.fileStore(...args)
+    },
+  }
+})
 import {
   identifyingDomain,
   inboundStorageKey,
@@ -293,6 +313,7 @@ const {
   mailboxes,
   messageAttachments,
   messages,
+  notificationDeliveries,
   notificationOutbox,
   partnerContacts,
   partners,
@@ -344,18 +365,42 @@ function mail(over: FakeMessage = {}) {
   }
 }
 
-/** A source that yields a fixed list, as an IMAP poll would. */
+/**
+ * A source that yields a fixed list, as an IMAP poll would — including what it
+ * does when the handler throws.
+ *
+ * The contract `imapSource` keeps (`InboundMailSource`): a message whose
+ * handler threw is left unflagged, the rest of the batch is still handled,
+ * and `collect` rejects afterwards so the mailbox reads red. `seen` is the
+ * `\Seen` flag — the ids this fake would have acknowledged.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const sourceOf = (...list: any[]) => [
-  {
-    key: 'fixture',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async collect(handler: (m: any) => Promise<void>): Promise<number> {
-      for (const m of list) await handler(m)
-      return list.length
+const flaggingSourceOf = (...list: any[]) => {
+  const seen: string[] = []
+  const sources = [
+    {
+      key: 'fixture',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async collect(handler: (m: any) => Promise<void>): Promise<number> {
+        const failures: string[] = []
+        for (const m of list) {
+          try {
+            await handler(m)
+            seen.push(m.externalId)
+          } catch (error) {
+            failures.push(`${m.externalId}: ${(error as Error).message}`)
+          }
+        }
+        if (failures.length > 0) throw new Error(`${failures.length} failed. ${failures[0]}`)
+        return seen.length
+      },
     },
-  },
-]
+  ]
+  return { sources, seen }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sourceOf = (...list: any[]) => flaggingSourceOf(...list).sources
 
 const messagesOn = (enquiryId: string) =>
   withActor(sys, (tx) => tx.select().from(messages).where(eq(messages.enquiryId, enquiryId)))
@@ -968,5 +1013,214 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
     expect(payload.subject).toBe(`Receipt ${RUN}`)
     expect(JSON.stringify(payload)).not.toContain('QUFB')
     expect((payload.attachments as { filename: string }[])[0]!.filename).toBe('big.pdf')
+  })
+
+  /**
+   * One mail that cannot be filed must not hold the rest of the inbox.
+   *
+   * Seen live: a PDF enquiry failed on "Object storage is not configured", the
+   * throw ended the poll, the mail stayed unread and so was first in line
+   * again a minute later — and three mails behind it waited until somebody
+   * configured the bucket. Its receipt said nothing, because the storage call
+   * sat outside the `try` that records errors.
+   */
+  describe('a message that fails', () => {
+    const receiptOf = async (externalId: string) => {
+      const [receipt] = await withActor(sys, (tx) =>
+        tx
+          .select({
+            processedAt: inboundWebhookEvents.processedAt,
+            error: inboundWebhookEvents.error,
+          })
+          .from(inboundWebhookEvents)
+          .where(eq(inboundWebhookEvents.externalId, externalId))
+          .limit(1),
+      )
+      return receipt
+    }
+
+    it('costs that message only, stays unread, and says why on its receipt', async () => {
+      const broken = mail({
+        subject: `Stuck PDF ${RUN}`,
+        attachments: [
+          { filename: 'rates.pdf', contentType: 'application/pdf', content: Buffer.from('%PDF') },
+        ],
+      })
+      const behind = mail({ subject: `Behind the PDF ${RUN}` })
+      const poll = flaggingSourceOf(broken, behind)
+
+      storage.refuse = true
+      let result
+      try {
+        result = await runInboundMailPoll(new Date('2026-08-18T07:50:00Z'), poll.sources)
+      } finally {
+        storage.refuse = false
+      }
+
+      // The one behind it was filed and acknowledged.
+      expect(result.created).toBe(1)
+      await enquiryNoted(`Behind the PDF ${RUN}`)
+      expect(poll.seen).toEqual([behind.externalId])
+
+      // The broken one counted once, never flagged, and nothing filed for it.
+      expect(result.failed).toBe(1)
+      expect(poll.seen).not.toContain(broken.externalId)
+      const stuck = (await enquiriesFromRun()).filter(
+        (e: { notes: string | null }) => e.notes === `Stuck PDF ${RUN}`,
+      )
+      expect(stuck).toHaveLength(0)
+
+      // Claimed but not processed — so a retry picks it up — with the reason.
+      const receipt = await receiptOf(broken.externalId)
+      expect(receipt?.processedAt).toBeNull()
+      expect(receipt?.error).toBe('Object storage is not configured')
+    })
+
+    /** The next poll, with the cause fixed, files it and clears the error. */
+    it('is filed on the next poll once the cause is fixed', async () => {
+      const broken = mail({
+        subject: `Retried PDF ${RUN}`,
+        attachments: [
+          { filename: 'rates.pdf', contentType: 'application/pdf', content: Buffer.from('%PDF') },
+        ],
+      })
+
+      storage.refuse = true
+      try {
+        const first = await runInboundMailPoll(
+          new Date('2026-08-18T07:51:00Z'),
+          flaggingSourceOf(broken).sources,
+        )
+        expect(first.failed).toBe(1)
+      } finally {
+        storage.refuse = false
+      }
+
+      const retry = flaggingSourceOf(broken)
+      const second = await runInboundMailPoll(new Date('2026-08-18T07:52:00Z'), retry.sources)
+
+      expect(second.created).toBe(1)
+      expect(second.failed).toBe(0)
+      expect(retry.seen).toEqual([broken.externalId])
+      await enquiryNoted(`Retried PDF ${RUN}`)
+
+      const receipt = await receiptOf(broken.externalId)
+      expect(receipt?.processedAt).toBeTruthy()
+      expect(receipt?.error).toBeNull()
+    })
+  })
+
+  /**
+   * A bounce tells the delivery row it said `sent` too early — FR-NT-06.
+   *
+   * The dispatcher can only know the relay accepted a message. The recipient's
+   * server refusing it arrives later, as a bounce in a polled inbox, and was
+   * ignored as automatic mail with the delivery left reading `sent` forever.
+   */
+  describe('bounces of our own notifications', () => {
+    /** A delivery the dispatcher sent, carrying the `Message-ID` `sendMail` returned. */
+    const sentDelivery = async (status: 'sent' | 'queued' = 'sent') => {
+      const messageId = `<${RUN}-${++seq}-bounce@qabandi.test>`
+      const id = await withActor(sys, async (tx) => {
+        const [outbox] = await tx
+          .insert(notificationOutbox)
+          .values({
+            branchId: BRANCH,
+            eventKey: 'enquiry.received',
+            // Already dispatched, so no dispatcher run picks it up as work.
+            dispatchedAt: new Date(),
+            webhooksExpandedAt: new Date(),
+          })
+          .returning({ id: notificationOutbox.id })
+        const [delivery] = await tx
+          .insert(notificationDeliveries)
+          .values({
+            outboxId: outbox!.id,
+            channel: 'email',
+            locale: 'en',
+            toAddress: 'nobody@customer.test',
+            status,
+            externalRef: messageId,
+            attempts: 1,
+            sentAt: status === 'sent' ? new Date('2026-08-18T07:00:00Z') : null,
+          })
+          .returning({ id: notificationDeliveries.id })
+        return delivery!.id
+      })
+      return { id, messageId }
+    }
+
+    const deliveryRow = async (id: string) => {
+      const [row] = await withActor(sys, (tx) =>
+        tx.select().from(notificationDeliveries).where(eq(notificationDeliveries.id, id)).limit(1),
+      )
+      return row!
+    }
+
+    const bounce = (
+      messageId: string,
+      reason = '550 5.1.1 <nobody@customer.test>: User unknown',
+    ) => ({
+      ...mail({
+        from: 'MAILER-DAEMON@mail.example.net',
+        subject: 'Undelivered Mail Returned to Sender',
+        body: 'This is the mail system at host mail.example.net.',
+      }),
+      automatic: true,
+      bounceOf: { messageId, reason },
+    })
+
+    it('marks the delivery it bounced failed, with the reason, and files nothing', async () => {
+      const delivery = await sentDelivery()
+      const before = (await enquiriesFromRun()).length
+      const returned = bounce(delivery.messageId)
+
+      const result = await runInboundMailPoll(new Date('2026-08-18T08:00:00Z'), sourceOf(returned))
+
+      expect(result.ignored).toBe(1)
+      expect(result.failed).toBe(0)
+      expect((await enquiriesFromRun()).length).toBe(before)
+
+      const row = await deliveryRow(delivery.id)
+      expect(row.status).toBe('failed')
+      expect(row.failedAt).toEqual(new Date('2026-08-18T08:00:00Z'))
+      expect(row.lastError).toBe('bounced: 550 5.1.1 <nobody@customer.test>: User unknown')
+
+      const [receipt] = await withActor(sys, (tx) =>
+        tx
+          .select({ error: inboundWebhookEvents.error })
+          .from(inboundWebhookEvents)
+          .where(eq(inboundWebhookEvents.externalId, returned.externalId)),
+      )
+      expect(receipt?.error).toMatch(/^ignored: automatic mail/)
+      expect(receipt?.error).toContain(delivery.messageId)
+    })
+
+    it('leaves a delivery that was never sent alone', async () => {
+      const delivery = await sentDelivery('queued')
+
+      await runInboundMailPoll(
+        new Date('2026-08-18T08:01:00Z'),
+        sourceOf(bounce(delivery.messageId)),
+      )
+
+      expect((await deliveryRow(delivery.id)).status).toBe('queued')
+    })
+
+    it('ignores a bounce that matches nothing, exactly as before', async () => {
+      const returned = bounce(`<${RUN}-nobody-sent-this@elsewhere.test>`)
+
+      const result = await runInboundMailPoll(new Date('2026-08-18T08:02:00Z'), sourceOf(returned))
+
+      expect(result.ignored).toBe(1)
+      expect(result.failed).toBe(0)
+      const [receipt] = await withActor(sys, (tx) =>
+        tx
+          .select({ error: inboundWebhookEvents.error })
+          .from(inboundWebhookEvents)
+          .where(eq(inboundWebhookEvents.externalId, returned.externalId)),
+      )
+      expect(receipt?.error).toBe('ignored: automatic mail')
+    })
   })
 })

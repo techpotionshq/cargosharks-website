@@ -251,6 +251,22 @@ export interface InboundMessage {
    * model call, in twenty-four minutes.
    */
   readonly automatic?: boolean
+  /**
+   * Which of *our* messages this bounce reports as undeliverable, and why.
+   *
+   * Set by the adapter only on a delivery failure — a DSN whose `Action` is
+   * `failed`, or a mail daemon's non-standard equivalent — never on a delay
+   * warning or an out-of-office, both of which also quote a message we sent.
+   * `messageId` is the original's `Message-ID` as the bounce quotes it, angle
+   * brackets included, which is the form `sendMail` returns and the dispatcher
+   * stores on `notification_deliveries.external_ref`.
+   *
+   * It crosses the port for the reason `automatic` does: the attached original
+   * headers and the `message/delivery-status` fields are MIME structure, and
+   * only the adapter still has it. The mail is ignored exactly as before; this
+   * only lets the worker tell the delivery row it said `sent` too early.
+   */
+  readonly bounceOf?: { readonly messageId: string; readonly reason: string }
 }
 
 /**
@@ -267,6 +283,12 @@ export interface InboundMessage {
  * again on the next run. At-least-once, and the same trade the notification
  * dispatcher makes for the same reason: a duplicate enquiry is a merge, a lost
  * one is a customer who never got a quote.
+ *
+ * A throw costs *that* message and no other. A source carries on to the next
+ * one, and only once the batch is done does `collect` reject — naming how many
+ * failed — so the mailbox reads red on the settings screen. Stopping at the
+ * first throw was the old contract, and it meant one PDF that could not be
+ * stored held every mail behind it unread until somebody fixed the bucket.
  */
 export interface InboundMailSource {
   readonly key: string

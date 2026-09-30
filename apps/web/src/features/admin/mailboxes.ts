@@ -166,6 +166,16 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
 
   if (!parsed.success) return fail(fieldErrors(parsed.error), safeEcho())
 
+  /*
+    F54: the id is a hidden field, so a malformed one is a tampered or broken
+    form rather than a typo — and it used to reach the database as a uuid cast
+    error. Refused as a form-level sentence, because there is no visible field
+    to put a message beside.
+  */
+  if (mailboxId !== undefined && !z.uuid().safeParse(mailboxId).success) {
+    return fail({ _: tv('missingMailbox') }, safeEcho())
+  }
+
   const data = parsed.data
   assertInBranch(session, data.branchId)
 
@@ -182,10 +192,11 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
     )
   }
 
+  let found = true
   try {
     await withActor(session.actor, async (tx) => {
       if (mailboxId) {
-        await tx
+        const updated = await tx
           .update(mailboxes)
           .set({
             ...data,
@@ -203,6 +214,14 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
             lastError: null,
           })
           .where(eq(mailboxes.id, mailboxId))
+          .returning({ id: mailboxes.id })
+        /*
+          F54: an update that matched nothing used to report success. The id
+          is from a page loaded earlier, or names a mailbox in a branch this
+          administrator cannot see — RLS makes the two indistinguishable, and
+          one sentence for both gives no signal about another branch's rows.
+        */
+        found = updated.length > 0
         return
       }
 
@@ -224,6 +243,8 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
     }
     throw error
   }
+
+  if (!found) return fail({ _: tv('mailboxGone') }, safeEcho())
 
   revalidatePath('/settings/mailboxes')
   return succeed(data.username)

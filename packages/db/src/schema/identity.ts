@@ -303,7 +303,15 @@ export const apiKeys = pgTable(
     id: pk(),
     /** Shown in the UI and carried in the token, so a key is identifiable. */
     prefix: text('prefix').notNull().unique(),
-    /** Argon2id of the secret half. The secret is shown once, at creation. */
+    /**
+     * SHA-256 of the secret half, hex. The secret is shown once, at creation.
+     *
+     * Not Argon2id, which this comment once claimed. A slow KDF exists to make
+     * a *guessable* secret expensive to attack; the secret half is 256 random
+     * bits, so there is nothing to guess, and a KDF would only add its cost to
+     * every API request. `createApiKey` writes it and the service's API-key
+     * check reads it — change the algorithm and every issued key stops working.
+     */
     secretHash: text('secret_hash').notNull(),
     name: text('name').notNull(),
     customerId: ref('customer_id'),

@@ -45,6 +45,7 @@ import {
   integer,
   isoDate,
   lookup,
+  normaliseDigits,
   oneOf,
   optional,
   text,
@@ -871,15 +872,14 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     }
 
     /*
-      A value is text and it is trimmed, and nothing else is done to it here.
-
-      Normalisation belongs to `import.ts` — Arabic-Indic digits, thousands
-      separators, the lot — because that is where every other untrusted row in
-      this system is normalised and a second implementation would drift from
-      it. What this loop decides is only whether there is a proposal at all.
+      A value is text and it is trimmed. The four quantities are then reduced
+      to the one number they state, or the proposal is dropped — see
+      `proposedQuantity`. Everything else is left as the model wrote it, for
+      the accept path to refuse with a sentence if it must.
     */
-    const value = typeof cell.value === 'string' ? cell.value.trim() : ''
-    if (value === '') continue
+    const trimmed = typeof cell.value === 'string' ? cell.value.trim() : ''
+    const value = QUANTITY_FIELDS.has(field) ? proposedQuantity(field, trimmed) : trimmed
+    if (value === null || value === '') continue
 
     let scored: Confidence
     try {
@@ -906,6 +906,89 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     confidence: confidence(body.confidence ?? 0),
     unknownFields,
   }
+}
+
+/**
+ * The enquiry fields that are numbers, and whether each must be whole.
+ *
+ * `false` is a decimal quantity (`numeric` on the enquiry), `true` a count.
+ */
+const QUANTITY_FIELDS = new Map<string, boolean>([
+  ['grossWeightKg', false],
+  ['volumeCbm', false],
+  ['pieces', true],
+  ['containerCount', true],
+])
+
+/*
+  The unit a field may carry beside its figure, and nothing else. A unit that is
+  not the column's own — "18 tonnes" in a kilogram column, "40 ft" as a count —
+  is not stripped, so the leftover text fails the check below and the proposal
+  is dropped rather than stored a thousand times too small. Stripped *before*
+  the figure is looked for, because "m3" carries a digit of its own.
+*/
+const QUANTITY_UNITS: Readonly<Record<string, RegExp>> = {
+  grossWeightKg: /(kgs?|kilos?|kilograms?|كغ|كجم|كيلو(غرام)?)(?![\p{L}\p{N}])/giu,
+  volumeCbm: /(cbm|m3|m³|cubic\s+met(er|re)s?|م3|م³|متر\s+مكعب)(?![\p{L}\p{N}])/giu,
+  pieces:
+    /(pcs?|pieces?|pkgs?|packages?|ctns?|cartons?|pallets?|قطع(ة)?|طرود|طرد)(?![\p{L}\p{N}])/giu,
+  containerCount: /(containers?|cntrs?|ctrs?|units?|حاويات|حاوية)(?![\p{L}\p{N}])/giu,
+}
+
+/*
+  "2 x 40HC" is how equipment is written, and the model sometimes hands the
+  whole phrase back as the count. The figure before a single multiplication
+  sign is the count; the tail is the equipment type, which carries digits of
+  its own and is ignored. The tail must be one equipment code ("40HC", "40' HC",
+  "20GP", "HC") and nothing more: a mixed order like "2 x 20GP + 1 x 40HC" or
+  "2 x 40HC and 20GP" is not a count this can state, so it falls through to the
+  one-number rule and is dropped.
+*/
+const EQUIPMENT_ORDER = /^(\d+)\s*[x×*]\s*(\d{2}\s*['’]?\s*[a-z]{0,4}|[a-z]{2,4})?\s*$/iu
+
+/**
+ * One quantity the model proposed, reduced to the number it states — or `null`.
+ *
+ * F59: the model answered a container count of `":2"`. It was stored as-is,
+ * the accept path could never apply it, and the enquiry reached pricing
+ * without the one number FCL refuses to guess. The accept path is right to
+ * refuse; the mistake was proposing it.
+ *
+ * Deliberately conservative. The text may hold exactly **one** figure, plus
+ * whitespace, punctuation and the field's own unit; anything else — two
+ * figures ("2-3 pallets"), a word ("about 18"), a unit that is not ours — drops
+ * the proposal. A dropped proposal costs a coordinator one typed field; a
+ * guessed one puts a wrong weight on a quotation. The figure itself goes
+ * through `import.ts`'s `decimal`, so Arabic-Indic digits and thousands
+ * separators ("18,000") are read the way every spreadsheet row is, and the
+ * value stays a string — never a JS number — on its way to `numeric`.
+ */
+export function proposedQuantity(field: string, raw: string): string | null {
+  const whole = QUANTITY_FIELDS.get(field)
+  if (whole === undefined) return raw
+
+  let value = normaliseDigits(raw).trim()
+  if (field === 'containerCount') {
+    const order = EQUIPMENT_ORDER.exec(value)
+    if (order) value = order[1]!
+  }
+  const unit = QUANTITY_UNITS[field]
+  if (unit) value = value.replace(unit, ' ')
+
+  // A figure starts and ends with a digit, so ":2." yields "2", not "2.".
+  const figures = value.match(/\d(?:[\d.,]*\d)?/g) ?? []
+  if (figures.length !== 1) return null
+  const figure = figures[0]!
+
+  // What is left must be punctuation and space only. A minus sign is not
+  // punctuation here: a negative weight is not a weight.
+  const rest = value.replace(figure, '')
+  if (!/^[\s\p{P}]*$/u.test(rest) || /[-−]/u.test(rest)) return null
+
+  const parsed = decimal({ min: 0 })(figure, { lookups: {} })
+  if (!parsed.ok) return null
+  if (whole && !/^\d+$/.test(parsed.value)) return null
+  return parsed.value
 }
 
 /**

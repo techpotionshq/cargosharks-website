@@ -374,10 +374,24 @@ function stuff(payload: string): string {
   return payload.replace(/\r\n\./g, '\r\n..')
 }
 
-function buildMessage(message: OutboundMessage, from: string): string {
+/**
+ * The `Message-ID` a message will carry, minted before the message is built.
+ *
+ * Minted by the caller rather than inside `buildMessage` because it is the
+ * value `sendMail` hands back: a bounce quotes the original's `Message-ID` in
+ * its attached headers, and that is the only handle on a bounce that survives
+ * every MTA's wording (FR-NT-06). The relay's queue id, which is what used to
+ * come back, appears in some bounces and not others and means nothing outside
+ * that relay's own logs.
+ */
+function messageIdFor(from: string): string {
+  const domain = parseAddress(from).address.split('@')[1] || 'qabandi.local'
+  return `<${randomUUID()}@${domain}>`
+}
+
+function buildMessage(message: OutboundMessage, from: string, messageId: string): string {
   const boundary = `qabandi-${randomUUID()}`
   const sender = parseAddress(from)
-  const domain = sender.address.split('@')[1] ?? 'qabandi.local'
   const attachments = message.attachments ?? []
 
   const headers = [
@@ -385,7 +399,30 @@ function buildMessage(message: OutboundMessage, from: string): string {
     `To: ${message.to}`,
     `Subject: ${encodeHeader(message.subject ?? '')}`,
     `Date: ${new Date().toUTCString()}`,
-    `Message-ID: <${randomUUID()}@${domain}>`,
+    `Message-ID: ${messageId}`,
+    /*
+      RFC 3834: a machine wrote this, so no machine should answer it.
+
+      Every message through this adapter is generated — a notification rendered
+      from a template row, an RFQ built from an enquiry's columns, a password
+      reset link. None is a person's own words typed and sent: `OutboundMessage`
+      has no human-authored kind, and nothing composes mail by hand through it.
+      If that changes, the header wants to become a field on the message rather
+      than a constant here, because `auto-generated` on a person's reply would
+      tell the recipient's responders to stay quiet about it.
+
+      It matters twice. Out-of-office and vacation responders are required to
+      stay silent on it, which is fewer robots writing back into a mailbox the
+      service polls. And when our own notification does land in a polled inbox
+      — a branch mailing its own address, a forward rule, a bounce quoting it —
+      `automaticByHeaders` in `imap.ts` recognises it by this header before
+      `isAutomaticMail` has to guess from a subject line. Without it, a mail we
+      sent could come back as an enquiry, which is `Operations_Findings.md` §11.
+
+      A human agent answering an RFQ is unaffected: the header is on our
+      message, not on their reply, and a reply is exactly what we want.
+    */
+    'Auto-Submitted: auto-generated',
     // The recipient's language, so a client that groups by locale can.
     `Content-Language: ${message.locale}`,
     'MIME-Version: 1.0',
@@ -505,12 +542,9 @@ export async function sendMail(options: SmtpOptions, message: OutboundMessage): 
     await session.command(`RCPT TO:<${message.to}>`, [2])
     await session.command('DATA', [3])
 
-    session.write(stuff('\r\n' + buildMessage(message, sender)).slice(2))
-    const accepted = await session.command('.', [2])
-
-    // Most servers put a queue id in the 250 — the only handle that exists for
-    // matching a bounce or a delivery receipt back to this row (FR-NT-06).
-    const reference = accepted.lines.join(' ').trim()
+    const messageId = messageIdFor(sender)
+    session.write(stuff('\r\n' + buildMessage(message, sender, messageId)).slice(2))
+    await session.command('.', [2])
 
     try {
       await session.command('QUIT', [2])
@@ -518,7 +552,18 @@ export async function sendMail(options: SmtpOptions, message: OutboundMessage): 
       // A server that drops the socket on QUIT has still accepted the message.
     }
 
-    return reference
+    /*
+      The `Message-ID`, not the relay's `250 … queued as 4Q7bXk2mZ1`.
+
+      This is what lands on `notification_deliveries.external_ref`, and it is
+      there to match a bounce back to the row that sent it (FR-NT-06). A DSN
+      quotes the original message's headers — `Message-ID` included — in its
+      `message/rfc822` or `text/rfc822-headers` part, whichever MTA wrote it;
+      the queue id is only in some of them, and in prose. Angle brackets kept,
+      because that is how `mailparser` reports every id on the inbound side and
+      the two are compared as strings.
+    */
+    return messageId
   } finally {
     session.end()
   }

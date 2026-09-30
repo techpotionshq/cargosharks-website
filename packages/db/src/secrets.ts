@@ -2,7 +2,8 @@
  * Sealing a credential that has to be given back — `mailboxes.password_sealed`.
  *
  * Almost every secret in this system is *verified*, never replayed: an API key
- * is Argon2id'd and compared, a session token is looked up. Those are hashes,
+ * is hashed (SHA-256 — it is 256 random bits, so a slow KDF would buy nothing)
+ * and compared, a session token is looked up. Those are hashes,
  * and a hash is the right answer because nothing ever needs the original back.
  *
  * An IMAP password is the exception. The poll worker has to present it to the

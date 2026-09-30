@@ -8894,8 +8894,14 @@ export function pilotWhatsappNumbers(now = Date.now()): WhatsappNumberRowLike[] 
 export function pilotRateRequests(now = Date.now()): RateRequestsView {
   return {
     baseCurrency: 'KWD',
+    /*
+      Three answered — the two quotes and the decline, which is an answer too —
+      and one awaiting, the rule `replyCounts` applies to a real enquiry (F65).
+      Counted by hand because this module cannot import a server read; the
+      rate-requests test holds the two to each other.
+    */
     awaiting: 1,
-    answered: 2,
+    answered: 3,
     requests: [
       {
         id: 'demo-rr-1',

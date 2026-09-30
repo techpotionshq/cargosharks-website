@@ -579,6 +579,22 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
         min: 1,
         max: 20,
       },
+      /*
+        How old an enquiry may be and still be asked about automatically (F61).
+        Switching `auto` on used to RFQ every open enquiry with a complete lane,
+        however stale — four long-idle enquiries went to agents within a minute
+        of the switch. An enquiry older than this is left for a person, who
+        knows whether the customer is still waiting; the sweep only takes the
+        fresh ones it was switched on for. 48 hours spans a weekend's intake.
+      */
+      {
+        name: 'maxAgeHours',
+        kind: 'number',
+        env: 'RATE_AUTOFANOUT_MAX_AGE_HOURS',
+        placeholder: '48',
+        min: 1,
+        max: 720,
+      },
     ],
     secrets: [],
   },
