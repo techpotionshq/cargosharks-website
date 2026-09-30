@@ -273,9 +273,23 @@ export function imapSource(options: ImapOptions): InboundMailSource {
         socketTimeout: SOCKET_TIMEOUT_MS,
       })
 
+      /*
+        An `'error'` event with no listener is fatal to the whole process.
+
+        imapflow emits one when the socket times out — including on a client
+        whose `connect()` already failed and was abandoned, a minute later, long
+        after this function returned. Unheard, that took the service down (and
+        every worker with it) once per failed poll. The failure is already
+        reported through the rejected `connect()` or the command that hit it;
+        this listener only stops the echo from being fatal.
+      */
+      client.on('error', () => {})
+
       try {
         await client.connect()
       } catch (error) {
+        // Cut the half-open socket now rather than leave it to time out later.
+        client.close()
         throw new ImapError(
           `Could not open ${options.host}:${options.port} as ${options.user} — ` +
             `${error instanceof Error ? error.message : String(error)}`,
