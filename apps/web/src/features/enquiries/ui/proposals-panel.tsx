@@ -68,18 +68,21 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
 
   return (
     <Card className="mb-4" padding="none">
-      <CardHeader
-        title={t('title')}
-        description={decidable ? t('description', { count: rows.length }) : t('readOnly')}
-        actions={
-          decidable && rows.length > 1 ? (
-            <AcceptAllProposals
-              enquiryId={enquiryId}
-              label={t('acceptAll', { count: rows.length })}
-            />
-          ) : null
-        }
-      />
+      {/* The card is unpadded so its rows run edge to edge; the header is not. */}
+      <div className="px-4 pt-4 pb-2">
+        <CardHeader
+          title={t('title')}
+          description={decidable ? t('description', { count: rows.length }) : t('readOnly')}
+          actions={
+            decidable && rows.length > 1 ? (
+              <AcceptAllProposals
+                enquiryId={enquiryId}
+                label={t('acceptAll', { count: rows.length })}
+              />
+            ) : null
+          }
+        />
+      </div>
       <ul className="divide-y divide-line">
         {rows.map((row) => (
           <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
