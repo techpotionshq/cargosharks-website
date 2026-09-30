@@ -114,7 +114,8 @@ export async function getQuoteComparison(
       .orderBy(desc(quotes.createdAt))
       .limit(5)
 
-    if (optionRows.length === 0) return undefined
+    // No quote yet is the normal state of a new enquiry, not a missing one —
+    // returning nothing here made every unpriced enquiry's page a 404.
 
     const lineRows = await tx
       .select({
@@ -134,8 +135,10 @@ export async function getQuoteComparison(
       .orderBy(asc(quoteLines.sortOrder))
 
     /** The cheapest sell is recommended unless a snapshot says otherwise. */
-    const cheapest = optionRows.reduce((best, row) =>
-      Number(row.totalSell ?? 0) < Number(best.totalSell ?? 0) ? row : best,
+    const cheapest = optionRows.reduce<(typeof optionRows)[number] | undefined>(
+      (best, row) =>
+        !best || Number(row.totalSell ?? 0) < Number(best.totalSell ?? 0) ? row : best,
+      undefined,
     )
 
     const options = optionRows.map((row): QuoteOptionView => {
@@ -151,7 +154,7 @@ export async function getQuoteComparison(
         sell: { amount: sell, currency: row.currency },
         marginPct: sell === 0 ? 0 : Math.round(((sell - cost) / sell) * 1000) / 10,
         validUntil: row.validUntil ? new Date(row.validUntil) : new Date(),
-        isRecommended: row.id === cheapest.id,
+        isRecommended: row.id === cheapest?.id,
         lines: lineRows
           .filter((line) => line.quoteId === row.id)
           .map((line) => ({
