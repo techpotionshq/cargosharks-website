@@ -3444,7 +3444,8 @@
     "cronUnreadable": "لا يمكن قراءة هذا الجدول كعدد طلبات في الساعة، لذلك لا يمكن مقارنته بحد الطلبات لدى الناقل. استخدم صيغة مثل `30 * * * *` أو `*/15 * * * *`.",
     "mailboxKeyMissing": "لم يُضبط MAILBOX_ENCRYPTION_KEY في هذا النظام، لذلك لا يمكن تشفير كلمة مرور صندوق البريد. اضبطه وأعد التشغيل قبل إضافة صندوق بريد.",
     "unknownMergeFields": "هذا الحدث لا يوفّر {fields}. ستظهر فارغة عند الإرسال.",
-    "credentialCannotBeSealed": "لا يمكن تشفير بيانات الاعتماد: {problem}"
+    "credentialCannotBeSealed": "لا يمكن تشفير بيانات الاعتماد: {problem}",
+    "periodEndsAfterStart": "يجب أن يكون تاريخ الانتهاء بعد تاريخ البدء."
   },
   "costingValidation": {
     "chooseChargeType": "اختر نوع الرسم",

@@ -19,9 +19,8 @@ const pilot = vi.hoisted(() => ({ on: false }))
 vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => pilot.on }))
 
 const { enquiries, fxRates, rateRequests, withActor } = await import('@qabandi/db')
-const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } = await import(
-  '@/lib/testing/fixtures'
-)
+const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } =
+  await import('@/lib/testing/fixtures')
 const { getEnquiryRateRequests, listCoveringAgents, getRenewals } = await import('./rate-requests')
 
 const system = { ...bothBranchesActor, type: 'system' as const }

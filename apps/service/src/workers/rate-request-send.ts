@@ -73,7 +73,9 @@ export interface SendRateRequestsDeps {
  * the seam that needs none, and stamping `sent_at` on a success is what stops
  * the next sweep re-sending. A minute's latency to an agent's inbox is nothing.
  */
-export async function sendRateRequests(deps: SendRateRequestsDeps = {}): Promise<SendRateRequestsResult> {
+export async function sendRateRequests(
+  deps: SendRateRequestsDeps = {},
+): Promise<SendRateRequestsResult> {
   const actor = systemActor()
   const rows = await loadPending(actor)
   if (rows.length === 0) return { sent: 0, skipped: 0, failed: 0 }
@@ -287,7 +289,9 @@ const MODE_LABEL: Record<string, string> = {
 }
 
 function laneText(row: SendRow): string {
-  const from = row.originName ? `${row.originName} (${row.originCode ?? '?'})` : (row.originCode ?? '?')
+  const from = row.originName
+    ? `${row.originName} (${row.originCode ?? '?'})`
+    : (row.originCode ?? '?')
   const to = row.destinationName
     ? `${row.destinationName} (${row.destinationCode ?? '?'})`
     : (row.destinationCode ?? '?')
@@ -295,7 +299,7 @@ function laneText(row: SendRow): string {
 }
 
 function rfqSubject(row: SendRow): string {
-  const mode = row.mode ? MODE_LABEL[row.mode] ?? row.mode : 'freight'
+  const mode = row.mode ? (MODE_LABEL[row.mode] ?? row.mode) : 'freight'
   return `Rate request ${rfqSubjectTag(row.token)} — ${laneText(row)} (${mode})`
 }
 

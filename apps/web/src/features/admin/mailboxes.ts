@@ -37,7 +37,14 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMailboxes } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+} from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 
 export interface MailboxRow {
@@ -209,7 +216,9 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
       nothing because the first already flagged everything — an intermittent
       bug with a configuration cause, which is the worst kind to diagnose.
     */
-    const message = error instanceof Error ? error.message : String(error)
+    // Drizzle wraps the driver error: the constraint name is on its `cause`,
+    // so reading `error.message` alone never matched and a duplicate was a 500.
+    const message = databaseMessage(error)
     if (message.includes('mailboxes_address_unique')) {
       return fail({ username: tv('mailboxConnected') }, safeEcho())
     }

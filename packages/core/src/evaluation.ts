@@ -203,7 +203,8 @@ export function aggregate(surface: EvalSurface, outcomes: readonly SurfaceOutcom
   return {
     ...base,
     declineRate: rate(rates.filter((o) => o.declined).length, rates.length),
-    meanLines: priced.length === 0 ? 0 : priced.reduce((sum, o) => sum + o.lineCount, 0) / priced.length,
+    meanLines:
+      priced.length === 0 ? 0 : priced.reduce((sum, o) => sum + o.lineCount, 0) / priced.length,
   }
 }
 

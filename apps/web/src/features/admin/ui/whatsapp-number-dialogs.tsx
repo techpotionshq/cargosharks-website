@@ -35,10 +35,7 @@ export async function WhatsappNumberDialog({
   const session = await requireSession()
   if (!can(session, 'admin.mailboxes.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('whatsappNumbers'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('whatsappNumbers'), getTranslations('common')])
   const editing = Boolean(defaults?.id)
 
   const fields: FieldSpec[] = [
@@ -118,10 +115,7 @@ export async function ToggleWhatsappNumberButton({
   const session = await requireSession()
   if (!can(session, 'admin.mailboxes.write')) return null
 
-  const [t, tc] = await Promise.all([
-    getTranslations('whatsappNumbers'),
-    getTranslations('common'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('whatsappNumbers'), getTranslations('common')])
 
   return (
     <RecordDialog

@@ -87,14 +87,12 @@ async function coveredEnquiry(): Promise<string> {
   seq += 1
 
   await withActor(actor, async (tx) => {
-    await tx
-      .insert(partners)
-      .values({
-        id: partnerId,
-        code: `AGT-QD-${RUN}-${seq}`,
-        type: 'agent',
-        legalNameEn: `Agent ${seq}`,
-      })
+    await tx.insert(partners).values({
+      id: partnerId,
+      code: `AGT-QD-${RUN}-${seq}`,
+      type: 'agent',
+      legalNameEn: `Agent ${seq}`,
+    })
 
     const [card] = await tx
       .insert(rateCards)

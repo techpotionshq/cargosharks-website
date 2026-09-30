@@ -372,4 +372,6 @@ function whatsAppTimestamp(value: unknown, fallback: Date): Date {
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
-  typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined

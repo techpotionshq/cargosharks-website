@@ -20,11 +20,16 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 const pilot = vi.hoisted(() => ({ on: false }))
 vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => pilot.on }))
 
-const { aiInvocations, enquiries, extractionProposals, notificationOutbox, rateRequests, withActor } =
-  await import('@qabandi/db')
-const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } = await import(
-  '@/lib/testing/fixtures'
-)
+const {
+  aiInvocations,
+  enquiries,
+  extractionProposals,
+  notificationOutbox,
+  rateRequests,
+  withActor,
+} = await import('@qabandi/db')
+const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } =
+  await import('@/lib/testing/fixtures')
 const { enquiryAutomation } = await import('./automation')
 
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)

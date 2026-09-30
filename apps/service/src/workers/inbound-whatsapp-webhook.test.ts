@@ -22,11 +22,13 @@ import { kapsoChannel } from '../adapters/whatsapp'
 const AT = new Date('2026-09-28T09:00:00Z')
 
 /** A Kapso `whatsapp.message.received` body, as documented at docs.kapso.ai. */
-const received = (over: {
-  message?: Record<string, unknown>
-  conversation?: Record<string, unknown>
-  top?: Record<string, unknown>
-} = {}) => ({
+const received = (
+  over: {
+    message?: Record<string, unknown>
+    conversation?: Record<string, unknown>
+    top?: Record<string, unknown>
+  } = {},
+) => ({
   message: {
     id: 'wamid.HBgLABC',
     timestamp: '1730092800',
@@ -76,7 +78,9 @@ describe('toWhatsAppInboundMessage', () => {
 
   it('falls back to kapso.content when the text body is absent', () => {
     const message = toWhatsAppInboundMessage(
-      received({ message: { text: undefined, kapso: { direction: 'inbound', content: 'Hello there' } } }),
+      received({
+        message: { text: undefined, kapso: { direction: 'inbound', content: 'Hello there' } },
+      }),
       AT,
     )
     expect(message.body).toBe('Hello there')
@@ -117,7 +121,13 @@ describe('toWhatsAppInboundMessage', () => {
   /* The business number names the branch; without it nothing can own the message. */
   it('refuses a receipt with no phone_number_id', () => {
     expect(() =>
-      toWhatsAppInboundMessage(received({ top: { phone_number_id: undefined }, conversation: { phone_number_id: undefined } }), AT),
+      toWhatsAppInboundMessage(
+        received({
+          top: { phone_number_id: undefined },
+          conversation: { phone_number_id: undefined },
+        }),
+        AT,
+      ),
     ).toThrow(/phone_number_id/)
   })
 
@@ -463,7 +473,12 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
       }),
     )
 
-    const first = await runInboundWhatsAppWebhook({ eventId }, AT, noEnqueue, capturingChannel().resolve)
+    const first = await runInboundWhatsAppWebhook(
+      { eventId },
+      AT,
+      noEnqueue,
+      capturingChannel().resolve,
+    )
     expect(first.outcome).toBe('created')
 
     const ack = capturingChannel()

@@ -10,14 +10,26 @@
  */
 
 import { test, expect } from '@playwright/test'
-import { LOCALE_COOKIE, collectPageErrors } from './support/harness'
+import { LOCALE_COOKIE, MODE, collectPageErrors } from './support/harness'
 
 /** The one draft quotation on the fixture board — 316's revision in progress. */
 const DRAFT_QUOTE = '/quotes/quote-316'
 /** The enquiry the model read, which carries proposals and rate requests. */
 const READ_ENQUIRY = '/enquiries/enq-318'
 
+/*
+  Both paths are fixture ids, and a seeded database keys its rows by uuid: there
+  `enq-318` is not a missing enquiry but a query PostgreSQL refuses ("invalid
+  input syntax for type uuid"), so the page errors and every control below is
+  absent. These two groups are fixture checks, as the header says, and skip on
+  the database run the way `routes.spec.ts` does. The bell needs no id and runs
+  on both.
+*/
+const FIXTURE_IDS_ONLY = 'fixture ids — the seeded database keys its rows by uuid'
+
 test.describe('the covering-note editor', () => {
+  test.skip(MODE === 'full', FIXTURE_IDS_ONLY)
+
   test('is offered on a draft quotation, in English', async ({ page }) => {
     const errors = collectPageErrors(page)
 
@@ -32,9 +44,7 @@ test.describe('the covering-note editor', () => {
   })
 
   test('is offered in Arabic too', async ({ page, context }) => {
-    await context.addCookies([
-      { name: LOCALE_COOKIE, value: 'ar', domain: 'localhost', path: '/' },
-    ])
+    await context.addCookies([{ name: LOCALE_COOKIE, value: 'ar', domain: 'localhost', path: '/' }])
 
     await page.goto(DRAFT_QUOTE)
 
@@ -43,6 +53,8 @@ test.describe('the covering-note editor', () => {
 })
 
 test.describe('the enquiry the model read', () => {
+  test.skip(MODE === 'full', FIXTURE_IDS_ONLY)
+
   test('shows the automation-activity strip and the one-click fill', async ({ page }) => {
     const errors = collectPageErrors(page)
 
@@ -61,7 +73,9 @@ test.describe('the enquiry the model read', () => {
 
     // A heading, not getByText — the dialog title "Request rates from agents"
     // contains this string and would otherwise collide under strict mode.
-    await expect(page.getByRole('heading', { name: 'Rates from agents', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Rates from agents', exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Request rates' })).toBeVisible()
   })
 })

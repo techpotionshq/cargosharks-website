@@ -97,10 +97,7 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
           body: notificationTemplates.body,
         })
         .from(notificationDeliveries)
-        .innerJoin(
-          notificationOutbox,
-          eq(notificationOutbox.id, notificationDeliveries.outboxId),
-        )
+        .innerJoin(notificationOutbox, eq(notificationOutbox.id, notificationDeliveries.outboxId))
         .leftJoin(
           notificationTemplates,
           eq(notificationTemplates.id, notificationDeliveries.templateId),

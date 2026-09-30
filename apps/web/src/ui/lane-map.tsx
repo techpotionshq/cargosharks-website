@@ -324,6 +324,13 @@ export function LaneMap({
       const imported = await import('maplibre-gl')
       const maplibre = (imported as unknown as { default?: typeof imported }).default ?? imported
       if (disposed) return
+      /*
+        v6 finds its worker beside its own module, and bundled into a Next chunk
+        that is nowhere: the map logged "Worker failed to load" and stayed
+        blank. `scripts/maplibre-worker.mjs` serves the worker from `public/`
+        under the installed version, which is the path given here.
+      */
+      maplibre.setWorkerUrl(`/maplibre/${maplibre.getVersion()}/maplibre-gl-worker.mjs`)
 
       const resolver = createResolver()
       cleanups.push(resolver.dispose)

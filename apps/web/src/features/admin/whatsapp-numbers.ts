@@ -34,6 +34,7 @@ import { assertCan, assertInBranch } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotWhatsappNumbers } from '@/lib/pilot/fixtures'
 import {
+  databaseMessage,
   echo,
   fail,
   fieldErrors,
@@ -141,7 +142,9 @@ export async function saveWhatsappNumber(
       rows for one number would make branch resolution ambiguous — the same
       shape of bug the mailboxes address-unique guards against.
     */
-    const message = error instanceof Error ? error.message : String(error)
+    // Drizzle wraps the driver error: the constraint name is on its `cause`,
+    // so reading `error.message` alone never matched and a duplicate was a 500.
+    const message = databaseMessage(error)
     if (message.includes('whatsapp_numbers_phone_number_id_unique')) {
       return fail({ phoneNumberId: tv('numberMapped') }, echo(form))
     }

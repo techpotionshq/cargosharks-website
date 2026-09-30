@@ -22,9 +22,19 @@ describe.skipIf(!enabled)('network reads', () => {
     await world()
   })
 
-  it('lists partners and finds the fixture agent', async () => {
-    const codes = (await listPartners(homeActor)).map((p) => p.code)
-    expect(codes).toContain('AGT-FIXTURE')
+  /*
+    The unfiltered list is the first 200 by name, and this database is never
+    emptied: every run of the service suites adds "Agent N" partners that sort
+    ahead of the fixture agent, which fell off the page after enough runs. So
+    this pins what the list promises — rows, capped at a page — and the search
+    below is what finds the fixture agent. (Name order is the database's
+    collation, which a JS sort does not reproduce everywhere, so it is not
+    asserted.)
+  */
+  it('lists partners, capped at a page', async () => {
+    const rows = await listPartners(homeActor)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.length).toBeLessThanOrEqual(200)
   })
 
   /** The search narrows rather than matching everything. */

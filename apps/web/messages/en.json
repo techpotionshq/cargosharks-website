@@ -3444,7 +3444,8 @@
     "cronUnreadable": "This schedule cannot be read as calls per hour, so the carrier rate limit cannot be checked against it. Use a shape like `30 * * * *` or `*/15 * * * *`.",
     "mailboxKeyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a mailbox password cannot be sealed. Set it and restart before adding a mailbox.",
     "unknownMergeFields": "This event does not supply {fields}. It would send as blank.",
-    "credentialCannotBeSealed": "A credential cannot be sealed: {problem}"
+    "credentialCannotBeSealed": "A credential cannot be sealed: {problem}",
+    "periodEndsAfterStart": "The end date must be after the start date."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",

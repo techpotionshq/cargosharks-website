@@ -101,7 +101,8 @@ export async function extractRateReply(
   const actor = systemActor([input.branchId])
 
   const context = await load(actor, input)
-  if (!context) return { status: 'parsed', lines: 0, rejected: 0, skipped: 'request_or_message_gone' }
+  if (!context)
+    return { status: 'parsed', lines: 0, rejected: 0, skipped: 'request_or_message_gone' }
   const lane = context.lane
   if (!lane) {
     // A lane with no UN/LOCODE cannot key a rate card; a person prices it.
@@ -134,7 +135,10 @@ export async function extractRateReply(
             harmless; this keeps a boundary that costs nothing.
           */
           content: [
-            { type: 'text', text: `${RATE_EXTRACT_USER_PROMPT}\n\n${bodyFor(context.subject, context.body)}` },
+            {
+              type: 'text',
+              text: `${RATE_EXTRACT_USER_PROMPT}\n\n${bodyFor(context.subject, context.body)}`,
+            },
             ...attachments,
           ],
         },
@@ -149,7 +153,12 @@ export async function extractRateReply(
   // An unstated start date falls back to the reply's own date — an agent quotes
   // a rate "from now", not from a date they rarely bother to write.
   const replyDay = (context.respondedAt ?? new Date()).toISOString().slice(0, 10)
-  const extracted = readExtractedRateReply(parseModelJson(response.text), context.lookups, lane, replyDay)
+  const extracted = readExtractedRateReply(
+    parseModelJson(response.text),
+    context.lookups,
+    lane,
+    replyDay,
+  )
 
   const summary = summariseRateReply(extracted.lines.rows, context.chargeContext)
   const primary = summary.primary
@@ -185,7 +194,10 @@ export async function extractRateReply(
           rows: extracted.lines.rows.map((r) => r.values),
           issues: extracted.lines.issues,
           headerIssues: extracted.headerIssues,
-          totals: summary.totals.map((t) => ({ currency: t.currency, amount: t.amount.amount.toString() })),
+          totals: summary.totals.map((t) => ({
+            currency: t.currency,
+            amount: t.amount.amount.toString(),
+          })),
           unpriced: summary.unpriced,
         },
       })
@@ -256,10 +268,7 @@ async function load(actor: Actor, input: ExtractRateReplyInput): Promise<Loaded 
           .innerJoin(assets, eq(messageAttachments.assetId, assets.id))
           .where(eq(messageAttachments.messageId, input.messageId)),
       () =>
-        tx
-          .select({ key: chargeTypes.key })
-          .from(chargeTypes)
-          .where(eq(chargeTypes.isActive, true)),
+        tx.select({ key: chargeTypes.key }).from(chargeTypes).where(eq(chargeTypes.isActive, true)),
       () => tx.select({ code: currencies.code }).from(currencies),
       () =>
         tx
@@ -330,7 +339,12 @@ async function laneFor(tx: Tx, enquiryId: string): Promise<{ lane: RateReplyLane
   if (!e || !e.mode || !e.originId || !e.destinationId) return { lane: null }
 
   const [o, d] = await inSeries([
-    () => tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, e.originId!)).limit(1),
+    () =>
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, e.originId!))
+        .limit(1),
     () =>
       tx
         .select({ code: locations.unlocode })
@@ -355,7 +369,11 @@ async function laneFor(tx: Tx, enquiryId: string): Promise<{ lane: RateReplyLane
  */
 async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateReplyLane | null }> {
   const rows = await tx
-    .select({ mode: rateCards.mode, originId: rateCards.originId, destinationId: rateCards.destinationId })
+    .select({
+      mode: rateCards.mode,
+      originId: rateCards.originId,
+      destinationId: rateCards.destinationId,
+    })
     .from(rateCards)
     .where(eq(rateCards.id, rateCardId))
     .limit(1)
@@ -363,9 +381,18 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
   if (!c || !c.mode || !c.originId || !c.destinationId) return { lane: null }
 
   const [o, d] = await inSeries([
-    () => tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, c.originId!)).limit(1),
     () =>
-      tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, c.destinationId!)).limit(1),
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, c.originId!))
+        .limit(1),
+    () =>
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, c.destinationId!))
+        .limit(1),
   ])
   const originCode = o[0]?.code
   const destinationCode = d[0]?.code
@@ -426,6 +453,7 @@ async function loadAttachmentParts(rows: readonly AttachmentRow[]) {
 }
 
 function bodyFor(subject: string | null, body: string): string {
-  const trimmed = body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
+  const trimmed =
+    body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
   return subject ? `Subject: ${subject}\n\n${trimmed}` : trimmed
 }

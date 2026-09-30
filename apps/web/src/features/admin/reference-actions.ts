@@ -85,7 +85,12 @@ const milestoneSchema = (tv: Translate) =>
     nameAr: z.string().trim().min(2, tv('requiredCustomersSee')).max(120),
     ownerRole: optional(40),
     plannedOffsetDays: z
-      .union([z.coerce.number().int().min(-365).max(365), z.literal('')])
+      /*
+        The empty string first: `z.coerce.number()` reads '' as 0, so with it
+        first a blank offset was saved as 0 — planned for the booking day —
+        and the null this transform maps '' to was never reached.
+      */
+      .union([z.literal(''), z.coerce.number().int().min(-365).max(365)])
       .optional()
       .transform((v) => (v === '' || v === undefined ? null : v)),
     customerVisible: z.coerce.boolean(),
@@ -364,6 +369,11 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
   const data = parsed.data
   if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
     return fail({ effectiveTo: tv('periodEndsBeforeStart') }, echo(form))
+  }
+  // The end date is exclusive: `duty_rates_period_ordered` wants it after the
+  // start, so a same-day period was a check violation and a 500.
+  if (data.effectiveTo && data.effectiveTo === data.effectiveFrom) {
+    return fail({ effectiveTo: tv('periodEndsAfterStart') }, echo(form))
   }
 
   try {

@@ -60,7 +60,8 @@ async function main(): Promise<void> {
       lines.push(`self-consistent: ${pct(metrics.selfConsistentRate)}`)
     }
     if (metrics.meanFields !== undefined) lines.push(`mean fields: ${fmt(metrics.meanFields)}`)
-    if (metrics.refusedTotal !== undefined) lines.push(`refused (security signal): ${metrics.refusedTotal}`)
+    if (metrics.refusedTotal !== undefined)
+      lines.push(`refused (security signal): ${metrics.refusedTotal}`)
     if (metrics.declineRate !== undefined) lines.push(`declined: ${pct(metrics.declineRate)}`)
     if (metrics.meanLines !== undefined) lines.push(`mean lines: ${fmt(metrics.meanLines)}`)
     if (metrics.confidence?.mean != null) {

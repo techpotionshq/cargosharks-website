@@ -106,7 +106,11 @@ const requestsFor = (enquiryId: string) =>
 describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     if (!calendar) throw new Error('Run `pnpm db:seed` before the auto-fanout tests')
 
@@ -128,9 +132,30 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
       await tx
         .insert(locations)
         .values([
-          { id: ORIGIN, kind: 'seaport', unlocode: 'ZZFN1', nameEn: 'Fanout Origin', nameAr: 'أ', countryCode: 'KW' },
-          { id: DEST_A, kind: 'seaport', unlocode: 'ZZFN2', nameEn: 'Fanout Dest A', nameAr: 'ب', countryCode: 'CN' },
-          { id: DEST_B, kind: 'seaport', unlocode: 'ZZFN3', nameEn: 'Fanout Dest B', nameAr: 'ج', countryCode: 'AE' },
+          {
+            id: ORIGIN,
+            kind: 'seaport',
+            unlocode: 'ZZFN1',
+            nameEn: 'Fanout Origin',
+            nameAr: 'أ',
+            countryCode: 'KW',
+          },
+          {
+            id: DEST_A,
+            kind: 'seaport',
+            unlocode: 'ZZFN2',
+            nameEn: 'Fanout Dest A',
+            nameAr: 'ب',
+            countryCode: 'CN',
+          },
+          {
+            id: DEST_B,
+            kind: 'seaport',
+            unlocode: 'ZZFN3',
+            nameEn: 'Fanout Dest B',
+            nameAr: 'ج',
+            countryCode: 'AE',
+          },
         ])
         .onConflictDoNothing()
 
@@ -145,8 +170,20 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
       await tx
         .insert(partnerCoverage)
         .values([
-          { partnerId: AGENT_A, mode: 'sea_fcl', originId: ORIGIN, destinationId: DEST_A, isActive: true },
-          { partnerId: AGENT_B, mode: 'sea_fcl', originId: ORIGIN, destinationId: DEST_B, isActive: true },
+          {
+            partnerId: AGENT_A,
+            mode: 'sea_fcl',
+            originId: ORIGIN,
+            destinationId: DEST_A,
+            isActive: true,
+          },
+          {
+            partnerId: AGENT_B,
+            mode: 'sea_fcl',
+            originId: ORIGIN,
+            destinationId: DEST_B,
+            isActive: true,
+          },
         ])
         .onConflictDoNothing()
 

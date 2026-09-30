@@ -45,3 +45,6 @@ apps/web/e2e/.auth/
 apps/web/test-results/
 apps/web/playwright-report/
 coverage/
+
+# MapLibre worker, copied from node_modules by apps/web/scripts/maplibre-worker.mjs
+apps/web/public/maplibre/

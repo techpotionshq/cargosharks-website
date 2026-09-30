@@ -114,7 +114,15 @@ export async function runInboundMailPoll(
   const sources = injected ?? (await resolveInboundMail())
 
   if (sources.length === 0) {
-    return { collected: 0, created: 0, threaded: 0, rateReplies: 0, duplicates: 0, ignored: 0, failed: 0 }
+    return {
+      collected: 0,
+      created: 0,
+      threaded: 0,
+      rateReplies: 0,
+      duplicates: 0,
+      ignored: 0,
+      failed: 0,
+    }
   }
 
   const branchByMailbox = await resolveBranches()
@@ -364,7 +372,13 @@ export async function ingestMessage(
 ): Promise<Handled> {
   const claim = claimed ?? (await claimReceipt(message, branch.id))
   if (claim === 'already_processed') {
-    return { outcome: 'duplicate', enquiryId: null, messageId: null, partnerId: null, rateRequestId: null }
+    return {
+      outcome: 'duplicate',
+      enquiryId: null,
+      messageId: null,
+      partnerId: null,
+      rateRequestId: null,
+    }
   }
 
   /*
@@ -388,7 +402,13 @@ export async function ingestMessage(
         .set({ processedAt: asOf, error: 'ignored: automatic mail', updatedAt: asOf })
         .where(eq(inboundWebhookEvents.id, claim.id))
     })
-    return { outcome: 'ignored', enquiryId: null, messageId: null, partnerId: null, rateRequestId: null }
+    return {
+      outcome: 'ignored',
+      enquiryId: null,
+      messageId: null,
+      partnerId: null,
+      rateRequestId: null,
+    }
   }
 
   const stored = await storeAttachments(message, branch)

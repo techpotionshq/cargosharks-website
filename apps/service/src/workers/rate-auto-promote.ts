@@ -57,7 +57,9 @@ export interface AutoPromoteDeps {
   readonly source?: LiveIntegration
 }
 
-export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promise<AutoPromoteResult> {
+export async function autoPromoteRateReplies(
+  deps: AutoPromoteDeps = {},
+): Promise<AutoPromoteResult> {
   const source = deps.source ?? (await integration('rateAutoPromote'))
   const strategy = source.driver as Strategy
   if (!STRATEGIES.includes(strategy)) return EMPTY
@@ -65,7 +67,7 @@ export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promis
   const waitHours = Math.max(source.number('waitHours', DEFAULT_WAIT_HOURS), 0)
   const actor = systemActor()
 
-  const candidates = await withActor(actor, (tx) => loadCandidates(tx))
+  const candidates = await withActor(actor, (tx) => loadCandidates(tx, strategy, waitHours))
 
   let promoted = 0
   let skipped = 0
@@ -93,10 +95,34 @@ export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promis
   return { enabled: true, strategy, promoted, skipped }
 }
 
-/** Enquiries with a promotable parsed reply and nothing awarded yet. */
-async function loadCandidates(tx: Tx): Promise<{ enquiryId: string; branchId: string }[]> {
+/**
+ * Enquiries with a promotable parsed reply and nothing awarded yet.
+ *
+ * A reply the sweep cannot award stays a candidate, and with no order the same
+ * fifty came back every sweep: past fifty of them, nothing behind was ever
+ * awarded. Two guards. The strategy's readiness is asked here as well as per
+ * enquiry, so a reply still inside its window or still waiting on an agent
+ * does not hold a place in the batch; and the newest reply comes first, so a
+ * backlog of refusals cannot hold a fresh award back. `ready()` still decides
+ * inside the award's transaction — this only chooses who is looked at.
+ */
+async function loadCandidates(
+  tx: Tx,
+  strategy: Strategy,
+  waitHours: number,
+): Promise<{ enquiryId: string; branchId: string }[]> {
+  const readiness =
+    strategy === 'all'
+      ? sql`and not exists (
+              select 1 from rate_requests s
+               where s.enquiry_id = r.enquiry_id and s.status = 'sent'
+            )`
+      : strategy === 'wait'
+        ? sql`and (select min(w.created_at) from rate_requests w where w.enquiry_id = r.enquiry_id)
+                <= now() - ${waitHours} * interval '1 hour'`
+        : sql``
   const result = await tx.execute(sql`
-    select distinct r.enquiry_id as "enquiryId", r.branch_id as "branchId"
+    select r.enquiry_id as "enquiryId", r.branch_id as "branchId"
       from rate_requests r
      where r.status = 'parsed'
        and r.enquiry_id is not null
@@ -105,6 +131,9 @@ async function loadCandidates(tx: Tx): Promise<{ enquiryId: string; branchId: st
          select 1 from rate_requests a
           where a.enquiry_id = r.enquiry_id and a.status = 'accepted'
        )
+       ${readiness}
+     group by r.enquiry_id, r.branch_id
+     order by max(r.created_at) desc
      limit ${ENQUIRY_BATCH}
   `)
   return result.rows as { enquiryId: string; branchId: string }[]
@@ -179,9 +208,7 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
 
   const currencies = [
     ...new Set(
-      promotable
-        .map((r) => r.quotedCurrency)
-        .filter((c): c is string => Boolean(c) && c !== base),
+      promotable.map((r) => r.quotedCurrency).filter((c): c is string => Boolean(c) && c !== base),
     ),
   ]
   const fx = await latestRates(tx, currencies, base)
@@ -210,7 +237,11 @@ async function latestRates(
   if (froms.length === 0) return map
 
   const rows = await tx
-    .select({ fromCurrency: fxRates.fromCurrency, rate: fxRates.rate, effectiveOn: fxRates.effectiveOn })
+    .select({
+      fromCurrency: fxRates.fromCurrency,
+      rate: fxRates.rate,
+      effectiveOn: fxRates.effectiveOn,
+    })
     .from(fxRates)
     .where(and(inCurrencies(froms), eq(fxRates.toCurrency, base)))
     .orderBy(sql`${fxRates.effectiveOn} desc`)

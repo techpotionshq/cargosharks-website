@@ -71,8 +71,7 @@ export async function replaySurface(
 ): Promise<ReplayResult> {
   const actor = systemActor()
 
-  const lookups =
-    surface === 'invoice_extract' ? (await loadReference(actor)).lookups : undefined
+  const lookups = surface === 'invoice_extract' ? (await loadReference(actor)).lookups : undefined
 
   const rows = await withActor(actor, (tx: Tx) => {
     const filters = [
@@ -95,11 +94,19 @@ export async function replaySurface(
   })
 
   const outcomes = rows.map((row) => reduce(surface, row, lookups))
-  return { surface, promptVersion: options.promptVersion ?? null, metrics: aggregate(surface, outcomes) }
+  return {
+    surface,
+    promptVersion: options.promptVersion ?? null,
+    metrics: aggregate(surface, outcomes),
+  }
 }
 
 /** One recorded row, reduced to a scorable outcome. */
-function reduce(surface: EvalSurface, row: CorpusRow, lookups: ImportLookups | undefined): SurfaceOutcome {
+function reduce(
+  surface: EvalSurface,
+  row: CorpusRow,
+  lookups: ImportLookups | undefined,
+): SurfaceOutcome {
   let text: string
   try {
     // `readCompletion` takes the provider body; the row holds it verbatim.

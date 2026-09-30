@@ -104,7 +104,11 @@ describe('readExtractedRateReply', () => {
   })
 
   it('refuses a charge code we do not hold', () => {
-    const result = readExtractedRateReply(reply({ lines: [rline({ chargeType: 'BRIBE' })] }), lookups, lane)
+    const result = readExtractedRateReply(
+      reply({ lines: [rline({ chargeType: 'BRIBE' })] }),
+      lookups,
+      lane,
+    )
     expect(result.lines.ok).toBe(false)
   })
 
@@ -141,7 +145,13 @@ describe('summariseRateReply', () => {
       reply({
         lines: [
           rline({ chargeType: 'OFR', currency: 'USD', basis: 'per_container', rate: '900.000' }),
-          rline({ chargeType: 'THC', currency: 'KWD', basis: 'flat', rate: '35.000', containerType: null }),
+          rline({
+            chargeType: 'THC',
+            currency: 'KWD',
+            basis: 'flat',
+            rate: '35.000',
+            containerType: null,
+          }),
         ],
       }),
       lookups,

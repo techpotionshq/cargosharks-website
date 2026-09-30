@@ -46,7 +46,13 @@ export async function enquiryAutomation(
     }
   }
   if (!enquiryId) {
-    return { acknowledgedAt: null, fieldsRead: 0, fieldsPending: 0, rateRequestsSent: 0, rateRepliesIn: 0 }
+    return {
+      acknowledgedAt: null,
+      fieldsRead: 0,
+      fieldsPending: 0,
+      rateRequestsSent: 0,
+      rateRepliesIn: 0,
+    }
   }
 
   return withActor(actor, async (tx) => {

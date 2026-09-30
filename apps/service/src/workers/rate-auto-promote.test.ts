@@ -19,8 +19,16 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { branches, enquiries, partners, rateCards, rateRequests, systemActor, withActor, workingCalendars } =
-  await import('@qabandi/db')
+const {
+  branches,
+  enquiries,
+  partners,
+  rateCards,
+  rateRequests,
+  systemActor,
+  withActor,
+  workingCalendars,
+} = await import('@qabandi/db')
 
 const { autoPromoteRateReplies } = await import('./rate-auto-promote')
 
@@ -46,7 +54,12 @@ async function makeEnquiry(): Promise<string> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .insert(enquiries)
-      .values({ reference: `PROMO-${RUN}-${seq}`, branchId: BRANCH, status: 'rating', channel: 'email' })
+      .values({
+        reference: `PROMO-${RUN}-${seq}`,
+        branchId: BRANCH,
+        status: 'rating',
+        channel: 'email',
+      })
       .returning({ id: enquiries.id })
     return row!.id
   })
@@ -56,7 +69,9 @@ async function makeAgent(): Promise<string> {
   seq += 1
   const id = randomUUID()
   await withActor(actor, (tx) =>
-    tx.insert(partners).values({ id, code: `AGT-PR-${RUN}-${seq}`, type: 'agent', legalNameEn: `Agent ${seq}` }),
+    tx
+      .insert(partners)
+      .values({ id, code: `AGT-PR-${RUN}-${seq}`, type: 'agent', legalNameEn: `Agent ${seq}` }),
   )
   return id
 }
@@ -133,7 +148,11 @@ const requestRow = async (id: string) => {
 describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     if (!calendar) throw new Error('Run `pnpm db:seed` before the auto-promote tests')
     await withActor(actor, (tx) =>
@@ -169,7 +188,11 @@ describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
     expect((await requestRow(dear)).status).toBe('parsed')
     // And a buy card exists for the awarded reply.
     const [card] = await withActor(actor, (tx) =>
-      tx.select({ direction: rateCards.direction }).from(rateCards).where(eq(rateCards.id, cheapRow.rateCardId!)).limit(1),
+      tx
+        .select({ direction: rateCards.direction })
+        .from(rateCards)
+        .where(eq(rateCards.id, cheapRow.rateCardId!))
+        .limit(1),
     )
     expect(card!.direction).toBe('buy')
   })
