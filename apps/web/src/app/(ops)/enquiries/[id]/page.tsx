@@ -116,8 +116,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             <span className="ref">{comparison.enquiryReference}</span>
           </span>
         }
-        title={t('title')}
-        description={t('subtitle')}
+        title={hasOptions ? t('title') : t('awaitingTitle')}
+        description={hasOptions ? t('subtitle') : t('awaitingSubtitle')}
         actionsBefore={
           <EnquiryActions
             enquiryId={id}
@@ -128,32 +128,6 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         }
         actionsAfter={<QuoteDialog enquiryId={id} variant="secondary" />}
       />
-
-      {/*
-        What a model read off the mail, above the pricing comparison.
-
-        Placed here because it is the one thing on this page that is *waiting
-        on the reader*: the cargo facts are what everything below prices, and a
-        coordinator who scrolls past them to the rate comparison is pricing a
-        shipment whose weight is still null. It renders nothing when nothing is
-        pending, so it costs a settled enquiry no vertical space.
-      */}
-      {/*
-        The glance above the panels: what the automations did on this enquiry —
-        acknowledged the customer, read N fields, asked N agents — so the machine
-        working on the file is visible, not inferred from three separate panels.
-      */}
-      <EnquiryAutomationStrip enquiryId={id} />
-
-      <ProposalsPanel enquiryId={id} />
-
-      {/*
-        Rate procurement — the manual rate-card upload, retired for a live lane.
-        Sits above the quote comparison because it feeds it: an uncovered lane is
-        an RFQ to agents, and the buy card an accepted reply becomes is what the
-        pricing engine finds the next time this enquiry is priced.
-      */}
-      <RateRequestsPanel enquiryId={id} />
 
       {/*
         Moment 2's punchline, stated as a comparison rather than a boast: the
@@ -208,6 +182,32 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           </dl>
         </div>
       </Card>
+
+      {/*
+        What a model read off the mail, above the pricing comparison.
+
+        Placed here because it is the one thing on this page that is *waiting
+        on the reader*: the cargo facts are what everything below prices, and a
+        coordinator who scrolls past them to the rate comparison is pricing a
+        shipment whose weight is still null. It renders nothing when nothing is
+        pending, so it costs a settled enquiry no vertical space.
+      */}
+      {/*
+        The glance above the panels: what the automations did on this enquiry —
+        acknowledged the customer, read N fields, asked N agents — so the machine
+        working on the file is visible, not inferred from three separate panels.
+      */}
+      <EnquiryAutomationStrip enquiryId={id} />
+
+      <ProposalsPanel enquiryId={id} />
+
+      {/*
+        Rate procurement — the manual rate-card upload, retired for a live lane.
+        Sits above the quote comparison because it feeds it: an uncovered lane is
+        an RFQ to agents, and the buy card an accepted reply becomes is what the
+        pricing engine finds the next time this enquiry is priced.
+      */}
+      <RateRequestsPanel enquiryId={id} />
 
       {hasOptions ? (
         <>
