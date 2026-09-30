@@ -50,7 +50,13 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
         </span>
       </summary>
 
-      <div className="absolute end-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-lg border border-line bg-surface shadow-card">
+      {/*
+        On a phone the panel spans the screen, 16px in from each edge. Anchored
+        to the bell at w-80 it ran off the screen — in Arabic the bell sits 255px
+        in, so the panel reached 575px on a 390px phone — and it widened the page
+        even while closed. `hidden` until open keeps it out of the layout.
+      */}
+      <div className="absolute end-0 top-full z-30 mt-2 hidden w-80 overflow-hidden rounded-lg border border-line bg-surface shadow-card group-open:block max-sm:fixed max-sm:inset-x-4 max-sm:top-14 max-sm:w-auto">
         <div className="flex items-center justify-between border-b border-line px-3 py-2">
           <span className="text-[0.8125rem] font-semibold text-ink">{t('title')}</span>
           {unread > 0 ? (
@@ -85,9 +91,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
                   >
                     {/* Unread pip, holding the same column whether lit or not. */}
                     <span className="mt-1.5 flex w-2 shrink-0 justify-center">
-                      {item.read ? null : (
-                        <Icon name="dot" size={8} className="text-brand" />
-                      )}
+                      {item.read ? null : <Icon name="dot" size={8} className="text-brand" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span

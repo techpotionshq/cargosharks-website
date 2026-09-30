@@ -20,6 +20,7 @@ import type {
   RateRequestView,
   RenewalView,
 } from '@/lib/pilot/types'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pilot/fixtures'
 
@@ -32,9 +33,14 @@ import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pil
  * incomparable rather than ranked at a made-up number. The authority for the
  * figure is always the reply's own lines in `response`; this only ranks.
  */
+/**
+ * `locale` names the partner in the reader's language (F27). The fixtures carry
+ * their agents in English only, as partners do on a real database today.
+ */
 export async function getEnquiryRateRequests(
   actor: Actor,
   enquiryId: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<RateRequestsView | null> {
   if (usePilotFixtures()) return pilotRateRequests()
   if (!enquiryId) return null
@@ -58,7 +64,7 @@ export async function getEnquiryRateRequests(
       .select({
         id: rateRequests.id,
         partnerId: rateRequests.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         status: rateRequests.status,
         sentAt: rateRequests.sentAt,
         respondedAt: rateRequests.respondedAt,
@@ -70,9 +76,7 @@ export async function getEnquiryRateRequests(
       })
       .from(rateRequests)
       .innerJoin(partners, eq(rateRequests.partnerId, partners.id))
-      .where(
-        and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')),
-      )
+      .where(and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')))
       .orderBy(desc(rateRequests.createdAt))
 
     // The FX rates needed to bring every quoted currency onto the base.
@@ -154,7 +158,12 @@ export async function getEnquiryRateRequests(
  * enquiry is returned flagged rather than hidden, so the picker can grey them
  * out instead of silently dropping a name a coordinator expected to see.
  */
-export async function listCoveringAgents(actor: Actor, enquiryId: string): Promise<CoveringAgent[]> {
+/** `locale` names the agents in the reader's language (F27). */
+export async function listCoveringAgents(
+  actor: Actor,
+  enquiryId: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<CoveringAgent[]> {
   if (usePilotFixtures()) return pilotCoveringAgents()
   if (!enquiryId) return []
 
@@ -176,7 +185,7 @@ export async function listCoveringAgents(actor: Actor, enquiryId: string): Promi
     const covering = await tx
       .selectDistinct({
         partnerId: partnerCoverage.partnerId,
-        name: partners.legalNameEn,
+        name: named(locale, partners.legalNameEn, partners.legalNameAr),
         type: partners.type,
         transitDays: partnerCoverage.transitDays,
       })
@@ -252,7 +261,11 @@ export async function listCoveringAgents(actor: Actor, enquiryId: string): Promi
  * one accept from a successor card. Superseded and long-accepted rows drop off;
  * what stays is what still wants a person's eye.
  */
-export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
+/** `locale` names the partner in the reader's language (F27). */
+export async function getRenewals(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<RenewalView[]> {
   if (usePilotFixtures()) return pilotRenewals()
 
   return withActor(actor, async (tx) => {
@@ -262,7 +275,7 @@ export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
     const rows = await tx
       .select({
         id: rateRequests.id,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         mode: rateCards.mode,
         originCode: origin.unlocode,
         destinationCode: destination.unlocode,
@@ -279,14 +292,16 @@ export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
       .innerJoin(rateCards, eq(rateRequests.sourceRateCardId, rateCards.id))
       .leftJoin(origin, eq(rateCards.originId, origin.id))
       .leftJoin(destination, eq(rateCards.destinationId, destination.id))
-      .where(
-        and(isNotNull(rateRequests.sourceRateCardId), ne(rateRequests.status, 'superseded')),
-      )
+      .where(and(isNotNull(rateRequests.sourceRateCardId), ne(rateRequests.status, 'superseded')))
       .orderBy(desc(rateRequests.createdAt))
       .limit(100)
 
     return rows.map((row): RenewalView => {
-      const response = (row.response ?? {}) as { ok?: boolean; declined?: boolean; rows?: unknown[] }
+      const response = (row.response ?? {}) as {
+        ok?: boolean
+        declined?: boolean
+        rows?: unknown[]
+      }
       const lineCount = Array.isArray(response.rows) ? response.rows.length : 0
       return {
         id: row.id,

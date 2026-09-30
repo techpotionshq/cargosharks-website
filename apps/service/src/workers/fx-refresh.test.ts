@@ -80,9 +80,16 @@ const RUN = Date.now().toString(36).toUpperCase().slice(-5)
 let seq = 0
 
 /** A distinct effective day per case, so one test cannot see another's row. */
+/*
+  Dates in the past, on purpose. The refresh now writes each rate both ways, so
+  these rows include USD → KWD — and dated in 2040 they became the "latest"
+  rate for every other suite that converts USD (the rate-reply comparison read
+  0.307031 instead of its own 0.308). Every assertion here is by exact date, so
+  the year does not matter to this file; a past one keeps it out of others'.
+*/
 const day = () => {
   seq += 1
-  return new Date(Date.UTC(2040, 0, 1) + seq * 86_400_000).toISOString().slice(0, 10)
+  return new Date(Date.UTC(2000, 0, 1) + seq * 86_400_000).toISOString().slice(0, 10)
 }
 
 const quote = (to: string, rate: string, effectiveOn: string, from = 'KWD') => ({
@@ -139,7 +146,11 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
   */
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     if (!calendar) return
     await withActor(actor, (tx) =>
@@ -257,8 +268,28 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
       expect(result.written).toBe(2)
       const rows = await stored(on)
-      expect(rows.map((row) => row.to).sort()).toEqual(['EUR', 'USD'])
-      expect(rows.every((row) => row.from === 'KWD')).toBe(true)
+      const outward = rows.filter((row) => row.from === 'KWD')
+      expect(outward.map((row) => row.to).sort()).toEqual(['EUR', 'USD'])
+    })
+
+    /*
+      The direction every reader asks for. Pricing, the rate-reply comparison
+      and the auto-promote sweep look up `to_currency = base` — "1 USD = ? KWD"
+      — and with only the feed's outward row they found nothing, so a USD rate
+      card refused to price once the feed was switched on. The reciprocal is
+      exact decimal arithmetic at the column's eight places.
+    */
+    it('also writes each rate into the base, as pricing reads it', async () => {
+      const on = day()
+      harness.quotes = [quote('USD', '3.257000', on), quote('EUR', '3.010000', on)]
+
+      await runFxRefresh()
+
+      const inward = (await stored(on)).filter((row) => row.to === 'KWD')
+      expect(inward.map((row) => [row.from, row.rate]).sort()).toEqual([
+        ['EUR', '0.33222591'],
+        ['USD', '0.30703101'],
+      ])
     })
 
     /**
@@ -275,7 +306,7 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
       harness.quotes = [quote('USD', '9.999000', on)]
       const second = await runFxRefresh()
 
-      const rows = await stored(on)
+      const rows = (await stored(on)).filter((row) => row.from === 'KWD')
       expect(rows).toHaveLength(1)
       expect(Number(rows[0]?.rate)).toBeCloseTo(3.257, 6)
       // It reports what it offered, not what the database accepted — the
@@ -300,7 +331,9 @@ describe.skipIf(!enabled)('the daily FX refresh', () => {
 
       expect(result.written).toBe(1)
       expect(result.skipped).toEqual(['XYZ'])
-      expect((await stored(on)).map((row) => row.to)).toEqual(['USD'])
+      expect((await stored(on)).filter((row) => row.from === 'KWD').map((row) => row.to)).toEqual([
+        'USD',
+      ])
     })
 
     it('writes nothing, and says so, when every rate is unusable', async () => {

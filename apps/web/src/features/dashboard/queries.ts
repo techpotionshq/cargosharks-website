@@ -33,6 +33,7 @@ import {
 import type { Direction, EnquirySummary, JobSummary, Mode, OpsOverview } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMapData, pilotOverview } from '@/lib/pilot/fixtures'
+import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -173,6 +174,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             nameAr: exceptionCodes.nameAr,
             owner: principals.nameEn,
             customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
           })
           .from(exceptions)
           .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
@@ -251,12 +253,19 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         tx
           .select({
             lane: sql<string>`coalesce(${origin.nameEn}, '—') || ' → ' || coalesce(${destination.nameEn}, '—')`,
+            /*
+              Both labels, so the page picks without a second query. The arrow
+              turns round because an RTL line sets the origin on the right —
+              the same label the margin report builds. `nullif` because an
+              empty Arabic name is as unset as a null one.
+            */
+            laneAr: sql<string>`coalesce(nullif(${origin.nameAr}, ''), ${origin.nameEn}, '—') || ' ← ' || coalesce(nullif(${destination.nameAr}, ''), ${destination.nameEn}, '—')`,
             count: sql<number>`count(*)::int`,
           })
           .from(jobs)
           .leftJoin(origin, eq(origin.id, jobs.originId))
           .leftJoin(destination, eq(destination.id, jobs.destinationId))
-          .groupBy(origin.nameEn, destination.nameEn)
+          .groupBy(origin.nameEn, destination.nameEn, origin.nameAr, destination.nameAr)
           .orderBy(desc(sql`count(*)`))
           .limit(5),
     ])
@@ -312,6 +321,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         owner: row.owner,
         description: row.description,
         customerName: row.customerName ?? '—',
+        customerNameAr: row.customerNameAr || row.customerName || '—',
       })),
       slaWatch: slaWatch.map((row): EnquirySummary => ({
         id: row.id,
@@ -328,7 +338,10 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         */
         customerName: row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
         customerNameAr:
-          row.customerNameAr ?? row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+          pickName('ar', row.customerName, row.customerNameAr) ??
+          row.contactName ??
+          row.contactEmail ??
+          '—',
         originName: row.originName ?? '—',
         destinationName: row.destinationName ?? '—',
         owner: row.owner,
@@ -346,12 +359,12 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         mode: row.mode as Mode,
         direction: row.direction as Direction,
         customerName: row.customerName ?? '—',
-        customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+        customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
         originName: row.originName ?? '—',
-        originNameAr: row.originNameAr ?? row.originName ?? '—',
+        originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
         originCode: row.originCode ?? '',
         destinationName: row.destinationName ?? '—',
-        destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+        destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
         destinationCode: row.destinationCode ?? '',
         vesselOrFlight:
           row.flightNumber ??
@@ -372,6 +385,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       })),
       topLanes: topLanes.map((row) => ({
         lane: row.lane,
+        laneAr: row.laneAr,
         count: row.count,
         value: { amount: 0, currency: 'KWD' },
       })),

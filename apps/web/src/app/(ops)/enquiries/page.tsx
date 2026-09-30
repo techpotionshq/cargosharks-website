@@ -48,12 +48,16 @@ export default async function EnquiriesPage({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const rows = await listEnquiries(session.actor, {
-    status: filter === 'quoted' ? 'quoted' : 'open',
-    unassignedOnly: filter === 'unassigned',
-    overdueOnly: filter === 'overdue',
-    limit: 100,
-  })
+  const rows = await listEnquiries(
+    session.actor,
+    {
+      status: filter === 'quoted' ? 'quoted' : 'open',
+      unassignedOnly: filter === 'unassigned',
+      overdueOnly: filter === 'overdue',
+      limit: 100,
+    },
+    locale,
+  )
 
   // Counted from the rows already fetched rather than three more round trips:
   // the queue is a hundred rows at most, and the tiles must agree with the

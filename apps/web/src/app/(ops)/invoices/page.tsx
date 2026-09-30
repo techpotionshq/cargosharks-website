@@ -43,7 +43,7 @@ export default async function InvoicesPage({
   const today = todayIn()
 
   const [rows, summary] = await Promise.all([
-    listInvoices(session.actor, status),
+    listInvoices(session.actor, status, locale),
     invoiceSummary(session.actor),
   ])
 
@@ -56,12 +56,19 @@ export default async function InvoicesPage({
       summary={[
         {
           label: t('outstanding'),
-          value: summary.currency
-            ? formatMoney(
-                { amount: Number(summary.outstanding), currency: summary.currency },
-                locale,
-              )
-            : '—',
+          /*
+            One figure per currency, never one sum. Dinars and dirhams do not
+            add, and the single total this replaced was labelled with whichever
+            currency the newest invoice happened to be in.
+          */
+          value:
+            summary.outstanding.length > 0
+              ? summary.outstanding
+                  .map(({ currency, amount }) =>
+                    formatMoney({ amount: Number(amount), currency }, locale),
+                  )
+                  .join(' · ')
+              : '—',
         },
         { label: t('issued'), value: summary.issued },
         { label: t('overdue'), value: summary.overdue },

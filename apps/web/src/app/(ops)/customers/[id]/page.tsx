@@ -33,7 +33,12 @@ export async function generateMetadata({
   const session = await requireSession()
   const { id } = await params
   const customer = await getCustomer(session.actor, id)
-  return { title: customer ? `${customer.code} · ${customer.legalNameEn}` : 'Customer' }
+  if (!customer) return { title: 'Customer' }
+  // The tab says what the heading says (F27).
+  const resolved = await getLocale()
+  const name =
+    resolved === 'ar' && customer.legalNameAr ? customer.legalNameAr : customer.legalNameEn
+  return { title: `${customer.code} · ${name}` }
 }
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -52,7 +57,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const primaryTerms = customer.terms.find((term) => term.branchId === customer.primaryBranchId)
 
   const [reference, labels] = await Promise.all([
-    loadFormReference(session.actor),
+    loadFormReference(session.actor, locale),
     customerFormLabels(),
   ])
 

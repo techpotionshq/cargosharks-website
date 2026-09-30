@@ -23,6 +23,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { SEED_CURRENCIES, dec, type CurrencySpec } from '@qabandi/core'
@@ -37,7 +38,9 @@ import {
   fieldErrors,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -66,31 +69,33 @@ const decimalString = (label: string) =>
     .trim()
     .regex(/^-?\d+(\.\d{1,6})?$/, label)
 
-const chargeLineSchema = z.object({
-  jobId: z.uuid(),
-  direction: z.enum(['cost', 'revenue']),
-  chargeTypeId: z.uuid('Choose a charge type'),
-  description: z
-    .string()
-    .trim()
-    .max(300)
-    .optional()
-    .transform((v) => v || null),
-  basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
-  quantity: decimalString('Enter a quantity'),
-  rate: decimalString('Enter a rate'),
-  currency: z.string().trim().length(3),
-  fxRate: decimalString('Enter an exchange rate'),
-  counterpartyPartnerId: optionalUuid,
-  counterpartyCustomerId: optionalUuid,
-})
+const chargeLineSchema = (tv: Translate) =>
+  z.object({
+    jobId: z.uuid(),
+    direction: z.enum(['cost', 'revenue']),
+    chargeTypeId: z.uuid(tv('chooseChargeType')),
+    description: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .transform((v) => v || null),
+    basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
+    quantity: decimalString(tv('enterQuantity')),
+    rate: decimalString(tv('enterRate')),
+    currency: z.string().trim().length(3),
+    fxRate: decimalString(tv('enterFxRate')),
+    counterpartyPartnerId: optionalUuid,
+    counterpartyCustomerId: optionalUuid,
+  })
 
 export async function saveChargeLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const tv = await getTranslations('costingValidation')
 
   const chargeLineId = read(form, 'chargeLineId')
-  const parsed = chargeLineSchema.safeParse({
+  const parsed = await localeParse(chargeLineSchema(tv), {
     jobId: read(form, 'jobId'),
     direction: read(form, 'direction') ?? 'cost',
     chargeTypeId: read(form, 'chargeTypeId'),
@@ -193,23 +198,17 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
     })
 
     if (result.error === 'not_found') {
-      return failWith('That job is no longer visible.', echo(form))
+      return failWith(tv('jobNotVisible'), echo(form))
     }
     if (result.error === 'billed') {
-      return failWith(
-        'That line has been billed to the customer and can no longer be edited. Raise a credit note instead.',
-        echo(form),
-      )
+      return failWith(tv('lineBilled'), echo(form))
     }
     if (result.error === 'matched') {
-      return failWith(
-        'A supplier invoice has been matched against that line. Unmatch it first — editing the accrual now would change a variance somebody has already reviewed.',
-        echo(form),
-      )
+      return failWith(tv('lineMatched'), echo(form))
     }
   } catch (error) {
     if (databaseMessage(error).includes('not-null')) {
-      return failWith('Something on that line is missing.', echo(form))
+      return failWith(tv('lineIncomplete'), echo(form))
     }
     throw error
   }

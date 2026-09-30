@@ -68,12 +68,22 @@ import {
 } from '@qabandi/db'
 import { fileStore } from '../adapters/index'
 
+/**
+ * A refusal the finance manager can act on.
+ *
+ * `code` is what the web app translates; `message` is the same fact in English
+ * for the log and the 422 body. `values` carries whatever the sentence names —
+ * so the screen can say it in the reader's language rather than lifting the
+ * English one whole.
+ */
 export class ExportError extends Error {
   readonly code: string
-  constructor(code: string, message: string) {
+  readonly values?: Readonly<Record<string, string>>
+  constructor(code: string, message: string, values?: Readonly<Record<string, string>>) {
     super(message)
     this.name = 'ExportError'
     this.code = code
+    if (values) this.values = values
   }
 }
 
@@ -142,10 +152,12 @@ async function collect(actor: Actor, request: ExportRequest) {
         chargeTypeId: chargeTypes.id,
         key: chargeTypes.key,
         nameEn: chargeTypes.nameEn,
+        // Not the engine's — only the unmapped refusal below reads it.
+        nameAr: chargeTypes.nameAr,
         revenueAccountCode: chargeTypes.revenueAccountCode,
         costAccountCode: chargeTypes.costAccountCode,
       })
-      .from(chargeTypes)) as AccountMapping[]
+      .from(chargeTypes)) as (AccountMapping & { readonly nameAr: string })[]
 
     /*
       Issued invoices only, by issue date rather than creation date.
@@ -592,11 +604,20 @@ export async function buildAccountingExport(
   })
 
   if (unmapped.length > 0) {
+    /*
+      Both names travel, joined for each language, because the web action
+      renders the sentence in the reader's language and the list sits inside
+      it — an Arabic sentence naming "Ocean Freight" reads as a half-finished
+      translation. `unmappedChargeTypes` hands back the engine's shape, so the
+      Arabic name is looked up again from the rows that carry it.
+    */
+    const arabic = new Map(mappings.map((m) => [m.chargeTypeId, m.nameAr]))
+    const namesEn = unmapped.map((m) => m.nameEn).join(', ')
+    const namesAr = unmapped.map((m) => arabic.get(m.chargeTypeId) || m.nameEn).join('، ')
     throw new ExportError(
       'unmapped_charge_types',
-      `These charge types have no account against them: ${unmapped
-        .map((m) => m.nameEn)
-        .join(', ')}. Map them under Reference → Charge types and run the export again.`,
+      `These charge types have no account against them: ${namesEn}. Map them under Reference → Charge types and run the export again.`,
+      { namesEn, namesAr },
     )
   }
 

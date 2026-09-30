@@ -77,9 +77,57 @@ export interface Allocation {
   readonly shares: readonly AllocationShare[]
 }
 
+/**
+ * Why a split was refused, as data a caller turns into a sentence.
+ *
+ * The English `message` on the error is for logs and tests. What reaches an
+ * operator is built in the web layer from `code` and `values`, because `core`
+ * holds no catalogue and a refusal in English on an Arabic screen is the
+ * refusal nobody reads. The values are strings on purpose: the amounts in a
+ * mismatch are already rounded to the currency's minor unit here, where the
+ * spec is known, so the screen prints `99.999` rather than re-deriving it —
+ * and never through a JS `number`.
+ */
+export type AllocationRefusal =
+  | { readonly code: 'allocation_no_targets'; readonly values: Record<string, never> }
+  | { readonly code: 'allocation_duplicate_target'; readonly values: { readonly jobId: string } }
+  | {
+      readonly code: 'allocation_negative_driver'
+      readonly values: { readonly basis: AllocationBasis }
+    }
+  | {
+      readonly code: 'allocation_zero_driver'
+      readonly values: { readonly basis: AllocationBasis }
+    }
+  | { readonly code: 'allocation_manual_missing'; readonly values: Record<string, never> }
+  | {
+      readonly code: 'allocation_manual_incomplete'
+      readonly values: { readonly jobId: string }
+    }
+  | {
+      readonly code: 'allocation_manual_mismatch'
+      readonly values: {
+        readonly stated: string
+        readonly expected: string
+        readonly currency: string
+      }
+    }
+
+/**
+ * `refusal` carries the code and its values together so a caller's `switch`
+ * narrows both at once — `code` alone would leave `values` untyped. `code` is
+ * still set on the base class, for anything that only reads `DomainError`.
+ */
 export class AllocationError extends DomainError {
-  constructor(code: string, message: string) {
-    super(code, message)
+  readonly refusal: AllocationRefusal
+
+  constructor(refusal: AllocationRefusal, message: string) {
+    super(refusal.code, message)
+    this.refusal = refusal
+  }
+
+  get values(): AllocationRefusal['values'] {
+    return this.refusal.values
   }
 }
 
@@ -123,13 +171,16 @@ export function allocate(
   manualShares?: ReadonlyMap<string, Money>,
 ): Allocation {
   if (targets.length === 0) {
-    throw new AllocationError('allocation_no_targets', 'A cost cannot be split across no houses')
+    throw new AllocationError(
+      { code: 'allocation_no_targets', values: {} },
+      'A cost cannot be split across no houses',
+    )
   }
 
   const duplicate = findDuplicate(targets.map((t) => t.jobId))
   if (duplicate) {
     throw new AllocationError(
-      'allocation_duplicate_target',
+      { code: 'allocation_duplicate_target', values: { jobId: duplicate } },
       `Job ${duplicate} appears twice in the same allocation`,
     )
   }
@@ -142,7 +193,7 @@ export function allocate(
 
   if (drivers.some((d) => d.isNegative())) {
     throw new AllocationError(
-      'allocation_negative_driver',
+      { code: 'allocation_negative_driver', values: { basis } },
       `A negative ${basis.replace('_', ' ')} cannot drive an allocation`,
     )
   }
@@ -159,7 +210,7 @@ export function allocate(
   */
   if (driverTotal.isZero()) {
     throw new AllocationError(
-      'allocation_zero_driver',
+      { code: 'allocation_zero_driver', values: { basis } },
       `Every house has a zero ${basis.replace('_', ' ')}, so there is nothing to split by. ` +
         'Capture the cargo figures, or allocate equally.',
     )
@@ -240,7 +291,7 @@ function manualAllocation(
 ): Allocation {
   if (!manualShares) {
     throw new AllocationError(
-      'allocation_manual_missing',
+      { code: 'allocation_manual_missing', values: {} },
       'A manual allocation needs a share for every house',
     )
   }
@@ -249,7 +300,7 @@ function manualAllocation(
     const stated = manualShares.get(t.jobId)
     if (!stated) {
       throw new AllocationError(
-        'allocation_manual_incomplete',
+        { code: 'allocation_manual_incomplete', values: { jobId: t.jobId } },
         `No share was stated for job ${t.jobId}`,
       )
     }
@@ -268,8 +319,17 @@ function manualAllocation(
     five seconds; nobody reading the cost account in November can.
   */
   if (!dec(stated.amount).equals(dec(expected.amount))) {
+    /*
+      Fixed to the currency's places for the values, not `toString()`: a
+      Decimal prints 99.999 but also 100, and "shares total 99.999 but the cost
+      is 100" reads as if the dinar had lost its third place.
+    */
+    const places = (m: Money) => dec(m.amount).toFixed(spec.minorUnits)
     throw new AllocationError(
-      'allocation_manual_mismatch',
+      {
+        code: 'allocation_manual_mismatch',
+        values: { stated: places(stated), expected: places(expected), currency: total.currency },
+      },
       `Stated shares total ${stated.amount.toString()} but the cost is ${expected.amount.toString()}`,
     )
   }

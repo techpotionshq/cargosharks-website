@@ -11,7 +11,7 @@
  * it is booked, and the bill number does not exist yet at that point.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -93,7 +93,7 @@ export async function JobDialog({
   if (!can(session, editing ? 'job.update' : 'job.book')) return null
 
   const [options, t, tc, tMode, tDirection, tJob] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('jobForm'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -416,7 +416,7 @@ export async function JobPartnerDialog({
   if (!can(session, 'job.update')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('jobPartners'),
     getTranslations('common'),
   ])

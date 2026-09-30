@@ -32,6 +32,8 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { named } from '@/lib/named'
+import type { CurrencyAmount } from '@/lib/by-currency'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotAccountingExports,
@@ -67,8 +69,13 @@ export interface QuoteRow {
   readonly branchCode: string | null
 }
 
-export async function listQuotes(actor: Actor, status?: string): Promise<QuoteRow[]> {
-  if (usePilotFixtures()) return pilotQuotes(Date.now(), status)
+/** `locale` names the customer in the reader's language (F27). */
+export async function listQuotes(
+  actor: Actor,
+  status?: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<QuoteRow[]> {
+  if (usePilotFixtures()) return pilotQuotes(Date.now(), status, locale)
 
   return withActor(actor, async (tx) =>
     tx
@@ -83,7 +90,7 @@ export async function listQuotes(actor: Actor, status?: string): Promise<QuoteRo
         validUntil: quotes.validUntil,
         sentAt: quotes.sentAt,
         decidedAt: quotes.decidedAt,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         enquiryReference: enquiries.reference,
         preparedBy: principals.nameEn,
         branchCode: branches.code,
@@ -131,8 +138,13 @@ export interface InvoiceRow {
   readonly branchCode: string | null
 }
 
-export async function listInvoices(actor: Actor, status?: string): Promise<InvoiceRow[]> {
-  if (usePilotFixtures()) return pilotInvoices(Date.now(), status)
+/** `locale` names the customer in the reader's language (F27). */
+export async function listInvoices(
+  actor: Actor,
+  status?: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<InvoiceRow[]> {
+  if (usePilotFixtures()) return pilotInvoices(Date.now(), status, locale)
 
   return withActor(actor, async (tx) =>
     tx
@@ -148,7 +160,7 @@ export async function listInvoices(actor: Actor, status?: string): Promise<Invoi
         issuedAt: invoices.issuedAt,
         dueOn: invoices.dueOn,
         isCreditNote: invoices.isCreditNote,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         branchCode: branches.code,
       })
       .from(invoices)
@@ -161,49 +173,66 @@ export async function listInvoices(actor: Actor, status?: string): Promise<Invoi
 }
 
 /**
+ * One currency's share of the receivables position — `numeric` as text, summed
+ * in SQL, never in JavaScript. The same shape every per-currency total on the
+ * finance screens uses (`lib/by-currency.ts`).
+ */
+export type OutstandingByCurrency = CurrencyAmount
+
+/**
  * The receivables position.
  *
  * `outstanding` is total minus paid across everything issued and not settled —
- * the number a finance manager opens the screen for. Summed in SQL against
- * `numeric`, never in JavaScript.
+ * the number a finance manager opens the screen for — one entry per currency.
+ * It used to be one sum over every invoice, labelled with the newest invoice's
+ * currency: a KWD branch and an AED branch added dinars to dirhams and printed
+ * the result as whichever was raised last. Amounts in different currencies do
+ * not add, so the screen shows them side by side. Largest balance first, so
+ * the currency most of the book is in leads; empty when nothing is owed.
  */
 export async function invoiceSummary(actor: Actor): Promise<{
   issued: number
   paid: number
   overdue: number
-  outstanding: string
-  currency: string | null
+  outstanding: readonly OutstandingByCurrency[]
 }> {
   if (usePilotFixtures()) return pilotInvoiceSummary()
 
   return withActor(actor, async (tx) => {
-    const result = await tx.execute(sql`
+    const counts = await tx.execute(sql`
       select
         count(*) filter (where status not in ('paid', 'void', 'draft'))::int as issued,
         count(*) filter (where status = 'paid')::int                         as paid,
         count(*) filter (where status not in ('paid', 'void', 'draft')
-                           and due_on < current_date)::int                   as overdue,
-        coalesce(sum(total - coalesce(amount_paid, 0))
-                 filter (where status not in ('paid', 'void')), 0)::text    as outstanding,
-        (select currency from invoices order by created_at desc limit 1)    as currency
+                           and due_on < current_date)::int                   as overdue
       from invoices
     `)
-    const row = result.rows[0] as unknown as
-      | {
-          issued: number
-          paid: number
-          overdue: number
-          outstanding: string
-          currency: string | null
-        }
-      | undefined
+    const row = counts.rows[0] as unknown as
+      { issued: number; paid: number; overdue: number } | undefined
+
+    /*
+      Drafts are not owed: nothing has been sent. Counted here and not in
+      "issued" beside it, a draft raised the receivables figure the moment it
+      was created. A currency whose open invoices net to zero is left out
+      rather than shown as "AED 0.00" beside the figures that matter.
+    */
+    const balances = await tx.execute(sql`
+      select currency,
+             sum(total - coalesce(amount_paid, 0))::text as amount
+      from invoices
+      where status not in ('paid', 'void', 'draft')
+      group by currency
+      having sum(total - coalesce(amount_paid, 0)) <> 0
+      order by sum(total - coalesce(amount_paid, 0)) desc, currency
+    `)
 
     return {
       issued: row?.issued ?? 0,
       paid: row?.paid ?? 0,
       overdue: row?.overdue ?? 0,
-      outstanding: row?.outstanding ?? '0',
-      currency: row?.currency ?? null,
+      outstanding: (balances.rows as unknown as { currency: string; amount: string }[]).map(
+        ({ currency, amount }) => ({ currency, amount }),
+      ),
     }
   })
 }
@@ -223,8 +252,12 @@ export interface PaymentRow {
   readonly allocated: string
 }
 
-export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
-  if (usePilotFixtures()) return pilotPayments()
+/** `locale` names the customer in the reader's language (F27). */
+export async function listPayments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<PaymentRow[]> {
+  if (usePilotFixtures()) return pilotPayments(Date.now(), locale)
 
   return withActor(actor, async (tx) =>
     tx
@@ -235,7 +268,7 @@ export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
         receivedOn: payments.receivedOn,
         method: payments.method,
         reference: payments.reference,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         branchCode: branches.code,
         recordedBy: principals.nameEn,
         // What of this receipt has been matched to an invoice. An unallocated
@@ -254,30 +287,43 @@ export async function listPayments(actor: Actor): Promise<PaymentRow[]> {
   )
 }
 
+/**
+ * The receipts position.
+ *
+ * `received` is one figure per currency, largest first. It used to be one sum
+ * over every receipt labelled with the newest receipt's currency — the same
+ * dinars-plus-dirhams figure `invoiceSummary` printed before F45. Still one
+ * statement: the per-currency sums come back as a JSON array beside the
+ * counts, with each amount cast to text before it is wrapped, so `numeric`
+ * never passes through a JSON number on its way to the page.
+ */
 export async function paymentSummary(
   actor: Actor,
-): Promise<{ count: number; received: string; unallocated: number; currency: string | null }> {
+): Promise<{ count: number; received: readonly CurrencyAmount[]; unallocated: number }> {
   if (usePilotFixtures()) return pilotPaymentSummary()
 
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select
-        count(*)::int                                                     as count,
-        coalesce(sum(amount), 0)::text                                    as received,
+        count(*)::int as count,
         count(*) filter (where not exists (
           select 1 from payment_allocations pa where pa.payment_id = payments.id
-        ))::int                                                           as unallocated,
-        (select currency from payments order by received_on desc limit 1) as currency
+        ))::int       as unallocated,
+        coalesce((
+          select json_agg(json_build_object('currency', r.currency, 'amount', r.amount)
+                          order by r.total desc, r.currency)
+            from (select currency, sum(amount) as total, sum(amount)::text as amount
+                    from payments group by currency) r
+        ), '[]'::json) as received
       from payments
     `)
     const row = result.rows[0] as unknown as
-      { count: number; received: string; unallocated: number; currency: string | null } | undefined
+      { count: number; received: CurrencyAmount[] | null; unallocated: number } | undefined
 
     return {
       count: row?.count ?? 0,
-      received: row?.received ?? '0',
+      received: (row?.received ?? []).map(({ currency, amount }) => ({ currency, amount })),
       unallocated: row?.unallocated ?? 0,
-      currency: row?.currency ?? null,
     }
   })
 }
@@ -310,9 +356,28 @@ export interface AgeingBucket {
   readonly amount: string
 }
 
-export async function receivablesAgeing(
-  actor: Actor,
-): Promise<{ buckets: AgeingBucket[]; total: string; currency: string | null }> {
+/**
+ * One currency's ageing — its buckets add up to its own `total`.
+ *
+ * `overdue` is everything past its due date, summed in the statement rather
+ * than by adding four bucket strings together on the page.
+ */
+export interface CurrencyAgeing {
+  readonly currency: string
+  readonly buckets: AgeingBucket[]
+  readonly total: string
+  readonly overdue: string
+}
+
+/**
+ * One ageing per currency, largest book first.
+ *
+ * It used to be one set of buckets summed across every open invoice and
+ * labelled with the first invoice's currency — dinars and dirhams in one bar.
+ * Grouped by currency now, so each bar is a proportion of money that adds.
+ * Empty when nothing is owed.
+ */
+export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: CurrencyAgeing[] }> {
   if (usePilotFixtures()) return pilotReceivablesAgeing()
 
   return withActor(actor, async (tx) => {
@@ -334,28 +399,35 @@ export async function receivablesAgeing(
         count(*)              filter (where current_date - due_on between 61 and 90)::int      as d61_90_count,
         coalesce(sum(balance) filter (where current_date - due_on > 90), 0)::text              as d90_plus_amount,
         count(*)              filter (where current_date - due_on > 90)::int                   as d90_plus_count,
-        coalesce(sum(balance), 0)::text as total,
-        (select currency from open_invoices limit 1) as currency
+        coalesce(sum(balance) filter (where due_on < current_date), 0)::text as overdue,
+        sum(balance)::text as total,
+        currency
       from open_invoices
+      group by currency
+      order by sum(balance) desc, currency
     `)
 
-    const row = result.rows[0] as Record<string, string | number | null> | undefined
-    const bucket = (key: AgeingBucket['key']): AgeingBucket => ({
-      key,
-      count: Number(row?.[`${key}_count`] ?? 0),
-      amount: String(row?.[`${key}_amount`] ?? '0'),
-    })
-
+    const rows = result.rows as Record<string, string | number | null>[]
     return {
-      buckets: [
-        bucket('current'),
-        bucket('d1_30'),
-        bucket('d31_60'),
-        bucket('d61_90'),
-        bucket('d90_plus'),
-      ],
-      total: String(row?.total ?? '0'),
-      currency: (row?.currency as string | null) ?? null,
+      byCurrency: rows.map((row) => {
+        const bucket = (key: AgeingBucket['key']): AgeingBucket => ({
+          key,
+          count: Number(row[`${key}_count`] ?? 0),
+          amount: String(row[`${key}_amount`] ?? '0'),
+        })
+        return {
+          currency: String(row.currency),
+          buckets: [
+            bucket('current'),
+            bucket('d1_30'),
+            bucket('d31_60'),
+            bucket('d61_90'),
+            bucket('d90_plus'),
+          ],
+          total: String(row.total ?? '0'),
+          overdue: String(row.overdue ?? '0'),
+        }
+      }),
     }
   })
 }
@@ -366,6 +438,12 @@ export async function receivablesAgeing(
  * Ordered by balance rather than by how late it is: chasing the largest
  * exposure first is what a credit controller actually does, and the oldest
  * debt is frequently the smallest and the least collectable.
+ *
+ * One row per customer *and currency*. A customer owing dinars and dollars is
+ * two rows, because the balance used to be the two added together and
+ * labelled `max(currency)` — alphabetically, so "USD" — which printed a dinar
+ * debt as dollars. The ranking compares face values across currencies, which
+ * is imperfect without a rate, but it no longer changes any figure.
  */
 export interface DebtorRow {
   readonly customerId: string
@@ -377,15 +455,21 @@ export interface DebtorRow {
   readonly daysOverdue: number
 }
 
-export async function topDebtors(actor: Actor, limit = 8): Promise<DebtorRow[]> {
-  if (usePilotFixtures()) return pilotTopDebtors(Date.now(), limit)
+/** `locale` names the customer in the reader's language (F27). */
+export async function topDebtors(
+  actor: Actor,
+  limit = 8,
+  locale: 'en' | 'ar' = 'en',
+): Promise<DebtorRow[]> {
+  if (usePilotFixtures()) return pilotTopDebtors(Date.now(), limit, locale)
 
+  const name = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select c.id                                            as "customerId",
-             c.legal_name_en                                 as "customerName",
+             ${name}                                         as "customerName",
              sum(i.total - coalesce(i.amount_paid, 0))::text as balance,
-             max(i.currency)                                 as currency,
+             i.currency                                      as currency,
              count(*)::int                                   as "invoiceCount",
              min(i.due_on)::text                             as "oldestDueOn",
              greatest(0, current_date - min(i.due_on))::int  as "daysOverdue"
@@ -393,8 +477,8 @@ export async function topDebtors(actor: Actor, limit = 8): Promise<DebtorRow[]> 
         join customers c on c.id = i.customer_id
        where i.status not in ('paid', 'void', 'draft')
          and i.total > coalesce(i.amount_paid, 0)
-       group by c.id, c.legal_name_en
-       order by sum(i.total - coalesce(i.amount_paid, 0)) desc
+       group by c.id, c.legal_name_en, c.legal_name_ar, i.currency
+       order by sum(i.total - coalesce(i.amount_paid, 0)) desc, i.currency
        limit ${limit}
     `)
     return result.rows as unknown as DebtorRow[]
@@ -442,29 +526,45 @@ export interface QuoteDetail {
   readonly history: readonly { id: string; reference: string; version: number; status: string }[]
 }
 
-export async function getQuoteDetail(actor: Actor, id: string): Promise<QuoteDetail | undefined> {
+/**
+ * `locale` names the customer, the lane's ports and each line's charge in the
+ * reader's language (F27). The preparer is a person and keeps their name; the
+ * line descriptions are free text somebody typed and stay as typed.
+ */
+export async function getQuoteDetail(
+  actor: Actor,
+  id: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<QuoteDetail | undefined> {
   // An unknown id comes back `undefined` on both sides, which the page turns
   // into a 404 — the same answer RLS gives for another branch's quotation.
-  if (usePilotFixtures()) return pilotQuoteDetail(id)
+  if (usePilotFixtures()) return pilotQuoteDetail(id, Date.now(), locale)
+
+  const customerName = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
+  const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
+  const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
+  const chargeName = named(locale, sql`ct.name_en`, sql`ct.name_ar`)
+  // The arrow points the way the line reads, as it does on the partner file.
+  const arrow = locale === 'ar' ? ' ← ' : ' → '
 
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select q.id, q.reference, q.enquiry_id as "enquiryId", e.reference as "enquiryReference",
              q.branch_id as "branchId", b.code as "branchCode",
-             e.customer_id as "customerId", c.legal_name_en as "customerName",
+             e.customer_id as "customerId", ${customerName} as "customerName",
              q.version, q.status::text as status, q.currency,
              q.total_sell::text as "totalSell", q.total_cost::text as "totalCost",
              q.valid_until::text as "validUntil",
              p.name_en as "preparedBy",
              q.sent_at as "sentAt", q.decided_at as "decidedAt", q.created_at as "createdAt",
              case when o.name_en is null or d.name_en is null then null
-                  else o.name_en || ' → ' || d.name_en end as lane,
+                  else ${originName} || ${arrow}::text || ${destinationName} end as lane,
              e.mode::text as mode,
              q.priced_snapshot ->> 'notes' as notes,
              q.cover_note_en as "coverNoteEn", q.cover_note_ar as "coverNoteAr",
              coalesce((
                select json_agg(json_build_object(
-                        'id', ql.id, 'chargeName', ct.name_en, 'description', ql.description,
+                        'id', ql.id, 'chargeName', ${chargeName}, 'description', ql.description,
                         'basis', ql.basis, 'quantity', ql.quantity::text,
                         'rate', ql.rate::text, 'amount', ql.amount::text,
                         'currency', ql.currency) order by ql.sort_order)
@@ -528,17 +628,20 @@ export interface InvoiceDetail {
   }[]
 }
 
+/** `locale` names the customer in the reader's language (F27). */
 export async function getInvoiceDetail(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<InvoiceDetail | undefined> {
-  if (usePilotFixtures()) return pilotInvoiceDetail(id)
+  if (usePilotFixtures()) return pilotInvoiceDetail(id, Date.now(), locale)
 
+  const customerName = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select i.id, i.series_no as "seriesNo", i.status::text as status,
              i.branch_id as "branchId", b.code as "branchCode",
-             i.customer_id as "customerId", c.legal_name_en as "customerName",
+             i.customer_id as "customerId", ${customerName} as "customerName",
              i.currency, i.subtotal::text as subtotal, i.tax_amount::text as "taxAmount",
              i.total::text as total, i.amount_paid::text as "amountPaid",
              i.tax_treatment::text as "taxTreatment",

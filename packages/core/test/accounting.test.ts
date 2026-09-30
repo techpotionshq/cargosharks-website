@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AccountingError,
   SEED_CURRENCIES,
   allocatedBase,
   buildJournal,
@@ -18,6 +19,17 @@ import {
 } from '../src/index'
 
 const KWD: CurrencySpec = SEED_CURRENCIES.find((c) => c.code === 'KWD')!
+
+/** The `AccountingError` a call throws, for asserting its code and values. */
+function caught(run: () => unknown): AccountingError {
+  try {
+    run()
+  } catch (error) {
+    if (error instanceof AccountingError) return error
+    throw error
+  }
+  throw new Error('expected an AccountingError')
+}
 
 const controls: ControlAccounts = {
   receivables: '1200',
@@ -313,6 +325,75 @@ describe('refusals', () => {
         KWD,
       ),
     ).toThrow(/No receivables configured/)
+  })
+
+  /**
+   * The English names the invoice; a translated sentence can only do the same
+   * if the facts travel beside it. Strings only — see `AccountingErrorValues`.
+   */
+  it('carries which account is missing and which invoice it stopped, as values', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({ controls: { ...controls, receivables: null }, invoices: [invoice()] }),
+        KWD,
+      ),
+    )
+    expect(refusal.code).toBe('journal_unmapped')
+    expect(refusal.values).toEqual({
+      account: 'receivables',
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+    })
+  })
+
+  it('names the unmapped charge type in both languages, Arabic falling back to English', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({
+          invoices: [
+            invoice({
+              lines: [
+                {
+                  chargeTypeId: 'ct-unmapped',
+                  description: 'Legalisation',
+                  amount: '30',
+                  taxAmount: '0',
+                },
+              ],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    )
+    expect(refusal.values).toEqual({
+      account: 'revenue',
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+      chargeTypeEn: 'Legalisation',
+      chargeTypeAr: 'Legalisation',
+    })
+  })
+
+  it('names the invoice and the line that has no charge type', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({
+          invoices: [
+            invoice({
+              lines: [{ chargeTypeId: null, description: 'Sundry', amount: '30', taxAmount: '0' }],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    )
+    expect(refusal.code).toBe('journal_unmapped_line')
+    expect(refusal.values).toEqual({
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+      line: 'Sundry',
+    })
   })
 
   it('lists what needs mapping before the export is attempted', () => {
@@ -749,6 +830,11 @@ describe('rounding, and the line that is not rounding', () => {
    */
   it('refuses a difference too large to be rounding, and says so', () => {
     expect(() => buildJournal(fractional(4), KWD)).toThrow(/too much to be rounding/)
+    // The amount as a decimal string, three places and all — never a number.
+    const refusal = caught(() => buildJournal(fractional(4), KWD))
+    expect(refusal.code).toBe('journal_unbalanced')
+    expect(refusal.values.currency).toBe('KWD')
+    expect(refusal.values.amount).toMatch(/^-?\d+(\.\d+)?$/)
   })
 
   it('refuses to plug a difference with no rounding account configured', () => {

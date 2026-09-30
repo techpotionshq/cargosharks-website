@@ -44,6 +44,7 @@ export interface ExceptionRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly code: string
   readonly nameEn: string
   readonly nameAr: string
@@ -84,6 +85,7 @@ export async function listExceptions(
         jobId: exceptions.jobId,
         jobReference: jobs.reference,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         code: exceptionCodes.code,
         nameEn: exceptionCodes.nameEn,
         nameAr: exceptionCodes.nameAr,
@@ -133,6 +135,7 @@ export interface CustomsRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly status: string
   readonly declarationType: string | null
   readonly declarationNo: string | null
@@ -143,6 +146,7 @@ export interface CustomsRow {
   readonly dutyAmount: string | null
   readonly dutyCurrency: string | null
   readonly brokerName: string | null
+  readonly brokerNameAr: string | null
 }
 
 export async function listCustoms(
@@ -165,6 +169,7 @@ export async function listCustoms(
         jobId: customsStages.jobId,
         jobReference: jobs.reference,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         status: customsStages.status,
         declarationType: customsStages.declarationType,
         declarationNo: customsStages.declarationNo,
@@ -175,6 +180,7 @@ export async function listCustoms(
         dutyAmount: customsStages.dutyAmount,
         dutyCurrency: customsStages.dutyCurrency,
         brokerName: partners.legalNameEn,
+        brokerNameAr: partners.legalNameAr,
       })
       .from(customsStages)
       .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
@@ -212,6 +218,7 @@ export interface DocumentRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly typeCode: string
   readonly typeNameEn: string
   readonly typeNameAr: string
@@ -240,6 +247,7 @@ export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
         jobId: documents.jobId,
         jobReference: jobs.reference,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         typeCode: documentTypes.code,
         typeNameEn: documentTypes.nameEn,
         typeNameAr: documentTypes.nameAr,

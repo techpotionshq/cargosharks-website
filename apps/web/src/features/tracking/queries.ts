@@ -42,6 +42,7 @@ import {
 import type { Mode, TrackingResult } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotTracking } from '@/lib/pilot/fixtures'
+import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -205,9 +206,9 @@ export async function trackShipment(
       mode: row.mode as Mode,
       customerName: row.customerName ?? '',
       originName: row.originName ?? '—',
-      originNameAr: row.originNameAr ?? row.originName ?? '—',
+      originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
       destinationName: row.destinationName ?? '—',
-      destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+      destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
       vesselOrFlight:
         row.flightNumber ??
         (row.vesselName

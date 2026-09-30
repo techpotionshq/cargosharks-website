@@ -12,7 +12,7 @@
  * obvious choice, which is the one thing nobody wants to post.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -39,7 +39,7 @@ export async function AccountingExportDialog({
   if (!can(session, 'finance.export')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('accountingExport'),
     getTranslations('common'),
   ])

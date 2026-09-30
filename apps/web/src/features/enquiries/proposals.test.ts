@@ -30,6 +30,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { aiInvocations, enquiries, extractionProposals, locations, withActor } =
   await import('@qabandi/db')
 
@@ -206,7 +215,9 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/not a place or commodity on file/)
+    expect(state.message).toBe(
+      'enquiriesValidation.suggestionNotOnFile:{"value":"Port of Nowhere"}',
+    )
     expect((await readEnquiry(enquiryId))?.originId).toBeNull()
     expect((await readProposal(proposalId))?.status).toBe('proposed')
   })
@@ -230,7 +241,9 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
     const proposalId = await aProposal(enquiryId, 'destination', ambiguous)
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/matches 2 records/)
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionAmbiguous:${JSON.stringify({ value: ambiguous, count: 2 })}`,
+    )
     expect((await readEnquiry(enquiryId))?.destinationId).toBeNull()
   })
 
@@ -251,7 +264,7 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/filled in since/)
+    expect(state.message).toBe('enquiriesValidation.suggestionFieldFilled')
     expect((await readEnquiry(enquiryId))?.incoterm).toBe('CIF')
   })
 
@@ -261,7 +274,18 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/sea_fcl/)
+    /*
+      The expected kind is translated in its own right and nested, so neither
+      half of the sentence is English on an Arabic screen. The list itself
+      stays as the stored codes — what the proposal row beside it shows.
+    */
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionInvalid:${JSON.stringify({
+        value: 'hovercraft',
+        expected:
+          'enquiriesValidation.expectedOneOf:{"values":"sea_fcl, sea_lcl, air, land, courier"}',
+      })}`,
+    )
     expect((await readEnquiry(enquiryId))?.mode).toBeNull()
   })
 
@@ -271,7 +295,12 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/YYYY-MM-DD/)
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionInvalid:${JSON.stringify({
+        value: 'next Tuesday',
+        expected: 'enquiriesValidation.expectedDate',
+      })}`,
+    )
     expect((await readEnquiry(enquiryId))?.readyOn).toBeNull()
   })
 
@@ -312,6 +341,6 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const again = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(again.message).toMatch(/already decided/)
+    expect(again.message).toBe('enquiriesValidation.suggestionSettled')
   })
 })

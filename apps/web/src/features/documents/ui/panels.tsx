@@ -24,7 +24,7 @@ import { Button, EmptyState } from '@/ui/layout'
 import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { CargoDialog, PartyDialog } from './dialogs'
-import { issueDocument, surrenderHouseBill } from '../form-actions'
+import { IssueDocumentButton, SurrenderBillButton } from './document-buttons'
 import type { CargoRow, PartyRow } from '../queries'
 
 export async function PartiesCard({
@@ -293,7 +293,7 @@ export async function DocumentActionsCard({
                 </span>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                 {/*
                   Both languages, as links. A `GET` renders and streams and
                   stores nothing, so opening one in a tab is safe and sharing
@@ -330,14 +330,7 @@ export async function DocumentActionsCard({
                 </span>
 
                 {mayIssue ? (
-                  <form action={issueDocument}>
-                    <input type="hidden" name="jobId" value={jobId} />
-                    <input type="hidden" name="kind" value={kind} />
-                    <input type="hidden" name="locale" value="en" />
-                    <Button size="sm" variant="secondary" type="submit" icon="check">
-                      {t('issue')}
-                    </Button>
-                  </form>
+                  <IssueDocumentButton jobId={jobId} kind={kind} label={t('issue')} />
                 ) : null}
               </div>
 
@@ -358,12 +351,7 @@ export async function DocumentActionsCard({
                       : t('surrenderHint')}
                   </span>
                   {!houseBillSurrenderedAt && mayRelease ? (
-                    <form action={surrenderHouseBill}>
-                      <input type="hidden" name="jobId" value={jobId} />
-                      <Button size="sm" variant="ghost" type="submit">
-                        {t('surrender')}
-                      </Button>
-                    </form>
+                    <SurrenderBillButton jobId={jobId} label={t('surrender')} />
                   ) : null}
                 </div>
               ) : null}

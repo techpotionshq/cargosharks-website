@@ -25,6 +25,7 @@
 
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -34,6 +35,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
+
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
 
 const { chargeLines, invoiceLines, invoices, jobs, withActor } = await import('@qabandi/db')
 
@@ -199,7 +209,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const again = await billJob({}, form({ jobId }))
 
-    expect(again.message).toMatch(/Nothing unbilled/)
+    expect(again.message).toBe('ledgerValidation.nothingUnbilled')
     expect(await unbilledLinesFor(bothBranchesActor, jobId)).toEqual([])
   })
 
@@ -210,7 +220,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/Nothing unbilled/)
+    expect(state.message).toBe('ledgerValidation.nothingUnbilled')
     expect((await readLine(accrual))?.invoiceId).toBeNull()
   })
 
@@ -221,7 +231,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/Nothing unbilled/)
+    expect(state.message).toBe('ledgerValidation.nothingUnbilled')
     expect((await readLine(cost))?.invoiceId).toBeNull()
   })
 
@@ -245,7 +255,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/one currency/)
+    expect(state.message).toContain('ledgerValidation.mixedCurrency')
     expect((await readLine(kwd))?.invoiceId).toBeNull()
     expect((await readLine(usd))?.invoiceId).toBeNull()
   })
@@ -274,6 +284,42 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
     const summary = await unbilledRevenue(bothBranchesActor)
 
     expect(summary.jobs.find((job) => job.jobId === jobId)).toBeUndefined()
+  })
+
+  /*
+    The header total is one figure per base currency. It used to be a single
+    `Number` sum over every row, `toFixed(3)`, labelled with the first row's
+    currency — so a Dubai branch's dirhams were added to Kuwait's dinars.
+
+    A wide limit so this job is on the page however much the register holds.
+  */
+  it('totals each base currency on its own, as strings', async () => {
+    const kwdJob = await aJob()
+    await aLine(kwdJob)
+    const aedJob = await aJob()
+    await aLine(aedJob, {
+      currency: 'AED',
+      rate: '120.00',
+      amount: '120.00',
+      amountBase: '120.00',
+      baseCurrency: 'AED',
+    })
+
+    const summary = await unbilledRevenue(bothBranchesActor, 100_000)
+    const total = (currency: string) =>
+      summary.totals.find((entry) => entry.currency === currency)?.amount
+
+    const codes = summary.totals.map((entry) => entry.currency)
+    expect(new Set(codes).size).toBe(codes.length)
+    for (const entry of summary.totals) expect(typeof entry.amount).toBe('string')
+
+    // Each total is exactly the sum of its own rows, and of nothing else.
+    for (const currency of ['KWD', 'AED']) {
+      const rows = summary.jobs.filter((job) => job.baseCurrency === currency)
+      const expected = rows.reduce((acc, job) => acc.plus(job.amountBase), new D(0))
+      expect(new D(total(currency)!).equals(expected)).toBe(true)
+    }
+    expect(new D(total('AED')!).greaterThanOrEqualTo('120')).toBe(true)
   })
 
   it('names the mixed currencies on the register so the refusal is visible first', async () => {

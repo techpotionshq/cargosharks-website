@@ -35,6 +35,7 @@
  */
 
 import { eq } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 import { branches, currencies, fxRates, systemActor, withActor } from '@qabandi/db'
 import { fxSource } from '../adapters/index'
 
@@ -135,19 +136,37 @@ export async function runFxRefresh(): Promise<FxRefreshResult> {
 
   if (usable.length === 0) return { source: source.key, written: 0, skipped, bases }
 
+  /*
+    Each rate is stored both ways.
+
+    A feed answers from the base outwards — "1 KWD = 3.24 USD" — and that was
+    the only row written. But every reader asks the other question: pricing,
+    the rate-reply comparison and the auto-promote sweep all look for
+    `to_currency = base` ("1 USD = ? KWD"), because a USD card is converted
+    *into* the entity's currency. With only the outward row they found nothing,
+    and a USD rate card refused to price on any deployment that switched the
+    feed on — while the tests, which insert the inward row by hand, passed.
+
+    The inward rate is the exact reciprocal in decimal arithmetic, rounded to
+    the column's eight places; never a JS number. The outward row stays, for
+    `credit.ts`, which reads either direction.
+  */
+  const rows = usable.flatMap((quote) => {
+    const outward = {
+      fromCurrency: quote.from,
+      toCurrency: quote.to,
+      rate: quote.rate,
+      source: quote.source,
+      effectiveOn: quote.effectiveOn,
+    }
+    const rate = new D(quote.rate)
+    if (rate.lte(0)) return [outward]
+    const inward = { ...outward, fromCurrency: quote.to, toCurrency: quote.from }
+    return [outward, { ...inward, rate: new D(1).div(rate).toDecimalPlaces(8).toFixed(8) }]
+  })
+
   return withActor(systemActor(), async (tx) => {
-    await tx
-      .insert(fxRates)
-      .values(
-        usable.map((quote) => ({
-          fromCurrency: quote.from,
-          toCurrency: quote.to,
-          rate: quote.rate,
-          source: quote.source,
-          effectiveOn: quote.effectiveOn,
-        })),
-      )
-      .onConflictDoNothing()
+    await tx.insert(fxRates).values(rows).onConflictDoNothing()
 
     return { source: source.key, written: usable.length, skipped, bases }
   })

@@ -277,6 +277,30 @@ describe.skipIf(!enabled)('the accounting export', () => {
       ).rejects.toMatchObject({ code: 'unmapped_charge_types' })
     })
 
+    /**
+     * The names travel as values, in both languages, because the screen says
+     * this sentence in the reader's language and the list sits inside it.
+     */
+    it('carries the names in both languages for the screen to translate', async () => {
+      await mapCharge(null)
+      await issuedInvoice()
+      const [charge] = await withActor(systemActor, (tx) =>
+        tx
+          .select({ nameEn: chargeTypes.nameEn, nameAr: chargeTypes.nameAr })
+          .from(chargeTypes)
+          .where(eq(chargeTypes.id, chargeTypeId)),
+      )
+
+      await expect(
+        buildAccountingExport(actor, { branchId: BRANCH, ...PERIOD }),
+      ).rejects.toMatchObject({
+        values: {
+          namesEn: expect.stringContaining(charge!.nameEn),
+          namesAr: expect.stringContaining(charge!.nameAr),
+        },
+      })
+    })
+
     it('says where to map them', async () => {
       await mapCharge(null)
       await issuedInvoice()

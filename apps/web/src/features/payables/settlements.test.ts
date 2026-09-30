@@ -37,6 +37,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   branches,
   customers,
@@ -413,7 +422,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
 
     it('says so when there is nothing open to net', async () => {
       const state = await draft(await agent(), { periodFrom: '2032-01-01', periodTo: '2032-01-31' })
-      expect(state.message).toContain('Nothing open in that period')
+      expect(state.message).toBe('payablesValidation.nothingOpenInPeriod')
     })
 
     /**
@@ -426,13 +435,12 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
         {},
         form({ branchId: BRANCH, partnerId: UNLINKED, fxRate: '1', ...PERIOD }),
       )
-      expect(state.message).toContain('No current account is configured')
-      expect(state.message).toContain('partner page')
+      expect(state.message).toBe('payablesValidation.noCurrentAccount')
     })
 
     it('refuses a period that ends before it starts', async () => {
       const state = await draft(await agent(), { periodFrom: '2033-06-30', periodTo: '2033-06-01' })
-      expect(state.errors?.periodTo).toContain('ends before it starts')
+      expect(state.errors?.periodTo).toBe('payablesValidation.periodEndsBeforeStart')
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {
@@ -449,7 +457,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
           ...PERIOD,
         }),
       )
-      expect(state.message).toContain('no longer visible')
+      expect(state.message).toBe('payablesValidation.partnerGone')
     })
 
     it('refuses a caller who may not run a settlement', async () => {
@@ -513,7 +521,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
 
       const again = await setSettlementStatus({}, form({ settlementId: id, action: 'agree' }))
 
-      expect(again.message).toContain('already been agreed')
+      expect(again.message).toBe('payablesValidation.settlementAlreadyAgreed')
     })
 
     /** The residual is money that has to actually move before this is true. */
@@ -533,7 +541,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
 
       const state = await setSettlementStatus({}, form({ settlementId: id, action: 'settle' }))
 
-      expect(state.message).toContain('Agree the statement')
+      expect(state.message).toBe('payablesValidation.agreeBeforeSettling')
       expect((await latestSettlement(who))?.status).toBe('draft')
     })
 
@@ -559,7 +567,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
       const { id, who } = await drafted()
       const state = await setSettlementStatus({}, form({ settlementId: id, action: 'void' }))
 
-      expect(state.message).toContain('goes on the record')
+      expect(state.message).toBe('payablesValidation.sayWhy')
       expect((await latestSettlement(who))?.status).toBe('draft')
     })
 
@@ -574,18 +582,20 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
         form({ settlementId: id, action: 'void', reason: 'Changed our minds' }),
       )
 
-      expect(state.message).toContain('cannot be voided')
+      expect(state.message).toBe('payablesValidation.settlementSettled')
       expect((await latestSettlement(who))?.status).toBe('settled')
     })
 
     it('says so when given nothing to do', async () => {
-      expect((await setSettlementStatus({}, form({}))).message).toContain('Nothing to do')
+      expect((await setSettlementStatus({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
     })
 
     it('refuses an action it does not have', async () => {
       const { id } = await drafted()
       const state = await setSettlementStatus({}, form({ settlementId: id, action: 'shred' }))
-      expect(state.message).toContain('Nothing to do')
+      expect(state.message).toBe('payablesValidation.nothingToDo')
     })
 
     it('says the statement is no longer visible', async () => {
@@ -593,7 +603,7 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
         {},
         form({ settlementId: '00000000-0000-7000-8000-00000000aeff', action: 'agree' }),
       )
-      expect(state.message).toContain('no longer visible')
+      expect(state.message).toBe('payablesValidation.settlementGone')
     })
 
     /**
@@ -653,7 +663,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     })
 
     it('says so when given no partner', async () => {
-      expect((await linkPartnerAccount({}, form({}))).message).toContain('Nothing to do')
+      expect((await linkPartnerAccount({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
     })
 
     it('records the variance tolerance on the partner', async () => {
@@ -698,7 +710,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     })
 
     it('says so when given no partner', async () => {
-      expect((await setPartnerTolerance({}, form({}))).message).toContain('Nothing to do')
+      expect((await setPartnerTolerance({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
     })
 
     it('refuses a caller who may not write partners', async () => {

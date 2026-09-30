@@ -19,6 +19,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { NOTIFICATION_EVENTS, unknownMergeFields } from '@qabandi/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -45,7 +46,9 @@ import {
   isUniqueViolation,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -66,23 +69,25 @@ const optional = (max = 200) =>
 
 // --- people ----------------------------------------------------------------
 
-const userSchema = z.object({
-  principalId: z.uuid().optional(),
-  nameEn: z.string().trim().min(2, 'Required').max(160),
-  nameAr: optional(160),
-  email: z.email('A valid email address').transform((v) => v.toLowerCase()),
-  phone: optional(40),
-  locale: z.enum(['en', 'ar']),
-  roleId: z.uuid('Choose a role'),
-  branchIds: z.array(z.uuid()).min(1, 'Give them access to at least one branch'),
-  isActive: z.coerce.boolean(),
-})
+const userSchema = (tv: Translate) =>
+  z.object({
+    principalId: z.uuid().optional(),
+    nameEn: z.string().trim().min(2, tv('required')).max(160),
+    nameAr: optional(160),
+    email: z.email(tv('validEmail')).transform((v) => v.toLowerCase()),
+    phone: optional(40),
+    locale: z.enum(['en', 'ar']),
+    roleId: z.uuid(tv('chooseRole')),
+    branchIds: z.array(z.uuid()).min(1, tv('atLeastOneBranch')),
+    isActive: z.coerce.boolean(),
+  })
 
 export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = userSchema.safeParse({
+  const parsed = await localeParse(userSchema(tv), {
     principalId: read(form, 'principalId'),
     nameEn: read(form, 'nameEn') ?? '',
     nameAr: read(form, 'nameAr'),
@@ -107,10 +112,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
   const ownBranches = new Set(session.branchRoles.keys())
   const reaching = data.branchIds.filter((id) => !ownBranches.has(id))
   if (reaching.length) {
-    return fail(
-      { branchIds: 'You can only grant access to branches you work in yourself.' },
-      echo(form),
-    )
+    return fail({ branchIds: tv('grantOwnBranchesOnly') }, echo(form))
   }
 
   try {
@@ -186,7 +188,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ email: 'Someone already has that email address.' }, echo(form))
+      return fail({ email: tv('emailTaken') }, echo(form))
     }
     throw error
   }
@@ -206,14 +208,15 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
 export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
-  if (!principalId) return fail({ _: 'Nothing to update.' })
+  if (!principalId) return fail({ _: tv('nothingToUpdate') })
 
   // Suspending yourself locks you out with no way back in through the
   // interface — the recovery is shell access, so refuse it here.
   if (principalId === session.principal.id) {
-    return failWith('You cannot suspend your own account.')
+    return failWith(tv('cannotSuspendSelf'))
   }
 
   const isActive = form.get('isActive') !== null
@@ -230,46 +233,47 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
 
 // --- branches --------------------------------------------------------------
 
-const branchSchema = z.object({
-  branchId: z.uuid().optional(),
-  code: z
-    .string()
-    .trim()
-    .min(2, 'At least two characters')
-    .max(8, 'At most eight characters')
-    .regex(/^[A-Za-z0-9]+$/, 'Letters and numbers only')
-    .transform((v) => v.toUpperCase()),
-  legalNameEn: z.string().trim().min(2, 'Required').max(200),
-  /**
-   * Required, not optional.
-   *
-   * Every invoice and quotation this branch issues can be rendered in Arabic,
-   * and the entity's legal name is the one string on those documents that
-   * cannot be machine-translated at render time. A branch with no Arabic name
-   * is a branch that cannot issue an Arabic invoice.
-   */
-  legalNameAr: z.string().trim().min(2, 'Required — it appears on Arabic invoices').max(200),
-  baseCurrency: z
-    .string()
-    .trim()
-    .length(3, 'A three-letter code')
-    .transform((v) => v.toUpperCase()),
-  country: z
-    .string()
-    .trim()
-    .length(2, 'Choose a country')
-    .transform((v) => v.toUpperCase()),
-  calendarId: z.uuid('Every branch needs a working calendar'),
-  timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
-  /**
-   * Who notifications from this entity come from — FR-NT-01.
-   *
-   * Optional: a branch that has not been given its own address sends from the
-   * deployment's, which is the state every branch starts in. A display name is
-   * understood, and only the bare address goes in the SMTP envelope.
-   */
-  mailFrom: optional(200),
-  /*
+const branchSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid().optional(),
+    code: z
+      .string()
+      .trim()
+      .min(2, tv('minTwoChars'))
+      .max(8, tv('maxEightChars'))
+      .regex(/^[A-Za-z0-9]+$/, tv('lettersDigits'))
+      .transform((v) => v.toUpperCase()),
+    legalNameEn: z.string().trim().min(2, tv('required')).max(200),
+    /**
+     * Required, not optional.
+     *
+     * Every invoice and quotation this branch issues can be rendered in Arabic,
+     * and the entity's legal name is the one string on those documents that
+     * cannot be machine-translated at render time. A branch with no Arabic name
+     * is a branch that cannot issue an Arabic invoice.
+     */
+    legalNameAr: z.string().trim().min(2, tv('requiredArInvoices')).max(200),
+    baseCurrency: z
+      .string()
+      .trim()
+      .length(3, tv('threeLetterCode'))
+      .transform((v) => v.toUpperCase()),
+    country: z
+      .string()
+      .trim()
+      .length(2, tv('chooseCountry'))
+      .transform((v) => v.toUpperCase()),
+    calendarId: z.uuid(tv('branchNeedsCalendar')),
+    timeZone: z.string().trim().min(3, tv('chooseTimeZone')).max(64),
+    /**
+     * Who notifications from this entity come from — FR-NT-01.
+     *
+     * Optional: a branch that has not been given its own address sends from the
+     * deployment's, which is the state every branch starts in. A display name is
+     * understood, and only the bare address goes in the SMTP envelope.
+     */
+    mailFrom: optional(200),
+    /*
     Quiet hours — FR-NT-07, in this branch's local time.
 
     Refused when the two hours are equal, because that has two defensible
@@ -278,63 +282,63 @@ const branchSchema = z.object({
     administrator turns the window off. The database says the same thing in
     `branches_quiet_hours_window`; this says it where somebody can read it.
   */
-  quietHoursEnabled: z.boolean(),
-  quietHoursFromHour: z.coerce.number().int().min(0).max(23),
-  quietHoursToHour: z.coerce.number().int().min(0).max(23),
-  /** The prefix on this branch's invoice numbers. Defaults to the code. */
-  invoiceSeries: z
-    .string()
-    .trim()
-    .max(12)
-    .optional()
-    .transform((v) => (v ? v.toUpperCase() : null)),
-  taxRegistration: optional(60),
-  /**
-   * The house-bill series, and the chart of accounts this entity posts to.
-   *
-   * All optional, and checked at the point of use rather than here: a branch
-   * that issues no house bills should not be made to invent a prefix, and a
-   * branch that has not been mapped to a chart of accounts should be able to
-   * exist. The accounting export names what is missing when somebody tries to
-   * close a period, which is a better error than a required field on a form
-   * they filled in six months earlier.
-   */
-  houseBillSeries: z
-    .string()
-    .trim()
-    .max(12)
-    .optional()
-    .transform((v) => (v ? v.toUpperCase() : null)),
-  arAccountCode: optional(30),
-  apAccountCode: optional(30),
-  taxAccountCode: optional(30),
-  bankAccountCode: optional(30),
-  fxVarianceAccountCode: optional(30),
-  roundingAccountCode: optional(30),
-  /**
-   * Standard trading conditions, as they print on this entity's quotations —
-   * FR-EQ-08.
-   *
-   * Long, and optional in both languages. A branch that has not supplied them
-   * issues a quotation without the footer rather than being unable to issue
-   * one, which matches how the chart of accounts above is treated: the missing
-   * piece is named at the point it matters, not demanded on a form somebody
-   * filled in months earlier.
-   */
-  tradingConditionsEn: optional(8000),
-  tradingConditionsAr: optional(8000),
-  /*
+    quietHoursEnabled: z.boolean(),
+    quietHoursFromHour: z.coerce.number().int().min(0).max(23),
+    quietHoursToHour: z.coerce.number().int().min(0).max(23),
+    /** The prefix on this branch's invoice numbers. Defaults to the code. */
+    invoiceSeries: z
+      .string()
+      .trim()
+      .max(12)
+      .optional()
+      .transform((v) => (v ? v.toUpperCase() : null)),
+    taxRegistration: optional(60),
+    /**
+     * The house-bill series, and the chart of accounts this entity posts to.
+     *
+     * All optional, and checked at the point of use rather than here: a branch
+     * that issues no house bills should not be made to invent a prefix, and a
+     * branch that has not been mapped to a chart of accounts should be able to
+     * exist. The accounting export names what is missing when somebody tries to
+     * close a period, which is a better error than a required field on a form
+     * they filled in six months earlier.
+     */
+    houseBillSeries: z
+      .string()
+      .trim()
+      .max(12)
+      .optional()
+      .transform((v) => (v ? v.toUpperCase() : null)),
+    arAccountCode: optional(30),
+    apAccountCode: optional(30),
+    taxAccountCode: optional(30),
+    bankAccountCode: optional(30),
+    fxVarianceAccountCode: optional(30),
+    roundingAccountCode: optional(30),
+    /**
+     * Standard trading conditions, as they print on this entity's quotations —
+     * FR-EQ-08.
+     *
+     * Long, and optional in both languages. A branch that has not supplied them
+     * issues a quotation without the footer rather than being unable to issue
+     * one, which matches how the chart of accounts above is treated: the missing
+     * piece is named at the point it matters, not demanded on a form somebody
+     * filled in months earlier.
+     */
+    tradingConditionsEn: optional(8000),
+    tradingConditionsAr: optional(8000),
+    /*
     Large, because the back of a bill is large: a full set of conditions of
     carriage runs to thirty clauses and twenty thousand characters, and a cap
     that fits a quotation footer would cut a clause in half.
   */
-  billOfLadingTermsEn: optional(60000),
-  billOfLadingTermsAr: optional(60000),
-  /** One exclusion per line — see the column comment. */
-  defaultExclusionsEn: optional(4000),
-  defaultExclusionsAr: optional(4000),
-  isActive: z.coerce.boolean(),
-})
+    billOfLadingTermsEn: optional(60000),
+    billOfLadingTermsAr: optional(60000),
+    /** One exclusion per line — see the column comment. */
+    defaultExclusionsEn: optional(4000),
+    defaultExclusionsAr: optional(4000),
+    isActive: z.coerce.boolean(),
+  })
 
 export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
@@ -348,8 +352,9 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     auditor finds rather than the kind a developer notices.
   */
   assertCan(session, 'admin.branches.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = branchSchema.safeParse({
+  const parsed = await localeParse(branchSchema(tv), {
     branchId: read(form, 'branchId'),
     code: read(form, 'code') ?? '',
     legalNameEn: read(form, 'legalNameEn') ?? '',
@@ -386,9 +391,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
   if (data.quietHoursEnabled && data.quietHoursFromHour === data.quietHoursToHour) {
     return fail(
       {
-        quietHoursToHour:
-          'Quiet hours have to start and end at different times. Turn the switch ' +
-          'off to send at any hour.',
+        quietHoursToHour: tv('quietHoursDiffer'),
       },
       echo(form),
     )
@@ -470,7 +473,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That branch code is already in use.' }, echo(form))
+      return fail({ code: tv('branchCodeInUse') }, echo(form))
     }
     throw error
   }
@@ -499,27 +502,28 @@ const REFERENCE_TABLES = {
 
 type ReferenceTable = keyof typeof REFERENCE_TABLES
 
-const referenceSchema = z.object({
-  table: z.enum(['commodity', 'charge_type', 'document_type', 'exception_code']),
-  recordId: z.uuid().optional(),
-  code: z
-    .string()
-    .trim()
-    .min(2, 'At least two characters')
-    .max(40)
-    .regex(/^[A-Za-z0-9_-]+$/, 'Letters, numbers, hyphens and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(160),
-  nameAr: z.string().trim().min(1, 'Required — this appears on Arabic documents').max(160),
-  category: optional(60),
-  defaultBasis: z
-    .enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'])
-    .optional(),
-  defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-  hsCode: optional(20),
-  revenueAccountCode: optional(30),
-  costAccountCode: optional(30),
-  isActive: z.coerce.boolean(),
-})
+const referenceSchema = (tv: Translate) =>
+  z.object({
+    table: z.enum(['commodity', 'charge_type', 'document_type', 'exception_code']),
+    recordId: z.uuid().optional(),
+    code: z
+      .string()
+      .trim()
+      .min(2, tv('minTwoChars'))
+      .max(40)
+      .regex(/^[A-Za-z0-9_-]+$/, tv('lettersDigitsHyphens')),
+    nameEn: z.string().trim().min(2, tv('required')).max(160),
+    nameAr: z.string().trim().min(1, tv('requiredArDocuments')).max(160),
+    category: optional(60),
+    defaultBasis: z
+      .enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'])
+      .optional(),
+    defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+    hsCode: optional(20),
+    revenueAccountCode: optional(30),
+    costAccountCode: optional(30),
+    isActive: z.coerce.boolean(),
+  })
 
 export async function saveReferenceRecord(
   _previous: ActionState,
@@ -527,8 +531,9 @@ export async function saveReferenceRecord(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = referenceSchema.safeParse({
+  const parsed = await localeParse(referenceSchema(tv), {
     table: read(form, 'table'),
     recordId: read(form, 'recordId'),
     code: read(form, 'code') ?? '',
@@ -594,7 +599,7 @@ export async function saveReferenceRecord(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That code is already used in this table.' }, echo(form))
+      return fail({ code: tv('codeInUseInTable') }, echo(form))
     }
     throw error
   }
@@ -654,15 +659,16 @@ export async function getUserGrants(principalId: string): Promise<{
 
 /* ---------------------------------------------------- notification wording */
 
-const templateSchema = z.object({
-  templateId: z.uuid().optional(),
-  eventKey: z.string().trim().min(3),
-  locale: z.enum(['en', 'ar']),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  subject: optional(200),
-  body: z.string().trim().min(5, 'A template needs something to say').max(8000),
-  isActive: z.coerce.boolean(),
-})
+const templateSchema = (tv: Translate) =>
+  z.object({
+    templateId: z.uuid().optional(),
+    eventKey: z.string().trim().min(3),
+    locale: z.enum(['en', 'ar']),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    subject: optional(200),
+    body: z.string().trim().min(5, tv('templateBody')).max(8000),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * Edit the wording a notification goes out in — FR-NT-03.
@@ -684,8 +690,9 @@ export async function saveNotificationTemplate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = templateSchema.safeParse({
+  const parsed = await localeParse(templateSchema(tv), {
     templateId: read(form, 'templateId'),
     eventKey: read(form, 'eventKey') ?? '',
     locale: read(form, 'locale') ?? 'en',
@@ -719,7 +726,7 @@ export async function saveNotificationTemplate(
   if (unknown.length > 0) {
     return fail(
       {
-        body: `This event does not supply ${unknown.map((f) => `{{${f}}}`).join(', ')}. It would send as blank.`,
+        body: tv('unknownMergeFields', { fields: unknown.map((f) => `{{${f}}}`).join(', ') }),
       },
       echo(form),
     )

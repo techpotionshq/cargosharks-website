@@ -38,6 +38,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { named } from '@/lib/named'
 import {
   pilotAudit,
   pilotAuditTableCounts,
@@ -181,6 +182,7 @@ export interface BranchRow {
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
+  readonly calendarNameAr: string | null
   readonly people: number
   readonly openJobs: number
 }
@@ -221,6 +223,7 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         isActive: branches.isActive,
         calendarId: branches.calendarId,
         calendarName: workingCalendars.nameEn,
+        calendarNameAr: workingCalendars.nameAr,
         people: sql<number>`(
           select count(*)::int from principal_branch_roles pbr
            where pbr.branch_id = "branches"."id"
@@ -311,17 +314,27 @@ export async function listChargeTypes(actor: Actor): Promise<
   )
 }
 
-export async function listReferenceSample(actor: Actor): Promise<{
-  incoterms: { code: string; nameEn: string }[]
-  containers: { code: string; nameEn: string; teu: string | null }[]
-  exceptions: { code: string; nameEn: string; slaHours: number | null }[]
-  documents: { code: string; nameEn: string; category: string }[]
-  calendars: { key: string; nameEn: string; timeZone: string }[]
-  currencies: { code: string; nameEn: string | null }[]
-  countries: { code: string; nameEn: string }[]
+/**
+ * The catalogues the reference screen lists, each row named in the reader's
+ * language (F27) — `name` is Arabic where the row has it and English where it
+ * is blank, so an Arabic screen stops listing "Ex Works" under Arabic headings.
+ */
+export async function listReferenceSample(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<{
+  incoterms: { code: string; name: string }[]
+  containers: { code: string; name: string; teu: string | null }[]
+  exceptions: { code: string; name: string; slaHours: number | null }[]
+  documents: { code: string; name: string; category: string }[]
+  calendars: { key: string; name: string; timeZone: string }[]
+  currencies: { code: string; name: string | null }[]
+  countries: { code: string; name: string }[]
   milestones: number
 }> {
-  if (usePilotFixtures()) return pilotReferenceSample()
+  if (usePilotFixtures()) return pilotReferenceSample(locale)
+
+  const countryName = named(locale, countries.nameEn, countries.nameAr)
 
   return withActor(actor, async (tx) => {
     const [
@@ -335,13 +348,13 @@ export async function listReferenceSample(actor: Actor): Promise<{
       milestoneRows,
     ] = [
       await tx
-        .select({ code: incoterms.code, nameEn: incoterms.nameEn })
+        .select({ code: incoterms.code, name: named(locale, incoterms.nameEn, incoterms.nameAr) })
         .from(incoterms)
         .orderBy(asc(incoterms.code)),
       await tx
         .select({
           code: containerTypes.code,
-          nameEn: containerTypes.nameEn,
+          name: named(locale, containerTypes.nameEn, containerTypes.nameAr),
           teu: containerTypes.teu,
         })
         .from(containerTypes)
@@ -349,7 +362,7 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           code: exceptionCodes.code,
-          nameEn: exceptionCodes.nameEn,
+          name: named(locale, exceptionCodes.nameEn, exceptionCodes.nameAr),
           slaHours: exceptionCodes.slaHours,
         })
         .from(exceptionCodes)
@@ -357,7 +370,7 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           code: documentTypes.code,
-          nameEn: documentTypes.nameEn,
+          name: named(locale, documentTypes.nameEn, documentTypes.nameAr),
           category: documentTypes.category,
         })
         .from(documentTypes)
@@ -365,19 +378,22 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           key: workingCalendars.key,
-          nameEn: workingCalendars.nameEn,
+          name: named(locale, workingCalendars.nameEn, workingCalendars.nameAr),
           timeZone: workingCalendars.timeZone,
         })
         .from(workingCalendars)
         .orderBy(asc(workingCalendars.key)),
       await tx
-        .select({ code: currencies.code, nameEn: currencies.nameEn })
+        .select({
+          code: currencies.code,
+          name: named(locale, currencies.nameEn, currencies.nameAr),
+        })
         .from(currencies)
         .orderBy(asc(currencies.code)),
       await tx
-        .select({ code: countries.code, nameEn: countries.nameEn })
+        .select({ code: countries.code, name: countryName })
         .from(countries)
-        .orderBy(asc(countries.nameEn)),
+        .orderBy(asc(countryName)),
       await tx.select({ count: sql<number>`count(*)::int` }).from(milestoneTemplates),
     ]
 
@@ -528,19 +544,28 @@ export async function auditTableCounts(
  * Its own query rather than part of `loadOptions`, because it is needed by
  * exactly one form and every page that called `loadOptions` would otherwise
  * pay for the join.
+ *
+ * Labelled in the reader's language, and sorted by the label shown — an Arabic
+ * list in English alphabetical order reads as unsorted.
  */
 export async function listCalendarOptions(
   actor: Actor,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ value: string; label: string }[]> {
-  if (usePilotFixtures()) return pilotCalendarOptions()
+  if (usePilotFixtures()) return pilotCalendarOptions(locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
-      .select({ id: workingCalendars.id, name: workingCalendars.nameEn })
+      .select({
+        id: workingCalendars.id,
+        nameEn: workingCalendars.nameEn,
+        nameAr: workingCalendars.nameAr,
+      })
       .from(workingCalendars)
       .where(eq(workingCalendars.isActive, true))
-      .orderBy(asc(workingCalendars.nameEn))
-    return rows.map((row) => ({ value: row.id, label: row.name }))
+    return rows
+      .map((row) => ({ value: row.id, label: (locale === 'ar' && row.nameAr) || row.nameEn }))
+      .sort((a, b) => a.label.localeCompare(b.label, locale))
   })
 }
 

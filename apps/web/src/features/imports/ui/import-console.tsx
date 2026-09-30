@@ -20,6 +20,7 @@
  */
 
 import { useActionState, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { issuesCsv } from '@qabandi/core/import'
 import { Button } from '@/ui/layout'
 import { Card, CardHeader } from '@/ui/card'
@@ -27,6 +28,7 @@ import { Submit } from '@/ui/form'
 import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { runImport, type ImportState } from '../actions'
+import { describeIssue } from '../issue-messages'
 
 interface FieldSummary {
   readonly key: string
@@ -67,6 +69,7 @@ export function ImportConsole({
   const [state, action] = useActionState<ImportState, FormData>(runImport, {})
   const [overrides, setOverrides] = useState<Record<string, number | null>>({})
   const [fileName, setFileName] = useState('')
+  const t = useTranslations('importsValidation')
 
   // The mapping the engine guessed, with anything the operator changed layered
   // on top. Reset whenever a different file is chosen.
@@ -81,8 +84,19 @@ export function ImportConsole({
   const ready = state.ok === true && !state.committed
   const issues = state.issues ?? []
 
+  // Worded once, here, for both the table and the download: the file the
+  // operator opens next to their sheet says exactly what the screen said.
+  const worded = useMemo(
+    () => issues.map((issue) => ({ ...issue, message: describeIssue(t, issue) })),
+    [issues, t],
+  )
+
   const downloadIssues = (): void => {
-    const blob = new Blob([issuesCsv(issues)], { type: 'text/csv;charset=utf-8' })
+    const csv = issuesCsv(worded, [labels.line!, labels.column!, labels.problem!])
+    // A byte-order mark first, because without one Excel reads a CSV in the
+    // machine's ANSI code page and every Arabic problem arrives as mojibake —
+    // in the one file an Arabic-speaking operator is meant to work from.
+    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
@@ -297,7 +311,7 @@ export function ImportConsole({
                   </TR>
                 </THead>
                 <TBody>
-                  {issues.slice(0, MAX_ROWS_SHOWN).map((issue, index) => (
+                  {worded.slice(0, MAX_ROWS_SHOWN).map((issue, index) => (
                     <TR key={`${issue.line}-${issue.field ?? index}`}>
                       <TD numeric className="ref text-ink">
                         {issue.line}

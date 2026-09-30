@@ -26,15 +26,18 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { getTranslations } from 'next-intl/server'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
+  AllocationError,
   SEED_CURRENCIES,
   allocate,
   dec,
   money,
   toDb,
   type AllocationBasis,
+  type AllocationRefusal,
   type AllocationTarget,
   type CurrencySpec,
 } from '@qabandi/core'
@@ -49,7 +52,16 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -72,34 +84,36 @@ const optionalText = (max = 200) =>
     .optional()
     .transform((v) => v || null)
 
-const localDateTime = z
-  .string()
-  .trim()
-  .optional()
-  .transform((value) => (value ? new Date(value) : null))
-  .refine((value) => value === null || !Number.isNaN(value.getTime()), {
-    message: 'Not a valid date and time',
-  })
+const localDateTime = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? new Date(value) : null))
+    .refine((value) => value === null || !Number.isNaN(value.getTime()), {
+      message: tv('notValidDateTime'),
+    })
 
 // --- the master ------------------------------------------------------------
 
-const consolidationSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
-  tradeDirection: z.enum(['import', 'export', 'cross_trade']),
-  masterBillNumber: optionalText(60),
-  bookingNumber: optionalText(60),
-  carrierPartnerId: optionalUuid,
-  coloadPartnerId: optionalUuid,
-  vesselName: optionalText(120),
-  voyageNumber: optionalText(60),
-  flightNumber: optionalText(60),
-  originId: optionalUuid,
-  destinationId: optionalUuid,
-  etd: localDateTime,
-  eta: localDateTime,
-  notes: optionalText(1000),
-})
+const consolidationSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
+    tradeDirection: z.enum(['import', 'export', 'cross_trade']),
+    masterBillNumber: optionalText(60),
+    bookingNumber: optionalText(60),
+    carrierPartnerId: optionalUuid,
+    coloadPartnerId: optionalUuid,
+    vesselName: optionalText(120),
+    voyageNumber: optionalText(60),
+    flightNumber: optionalText(60),
+    originId: optionalUuid,
+    destinationId: optionalUuid,
+    etd: localDateTime(tv),
+    eta: localDateTime(tv),
+    notes: optionalText(1000),
+  })
 
 export async function saveConsolidation(
   _previous: ActionState,
@@ -107,9 +121,10 @@ export async function saveConsolidation(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
-  const parsed = consolidationSchema.safeParse({
+  const parsed = await localeParse(consolidationSchema(tv), {
     branchId: read(form, 'branchId'),
     mode: read(form, 'mode'),
     tradeDirection: read(form, 'tradeDirection'),
@@ -192,13 +207,24 @@ export async function saveConsolidation(
   return succeed(reference)
 }
 
-export async function attachHouse(form: FormData): Promise<void> {
+/**
+ * Put a shipment under this master.
+ *
+ * Returns an `ActionState` because the shipment is the one thing on this form
+ * the operator chooses, and a refusal thrown from a plain form action lands on
+ * the error boundary — where production redacts it to "something went wrong".
+ * The master's id is a hidden field the page wrote, so its absence is a
+ * tampered form rather than a mistake, and it still throws.
+ */
+export async function attachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
+  if (!consolidationId) throw new Error('Nothing to attach')
   const jobId = read(form, 'jobId')
-  if (!consolidationId || !jobId) throw new Error('Nothing to attach')
+  if (!jobId) return fail({ jobId: tv('chooseShipment') })
 
   await withActor(session.actor, async (tx) => {
     /*
@@ -232,17 +258,26 @@ export async function attachHouse(form: FormData): Promise<void> {
 
   revalidatePath(`/consolidations/${consolidationId}`)
   revalidatePath(`/jobs/${jobId}`)
+  return succeed(jobId)
 }
 
-export async function detachHouse(form: FormData): Promise<void> {
+/**
+ * Take a house off the master.
+ *
+ * The refusal below is the operator's to act on — they clicked detach on a
+ * house whose costs were split — so it comes back as a sentence under the
+ * button. Both ids are hidden fields, and a missing one is still thrown.
+ */
+export async function detachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
   const jobId = read(form, 'jobId')
   if (!consolidationId || !jobId) throw new Error('Nothing to detach')
 
-  await withActor(session.actor, async (tx) => {
+  const refused = await withActor(session.actor, async (tx) => {
     /*
       A house carrying allocated costs cannot simply leave.
 
@@ -252,22 +287,48 @@ export async function detachHouse(form: FormData): Promise<void> {
       allocation first — that is a deliberate act, and it is the one that
       writes the reversing lines.
     */
-    const [allocated] = await tx
-      .select({ id: chargeLines.id })
+    /*
+      "Carrying" means a share still standing: more allocation lines than
+      reversals, counting only this master's costs. It used to be "any
+      allocation line at all" — but a reversal adds a line rather than removing
+      one, so a house stayed undetachable forever after its split was reversed,
+      and the refusal's own advice ("reverse that split first") could not work.
+      It also counted shares from a master the house had since left.
+    */
+    const counts = await tx
+      .select({ kind: chargeLines.sourceKind, count: sql<number>`count(*)::int` })
       .from(chargeLines)
-      .where(and(eq(chargeLines.jobId, jobId), eq(chargeLines.sourceKind, 'consol_allocation')))
-      .limit(1)
+      .where(
+        and(
+          eq(chargeLines.jobId, jobId),
+          inArray(chargeLines.sourceKind, ['consol_allocation', 'consol_allocation_reversal']),
+          inArray(
+            chargeLines.sourceId,
+            tx
+              .select({ id: consolChargeLines.id })
+              .from(consolChargeLines)
+              .where(eq(consolChargeLines.consolidationId, consolidationId)),
+          ),
+        ),
+      )
+      .groupBy(chargeLines.sourceKind)
+    const shares = counts.find((row) => row.kind === 'consol_allocation')?.count ?? 0
+    const reversals = counts.find((row) => row.kind === 'consol_allocation_reversal')?.count ?? 0
 
-    if (allocated) throw new Error('has_allocated_costs')
+    if (shares > reversals) return true
 
     await tx
       .update(jobs)
       .set({ consolidationId: null, updatedAt: new Date() })
       .where(and(eq(jobs.id, jobId), eq(jobs.consolidationId, consolidationId)))
+    return false
   })
+
+  if (refused) return failWith(tv('houseHasSplitCosts'))
 
   revalidatePath(`/consolidations/${consolidationId}`)
   revalidatePath(`/jobs/${jobId}`)
+  return succeed(jobId)
 }
 
 export async function closeConsolidation(form: FormData): Promise<void> {
@@ -289,34 +350,36 @@ export async function closeConsolidation(form: FormData): Promise<void> {
 
 // --- master charges --------------------------------------------------------
 
-const money6 = z
-  .string()
-  .trim()
-  .regex(/^-?\d+(\.\d{1,6})?$/, 'Amount must be a number')
-
-const chargeSchema = z.object({
-  consolidationId: z.uuid(),
-  direction: z.enum(['cost', 'revenue']),
-  chargeTypeId: z.uuid('Choose a charge type'),
-  description: optionalText(500),
-  amount: money6,
-  currency: z.string().trim().length(3),
-  fxRate: z
+const money6 = (tv: Translate) =>
+  z
     .string()
     .trim()
-    .regex(/^\d+(\.\d{1,8})?$/, 'Rate must be a number')
-    .optional()
-    .transform((v) => v || '1'),
-  allocationBasis: z.enum([
-    'chargeable_weight',
-    'volume',
-    'gross_weight',
-    'packages',
-    'equal',
-    'manual',
-  ]),
-  counterpartyPartnerId: optionalUuid,
-})
+    .regex(/^-?\d+(\.\d{1,6})?$/, tv('amountNumber'))
+
+const chargeSchema = (tv: Translate) =>
+  z.object({
+    consolidationId: z.uuid(),
+    direction: z.enum(['cost', 'revenue']),
+    chargeTypeId: z.uuid(tv('chooseChargeType')),
+    description: optionalText(500),
+    amount: money6(tv),
+    currency: z.string().trim().length(3),
+    fxRate: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,8})?$/, tv('rateNumber'))
+      .optional()
+      .transform((v) => v || '1'),
+    allocationBasis: z.enum([
+      'chargeable_weight',
+      'volume',
+      'gross_weight',
+      'packages',
+      'equal',
+      'manual',
+    ]),
+    counterpartyPartnerId: optionalUuid,
+  })
 
 export async function addConsolCharge(
   _previous: ActionState,
@@ -324,8 +387,9 @@ export async function addConsolCharge(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const tv = await getTranslations('consolidationValidation')
 
-  const parsed = chargeSchema.safeParse({
+  const parsed = await localeParse(chargeSchema(tv), {
     consolidationId: read(form, 'consolidationId'),
     direction: read(form, 'direction'),
     chargeTypeId: read(form, 'chargeTypeId'),
@@ -403,10 +467,11 @@ export async function allocateConsolCharge(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.allocate')
+  const tv = await getTranslations('consolidationValidation')
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
-  if (!chargeLineId || !consolidationId) return failWith('Nothing to allocate.')
+  if (!chargeLineId || !consolidationId) return failWith(tv('nothingToAllocate'))
 
   try {
     const posted = await withActor(session.actor, async (tx) => {
@@ -541,25 +606,66 @@ export async function allocateConsolCharge(
     revalidatePath(`/consolidations/${consolidationId}`)
     return succeed(String(posted))
   } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === 'already_allocated') {
-        return failWith('That cost has already been split. Reverse it first to split it again.')
-      }
-      /*
-        The engine's refusals are already sentences aimed at the operator —
-        "Every house has a zero volume, so there is nothing to split by.
-        Capture the cargo figures, or allocate equally." Passing them through
-        beats replacing them with "allocation failed".
-      */
-      if (
-        'code' in error &&
-        typeof error.code === 'string' &&
-        error.code.startsWith('allocation')
-      ) {
-        return failWith(error.message)
-      }
+    if (error instanceof Error && error.message === 'already_allocated') {
+      return failWith(tv('alreadySplit'))
+    }
+    if (error instanceof AllocationError) {
+      const message = allocationRefusal(tv, error.refusal)
+      if (message) return failWith(message)
     }
     throw error
+  }
+}
+
+/**
+ * The engine's refusal, in the operator's language.
+ *
+ * `core` says what went wrong as a code and values and keeps its English for
+ * the log; passing that English through put "Every house has a zero volume"
+ * on an Arabic screen. The zero-driver case is one key per basis rather than a
+ * basis word interpolated into one sentence, because in Arabic the noun
+ * decides the agreement of the words around it.
+ *
+ * `null` for the refusals this action cannot produce — it reads the houses
+ * itself, so a duplicate is impossible, and it builds the manual map from the
+ * same list, so a missing share is too. Those stay thrown: they would mean a
+ * bug here, and a sentence would hide it.
+ */
+function allocationRefusal(tv: Translate, refusal: AllocationRefusal): string | null {
+  switch (refusal.code) {
+    case 'allocation_no_targets':
+      return tv('allocationNoHouses')
+    case 'allocation_negative_driver':
+      return tv('allocationNegativeDriver')
+    case 'allocation_zero_driver':
+      switch (refusal.values.basis) {
+        case 'volume':
+          return tv('allocationZeroVolume')
+        case 'chargeable_weight':
+          return tv('allocationZeroChargeableWeight')
+        case 'gross_weight':
+          return tv('allocationZeroGrossWeight')
+        case 'packages':
+          return tv('allocationZeroPackages')
+        // Both read a driver of one per house, so neither can total zero.
+        case 'equal':
+        case 'manual':
+          return null
+        default: {
+          const unhandled: never = refusal.values.basis
+          return unhandled
+        }
+      }
+    case 'allocation_manual_mismatch':
+      return tv('allocationManualMismatch', refusal.values)
+    case 'allocation_duplicate_target':
+    case 'allocation_manual_missing':
+    case 'allocation_manual_incomplete':
+      return null
+    default: {
+      const unhandled: never = refusal
+      return unhandled
+    }
   }
 }
 
@@ -580,7 +686,16 @@ export async function reverseConsolAllocation(form: FormData): Promise<void> {
   if (!chargeLineId || !consolidationId) throw new Error('Nothing to reverse')
 
   await withActor(session.actor, async (tx) => {
-    const posted = await tx
+    // Not currently allocated: a second click, or a reversal already done.
+    // Reversing again would post a credit against nothing.
+    const [master] = await tx
+      .select({ allocatedAt: consolChargeLines.allocatedAt })
+      .from(consolChargeLines)
+      .where(eq(consolChargeLines.id, chargeLineId))
+      .limit(1)
+    if (!master?.allocatedAt) return
+
+    const allPosted = await tx
       .select({
         id: chargeLines.id,
         jobId: chargeLines.jobId,
@@ -603,6 +718,36 @@ export async function reverseConsolAllocation(form: FormData): Promise<void> {
           eq(chargeLines.sourceId, chargeLineId),
         ),
       )
+      .orderBy(asc(chargeLines.createdAt), asc(chargeLines.id))
+
+    /*
+      Only the shares no earlier reversal has already undone.
+
+      Allocate → reverse → allocate leaves two allocation lines per house under
+      this cost and one reversal. Reversing "every allocation line" — as this
+      did — negated the first share a second time, understating the house's
+      cost by exactly one share. Each reversal writes one line per share it
+      undoes, so per house the oldest `k` shares are spoken for, where `k` is
+      that house's reversal count; the rest are what is live now. No link
+      column needed: the pairing is by count, in posting order.
+    */
+    const reversedCounts = await tx
+      .select({ jobId: chargeLines.jobId, count: sql<number>`count(*)::int` })
+      .from(chargeLines)
+      .where(
+        and(
+          eq(chargeLines.sourceKind, 'consol_allocation_reversal'),
+          eq(chargeLines.sourceId, chargeLineId),
+        ),
+      )
+      .groupBy(chargeLines.jobId)
+    const alreadyReversed = new Map(reversedCounts.map((row) => [row.jobId, row.count]))
+    const seen = new Map<string, number>()
+    const posted = allPosted.filter((line) => {
+      const index = seen.get(line.jobId) ?? 0
+      seen.set(line.jobId, index + 1)
+      return index >= (alreadyReversed.get(line.jobId) ?? 0)
+    })
 
     for (const line of posted) {
       /*
@@ -674,6 +819,7 @@ export async function consolidateCluster(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const tv = await getTranslations('consolidationValidation')
 
   const branchId = read(form, 'branchId')
   const mode = read(form, 'mode')
@@ -682,7 +828,7 @@ export async function consolidateCluster(
   const jobIds = form.getAll('jobId').filter((v): v is string => typeof v === 'string' && v !== '')
 
   if (!branchId || !mode || !originId || !destinationId || jobIds.length < 2) {
-    return failWith('That suggestion is incomplete — nothing was created.')
+    return failWith(tv('clusterIncomplete'))
   }
   assertInBranch(session, branchId)
 
@@ -772,7 +918,7 @@ export async function consolidateCluster(
   })
 
   if ('error' in outcome) {
-    return failWith('Those shipments have been consolidated or closed since this was suggested.')
+    return failWith(tv('clusterGone'))
   }
 
   revalidatePath('/consolidations')

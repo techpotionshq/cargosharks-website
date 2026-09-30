@@ -80,7 +80,9 @@ export function CardHeader({
           ) : null}
         </div>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </header>
   )
 }

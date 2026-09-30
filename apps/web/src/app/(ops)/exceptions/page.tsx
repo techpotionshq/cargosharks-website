@@ -104,7 +104,9 @@ export default async function ExceptionsPage({
                     </span>
                   ) : null}
                 </TD>
-                <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
+                <TD className="text-ink-muted">
+                  {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+                </TD>
                 <TD>
                   <Badge tone={severityTone(row.severity)} dot>
                     {t(`severities.${row.severity}`)}

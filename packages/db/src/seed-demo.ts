@@ -44,7 +44,7 @@
  * removable with `--reset`, which deletes only rows this file created.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
@@ -70,6 +70,7 @@ import {
   freeTimeClocks,
   invoiceLines,
   invoices,
+  jobCargo,
   jobMilestones,
   jobPartners,
   jobs,
@@ -104,6 +105,35 @@ const at = (hours: number) => new Date(NOW.getTime() + hours * HOUR)
 const days = (count: number) => new Date(NOW.getTime() + count * DAY)
 /** A `date` column wants `YYYY-MM-DD`, never a Date in the server's zone. */
 const isoDay = (date: Date) => date.toISOString().slice(0, 10)
+
+/**
+ * The currency a branch invoices in — its base currency, as the seeded
+ * branches below declare it. DXB invoices used to be written in KWD (F46): a
+ * Dubai entity billing a Dubai customer in Kuwaiti dinars, to three decimals.
+ */
+const branchCurrency = (branch: string): 'KWD' | 'AED' => (branch === 'DXB' ? 'AED' : 'KWD')
+/** Minor units per major unit: KWD carries three decimals, AED two. */
+const minorUnits = (currency: string): number => (currency === 'KWD' ? 1000 : 100)
+
+/**
+ * The next number in a branch's invoice series — the application's own
+ * allocator (`app.allocate_series_number`, migration 0016), so a seeded
+ * invoice reads `{series}-{year}-{nnnnn}` like an issued one (F40) and the
+ * branch's counter moves past it. The seed's system actor holds every
+ * permission, which the `branches` write policy asks for.
+ */
+async function nextInvoiceNumber(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  branchId: string,
+): Promise<string> {
+  const allocated = await tx.execute(
+    sql`select app.allocate_series_number(${branchId}::uuid, 'invoice') as next`,
+  )
+  const next = (allocated.rows[0] as { next: string | null } | undefined)?.next
+  if (!next) throw new Error(`no invoice series on branch ${branchId}`)
+  return next
+}
 
 // --- the world -------------------------------------------------------------
 
@@ -146,22 +176,28 @@ const GOODS = [
   ['FURN', 'Furniture', 'أثاث', '9403', false, false],
 ] as const
 
+/*
+  The Arabic legal name is null for the four ocean carriers on purpose: the
+  trade writes Maersk, MSC, CMA CGM and Hapag-Lloyd in Latin letters in Arabic
+  documents too, and a transliteration nobody uses reads as a mistake. Everyone
+  else has the name an Arabic-speaking operator would write on a document.
+*/
 const PARTNERS = [
-  ['MAERSK', 'carrier', 'Maersk Line', 'DK', 'USD', 30],
-  ['MSC', 'carrier', 'Mediterranean Shipping Company', 'CH', 'USD', 30],
-  ['CMACGM', 'carrier', 'CMA CGM', 'FR', 'USD', 30],
-  ['HAPAG', 'carrier', 'Hapag-Lloyd', 'DE', 'USD', 30],
-  ['EK', 'carrier', 'Emirates SkyCargo', 'AE', 'AED', 21],
-  ['KAC', 'carrier', 'Kuwait Airways Cargo', 'KW', 'KWD', 21],
-  ['SHACO', 'agent', 'Shanghai Ocean Logistics', 'CN', 'USD', 45],
-  ['RTMAG', 'agent', 'Rotterdam Forwarding BV', 'NL', 'EUR', 45],
-  ['INDAG', 'agent', 'Mumbai Freight Services', 'IN', 'USD', 45],
-  ['ALSHA', 'broker', 'Al-Shamali Customs Clearance', 'KW', 'KWD', 15],
-  ['GULFB', 'broker', 'Gulf Bridge Clearing', 'AE', 'AED', 15],
-  ['AHMTRN', 'haulier', 'Ahmadi Transport Company', 'KW', 'KWD', 30],
-  ['DESERT', 'haulier', 'Desert Line Trucking', 'AE', 'AED', 30],
-  ['KPA', 'terminal', 'Kuwait Ports Authority', 'KW', 'KWD', 0],
-  ['DPW', 'terminal', 'DP World Jebel Ali', 'AE', 'AED', 0],
+  ['MAERSK', 'carrier', 'Maersk Line', null, 'DK', 'USD', 30],
+  ['MSC', 'carrier', 'Mediterranean Shipping Company', null, 'CH', 'USD', 30],
+  ['CMACGM', 'carrier', 'CMA CGM', null, 'FR', 'USD', 30],
+  ['HAPAG', 'carrier', 'Hapag-Lloyd', null, 'DE', 'USD', 30],
+  ['EK', 'carrier', 'Emirates SkyCargo', 'الإمارات للشحن الجوي', 'AE', 'AED', 21],
+  ['KAC', 'carrier', 'Kuwait Airways Cargo', 'الخطوط الجوية الكويتية للشحن', 'KW', 'KWD', 21],
+  ['SHACO', 'agent', 'Shanghai Ocean Logistics', 'شنغهاي أوشن للخدمات اللوجستية', 'CN', 'USD', 45],
+  ['RTMAG', 'agent', 'Rotterdam Forwarding BV', 'روتردام للشحن', 'NL', 'EUR', 45],
+  ['INDAG', 'agent', 'Mumbai Freight Services', 'مومباي لخدمات الشحن', 'IN', 'USD', 45],
+  ['ALSHA', 'broker', 'Al-Shamali Customs Clearance', 'الشمالي للتخليص الجمركي', 'KW', 'KWD', 15],
+  ['GULFB', 'broker', 'Gulf Bridge Clearing', 'جسر الخليج للتخليص الجمركي', 'AE', 'AED', 15],
+  ['AHMTRN', 'haulier', 'Ahmadi Transport Company', 'شركة الأحمدي للنقل', 'KW', 'KWD', 30],
+  ['DESERT', 'haulier', 'Desert Line Trucking', 'خط الصحراء للنقل بالشاحنات', 'AE', 'AED', 30],
+  ['KPA', 'terminal', 'Kuwait Ports Authority', 'مؤسسة الموانئ الكويتية', 'KW', 'KWD', 0],
+  ['DPW', 'terminal', 'DP World Jebel Ali', 'موانئ دبي العالمية - جبل علي', 'AE', 'AED', 0],
 ] as const
 
 const CUSTOMERS = [
@@ -537,6 +573,7 @@ const ENQUIRIES = [
     channel: 'email',
     weight: '16000.000',
     pieces: 380,
+    containerCount: 2,
     notes: 'Two 40ft containers of consumer electronics, monthly repeat if the rate works.',
   },
   {
@@ -569,6 +606,8 @@ const ENQUIRIES = [
     channel: 'email',
     weight: '21000.000',
     pieces: 900,
+    // One reefer: 21 t of chilled cargo is a single 40ft reefer, not two.
+    containerCount: 1,
   },
   {
     branch: 'KWI',
@@ -601,6 +640,7 @@ const ENQUIRIES = [
     slaHours: 2,
     channel: 'email',
     weight: '12000.000',
+    containerCount: 1,
     notes: 'New enquiry from a company we have not shipped for before.',
   },
   {
@@ -616,6 +656,8 @@ const ENQUIRIES = [
     slaHours: -896,
     respondedHours: -898,
     channel: 'email',
+    // The enquiry KWI-JOB-0005 was won from: three containers, as it sailed.
+    containerCount: 3,
   },
   {
     branch: 'KWI',
@@ -646,6 +688,7 @@ const ENQUIRIES = [
     channel: 'email',
     weight: '19000.000',
     pieces: 500,
+    containerCount: 2,
   },
   {
     branch: 'DXB',
@@ -689,6 +732,7 @@ const ENQUIRIES = [
     slaHours: -24,
     channel: 'email',
     weight: '15500.000',
+    containerCount: 1,
     notes: 'Awaiting a rate from our Singapore agent before we can quote.',
   },
   {
@@ -838,6 +882,16 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     .from(workingCalendars)
     .where(eq(workingCalendars.key, 'kuwait'))
     .limit(1)
+  /*
+    Dubai works to the UAE calendar — a Saturday–Sunday weekend and its own
+    public holidays. It used to be given Kuwait's (Friday–Saturday), so every
+    working-day deadline on a DXB enquiry or container counted the wrong days.
+  */
+  const [uaeCalendar] = await tx
+    .select({ id: workingCalendars.id })
+    .from(workingCalendars)
+    .where(eq(workingCalendars.key, 'uae'))
+    .limit(1)
 
   if (calendarRow) {
     await tx
@@ -860,7 +914,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           country: 'AE',
           baseCurrency: 'AED',
           invoiceSeries: 'DXB',
-          calendarId: calendarRow.id,
+          calendarId: uaeCalendar?.id ?? calendarRow.id,
           timeZone: 'Asia/Dubai',
         },
       ])
@@ -936,16 +990,25 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
   await tx
     .insert(partners)
     .values(
-      PARTNERS.map(([code, type, legalNameEn, country, currency, terms]) => ({
+      PARTNERS.map(([code, type, legalNameEn, legalNameAr, country, currency, terms]) => ({
         code,
         type,
         legalNameEn,
+        legalNameAr,
         countryCode: country,
         currency,
         paymentTermsDays: terms,
       })),
     )
-    .onConflictDoNothing()
+    /*
+      Fills the Arabic name on a database seeded before it was added, and on
+      nothing else: `coalesce` keeps whatever is already there, so a name an
+      administrator has since written is never overwritten by a re-run.
+    */
+    .onConflictDoUpdate({
+      target: partners.code,
+      set: { legalNameAr: sql`coalesce(${partners.legalNameAr}, excluded.legal_name_ar)` },
+    })
 
   const partnerRows = await tx.select({ id: partners.id, code: partners.code }).from(partners)
   const partner = new Map<string, string>(
@@ -991,7 +1054,28 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
   const chargeRows = await tx
     .select({ id: chargeTypes.id, key: chargeTypes.key, currency: chargeTypes.defaultCurrency })
     .from(chargeTypes)
-  const anyCharge = chargeRows.slice(0, 6)
+  /*
+    A sea-FCL tariff, by charge key.
+
+    This used to take the first six charge types in whatever order the table
+    returned them and cycle the bases per_container / flat / per_kg across
+    them — so the Shanghai card priced "Air Freight" on a sea lane and "Road
+    Freight" at 340 USD per kilogram, and a two-container quote came to
+    millions. A demo priced like that teaches the evaluator the engine is
+    broken. Rates are buy-side USD per 40HC; the sell card sits 28% above.
+  */
+  const TARIFF = [
+    { key: 'ocean_freight', basis: 'per_container', rate: 1450 },
+    { key: 'thc_origin', basis: 'per_container', rate: 140 },
+    { key: 'thc_destination', basis: 'per_container', rate: 185 },
+    { key: 'haulage', basis: 'per_container', rate: 220 },
+    { key: 'documentation', basis: 'flat', rate: 75 },
+    { key: 'delivery_order', basis: 'flat', rate: 60 },
+  ] as const
+  const anyCharge = TARIFF.flatMap((line) => {
+    const row = chargeRows.find((r: { key: string }) => r.key === line.key)
+    return row ? [{ ...row, basis: line.basis, rate: line.rate }] : []
+  })
 
   const [existingCard] = await tx.select({ id: rateCards.id }).from(rateCards).limit(1)
   if (!existingCard && anyCharge.length) {
@@ -1029,13 +1113,13 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         // makes the margin column on the quote register interesting.
         const uplift = direction === 'sell' ? 1.28 : 1
         await tx.insert(rateCardLines).values(
-          anyCharge.map((row: { id: string }, index: number) => ({
+          anyCharge.map((row, index) => ({
             rateCardId: card!.id,
             chargeTypeId: row.id,
-            basis: (['per_container', 'flat', 'per_kg'] as const)[index % 3],
-            rate: String(Math.round([850, 120, 340, 95, 210, 75][index]! * uplift)),
+            basis: row.basis,
+            rate: String(Math.round(row.rate * uplift)),
             currency: 'USD',
-            containerType: index % 3 === 0 ? '40HC' : null,
+            containerType: row.basis === 'per_container' ? '40HC' : null,
             sortOrder: index,
           })),
         )
@@ -1059,6 +1143,17 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       .where(eq(enquiries.reference, reference))
       .limit(1)
     if (existing) {
+      /*
+        An enquiry seeded before `container_count` existed (F39) has none, and
+        a FCL enquiry without one now refuses to price. Filled only where still
+        null, so a count somebody has since typed is left alone.
+      */
+      if ('containerCount' in spec) {
+        await tx
+          .update(enquiries)
+          .set({ containerCount: spec.containerCount })
+          .where(and(eq(enquiries.id, existing.id), isNull(enquiries.containerCount)))
+      }
       enquiryIds.push({ id: existing.id, customerCode: spec.customer, branch: spec.branch })
       continue
     }
@@ -1085,6 +1180,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         grossWeightKg: 'weight' in spec ? spec.weight : null,
         volumeCbm: 'volume' in spec ? spec.volume : null,
         pieces: 'pieces' in spec ? spec.pieces : null,
+        containerCount: 'containerCount' in spec ? spec.containerCount : null,
         notes: 'notes' in spec ? spec.notes : null,
         slaStartedAt: createdAt,
         slaDueAt: at(spec.slaHours),
@@ -1102,12 +1198,23 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     // margin is baked into `priced_snapshot` at this moment and never
     // recomputed — that immutability is the rule the register depends on.
     if (['quoted', 'won', 'lost'].includes(spec.status)) {
+      /*
+        Numbered the way the application numbers a quotation —
+        `QUO-{year}-{nextval}` from `quote_reference_seq` (`pricing.ts`) —
+        rather than in a branch-prefixed shape of this file's own (F40). Drawn
+        from the sequence rather than written by hand, so the counter is past it
+        by construction and the first quote priced after seeding cannot collide.
+        Safe to re-run: a quotation is only written under an enquiry inserted on
+        this pass, so its number is never what existence is checked by.
+      */
+      const quoteSeq = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
+      const quoteNumber = (quoteSeq.rows[0] as { seq: string }).seq.padStart(5, '0')
       const cost = 2400 + enquirySeq * 180
       const sell = Math.round(cost * (1.14 + (enquirySeq % 5) * 0.045))
       const [quote] = await tx
         .insert(quotes)
         .values({
-          reference: `${spec.branch}-QUO-${year}-${String(enquirySeq).padStart(5, '0')}`,
+          reference: `QUO-${year}-${quoteNumber}`,
           enquiryId: row!.id,
           branchId: branchBy.get(spec.branch)!,
           version: 1,
@@ -1146,6 +1253,26 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         )
       }
     }
+  }
+
+  /*
+    Move the enquiry counter past the references written above.
+
+    The application numbers an enquiry `{branch}-ENQ-{year}-{nextval}` from
+    `enquiry_reference_seq` — the same shape this file writes by hand — and the
+    sequence knew nothing of these. So the first enquiry anybody created after
+    seeding drew 1 or 2 and collided with a demo one on the unique reference.
+    Drawn with `nextval` rather than `setval` because this runs as `app_user`,
+    which holds USAGE on the sequence and not UPDATE — the same power the
+    application has, which is the point of seeding through it. A re-run draws
+    one number and leaves a gap; references are identifiers, not a count.
+  */
+  const drawn = await tx.execute(sql`select nextval('enquiry_reference_seq')::int as n`)
+  const counter = (drawn.rows[0] as { n: number }).n
+  if (counter < enquirySeq) {
+    await tx.execute(
+      sql`select nextval('enquiry_reference_seq') from generate_series(1, ${enquirySeq - counter})`,
+    )
   }
 
   // --- shipments ----------------------------------------------------------
@@ -1337,16 +1464,22 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       const total = Number(spec.invoice.total)
       const paid = Number(spec.invoice.paid)
       const subtotal = Math.round(total / 1.05)
+      const currency = branchCurrency(spec.branch)
+      /*
+        Numbered by the branch's own series rather than a `{branch}-INV-…`
+        shape of this file's own (F40). Idempotent all the same: an invoice is
+        only written under a shipment inserted on this pass, and the shipment's
+        reference is what a re-run checks.
+      */
+      const seriesNo = await nextInvoiceNumber(tx, branchId)
       const [invoice] = await tx
         .insert(invoices)
         .values({
           branchId,
           customerId: customer.get(spec.customer)!,
-          seriesNo: `${spec.branch}-INV-${NOW.getUTCFullYear()}-${String(
-            SHIPMENTS.indexOf(spec) + 1,
-          ).padStart(5, '0')}`,
+          seriesNo,
           status: paid >= total ? 'paid' : paid > 0 ? 'part_paid' : 'issued',
-          currency: 'KWD',
+          currency,
           subtotal: String(subtotal),
           taxAmount: String(total - subtotal),
           total: String(total),
@@ -1371,7 +1504,9 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
               lines did not compose its own total. The header is right; the
               lines were the ones lying.
             */
-            const lineTax = Math.round(amount * 0.05 * 1000) / 1000
+            // Rounded to the currency's own minor unit — three places for
+            // KWD, two for AED.
+            const lineTax = Math.round(amount * 0.05 * minorUnits(currency)) / minorUnits(currency)
             return {
               invoiceId: invoice!.id,
               chargeTypeId: row.id,
@@ -1394,7 +1529,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
             branchId,
             customerId: customer.get(spec.customer)!,
             amount: String(paid),
-            currency: 'KWD',
+            currency,
             receivedOn: isoDay(days(spec.invoice.dueDays - 2)),
             method: 'bank_transfer',
             reference: `TT-${700_000 + SHIPMENTS.indexOf(spec)}`,
@@ -1519,6 +1654,74 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         })
       }
     }
+  }
+
+  /*
+    What is in each house, so the master cost can be divided (F44).
+
+    The master freight above is split by volume, and the allocation reads volume
+    from `job_cargo` — the lines a coordinator captures — not from the job's own
+    header figure. With no cargo lines both houses weighed nothing, and
+    "allocate by volume" had nothing to divide by. The figures are the houses'
+    own: 31 and 19 cbm, so the split comes out 62 / 38.
+
+    Outside the create-once block above, and keyed on (job, line 1) by the
+    table's own unique index, so a database seeded before this gets the lines
+    and one seeded after does not get them twice.
+  */
+  const HOUSE_CARGO = [
+    {
+      job: 'KWI-JOB-0004',
+      packages: 310,
+      type: 'CARTONS',
+      en: 'Ambient foodstuffs — rice and spices',
+      ar: 'مواد غذائية — أرز وتوابل',
+      hs: '1006',
+      gross: '9600.000',
+      net: '9150.000',
+      volume: '31.000',
+    },
+    {
+      job: 'KWI-JOB-0008',
+      packages: 180,
+      type: 'CRATES',
+      en: 'Pump spares and valve assemblies',
+      ar: 'قطع غيار مضخات ومجموعات صمامات',
+      hs: '8413',
+      gross: '6400.000',
+      net: '6050.000',
+      volume: '19.000',
+    },
+  ] as const
+
+  const houseRows = await tx
+    .select({ id: jobs.id, reference: jobs.reference })
+    .from(jobs)
+    .where(
+      inArray(
+        jobs.reference,
+        HOUSE_CARGO.map((line) => line.job),
+      ),
+    )
+  for (const line of HOUSE_CARGO) {
+    const house = houseRows.find((row: { reference: string }) => row.reference === line.job)
+    if (!house) continue
+    await tx
+      .insert(jobCargo)
+      .values({
+        jobId: house.id,
+        lineNo: 1,
+        marksAndNumbers: `${line.job}\nNHAVA SHEVA / SHUWAIKH\n1-${line.packages}`,
+        packageCount: line.packages,
+        packageType: line.type,
+        descriptionEn: line.en,
+        descriptionAr: line.ar,
+        hsCode: line.hs,
+        grossWeightKg: line.gross,
+        netWeightKg: line.net,
+        volumeCbm: line.volume,
+      })
+      .onConflictDoNothing()
   }
 
   // --- documents -----------------------------------------------------------
@@ -1909,7 +2112,9 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           .values({
             branchId,
             customerId: agentCustomer.id,
-            seriesNo: `KWI-INV-${NOW.getUTCFullYear()}-9000${index + 1}`,
+            // Guarded by the settlement's reference above, like the shipment
+            // invoices are by the shipment's.
+            seriesNo: await nextInvoiceNumber(tx, branchId),
             status: 'issued',
             currency: 'KWD',
             subtotal: String(amount),

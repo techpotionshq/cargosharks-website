@@ -20,6 +20,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -33,7 +34,15 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, isUniqueViolation, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  isUniqueViolation,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -59,28 +68,29 @@ const optional = (max = 200) =>
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
 
-const milestoneSchema = z.object({
-  templateId: z.uuid().optional(),
-  mode: z.enum(MODES),
-  direction: z.enum(DIRECTIONS),
-  seq: z.coerce.number().int().min(1, 'Where does it come in the sequence?').max(99),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9_]+$/, 'Lower case, digits and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  /** Required, like every other customer-facing name — NFR-01. */
-  nameAr: z.string().trim().min(2, 'Required — customers see this').max(120),
-  ownerRole: optional(40),
-  plannedOffsetDays: z
-    .union([z.coerce.number().int().min(-365).max(365), z.literal('')])
-    .optional()
-    .transform((v) => (v === '' || v === undefined ? null : v)),
-  customerVisible: z.coerce.boolean(),
-  isActive: z.coerce.boolean(),
-})
+const milestoneSchema = (tv: Translate) =>
+  z.object({
+    templateId: z.uuid().optional(),
+    mode: z.enum(MODES),
+    direction: z.enum(DIRECTIONS),
+    seq: z.coerce.number().int().min(1, tv('sequence')).max(99),
+    code: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9_]+$/, tv('lowerDigitsUnderscores')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    /** Required, like every other customer-facing name — NFR-01. */
+    nameAr: z.string().trim().min(2, tv('requiredCustomersSee')).max(120),
+    ownerRole: optional(40),
+    plannedOffsetDays: z
+      .union([z.coerce.number().int().min(-365).max(365), z.literal('')])
+      .optional()
+      .transform((v) => (v === '' || v === undefined ? null : v)),
+    customerVisible: z.coerce.boolean(),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A step in the plan a job of a given shape gets — FR-JB-02.
@@ -97,8 +107,9 @@ export async function saveMilestoneTemplate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = milestoneSchema.safeParse({
+  const parsed = await localeParse(milestoneSchema(tv), {
     templateId: read(form, 'templateId'),
     mode: read(form, 'mode') ?? 'sea_fcl',
     direction: read(form, 'direction') ?? 'import',
@@ -139,7 +150,7 @@ export async function saveMilestoneTemplate(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That step already exists for this mode and direction.' }, echo(form))
+      return fail({ code: tv('stepExists') }, echo(form))
     }
     throw error
   }
@@ -150,27 +161,28 @@ export async function saveMilestoneTemplate(
 
 /* ------------------------------------------------------- working calendars */
 
-const calendarSchema = z.object({
-  calendarId: z.uuid().optional(),
-  key: z
-    .string()
-    .trim()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9_]+$/, 'Lower case, digits and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  nameAr: z.string().trim().min(2, 'Required').max(120),
-  timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
-  /** Weekday numbers, 0 = Sunday. Kuwait is Friday and Saturday. */
-  weekend: z
-    .string()
-    .trim()
-    .regex(/^[0-6](,[0-6])*$/, 'Weekday numbers, 0 is Sunday — for example 5,6')
-    .transform((v) => [...new Set(v.split(',').map(Number))].sort()),
-  dayStartMinute: z.coerce.number().int().min(0).max(1439),
-  dayEndMinute: z.coerce.number().int().min(1).max(1440),
-  isActive: z.coerce.boolean(),
-})
+const calendarSchema = (tv: Translate) =>
+  z.object({
+    calendarId: z.uuid().optional(),
+    key: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9_]+$/, tv('lowerDigitsUnderscores')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    nameAr: z.string().trim().min(2, tv('required')).max(120),
+    timeZone: z.string().trim().min(3, tv('chooseTimeZone')).max(64),
+    /** Weekday numbers, 0 = Sunday. Kuwait is Friday and Saturday. */
+    weekend: z
+      .string()
+      .trim()
+      .regex(/^[0-6](,[0-6])*$/, tv('weekendDays'))
+      .transform((v) => [...new Set(v.split(',').map(Number))].sort()),
+    dayStartMinute: z.coerce.number().int().min(0).max(1439),
+    dayEndMinute: z.coerce.number().int().min(1).max(1440),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A branch's working week — NFR-03, and the input to every clock in the
@@ -187,8 +199,9 @@ export async function saveWorkingCalendar(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = calendarSchema.safeParse({
+  const parsed = await localeParse(calendarSchema(tv), {
     calendarId: read(form, 'calendarId'),
     key: read(form, 'key') ?? '',
     nameEn: read(form, 'nameEn') ?? '',
@@ -203,7 +216,7 @@ export async function saveWorkingCalendar(
 
   const data = parsed.data
   if (data.dayEndMinute <= data.dayStartMinute) {
-    return fail({ dayEndMinute: 'The working day has to end after it starts.' }, echo(form))
+    return fail({ dayEndMinute: tv('dayEnd') }, echo(form))
   }
   /*
     A calendar with no working days would make every SLA infinite.
@@ -213,7 +226,7 @@ export async function saveWorkingCalendar(
     enquiry queue quietly stops escalating anything.
   */
   if (data.weekend.length >= 7) {
-    return fail({ weekend: 'A week with no working days has no deadlines in it.' }, echo(form))
+    return fail({ weekend: tv('noWorkingDays') }, echo(form))
   }
 
   try {
@@ -239,7 +252,7 @@ export async function saveWorkingCalendar(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ key: 'That calendar key is already in use.' }, echo(form))
+      return fail({ key: tv('calendarKeyInUse') }, echo(form))
     }
     throw error
   }
@@ -249,12 +262,13 @@ export async function saveWorkingCalendar(
   return succeed(data.key)
 }
 
-const holidaySchema = z.object({
-  calendarId: z.uuid('Choose a calendar'),
-  onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  nameAr: optional(120),
-})
+const holidaySchema = (tv: Translate) =>
+  z.object({
+    calendarId: z.uuid(tv('chooseCalendar')),
+    onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    nameAr: optional(120),
+  })
 
 /**
  * A day the office is shut — read by every SLA and free-time calculation.
@@ -268,8 +282,9 @@ const holidaySchema = z.object({
 export async function saveHoliday(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = holidaySchema.safeParse({
+  const parsed = await localeParse(holidaySchema(tv), {
     calendarId: read(form, 'calendarId') ?? '',
     onDate: read(form, 'onDate') ?? '',
     nameEn: read(form, 'nameEn') ?? '',
@@ -282,7 +297,7 @@ export async function saveHoliday(_previous: ActionState, form: FormData): Promi
     await withActor(session.actor, (tx) => tx.insert(calendarHolidays).values(data))
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ onDate: 'That day is already a holiday on this calendar.' }, echo(form))
+      return fail({ onDate: tv('closureExists') }, echo(form))
     }
     throw error
   }
@@ -293,28 +308,29 @@ export async function saveHoliday(_previous: ActionState, form: FormData): Promi
 
 /* -------------------------------------------------------------- duty rates */
 
-const dutySchema = z.object({
-  rateId: z.uuid().optional(),
-  country: z
-    .string()
-    .trim()
-    .length(2, 'A two-letter country code')
-    .transform((v) => v.toUpperCase()),
-  hsPrefix: z.string().trim().min(2, 'At least two digits').max(10).regex(/^\d+$/, 'Digits only'),
-  ratePercent: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'A percentage, for example 5'),
-  descriptionEn: z.string().trim().min(2, 'Required').max(200),
-  descriptionAr: optional(200),
-  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-  effectiveTo: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-  notes: optional(500),
-  isActive: z.coerce.boolean(),
-})
+const dutySchema = (tv: Translate) =>
+  z.object({
+    rateId: z.uuid().optional(),
+    country: z
+      .string()
+      .trim()
+      .length(2, tv('twoLetterCountry'))
+      .transform((v) => v.toUpperCase()),
+    hsPrefix: z.string().trim().min(2, tv('minTwoDigits')).max(10).regex(/^\d+$/, tv('digitsOnly')),
+    ratePercent: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,6})?$/, tv('percentageExample')),
+    descriptionEn: z.string().trim().min(2, tv('required')).max(200),
+    descriptionAr: optional(200),
+    effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+    effectiveTo: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+    notes: optional(500),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A tariff line — FR-CS-05, and the number a customer is quoted for clearance.
@@ -329,8 +345,9 @@ const dutySchema = z.object({
 export async function saveDutyRate(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = dutySchema.safeParse({
+  const parsed = await localeParse(dutySchema(tv), {
     rateId: read(form, 'rateId'),
     country: read(form, 'country') ?? '',
     hsPrefix: read(form, 'hsPrefix') ?? '',
@@ -346,7 +363,7 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
 
   const data = parsed.data
   if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
-    return fail({ effectiveTo: 'The period ends before it starts.' }, echo(form))
+    return fail({ effectiveTo: tv('periodEndsBeforeStart') }, echo(form))
   }
 
   try {
@@ -363,7 +380,7 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ hsPrefix: 'That prefix already has a rate starting on that date.' }, echo(form))
+      return fail({ hsPrefix: tv('hsRateExists') }, echo(form))
     }
     throw error
   }
@@ -375,30 +392,31 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
 
 /* ----------------------------------------------- what the engines measure */
 
-const chargeableSchema = z.object({
-  ruleId: z.uuid().optional(),
-  mode: z.enum(MODES),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  divisorCm3PerKg: z
-    .union([
-      z
-        .string()
-        .trim()
-        .regex(/^\d+(\.\d{1,6})?$/, 'A divisor, for example 6000'),
-      z.literal(''),
-    ])
-    .optional()
-    .transform((v) => v || null),
-  roundUpToKg: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'An increment, for example 0.5'),
-  minimumKg: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'A floor, or 0'),
-  isActive: z.coerce.boolean(),
-})
+const chargeableSchema = (tv: Translate) =>
+  z.object({
+    ruleId: z.uuid().optional(),
+    mode: z.enum(MODES),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    divisorCm3PerKg: z
+      .union([
+        z
+          .string()
+          .trim()
+          .regex(/^\d+(\.\d{1,6})?$/, tv('divisorExample')),
+        z.literal(''),
+      ])
+      .optional()
+      .transform((v) => v || null),
+    roundUpToKg: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,6})?$/, tv('incrementExample')),
+    minimumKg: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,6})?$/, tv('floorOrZero')),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * The volumetric rule for a mode — the divisor a shipment is billed on.
@@ -419,8 +437,9 @@ export async function saveChargeableRule(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = chargeableSchema.safeParse({
+  const parsed = await localeParse(chargeableSchema(tv), {
     ruleId: read(form, 'ruleId'),
     mode: read(form, 'mode') ?? 'air',
     branchId: read(form, 'branchId') ?? '',
@@ -453,7 +472,7 @@ export async function saveChargeableRule(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ mode: 'That mode already has a rule for this branch.' }, echo(form))
+      return fail({ mode: tv('modeRuleExists') }, echo(form))
     }
     throw error
   }
@@ -462,25 +481,26 @@ export async function saveChargeableRule(
   return succeed(data.mode)
 }
 
-const freeTimeSchema = z.object({
-  ruleId: z.uuid().optional(),
-  kind: z.enum(['demurrage', 'detention', 'storage']),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  mode: z.union([z.enum(MODES), z.literal('')]).optional(),
-  containerType: optional(20),
-  freeDays: z.coerce.number().int().min(0).max(365),
-  perDiem: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'An amount per day'),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((v) => v.toUpperCase()),
-  dayBasis: z.enum(['calendar', 'working']),
-  isActive: z.coerce.boolean(),
-})
+const freeTimeSchema = (tv: Translate) =>
+  z.object({
+    ruleId: z.uuid().optional(),
+    kind: z.enum(['demurrage', 'detention', 'storage']),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    mode: z.union([z.enum(MODES), z.literal('')]).optional(),
+    containerType: optional(20),
+    freeDays: z.coerce.number().int().min(0).max(365),
+    perDiem: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,6})?$/, tv('amountPerDay')),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    dayBasis: z.enum(['calendar', 'working']),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * The free-time terms a branch grants — §7.2, FR-AD-03.
@@ -501,8 +521,9 @@ export async function saveFreeTimeRule(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = freeTimeSchema.safeParse({
+  const parsed = await localeParse(freeTimeSchema(tv), {
     ruleId: read(form, 'ruleId'),
     kind: read(form, 'kind') ?? 'demurrage',
     branchId: read(form, 'branchId') ?? '',

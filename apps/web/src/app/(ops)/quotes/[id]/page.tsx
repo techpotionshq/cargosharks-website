@@ -55,7 +55,9 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const session = await requireSession()
   const { id } = await params
-  const quote = await getQuoteDetail(session.actor, id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const quote = await getQuoteDetail(session.actor, id, locale)
   // Invisible under RLS means not-found, which is also the right answer to
   // give: no enumeration signal for another branch's quotation (FR-ID-04).
   if (!quote) notFound()
@@ -64,8 +66,6 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const tc = await getTranslations('common')
   const tq = await getTranslations('quotes')
   const tMode = await getTranslations('mode')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const sell = Number(quote.totalSell ?? 0)
   const cost = Number(quote.totalCost ?? 0)
@@ -304,7 +304,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         on it. The model drafts the prose; the pricing above owns every figure.
       */}
       {quote.status === 'draft' ? (
-        <Panel className="mb-4" icon="assistant" title={t('coverNote.title')} explain={t('coverNote.explain')}>
+        <Panel
+          className="mb-4"
+          icon="assistant"
+          title={t('coverNote.title')}
+          explain={t('coverNote.explain')}
+        >
           <CoverNoteEditor
             quoteId={quote.id}
             notes={{ en: quote.coverNoteEn, ar: quote.coverNoteAr }}

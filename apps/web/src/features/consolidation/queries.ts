@@ -30,6 +30,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { enumFilter } from '@/lib/filters'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotAllocationShares,
@@ -62,15 +63,17 @@ export interface ConsolidationSummary {
   readonly unallocatedCount: number
 }
 
+/** `locale` names the ports in the reader's language (F27). */
 export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ConsolidationSummary[]> {
   // Narrowed before the fixtures branch so both modes answer an unknown filter
   // the same way — see `lib/filters.ts`.
   const status = enumFilter(consolidationStatusEnum.enumValues, filters.status)
 
-  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status })
+  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status }, locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -84,8 +87,8 @@ export async function listConsolidations(
         vesselName: consolidations.vesselName,
         voyageNumber: consolidations.voyageNumber,
         flightNumber: consolidations.flightNumber,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         etd: consolidations.etd,
         eta: consolidations.eta,
         /*
@@ -165,12 +168,14 @@ export interface ConsolidationDetail extends ConsolidationSummary {
   readonly charges: readonly ConsolidationCharge[]
 }
 
+/** `locale` names ports, parties, customers and charges in the reader's language (F27). */
 export async function getConsolidation(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ConsolidationDetail | undefined> {
   if (usePilotFixtures()) {
-    const rows = pilotConsolidation(id)
+    const rows = pilotConsolidation(id, Date.now(), locale)
     return rows === undefined ? undefined : consolidationOf(rows.row, rows.houses, rows.charges)
   }
 
@@ -191,14 +196,14 @@ export async function getConsolidation(
         vesselName: consolidations.vesselName,
         voyageNumber: consolidations.voyageNumber,
         flightNumber: consolidations.flightNumber,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         etd: consolidations.etd,
         eta: consolidations.eta,
         closedAt: consolidations.closedAt,
         notes: consolidations.notes,
-        carrierName: carrier.legalNameEn,
-        coloadPartnerName: coload.legalNameEn,
+        carrierName: named(locale, carrier.legalNameEn, carrier.legalNameAr),
+        coloadPartnerName: named(locale, coload.legalNameEn, coload.legalNameAr),
       })
       .from(consolidations)
       .leftJoin(origin, eq(origin.id, consolidations.originId))
@@ -215,7 +220,7 @@ export async function getConsolidation(
         jobId: jobs.id,
         reference: jobs.reference,
         houseBillNumber: jobs.houseBillNumber,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         status: jobs.status,
         chargeableWeightKg: jobs.chargeableWeightKg,
         packages: sql<number>`(
@@ -240,7 +245,7 @@ export async function getConsolidation(
       .select({
         id: consolChargeLines.id,
         direction: consolChargeLines.direction,
-        chargeTypeName: chargeTypes.nameEn,
+        chargeTypeName: named(locale, chargeTypes.nameEn, chargeTypes.nameAr),
         description: consolChargeLines.description,
         amount: consolChargeLines.amount,
         currency: consolChargeLines.currency,
@@ -248,7 +253,7 @@ export async function getConsolidation(
         baseCurrency: consolChargeLines.baseCurrency,
         allocationBasis: consolChargeLines.allocationBasis,
         allocatedAt: consolChargeLines.allocatedAt,
-        counterpartyName: partners.legalNameEn,
+        counterpartyName: named(locale, partners.legalNameEn, partners.legalNameAr),
         shareCount: sql<number>`(
           select count(*)::int from consol_allocation_shares s
            where s.consol_charge_line_id = "consol_charge_lines"."id"
@@ -311,13 +316,15 @@ function consolidationOf(
  * allocated a share of a Kuwait master cost lands in the wrong entity's P&L
  * and the wrong entity's accounting export.
  */
+/** `locale` names the customer in each label (F27). */
 export async function listAttachableJobs(
   actor: Actor,
   consolidationId: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ readonly id: string; readonly label: string }[]> {
   // Awaited beside `getConsolidation` on the master file, so it needs the same
   // branch: fixing one read alone only moves the failure down the page.
-  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId)
+  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const [consol] = await tx
@@ -332,7 +339,7 @@ export async function listAttachableJobs(
       .select({
         id: jobs.id,
         reference: jobs.reference,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
       })
       .from(jobs)
       .innerJoin(customers, eq(customers.id, jobs.customerId))

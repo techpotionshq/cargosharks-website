@@ -36,12 +36,22 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { branches, jobCargo, jobParties, jobs, withActor } = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { saveJobParty, saveCargoLine, issueDocument } = await import('./form-actions')
+const { saveJobParty, saveCargoLine, issueDocument, surrenderHouseBill } =
+  await import('./form-actions')
 
 const systemActor = { ...bothBranchesActor, type: 'system' as const }
 
@@ -182,7 +192,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
         form({ jobId, role: 'consignee', nameEn: 'Second Consignee' }),
       )
 
-      expect(again.message).toContain('already has one of those')
+      expect(again.message).toBe('documentsValidation.partyRoleTaken')
     })
 
     /** Two notify parties is normal — the index covers the principals only. */
@@ -435,7 +445,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const jobId = await freshJob()
       fetchMock.mockResolvedValue(ok())
 
-      await issueDocument(form({ jobId, kind: 'packing_list', locale: 'en' }))
+      await issueDocument({}, form({ jobId, kind: 'packing_list', locale: 'en' }))
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
       const [url, init] = fetchMock.mock.calls[0]!
@@ -450,7 +460,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const jobId = await freshJob()
       fetchMock.mockResolvedValue(ok())
 
-      await issueDocument(form({ jobId, kind: 'delivery_order', locale: 'ar' }))
+      await issueDocument({}, form({ jobId, kind: 'delivery_order', locale: 'ar' }))
 
       const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)
       expect(body.locale).toBe('ar')
@@ -460,7 +470,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const jobId = await freshJob()
       fetchMock.mockResolvedValue(ok())
 
-      await issueDocument(form({ jobId, kind: 'delivery_order', locale: 'fr' }))
+      await issueDocument({}, form({ jobId, kind: 'delivery_order', locale: 'fr' }))
 
       const body = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body)
       expect(body.locale).toBe('en')
@@ -482,7 +492,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
         return ok()
       })
 
-      await issueDocument(form({ jobId, kind: 'house_bill' }))
+      await issueDocument({}, form({ jobId, kind: 'house_bill' }))
       expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
@@ -491,8 +501,8 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const first = await freshJob(AWAY_BRANCH)
       const second = await freshJob(AWAY_BRANCH)
 
-      await issueDocument(form({ jobId: first, kind: 'house_bill' }))
-      await issueDocument(form({ jobId: second, kind: 'house_bill' }))
+      await issueDocument({}, form({ jobId: first, kind: 'house_bill' }))
+      await issueDocument({}, form({ jobId: second, kind: 'house_bill' }))
 
       const numbers = await withActor(bothBranchesActor, (tx) =>
         tx.select({ id: jobs.id, number: jobs.houseBillNumber }).from(jobs),
@@ -507,7 +517,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const jobId = await freshJob(HOME_BRANCH)
       fetchMock.mockResolvedValue(ok())
 
-      await issueDocument(form({ jobId, kind: 'house_bill' }))
+      await issueDocument({}, form({ jobId, kind: 'house_bill' }))
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
         tx.select({ number: jobs.houseBillNumber }).from(jobs).where(eq(jobs.id, jobId)),
@@ -522,7 +532,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       )
       fetchMock.mockResolvedValue(ok())
 
-      await issueDocument(form({ jobId, kind: 'house_bill' }))
+      await issueDocument({}, form({ jobId, kind: 'house_bill' }))
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
         tx.select({ number: jobs.houseBillNumber }).from(jobs).where(eq(jobs.id, jobId)),
@@ -532,14 +542,14 @@ describe.skipIf(!enabled)('shipment documents', () => {
 
     it('refuses a document kind it does not produce', async () => {
       const jobId = await freshJob()
-      await expect(issueDocument(form({ jobId, kind: 'certificate_of_origin' }))).rejects.toThrow(
-        'Nothing to issue',
-      )
+      await expect(
+        issueDocument({}, form({ jobId, kind: 'certificate_of_origin' })),
+      ).rejects.toThrow('Nothing to issue')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('refuses when no shipment was named', async () => {
-      await expect(issueDocument(form({ kind: 'packing_list' }))).rejects.toThrow(
+      await expect(issueDocument({}, form({ kind: 'packing_list' }))).rejects.toThrow(
         'Nothing to issue',
       )
     })
@@ -553,27 +563,65 @@ describe.skipIf(!enabled)('shipment documents', () => {
     it('says which variable is missing rather than dialling localhost', async () => {
       vi.stubEnv('SERVICE_URL', '')
       try {
-        await expect(
-          issueDocument(form({ jobId: await freshJob(), kind: 'packing_list' })),
-        ).rejects.toThrow('SERVICE_URL')
+        const state = await issueDocument(
+          {},
+          form({ jobId: await freshJob(), kind: 'packing_list' }),
+        )
+        // Returned, not thrown: production redacts a thrown message.
+        expect(state.message).toBe('documentsValidation.issueNeedsService')
         expect(fetchMock).not.toHaveBeenCalled()
       } finally {
         vi.stubEnv('SERVICE_URL', 'http://service.test')
       }
     })
 
-    /** The service's own words, where it had any — they are the actionable ones. */
-    it('passes the service’s reason through to the operator', async () => {
+    /**
+     * The service's reason, worded from its code — it is the actionable one —
+     * and never its English `message`.
+     */
+    it('words the service’s reason in the reader’s language', async () => {
       const jobId = await freshJob()
       fetchMock.mockResolvedValue({
         ok: false,
-        status: 422,
-        json: async () => ({ message: 'Document type customs_pack — run pnpm db:seed' }),
+        status: 404,
+        json: async () => ({
+          error: 'document_type_missing',
+          message:
+            'No seeded document type customs_pack — run pnpm db:seed visible to this principal',
+          values: { kind: 'customs_pack' },
+        }),
       })
 
-      await expect(issueDocument(form({ jobId, kind: 'customs_pack' }))).rejects.toThrow(
-        'run pnpm db:seed',
-      )
+      const state = await issueDocument({}, form({ jobId, kind: 'customs_pack' }))
+      expect(state.message).toBe('documentsValidation.issueTypeNotSetUp:{"kind":"customs_pack"}')
+    })
+
+    it.each([
+      ['not_found', 'documentsValidation.issueShipmentNotFound'],
+      ['storage_failed', 'documentsValidation.issueNotStored'],
+      ['unknown_kind', 'documentsValidation.issueUnknownKind'],
+    ])('words the %s refusal', async (error, message) => {
+      const jobId = await freshJob()
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({ error, message: 'English, for the log' }),
+      })
+
+      const state = await issueDocument({}, form({ jobId, kind: 'packing_list' }))
+      expect(state.message).toBe(message)
+    })
+
+    it('falls back to the status for a code it does not know, not the English', async () => {
+      const jobId = await freshJob()
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'something_new', message: 'An English sentence' }),
+      })
+
+      const state = await issueDocument({}, form({ jobId, kind: 'packing_list' }))
+      expect(state.message).toBe('documentsValidation.issueRefused:{"status":500}')
     })
 
     it('falls back to the status where the service said nothing', async () => {
@@ -586,18 +634,66 @@ describe.skipIf(!enabled)('shipment documents', () => {
         },
       })
 
-      await expect(issueDocument(form({ jobId, kind: 'packing_list' }))).rejects.toThrow('503')
+      const state = await issueDocument({}, form({ jobId, kind: 'packing_list' }))
+      expect(state.message).toBe('documentsValidation.issueRefused:{"status":503}')
     })
 
     it('refuses a caller who may not issue documents', async () => {
       harness.session = sessionWith(['job.update'])
       try {
         await expect(
-          issueDocument(form({ jobId: await freshJob(), kind: 'packing_list' })),
+          issueDocument({}, form({ jobId: await freshJob(), kind: 'packing_list' })),
         ).rejects.toThrow('document.generate')
       } finally {
         harness.session = sessionWith(ALL)
       }
+    })
+  })
+
+  /**
+   * The panel offers the button only on a numbered sea bill, so these are the
+   * stale-screen cases — somebody changed the mode or the number since it was
+   * drawn. They come back as sentences, not as an error page.
+   */
+  describe('surrendering the bill', () => {
+    beforeAll(() => {
+      harness.session = sessionWith([...ALL, 'document.release'])
+    })
+
+    afterAll(() => {
+      harness.session = sessionWith(ALL)
+    })
+
+    it('asks for the bill to be issued before it is surrendered', async () => {
+      const state = await surrenderHouseBill({}, form({ jobId: await freshJob() }))
+      expect(state.message).toBe('documentsValidation.surrenderNotIssued')
+    })
+
+    it('refuses an air waybill, which has no originals to hand back', async () => {
+      const jobId = await freshJob()
+      await withActor(systemActor, (tx) =>
+        tx.update(jobs).set({ mode: 'air', houseBillNumber: 'AWB-118' }).where(eq(jobs.id, jobId)),
+      )
+
+      const state = await surrenderHouseBill({}, form({ jobId }))
+
+      expect(state.message).toBe('documentsValidation.surrenderAirWaybill')
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ at: jobs.houseBillSurrenderedAt }).from(jobs).where(eq(jobs.id, jobId)),
+      )
+      expect(row?.at).toBeNull()
+    })
+
+    it('records a numbered sea bill as surrendered', async () => {
+      const jobId = await freshJob()
+      await withActor(systemActor, (tx) =>
+        tx.update(jobs).set({ houseBillNumber: 'HBL-118' }).where(eq(jobs.id, jobId)),
+      )
+
+      const state = await surrenderHouseBill({}, form({ jobId }))
+
+      expect(state.message).toBeUndefined()
+      expect(state.ok).toBeDefined()
     })
   })
 })

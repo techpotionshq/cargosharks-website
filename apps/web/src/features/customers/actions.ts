@@ -17,11 +17,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { customerBranchTerms, customers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
 
 export interface CustomerFormState {
@@ -58,8 +60,9 @@ export async function createCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const tv = await getTranslations('customersValidation')
 
-  const parsed = customerFormSchema.safeParse(customerFormData(form))
+  const parsed = await localeParse(customerFormSchema(tv), customerFormData(form))
   if (!parsed.success) {
     return { errors: fieldErrors(parsed.error), values: echo(form) }
   }
@@ -103,7 +106,7 @@ export async function createCustomer(
     // trace, and it is the one collision an operator will actually hit.
     if (isUniqueViolation(error)) {
       return {
-        errors: { code: 'That customer code is already in use.' },
+        errors: { code: tv('codeInUse') },
         values: echo(form),
       }
     }
@@ -120,8 +123,9 @@ export async function updateCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const tv = await getTranslations('customersValidation')
 
-  const parsed = updateCustomerSchema.safeParse({
+  const parsed = await localeParse(updateCustomerSchema(tv), {
     ...customerFormData(form),
     customerId: form.get('customerId'),
   })
@@ -183,7 +187,7 @@ export async function updateCustomer(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return { errors: { code: 'That customer code is already in use.' }, values: echo(form) }
+      return { errors: { code: tv('codeInUse') }, values: echo(form) }
     }
     throw error
   }
@@ -217,7 +221,8 @@ export async function setCustomerActive(
     in this slice already is.
   */
   const customerId = String(form.get('customerId') ?? '')
-  if (!customerId) return { message: 'Nothing to update.' }
+  const tv = await getTranslations('customersValidation')
+  if (!customerId) return { message: tv('nothingToUpdate') }
 
   // Presence is the signal, matching the checkbox convention of every form in
   // the application: reactivating sends the field, deactivating omits it.

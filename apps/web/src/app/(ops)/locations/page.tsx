@@ -110,7 +110,7 @@ export default async function LocationsPage({
                 <RetireNetworkDialog
                   kind="location"
                   id={row.id}
-                  name={row.nameEn}
+                  name={locale === 'ar' && row.nameAr ? row.nameAr : row.nameEn}
                   isActive={row.isActive}
                 />
               </TD>

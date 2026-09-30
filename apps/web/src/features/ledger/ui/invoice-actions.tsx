@@ -8,7 +8,7 @@
  * an issued document's effect and crediting replaces it with another.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { invoiceMachine, nextStates, type InvoiceStatus } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
@@ -103,7 +103,7 @@ export async function InvoiceLineDialog({ invoiceId }: { readonly invoiceId: str
   if (!can(session, 'invoice.approve')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('invoiceDetail'),
     getTranslations('common'),
   ])

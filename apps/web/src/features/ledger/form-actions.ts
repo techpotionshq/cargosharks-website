@@ -20,6 +20,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -47,7 +48,16 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -61,39 +71,41 @@ function read(form: FormData, key: string): string | undefined {
  * a decimal is handed to PostgreSQL's `numeric`, which is the only thing in
  * this stack that can be trusted with it.
  */
-const money = (message = 'Amount must be a number') =>
+const money = (message: string) =>
   z
     .string()
     .trim()
     .regex(/^\d+(\.\d{1,6})?$/, message)
 
-const optionalMoney = z
-  .string()
-  .trim()
-  .regex(/^\d*(\.\d{1,6})?$/, 'Numbers only')
-  .optional()
-  .transform((v) => (v ? v : null))
+const optionalMoney = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .regex(/^\d*(\.\d{1,6})?$/, tv('numbersOnly'))
+    .optional()
+    .transform((v) => (v ? v : null))
 
 // --- quotations ------------------------------------------------------------
 
-const quoteSchema = z.object({
-  enquiryId: z.uuid('Choose an enquiry'),
-  branchId: z.uuid('Choose a branch'),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((v) => v.toUpperCase()),
-  totalSell: money('Enter the price you are quoting'),
-  totalCost: money('Enter what it costs us — the margin comes from this'),
-  validUntil: z.string().trim().min(1, 'A quotation needs an expiry date'),
-  notes: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional()
-    .transform((v) => v || null),
-})
+const quoteSchema = (tv: Translate) =>
+  z.object({
+    enquiryId: z.uuid(tv('chooseEnquiry')),
+    branchId: z.uuid(tv('chooseBranch')),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    totalSell: money(tv('enterQuotedPrice')),
+    totalCost: money(tv('enterQuotedCost')),
+    validUntil: z.string().trim().min(1, tv('quoteNeedsExpiry')),
+    notes: z
+      .string()
+      .trim()
+      .max(1000)
+      .optional()
+      .transform((v) => v || null),
+  })
 
 /**
  * Draft a quotation against an enquiry.
@@ -106,8 +118,9 @@ const quoteSchema = z.object({
 export async function createQuote(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const tv = await getTranslations('ledgerValidation')
 
-  const parsed = quoteSchema.safeParse({
+  const parsed = await localeParse(quoteSchema(tv), {
     enquiryId: read(form, 'enquiryId'),
     branchId: read(form, 'branchId'),
     currency: read(form, 'currency') ?? 'USD',
@@ -122,10 +135,7 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
   assertInBranch(session, data.branchId)
 
   if (Number(data.totalCost) > Number(data.totalSell)) {
-    return fail(
-      { totalSell: 'The price is below what it costs us. Check the figures before sending.' },
-      echo(form),
-    )
+    return fail({ totalSell: tv('priceBelowCost') }, echo(form))
   }
 
   const reference = await withActor(session.actor, async (tx) => {
@@ -195,13 +205,14 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
 export async function addQuoteLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
     quoteId: z.uuid(),
-    chargeTypeId: z.uuid('Choose a charge'),
+    chargeTypeId: z.uuid(tv('chooseCharge')),
     basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
-    quantity: money('Quantity must be a number'),
-    rate: money('Rate must be a number'),
+    quantity: money(tv('quantityNumber')),
+    rate: money(tv('rateNumber')),
     currency: z
       .string()
       .trim()
@@ -215,7 +226,7 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
       .transform((v) => v || null),
   })
 
-  const parsed = schema.safeParse({
+  const parsed = await localeParse(schema, {
     quoteId: read(form, 'quoteId'),
     chargeTypeId: read(form, 'chargeTypeId'),
     basis: read(form, 'basis') ?? 'flat',
@@ -228,14 +239,14 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
 
   const data = parsed.data
 
-  await withActor(session.actor, async (tx) => {
+  const refused = await withActor(session.actor, async (tx) => {
     const [quote] = await tx
       .select({ status: quotes.status })
       .from(quotes)
       .where(eq(quotes.id, data.quoteId))
       .limit(1)
     if (!quote) throw new Error('not_found')
-    if (quote.status !== 'draft') throw new Error('not_draft')
+    if (quote.status !== 'draft') return true
 
     // The amount is multiplied in PostgreSQL, on `numeric`, rather than in
     // JavaScript. `0.1 * 3` is not `0.3` in a float and a quotation is not the
@@ -250,10 +261,16 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
       amount: sql`${data.quantity}::numeric * ${data.rate}::numeric`,
       currency: data.currency,
     })
-  }).catch((error: Error) => {
-    if (error.message === 'not_draft') throw new Error('A sent quotation cannot be edited.')
-    throw error
+    return false
   })
+
+  /*
+    Returned, not thrown. The dialog is only offered on a draft, so this is a
+    quotation sent from another tab while this one sat open — an ordinary
+    race, and thrown it reached the error boundary, where production redacts
+    the one sentence that says why the line was not added.
+  */
+  if (refused) return failWith(tv('quoteSentNoEdit'), echo(form))
 
   revalidatePath(`/quotes/${data.quoteId}`)
   return succeed(data.chargeTypeId)
@@ -265,7 +282,8 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
 
   const quoteId = read(form, 'quoteId')
   const status = read(form, 'status')
-  if (!quoteId || !status) return fail({ _: 'Nothing to update.' })
+  const tv = await getTranslations('ledgerValidation')
+  if (!quoteId || !status) return fail({ _: tv('nothingToUpdate') })
 
   const permission =
     status === 'accepted' ? 'quote.accept' : status === 'rejected' ? 'quote.reject' : 'quote.send'
@@ -339,7 +357,7 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
     })
   } catch (error) {
     if (error instanceof Error && error.message.includes('transition')) {
-      return failWith('That quotation cannot move to that state from where it is.')
+      return failWith(tv('quoteBadTransition'))
     }
     throw error
   }
@@ -367,7 +385,8 @@ export async function draftQuoteCoverNote(
 
   const quoteId = read(form, 'quoteId')
   const locale = read(form, 'locale') === 'ar' ? 'ar' : 'en'
-  if (!quoteId) return fail({ _: 'Nothing to draft.' })
+  const tv = await getTranslations('ledgerValidation')
+  if (!quoteId) return fail({ _: tv('nothingToDraft') })
   assertCan(session, 'quote.send')
 
   const [quote] = await withActor(session.actor, (tx) =>
@@ -377,19 +396,12 @@ export async function draftQuoteCoverNote(
       .where(eq(quotes.id, quoteId))
       .limit(1),
   )
-  if (!quote) return failWith('No such quotation.')
-  if (quote.status !== 'draft') {
-    return failWith('A covering note can only be drafted on a draft quotation.')
-  }
+  if (!quote) return failWith(tv('noSuchQuote'))
+  if (quote.status !== 'draft') return failWith(tv('coverNoteDraftOnly'))
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
-  if (!serviceUrl || !secret) {
-    return failWith(
-      'Drafting a covering note needs the service. Set SERVICE_URL and ' +
-        'INTERNAL_API_SECRET; a note can still be written by hand.',
-    )
-  }
+  if (!serviceUrl || !secret) return failWith(tv('coverNoteNeedsService'))
   const base = serviceUrl.replace(/\/$/, '')
 
   try {
@@ -404,20 +416,53 @@ export async function draftQuoteCoverNote(
     })
 
     if (!response.ok) {
-      return failWith(
-        response.status === 503
-          ? 'No model is configured, so a covering note cannot be drafted yet. Add a key at Settings › Integrations.'
-          : 'The covering note could not be drafted. Write one by hand, or try again.',
-      )
+      return failWith(response.status === 503 ? tv('coverNoteNoModel') : tv('coverNoteFailed'))
     }
 
-    const body = (await response.json()) as { note?: string | null; refusal?: string | null }
-    if (!body.note) return failWith(body.refusal ?? 'Nothing was drafted.')
+    /*
+      `refusal` is the service's English, for its own log — never shown. The
+      code is worded here; one this file does not know (a newer service) gets
+      the generic sentence rather than English in an Arabic screen.
+    */
+    const body = (await response.json()) as { note?: string | null; refusalCode?: string | null }
+    if (!body.note) return failWith(coverNoteRefusal(tv, body.refusalCode) ?? tv('nothingDrafted'))
 
     revalidatePath(`/quotes/${quoteId}`)
     return succeed(body.note)
   } catch {
-    return failWith('Drafting the covering note timed out. Write one by hand, or try again.')
+    return failWith(tv('coverNoteTimedOut'))
+  }
+}
+
+/**
+ * Every code `quote-cover-note.ts` in the service refuses with. Mirrored rather
+ * than imported, because `apps/web` does not import the service.
+ */
+const COVER_NOTE_REFUSALS = ['not_found', 'not_draft'] as const
+
+type CoverNoteRefusal = (typeof COVER_NOTE_REFUSALS)[number]
+
+function isCoverNoteRefusal(code: unknown): code is CoverNoteRefusal {
+  return typeof code === 'string' && (COVER_NOTE_REFUSALS as readonly string[]).includes(code)
+}
+
+/**
+ * Why the service drafted nothing, in the reader's language — or null for the
+ * caller's fallback. The `never` default keeps the switch exhaustive.
+ */
+function coverNoteRefusal(tv: Translate<'ledgerValidation'>, code: unknown): string | null {
+  if (!isCoverNoteRefusal(code)) return null
+  switch (code) {
+    case 'not_found':
+      return tv('noSuchQuote')
+    case 'not_draft':
+      // Checked here before the call too; this is the race where it was sent
+      // between that check and the service's own read.
+      return tv('coverNoteDraftOnly')
+    default: {
+      const unhandled: never = code
+      return unhandled
+    }
   }
 }
 
@@ -441,13 +486,14 @@ export async function setQuoteCoverNote(
 ): Promise<ActionState> {
   const session = await requireSession()
 
-  const parsed = coverNoteSchema.safeParse({
+  const parsed = await localeParse(coverNoteSchema, {
     quoteId: read(form, 'quoteId'),
     locale: read(form, 'locale'),
     note: (form.get('note') as string | null) ?? '',
   })
   if (!parsed.success) return fail(fieldErrors(parsed.error))
   assertCan(session, 'quote.send')
+  const tv = await getTranslations('ledgerValidation')
 
   const { quoteId, locale, note } = parsed.data
   const value = note.trim() === '' ? null : note.trim()
@@ -463,7 +509,7 @@ export async function setQuoteCoverNote(
       .where(and(eq(quotes.id, quoteId), eq(quotes.status, 'draft')))
       .returning({ id: quotes.id }),
   )
-  if (!updated) return failWith('That covering note can only be edited on a draft quotation.')
+  if (!updated) return failWith(tv('coverNoteEditDraftOnly'))
 
   revalidatePath(`/quotes/${quoteId}`)
   return succeed('saved')
@@ -471,36 +517,38 @@ export async function setQuoteCoverNote(
 
 // --- invoices --------------------------------------------------------------
 
-const invoiceSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  customerId: z.uuid('Choose a customer'),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((v) => v.toUpperCase()),
-  subtotal: money('Enter the amount before tax'),
-  taxTreatment: z.enum(['out_of_scope', 'zero_rated', 'exempt', 'standard', 'reverse_charge']),
-  taxRatePercent: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,4})?$/, 'A percentage')
-    .default('0'),
-  dueOn: z.string().trim().min(1, 'An invoice needs a due date'),
-  language: z.enum(['en', 'ar']),
-  notes: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional()
-    .transform((v) => v || null),
-})
+const invoiceSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    customerId: z.uuid(tv('chooseCustomer')),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    subtotal: money(tv('enterSubtotal')),
+    taxTreatment: z.enum(['out_of_scope', 'zero_rated', 'exempt', 'standard', 'reverse_charge']),
+    taxRatePercent: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,4})?$/, tv('percentage'))
+      .default('0'),
+    dueOn: z.string().trim().min(1, tv('invoiceNeedsDueDate')),
+    language: z.enum(['en', 'ar']),
+    notes: z
+      .string()
+      .trim()
+      .max(1000)
+      .optional()
+      .transform((v) => v || null),
+  })
 
 export async function createInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const tv = await getTranslations('ledgerValidation')
 
-  const parsed = invoiceSchema.safeParse({
+  const parsed = await localeParse(invoiceSchema(tv), {
     branchId: read(form, 'branchId'),
     customerId: read(form, 'customerId'),
     currency: read(form, 'currency') ?? 'KWD',
@@ -547,6 +595,7 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
 export async function addInvoiceLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
     invoiceId: z.uuid(),
@@ -554,13 +603,13 @@ export async function addInvoiceLine(_previous: ActionState, form: FormData): Pr
       .uuid()
       .optional()
       .or(z.literal('').transform(() => undefined)),
-    descriptionEn: z.string().trim().min(1, 'Describe the charge').max(200),
-    quantity: money('Quantity must be a number'),
-    unitPrice: money('Unit price must be a number'),
+    descriptionEn: z.string().trim().min(1, tv('describeCharge')).max(200),
+    quantity: money(tv('quantityNumber')),
+    unitPrice: money(tv('unitPriceNumber')),
     isTaxable: z.coerce.boolean(),
   })
 
-  const parsed = schema.safeParse({
+  const parsed = await localeParse(schema, {
     invoiceId: read(form, 'invoiceId'),
     chargeTypeId: read(form, 'chargeTypeId'),
     descriptionEn: read(form, 'descriptionEn') ?? '',
@@ -619,7 +668,8 @@ export async function setInvoiceStatus(
 
   const invoiceId = read(form, 'invoiceId')
   const status = read(form, 'status')
-  if (!invoiceId || !status) return fail({ _: 'Nothing to update.' })
+  const tv = await getTranslations('ledgerValidation')
+  if (!invoiceId || !status) return fail({ _: tv('nothingToUpdate') })
 
   const permission =
     status === 'issued'
@@ -646,7 +696,7 @@ export async function setInvoiceStatus(
     is precisely backwards.
   */
   if (status === 'issued') {
-    const blocked = await creditBlockOnIssue(session, invoiceId)
+    const blocked = await creditBlockOnIssue(session, invoiceId, tv)
     if (blocked) return blocked
   }
 
@@ -745,7 +795,7 @@ export async function setInvoiceStatus(
     })
   } catch (error) {
     if (error instanceof Error && error.message.includes('transition')) {
-      return failWith('That invoice cannot move to that state from where it is.')
+      return failWith(tv('invoiceBadTransition'))
     }
     throw error
   }
@@ -771,6 +821,7 @@ export async function setInvoiceStatus(
 async function creditBlockOnIssue(
   session: Awaited<ReturnType<typeof requireSession>>,
   invoiceId: string,
+  tv: Translate,
 ): Promise<ActionState | null> {
   const [invoice] = await withActor(session.actor, (tx) =>
     tx
@@ -802,51 +853,50 @@ async function creditBlockOnIssue(
 
   const excess = `${toScale(assessment.excess)} ${standing.currency}`
   return failWith(
-    assessment.outcome === 'on_hold'
-      ? 'This customer is on credit hold. Release the hold on their account before issuing.'
-      : `Issuing this invoice puts the customer ${excess} past their credit limit. ` +
-          'A branch manager can record an override on the customer account.',
+    assessment.outcome === 'on_hold' ? tv('creditHold') : tv('creditLimitExceeded', { excess }),
   )
 }
 
 // --- receipts --------------------------------------------------------------
 
-const paymentSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  customerId: z.uuid('Choose a customer'),
-  amount: money('Enter the amount received'),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((v) => v.toUpperCase()),
-  receivedOn: z.string().trim().min(1, 'When was it received?'),
-  method: z.enum(['bank_transfer', 'cheque', 'cash', 'card', 'offset']),
-  reference: z
-    .string()
-    .trim()
-    .max(80)
-    .optional()
-    .transform((v) => v || null),
-  fxRate: optionalMoney,
-  notes: z
-    .string()
-    .trim()
-    .max(500)
-    .optional()
-    .transform((v) => v || null),
-  /** Optional: settle one invoice straight away, which is the common case. */
-  invoiceId: z
-    .uuid()
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
-})
+const paymentSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    customerId: z.uuid(tv('chooseCustomer')),
+    amount: money(tv('enterAmountReceived')),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    receivedOn: z.string().trim().min(1, tv('whenReceived')),
+    method: z.enum(['bank_transfer', 'cheque', 'cash', 'card', 'offset']),
+    reference: z
+      .string()
+      .trim()
+      .max(80)
+      .optional()
+      .transform((v) => v || null),
+    fxRate: optionalMoney(tv),
+    notes: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .transform((v) => v || null),
+    /** Optional: settle one invoice straight away, which is the common case. */
+    invoiceId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+  })
 
 export async function recordPayment(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const tv = await getTranslations('ledgerValidation')
 
-  const parsed = paymentSchema.safeParse({
+  const parsed = await localeParse(paymentSchema(tv), {
     branchId: read(form, 'branchId'),
     customerId: read(form, 'customerId'),
     amount: read(form, 'amount') ?? '',
@@ -898,23 +948,24 @@ export async function allocatePayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const tv = await getTranslations('ledgerValidation')
 
   const paymentId = read(form, 'paymentId')
   const invoiceId = read(form, 'invoiceId')
   const amount = read(form, 'amount')
-  if (!paymentId || !invoiceId) return fail({ invoiceId: 'Choose an invoice to settle.' })
+  if (!paymentId || !invoiceId) return fail({ invoiceId: tv('chooseInvoiceToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
-    return fail({ amount: 'Enter how much of this receipt settles that invoice.' }, echo(form))
+    return fail({ amount: tv('enterAllocation') }, echo(form))
   }
 
   try {
     await withActor(session.actor, (tx) => allocate(tx, paymentId, invoiceId, amount))
   } catch (error) {
     if (error instanceof Error && error.message === 'over_allocated') {
-      return fail({ amount: 'That is more than is left unallocated on this receipt.' }, echo(form))
+      return fail({ amount: tv('overAllocated') }, echo(form))
     }
     if (error instanceof Error && error.message === 'over_invoiced') {
-      return fail({ amount: 'That is more than is still outstanding on that invoice.' }, echo(form))
+      return fail({ amount: tv('overInvoiced') }, echo(form))
     }
     throw error
   }
@@ -1029,9 +1080,10 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
 export async function billJob(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const tv = await getTranslations('ledgerValidation')
 
   const jobId = read(form, 'jobId')
-  if (!jobId) return failWith('Nothing to do.')
+  if (!jobId) return failWith(tv('nothingToDo'))
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [job] = await tx
@@ -1148,19 +1200,15 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
 
   if ('error' in outcome) {
     if (outcome.error === 'mixed_currency') {
+      // The joining word is the catalogue's too: " and " reads as "USD and
+      // KWD" in English and as nothing sensible in the Arabic sentence.
       return failWith(
-        `This shipment has revenue in ${outcome.currencies.join(' and ')}, and an invoice ` +
-          'carries one currency. Bill them separately rather than converting — the sell-side ' +
-          'rate is one the customer agreed, not one we hold.',
+        tv('mixedCurrency', { currencies: outcome.currencies.join(tv('currencyJoiner')) }),
       )
     }
-    if (outcome.error === 'no_customer') {
-      return failWith('This shipment has no customer on it, so there is nobody to invoice.')
-    }
-    if (outcome.error === 'nothing_to_bill') {
-      return failWith('Nothing unbilled is left on this shipment.')
-    }
-    return failWith('That shipment is no longer there.')
+    if (outcome.error === 'no_customer') return failWith(tv('billNoCustomer'))
+    if (outcome.error === 'nothing_to_bill') return failWith(tv('nothingUnbilled'))
+    return failWith(tv('shipmentGone'))
   }
 
   revalidatePath('/finance')

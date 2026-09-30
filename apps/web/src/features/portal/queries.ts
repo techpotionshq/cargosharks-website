@@ -31,8 +31,18 @@ import { pilotPortalShipments } from '@/lib/pilot/fixtures'
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
 
-export async function listPortalShipments(actor: Actor): Promise<PortalShipment[]> {
-  if (usePilotFixtures()) return pilotPortalShipments()
+/*
+  Places and milestones are named in the reader's language. Every location and
+  milestone carries an Arabic name, but `nullif` still falls back to English —
+  an empty Arabic name is as unset as a null one.
+*/
+export async function listPortalShipments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<PortalShipment[]> {
+  if (usePilotFixtures()) return pilotPortalShipments(Date.now(), locale)
+
+  const ar = locale === 'ar'
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -43,8 +53,12 @@ export async function listPortalShipments(actor: Actor): Promise<PortalShipment[
         status: jobs.status,
         mode: jobs.mode,
         eta: jobs.eta,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: ar
+          ? sql<string | null>`coalesce(nullif(${origin.nameAr}, ''), ${origin.nameEn})`
+          : origin.nameEn,
+        destinationName: ar
+          ? sql<string | null>`coalesce(nullif(${destination.nameAr}, ''), ${destination.nameEn})`
+          : destination.nameEn,
         milestonesTotal: sql<number>`(
           select count(*)::int from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
@@ -66,7 +80,8 @@ export async function listPortalShipments(actor: Actor): Promise<PortalShipment[
              and ${documentTypes.isCustomerVisible} = true
         )`,
         nextMilestone: sql<string | null>`(
-          select ${jobMilestones.nameEn} from ${jobMilestones}
+          select ${ar ? sql`coalesce(nullif(${jobMilestones.nameAr}, ''), ${jobMilestones.nameEn})` : jobMilestones.nameEn}
+            from ${jobMilestones}
            where ${jobMilestones.jobId} = "jobs"."id"
              and ${jobMilestones.customerVisible} = true
              and ${jobMilestones.actualAt} is null

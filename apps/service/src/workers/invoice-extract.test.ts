@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest'
 import { readExtractedInvoice, reconcileInvoice, SEED_CURRENCIES } from '@qabandi/core'
 import type { ImportLookups } from '@qabandi/core/import'
-import { documentPart, refusalFor } from './invoice-extract'
+import { documentPart, refusalCodeFor, refusalFor } from './invoice-extract'
 
 const KWD = SEED_CURRENCIES.find((c) => c.code === 'KWD')!
 
@@ -101,6 +101,29 @@ describe('refusalFor', () => {
   it('says so plainly when there is nothing to correct', () => {
     const extracted = read({ confidence: 0.2 })
     expect(refusalFor(extracted, [])).toMatch(/not confident enough/)
+  })
+})
+
+/*
+  The code the screen translates. Same four cases, same order: if this and
+  `refusalFor` ever disagreed, the log would name one reason and the
+  coordinator would read another.
+*/
+describe('refusalCodeFor', () => {
+  it('names the arithmetic first', () => {
+    const extracted = read({ lines: [line({ amount: '990.000', chargeType: 'NOT-A-CODE' })] })
+    expect(refusalCodeFor(extracted, reconcileInvoice(extracted, KWD))).toBe('not_reconciled')
+  })
+
+  it('names a parse problem when the figures are fine', () => {
+    expect(refusalCodeFor(read({ invoiceNumber: '' }), [])).toBe('unreadable_fields')
+    expect(refusalCodeFor(read({ lines: [line({ chargeType: 'NOT-A-CODE' })] }), [])).toBe(
+      'unreadable_fields',
+    )
+  })
+
+  it('names low confidence when there is nothing to correct', () => {
+    expect(refusalCodeFor(read({ confidence: 0.2 }), [])).toBe('low_confidence')
   })
 })
 

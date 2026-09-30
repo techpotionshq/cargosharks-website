@@ -80,6 +80,13 @@ export const enquiries = pgTable(
     grossWeightKg: quantity('gross_weight_kg'),
     volumeCbm: quantity('volume_cbm'),
     pieces: integer('pieces'),
+    /**
+     * How many containers a sea FCL enquiry asks for. Separate from `pieces`
+     * (packages) because pricing a FCL lane multiplies every per-container
+     * rate by it — 200 cartons priced as 200 × 40HC was the bug (F39). Null
+     * means not stated, and FCL pricing refuses rather than guess.
+     */
+    containerCount: integer('container_count'),
     /** Per-piece dimensions, where the customer supplied them. */
     dimensions:
       jsonb('dimensions').$type<

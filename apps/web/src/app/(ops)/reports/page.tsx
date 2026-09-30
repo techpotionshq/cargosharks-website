@@ -86,6 +86,19 @@ export default async function ReportsPage({
 
   const rows = await marginByDimension(session.actor, dimension, period)
 
+  /*
+    A row's name in the reader's language. The mode cut's label is the enum
+    value and the unowned bucket's is the literal "Unassigned" — both from
+    SQL, so both read as English on an Arabic screen until named here.
+  */
+  const tMode = await getTranslations('mode')
+  const tc = await getTranslations('common')
+  const labelOf = (row: (typeof rows)[number]): string => {
+    if (dimension === 'mode' && tMode.has(row.key as 'air')) return tMode(row.key as 'air')
+    if (dimension === 'owner' && row.key === 'unassigned') return tc('unassigned')
+    return locale === 'ar' ? row.labelAr || row.labelEn : row.labelEn
+  }
+
   const currency = rows[0]?.currency ?? 'KWD'
   const totals = summariseMargin(
     rows.flatMap((row) => [
@@ -220,7 +233,7 @@ export default async function ReportsPage({
 
               return (
                 <TR key={row.key}>
-                  <TD>{locale === 'ar' ? (row.labelAr ?? row.labelEn) : row.labelEn}</TD>
+                  <TD>{labelOf(row)}</TD>
                   <TD className="text-end tabular-nums">{formatNumber(row.jobCount, locale)}</TD>
                   <TD className="text-end tabular-nums">
                     {formatMoney({ amount: Number(row.revenue), currency: row.currency }, locale)}

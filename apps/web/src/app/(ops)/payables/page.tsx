@@ -49,16 +49,19 @@ export default async function PayablesPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const filters = await searchParams
 
   const [rows, summary, ageing, payments, t, tc] = await Promise.all([
-    listSupplierInvoices(session.actor, {
-      status: filters.status,
-      partnerId: filters.partner,
-    }),
+    listSupplierInvoices(
+      session.actor,
+      { status: filters.status, partnerId: filters.partner },
+      locale,
+    ),
     payablesSummary(session.actor),
     payablesAgeing(session.actor),
-    listSupplierPayments(session.actor),
+    listSupplierPayments(session.actor, locale),
     getTranslations('payables'),
     getTranslations('common'),
   ])
@@ -83,9 +86,6 @@ export default async function PayablesPage({
       ),
     ),
   )
-
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string, currency: string) =>
     formatMoney({ amount: Number(amount), currency }, locale)

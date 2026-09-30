@@ -51,6 +51,7 @@ const FIELD_KEYS = [
   'grossWeightKg',
   'volumeCbm',
   'pieces',
+  'containerCount',
   'dimensions',
   'isDangerous',
 ] as const
@@ -68,7 +69,9 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
 
   return (
     <Card className="mb-4" padding="none">
+      {/* Inset to match the rows; see the same note in `rate-requests-panel.tsx`. */}
       <CardHeader
+        className="px-4 pt-4 pb-1"
         title={t('title')}
         description={decidable ? t('description', { count: rows.length }) : t('readOnly')}
         actions={

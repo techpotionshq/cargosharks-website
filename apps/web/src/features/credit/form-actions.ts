@@ -29,12 +29,21 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
 import { toDb } from '@qabandi/core'
 import { checkCredit, creditOverrides, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 import { todayIn } from '@/lib/time'
 
 function read(form: FormData, key: string): string | undefined {
@@ -42,32 +51,33 @@ function read(form: FormData, key: string): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
-const overrideSchema = z.object({
-  customerId: z.uuid('Choose a customer'),
-  branchId: z.uuid('Choose a branch'),
-  jobId: z.uuid().optional(),
-  invoiceId: z.uuid().optional(),
-  /*
-    Twenty characters, and the floor is deliberate.
+const overrideSchema = (tv: Translate) =>
+  z.object({
+    customerId: z.uuid(tv('chooseCustomer')),
+    branchId: z.uuid(tv('chooseBranch')),
+    jobId: z.uuid().optional(),
+    invoiceId: z.uuid().optional(),
+    /*
+      Twenty characters, and the floor is deliberate.
 
-    "ok", "approved" and "per MD" are all things that get typed into a required
-    field, and all three are useless to the person reviewing this in a year.
-    The column is `not null` and non-empty at the database; this is the layer
-    that asks for a sentence.
-  */
-  reason: z.string().trim().min(20, 'Say why, in a sentence somebody can review').max(500),
-  /**
-   * Blank is a one-shot tied to the job or invoice named above. A date makes
-   * it standing until then — which is the only thing that can release a
-   * *booking*, since a job has no id before it exists.
-   */
-  expiresOn: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
-    .optional()
-    .transform((v) => v || null),
-})
+      "ok", "approved" and "per MD" are all things that get typed into a required
+      field, and all three are useless to the person reviewing this in a year.
+      The column is `not null` and non-empty at the database; this is the layer
+      that asks for a sentence.
+    */
+    reason: z.string().trim().min(20, tv('reasonSentence')).max(500),
+    /**
+     * Blank is a one-shot tied to the job or invoice named above. A date makes
+     * it standing until then — which is the only thing that can release a
+     * *booking*, since a job has no id before it exists.
+     */
+    expiresOn: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat'))
+      .optional()
+      .transform((v) => v || null),
+  })
 
 export async function recordCreditOverride(
   _previous: ActionState,
@@ -75,8 +85,9 @@ export async function recordCreditOverride(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'credit.override')
+  const tv = await getTranslations('creditValidation')
 
-  const parsed = overrideSchema.safeParse({
+  const parsed = await localeParse(overrideSchema(tv), {
     customerId: read(form, 'customerId'),
     branchId: read(form, 'branchId'),
     jobId: read(form, 'jobId'),
@@ -90,7 +101,7 @@ export async function recordCreditOverride(
   assertInBranch(session, data.branchId)
 
   if (data.expiresOn && data.expiresOn < todayIn()) {
-    return fail({ expiresOn: 'That date has already passed' }, echo(form))
+    return fail({ expiresOn: tv('datePassed') }, echo(form))
   }
 
   /*
@@ -114,10 +125,7 @@ export async function recordCreditOverride(
     limit, it silently becomes an exemption from it that nobody chose.
   */
   if (!standing.limit) {
-    return fail(
-      { _: 'This customer has no credit limit at this branch, so there is nothing to override.' },
-      echo(form),
-    )
+    return fail({ _: tv('noCreditLimit') }, echo(form))
   }
 
   await withActor(session.actor, (tx) =>

@@ -24,12 +24,11 @@ import {
 } from '@/features/consolidation/queries'
 import { ConsolChargeDialog, ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import {
-  allocateConsolCharge,
-  attachHouse,
-  closeConsolidation,
-  detachHouse,
-  reverseConsolAllocation,
-} from '@/features/consolidation/form-actions'
+  AllocateButton,
+  AttachHouseForm,
+  DetachHouseButton,
+} from '@/features/consolidation/ui/house-actions'
+import { closeConsolidation, reverseConsolAllocation } from '@/features/consolidation/form-actions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -46,13 +45,15 @@ export default async function ConsolidationDetailPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const { id } = await params
 
-  const consol = await getConsolidation(session.actor, id)
+  const consol = await getConsolidation(session.actor, id, locale)
   if (!consol) notFound()
 
   const [attachable, shares, t, tc, tJob] = await Promise.all([
-    consol.status === 'open' ? listAttachableJobs(session.actor, id) : Promise.resolve([]),
+    consol.status === 'open' ? listAttachableJobs(session.actor, id, locale) : Promise.resolve([]),
     // Unconditional: a closed master is the one most likely to be opened *to*
     // settle an argument about who paid for what.
     listAllocationShares(session.actor, id),
@@ -73,8 +74,6 @@ export default async function ConsolidationDetailPage({
     else sharesByCharge.set(share.consolChargeLineId, [share])
   }
 
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   // As in the document panel: the link checker cannot see past the first
   // interpolation in an href, so the URL is built before it is used.
   const manifestUrl = `/api/consolidations/${id}/manifest`
@@ -167,25 +166,12 @@ export default async function ConsolidationDetailPage({
             />
 
             {mayWrite && consol.status === 'open' && attachable.length > 0 ? (
-              <form action={attachHouse} className="flex items-center gap-2">
-                <input type="hidden" name="consolidationId" value={id} />
-                <select
-                  name="jobId"
-                  required
-                  aria-label={t('attach')}
-                  className="h-8 max-w-56 rounded-sm border border-line bg-surface px-2 text-[0.8125rem] text-ink"
-                >
-                  <option value="">{tc('choose')}</option>
-                  {attachable.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.label}
-                    </option>
-                  ))}
-                </select>
-                <Button type="submit" size="sm" variant="secondary" icon="plus">
-                  {t('attach')}
-                </Button>
-              </form>
+              <AttachHouseForm
+                consolidationId={id}
+                jobs={attachable.map((job) => ({ id: job.id, label: job.label }))}
+                label={t('attach')}
+                choose={tc('choose')}
+              />
             ) : null}
           </div>
 
@@ -228,13 +214,11 @@ export default async function ConsolidationDetailPage({
                     </TD>
                     <TD align="end">
                       {mayWrite && consol.status === 'open' ? (
-                        <form action={detachHouse}>
-                          <input type="hidden" name="consolidationId" value={id} />
-                          <input type="hidden" name="jobId" value={house.jobId} />
-                          <Button type="submit" size="sm" variant="ghost">
-                            {t('detach')}
-                          </Button>
-                        </form>
+                        <DetachHouseButton
+                          consolidationId={id}
+                          jobId={house.jobId}
+                          label={t('detach')}
+                        />
                       ) : null}
                     </TD>
                   </TR>
@@ -325,6 +309,17 @@ export default async function ConsolidationDetailPage({
                           consolidationId={id}
                           chargeLineId={charge.id}
                           label={t('allocate')}
+                          manual={
+                            charge.allocationBasis === 'manual'
+                              ? {
+                                  currency: charge.currency,
+                                  houses: consol.houses.map((house) => ({
+                                    jobId: house.jobId,
+                                    label: house.houseBillNumber ?? house.reference,
+                                  })),
+                                }
+                              : undefined
+                          }
                         />
                       ) : (
                         <Badge tone="caution">{t('notAllocated')}</Badge>
@@ -397,42 +392,5 @@ export default async function ConsolidationDetailPage({
         </Card>
       </Grid>
     </>
-  )
-}
-
-/**
- * `allocateConsolCharge` returns an `ActionState` so it can hand back the
- * engine's own refusal — "every house has a zero volume, so there is nothing
- * to split by". A plain `action={}` form cannot show that, so this posts and
- * lets the page revalidate; the refusal surfaces on the next render as the
- * cost still sitting unallocated.
- *
- * The honest note: this is the one place in the feature where the message is
- * lost. Wiring `useActionState` here means a client component for a single
- * button, and the refusals it swallows are all visible states on the page —
- * no houses attached, cargo figures missing.
- */
-function AllocateButton({
-  consolidationId,
-  chargeLineId,
-  label,
-}: {
-  readonly consolidationId: string
-  readonly chargeLineId: string
-  readonly label: string
-}) {
-  return (
-    <form
-      action={async (form: FormData) => {
-        'use server'
-        await allocateConsolCharge({}, form)
-      }}
-    >
-      <input type="hidden" name="consolidationId" value={consolidationId} />
-      <input type="hidden" name="chargeLineId" value={chargeLineId} />
-      <Button type="submit" size="sm" variant="secondary">
-        {label}
-      </Button>
-    </form>
   )
 }

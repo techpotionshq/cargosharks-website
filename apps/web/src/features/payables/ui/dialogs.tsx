@@ -8,7 +8,7 @@
  * reconstructible afterwards.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -66,7 +66,7 @@ export async function SupplierInvoiceDialog({
   if (!can(session, 'payable.record')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('payableForm'),
     getTranslations('common'),
   ])
@@ -226,7 +226,7 @@ export async function ReadBillDialog({
   if (!can(session, 'payable.record')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('payableForm'),
     getTranslations('common'),
   ])
@@ -297,7 +297,7 @@ export async function SupplierLineDialog({
   if (!can(session, 'payable.record')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('payableForm'),
     getTranslations('common'),
   ])
@@ -526,7 +526,7 @@ export async function SupplierPaymentDialog({
   if (!can(session, 'payable.pay')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('payableForm'),
     getTranslations('common'),
   ])
@@ -672,7 +672,7 @@ export async function SettlementDialog({
   if (!can(session, 'settlement.run')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('settlementForm'),
     getTranslations('common'),
   ])
@@ -767,7 +767,7 @@ export async function PartnerAccountDialog({
   if (!can(session, 'partner.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('settlementForm'),
     getTranslations('common'),
   ])

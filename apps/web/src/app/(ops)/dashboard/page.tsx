@@ -43,6 +43,7 @@ import { LaneMap, LaneMapLegend } from '@/ui/lane-map'
 import { EventRow, Panel, Readout } from '@/ui/panel'
 import { Badge, ToneDot, jobTone, severityTone, slaTone } from '@/ui/status'
 import { Term } from '@/ui/term'
+import { pickName } from '@/lib/named'
 
 /**
  * Morning, afternoon or evening — in Kuwait, not in the server's zone.
@@ -80,7 +81,8 @@ export default async function DashboardPage() {
   const nowDate = new Date()
   const now = nowDate.getTime()
 
-  const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  // An empty Arabic name falls back to English rather than rendering blank (F52).
+  const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
   const firstName = (
     locale === 'ar' && session.principal.nameAr
       ? session.principal.nameAr
@@ -140,7 +142,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
           <Button href="/jobs" icon="jobs">
             {tNav('jobs')}
           </Button>
@@ -321,7 +323,8 @@ export default async function DashboardPage() {
                             to the customer name keeps the row informative when
                             nobody has written one. */}
                         <p className="mt-0.5 truncate text-[0.8125rem] text-ink-muted">
-                          {exception.description ?? exception.customerName}
+                          {exception.description ??
+                            nameOf(exception.customerName, exception.customerNameAr)}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
@@ -475,7 +478,7 @@ export default async function DashboardPage() {
                         {
                           icon: 'locations' as const,
                           label: t('readout.busiestLane'),
-                          value: busiestLane.lane,
+                          value: nameOf(busiestLane.lane, busiestLane.laneAr),
                         },
                       ]
                     : []),
@@ -615,7 +618,7 @@ export default async function DashboardPage() {
           ) : (
             <BarList
               data={overview.topLanes.slice(0, 6).map((lane) => ({
-                label: lane.lane,
+                label: nameOf(lane.lane, lane.laneAr),
                 value: lane.count,
                 hint: formatMoney(lane.value, locale, { compact: true }),
               }))}

@@ -40,6 +40,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { principals, supportGrants, withActor } = await import('@qabandi/db')
 
 const { ADMIN_PRINCIPAL, AWAY_BRANCH, HOME_BRANCH, adminActor, world } =
@@ -196,7 +205,7 @@ describe.skipIf(!enabled)('granting support access', () => {
     it('refuses write access without the confirmation typed out', async () => {
       const state = await grantSupportAccess({}, grantForm({ scope: 'write' }))
 
-      expect(state.errors?.escalate).toContain('GRANT WRITE')
+      expect(state.errors?.escalate).toBe('supportValidation.typeGrantWrite')
     })
 
     it('refuses write access when the confirmation is nearly right', async () => {
@@ -227,12 +236,12 @@ describe.skipIf(!enabled)('granting support access', () => {
      */
     it('refuses to grant support access to a member of staff', async () => {
       const state = await grantSupportAccess({}, grantForm({ principalId: ADMIN_PRINCIPAL }))
-      expect(state.errors?.principalId).toContain('Not a support engineer')
+      expect(state.errors?.principalId).toBe('supportValidation.notSupportEngineer')
     })
 
     it('refuses a support engineer who has been deactivated', async () => {
       const state = await grantSupportAccess({}, grantForm({ principalId: RETIRED_ENGINEER }))
-      expect(state.errors?.principalId).toContain('deactivated')
+      expect(state.errors?.principalId).toBe('supportValidation.engineerDeactivated')
     })
 
     it('refuses somebody who is not there at all', async () => {
@@ -248,7 +257,7 @@ describe.skipIf(!enabled)('granting support access', () => {
       harness.session = sessionWith(['admin.users.write'], { actorType: 'support' })
       try {
         const state = await grantSupportAccess({}, grantForm())
-        expect(state.errors?.principalId).toContain('support session')
+        expect(state.errors?.principalId).toBe('supportValidation.supportSessionCannotGrant')
       } finally {
         harness.session = sessionWith(['admin.users.write'])
       }
@@ -263,7 +272,7 @@ describe.skipIf(!enabled)('granting support access', () => {
       harness.session = sessionWith(['admin.users.write'], { branches: [HOME_BRANCH] })
       try {
         const state = await grantSupportAccess({}, grantForm({ branchIds: [AWAY_BRANCH] }))
-        expect(state.errors?.branchIds).toContain('branches you hold yourself')
+        expect(state.errors?.branchIds).toBe('supportValidation.ownBranchesOnly')
       } finally {
         harness.session = sessionWith(['admin.users.write'])
       }
@@ -283,7 +292,7 @@ describe.skipIf(!enabled)('granting support access', () => {
     /** "Until someone remembers to revoke it" is not a duration. */
     it('refuses longer than a working day', async () => {
       const state = await grantSupportAccess({}, grantForm({ hours: '48' }))
-      expect(state.errors?.hours).toContain('grant again')
+      expect(state.errors?.hours).toBe('supportValidation.atMostHours:{"max":8}')
     })
 
     it('refuses less than an hour', async () => {

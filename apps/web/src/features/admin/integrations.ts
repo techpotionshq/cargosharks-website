@@ -29,6 +29,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import {
   INTEGRATIONS,
@@ -50,7 +51,7 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, failWith, succeed, type ActionState } from '@/lib/form-state'
+import { echo, fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
 
@@ -222,11 +223,12 @@ function validate(
   settings: Record<string, string>,
   secretsProvided: Set<string>,
   alreadySet: Set<string>,
+  tv: Translate,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
 
   if (spec.drivers && driver && !spec.drivers.some((d) => d.value === driver)) {
-    errors.driver = `"${driver}" is not one of the drivers this integration has.`
+    errors.driver = tv('unknownDriver', { driver })
   }
 
   if (!isLiveDriver(spec, driver)) return errors
@@ -235,7 +237,7 @@ function validate(
     const value = settings[field.name]
 
     if (field.required && !value) {
-      errors[field.name] = 'This is needed before the integration can be switched on.'
+      errors[field.name] = tv('neededToSwitchOn')
       continue
     }
 
@@ -244,16 +246,16 @@ function validate(
     if (field.kind === 'number') {
       const parsed = Number(value)
       if (!Number.isFinite(parsed)) {
-        errors[field.name] = 'This has to be a number.'
+        errors[field.name] = tv('mustBeNumber')
       } else if (field.min !== undefined && parsed < field.min) {
-        errors[field.name] = `The smallest allowed value is ${field.min}.`
+        errors[field.name] = tv('minValue', { min: field.min })
       } else if (field.max !== undefined && parsed > field.max) {
-        errors[field.name] = `The largest allowed value is ${field.max}.`
+        errors[field.name] = tv('maxValue', { max: field.max })
       }
     }
 
     if (field.kind === 'url' && !/^https?:\/\//i.test(value)) {
-      errors[field.name] = 'This has to be a full URL, starting http:// or https://.'
+      errors[field.name] = tv('fullUrl')
     }
   }
 
@@ -261,7 +263,7 @@ function validate(
     // Provided now, or already stored — the second is what makes a blank field
     // on an edit mean "unchanged" rather than "clear it".
     if (secret.required && !secretsProvided.has(secret.name) && !alreadySet.has(secret.name)) {
-      errors[secret.name] = 'This is needed before the integration can be switched on.'
+      errors[secret.name] = tv('neededToSwitchOn')
     }
   }
 
@@ -281,9 +283,7 @@ function validate(
   */
   if (spec.key === 'carrierPoll' && settings.cron) {
     if (pollRunsPerHour(settings.cron) === null) {
-      errors.cron =
-        'This schedule cannot be read as calls per hour, so the carrier rate limit ' +
-        'cannot be checked against it. Use a shape like `30 * * * *` or `*/15 * * * *`.'
+      errors.cron = tv('cronUnreadable')
     }
   }
 
@@ -307,8 +307,9 @@ export async function saveIntegration(
 
   const key = read(form, 'key')
   const spec = key ? integrationSpec(key) : undefined
+  const tv = await getTranslations('adminValidation')
 
-  if (!spec) return failWith('That is not an integration this deployment has.')
+  if (!spec) return failWith(tv('unknownIntegration'))
 
   /*
     The echo never carries a credential back.
@@ -384,12 +385,12 @@ export async function saveIntegration(
         .map((secret) => secret.name),
     )
 
-    const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet)
+    const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet, tv)
     if (Object.keys(errors).length > 0) return fail(errors, safeEcho())
 
     const keyProblem = secretKeyProblem()
     if (provided.size > 0 && keyProblem) {
-      return failWith(`A credential cannot be sealed: ${keyProblem}`, safeEcho())
+      return failWith(tv('credentialCannotBeSealed', { problem: keyProblem }), safeEcho())
     }
 
     /*
@@ -461,8 +462,8 @@ export async function setIntegrationActive(
 
   const key = read(form, 'key')
   const isActive = form.get('isActive') === 'true'
-  if (!key || !integrationSpec(key))
-    return failWith('That is not an integration this deployment has.')
+  const tv = await getTranslations('adminValidation')
+  if (!key || !integrationSpec(key)) return failWith(tv('unknownIntegration'))
 
   await withActor(session.actor, async (tx) => {
     await tx

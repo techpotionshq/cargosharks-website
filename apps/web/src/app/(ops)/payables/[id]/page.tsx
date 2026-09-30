@@ -44,9 +44,11 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const { id } = await params
 
-  const bill = await getSupplierInvoice(session.actor, id)
+  const bill = await getSupplierInvoice(session.actor, id, locale)
   if (!bill) notFound()
 
   const [candidateRows, t, tc] = await Promise.all([
@@ -58,13 +60,10 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
       twelve. Costs with no counterparty recorded stay in the list — those are
       exactly the ones most in need of matching.
     */
-    listMatchCandidates(session.actor, { partnerId: bill.partnerId }),
+    listMatchCandidates(session.actor, { partnerId: bill.partnerId }, locale),
     getTranslations('payables'),
     getTranslations('common'),
   ])
-
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string, currency: string) =>
     formatMoney({ amount: Number(amount), currency }, locale)

@@ -38,7 +38,15 @@ export function PageHeader({
           <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {/*
+        The actions wrap, within the screen. Kept on one line, a header with
+        five buttons — an enquiry's "Assign · Cancel it · Close · Price it · New
+        quotation" — was 572px wide on a 390px phone and pushed the whole page
+        sideways; nine screens did it.
+      */}
+      {actions ? (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </header>
   )
 }

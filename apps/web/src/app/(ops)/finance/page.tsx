@@ -31,6 +31,7 @@ import { InvoiceDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
 import { AccountingExportDialog, VoidExportDialog } from '@/features/ledger/ui/export-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { BarList } from '@/ui/chart'
 import { Icon } from '@/ui/icon'
 import { EmptyState, Grid, PageHeader } from '@/ui/layout'
@@ -54,37 +55,62 @@ const BUCKET_COLOR: Record<AgeingBucket['key'], string> = {
   d90_plus: 'var(--qb-critical)',
 }
 
+/** A zero in the lead currency — the "nothing owed" figure, with its code. */
+function formatZero(currency: string, locale: 'en' | 'ar'): string {
+  return formatMoney({ amount: 0, currency }, locale)
+}
+
 export default async function FinancePage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [ageing, invoices, payments, debtors, exports] = await Promise.all([
     receivablesAgeing(session.actor),
     invoiceSummary(session.actor),
     paymentSummary(session.actor),
-    topDebtors(session.actor),
+    topDebtors(session.actor, undefined, locale),
     listAccountingExports(session.actor),
   ])
 
   const t = await getTranslations('finance')
   const tc = await getTranslations('common')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const currency = ageing.currency ?? invoices.currency ?? 'KWD'
-  const money = (amount: string) =>
+  /*
+    Every total on this page is one figure per currency.
+
+    They used to be single sums labelled with one currency, so a KWD branch
+    and an AED branch printed dinars plus dirhams as dinars. Each figure is
+    now a list — summed per currency in SQL — and shown side by side, and the
+    ageing is drawn once per currency so each bar is a proportion of money
+    that actually adds. The lead currency (largest book) is only a fallback
+    label for a zero.
+  */
+  const lead = ageing.byCurrency[0]?.currency ?? invoices.outstanding[0]?.currency ?? 'KWD'
+  const money = (amount: string, currency: string) =>
     formatMoney({ amount: Number(amount), currency }, locale, { showCurrency: false })
 
-  const overdueTotal = ageing.buckets
-    .filter((bucket) => bucket.key !== 'current')
-    .reduce((sum, bucket) => sum + Number(bucket.amount), 0)
+  const owed = ageing.byCurrency.map(({ currency, total }) => ({ currency, amount: total }))
+  // A currency with nothing late is left out rather than printed as a zero.
+  const overdue = ageing.byCurrency
+    .filter((entry) => Number(entry.overdue) > 0)
+    .map(({ currency, overdue: amount }) => ({ currency, amount }))
 
-  const worst = [...ageing.buckets]
-    .filter((bucket) => bucket.key !== 'current' && bucket.count > 0)
-    .pop()
+  // The worst bucket anything is in, in any currency.
+  const order: AgeingBucket['key'][] = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90_plus']
+  const worstIndex = Math.max(
+    -1,
+    ...ageing.byCurrency.flatMap((entry) =>
+      entry.buckets
+        .filter((bucket) => bucket.key !== 'current' && bucket.count > 0)
+        .map((bucket) => order.indexOf(bucket.key)),
+    ),
+  )
+  const worst = worstIndex > 0 ? order[worstIndex] : undefined
 
-  const nothingOwed = Number(ageing.total) === 0
+  const nothingOwed = ageing.byCurrency.length === 0
 
   return (
     <>
@@ -118,8 +144,7 @@ export default async function FinancePage() {
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           label={t('owed')}
-          value={money(ageing.total)}
-          unit={currency}
+          value={owed.length > 0 ? formatByCurrency(owed, locale) : formatZero(lead, locale)}
           icon="finance"
           tone="neutral"
           hint={t('owedHint', { count: invoices.issued })}
@@ -127,17 +152,19 @@ export default async function FinancePage() {
         />
         <Metric
           label={t('overdue')}
-          value={money(String(overdueTotal))}
-          unit={currency}
+          value={overdue.length > 0 ? formatByCurrency(overdue, locale) : formatZero(lead, locale)}
           icon="alert"
-          tone={overdueTotal > 0 ? 'critical' : 'positive'}
+          tone={overdue.length > 0 ? 'critical' : 'positive'}
           hint={t('overdueHint', { count: invoices.overdue })}
           href="/invoices?status=issued"
         />
         <Metric
           label={t('received')}
-          value={money(payments.received)}
-          unit={payments.currency ?? currency}
+          value={
+            payments.received.length > 0
+              ? formatByCurrency(payments.received, locale)
+              : formatZero(lead, locale)
+          }
           icon="payments"
           tone="positive"
           hint={t('receivedHint', { count: payments.count })}
@@ -169,48 +196,62 @@ export default async function FinancePage() {
                 A single stacked bar rather than five columns: the question is
                 "what share of what we are owed is late", and a proportion is
                 read off one bar far faster than off five.
-              */}
-              <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-sunken">
-                {ageing.buckets.map((bucket) => {
-                  const share = (Number(bucket.amount) / Number(ageing.total)) * 100
-                  if (share <= 0) return null
-                  return (
-                    <span
-                      key={bucket.key}
-                      className="h-full first:rounded-s-full last:rounded-e-full"
-                      style={{
-                        width: `${share}%`,
-                        backgroundColor: BUCKET_COLOR[bucket.key],
-                        // A 2px surface gap so adjacent segments stay distinct
-                        // for a reader who cannot separate them by hue.
-                        boxShadow: 'inset -2px 0 0 0 var(--qb-surface)',
-                      }}
-                      title={`${bucket.key}: ${money(bucket.amount)}`}
-                    />
-                  )
-                })}
-              </div>
 
-              <BarList
-                className="mt-5"
-                max={Number(ageing.total)}
-                data={ageing.buckets.map((bucket) => ({
-                  label: (
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        aria-hidden
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: BUCKET_COLOR[bucket.key] }}
-                      />
-                      {t(`buckets.${bucket.key}`)}
-                    </span>
-                  ),
-                  value: Number(bucket.amount),
-                  display: money(bucket.amount),
-                  color: BUCKET_COLOR[bucket.key],
-                  hint: t('invoiceCount', { count: bucket.count }),
-                }))}
-              />
+                One bar and one list per currency. A share of dinars plus
+                dirhams is not a proportion of anything, so a book in two
+                currencies is two ageings, largest first — each headed by its
+                code once there is more than one.
+              */}
+              {ageing.byCurrency.map((entry, index) => (
+                <section key={entry.currency} className={index > 0 ? 'mt-6' : undefined}>
+                  {ageing.byCurrency.length > 1 ? (
+                    <p className="ref mb-2 text-[0.75rem] text-ink-subtle">
+                      {entry.currency} · {money(entry.total, entry.currency)}
+                    </p>
+                  ) : null}
+                  <div className="flex h-3 w-full overflow-hidden rounded-full bg-surface-sunken">
+                    {entry.buckets.map((bucket) => {
+                      const share = (Number(bucket.amount) / Number(entry.total)) * 100
+                      if (share <= 0) return null
+                      return (
+                        <span
+                          key={bucket.key}
+                          className="h-full first:rounded-s-full last:rounded-e-full"
+                          style={{
+                            width: `${share}%`,
+                            backgroundColor: BUCKET_COLOR[bucket.key],
+                            // A 2px surface gap so adjacent segments stay distinct
+                            // for a reader who cannot separate them by hue.
+                            boxShadow: 'inset -2px 0 0 0 var(--qb-surface)',
+                          }}
+                          title={`${t(`buckets.${bucket.key}`)}: ${money(bucket.amount, entry.currency)}`}
+                        />
+                      )
+                    })}
+                  </div>
+
+                  <BarList
+                    className="mt-5"
+                    max={Number(entry.total)}
+                    data={entry.buckets.map((bucket) => ({
+                      label: (
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            aria-hidden
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: BUCKET_COLOR[bucket.key] }}
+                          />
+                          {t(`buckets.${bucket.key}`)}
+                        </span>
+                      ),
+                      value: Number(bucket.amount),
+                      display: money(bucket.amount, entry.currency),
+                      color: BUCKET_COLOR[bucket.key],
+                      hint: t('invoiceCount', { count: bucket.count }),
+                    }))}
+                  />
+                </section>
+              ))}
 
               <Readout
                 className="mt-5 border-t border-line pt-4"
@@ -228,7 +269,7 @@ export default async function FinancePage() {
                   {
                     icon: 'alert',
                     label: t('readout.worst'),
-                    value: worst ? t(`buckets.${worst.key}`) : t('readout.none'),
+                    value: worst ? t(`buckets.${worst}`) : t('readout.none'),
                   },
                 ]}
               />
@@ -259,7 +300,8 @@ export default async function FinancePage() {
               </THead>
               <TBody>
                 {debtors.map((debtor) => (
-                  <TR key={debtor.customerId}>
+                  // One row per customer and currency — a customer owing in two is two rows.
+                  <TR key={`${debtor.customerId}-${debtor.currency}`}>
                     <TD className="font-medium text-ink">
                       {debtor.customerName}
                       <span className="ms-2 text-[0.6875rem] font-normal text-ink-subtle">
@@ -267,10 +309,10 @@ export default async function FinancePage() {
                       </span>
                     </TD>
                     <TD align="end" numeric className="font-semibold">
+                      {/* With its code: two rows may be two currencies. */}
                       {formatMoney(
                         { amount: Number(debtor.balance), currency: debtor.currency },
                         locale,
-                        { showCurrency: false },
                       )}
                     </TD>
                     <TD align="end">
@@ -332,7 +374,7 @@ export default async function FinancePage() {
               { label: t('readout.receipts'), value: formatNumber(payments.count, locale) },
               {
                 label: t('readout.total'),
-                value: `${money(payments.received)} ${payments.currency ?? currency}`,
+                value: formatByCurrency(payments.received, locale),
               },
               { label: t('unallocated'), value: formatNumber(payments.unallocated, locale) },
             ]}

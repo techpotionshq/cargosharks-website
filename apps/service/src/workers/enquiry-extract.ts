@@ -84,6 +84,7 @@ import {
   ENQUIRY_FIELDS,
   parseModelJson,
   readExtractedEnquiry,
+  withoutStrayContainerCount,
   type EnquiryField,
   type FieldProposal,
 } from '@qabandi/core'
@@ -173,6 +174,7 @@ const COLUMN: Readonly<Record<EnquiryField, string>> = {
   grossWeightKg: 'gross_weight_kg',
   volumeCbm: 'volume_cbm',
   pieces: 'pieces',
+  containerCount: 'container_count',
   dimensions: 'dimensions',
   isDangerous: 'is_dangerous',
 }
@@ -252,7 +254,13 @@ export async function extractEnquiry(
     `unknownFields` covers names the schema's own enum did not admit; `refused`
     covers names it did and the allowlist did not.
   */
-  const { allowed, refused } = admissible('enquiry_extract', extracted.fields)
+  /*
+    The mail's own mode already ruled a stray count out in `readExtractedEnquiry`;
+    this is the other half, the mode a coordinator has already put on the row. A
+    count proposed onto an enquiry somebody has marked air is noise in the queue.
+  */
+  const fields = withoutStrayContainerCount(extracted.fields, context.current.mode)
+  const { allowed, refused } = admissible('enquiry_extract', fields)
   const refusedNames = [...refused.map((p) => p.field), ...extracted.unknownFields]
 
   const occupied: string[] = []
@@ -466,6 +474,7 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
             grossWeightKg: enquiries.grossWeightKg,
             volumeCbm: enquiries.volumeCbm,
             pieces: enquiries.pieces,
+            containerCount: enquiries.containerCount,
             dimensions: enquiries.dimensions,
           })
           .from(enquiries)
@@ -518,6 +527,7 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
         grossWeightKg: asText(row.grossWeightKg),
         volumeCbm: asText(row.volumeCbm),
         pieces: asText(row.pieces),
+        containerCount: asText(row.containerCount),
         dimensions: asText(row.dimensions),
         /*
           `is_dangerous` is `not null default false`, so it is never *empty* in

@@ -36,6 +36,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { aiInvocations, enquiries, extractionProposals, notificationOutbox, withActor } =
   await import('@qabandi/db')
 
@@ -55,7 +64,9 @@ const {
   assignEnquiryAction,
   respondEnquiryAction,
   closeEnquiryAction,
+  acceptProposal,
   acceptAllProposals,
+  setEnquiryContainerCount,
 } = await import('./form-actions')
 
 const session = {
@@ -263,6 +274,40 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(row!.dangerous).toBe(true)
     })
 
+    /*
+      Sea FCL is priced per container and refuses without a count. An enquiry
+      that arrived by email or WhatsApp has no other way to get one than this
+      field on its page.
+    */
+    it('records a container count set on the enquiry page', async () => {
+      const raised = await raise()
+      const count = async () =>
+        (
+          await withActor(bothBranchesActor, (tx) =>
+            tx
+              .select({ n: enquiries.containerCount })
+              .from(enquiries)
+              .where(eq(enquiries.id, raised.id)),
+          )
+        )[0]!.n
+
+      const state = await setEnquiryContainerCount(
+        {},
+        form({ enquiryId: raised.id, containerCount: '3' }),
+      )
+      expect(state.errors).toBeUndefined()
+      expect(await count()).toBe(3)
+
+      for (const bad of ['0', '2.5', 'two', '']) {
+        const refused = await setEnquiryContainerCount(
+          {},
+          form({ enquiryId: raised.id, containerCount: bad }),
+        )
+        expect(refused.errors?.containerCount).toBe('enquiriesValidation.containerCountWhole')
+      }
+      expect(await count()).toBe(3)
+    })
+
     /** An unchecked box arrives absent, not as `false` — the usual HTML trap. */
     it('reads an absent dangerous-goods box as not dangerous', async () => {
       const row = await raise()
@@ -455,7 +500,10 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       })
     })
 
-    async function propose(enquiryId: string, entries: readonly { field: string; value: string }[]) {
+    async function propose(
+      enquiryId: string,
+      entries: readonly { field: string; value: string }[],
+    ) {
       await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
         for (const entry of entries) {
           await tx.insert(extractionProposals).values({
@@ -478,6 +526,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
           .select({
             incoterm: enquiries.incoterm,
             pieces: enquiries.pieces,
+            containerCount: enquiries.containerCount,
             grossWeightKg: enquiries.grossWeightKg,
           })
           .from(enquiries)
@@ -548,6 +597,48 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect((await fieldsOf(row.id)).pieces).toBe(7)
     })
 
+    /**
+     * F50: a container count the model read lands in `container_count`, which
+     * is what FCL pricing multiplies by — not in `pieces`, which counts packages.
+     */
+    it('writes an accepted container count to the container column', async () => {
+      const row = await raise()
+      await propose(row.id, [{ field: 'containerCount', value: '2' }])
+      const [open] = await statuses(row.id)
+      expect(open?.field).toBe('containerCount')
+      const [proposal] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: extractionProposals.id })
+          .from(extractionProposals)
+          .where(eq(extractionProposals.targetId, row.id))
+          .limit(1),
+      )
+
+      const state = await acceptProposal({}, form({ proposalId: proposal!.id, enquiryId: row.id }))
+
+      expect(state.errors).toBeUndefined()
+      expect(state.message).toBeUndefined()
+      const fields = await fieldsOf(row.id)
+      expect(fields.containerCount).toBe(2)
+      expect(fields.pieces).toBeNull()
+      expect((await statuses(row.id))[0]?.status).toBe('applied')
+    })
+
+    /**
+     * Zero is refused before the write rather than by the 0048 constraint, so
+     * the coordinator reads a sentence instead of a server error.
+     */
+    it('refuses a container count of zero and leaves the suggestion open', async () => {
+      const row = await raise()
+      await propose(row.id, [{ field: 'containerCount', value: '0' }])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      expect(state.message).toBe('enquiriesValidation.noneApplied')
+      expect((await fieldsOf(row.id)).containerCount).toBeNull()
+      expect((await statuses(row.id))[0]?.status).toBe('proposed')
+    })
+
     /** When nothing could be applied, it says so rather than claiming success. */
     it('reports when every suggestion was already overtaken', async () => {
       const row = await raise({ incoterm: 'FOB' })
@@ -556,12 +647,12 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
 
       expect(state.ok).toBeUndefined()
-      expect(state.message).toMatch(/None could be applied/)
+      expect(state.message).toBe('enquiriesValidation.noneApplied')
     })
 
     it('asks for an enquiry when none was named', async () => {
       const state = await acceptAllProposals({}, form({}))
-      expect(state.message).toBe('Nothing to do.')
+      expect(state.message).toBe('enquiriesValidation.nothingToDo')
     })
   })
 })

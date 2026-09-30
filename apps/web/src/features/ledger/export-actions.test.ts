@@ -23,10 +23,21 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-const harness = vi.hoisted(() => ({ session: null as unknown }))
+const harness = vi.hoisted(() => ({ session: null as unknown, locale: 'en' }))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
+
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+  // Which language an unmapped charge type is named in.
+  getLocale: async () => harness.locale,
+}))
 
 const HOME_BRANCH = '00000000-0000-7000-8000-00000000c001'
 const AWAY_BRANCH = '00000000-0000-7000-8000-00000000c002'
@@ -148,21 +159,22 @@ describe('closing a period', () => {
 
       const state = await createAccountingExport({}, period())
 
-      expect(state.message).toContain('Nothing in that period')
-      expect(state.message).toContain('already')
+      expect(state.message).toBe('ledgerValidation.nothingToPost')
     })
 
     it('asks for a branch and a period when either is missing', async () => {
-      expect((await createAccountingExport({}, form({}))).message).toContain('branch and a period')
-      expect((await createAccountingExport({}, period({ to: '' }))).message).toContain(
-        'branch and a period',
+      expect((await createAccountingExport({}, form({}))).message).toBe(
+        'ledgerValidation.chooseBranchAndPeriod',
+      )
+      expect((await createAccountingExport({}, period({ to: '' }))).message).toBe(
+        'ledgerValidation.chooseBranchAndPeriod',
       )
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('refuses a date that is not one', async () => {
       const state = await createAccountingExport({}, period({ from: '01/01/2026' }))
-      expect(state.message).toContain('YYYY-MM-DD')
+      expect(state.message).toBe('ledgerValidation.datesFormat')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
@@ -171,7 +183,7 @@ describe('closing a period', () => {
         {},
         period({ from: '2026-01-31', to: '2026-01-01' }),
       )
-      expect(state.message).toContain('ends before it starts')
+      expect(state.message).toBe('ledgerValidation.periodEndsBeforeStart')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
@@ -194,7 +206,7 @@ describe('closing a period', () => {
       vi.stubEnv('SERVICE_URL', '')
       try {
         const state = await createAccountingExport({}, period())
-        expect(state.message).toContain('SERVICE_URL')
+        expect(state.message).toBe('ledgerValidation.exportServiceNotConfigured')
         expect(fetchMock).not.toHaveBeenCalled()
       } finally {
         vi.stubEnv('SERVICE_URL', 'http://service.test/')
@@ -202,18 +214,136 @@ describe('closing a period', () => {
     })
 
     /** The row they can go and fix, rather than a ticket to support. */
-    it('passes the service’s reason through untouched', async () => {
-      fetchMock.mockResolvedValue({
-        ok: false,
-        status: 422,
-        json: async () => ({
-          message: 'These charge types have no account against them: Ocean Freight.',
-        }),
-      })
+    const unmapped = {
+      ok: false,
+      status: 422,
+      json: async () => ({
+        error: 'unmapped_charge_types',
+        message: 'These charge types have no account against them: Ocean Freight.',
+        values: { namesEn: 'Ocean Freight', namesAr: 'شحن بحري' },
+      }),
+    }
+
+    it('translates the service’s reason, naming what to fix', async () => {
+      fetchMock.mockResolvedValue(unmapped)
 
       const state = await createAccountingExport({}, period())
 
-      expect(state.message).toContain('Ocean Freight')
+      expect(state.message).toBe(
+        'ledgerValidation.exportUnmappedChargeTypes:{"names":"Ocean Freight"}',
+      )
+    })
+
+    /** The list sits inside the sentence, so it is named in the reader's language. */
+    it('names the charge types in Arabic for an Arabic reader', async () => {
+      fetchMock.mockResolvedValue(unmapped)
+      harness.locale = 'ar'
+      try {
+        const state = await createAccountingExport({}, period())
+        expect(state.message).toBe(
+          'ledgerValidation.exportUnmappedChargeTypes:{"names":"شحن بحري"}',
+        )
+      } finally {
+        harness.locale = 'en'
+      }
+    })
+
+    it('translates the engine’s own refusals by code', async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 422,
+        json: async () => ({ error: 'journal_unbalanced', message: 'Journal is out by 0.5 KWD' }),
+      })
+
+      const state = await createAccountingExport({}, period())
+      expect(state.message).toBe('ledgerValidation.exportJournalUnbalanced')
+    })
+
+    /** A refusal is only actionable if it says which invoice and which account. */
+    const engineRefusal = (error: string, values: Record<string, string>) => ({
+      ok: false,
+      status: 422,
+      json: async () => ({ error, message: 'English, for the log', values }),
+    })
+
+    it('names how far out the journal is, the amount as the decimal string sent', async () => {
+      fetchMock.mockResolvedValue(
+        engineRefusal('journal_unbalanced', { amount: '0.004', currency: 'KWD' }),
+      )
+
+      const state = await createAccountingExport({}, period())
+      expect(state.message).toBe(
+        'ledgerValidation.exportJournalUnbalancedBy:{"amount":"0.004","currency":"KWD"}',
+      )
+    })
+
+    it('names the missing account and the invoice it stopped', async () => {
+      fetchMock.mockResolvedValue(
+        engineRefusal('journal_unmapped', {
+          account: 'receivables',
+          document: 'invoice',
+          reference: 'KWI-2026-00001',
+        }),
+      )
+
+      const state = await createAccountingExport({}, period())
+      expect(state.message).toBe(
+        'ledgerValidation.exportJournalAccountMissing:' +
+          '{"account":"receivables","document":"invoice","reference":"KWI-2026-00001"}',
+      )
+    })
+
+    it('names an unmapped charge type in the reader’s language', async () => {
+      fetchMock.mockResolvedValue(
+        engineRefusal('journal_unmapped', {
+          account: 'revenue',
+          document: 'invoice',
+          reference: 'KWI-2026-00001',
+          chargeTypeEn: 'Legalisation',
+          chargeTypeAr: 'تصديق',
+        }),
+      )
+      harness.locale = 'ar'
+      try {
+        const state = await createAccountingExport({}, period())
+        expect(state.message).toBe(
+          'ledgerValidation.exportJournalChargeTypeUnmapped:' +
+            '{"chargeType":"تصديق","account":"revenue","document":"invoice","reference":"KWI-2026-00001"}',
+        )
+      } finally {
+        harness.locale = 'en'
+      }
+    })
+
+    it('names the line with no charge type and the document it is on', async () => {
+      fetchMock.mockResolvedValue(
+        engineRefusal('journal_unmapped_line', {
+          document: 'supplier_invoice',
+          reference: 'SUP-778',
+          line: 'Sundry',
+        }),
+      )
+
+      const state = await createAccountingExport({}, period())
+      expect(state.message).toBe(
+        'ledgerValidation.exportJournalLineNoChargeType:' +
+          '{"line":"Sundry","document":"supplier_invoice","reference":"SUP-778"}',
+      )
+    })
+
+    /**
+     * A code this side does not know yet is never answered with the English
+     * `message` — the fallback says the service refused, in the reader's language.
+     */
+    it('falls back rather than showing an unknown code’s English', async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 422,
+        json: async () => ({ error: 'something_new', message: 'An English sentence' }),
+      })
+
+      const state = await createAccountingExport({}, period())
+      expect(state.message).toBe('ledgerValidation.exportServiceRefused:{"status":"422"}')
     })
 
     it('falls back to the status where the service said nothing', async () => {
@@ -226,7 +356,7 @@ describe('closing a period', () => {
       })
 
       const state = await createAccountingExport({}, period())
-      expect(state.message).toContain('503')
+      expect(state.message).toBe('ledgerValidation.exportServiceRefused:{"status":"503"}')
     })
   })
 
@@ -255,14 +385,14 @@ describe('closing a period', () => {
     it('refuses a void with no reason, on the field', async () => {
       const state = await voidAccountingExportAction({}, voidForm({ reason: '' }))
 
-      expect(state.errors?.reason).toContain('why')
+      expect(state.errors?.reason).toBe('ledgerValidation.sayWhyUnwound')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it('refuses a void with nothing to void', async () => {
       const state = await voidAccountingExportAction({}, voidForm({ exportId: '' }))
 
-      expect(state.message).toContain('Nothing to void')
+      expect(state.message).toBe('ledgerValidation.nothingToVoid')
       expect(fetchMock).not.toHaveBeenCalled()
     })
 
@@ -279,21 +409,25 @@ describe('closing a period', () => {
       vi.stubEnv('INTERNAL_API_SECRET', '')
       try {
         const state = await voidAccountingExportAction({}, voidForm())
-        expect(state.message).toContain('INTERNAL_API_SECRET')
+        expect(state.message).toBe('ledgerValidation.serviceSecretsRequired')
       } finally {
         vi.stubEnv('INTERNAL_API_SECRET', 'secret')
       }
     })
 
-    it('passes the service’s reason through', async () => {
+    it('translates the service’s reason', async () => {
       fetchMock.mockResolvedValue({
         ok: false,
-        status: 409,
-        json: async () => ({ message: 'That export has already been voided' }),
+        status: 422,
+        json: async () => ({
+          error: 'already_void',
+          message: 'That export has already been voided',
+          values: {},
+        }),
       })
 
       const state = await voidAccountingExportAction({}, voidForm())
-      expect(state.message).toContain('already been voided')
+      expect(state.message).toBe('ledgerValidation.exportAlreadyVoid')
     })
 
     it('falls back to a plain sentence where the service said nothing', async () => {
@@ -304,7 +438,7 @@ describe('closing a period', () => {
       })
 
       const state = await voidAccountingExportAction({}, voidForm())
-      expect(state.message).toContain('could not be voided')
+      expect(state.message).toBe('ledgerValidation.exportNotVoided')
     })
   })
 })

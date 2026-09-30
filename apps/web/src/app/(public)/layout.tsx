@@ -42,7 +42,7 @@ export default async function PublicLayout({ children }: { children: React.React
             form they have no account for. Tracking is the only thing in this
             shell and the only thing they came for.
           */}
-          <Link href="/track" className="rounded-sm outline-offset-4">
+          <Link href="/track" className="min-w-0 rounded-sm outline-offset-4">
             <Logo brand={brand} locale={locale} size="md" />
           </Link>
 

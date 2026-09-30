@@ -137,7 +137,7 @@ export default async function UsersPage() {
               <TD align="end">
                 <SuspendUserDialog
                   principalId={person.id}
-                  name={person.nameEn}
+                  name={locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
                   isActive={person.isActive}
                 />
               </TD>

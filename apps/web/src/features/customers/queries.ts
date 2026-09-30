@@ -172,29 +172,45 @@ export interface FormReference {
  * the same request. React's `cache` is a per-request memo, not a shared one:
  * two requests never see each other's data, so this is safe under RLS.
  */
-export const loadFormReference = cache(async (actor: Actor): Promise<FormReference> => {
-  if (usePilotFixtures()) return pilotFormReference()
+export const loadFormReference = cache(
+  async (actor: Actor, locale: 'en' | 'ar'): Promise<FormReference> => {
+    if (usePilotFixtures()) return pilotFormReference(locale)
 
-  return withActor(actor, async (tx) => {
-    const branchRows = await tx
-      .select({
-        id: branches.id,
-        code: branches.code,
-        name: branches.legalNameEn,
-        currency: branches.baseCurrency,
-      })
-      .from(branches)
-      .where(eq(branches.isActive, true))
-      .orderBy(asc(branches.code))
+    return withActor(actor, async (tx) => {
+      const branchRows = await tx
+        .select({
+          id: branches.id,
+          code: branches.code,
+          nameEn: branches.legalNameEn,
+          nameAr: branches.legalNameAr,
+          currency: branches.baseCurrency,
+        })
+        .from(branches)
+        .where(eq(branches.isActive, true))
+        .orderBy(asc(branches.code))
 
-    const countryRows = await tx
-      .select({ code: countries.code, name: countries.nameEn })
-      .from(countries)
-      .orderBy(asc(countries.nameEn))
+      const countryRows = await tx
+        .select({ code: countries.code, nameEn: countries.nameEn, nameAr: countries.nameAr })
+        .from(countries)
 
-    return { branches: branchRows, countries: countryRows }
-  })
-})
+      /*
+      Named in the operator's language. Both lists read only the English
+      column, so an Arabic form offered "Kuwait" and "Your Company Co." among
+      Arabic labels. Sorted by the name shown, in that language's order.
+    */
+      const named = (en: string, ar: string | null) => (locale === 'ar' && ar ? ar : en)
+      return {
+        branches: branchRows.map(({ nameEn, nameAr, ...row }) => ({
+          ...row,
+          name: named(nameEn, nameAr),
+        })),
+        countries: countryRows
+          .map(({ code, nameEn, nameAr }) => ({ code, name: named(nameEn, nameAr) }))
+          .sort((a, b) => a.name.localeCompare(b.name, locale)),
+      }
+    })
+  },
+)
 
 /**
  * Whether the operator has any customers yet.

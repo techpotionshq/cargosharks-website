@@ -166,11 +166,63 @@ export function isBlankRow(row: readonly string[]): boolean {
  * Cells
  * ---------------------------------------------------------------------- */
 
+/**
+ * What a problem is, as opposed to how it is worded.
+ *
+ * The operator reading the report may be reading Arabic, and `core` holds no
+ * messages (§4) — so every problem is reported as a stable `code` plus the
+ * `values` a sentence needs, and the web translates the pair on screen. The
+ * English `message` is kept alongside for the readers that are not a screen:
+ * logs, the service's model-extraction notes, and the tests here.
+ *
+ * Values are strings or integers only. An amount is carried as the string the
+ * parser produced, never as a JS number (§11).
+ */
+export type IssueValues = Readonly<Record<string, string | number>>
+
+/** Every way a single cell can fail — the vocabulary the parsers below speak. */
+export type CellIssueCode =
+  | 'required'
+  | 'tooShort'
+  | 'tooLong'
+  | 'codeCharacters'
+  | 'notAmount'
+  | 'tooManyDigits'
+  | 'tooManyDecimals'
+  | 'negative'
+  | 'belowMinimum'
+  | 'aboveMaximum'
+  | 'notWholeNumber'
+  | 'notDate'
+  | 'monthOutOfRange'
+  | 'dayOutOfRange'
+  | 'notYesNo'
+  | 'notOneOf'
+  | 'wrongLength'
+  | 'noReferenceData'
+  | 'unknownReference'
+  | 'notEmail'
+  | 'emailTooLong'
+  | 'notPhone'
+
+/** A coded problem. `C` is the vocabulary it is drawn from. */
+export interface IssueDetail<C extends string = string> {
+  readonly code: C
+  readonly values?: IssueValues
+  /** English, for logs and tests. A screen translates `code` + `values` instead. */
+  readonly message: string
+}
+
 export type CellResult<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly message: string }
+  { readonly ok: true; readonly value: T } | ({ readonly ok: false } & IssueDetail<CellIssueCode>)
 
 export const cellOk = <T>(value: T): CellResult<T> => ({ ok: true, value })
-export const cellFail = (message: string): CellResult<never> => ({ ok: false, message })
+export const cellFail = (
+  code: CellIssueCode,
+  message: string,
+  values?: IssueValues,
+): CellResult<never> =>
+  values === undefined ? { ok: false, code, message } : { ok: false, code, values, message }
 
 /**
  * Lookup sets the caller supplies from reference data.
@@ -197,8 +249,8 @@ export const text =
   (raw) => {
     const value = raw.trim()
     const { min = 0, max = 500 } = options
-    if (value.length < min) return cellFail(`At least ${min} characters`)
-    if (value.length > max) return cellFail(`At most ${max} characters`)
+    if (value.length < min) return cellFail('tooShort', `At least ${min} characters`, { min })
+    if (value.length > max) return cellFail('tooLong', `At most ${max} characters`, { max })
     return cellOk(value)
   }
 
@@ -214,9 +266,11 @@ export const code =
   (raw) => {
     const value = raw.trim().toUpperCase()
     const { min = 2, max = 16 } = options
-    if (value.length < min) return cellFail(`At least ${min} characters`)
-    if (value.length > max) return cellFail(`At most ${max} characters`)
-    if (!/^[A-Z0-9][A-Z0-9-]*$/.test(value)) return cellFail('Letters, numbers and hyphens only')
+    if (value.length < min) return cellFail('tooShort', `At least ${min} characters`, { min })
+    if (value.length > max) return cellFail('tooLong', `At most ${max} characters`, { max })
+    if (!/^[A-Z0-9][A-Z0-9-]*$/.test(value)) {
+      return cellFail('codeCharacters', 'Letters, numbers and hyphens only')
+    }
     return cellOk(value)
   }
 
@@ -233,7 +287,7 @@ export const decimal =
   (options: { min?: number; allowNegative?: boolean } = {}): CellParser<string> =>
   (raw) => {
     let value = normaliseDigits(raw).trim()
-    if (value === '') return cellFail('Required')
+    if (value === '') return cellFail('required', 'Required')
 
     let negative = false
     if (/^\(.*\)$/.test(value)) {
@@ -253,17 +307,21 @@ export const decimal =
     value = value.replace(/[^\d.,]/g, '')
     value = stripGrouping(value)
 
-    if (!/^\d+(\.\d+)?$/.test(value)) return cellFail('Must be an amount')
-    if (value.replace(/\D/g, '').length > 19) return cellFail('Too many digits')
+    if (!/^\d+(\.\d+)?$/.test(value)) return cellFail('notAmount', 'Must be an amount')
+    if (value.replace(/\D/g, '').length > 19) return cellFail('tooManyDigits', 'Too many digits')
 
     const decimals = value.split('.')[1]
-    if (decimals && decimals.length > 6) return cellFail('At most six decimal places')
+    if (decimals && decimals.length > 6) {
+      return cellFail('tooManyDecimals', 'At most six decimal places')
+    }
 
-    if (negative && options.allowNegative !== true) return cellFail('Must not be negative')
+    if (negative && options.allowNegative !== true) {
+      return cellFail('negative', 'Must not be negative')
+    }
     const signed = negative ? `-${value}` : value
 
     if (options.min !== undefined && Number(signed) < options.min) {
-      return cellFail(`Must be at least ${options.min}`)
+      return cellFail('belowMinimum', `Must be at least ${options.min}`, { min: options.min })
     }
     return cellOk(signed)
   }
@@ -303,14 +361,14 @@ export const integer =
   (options: { min?: number; max?: number } = {}): CellParser<number> =>
   (raw) => {
     const value = normaliseDigits(raw).trim().replace(/[\s,]/g, '')
-    if (value === '') return cellFail('Required')
-    if (!/^-?\d+$/.test(value)) return cellFail('Must be a whole number')
+    if (value === '') return cellFail('required', 'Required')
+    if (!/^-?\d+$/.test(value)) return cellFail('notWholeNumber', 'Must be a whole number')
     const parsed = Number(value)
     if (options.min !== undefined && parsed < options.min) {
-      return cellFail(`Must be at least ${options.min}`)
+      return cellFail('belowMinimum', `Must be at least ${options.min}`, { min: options.min })
     }
     if (options.max !== undefined && parsed > options.max) {
-      return cellFail(`Must be at most ${options.max}`)
+      return cellFail('aboveMaximum', `Must be at most ${options.max}`, { max: options.max })
     }
     return cellOk(parsed)
   }
@@ -326,7 +384,7 @@ export const integer =
  */
 export const isoDate: CellParser<string> = (raw) => {
   const value = normaliseDigits(raw).trim()
-  if (value === '') return cellFail('Required')
+  if (value === '') return cellFail('required', 'Required')
 
   let year: number, month: number, day: number
 
@@ -342,11 +400,15 @@ export const isoDate: CellParser<string> = (raw) => {
     month = Number(dmy[2])
     year = Number(dmy[3])
   } else {
-    return cellFail('Must be a date, as YYYY-MM-DD or DD/MM/YYYY')
+    return cellFail('notDate', 'Must be a date, as YYYY-MM-DD or DD/MM/YYYY')
   }
 
-  if (month < 1 || month > 12) return cellFail('Month must be between 1 and 12')
-  if (day < 1 || day > daysInMonth(year, month)) return cellFail('That day does not exist')
+  if (month < 1 || month > 12) {
+    return cellFail('monthOutOfRange', 'Month must be between 1 and 12')
+  }
+  if (day < 1 || day > daysInMonth(year, month)) {
+    return cellFail('dayOutOfRange', 'That day does not exist')
+  }
 
   const pad = (n: number): string => String(n).padStart(2, '0')
   return cellOk(`${year}-${pad(month)}-${pad(day)}`)
@@ -375,12 +437,14 @@ export const boolean =
   (raw) => {
     const value = raw.trim().toLowerCase()
     if (value === '') {
-      return options.default === undefined ? cellFail('Required') : cellOk(options.default)
+      return options.default === undefined
+        ? cellFail('required', 'Required')
+        : cellOk(options.default)
     }
     if (['y', 'yes', 'true', '1', 'active', 'نعم', 'فعال'].includes(value)) return cellOk(true)
     if (['n', 'no', 'false', '0', 'inactive', 'لا', 'غير فعال'].includes(value))
       return cellOk(false)
-    return cellFail('Must be yes or no')
+    return cellFail('notYesNo', 'Must be yes or no')
   }
 
 /**
@@ -397,46 +461,67 @@ export const oneOf =
   ): CellParser<T> =>
   (raw) => {
     const value = raw.trim()
-    if (value === '') return cellFail('Required')
+    if (value === '') return cellFail('required', 'Required')
     const key = normaliseKey(value)
     const direct = values.find((candidate) => normaliseKey(candidate) === key)
     if (direct) return cellOk(direct)
     const synonym = synonyms[key]
     if (synonym) return cellOk(synonym)
-    return cellFail(`Must be one of: ${values.join(', ')}`)
+    // The permitted values are machine words (`sea_fcl`), not prose — they are
+    // what the operator has to type, so they pass through untranslated.
+    const options = values.join(', ')
+    return cellFail('notOneOf', `Must be one of: ${options}`, { options })
   }
 
-/** A code that must exist in a reference table the caller supplied. */
+/**
+ * A code that must exist in a reference table the caller supplied.
+ *
+ * `set` travels in the issue's values because it is the only thing that says
+ * *what* was unknown — a currency, a location — and a translated sentence has
+ * to agree with that noun, which is not something a label interpolated into a
+ * shared sentence can do in Arabic.
+ */
 export const lookup =
   (setName: string, options: { label?: string; length?: number } = {}): CellParser<string> =>
   (raw, context) => {
     const value = raw.trim().toUpperCase()
-    if (value === '') return cellFail('Required')
+    if (value === '') return cellFail('required', 'Required')
     if (options.length !== undefined && value.length !== options.length) {
-      return cellFail(`Must be ${options.length} characters`)
+      return cellFail('wrongLength', `Must be ${options.length} characters`, {
+        length: options.length,
+      })
     }
+    const label = options.label ?? setName
     const set = context.lookups[setName]
-    if (!set) return cellFail(`No ${options.label ?? setName} reference data loaded`)
-    if (!set.has(value)) return cellFail(`Not a known ${options.label ?? setName}`)
+    if (!set) {
+      return cellFail('noReferenceData', `No ${label} reference data loaded`, { set: setName })
+    }
+    if (!set.has(value)) {
+      return cellFail('unknownReference', `Not a known ${label}`, { set: setName, value })
+    }
     return cellOk(value)
   }
 
 export const email: CellParser<string> = (raw) => {
   const value = raw.trim().toLowerCase()
-  if (value === '') return cellFail('Required')
+  if (value === '') return cellFail('required', 'Required')
   // Deliberately permissive: the authority on deliverability is a sent
   // message, and a strict pattern rejects valid addresses more often than it
   // catches typos.
-  if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(value)) return cellFail('Must be an email address')
-  if (value.length > 254) return cellFail('Too long for an email address')
+  if (!/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(value)) {
+    return cellFail('notEmail', 'Must be an email address')
+  }
+  if (value.length > 254) return cellFail('emailTooLong', 'Too long for an email address')
   return cellOk(value)
 }
 
 /** Digits, spaces and the punctuation a phone number is written with. */
 export const phone: CellParser<string> = (raw) => {
   const value = normaliseDigits(raw).trim()
-  if (value === '') return cellFail('Required')
-  if (!/^[+()\d][\d\s()+.-]{4,30}$/.test(value)) return cellFail('Must be a phone number')
+  if (value === '') return cellFail('required', 'Required')
+  if (!/^[+()\d][\d\s()+.-]{4,30}$/.test(value)) {
+    return cellFail('notPhone', 'Must be a phone number')
+  }
   return cellOk(value)
 }
 
@@ -483,7 +568,13 @@ export interface ImportField {
   readonly hint?: string
 }
 
-export interface ImportDescriptor {
+/**
+ * `C` is the vocabulary of the descriptor's own `check` — declared by the
+ * caller, because only the caller knows what a rate card or a receivable can
+ * get wrong, and a closed union is what lets the screen translate every one of
+ * them with nothing falling through.
+ */
+export interface ImportDescriptor<C extends string = never> {
   readonly key: string
   readonly label: string
   readonly fields: readonly ImportField[]
@@ -491,7 +582,7 @@ export interface ImportDescriptor {
    * Row-level checks that need more than one field — a validity window whose
    * end precedes its start, a minimum above a maximum.
    */
-  readonly check?: (row: Record<string, unknown>) => string | null
+  readonly check?: (row: Record<string, unknown>) => IssueDetail<C> | null
 }
 
 /** Column index per field key; `null` where the file has no such column. */
@@ -543,7 +634,14 @@ export function autoMap(headers: readonly string[], fields: readonly ImportField
  * The report
  * ---------------------------------------------------------------------- */
 
-export interface RowIssue {
+/** Problems with the sheet as a whole, or with a row beyond its cells. */
+export type SheetIssueCode =
+  'noHeadings' | 'noColumn' | 'tooManyRows' | 'duplicateInFile' | 'alreadyExists' | 'noRows'
+
+/** Everything `validateImport` itself can report, before a descriptor's own checks. */
+export type ImportIssueCode = CellIssueCode | SheetIssueCode
+
+export interface RowIssue<C extends string = never> extends IssueDetail<ImportIssueCode | C> {
   /**
    * Line number as the operator sees it in Excel: the header is line 1, so the
    * first data row is line 2. Off-by-one here sends someone to the wrong row
@@ -552,7 +650,12 @@ export interface RowIssue {
   readonly line: number
   readonly field?: string
   readonly column?: string
-  readonly message: string
+  /**
+   * The field's template heading, where the problem belongs to one field — the
+   * `Country` in *Country: Not a known country*. Separate from `code` so a
+   * translation can place it where its own grammar wants it.
+   */
+  readonly label?: string
 }
 
 export interface ImportRow<T> {
@@ -560,13 +663,13 @@ export interface ImportRow<T> {
   readonly values: T
 }
 
-export interface ImportReport<T = Record<string, unknown>> {
+export interface ImportReport<T = Record<string, unknown>, C extends string = never> {
   /** `FR-MD-11`: false means nothing is written. There is no partial import. */
   readonly ok: boolean
   readonly headers: readonly string[]
   readonly mapping: Mapping
   readonly rows: readonly ImportRow<T>[]
-  readonly issues: readonly RowIssue[]
+  readonly issues: readonly RowIssue<C>[]
   /** Data rows considered, blank rows excluded. */
   readonly totalRows: number
   /** Required fields no column could be found for — a mapping problem. */
@@ -598,11 +701,11 @@ const DEFAULT_MAX_ISSUES = 500
  * for them to fix it and then telling them about row 13 is how a thousand-row
  * import takes a week.
  */
-export function validateImport<T = Record<string, unknown>>(
+export function validateImport<T = Record<string, unknown>, C extends string = never>(
   grid: readonly (readonly string[])[],
-  descriptor: ImportDescriptor,
+  descriptor: ImportDescriptor<C>,
   options: ValidateOptions = {},
-): ImportReport<T> {
+): ImportReport<T, C> {
   const {
     lookups = {},
     existing = {},
@@ -611,8 +714,8 @@ export function validateImport<T = Record<string, unknown>>(
   } = options
 
   const context: ParseContext = { lookups }
-  const issues: RowIssue[] = []
-  const add = (issue: RowIssue): void => {
+  const issues: RowIssue<C>[] = []
+  const add = (issue: RowIssue<C>): void => {
     if (issues.length < maxIssues) issues.push(issue)
   }
 
@@ -625,7 +728,9 @@ export function validateImport<T = Record<string, unknown>>(
       headers: [],
       mapping: {},
       rows: [],
-      issues: [{ line: 1, message: 'The first row must be the column headings.' }],
+      issues: [
+        { line: 1, code: 'noHeadings', message: 'The first row must be the column headings.' },
+      ],
       totalRows: 0,
       missingRequired: descriptor.fields.filter((f) => f.required).map((f) => f.key),
       ignoredColumns: [],
@@ -640,7 +745,13 @@ export function validateImport<T = Record<string, unknown>>(
 
   for (const key of missingRequired) {
     const field = descriptor.fields.find((f) => f.key === key)!
-    add({ line: 1, field: key, message: `No column found for "${field.label}".` })
+    add({
+      line: 1,
+      field: key,
+      code: 'noColumn',
+      values: { column: field.label },
+      message: `No column found for "${field.label}".`,
+    })
   }
 
   const claimed = new Set(Object.values(mapping).filter((index): index is number => index !== null))
@@ -679,6 +790,8 @@ export function validateImport<T = Record<string, unknown>>(
     if (totalRows > maxRows) {
       add({
         line,
+        code: 'tooManyRows',
+        values: { max: maxRows },
         message: `More than ${maxRows.toLocaleString('en')} rows. Split the file and import in parts.`,
       })
       break
@@ -698,6 +811,9 @@ export function validateImport<T = Record<string, unknown>>(
           line,
           field: field.key,
           column: at == null ? undefined : headers[at],
+          code: result.code,
+          ...(result.values === undefined ? {} : { values: result.values }),
+          label: field.label,
           message: `${field.label}: ${result.message}`,
         })
         continue
@@ -709,7 +825,12 @@ export function validateImport<T = Record<string, unknown>>(
       const problem = descriptor.check(values)
       if (problem) {
         rowOk = false
-        add({ line, message: problem })
+        add({
+          line,
+          code: problem.code,
+          ...(problem.values === undefined ? {} : { values: problem.values }),
+          message: problem.message,
+        })
       }
     }
 
@@ -725,6 +846,9 @@ export function validateImport<T = Record<string, unknown>>(
           add({
             line,
             field: field.key,
+            code: 'duplicateInFile',
+            values: { value, line: previous },
+            label: field.label,
             message: `${field.label}: "${value}" is already used on line ${previous}.`,
           })
           continue
@@ -736,6 +860,9 @@ export function validateImport<T = Record<string, unknown>>(
           add({
             line,
             field: field.key,
+            code: 'alreadyExists',
+            values: { value },
+            label: field.label,
             message: `${field.label}: "${value}" already exists in the system.`,
           })
         }
@@ -746,7 +873,7 @@ export function validateImport<T = Record<string, unknown>>(
   }
 
   if (totalRows === 0) {
-    add({ line: 1, message: 'The file has headings but no rows.' })
+    add({ line: 1, code: 'noRows', message: 'The file has headings but no rows.' })
   }
 
   return {
@@ -762,12 +889,12 @@ export function validateImport<T = Record<string, unknown>>(
 }
 
 /** Parse and validate in one step, from raw file text. */
-export function readImport<T = Record<string, unknown>>(
+export function readImport<T = Record<string, unknown>, C extends string = never>(
   text: string,
-  descriptor: ImportDescriptor,
+  descriptor: ImportDescriptor<C>,
   options: ValidateOptions & { delimiter?: Delimiter } = {},
-): ImportReport<T> {
-  return validateImport<T>(parseDelimited(text, options.delimiter), descriptor, options)
+): ImportReport<T, C> {
+  return validateImport<T, C>(parseDelimited(text, options.delimiter), descriptor, options)
 }
 
 /**
@@ -776,7 +903,7 @@ export function readImport<T = Record<string, unknown>>(
  * Generated from the descriptor rather than maintained as a file, so a field
  * added to the importer cannot be missing from the template people download.
  */
-export function templateCsv(descriptor: ImportDescriptor): string {
+export function templateCsv(descriptor: ImportDescriptor<string>): string {
   const quote = (value: string): string =>
     /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
   const headings = descriptor.fields.map((field) =>
@@ -790,11 +917,22 @@ export function templateCsv(descriptor: ImportDescriptor): string {
  *
  * The operator fixing the file is working in Excel, not reading a screen, so
  * the report has to arrive in the same tool as the data.
+ *
+ * The text is whatever `message` carries. The engine's own is English; the
+ * screen passes issues whose `message` it has already translated, with the
+ * headings in the same language, so the file says what the table said.
  */
-export function issuesCsv(issues: readonly RowIssue[]): string {
+export function issuesCsv(
+  issues: readonly Pick<RowIssue<string>, 'line' | 'column' | 'message'>[],
+  headings: readonly [line: string, column: string, problem: string] = [
+    'Line',
+    'Column',
+    'Problem',
+  ],
+): string {
   const quote = (value: string): string =>
     /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
-  const lines = ['Line,Column,Problem']
+  const lines = [headings.map(quote).join(',')]
   for (const issue of issues) {
     lines.push([issue.line, quote(issue.column ?? ''), quote(issue.message)].join(','))
   }

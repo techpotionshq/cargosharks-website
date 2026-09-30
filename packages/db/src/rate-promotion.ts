@@ -21,7 +21,34 @@ import { groupRateCards, type ImportRow, type RateRowValues } from '@qabandi/cor
 import { chargeTypes, locations, rateCardLines, rateCards, rateRequests } from './schema/index'
 import type { Tx } from './actor'
 
-export type PromoteResult = { readonly ok: true; readonly cardId: string } | { readonly ok: false; readonly message: string }
+/**
+ * Why a reply was not promoted, as a stable code.
+ *
+ * The code is what a screen translates — `acceptRateReply` maps each one to a
+ * catalogue message, and its `never` default fails the typecheck when one is
+ * added here without a sentence there. `message` stays beside it in English for
+ * the callers that are not a person: the service's auto-promote sweep and a
+ * log line, which have no locale and want the fact as written.
+ */
+export type PromoteRefusal =
+  | 'request_gone'
+  | 'already_promoted'
+  | 'not_parsed'
+  | 'declined'
+  | 'no_clean_lines'
+  | 'port_missing'
+  | 'renewal_ends_early'
+  | 'charge_missing'
+
+export type PromoteResult =
+  | { readonly ok: true; readonly cardId: string }
+  | {
+      readonly ok: false
+      readonly reason: PromoteRefusal
+      /** The figures the sentence names, for the codes that name any. */
+      readonly values?: Readonly<Record<string, string>>
+      readonly message: string
+    }
 
 /** Half-open `[from,to)`, written explicitly because the column is not null. */
 function dateRangeLiteral(from: string, to: string | null): string {
@@ -56,10 +83,20 @@ export async function promoteRateReply(
     .where(eq(rateRequests.id, rateRequestId))
     .limit(1)
 
-  if (!request) return { ok: false, message: 'That rate request is gone.' }
-  if (request.rateCardId) return { ok: false, message: 'This reply is already a rate card.' }
+  if (!request) return { ok: false, reason: 'request_gone', message: 'That rate request is gone.' }
+  if (request.rateCardId) {
+    return {
+      ok: false,
+      reason: 'already_promoted',
+      message: 'This reply is already a rate card.',
+    }
+  }
   if (request.status !== 'parsed') {
-    return { ok: false, message: 'Only a parsed reply can become a rate card.' }
+    return {
+      ok: false,
+      reason: 'not_parsed',
+      message: 'Only a parsed reply can become a rate card.',
+    }
   }
 
   const response = (request.response ?? {}) as {
@@ -67,9 +104,15 @@ export async function promoteRateReply(
     declined?: boolean
     rows?: RateRowValues[]
   }
-  if (response.declined) return { ok: false, message: 'The agent declined this lane.' }
+  if (response.declined) {
+    return { ok: false, reason: 'declined', message: 'The agent declined this lane.' }
+  }
   if (response.ok !== true || !Array.isArray(response.rows) || response.rows.length === 0) {
-    return { ok: false, message: 'This reply has no clean lines to promote.' }
+    return {
+      ok: false,
+      reason: 'no_clean_lines',
+      message: 'This reply has no clean lines to promote.',
+    }
   }
 
   const importRows: ImportRow<RateRowValues>[] = response.rows.map((values, index) => ({
@@ -90,34 +133,76 @@ export async function promoteRateReply(
   const chargeIds = await resolveCharges(tx, [...chargeCodes])
 
   const renewalFloor = request.sourceRateCardId
-    ? (
+    ? ((
         await tx
           .select({ validTo: rateCards.validTo })
           .from(rateCards)
           .where(eq(rateCards.id, request.sourceRateCardId))
           .limit(1)
-      )[0]?.validTo ?? null
+      )[0]?.validTo ?? null)
     : null
 
-  let firstCardId: string | null = null
+  /*
+    Every card is checked before any is written.
+
+    A reply can group into several cards, and this used to insert each one as
+    it passed its checks — so a refusal on the third card *returned* with the
+    first two already inserted, the transaction committed them, and the
+    request stayed unaccepted: orphan buy cards that the next attempt would
+    then collide with on the no-overlap constraint. A refusal is a return, not
+    a throw, because the caller shows it as a sentence; returning is only safe
+    if nothing has been written yet.
+  */
+  const prepared = []
   for (const card of cards) {
     const originId = locationIds.get(card.originCode.toUpperCase())
     const destinationId = locationIds.get(card.destinationCode.toUpperCase())
     if (!originId || !destinationId) {
       return {
         ok: false,
+        reason: 'port_missing',
+        values: { origin: card.originCode, destination: card.destinationCode },
         message: `A port on the reply (${card.originCode}→${card.destinationCode}) is no longer on file.`,
       }
     }
 
     const validFrom = renewalFloor && card.validFrom < renewalFloor ? renewalFloor : card.validFrom
     if (card.validTo && validFrom >= card.validTo) {
+      /*
+        `lapses` is the clamped start rather than `renewalFloor` itself. They
+        are the same date whenever the clamp fired, and when it did not the
+        card simply ends on or before its own start — naming the start is then
+        the true figure, where the floor would print "null" into the sentence.
+      */
       return {
         ok: false,
+        reason: 'renewal_ends_early',
+        values: { validTo: card.validTo, lapses: validFrom },
         message: `This quote ends ${card.validTo}, before the current rate lapses ${renewalFloor}. It cannot renew the lane.`,
       }
     }
 
+    // A charge type retired between the reply and the promotion. Once an
+    // exception thrown mid-insert; now a refusal, because nothing is written yet.
+    const lines = []
+    for (const line of card.lines) {
+      const chargeTypeId = chargeIds.get(line.chargeCode.toUpperCase())
+      if (!chargeTypeId) {
+        return {
+          ok: false,
+          reason: 'charge_missing',
+          values: { charge: line.chargeCode },
+          message: `Charge ${line.chargeCode} is no longer on file.`,
+        }
+      }
+      lines.push({ line, chargeTypeId })
+    }
+
+    prepared.push({ card, originId, destinationId, validFrom, lines })
+  }
+
+  let firstCardId: string | null = null
+  for (const { card, originId, destinationId, validFrom, lines } of prepared) {
     const [inserted] = await tx
       .insert(rateCards)
       .values({
@@ -140,13 +225,12 @@ export async function promoteRateReply(
     firstCardId ??= inserted!.id
 
     await tx.insert(rateCardLines).values(
-      card.lines.map((line) => {
-        const chargeTypeId = chargeIds.get(line.chargeCode.toUpperCase())
-        if (!chargeTypeId) throw new Error(`Charge ${line.chargeCode} is no longer on file.`)
+      lines.map(({ line, chargeTypeId }) => {
         return {
           rateCardId: inserted!.id,
           chargeTypeId,
-          basis: line.basis as 'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent',
+          basis: line.basis as
+            'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent',
           rate: line.rate,
           currency: card.currency,
           minimum: line.minimum,

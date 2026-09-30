@@ -8,7 +8,7 @@
  * as the colleague — which quietly destroys the value of having an audit log.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { brandMailDomain, getBrand } from '@/lib/brand'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
@@ -51,7 +51,7 @@ export async function UserDialog({
   if (!can(session, 'admin.users.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('userForm'),
     getTranslations('common'),
   ])
@@ -221,7 +221,7 @@ export async function BranchDialog({
   if (!can(session, 'admin.reference.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('branchForm'),
     getTranslations('common'),
   ])

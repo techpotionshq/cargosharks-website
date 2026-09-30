@@ -46,6 +46,7 @@ import type {
 } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotExceptions, pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
+import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -237,12 +238,12 @@ function toJobSummary(row: JobRow): JobSummary {
     mode: row.mode as Mode,
     direction: row.direction as Direction,
     customerName: row.customerName ?? '—',
-    customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+    customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
     originName: row.originName ?? '—',
-    originNameAr: row.originNameAr ?? row.originName ?? '—',
+    originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
     originCode: row.originCode ?? '',
     destinationName: row.destinationName ?? '—',
-    destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+    destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
     destinationCode: row.destinationCode ?? '',
     vesselOrFlight:
       row.flightNumber ??
@@ -387,6 +388,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
               id: jobPartners.id,
               partnerId: jobPartners.partnerId,
               name: partners.legalNameEn,
+              nameAr: partners.legalNameAr,
               role: jobPartners.role,
               reference: jobPartners.reference,
             })
@@ -425,6 +427,8 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         id: p.id,
         partnerId: p.partnerId,
         name: p.name,
+        // `||`, not `??`: an empty Arabic name is as unset as a null one.
+        nameAr: p.nameAr || p.name,
         role: p.role,
         reference: p.reference,
       })),
@@ -502,6 +506,7 @@ async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[
       nameAr: exceptionCodes.nameAr,
       owner: principals.nameEn,
       customerName: customers.legalNameEn,
+      customerNameAr: customers.legalNameAr,
     })
     .from(exceptions)
     .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
@@ -526,6 +531,7 @@ async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[
     owner: row.owner,
     description: row.description,
     customerName: row.customerName ?? '—',
+    customerNameAr: row.customerNameAr || row.customerName || '—',
   }))
 }
 

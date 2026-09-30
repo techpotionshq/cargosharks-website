@@ -24,12 +24,21 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { principals, supportGrants, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 /**
  * The longest a grant may run.
@@ -42,16 +51,17 @@ import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-s
 const MAX_HOURS = 8
 const DEFAULT_HOURS = 2
 
-const grantSchema = z.object({
-  principalId: z.uuid('Choose a support engineer'),
-  branchIds: z.array(z.uuid()),
-  hours: z.coerce
-    .number()
-    .int()
-    .min(1, 'At least an hour')
-    .max(MAX_HOURS, `At most ${MAX_HOURS} hours — grant again if the work runs long`),
-  reason: z.string().trim().min(6, 'Give the ticket or the request this is for').max(300),
-  /*
+const grantSchema = (tv: Translate) =>
+  z.object({
+    principalId: z.uuid(tv('chooseEngineer')),
+    branchIds: z.array(z.uuid()),
+    hours: z.coerce
+      .number()
+      .int()
+      .min(1, tv('atLeastAnHour'))
+      .max(MAX_HOURS, tv('atMostHours', { max: MAX_HOURS })),
+    reason: z.string().trim().min(6, tv('reasonRequired')).max(300),
+    /*
     Typed, not toggled.
 
     The confirmation phrase is the whole mechanism: read access is one click,
@@ -59,12 +69,12 @@ const grantSchema = z.object({
     saying what it means. Everything else about the escalation is enforced in
     the policy; this is the part that has to happen in a human's head.
   */
-  escalate: z
-    .string()
-    .trim()
-    .optional()
-    .transform((v) => v ?? ''),
-})
+    escalate: z
+      .string()
+      .trim()
+      .optional()
+      .transform((v) => v ?? ''),
+  })
 
 export async function grantSupportAccess(
   _previous: ActionState,
@@ -72,14 +82,15 @@ export async function grantSupportAccess(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const tv = await getTranslations('supportValidation')
 
   // Belt and braces against the one path the policy cannot express as neatly:
   // a support principal must never be the one handing out support access.
   if (session.actor.type === 'support') {
-    return fail({ principalId: 'A support session cannot grant support access' }, echo(form))
+    return fail({ principalId: tv('supportSessionCannotGrant') }, echo(form))
   }
 
-  const parsed = grantSchema.safeParse({
+  const parsed = await localeParse(grantSchema(tv), {
     principalId: form.get('principalId'),
     branchIds: form
       .getAll('branchIds')
@@ -104,7 +115,7 @@ export async function grantSupportAccess(
 
   const wantsWrite = form.get('scope') === 'write'
   if (wantsWrite && escalate.toUpperCase() !== 'GRANT WRITE') {
-    return fail({ escalate: 'Type GRANT WRITE to confirm write access' }, echo(form))
+    return fail({ escalate: tv('typeGrantWrite') }, echo(form))
   }
 
   /**
@@ -125,10 +136,10 @@ export async function grantSupportAccess(
   })
 
   if (!target || target.type !== 'support') {
-    return fail({ principalId: 'Not a support engineer' }, echo(form))
+    return fail({ principalId: tv('notSupportEngineer') }, echo(form))
   }
   if (!target.isActive) {
-    return fail({ principalId: 'That engineer is deactivated' }, echo(form))
+    return fail({ principalId: tv('engineerDeactivated') }, echo(form))
   }
 
   /**
@@ -141,7 +152,7 @@ export async function grantSupportAccess(
   const holds = [...session.branchRoles.keys()]
   const outside = branchIds.filter((id) => !holds.includes(id))
   if (outside.length > 0) {
-    return fail({ branchIds: 'You can only open branches you hold yourself' }, echo(form))
+    return fail({ branchIds: tv('ownBranchesOnly') }, echo(form))
   }
 
   /*

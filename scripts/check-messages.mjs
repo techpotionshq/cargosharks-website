@@ -130,6 +130,78 @@ function topLevelElements(body) {
   return out
 }
 
+/**
+ * The third binding: a translator handed *in*, as a parameter declaring its
+ * namespace in the type — `(tv: Translate<'customersValidation'>) => z.object(…)`.
+ *
+ * Validation schemas that carry catalogue messages are factories of the
+ * translator, and some live in a pure `schema.ts` that never calls
+ * `getTranslations` itself. With neither of the two forms above in the file it
+ * registered no namespace and was skipped whole — its keys went unchecked. The
+ * type argument is the declaration; this reads it.
+ */
+const TYPED_PARAM = /\b(\w+)\s*:\s*Translate<\s*'([^']+)'\s*>/g
+
+/**
+ * The source with its comments blanked, strings left intact.
+ *
+ * The scans below are regular expressions over text, and this codebase writes
+ * long comments — some of which quote a call to explain it. A comment reading
+ * like a call was reported as an undefined key, and the workaround was to write
+ * worse comments. A regex cannot strip comments safely (`'https://…'` is not a
+ * comment), so this walks the characters and skips string and template bodies.
+ * Blanking rather than deleting keeps offsets, which nothing needs today but
+ * costs nothing.
+ */
+function stripComments(source) {
+  let out = ''
+  let i = 0
+  while (i < source.length) {
+    const ch = source[i]
+    const next = source[i + 1]
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' '
+        i++
+      }
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' '
+        i++
+      }
+      out += '  '
+      i += 2
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      out += ch
+      i++
+      while (i < source.length && source[i] !== ch) {
+        if (source[i] === '\\') {
+          out += source[i] + (source[i + 1] ?? '')
+          i += 2
+          continue
+        }
+        // A newline ends an unterminated quote — a stray apostrophe in JSX
+        // text must not swallow the rest of the file.
+        if (source[i] === '\n' && ch !== '`') break
+        out += source[i]
+        i++
+      }
+      if (i < source.length) {
+        out += source[i]
+        i++
+      }
+      continue
+    }
+    out += ch
+    i++
+  }
+  return out
+}
+
 const CALL = /\b(\w+)\(\s*'([^']+)'/g
 const DYNAMIC = /\b(\w+)\(\s*`/g
 
@@ -137,7 +209,7 @@ const used = new Map() // key -> file
 const dynamic = []
 
 for (const file of globSync('apps/web/src/**/*.{ts,tsx}')) {
-  const source = readFileSync(file, 'utf8')
+  const source = stripComments(readFileSync(file, 'utf8'))
 
   const namespaces = new Map()
   const bind = (name, namespace) => {
@@ -146,6 +218,7 @@ for (const file of globSync('apps/web/src/**/*.{ts,tsx}')) {
   }
 
   for (const match of source.matchAll(BIND)) bind(match[1], match[2])
+  for (const match of source.matchAll(TYPED_PARAM)) bind(match[1], match[2])
 
   for (const match of source.matchAll(DESTRUCTURED)) {
     const names = match[1].split(',').map((name) => name.trim())
@@ -237,6 +310,43 @@ for (const [enumName, groups] of Object.entries(ENUM_GROUPS)) {
         failures += missing.length
       }
     }
+  }
+}
+
+// --- 3b. every notification event has a label ------------------------------
+
+/**
+ * The keys a static scan cannot see, part three.
+ *
+ * `settings/notifications` labels each event through `t(`events.${key}`)`, and
+ * the events are `NOTIFICATION_EVENTS` in `packages/core/src/notifications.ts`.
+ * `enquiry.received` was added there with a template and no label, and the
+ * settings page showed `notificationTemplates.events.enquiry.received` in both
+ * languages until a QA crawl read it off the screen.
+ *
+ * Every `key: 'a.b'` in that file is an event — it is a literal list, and the
+ * only `key:` entries in it.
+ */
+const notificationSource = readFileSync('packages/core/src/notifications.ts', 'utf8')
+const notificationEvents = [...notificationSource.matchAll(/\bkey:\s*'([a-z_]+\.[a-z_]+)'/g)].map(
+  (match) => match[1],
+)
+if (notificationEvents.length === 0) {
+  console.error(
+    '\nno notification events found in packages/core/src/notifications.ts — update this check.',
+  )
+  failures++
+}
+for (const language of ['en', 'ar']) {
+  const missing = notificationEvents.filter(
+    (event) => !defined[language].has(`notificationTemplates.events.${event}`),
+  )
+  if (missing.length) {
+    console.error(
+      `\nnotificationTemplates.events (${language}) has no label for ${missing.length} ` +
+        `event(s): ${missing.join(', ')}`,
+    )
+    failures += missing.length
   }
 }
 

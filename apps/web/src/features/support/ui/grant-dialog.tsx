@@ -1,4 +1,4 @@
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -33,7 +33,7 @@ export async function SupportGrantDialog() {
 
   const [engineers, options, t, tc] = await Promise.all([
     supportEngineers(session.actor),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('supportGrant'),
     getTranslations('common'),
   ])

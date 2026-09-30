@@ -13,7 +13,7 @@
  * this form actually uses ships fifty strings.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -37,7 +37,7 @@ export async function NewEnquiryButton({
   if (!can(session, 'enquiry.assign')) return null
 
   const [options, t, tMode, tDirection] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('enquiryForm'),
     getTranslations('mode'),
     getTranslations('direction'),
@@ -89,6 +89,8 @@ export async function NewEnquiryButton({
         weight: t('weight'),
         volume: t('volume'),
         pieces: t('pieces'),
+        containers: t('containers'),
+        containersHint: t('containersHint'),
         dangerous: t('dangerous'),
         dangerousHint: t('dangerousHint'),
         notes: t('notes'),

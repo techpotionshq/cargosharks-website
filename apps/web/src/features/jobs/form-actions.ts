@@ -17,6 +17,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { fromDb, toScale } from '@qabandi/core'
@@ -41,7 +42,9 @@ import {
   isUniqueViolation,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 import { dayIn } from '@/lib/time'
 
 function read(form: FormData, key: string): string | undefined {
@@ -57,83 +60,87 @@ const optionalText = (max = 80) =>
     .optional()
     .transform((v) => v || null)
 
-const optionalNumber = z
-  .string()
-  .trim()
-  .regex(/^\d*\.?\d*$/, 'Numbers only')
-  .optional()
-  .transform((v) => (v ? v : null))
+const optionalNumber = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
+    .optional()
+    .transform((v) => (v ? v : null))
 
-const optionalDateTime = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v ? new Date(v) : null))
-  .refine((v) => v === null || !Number.isNaN(v.getTime()), { message: 'Not a valid date' })
+const optionalDateTime = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? new Date(v) : null))
+    .refine((v) => v === null || !Number.isNaN(v.getTime()), { message: tv('notValidDate') })
 
-const jobSchema = z
-  .object({
-    jobId: z.uuid().optional(),
-    branchId: z.uuid('Choose a branch'),
-    customerId: z.uuid('Choose a customer'),
-    quoteId: z
-      .uuid()
-      .optional()
-      .or(z.literal('').transform(() => undefined)),
-    mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
-    tradeDirection: z.enum(['import', 'export', 'cross_trade']),
-    status: z.enum([
-      'draft',
-      'booked',
-      'in_transit',
-      'arrived',
-      'customs',
-      'delivered',
-      'completed',
-      'closed',
-      'on_hold',
-      'cancelled',
-    ]),
-    ownerId: z
-      .uuid()
-      .optional()
-      .or(z.literal('').transform(() => undefined)),
-    originId: z.uuid('Choose where it starts'),
-    destinationId: z.uuid('Choose where it goes'),
-    commodityId: z
-      .uuid()
-      .optional()
-      .or(z.literal('').transform(() => undefined)),
-    incoterm: optionalText(10),
-    masterBillNumber: optionalText(),
-    houseBillNumber: optionalText(),
-    bookingNumber: optionalText(),
-    vesselName: optionalText(),
-    voyageNumber: optionalText(40),
-    flightNumber: optionalText(40),
-    placeOfReceipt: optionalText(),
-    placeOfDelivery: optionalText(),
-    customerReference: optionalText(),
-    etd: optionalDateTime,
-    eta: optionalDateTime,
-    grossWeightKg: optionalNumber,
-    volumeCbm: optionalNumber,
-    pieces: z.coerce.number().int().min(0).max(1_000_000).optional(),
-  })
-  .refine((value) => value.originId !== value.destinationId, {
-    message: 'A shipment cannot start and end in the same place',
-    path: ['destinationId'],
-  })
-  .refine((value) => !value.etd || !value.eta || value.eta >= value.etd, {
-    message: 'Arrival cannot be before departure',
-    path: ['eta'],
-  })
+const jobSchema = (tv: Translate) =>
+  z
+    .object({
+      jobId: z.uuid().optional(),
+      branchId: z.uuid(tv('chooseBranch')),
+      customerId: z.uuid(tv('chooseCustomer')),
+      quoteId: z
+        .uuid()
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      mode: z.enum(['sea_fcl', 'sea_lcl', 'air', 'land', 'courier']),
+      tradeDirection: z.enum(['import', 'export', 'cross_trade']),
+      status: z.enum([
+        'draft',
+        'booked',
+        'in_transit',
+        'arrived',
+        'customs',
+        'delivered',
+        'completed',
+        'closed',
+        'on_hold',
+        'cancelled',
+      ]),
+      ownerId: z
+        .uuid()
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      originId: z.uuid(tv('chooseOrigin')),
+      destinationId: z.uuid(tv('chooseDestination')),
+      commodityId: z
+        .uuid()
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      incoterm: optionalText(10),
+      masterBillNumber: optionalText(),
+      houseBillNumber: optionalText(),
+      bookingNumber: optionalText(),
+      vesselName: optionalText(),
+      voyageNumber: optionalText(40),
+      flightNumber: optionalText(40),
+      placeOfReceipt: optionalText(),
+      placeOfDelivery: optionalText(),
+      customerReference: optionalText(),
+      etd: optionalDateTime(tv),
+      eta: optionalDateTime(tv),
+      grossWeightKg: optionalNumber(tv),
+      volumeCbm: optionalNumber(tv),
+      pieces: z.coerce.number().int().min(0).max(1_000_000).optional(),
+    })
+    .refine((value) => value.originId !== value.destinationId, {
+      message: tv('sameOriginDestination'),
+      path: ['destinationId'],
+    })
+    .refine((value) => !value.etd || !value.eta || value.eta >= value.etd, {
+      message: tv('arrivalBeforeDeparture'),
+      path: ['eta'],
+    })
 
 export async function saveJob(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, read(form, 'jobId') ? 'job.update' : 'job.book')
+  const tv = await getTranslations('jobsValidation')
 
-  const parsed = jobSchema.safeParse({
+  const parsed = await localeParse(jobSchema(tv), {
     jobId: read(form, 'jobId'),
     branchId: read(form, 'branchId'),
     customerId: read(form, 'customerId'),
@@ -180,7 +187,7 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
     pooled connections for one unit of work.
   */
   if (!data.jobId) {
-    const blocked = await creditBlockOnBooking(session, data)
+    const blocked = await creditBlockOnBooking(session, tv, data)
     if (blocked) return { ...blocked, values: echo(form) }
   }
 
@@ -255,8 +262,13 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
               // is a string with holes in it and cannot format a date. The date
               // only, since an arrival estimate accurate to the minute is a
               // precision the shipping line does not have.
-              previousEta: before.eta ? dayIn(before.eta) : 'not set',
-              eta: row.eta ? dayIn(row.eta) : 'not set',
+              //
+              // A missing date is a dash, not the words "not set": this payload is
+              // built once and merged into the English *and* the Arabic template,
+              // so words here would be English inside an Arabic message. The
+              // recipient's language is only known at dispatch.
+              previousEta: before.eta ? dayIn(before.eta) : '—',
+              eta: row.eta ? dayIn(row.eta) : '—',
             },
           })
         }
@@ -356,10 +368,7 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail(
-        { masterBillNumber: 'That bill number is already on another shipment.' },
-        echo(form),
-      )
+      return fail({ masterBillNumber: tv('billNumberTaken') }, echo(form))
     }
     throw error
   }
@@ -384,6 +393,7 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
  */
 async function creditBlockOnBooking(
   session: Awaited<ReturnType<typeof requireSession>>,
+  tv: Translate,
   data: { branchId: string; customerId: string; quoteId?: string | null },
 ): Promise<ActionState | null> {
   let proposed = null
@@ -409,21 +419,19 @@ async function creditBlockOnBooking(
 
   const excess = `${toScale(assessment.excess)} ${standing.currency}`
   return failWith(
-    assessment.outcome === 'on_hold'
-      ? 'This customer is on credit hold. Release the hold on their account before booking.'
-      : `Booking this shipment puts the customer ${excess} past their credit limit. ` +
-          'A branch manager can record an override on the customer account.',
+    assessment.outcome === 'on_hold' ? tv('creditHold') : tv('creditLimitExceeded', { excess }),
   )
 }
 
 export async function addJobPartner(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const tv = await getTranslations('jobsValidation')
 
   const schema = z.object({
     jobId: z.uuid(),
     branchId: z.uuid(),
-    partnerId: z.uuid('Choose a partner'),
+    partnerId: z.uuid(tv('choosePartner')),
     role: z.enum([
       'carrier',
       'origin_agent',
@@ -435,7 +443,7 @@ export async function addJobPartner(_previous: ActionState, form: FormData): Pro
     reference: optionalText(),
   })
 
-  const parsed = schema.safeParse({
+  const parsed = await localeParse(schema, {
     jobId: read(form, 'jobId'),
     branchId: read(form, 'branchId'),
     partnerId: read(form, 'partnerId'),

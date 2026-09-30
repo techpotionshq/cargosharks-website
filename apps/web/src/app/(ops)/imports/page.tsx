@@ -16,7 +16,8 @@
  */
 
 import type { Metadata } from 'next'
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import {
@@ -77,16 +78,18 @@ export default async function ImportsPage({
   let branches: Choice[] = []
   let partners: Choice[] = []
   if (!fixtures) {
+    const resolved = await getLocale()
+    const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
     if (needsBranch) {
-      branches = (await importableBranches(session.actor)).map((branch) => ({
+      branches = (await importableBranches(session.actor, locale)).map((branch) => ({
         value: branch.id,
-        label: `${branch.code} — ${branch.nameEn}`,
+        label: `${branch.code} — ${branch.name}`,
       }))
     }
     if (needsPartner) {
-      partners = (await ratePartners(session.actor)).map((partner) => ({
+      partners = (await ratePartners(session.actor, locale)).map((partner) => ({
         value: partner.id,
-        label: `${partner.code} — ${partner.nameEn}`,
+        label: `${partner.code} — ${partner.name}`,
       }))
     }
   }

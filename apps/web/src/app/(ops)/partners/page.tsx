@@ -124,7 +124,7 @@ export default async function PartnersPage({
                 <RetireNetworkDialog
                   kind="partner"
                   id={row.id}
-                  name={row.legalNameEn}
+                  name={locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
                   isActive={row.isActive}
                 />
               </TD>

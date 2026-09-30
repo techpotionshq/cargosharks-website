@@ -89,9 +89,14 @@ export function Metric({
         ) : null}
       </div>
 
-      <p className="mt-3 flex items-baseline gap-1.5">
+      {/*
+        Smaller below `sm`: two tiles share a 390px phone, and "KWD 5,000.000"
+        at the desktop size was wider than its tile and pushed the page
+        sideways. The unit may drop under the figure rather than overflow.
+      */}
+      <p className="mt-3 flex flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric font-display text-[1.875rem] leading-none font-semibold tracking-tight text-ink ${
+          className={`numeric font-display text-[1.375rem] leading-none font-semibold tracking-tight text-ink sm:text-[1.875rem] ${
             live ? 'accruing' : ''
           }`}
         >

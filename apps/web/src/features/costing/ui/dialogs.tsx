@@ -13,7 +13,7 @@
  * builder happens to read.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -57,7 +57,7 @@ export async function ChargeLineDialog({
     two vocabularies for one concept on two screens.
   */
   const [options, t, tc, tBasis] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('chargeForm'),
     getTranslations('common'),
     getTranslations('quote'),

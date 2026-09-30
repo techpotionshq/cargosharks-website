@@ -17,6 +17,8 @@ import { describe, expect, it } from 'vitest'
 import {
   autoMap,
   boolean,
+  cellFail,
+  cellOk,
   code,
   decimal,
   detectDelimiter,
@@ -147,7 +149,11 @@ describe('decimal', () => {
   })
 
   it('rejects a negative by default and accepts one when allowed', () => {
-    expect(parse('(1,200.50)', ctx)).toEqual({ ok: false, message: 'Must not be negative' })
+    expect(parse('(1,200.50)', ctx)).toEqual({
+      ok: false,
+      code: 'negative',
+      message: 'Must not be negative',
+    })
     expect(decimal({ allowNegative: true })('(1,200.50)', ctx)).toEqual({
       ok: true,
       value: '-1200.50',
@@ -157,8 +163,12 @@ describe('decimal', () => {
 
   it('rejects text, blanks and excess precision', () => {
     expect(parse('on request', ctx).ok).toBe(false)
-    expect(parse('', ctx)).toEqual({ ok: false, message: 'Required' })
-    expect(parse('1.1234567', ctx)).toEqual({ ok: false, message: 'At most six decimal places' })
+    expect(parse('', ctx)).toEqual({ ok: false, code: 'required', message: 'Required' })
+    expect(parse('1.1234567', ctx)).toEqual({
+      ok: false,
+      code: 'tooManyDecimals',
+      message: 'At most six decimal places',
+    })
   })
 
   it('never returns a JS number, so numeric(19,6) survives the journey', () => {
@@ -183,7 +193,11 @@ describe('isoDate', () => {
   })
 
   it('rejects a day the month does not have', () => {
-    expect(isoDate('31/02/2026', ctx)).toEqual({ ok: false, message: 'That day does not exist' })
+    expect(isoDate('31/02/2026', ctx)).toEqual({
+      ok: false,
+      code: 'dayOutOfRange',
+      message: 'That day does not exist',
+    })
     expect(isoDate('31/04/2026', ctx).ok).toBe(false)
   })
 
@@ -197,6 +211,7 @@ describe('isoDate', () => {
   it('rejects a month above twelve rather than guessing', () => {
     expect(isoDate('13/13/2026', ctx)).toEqual({
       ok: false,
+      code: 'monthOutOfRange',
       message: 'Month must be between 1 and 12',
     })
   })
@@ -217,12 +232,16 @@ describe('boolean', () => {
   it('errors on an unrecognised value rather than defaulting to false', () => {
     // A column of "Suspended" importing silently as inactive would deactivate
     // the customer list without a word.
-    expect(parse('Suspended', ctx)).toEqual({ ok: false, message: 'Must be yes or no' })
+    expect(parse('Suspended', ctx)).toEqual({
+      ok: false,
+      code: 'notYesNo',
+      message: 'Must be yes or no',
+    })
   })
 
   it('uses the default only for a blank', () => {
     expect(parse('', ctx)).toEqual({ ok: true, value: true })
-    expect(boolean()('', ctx)).toEqual({ ok: false, message: 'Required' })
+    expect(boolean()('', ctx)).toEqual({ ok: false, code: 'required', message: 'Required' })
   })
 })
 
@@ -248,6 +267,9 @@ describe('oneOf', () => {
   it('lists the permitted values when it fails', () => {
     const result = mode('barge', ctx)
     expect(result.ok).toBe(false)
+    expect(!result.ok && result.code).toBe('notOneOf')
+    // In the values, not only the English: the translated sentence needs them.
+    expect(!result.ok && result.values?.options).toContain('sea_fcl')
     expect(!result.ok && result.message).toContain('sea_fcl')
   })
 })
@@ -260,16 +282,30 @@ describe('lookup', () => {
     expect(country('kw', context)).toEqual({ ok: true, value: 'KW' })
   })
 
-  it('rejects an unknown code', () => {
-    expect(country('ZZ', context)).toEqual({ ok: false, message: 'Not a known country' })
+  it('rejects an unknown code, naming the set so a translation can name the noun', () => {
+    expect(country('ZZ', context)).toEqual({
+      ok: false,
+      code: 'unknownReference',
+      values: { set: 'countries', value: 'ZZ' },
+      message: 'Not a known country',
+    })
   })
 
   it('rejects the wrong length before consulting the set', () => {
-    expect(country('KWT', context)).toEqual({ ok: false, message: 'Must be 2 characters' })
+    expect(country('KWT', context)).toEqual({
+      ok: false,
+      code: 'wrongLength',
+      values: { length: 2 },
+      message: 'Must be 2 characters',
+    })
   })
 
   it('says so when the reference data was never loaded', () => {
-    expect(country('KW', { lookups: {} }).ok).toBe(false)
+    expect(country('KW', { lookups: {} })).toMatchObject({
+      ok: false,
+      code: 'noReferenceData',
+      values: { set: 'countries' },
+    })
   })
 })
 
@@ -278,6 +314,7 @@ describe('code, email, phone', () => {
     expect(code()('kw-01', ctx)).toEqual({ ok: true, value: 'KW-01' })
     expect(code()('KW 01', ctx)).toEqual({
       ok: false,
+      code: 'codeCharacters',
       message: 'Letters, numbers and hyphens only',
     })
   })
@@ -452,6 +489,9 @@ describe('validateImport — FR-MD-11', () => {
       line: 2,
       field: 'countryCode',
       column: 'Country',
+      code: 'unknownReference',
+      values: { set: 'countries' },
+      label: 'Country',
       message: 'Country: Not a known country',
     })
   })
@@ -473,8 +513,12 @@ describe('validateImport — FR-MD-11', () => {
       { lookups },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.line).toBe(4)
-    expect(report.issues[0]!.message).toContain('already used on line 2')
+    expect(report.issues[0]).toMatchObject({
+      line: 4,
+      code: 'duplicateInFile',
+      values: { value: 'AGL', line: 2 },
+      label: 'Customer code',
+    })
   })
 
   it('catches a key that already exists in the database', () => {
@@ -483,7 +527,7 @@ describe('validateImport — FR-MD-11', () => {
       existing: { code: new Set(['AGL']) },
     })
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('already exists in the system')
+    expect(report.issues[0]).toMatchObject({ code: 'alreadyExists', values: { value: 'AGL' } })
   })
 
   it('fails on a missing required column without drowning the report in rows', () => {
@@ -492,7 +536,10 @@ describe('validateImport — FR-MD-11', () => {
     expect(report.missingRequired).toEqual(['legalNameEn'])
     // One structural issue, not one per row.
     expect(report.issues).toHaveLength(1)
-    expect(report.issues[0]!.message).toContain('Legal name (English)')
+    expect(report.issues[0]).toMatchObject({
+      code: 'noColumn',
+      values: { column: 'Legal name (English)' },
+    })
     expect(report.rows).toEqual([])
   })
 
@@ -509,13 +556,13 @@ describe('validateImport — FR-MD-11', () => {
   it('rejects a file with headings but no rows', () => {
     const report = readImport('Customer code,Legal name (English)\n', customers, { lookups })
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('no rows')
+    expect(report.issues[0]!.code).toBe('noRows')
   })
 
   it('rejects a file with no headings at all', () => {
     const report = readImport('', customers, { lookups })
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('column headings')
+    expect(report.issues[0]!.code).toBe('noHeadings')
   })
 
   it('applies a default for a blank optional column', () => {
@@ -545,7 +592,7 @@ describe('validateImport — FR-MD-11', () => {
       maxRows: 10,
     })
     expect(report.ok).toBe(false)
-    expect(report.issues.at(-1)!.message).toContain('Split the file')
+    expect(report.issues.at(-1)).toMatchObject({ code: 'tooManyRows', values: { max: 10 } })
   })
 
   it('caps the issue list so a wrong mapping is not a wall of text', () => {
@@ -595,7 +642,7 @@ describe('validateImport — FR-MD-11', () => {
 })
 
 describe('cross-field checks', () => {
-  const withWindow: ImportDescriptor = {
+  const withWindow: ImportDescriptor<'windowBackwards'> = {
     key: 'window',
     label: 'Window',
     fields: [
@@ -604,14 +651,32 @@ describe('cross-field checks', () => {
     ],
     check: (row) =>
       row.validTo !== null && (row.validTo as string) < (row.validFrom as string)
-        ? 'Valid to is before valid from.'
+        ? { code: 'windowBackwards', message: 'Valid to is before valid from.' }
         : null,
   }
 
   it('rejects a validity window that ends before it starts', () => {
     const report = readImport('Valid from,Valid to\n01/03/2026,01/02/2026\n', withWindow)
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toBe('Valid to is before valid from.')
+    // The descriptor's own code comes through untouched, beside its English.
+    expect(report.issues[0]).toMatchObject({
+      line: 2,
+      code: 'windowBackwards',
+      message: 'Valid to is before valid from.',
+    })
+  })
+
+  it('carries the values a check supplies', () => {
+    const withValues: ImportDescriptor<'windowBackwards'> = {
+      ...withWindow,
+      check: (row) => ({
+        code: 'windowBackwards',
+        values: { from: row.validFrom as string },
+        message: 'Valid to is before valid from.',
+      }),
+    }
+    const report = readImport('Valid from,Valid to\n01/03/2026,\n', withValues)
+    expect(report.issues[0]!.values).toEqual({ from: '2026-03-01' })
   })
 
   it('accepts an open-ended window', () => {
@@ -654,8 +719,8 @@ const rateFields = [
     parse: optional((raw: string) => {
       const n = Number(normaliseDigits(raw).trim())
       return Number.isInteger(n) && n > 0
-        ? { ok: true as const, value: n }
-        : { ok: false as const, message: 'Must be a whole number of days' }
+        ? cellOk(n)
+        : cellFail('notWholeNumber', 'Must be a whole number of days')
     }),
   },
   { key: 'notes', label: 'Notes', required: false, parse: optional(text({ max: 500 })) },
@@ -793,6 +858,19 @@ describe('issuesCsv', () => {
   it('quotes a message containing a comma', () => {
     const csv = issuesCsv([{ line: 2, message: 'Must be one of: a, b' }])
     expect(csv).toContain('"Must be one of: a, b"')
+  })
+
+  /**
+   * The screen hands over messages it has already translated, and headings in
+   * the same language — a file whose heading row is English above Arabic
+   * problems reads as half-finished.
+   */
+  it('takes the headings in the operator’s language', () => {
+    const csv = issuesCsv(
+      [{ line: 2, column: 'Country', message: 'ليست دولة معروفة' }],
+      ['السطر', 'العمود', 'المشكلة'],
+    )
+    expect(csv).toBe('السطر,العمود,المشكلة\n2,Country,ليست دولة معروفة\n')
   })
 })
 

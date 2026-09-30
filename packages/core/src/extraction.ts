@@ -52,9 +52,11 @@ import {
   withDefault,
   type CellParser,
   type ImportDescriptor,
+  type ImportIssueCode,
   type ImportLookups,
   type ImportReport,
   type ImportRow,
+  type IssueValues,
   type RateRowValues,
 } from './import'
 import {
@@ -321,13 +323,72 @@ export interface ExtractedInvoice {
   readonly confidence: number
   /** Header problems, in the same shape a row issue takes. */
   readonly headerIssues: readonly string[]
+  /**
+   * The same header problems, coded — see `InvoiceReadingIssue`. Parallel to
+   * `headerIssues` rather than replacing it, because the worker log and the
+   * model check print the English and have no catalogue to word a code with.
+   */
+  readonly headerIssueDetails: readonly InvoiceReadingIssue[]
+}
+
+/** The header fields a reading can fail on; `lines` is "there were none". */
+export type InvoiceHeaderField =
+  | 'invoiceNumber'
+  | 'invoiceDate'
+  | 'currency'
+  | 'dueOn'
+  | 'subtotal'
+  | 'taxAmount'
+  | 'total'
+  | 'lines'
+
+/** The one problem a reading has that no cell parser reports. */
+export type InvoiceReadingCode = ImportIssueCode | 'noLines'
+
+/**
+ * One reason a bill could not be read, as data.
+ *
+ * `core` holds no messages (§4), so a screen needs the code, the field and the
+ * line to say this in the reader's language; `message` is English, for logs
+ * and tests. `field` is an `InvoiceHeaderField` on a header issue and the
+ * descriptor's field key (`invoiceLineDescriptor`) on a line issue. `line` is
+ * the row number `validateImport` gives — the same number the arithmetic
+ * findings carry, so the two kinds of problem point at the same line.
+ */
+export interface InvoiceReadingIssue {
+  readonly where: 'header' | 'line'
+  readonly field: string
+  readonly line?: number
+  readonly code: InvoiceReadingCode
+  readonly values?: IssueValues
+  readonly message: string
+}
+
+/**
+ * Every reading problem on a bill, header first, as data.
+ *
+ * The lines' issues already carry a code from `validateImport`; this puts the
+ * header's beside them in one shape, so a caller translates one list.
+ */
+export function invoiceReadingIssues(extracted: ExtractedInvoice): InvoiceReadingIssue[] {
+  return [
+    ...extracted.headerIssueDetails,
+    ...extracted.lines.issues.map((issue): InvoiceReadingIssue => ({
+      where: 'line',
+      field: issue.field ?? '',
+      line: issue.line,
+      code: issue.code,
+      ...(issue.values === undefined ? {} : { values: issue.values }),
+      message: issue.message,
+    })),
+  ]
 }
 
 /* --- the header, checked by hand because it is not a row ---------------- */
 
 const required = <T>(parser: CellParser<T>, label: string): CellParser<T> => {
   return (raw, context) =>
-    raw.trim() === '' ? cellFail(`${label} is required`) : parser(raw, context)
+    raw.trim() === '' ? cellFail('required', `${label} is required`) : parser(raw, context)
 }
 
 const currencyCode = lookup('currencies', { label: 'currency', length: 3 })
@@ -351,6 +412,7 @@ export function readExtractedInvoice(
   lookups: ImportLookups,
 ): ExtractedInvoice {
   const headerIssues: string[] = []
+  const headerIssueDetails: InvoiceReadingIssue[] = []
 
   /*
     `optional()` answers `null` for a blank cell and this answers `undefined`
@@ -363,10 +425,18 @@ export function readExtractedInvoice(
     parser: CellParser<T>,
     value: unknown,
     label: string,
+    field: InvoiceHeaderField,
   ): NonNullable<T> | undefined => {
     const result = parser(value === null || value === undefined ? '' : String(value), { lookups })
     if (result.ok) return result.value ?? undefined
     headerIssues.push(`${label}: ${result.message}`)
+    headerIssueDetails.push({
+      where: 'header',
+      field,
+      code: result.code,
+      ...(result.values === undefined ? {} : { values: result.values }),
+      message: result.message,
+    })
     return undefined
   }
 
@@ -374,16 +444,30 @@ export function readExtractedInvoice(
     required(text({ min: 1, max: 100 }), 'Invoice number'),
     raw.invoiceNumber,
     'Invoice number',
+    'invoiceNumber',
   )
-  const invoiceDate = read(required(isoDate, 'Invoice date'), raw.invoiceDate, 'Invoice date')
-  const currency = read(required(currencyCode, 'Currency'), raw.currency, 'Currency')
-  const dueOn = read(optional(isoDate), raw.dueOn, 'Due date')
-  const subtotal = read(optional(money6), raw.subtotal, 'Subtotal')
-  const taxAmount = read(optional(money6), raw.taxAmount, 'Tax')
-  const total = read(optional(money6), raw.total, 'Total')
+  const invoiceDate = read(
+    required(isoDate, 'Invoice date'),
+    raw.invoiceDate,
+    'Invoice date',
+    'invoiceDate',
+  )
+  const currency = read(required(currencyCode, 'Currency'), raw.currency, 'Currency', 'currency')
+  const dueOn = read(optional(isoDate), raw.dueOn, 'Due date', 'dueOn')
+  const subtotal = read(optional(money6), raw.subtotal, 'Subtotal', 'subtotal')
+  const taxAmount = read(optional(money6), raw.taxAmount, 'Tax', 'taxAmount')
+  const total = read(optional(money6), raw.total, 'Total', 'total')
 
   const lines = Array.isArray(raw.lines) ? (raw.lines as RawInvoiceLine[]) : []
-  if (lines.length === 0) headerIssues.push('Lines: the model found no invoice lines')
+  if (lines.length === 0) {
+    headerIssues.push('Lines: the model found no invoice lines')
+    headerIssueDetails.push({
+      where: 'header',
+      field: 'lines',
+      code: 'noLines',
+      message: 'the model found no invoice lines',
+    })
+  }
 
   const report = validateImport<InvoiceLineValues>(invoiceLinesGrid(lines), invoiceLineDescriptor, {
     lookups,
@@ -410,6 +494,7 @@ export function readExtractedInvoice(
     lines: report,
     confidence,
     headerIssues,
+    headerIssueDetails,
   }
 }
 
@@ -655,7 +740,7 @@ export function driftMagnitude(findings: readonly ArithmeticFinding[], spec: Cur
 /**
  * The fields an enquiry extraction may speak to, in the order a form asks them.
  *
- * The same twelve as `EXTRACTABLE_FIELDS.enquiry_extract` in `ai.ts`, and that
+ * The same list as `EXTRACTABLE_FIELDS.enquiry_extract` in `ai.ts`, and that
  * duplication is deliberate: this list is what the *provider* is told, the
  * other is what the *system* will accept, and `extraction.test.ts` asserts
  * they agree. One list would be tidier and would remove the only check that
@@ -672,6 +757,14 @@ export const ENQUIRY_FIELDS = [
   'grossWeightKg',
   'volumeCbm',
   'pieces',
+  /*
+    How many containers, which is not `pieces`: a FCL quotation multiplies every
+    per-container rate by this and refuses without it (F39), and before the
+    model could propose it every mailed enquiry reached pricing with the one
+    number pricing cannot guess. Offered after `pieces` so the two sit side by
+    side in the prompt the model reads, which is where they get confused.
+  */
+  'containerCount',
   'dimensions',
   'isDangerous',
 ] as const
@@ -800,11 +893,45 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     fields.push({ field, value, confidence: scored, ...(evidence === '' ? {} : { evidence }) })
   }
 
+  /*
+    A container count only means something on a FCL shipment. Where the same
+    reading says the mode is something else, the count is the model mistaking
+    "2 pallets in a shared container" for an equipment order, and proposing it
+    would put a number on an air enquiry that nothing ever reads.
+  */
+  const statedMode = fields.find((proposal) => proposal.field === 'mode')?.value
+
   return {
-    fields,
+    fields: withoutStrayContainerCount(fields, statedMode),
     confidence: confidence(body.confidence ?? 0),
     unknownFields,
   }
+}
+
+/**
+ * Whether a container count belongs on an enquiry of this mode.
+ *
+ * An unknown mode is a yes: the text stated a count, and a count with no mode
+ * beside it is the "2 x 40HC" enquiry whose mode is proposed separately or
+ * typed later. Only a mode we *know* is not sea FCL rules it out.
+ */
+export function containerCountFitsMode(mode: string | null | undefined): boolean {
+  return mode === null || mode === undefined || mode.trim() === '' || mode.trim() === 'sea_fcl'
+}
+
+/**
+ * The proposals, less a `containerCount` that the known mode says cannot apply.
+ *
+ * One rule for both places a mode can be known — what the model read in the
+ * same mail (`readExtractedEnquiry`) and what the enquiry already holds (the
+ * worker) — so the two cannot disagree about what "FCL only" means.
+ */
+export function withoutStrayContainerCount(
+  fields: readonly FieldProposal[],
+  mode: string | null | undefined,
+): FieldProposal[] {
+  if (containerCountFitsMode(mode)) return [...fields]
+  return fields.filter((proposal) => proposal.field !== 'containerCount')
 }
 
 /* -------------------------------------------------------------------------
@@ -837,7 +964,15 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
   // cannot tell "no charges yet" from "no thanks". See the invoice schema note
   // above: a model may drop any key not on this list, and silence here is the
   // expensive kind.
-  required: ['declined', 'declinedReason', 'currency', 'validFrom', 'validTo', 'lines', 'confidence'],
+  required: [
+    'declined',
+    'declinedReason',
+    'currency',
+    'validFrom',
+    'validTo',
+    'lines',
+    'confidence',
+  ],
   properties: {
     declined: {
       type: 'boolean',
@@ -860,7 +995,10 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       description: 'ISO 8601 date the rate expires, or null for open-ended.',
     },
     /** The lane the model believes it read — restated for a mismatch check, never stored. */
-    origin: { type: ['string', 'null'], description: 'Origin the model read, for cross-check only.' },
+    origin: {
+      type: ['string', 'null'],
+      description: 'Origin the model read, for cross-check only.',
+    },
     destination: {
       type: ['string', 'null'],
       description: 'Destination the model read, for cross-check only.',
@@ -871,7 +1009,15 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['chargeType', 'basis', 'rate', 'currency', 'minimum', 'maximum', 'containerType'],
+        required: [
+          'chargeType',
+          'basis',
+          'rate',
+          'currency',
+          'minimum',
+          'maximum',
+          'containerType',
+        ],
         properties: {
           chargeType: {
             type: ['string', 'null'],
@@ -984,7 +1130,12 @@ export const rateReplyDescriptor: ImportDescriptor = {
       required: false,
       parse: optional(text({ max: 10 })),
     },
-    { key: 'transitDays', label: 'Transit days', required: false, parse: optional(integer({ min: 0, max: 400 })) },
+    {
+      key: 'transitDays',
+      label: 'Transit days',
+      required: false,
+      parse: optional(integer({ min: 0, max: 400 })),
+    },
     { key: 'notes', label: 'Notes', required: false, parse: optional(text({ max: 500 })) },
   ],
 }

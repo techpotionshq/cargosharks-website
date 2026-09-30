@@ -66,8 +66,40 @@ import { D, dec, equals, money, negate, round, subtract, sum, zero } from './mon
 import type { CurrencyCode, CurrencySpec, Money, Numeric } from './money'
 import { DomainError } from './errors'
 
+/**
+ * What a refusal is about, as data a caller with a catalogue can word.
+ *
+ * `message` is English, and the finance manager may be reading Arabic; the
+ * code alone says *what kind* of refusal but not *which* invoice or account,
+ * and that is the half they need to go and fix it. So the facts travel beside
+ * the sentence. All strings: an amount is a decimal string (never a number —
+ * KWD has three places), and an enum names the account or document kind for
+ * the caller to translate.
+ */
+export type AccountingErrorValues = Readonly<Record<string, string>>
+
+/** The control or mapped account a `journal_unmapped` refusal found missing. */
+export type MissingAccount =
+  | 'rounding'
+  | 'receivables'
+  | 'payables'
+  | 'tax'
+  | 'input_tax'
+  | 'bank'
+  | 'fx_variance'
+  | 'revenue'
+  | 'cost'
+
+/** The document a refusal names, so the caller can say "invoice X" in its language. */
+export type RefusedDocument =
+  'journal' | 'invoice' | 'job_cost' | 'supplier_invoice' | 'payment' | 'receipt' | 'settlement'
+
 export class AccountingError extends DomainError {
-  constructor(code: string, message: string) {
+  constructor(
+    code: string,
+    message: string,
+    readonly values: AccountingErrorValues = {},
+  ) {
     super(code, message)
   }
 }
@@ -99,6 +131,8 @@ export interface AccountMapping {
   readonly chargeTypeId: string
   readonly key: string
   readonly nameEn: string
+  /** Carried only so a refusal can name the charge type in Arabic too. */
+  readonly nameAr?: string | null
   readonly revenueAccountCode?: string | null
   readonly costAccountCode?: string | null
 }
@@ -352,6 +386,7 @@ export function buildJournal(input: JournalInput, spec: CurrencySpec): Journal {
         'journal_unbalanced',
         `Journal is out by ${difference.amount.toString()} ${base}, which is too much to be rounding. ` +
           'Something in the period is not what it claims to be.',
+        { amount: difference.amount.toString(), currency: base },
       )
     }
 
@@ -359,6 +394,7 @@ export function buildJournal(input: JournalInput, spec: CurrencySpec): Journal {
       input.controls.rounding,
       'rounding',
       'a rounding account is needed because per-line rounding left the journal a fraction out',
+      { account: 'rounding', document: 'journal', reference: '' },
     )
     const negative = dec(difference.amount).isNegative()
     lines.push({
@@ -412,6 +448,7 @@ function invoiceEntry(
     input.controls.receivables,
     'receivables',
     `invoice ${invoice.seriesNo} has nowhere to post its receivable`,
+    { account: 'receivables', document: 'invoice', reference: invoice.seriesNo },
   )
 
   /*
@@ -465,6 +502,7 @@ function invoiceEntry(
       input.controls.tax,
       'tax',
       `invoice ${invoice.seriesNo} carries tax and the branch has no tax account`,
+      { account: 'tax', document: 'invoice', reference: invoice.seriesNo },
     )
     const amount = toBase(tax.times(-sign))
     lines.push({
@@ -504,11 +542,18 @@ function costEntry(
     'cost account',
     `charge type ${mapped?.key ?? cost.chargeTypeId} is not mapped to a cost account, ` +
       `so ${cost.jobReference} cannot post`,
+    {
+      account: 'cost',
+      document: 'job_cost',
+      reference: cost.jobReference,
+      ...chargeTypeNames(mapped, cost.chargeTypeId),
+    },
   )
   const payables = required(
     input.controls.payables,
     'payables',
     `cost on ${cost.jobReference} has nowhere to post its payable`,
+    { account: 'payables', document: 'job_cost', reference: cost.jobReference },
   )
 
   const common = {
@@ -596,6 +641,7 @@ function supplierInvoiceEntry(
         `Line "${line.description}" on supplier invoice ${bill.reference} differs from what ` +
           'was accrued and has no charge type, so the difference cannot be posted. ' +
           'Give it a charge type, or match it to a cost line.',
+        { document: 'supplier_invoice', reference: bill.reference, line: line.description },
       )
     }
 
@@ -605,6 +651,12 @@ function supplierInvoiceEntry(
       'cost account',
       `charge type ${mapped?.nameEn ?? line.chargeTypeId} is not mapped to a cost account, ` +
         `so supplier invoice ${bill.reference} cannot post its variance`,
+      {
+        account: 'cost',
+        document: 'supplier_invoice',
+        reference: bill.reference,
+        ...chargeTypeNames(mapped, line.chargeTypeId),
+      },
     )
 
     const amount = toBase(variance)
@@ -629,6 +681,7 @@ function supplierInvoiceEntry(
       input.controls.inputTax,
       'input tax',
       `supplier invoice ${bill.reference} carries tax and the branch has no input tax account`,
+      { account: 'input_tax', document: 'supplier_invoice', reference: bill.reference },
     )
     const amount = toBase(tax)
     liability = { amount: liability.amount.plus(amount.amount), currency: base }
@@ -661,6 +714,7 @@ function supplierInvoiceEntry(
       input.controls.payables,
       'payables',
       `supplier invoice ${bill.reference} has nowhere to post its payable`,
+      { account: 'payables', document: 'supplier_invoice', reference: bill.reference },
     ),
     description: `${bill.partnerName} — ${bill.reference}`,
     debit: positiveSide(negate(liability), 'debit', base),
@@ -692,11 +746,13 @@ function supplierPaymentEntry(
     input.controls.bank,
     'bank',
     `payment ${payment.reference ?? payment.id} has nowhere to take the cash from`,
+    { account: 'bank', document: 'payment', reference: payment.reference ?? payment.id },
   )
   const payables = required(
     input.controls.payables,
     'payables',
     `payment ${payment.reference ?? payment.id} has no payable to clear`,
+    { account: 'payables', document: 'payment', reference: payment.reference ?? payment.id },
   )
 
   const common = {
@@ -749,6 +805,7 @@ function supplierPaymentEntry(
       'FX variance',
       `payment ${payment.reference ?? payment.id} realised an exchange difference and ` +
         'the branch has no FX variance account',
+      { account: 'fx_variance', document: 'payment', reference: payment.reference ?? payment.id },
     )
     lines.push({
       ...common,
@@ -805,6 +862,7 @@ function settlementEntry(
         input.controls.payables,
         'payables',
         `set-off ${settlement.reference} has no payable to clear`,
+        { account: 'payables', document: 'settlement', reference: settlement.reference },
       ),
       description: `Set-off against ${settlement.partnerName}`,
       debit: offset,
@@ -816,6 +874,7 @@ function settlementEntry(
         input.controls.receivables,
         'receivables',
         `set-off ${settlement.reference} has no receivable to clear`,
+        { account: 'receivables', document: 'settlement', reference: settlement.reference },
       ),
       description: `Set-off against ${settlement.partnerName}`,
       debit: zero(base),
@@ -837,11 +896,13 @@ function receiptEntry(
     input.controls.bank,
     'bank',
     `receipt ${payment.reference ?? payment.id} has nowhere to post the cash`,
+    { account: 'bank', document: 'receipt', reference: payment.reference ?? payment.id },
   )
   const receivables = required(
     input.controls.receivables,
     'receivables',
     `receipt ${payment.reference ?? payment.id} has no receivable to clear`,
+    { account: 'receivables', document: 'receipt', reference: payment.reference ?? payment.id },
   )
 
   const common = {
@@ -906,6 +967,7 @@ function receiptEntry(
       'FX variance',
       `receipt ${payment.reference ?? payment.id} realised an exchange difference and ` +
         'the branch has no FX variance account',
+      { account: 'fx_variance', document: 'receipt', reference: payment.reference ?? payment.id },
     )
     lines.push({
       ...common,
@@ -943,6 +1005,7 @@ function revenueAccountFor(
       'journal_unmapped_line',
       `A line on invoice ${seriesNo} has no charge type, so it cannot be posted. ` +
         'Free-text lines have to be given one before the period can close.',
+      { document: 'invoice', reference: seriesNo, line: line.description },
     )
   }
   const mapped = mapping.get(line.chargeTypeId)
@@ -951,14 +1014,51 @@ function revenueAccountFor(
     'revenue account',
     `charge type ${mapped?.nameEn ?? line.chargeTypeId} is not mapped to a revenue account, ` +
       `so invoice ${seriesNo} cannot post`,
+    {
+      account: 'revenue',
+      document: 'invoice',
+      reference: seriesNo,
+      ...chargeTypeNames(mapped, line.chargeTypeId),
+    },
   )
 }
 
-function required(value: string | null | undefined, what: string, why: string): string {
+/**
+ * Which account is missing and what it stopped — the `values` of the
+ * `journal_unmapped` refusal. `reference` is empty for the journal itself
+ * (the rounding account), which has no document of its own to name.
+ */
+interface MissingAccountFacts {
+  readonly account: MissingAccount
+  readonly document: RefusedDocument
+  readonly reference: string
+  readonly chargeTypeEn?: string
+  readonly chargeTypeAr?: string
+}
+
+function required(
+  value: string | null | undefined,
+  what: string,
+  why: string,
+  facts: MissingAccountFacts,
+): string {
   if (!value || value.trim() === '') {
-    throw new AccountingError('journal_unmapped', `No ${what} configured: ${why}.`)
+    throw new AccountingError('journal_unmapped', `No ${what} configured: ${why}.`, { ...facts })
   }
   return value.trim()
+}
+
+/**
+ * A charge type named in both languages for a refusal. Arabic falls back to
+ * English (a name is better than a blank), and both fall back to the id when
+ * the mapping has no row at all — which is itself the thing to fix.
+ */
+function chargeTypeNames(
+  mapped: AccountMapping | undefined,
+  chargeTypeId: string,
+): { chargeTypeEn: string; chargeTypeAr: string } {
+  const en = mapped?.nameEn || mapped?.key || chargeTypeId
+  return { chargeTypeEn: en, chargeTypeAr: mapped?.nameAr || en }
 }
 
 function totalOf(

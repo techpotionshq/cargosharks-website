@@ -13,6 +13,7 @@ import { requireSession } from '@/lib/session'
 import { listPayments, paymentSummary } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
@@ -32,7 +33,7 @@ export default async function PaymentsPage() {
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [rows, summary] = await Promise.all([
-    listPayments(session.actor),
+    listPayments(session.actor, locale),
     paymentSummary(session.actor),
   ])
 
@@ -45,9 +46,8 @@ export default async function PaymentsPage() {
       summary={[
         {
           label: t('received'),
-          value: summary.currency
-            ? formatMoney({ amount: Number(summary.received), currency: summary.currency }, locale)
-            : '—',
+          // One figure per currency, never one sum — as the invoice register's.
+          value: formatByCurrency(summary.received, locale),
         },
         { label: t('count'), value: summary.count },
         { label: t('unallocated'), value: summary.unallocated },

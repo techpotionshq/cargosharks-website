@@ -8,7 +8,7 @@
  * edit and each was seed-only until now.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -357,7 +357,7 @@ export async function DutyRateDialog({
   if (!can(session, 'admin.reference.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('dutyRateForm'),
     getTranslations('common'),
   ])
@@ -483,7 +483,7 @@ export async function ChargeableRuleDialog({
   if (!can(session, 'admin.reference.write')) return null
 
   const [options, t, tc, tMode] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('chargeableForm'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -591,7 +591,7 @@ export async function FreeTimeRuleDialog({
   if (!can(session, 'admin.reference.write')) return null
 
   const [options, t, tc, tMode] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('freeTimeRuleForm'),
     getTranslations('common'),
     getTranslations('mode'),

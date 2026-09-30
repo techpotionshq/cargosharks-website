@@ -22,6 +22,7 @@ import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
+import { pickName } from '@/lib/named'
 
 type Filter = 'live' | 'exceptions' | 'arriving' | 'all'
 
@@ -252,13 +253,13 @@ export default async function JobsPage({
                     </TD>
 
                     <TD className="max-w-52 truncate">
-                      {locale === 'ar' ? job.customerNameAr : job.customerName}
+                      {pickName(locale, job.customerName, job.customerNameAr)}
                     </TD>
 
                     <TD className="text-ink-muted">
                       <Lane
-                        origin={locale === 'ar' ? job.originNameAr : job.originName}
-                        destination={locale === 'ar' ? job.destinationNameAr : job.destinationName}
+                        origin={pickName(locale, job.originName, job.originNameAr)}
+                        destination={pickName(locale, job.destinationName, job.destinationNameAr)}
                       />
                     </TD>
 

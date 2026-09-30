@@ -36,10 +36,16 @@ const SECRET = 'test-internal-secret'
 
 class StubDocumentNotFound extends Error {}
 class StubFileStoreError extends Error {}
+class StubDocumentTypeNotSeeded extends StubDocumentNotFound {
+  constructor(readonly kind: string) {
+    super(`${kind} — run pnpm db:seed`)
+  }
+}
 class StubExportError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly values?: Readonly<Record<string, string>>,
   ) {
     super(message)
   }
@@ -140,20 +146,84 @@ vi.mock('../pdf/job-documents', () => ({
 }))
 
 vi.mock('../pdf/store', () => ({
-  storeJobDocument: async () => ({ documentId: 'doc-1', version: 2, assetId: 'asset-9' }),
+  DocumentTypeNotSeededError: StubDocumentTypeNotSeeded,
+  storeJobDocument: async (_actor: unknown, id: string, kind: string) => {
+    if (id === 'unseeded') throw new StubDocumentTypeNotSeeded(kind)
+    if (id === 'bucket-down') throw new StubFileStoreError('bucket unreachable')
+    return { documentId: 'doc-1', version: 2, assetId: 'asset-9' }
+  },
 }))
 
-vi.mock('../accounting/export', () => ({
+/*
+  The two AI workers, as the routes see them: what a worker returns, not how it
+  got there. Enough to prove the codes travel beside the English.
+*/
+vi.mock('../workers/quote-cover-note', () => ({
+  draftQuoteCoverNote: async (input: { quoteId: string; locale: 'en' | 'ar' }) =>
+    input.quoteId === 'sent'
+      ? {
+          invocationId: null,
+          note: null,
+          locale: input.locale,
+          refusal: 'A covering note can only be drafted on a draft quote.',
+          refusalCode: 'not_draft',
+        }
+      : { invocationId: 'inv-1', note: 'We are pleased to enclose…', locale: input.locale },
+}))
+
+vi.mock('../workers/invoice-extract', async () => {
+  const { readExtractedInvoice } =
+    await vi.importActual<typeof import('@qabandi/core')>('@qabandi/core')
+  return {
+    extractSupplierInvoice: async () => ({
+      invocationId: 'inv-2',
+      // A real reading, so the issues are the ones `core` actually produces.
+      extracted: readExtractedInvoice(
+        {
+          invoiceNumber: '',
+          invoiceDate: '2026-01-15',
+          currency: 'KWD',
+          lines: [{ description: 'Ocean freight', amount: '900.000', chargeType: 'MYSTERY' }],
+          confidence: 0.9,
+        },
+        { currencies: new Set(['KWD']), chargeTypes: new Set(['OFR']) },
+      ),
+      findings: [],
+      consistent: false,
+      refusal: 'Invoice number: Invoice number is required',
+      refusalCode: 'unreadable_fields',
+      refusalValues: { count: '2' },
+    }),
+  }
+})
+
+vi.mock('../accounting/export', async () => ({
   ExportError: StubExportError,
   buildAccountingExport: async (_actor: unknown, request: { branchId: string }) => {
     if (request.branchId === 'unmapped') {
-      throw new StubExportError('unmapped_charge_types', 'These charge types have no account')
+      throw new StubExportError('unmapped_charge_types', 'These charge types have no account', {
+        namesEn: 'Ocean Freight',
+        namesAr: 'شحن بحري',
+      })
     }
     if (request.branchId === 'domain') {
-      const error = Object.assign(new Error('the journal does not balance'), {
-        code: 'unbalanced',
+      const { DomainError } = await import('@qabandi/core')
+      throw new DomainError('unbalanced', 'the journal does not balance')
+    }
+    if (request.branchId === 'no-receivables') {
+      const { AccountingError } = await import('@qabandi/core')
+      throw new AccountingError('journal_unmapped', 'No receivables configured', {
+        account: 'receivables',
+        document: 'invoice',
+        reference: 'INV-2026-0001',
       })
-      throw error
+    }
+    // What the driver throws: an Error with a string `code`, e.g. a unique
+    // violation. It has the shape of a refusal and is not one.
+    if (request.branchId === 'database') {
+      throw Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+      })
     }
     if (request.branchId === 'boom') throw new Error('a bug, not a refusal')
     return { exportId: 'exp-1', status: 'draft', rowCount: 12 }
@@ -355,6 +425,80 @@ describe('the internal API’s handlers', () => {
       const response = await post('/documents/job/missing', { actor: ACTOR, kind: 'house_bill' })
 
       expect(response.statusCode).toBe(404)
+      expect(response.json().error).toBe('not_found')
+    })
+
+    /**
+     * An unseeded document type is not "no such shipment" — the job is right
+     * there — so it has its own code, and the kind for the sentence to name.
+     */
+    it('codes a document type the deployment never seeded', async () => {
+      const response = await post('/documents/job/unseeded', {
+        actor: ACTOR,
+        kind: 'customs_pack',
+        store: true,
+      })
+
+      expect(response.statusCode).toBe(404)
+      expect(response.json().error).toBe('document_type_missing')
+      expect(response.json().values).toEqual({ kind: 'customs_pack' })
+    })
+
+    it('codes a copy that could not be kept, rather than a bare 500', async () => {
+      const response = await post('/documents/job/bucket-down', {
+        actor: ACTOR,
+        kind: 'house_bill',
+        store: true,
+      })
+
+      expect(response.statusCode).toBe(502)
+      expect(response.json().error).toBe('storage_failed')
+    })
+  })
+
+  describe('drafting a covering note', () => {
+    it('sends the refusal as a code beside its English', async () => {
+      const response = await post('/ai/quote-cover-note', {
+        actor: ACTOR,
+        branchId: 'b1',
+        quoteId: 'sent',
+        locale: 'ar',
+      })
+
+      expect(response.statusCode).toBe(200)
+      expect(response.json().note).toBeNull()
+      expect(response.json().refusalCode).toBe('not_draft')
+    })
+
+    it('sends no code when a note was drafted', async () => {
+      const response = await post('/ai/quote-cover-note', {
+        actor: ACTOR,
+        branchId: 'b1',
+        quoteId: 'q1',
+      })
+
+      expect(response.json().refusalCode).toBeNull()
+    })
+  })
+
+  describe('reading a supplier bill', () => {
+    /** Which field on which line, coded — not only the English `issues`. */
+    it('sends each reading issue as a code with its field and line', async () => {
+      const response = await post('/ai/supplier-invoice', {
+        actor: ACTOR,
+        branchId: 'b1',
+        assetId: 'asset-1',
+        partnerId: 'p1',
+        write: true,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const { readingIssues, issues } = response.json()
+      expect(issues).toHaveLength(2)
+      expect(readingIssues).toEqual([
+        { where: 'header', field: 'invoiceNumber', line: null, code: 'required', values: {} },
+        expect.objectContaining({ where: 'line', field: 'chargeType', code: 'unknownReference' }),
+      ])
     })
   })
 
@@ -412,6 +556,9 @@ describe('the internal API’s handlers', () => {
       expect(response.statusCode).toBe(422)
       expect(response.json().error).toBe('unmapped_charge_types')
       expect(response.json().message).toContain('no account')
+      // What the web app's sentence names, in both languages — it translates
+      // the code rather than showing `message`.
+      expect(response.json().values).toEqual({ namesEn: 'Ocean Freight', namesAr: 'شحن بحري' })
     })
 
     /**
@@ -430,6 +577,25 @@ describe('the internal API’s handlers', () => {
 
       expect(response.statusCode).toBe(422)
       expect(response.json().error).toBe('unbalanced')
+      expect(response.json().values).toEqual({})
+    })
+
+    /** Which account and which invoice travel, so the sentence can name them. */
+    it('carries the accounting engine’s values beside its code', async () => {
+      const response = await post('/accounting/export', {
+        actor: ACTOR,
+        branchId: 'no-receivables',
+        from: '2026-01-01',
+        to: '2026-01-31',
+      })
+
+      expect(response.statusCode).toBe(422)
+      expect(response.json().error).toBe('journal_unmapped')
+      expect(response.json().values).toEqual({
+        account: 'receivables',
+        document: 'invoice',
+        reference: 'INV-2026-0001',
+      })
     })
 
     /** A bug is not a refusal, and dressing it as 422 would hide it. */
@@ -437,6 +603,22 @@ describe('the internal API’s handlers', () => {
       const response = await post('/accounting/export', {
         actor: ACTOR,
         branchId: 'boom',
+        from: '2026-01-01',
+        to: '2026-01-31',
+      })
+
+      expect(response.statusCode).toBe(500)
+    })
+
+    /*
+      A PostgreSQL error carries a string `code` too. Matching on that shape
+      used to send the driver's raw message to the finance manager as a 422
+      "refusal"; only a DomainError is one.
+    */
+    it('does not mistake a database error for a refusal', async () => {
+      const response = await post('/accounting/export', {
+        actor: ACTOR,
+        branchId: 'database',
         from: '2026-01-01',
         to: '2026-01-31',
       })
@@ -462,6 +644,8 @@ describe('the internal API’s handlers', () => {
 
       expect(response.statusCode).toBe(422)
       expect(response.json().error).toBe('already_void')
+      // Nothing to name, but the field is always there for the web to read.
+      expect(response.json().values).toEqual({})
     })
   })
 

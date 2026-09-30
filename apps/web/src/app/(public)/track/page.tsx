@@ -32,6 +32,7 @@ import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
+import { pickName } from '@/lib/named'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('track')
@@ -59,7 +60,8 @@ export default async function TrackPage({
   const brand = getBrand()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  // An empty Arabic name falls back to English rather than rendering blank (F52).
+  const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
 
   const done = result?.milestones.filter((m) => m.actualAt !== null).length ?? 0
   const total = result?.milestones.length ?? 0

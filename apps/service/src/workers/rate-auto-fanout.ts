@@ -34,7 +34,7 @@
  */
 
 import { randomBytes } from 'node:crypto'
-import { and, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import {
   enquiries,
   locations,
@@ -125,8 +125,32 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
             select 1 from ${rateRequests} r
              where r.enquiry_id = ${enquiries.id} and r.status <> 'superseded'
           )`,
+          /*
+            Only lanes somebody covers — the same match as `coveringAgentIds`
+            (port, or country, per mode; an active contact with an email).
+
+            Without this the batch filled with enquiries no agent covers. They
+            are never asked, so they stay eligible forever, and with no order
+            the same fifty came back every sweep: past fifty uncovered
+            enquiries, a covered lane was never fanned out at all. The
+            per-enquiry check below still decides who is asked.
+          */
+          sql`exists (
+            select 1
+              from ${partnerCoverage} c
+              join ${partnerContacts} pc
+                on pc.partner_id = c.partner_id and pc.is_active and pc.email is not null
+              join ${locations} o on o.id = ${enquiries.originId}
+              join ${locations} d on d.id = ${enquiries.destinationId}
+             where c.is_active
+               and c.mode = ${enquiries.mode}
+               and (c.origin_id = o.id or c.origin_country = o.country_code)
+               and (c.destination_id = d.id or c.destination_country = d.country_code)
+          )`,
         ),
       )
+      // Oldest first: a stable, fair order rather than whatever the planner returns.
+      .orderBy(asc(enquiries.createdAt))
       .limit(ENQUIRY_BATCH),
   )
 
@@ -180,7 +204,12 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
  */
 async function coveringAgentIds(
   tx: Tx,
-  enquiry: { id: string; mode: string | null; originId: string | null; destinationId: string | null },
+  enquiry: {
+    id: string
+    mode: string | null
+    originId: string | null
+    destinationId: string | null
+  },
   maxAgents: number,
 ): Promise<string[]> {
   if (!enquiry.mode || !enquiry.originId || !enquiry.destinationId) return []
@@ -202,7 +231,9 @@ async function coveringAgentIds(
         ),
         or(
           eq(partnerCoverage.destinationId, enquiry.destinationId),
-          destinationCountry ? eq(partnerCoverage.destinationCountry, destinationCountry) : sql`false`,
+          destinationCountry
+            ? eq(partnerCoverage.destinationCountry, destinationCountry)
+            : sql`false`,
         ),
       ),
     )
@@ -230,9 +261,7 @@ async function coveringAgentIds(
       await tx
         .selectDistinct({ partnerId: rateRequests.partnerId })
         .from(rateRequests)
-        .where(
-          and(eq(rateRequests.enquiryId, enquiry.id), ne(rateRequests.status, 'superseded')),
-        )
+        .where(and(eq(rateRequests.enquiryId, enquiry.id), ne(rateRequests.status, 'superseded')))
     ).map((row) => row.partnerId),
   )
 

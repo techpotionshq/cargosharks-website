@@ -29,6 +29,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { branches, hasSecretKey, mailboxes, sealSecret, withActor } from '@qabandi/db'
@@ -37,6 +38,7 @@ import { assertCan, assertInBranch } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMailboxes } from '@/lib/pilot/fixtures'
 import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 export interface MailboxRow {
   readonly id: string
@@ -121,6 +123,7 @@ const mailboxSchema = z.object({
 export async function saveMailbox(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
     const value = form.get(key)
@@ -130,7 +133,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
   const mailboxId = read('mailboxId')
   const password = typeof form.get('password') === 'string' ? String(form.get('password')) : ''
 
-  const parsed = mailboxSchema.safeParse({
+  const parsed = await localeParse(mailboxSchema, {
     branchId: read('branchId'),
     host: read('host'),
     port: read('port') ?? 993,
@@ -160,15 +163,13 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
   assertInBranch(session, data.branchId)
 
   if (!mailboxId && !password) {
-    return fail({ password: 'A password is needed to reach the mailbox.' }, safeEcho())
+    return fail({ password: tv('mailboxPassword') }, safeEcho())
   }
 
   if (!hasSecretKey()) {
     return fail(
       {
-        _:
-          'MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a mailbox ' +
-          'password cannot be sealed. Set it and restart before adding a mailbox.',
+        _: tv('mailboxKeyMissing'),
       },
       safeEcho(),
     )
@@ -210,7 +211,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
     */
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes('mailboxes_address_unique')) {
-      return fail({ username: 'This mailbox is already connected on that host.' }, safeEcho())
+      return fail({ username: tv('mailboxConnected') }, safeEcho())
     }
     throw error
   }
@@ -234,7 +235,8 @@ export async function setMailboxActive(
 
   const mailboxId = String(form.get('mailboxId') ?? '')
   const isActive = form.get('isActive') === 'true'
-  if (!mailboxId) return fail({ _: 'Missing mailbox.' })
+  const tv = await getTranslations('adminValidation')
+  if (!mailboxId) return fail({ _: tv('missingMailbox') })
 
   await withActor(session.actor, async (tx) => {
     const [current] = await tx

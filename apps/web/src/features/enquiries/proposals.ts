@@ -37,6 +37,7 @@ export {
   enquiryColumn,
   MODES,
   DIRECTIONS,
+  type ExpectedValue,
   type Resolution,
   type ResolutionFailure,
 } from '@qabandi/db'

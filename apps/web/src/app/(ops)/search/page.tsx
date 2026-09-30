@@ -25,6 +25,7 @@ import { Panel } from '@/ui/panel'
 import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { pickName } from '@/lib/named'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('search')
@@ -146,14 +147,12 @@ export default async function SearchPage({
                         </span>
                       </TD>
                       <TD className="max-w-52 truncate">
-                        {locale === 'ar' ? job.customerNameAr : job.customerName}
+                        {pickName(locale, job.customerName, job.customerNameAr)}
                       </TD>
                       <TD className="text-ink-muted">
                         <Lane
-                          origin={locale === 'ar' ? job.originNameAr : job.originName}
-                          destination={
-                            locale === 'ar' ? job.destinationNameAr : job.destinationName
-                          }
+                          origin={pickName(locale, job.originName, job.originNameAr)}
+                          destination={pickName(locale, job.destinationName, job.destinationNameAr)}
                         />
                       </TD>
                       <TD>

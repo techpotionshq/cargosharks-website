@@ -25,13 +25,13 @@ import type { RenewalView } from '@/lib/pilot/types'
 
 export async function RenewalsPanel() {
   const session = await requireSession()
-  const [renewals, t, tShared, resolved] = await Promise.all([
-    getRenewals(session.actor),
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const [renewals, t, tShared] = await Promise.all([
+    getRenewals(session.actor, locale),
     getTranslations('renewals'),
     getTranslations('rateRequests'),
-    getLocale(),
   ])
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   if (renewals.length === 0) return null
   const canAccept = can(session, 'rate.card.write')
@@ -52,7 +52,9 @@ export async function RenewalsPanel() {
               <p className="mt-0.5 text-[0.8125rem] text-ink-muted" dir="auto">
                 {row.partnerName}
                 {row.oldValidTo ? (
-                  <span className="ms-2 text-ink-subtle">{t('lapses', { date: row.oldValidTo })}</span>
+                  <span className="ms-2 text-ink-subtle">
+                    {t('lapses', { date: row.oldValidTo })}
+                  </span>
                 ) : null}
               </p>
               {row.declinedReason ? (
@@ -65,7 +67,10 @@ export async function RenewalsPanel() {
             <div className="text-end">
               {row.quotedTotal && row.quotedCurrency ? (
                 <div className="text-[0.9375rem] font-semibold text-ink">
-                  {formatMoney({ amount: Number(row.quotedTotal), currency: row.quotedCurrency }, locale)}
+                  {formatMoney(
+                    { amount: Number(row.quotedTotal), currency: row.quotedCurrency },
+                    locale,
+                  )}
                 </div>
               ) : (
                 <span className="text-[0.8125rem] text-ink-subtle">{tShared('awaiting')}</span>

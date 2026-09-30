@@ -36,6 +36,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { assets, jobs, podPhotos, proofOfDelivery, withActor } = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
@@ -245,7 +254,7 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
         {},
         capture('00000000-0000-7000-8000-00000000fe01'),
       )
-      expect(state.message).toContain('could not be found')
+      expect(state.message).toBe('podValidation.shipmentNotFound')
     })
 
     it('refuses a caller who may not touch the shipment', async () => {
@@ -380,8 +389,8 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
       data.append('photos', new File([Buffer.from('x')], 'gate.jpg', { type: 'image/jpeg' }))
       const state = await captureProofOfDelivery({}, data)
 
-      expect(state.message).toContain('The delivery was recorded')
-      expect(state.message).toContain('signature')
+      expect(state.message).toContain('podValidation.uploadsFailed')
+      expect(state.message).toContain('podValidation.uploadSignature')
       expect(state.message).toContain('gate.jpg')
       // Written regardless — that is the whole point.
       expect(await podFor(jobId)).toBeDefined()
@@ -393,7 +402,7 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
       try {
         const state = await captureProofOfDelivery({}, capture(jobId, { signature: PNG }))
 
-        expect(state.message).toContain('The delivery was recorded')
+        expect(state.message).toContain('podValidation.uploadsFailed')
         expect(await podFor(jobId)).toBeDefined()
       } finally {
         vi.stubEnv('SERVICE_URL', 'http://service.test')
@@ -406,7 +415,7 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
 
       const state = await captureProofOfDelivery({}, capture(jobId, { signature: PNG }))
 
-      expect(state.message).toContain('signature')
+      expect(state.message).toContain('podValidation.uploadSignature')
       expect(await podFor(jobId)).toBeDefined()
     })
   })

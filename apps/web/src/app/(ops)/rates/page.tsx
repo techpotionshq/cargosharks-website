@@ -50,15 +50,18 @@ export default async function RatesPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const { direction } = await searchParams
 
   const [rows, summary, margins, expiring] = await Promise.all([
     listRateCards(
       session.actor,
       direction === 'buy' || direction === 'sell' ? direction : undefined,
+      locale,
     ),
     rateCardSummary(session.actor),
-    laneMargins(session.actor),
+    laneMargins(session.actor, locale),
     listExpiringRateCards(session.actor),
   ])
 
@@ -67,8 +70,6 @@ export default async function RatesPage({
   const tMode = await getTranslations('mode')
   const tEnq = await getTranslations('enquiry')
   const tDash = await getTranslations('dashboard')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const buyCount = rows.filter((row) => row.direction === 'buy').length
   const sellCount = rows.filter((row) => row.direction === 'sell').length

@@ -43,7 +43,7 @@ export default async function WhatsappNumbersPage() {
 
   const [rows, options, t, tc] = await Promise.all([
     listWhatsappNumbers(),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('whatsappNumbers'),
     getTranslations('common'),
   ])

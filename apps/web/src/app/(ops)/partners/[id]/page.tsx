@@ -44,8 +44,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const session = await requireSession()
   const { id } = await params
-  const partner = await getPartnerDetail(session.actor, id)
-  return { title: partner?.legalNameEn ?? 'Partner' }
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const partner = await getPartnerDetail(session.actor, id, locale)
+  if (!partner) return { title: 'Partner' }
+  // The tab says what the heading says; partners carry no Arabic name yet, so
+  // this is English until one is entered.
+  return {
+    title: locale === 'ar' && partner.legalNameAr ? partner.legalNameAr : partner.legalNameEn,
+  }
 }
 
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -53,11 +60,13 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
 
   const session = await requireSession()
   const { id } = await params
-  const partner = await getPartnerDetail(session.actor, id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const partner = await getPartnerDetail(session.actor, id, locale)
   if (!partner) notFound()
 
-  const account = await getPartnerAccount(session.actor, id)
-  const credentials = await listPartnerCredentials(session.actor, id)
+  const account = await getPartnerAccount(session.actor, id, undefined, locale)
+  const credentials = await listPartnerCredentials(session.actor, id, locale)
 
   /** Live certificates, as options for a renewal to point back at. */
   const renewable = credentials.compliance
@@ -72,8 +81,6 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   const tp = await getTranslations('partners')
   const tf = await getTranslations('partnerForm')
   const tJob = await getTranslations('job')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const displayName =
     locale === 'ar' && partner.legalNameAr ? partner.legalNameAr : partner.legalNameEn

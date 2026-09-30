@@ -66,6 +66,19 @@ describe('formatMoney', () => {
     expect(without).toContain('1,234.5')
   })
 
+  /*
+    Without the code the figure still keeps its currency's places. Decimal
+    style ignored the currency: a dinar column printed "1,145.69" beside
+    "110.495", and a dollar figure printed three places.
+  */
+  it("keeps the currency's places when the code is dropped", () => {
+    const bare = (amount: number, currency: string) =>
+      formatMoney({ amount, currency }, 'en', { showCurrency: false })
+    expect(bare(1145.69, 'KWD')).toBe('1,145.690')
+    expect(bare(1595486.978, 'USD')).toBe('1,595,486.98')
+    expect(bare(1500, 'JPY')).toBe('1,500')
+  })
+
   /** Compact only above ten thousand — below it, the exact figure is wanted. */
   it('does not compact below ten thousand', () => {
     expect(formatMoney({ amount: 9999, currency: 'KWD' }, 'en', { compact: true })).toContain(

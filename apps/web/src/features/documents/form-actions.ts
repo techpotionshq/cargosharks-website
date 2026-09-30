@@ -23,6 +23,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { jobCargo, jobParties, jobs, withActor } from '@qabandi/db'
@@ -36,7 +37,9 @@ import {
   fieldErrors,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -51,54 +54,57 @@ const optionalText = (max = 200) =>
     .optional()
     .transform((v) => v || null)
 
-const optionalQuantity = z
-  .string()
-  .trim()
-  .regex(/^\d*\.?\d*$/, 'Numbers only')
-  .optional()
-  .transform((v) => (v && v !== '' ? v : null))
+const optionalQuantity = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
+    .optional()
+    .transform((v) => (v && v !== '' ? v : null))
 
 // --- parties ---------------------------------------------------------------
 
-const partySchema = z.object({
-  jobId: z.uuid('Choose a shipment'),
-  role: z.enum([
-    'shipper',
-    'consignee',
-    'notify',
-    'second_notify',
-    'delivery_agent',
-    'forwarding_agent',
-  ]),
-  nameEn: z.string().trim().min(1, 'A party needs a name').max(200),
-  nameAr: optionalText(),
-  /** Newlines preserved: an address is laid out, not written. */
-  address: optionalText(500),
-  city: optionalText(120),
-  country: optionalText(2),
-  contactName: optionalText(120),
-  phone: optionalText(60),
-  email: z
-    .email('Not an email address')
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
-  taxId: optionalText(60),
-  customerId: z
-    .uuid()
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
-  partnerId: z
-    .uuid()
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
-})
+const partySchema = (tv: Translate) =>
+  z.object({
+    jobId: z.uuid(tv('chooseShipment')),
+    role: z.enum([
+      'shipper',
+      'consignee',
+      'notify',
+      'second_notify',
+      'delivery_agent',
+      'forwarding_agent',
+    ]),
+    nameEn: z.string().trim().min(1, tv('partyNameRequired')).max(200),
+    nameAr: optionalText(),
+    /** Newlines preserved: an address is laid out, not written. */
+    address: optionalText(500),
+    city: optionalText(120),
+    country: optionalText(2),
+    contactName: optionalText(120),
+    phone: optionalText(60),
+    email: z
+      .email(tv('notEmail'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    taxId: optionalText(60),
+    customerId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    partnerId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+  })
 
 export async function saveJobParty(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const tv = await getTranslations('documentsValidation')
 
   const partyId = read(form, 'partyId')
-  const parsed = partySchema.safeParse({
+  const parsed = await localeParse(partySchema(tv), {
     jobId: read(form, 'jobId'),
     role: read(form, 'role'),
     nameEn: read(form, 'nameEn'),
@@ -153,7 +159,7 @@ export async function saveJobParty(_previous: ActionState, form: FormData): Prom
       that cannot be issued.
     */
     if (databaseMessage(error).includes('job_parties_single_principal')) {
-      return failWith('That shipment already has one of those. Edit the existing party instead.')
+      return failWith(tv('partyRoleTaken'))
     }
     throw error
   }
@@ -164,34 +170,36 @@ export async function saveJobParty(_previous: ActionState, form: FormData): Prom
 
 // --- cargo -----------------------------------------------------------------
 
-const cargoSchema = z.object({
-  jobId: z.uuid('Choose a shipment'),
-  marksAndNumbers: optionalText(2000),
-  packageCount: z.coerce.number().int().positive().optional(),
-  packageType: optionalText(60),
-  descriptionEn: z.string().trim().min(1, 'The goods need a description').max(2000),
-  descriptionAr: optionalText(2000),
-  hsCode: z
-    .string()
-    .trim()
-    .max(20)
-    .optional()
-    .transform((v) => v || null),
-  grossWeightKg: optionalQuantity,
-  netWeightKg: optionalQuantity,
-  volumeCbm: optionalQuantity,
-  equipmentId: z
-    .uuid()
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
-})
+const cargoSchema = (tv: Translate) =>
+  z.object({
+    jobId: z.uuid(tv('chooseShipment')),
+    marksAndNumbers: optionalText(2000),
+    packageCount: z.coerce.number().int().positive().optional(),
+    packageType: optionalText(60),
+    descriptionEn: z.string().trim().min(1, tv('goodsDescriptionRequired')).max(2000),
+    descriptionAr: optionalText(2000),
+    hsCode: z
+      .string()
+      .trim()
+      .max(20)
+      .optional()
+      .transform((v) => v || null),
+    grossWeightKg: optionalQuantity(tv),
+    netWeightKg: optionalQuantity(tv),
+    volumeCbm: optionalQuantity(tv),
+    equipmentId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+  })
 
 export async function saveCargoLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const tv = await getTranslations('documentsValidation')
 
   const cargoId = read(form, 'cargoId')
-  const parsed = cargoSchema.safeParse({
+  const parsed = await localeParse(cargoSchema(tv), {
     jobId: read(form, 'jobId'),
     marksAndNumbers: form.get('marksAndNumbers')?.toString(),
     packageCount: read(form, 'packageCount'),
@@ -310,10 +318,18 @@ async function allocateHouseBillNumber(
  * allocated *first*, because a bill rendered before its number exists is
  * watermarked DRAFT on its face and storing that as the issued original is
  * exactly the mistake the watermark is there to prevent.
+ *
+ * Returns an `ActionState` for the two refusals the operator meets by
+ * clicking — no service configured, and the service saying no. Thrown, they
+ * reached the error boundary, which production redacts, so the one sentence
+ * that said what to fix was the one sentence nobody saw. The job and the kind
+ * are hidden fields the panel wrote; missing or unknown, they are a tampered
+ * form and still throw.
  */
-export async function issueDocument(form: FormData): Promise<void> {
+export async function issueDocument(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.generate')
+  const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')
   const kind = read(form, 'kind') as DocumentKind | undefined
@@ -335,11 +351,7 @@ export async function issueDocument(form: FormData): Promise<void> {
   */
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
-  if (!serviceUrl || !secret) {
-    throw new Error(
-      'Documents are rendered by the service. Set SERVICE_URL and INTERNAL_API_SECRET.',
-    )
-  }
+  if (!serviceUrl || !secret) return failWith(tv('issueNeedsService'))
 
   const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/documents/job/${jobId}`, {
     method: 'POST',
@@ -350,18 +362,78 @@ export async function issueDocument(form: FormData): Promise<void> {
 
   if (!response.ok) {
     /*
-      The service's own words, where it had any.
+      The service's reason, worded here from its code — never its `message`,
+      which is English for its own log.
 
-      "Document type customs_pack — run pnpm db:seed" is an actionable
+      "The customs pack is not set up in this deployment" is an actionable
       sentence; "Could not issue the document" sends the operator to support
-      for something they could have fixed themselves.
+      for something they could have fixed themselves. So each code the route
+      sends has its own sentence, and only a code this file does not know (or
+      a render fault, which is a bare 500) falls back to the status.
     */
-    const detail = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new Error(detail?.message ?? `The document service refused (${response.status})`)
+    const detail = (await response.json().catch(() => null)) as IssueRefusalBody | null
+    return failWith(issueRefusal(tv, detail) ?? tv('issueRefused', { status: response.status }))
   }
 
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/documents')
+  return succeed(kind)
+}
+
+/** What the service's refusal carries. `message`, where sent, is English and never shown. */
+interface IssueRefusalBody {
+  readonly error?: string
+  readonly values?: Readonly<Record<string, string>>
+}
+
+/**
+ * Every refusal code `/internal/documents/job/:id` answers with. Mirrored
+ * rather than imported, because `apps/web` does not import the service.
+ * `no_actor` is absent on purpose: it is this action's bug, not the operator's
+ * problem, and the status fallback says as much as anything would.
+ */
+const ISSUE_REFUSALS = [
+  'not_found',
+  'document_type_missing',
+  'storage_failed',
+  'unknown_kind',
+] as const
+
+type IssueRefusal = (typeof ISSUE_REFUSALS)[number]
+
+function isIssueRefusal(code: unknown): code is IssueRefusal {
+  return typeof code === 'string' && (ISSUE_REFUSALS as readonly string[]).includes(code)
+}
+
+/**
+ * Why the document was not issued, in the reader's language — or null for the
+ * caller's status fallback. The `never` default keeps the switch exhaustive.
+ */
+function issueRefusal(
+  tv: Translate<'documentsValidation'>,
+  body: IssueRefusalBody | null,
+): string | null {
+  const code = body?.error
+  if (!isIssueRefusal(code)) return null
+
+  switch (code) {
+    case 'not_found':
+      return tv('issueShipmentNotFound')
+    case 'document_type_missing':
+      /*
+        The kind is worded by a `select` in the sentence, whose `other` branch
+        covers one added in the service before this catalogue.
+      */
+      return tv('issueTypeNotSetUp', { kind: body?.values?.kind ?? '' })
+    case 'storage_failed':
+      return tv('issueNotStored')
+    case 'unknown_kind':
+      return tv('issueUnknownKind')
+    default: {
+      const unhandled: never = code
+      return unhandled
+    }
+  }
 }
 
 // --- telex release ---------------------------------------------------------
@@ -384,30 +456,40 @@ export async function issueDocument(form: FormData): Promise<void> {
  * is no un-surrender: the originals cannot be un-collected. A bill that was
  * surrendered by mistake is re-issued, which is a new version in `documents`
  * and the audit trail that goes with it.
+ *
+ * The panel offers the button only on a numbered sea bill, so the refusals
+ * below are reached from a stale screen — somebody changed the mode or the
+ * number since it was drawn. That is an ordinary thing to happen, so they come
+ * back as sentences under the button rather than as an error page. The job id
+ * is a hidden field; missing, it is a tampered form and still throws.
  */
-export async function surrenderHouseBill(form: FormData): Promise<void> {
+export async function surrenderHouseBill(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.release')
+  const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')
   if (!jobId) throw new Error('Nothing to surrender')
 
-  await withActor(session.actor, async (tx) => {
+  const refusal = await withActor(session.actor, async (tx) => {
     const [job] = await tx
       .select({ houseBillNumber: jobs.houseBillNumber, mode: jobs.mode })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1)
 
-    if (!job) throw new Error('No such shipment')
+    if (!job) return 'not_found' as const
     /*
       Only a numbered sea bill can be surrendered. An unnumbered one was never
       issued, and an air waybill is not a document of title — there are no
       originals to hand back, so "surrendered" would be a stamp with no
       meaning on it.
     */
-    if (!job.houseBillNumber) throw new Error('Issue the bill of lading before surrendering it')
-    if (job.mode === 'air') throw new Error('An air waybill is not surrendered')
+    if (!job.houseBillNumber) return 'not_issued' as const
+    if (job.mode === 'air') return 'air' as const
 
     await tx
       .update(jobs)
@@ -417,7 +499,24 @@ export async function surrenderHouseBill(form: FormData): Promise<void> {
         updatedAt: new Date(),
       })
       .where(and(eq(jobs.id, jobId), sql`${jobs.houseBillSurrenderedAt} is null`))
+    return null
   })
 
+  switch (refusal) {
+    case 'not_found':
+      return failWith(tv('surrenderShipmentGone'))
+    case 'not_issued':
+      return failWith(tv('surrenderNotIssued'))
+    case 'air':
+      return failWith(tv('surrenderAirWaybill'))
+    case null:
+      break
+    default: {
+      const unhandled: never = refusal
+      return unhandled
+    }
+  }
+
   revalidatePath(`/jobs/${jobId}`)
+  return succeed(jobId)
 }

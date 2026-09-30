@@ -416,7 +416,8 @@ export function quoteCoverNoteUserPrompt(facts: {
  * The mail arrives as a separate user message and is never interpolated here,
  * for the reason the file header gives.
  */
-export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@1'
+// @2: `containerCount` joined the fields (F50) — a model on @1 was never asked for it.
+export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@2'
 
 export function enquirySystemPrompt(vocabulary: {
   readonly modes: readonly string[]
@@ -449,6 +450,10 @@ export function enquirySystemPrompt(vocabulary: {
     '   `grossWeightKg` in kilograms, `volumeCbm` in cubic metres, `pieces` as a whole',
     '   number of packages. Convert stated tonnes to kilograms and say so in the',
     '   evidence. `dimensions` is free text, as written.',
+    '   `containerCount` is how many containers a full-container (sea_fcl) shipment',
+    '   needs, as a whole number of one or more: "2 x 40HC" is 2, "one 20ft" is 1. It',
+    '   is not `pieces` — cartons, pallets and packages are never containers. Omit it',
+    '   for any other mode, and omit it if the mail does not state a count.',
     '',
     `5. \`mode\` is one of: ${vocabulary.modes.join(', ')}.`,
     '   Two 40HC or any container count is `sea_fcl`; loose cargo by sea is `sea_lcl`;',

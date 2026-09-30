@@ -20,9 +20,11 @@ import 'server-only'
  *
  * ## Why the base currency, and why the job's own currency too
  *
- * The register totals in the branch's base currency, because "how much are we
- * sitting on" is one number or it is not a number. Each job also carries the
- * currency its lines are actually in, because an invoice has exactly one
+ * The register totals in each branch's base currency — one figure per base
+ * currency, because a Kuwait branch's dinars and a Dubai branch's dirhams do
+ * not add. The total used to be a single `Number` sum across every row,
+ * `toFixed(3)`, labelled with the first row's currency. Each job also carries
+ * the currency its lines are actually in, because an invoice has exactly one
  * currency and a job billing in USD and KWD cannot become one document — which
  * `billJob` refuses rather than silently converting.
  *
@@ -37,6 +39,8 @@ import 'server-only'
 
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { chargeLines, customers, jobs, withActor, type Actor } from '@qabandi/db'
+import { named } from '@/lib/named'
+import { sumByCurrency, type CurrencyAmount } from '@/lib/by-currency'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotUnbilledJobs, pilotUnbilledLines } from '@/lib/pilot/fixtures'
 
@@ -64,13 +68,16 @@ interface UnbilledJob {
 
 export interface UnbilledSummary {
   readonly jobs: readonly UnbilledJob[]
-  readonly totalBase: string
-  readonly baseCurrency: string
+  /**
+   * The listed jobs' `amountBase`, summed per base currency with `Decimal` —
+   * largest first, `numeric` strings. Never one figure across branches.
+   */
+  readonly totals: readonly CurrencyAmount[]
   readonly jobCount: number
 }
 
 /** The aggregate itself, kept whole so the fixture branch does not indent it. */
-async function selectUnbilled(actor: Actor, limit: number) {
+async function selectUnbilled(actor: Actor, limit: number, locale: 'en' | 'ar') {
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -78,7 +85,7 @@ async function selectUnbilled(actor: Actor, limit: number) {
         reference: jobs.reference,
         status: jobs.status,
         customerId: jobs.customerId,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         lines: sql<number>`count(*)::int`,
         amountBase: sql<string>`sum("charge_lines"."amount_base")::text`,
         baseCurrency: sql<string>`min("charge_lines"."base_currency")`,
@@ -116,7 +123,14 @@ async function selectUnbilled(actor: Actor, limit: number) {
           eq(chargeLines.isAccrual, false),
         ),
       )
-      .groupBy(jobs.id, jobs.reference, jobs.status, jobs.customerId, customers.legalNameEn)
+      .groupBy(
+        jobs.id,
+        jobs.reference,
+        jobs.status,
+        jobs.customerId,
+        customers.legalNameEn,
+        customers.legalNameAr,
+      )
       .orderBy(desc(sql`sum("charge_lines"."amount_base")`))
       .limit(limit),
   )
@@ -130,25 +144,28 @@ async function selectUnbilled(actor: Actor, limit: number) {
  * question this screen answers is "what is worth doing first" — and a
  * three-month-old 12 KWD line is not it.
  */
-export async function unbilledRevenue(actor: Actor, limit = 100): Promise<UnbilledSummary> {
+export async function unbilledRevenue(
+  actor: Actor,
+  limit = 100,
+  // Names the customer in the reader's language (F27).
+  locale: 'en' | 'ar' = 'en',
+): Promise<UnbilledSummary> {
   /*
-    The fixture arm returns the grouped rows and stops there, so the total and
-    the summary below are computed once for both modes. That matters more here
-    than in a register: `totalBase` is a `toFixed(3)` over a mixed-currency sum
-    — a known flaw of this query, argued in `pilotUnbilledJobs` — and a second
-    copy of it would be a second place for the two answers to disagree about
-    the same wrong number.
+    The fixture arm returns the grouped rows and stops there, so the totals
+    below are computed once for both modes — one place for the two answers to
+    agree. Summed per base currency with `Decimal` over the rows already in
+    hand: the rows are the register's own top `limit`, and the total has always
+    been the total of what is listed.
   */
   const rows = usePilotFixtures()
-    ? pilotUnbilledJobs(Date.now(), limit)
-    : await selectUnbilled(actor, limit)
-
-  const totalBase = rows.reduce((sum, row) => sum + Number(row.amountBase ?? 0), 0).toFixed(3)
+    ? pilotUnbilledJobs(Date.now(), limit, locale)
+    : await selectUnbilled(actor, limit, locale)
 
   return {
     jobs: rows.map((row) => ({ ...row, oldestAt: new Date(row.oldestAt) })) as UnbilledJob[],
-    totalBase,
-    baseCurrency: rows[0]?.baseCurrency ?? 'KWD',
+    totals: sumByCurrency(
+      rows.map((row) => ({ currency: row.baseCurrency, amount: row.amountBase })),
+    ),
     jobCount: rows.length,
   }
 }

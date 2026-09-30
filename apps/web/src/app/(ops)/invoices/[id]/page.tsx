@@ -53,15 +53,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const session = await requireSession()
   const { id } = await params
-  const invoice = await getInvoiceDetail(session.actor, id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const invoice = await getInvoiceDetail(session.actor, id, locale)
   if (!invoice) notFound()
 
   const t = await getTranslations('invoiceDetail')
   const tc = await getTranslations('common')
   const ti = await getTranslations('invoices')
   const tp = await getTranslations('paymentForm')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string | number) =>
     formatMoney({ amount: Number(amount), currency: invoice.currency }, locale)

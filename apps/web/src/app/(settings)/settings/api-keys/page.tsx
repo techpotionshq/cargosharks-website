@@ -44,7 +44,7 @@ export default async function ApiKeysPage() {
   const [keys, endpoints, options, t, tc] = await Promise.all([
     listApiKeys(),
     listWebhookEndpoints(),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('apiKeys'),
     getTranslations('common'),
   ])
@@ -99,7 +99,9 @@ export default async function ApiKeysPage() {
                         identifiable in a list without being usable from one. */}
                     <span className="ref text-[0.6875rem] text-ink-subtle">{key.prefix}…</span>
                   </TD>
-                  <TD className="text-ink-muted">{key.customerName ?? '—'}</TD>
+                  <TD className="text-ink-muted">
+                    {(locale === 'ar' && key.customerNameAr) || key.customerName || '—'}
+                  </TD>
                   <TD className="whitespace-nowrap text-ink-muted">
                     {key.lastUsedAt ? formatDate(key.lastUsedAt, locale, timeZone) : t('neverUsed')}
                   </TD>
@@ -184,7 +186,11 @@ export default async function ApiKeysPage() {
               {endpoints.map((endpoint) => (
                 <TR key={endpoint.id}>
                   <TD className="ref max-w-xs truncate text-ink">{endpoint.url}</TD>
-                  <TD className="text-ink-muted">{endpoint.customerName ?? t('everyCustomer')}</TD>
+                  <TD className="text-ink-muted">
+                    {(locale === 'ar' && endpoint.customerNameAr) ||
+                      endpoint.customerName ||
+                      t('everyCustomer')}
+                  </TD>
                   <TD className="text-[0.75rem] text-ink-muted">
                     {endpoint.events.length === 0 ? t('allEvents') : endpoint.events.join(', ')}
                   </TD>

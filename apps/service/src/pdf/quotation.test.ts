@@ -208,7 +208,38 @@ describe('the quotation', () => {
     })
   })
 
+  /** `numeric(19,6)` arrives as "2.000000"; nobody writes a container count so. */
+  it('prints a quantity without trailing zeros, and keeps a real fraction', () => {
+    const body = visible(
+      renderQuotationHtml(
+        quote({
+          lines: [
+            { ...base.lines[0]!, quantity: '2.000000' },
+            { ...base.lines[1]!, quantity: '12.500000' },
+          ],
+        }),
+        'en',
+      ),
+    )
+
+    expect(body).not.toContain('2.000000')
+    expect(body).toContain('>2<')
+    expect(body).toContain('>12.5<')
+  })
+
   describe('in Arabic', () => {
+    /*
+      The inclusions are the lines' English names, frozen in the snapshot. The
+      Arabic quotation listed them in English under يشمل.
+    */
+    it('names the inclusions in Arabic where a line carries the name', () => {
+      const body = visible(renderQuotationHtml(quote(), 'ar'))
+
+      expect(body).toContain('أجرة الشحن البحري')
+      // No line carries this one, so it stays as written rather than vanishing.
+      expect(body).toContain('Terminal handling at destination')
+    })
+
     it('runs right to left and uses the Arabic entity name', () => {
       const html = renderQuotationHtml(quote(), 'ar')
 
@@ -319,7 +350,10 @@ describe('the quotation', () => {
     })
 
     it('takes the note in the reader’s language', () => {
-      const both = quote({ coverNoteEn: 'English cover note.', coverNoteAr: 'ملاحظة عربية مرافقة.' })
+      const both = quote({
+        coverNoteEn: 'English cover note.',
+        coverNoteAr: 'ملاحظة عربية مرافقة.',
+      })
       expect(renderQuotationHtml(both, 'ar')).toContain('ملاحظة عربية مرافقة.')
       expect(renderQuotationHtml(both, 'ar')).not.toContain('English cover note.')
     })

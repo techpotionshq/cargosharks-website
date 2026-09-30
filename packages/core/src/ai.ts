@@ -148,9 +148,7 @@ export const AI_SURFACES: readonly AiSurface[] = [
  * the day the review queue stops being the only way in.
  */
 export function isWriteSurface(surface: AiSurface): boolean {
-  return (
-    surface !== 'assistant' && surface !== 'draft_reply' && surface !== 'quote_cover_note'
-  )
+  return surface !== 'assistant' && surface !== 'draft_reply' && surface !== 'quote_cover_note'
 }
 
 /* -------------------------------------------------------------------------
@@ -465,6 +463,7 @@ export const EXTRACTABLE_FIELDS: Readonly<Record<AiSurface, readonly string[]>> 
     'grossWeightKg',
     'volumeCbm',
     'pieces',
+    'containerCount',
     'dimensions',
     'isDangerous',
   ],

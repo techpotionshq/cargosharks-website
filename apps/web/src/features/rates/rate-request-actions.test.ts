@@ -21,6 +21,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { enquiries, partners, rateCards, rateRequests, withActor } = await import('@qabandi/db')
 const { world, bothBranchesActor, HOME_BRANCH, AWAY_BRANCH, CUSTOMER, PARTNER, PRINCIPAL } =
   await import('@/lib/testing/fixtures')
@@ -142,12 +151,12 @@ describe.skipIf(!enabled)('requestRates', () => {
 
   it('asks for at least one agent', async () => {
     const state = await requestRates({}, form({ enquiryId: await makeEnquiry() }))
-    expect(state.message).toMatch(/at least one/i)
+    expect(state.message).toBe('ratesValidation.pickAgent')
   })
 
   it('refuses when no enquiry was named', async () => {
     const state = await requestRates({}, form({ partnerId: PARTNER }))
-    expect(state.message).toMatch(/missing/i)
+    expect(state.message).toBe('ratesValidation.enquiryMissing')
   })
 })
 
@@ -190,7 +199,7 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
 
     const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
 
-    expect(state.message).toMatch(/parsed reply/i)
+    expect(state.message).toBe('ratesValidation.promoteNotParsed')
   })
 
   it('refuses a reply the agent declined', async () => {
@@ -198,7 +207,7 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
 
     const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
 
-    expect(state.message).toMatch(/declined/i)
+    expect(state.message).toBe('ratesValidation.promoteDeclined')
   })
 
   it('refuses a reply with no clean lines', async () => {
@@ -206,7 +215,7 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
 
     const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
 
-    expect(state.message).toMatch(/no clean lines/i)
+    expect(state.message).toBe('ratesValidation.promoteNoCleanLines')
   })
 
   it('refuses when the request is gone', async () => {
@@ -214,7 +223,7 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
       {},
       form({ rateRequestId: '00000000-0000-7000-8000-0000000000ee', enquiryId: '' }),
     )
-    expect(state.message).toMatch(/gone/i)
+    expect(state.message).toBe('ratesValidation.promoteRequestGone')
   })
 
   /**
@@ -303,6 +312,6 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
 
     const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
 
-    expect(state.message).toMatch(/already a rate card|Only a parsed reply/i)
+    expect(state.message).toMatch(/^ratesValidation\.(promoteAlreadyCard|promoteNotParsed)$/)
   })
 })

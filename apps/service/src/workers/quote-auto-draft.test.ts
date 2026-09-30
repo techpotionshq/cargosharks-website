@@ -60,11 +60,21 @@ const gate = (driver: string): LiveIntegration => ({
 async function makeLocation(): Promise<string> {
   seq += 1
   const id = randomUUID()
+  /*
+    `RUN` in the code, because the test database is never emptied. With
+    `Z0001` the second run's insert hit the unique code, `onConflictDoNothing`
+    skipped it silently, and this returned an id that was never written — so
+    every run after the first failed on a foreign key.
+  */
   await withActor(actor, (tx) =>
-    tx
-      .insert(locations)
-      .values({ id, kind: 'seaport', unlocode: `Z${String(seq).padStart(4, '0')}`, nameEn: `Loc ${seq}`, nameAr: 'م', countryCode: 'KW' })
-      .onConflictDoNothing(),
+    tx.insert(locations).values({
+      id,
+      kind: 'seaport',
+      unlocode: `Z${RUN}${seq}`,
+      nameEn: `Loc ${seq}`,
+      nameAr: 'م',
+      countryCode: 'KW',
+    }),
   )
   return id
 }
@@ -77,7 +87,14 @@ async function coveredEnquiry(): Promise<string> {
   seq += 1
 
   await withActor(actor, async (tx) => {
-    await tx.insert(partners).values({ id: partnerId, code: `AGT-QD-${RUN}-${seq}`, type: 'agent', legalNameEn: `Agent ${seq}` })
+    await tx
+      .insert(partners)
+      .values({
+        id: partnerId,
+        code: `AGT-QD-${RUN}-${seq}`,
+        type: 'agent',
+        legalNameEn: `Agent ${seq}`,
+      })
 
     const [card] = await tx
       .insert(rateCards)
@@ -119,6 +136,8 @@ async function coveredEnquiry(): Promise<string> {
         originId,
         destinationId,
         pieces: 1,
+        // Sea FCL prices per container and refuses without a count.
+        containerCount: 1,
       })
       .returning({ id: enquiries.id })
     return row!.id
@@ -142,7 +161,12 @@ async function coveredEnquiry(): Promise<string> {
 const draftQuote = async (enquiryId: string) => {
   const [row] = await withActor(actor, (tx) =>
     tx
-      .select({ id: quotes.id, status: quotes.status, totalSell: quotes.totalSell, totalCost: quotes.totalCost })
+      .select({
+        id: quotes.id,
+        status: quotes.status,
+        totalSell: quotes.totalSell,
+        totalCost: quotes.totalCost,
+      })
       .from(quotes)
       .where(and(eq(quotes.enquiryId, enquiryId), eq(quotes.status, 'draft')))
       .orderBy(desc(quotes.version))
@@ -154,10 +178,18 @@ const draftQuote = async (enquiryId: string) => {
 describe.skipIf(!enabled)('autoDraftQuotes', () => {
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     const [ocean] = await withActor(actor, (tx) =>
-      tx.select({ id: chargeTypes.id }).from(chargeTypes).where(eq(chargeTypes.key, 'ocean_freight')).limit(1),
+      tx
+        .select({ id: chargeTypes.id })
+        .from(chargeTypes)
+        .where(eq(chargeTypes.key, 'ocean_freight'))
+        .limit(1),
     )
     if (!calendar || !ocean) throw new Error('Run `pnpm db:seed` before the auto-draft tests')
     oceanFreightId = ocean.id
@@ -183,7 +215,12 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
       // The house margin — 20%, so the sell is the buy times 1.2.
       await tx
         .insert(customerBranchTerms)
-        .values({ customerId: CUSTOMER, branchId: BRANCH, defaultMarginKind: 'percent', defaultMarginValue: '20' })
+        .values({
+          customerId: CUSTOMER,
+          branchId: BRANCH,
+          defaultMarginKind: 'percent',
+          defaultMarginValue: '20',
+        })
         .onConflictDoNothing()
     })
   })
@@ -203,7 +240,9 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
     expect(Number(quote!.totalCost)).toBeCloseTo(500, 0)
     expect(Number(quote!.totalSell)).toBeCloseTo(600, 0)
     // The cover note was drafted against that quotation.
-    expect(coverNote).toHaveBeenCalledWith(expect.objectContaining({ quoteId: quote!.id, locale: 'en' }))
+    expect(coverNote).toHaveBeenCalledWith(
+      expect.objectContaining({ quoteId: quote!.id, locale: 'en' }),
+    )
   })
 
   it('does nothing on its inert default', async () => {

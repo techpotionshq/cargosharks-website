@@ -39,14 +39,14 @@ import {
   renderManifestPdf,
   type JobDocumentKind,
 } from '../pdf/job-documents'
-import { storeJobDocument } from '../pdf/store'
+import { DocumentTypeNotSeededError, storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 import { extractSupplierInvoice } from '../workers/invoice-extract'
 import { draftQuoteCoverNote } from '../workers/quote-cover-note'
 import { AiUnavailableError } from '../ai/ledger'
 import { ask, askStreaming } from '../ai/assistant'
 import { closeThread, historyFor, listThreads, readThread, recordExchange } from '../ai/threads'
-import { describeFinding } from '@qabandi/core'
+import { AccountingError, DomainError, describeFinding, invoiceReadingIssues } from '@qabandi/core'
 
 interface DocumentRequest {
   readonly actor: Actor
@@ -390,8 +390,24 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
           .header('cache-control', 'private, no-store')
           .send(pdf)
       } catch (error) {
+        /*
+          Every refusal as a code, with `values` for what its sentence names —
+          the web app translates these rather than showing `message`, which is
+          English and stays for the log. A render fault is still a 500.
+        */
+        if (error instanceof DocumentTypeNotSeededError) {
+          return reply.code(404).send({
+            error: 'document_type_missing',
+            message: error.message,
+            values: { kind: error.kind },
+          })
+        }
         if (error instanceof DocumentNotFoundError) {
           return reply.code(404).send({ error: 'not_found' })
+        }
+        if (error instanceof FileStoreError) {
+          // Rendered, but the copy could not be kept — so nothing was issued.
+          return reply.code(502).send({ error: 'storage_failed', message: error.message })
         }
         throw error
       }
@@ -502,16 +518,33 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       const result = await buildAccountingExport(actor, { branchId, from, to, format, post })
       return reply.header('cache-control', 'private, no-store').send(result)
     } catch (error) {
+      /*
+        `error` is the code the web app translates and `values` what its
+        sentence names; `message` stays for a caller that has no catalogue.
+      */
       if (error instanceof ExportError) {
-        return reply.code(422).send({ error: error.code, message: error.message })
+        return reply
+          .code(422)
+          .send({ error: error.code, message: error.message, values: error.values ?? {} })
       }
       /*
         The engine's own refusals arrive as DomainError with a `code`. They are
         the same class of thing — something in the period is not what it claims
         to be — and the operator needs the sentence, not a stack trace.
+
+        The class, not the shape. This used to accept any Error with a string
+        `code`, and a PostgreSQL error has one (`23505`, `40001`) — so a database
+        fault reached the finance manager as a 422 "refusal" carrying the
+        driver's raw message. A fault is a 500 and goes to the log.
       */
-      if (error instanceof Error && 'code' in error && typeof error.code === 'string') {
-        return reply.code(422).send({ error: error.code, message: error.message })
+      if (error instanceof DomainError) {
+        /*
+          `AccountingError` carries which invoice or account it is about, as
+          strings; without them the translated sentence could only say "an
+          account is missing", not which one.
+        */
+        const values = error instanceof AccountingError ? error.values : {}
+        return reply.code(422).send({ error: error.code, message: error.message, values })
       }
       throw error
     }
@@ -539,7 +572,9 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         return reply.send(result)
       } catch (error) {
         if (error instanceof ExportError) {
-          return reply.code(422).send({ error: error.code, message: error.message })
+          return reply
+            .code(422)
+            .send({ error: error.code, message: error.message, values: error.values ?? {} })
         }
         throw error
       }
@@ -820,24 +855,49 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         consistent: result.consistent,
         supplierInvoiceId: result.supplierInvoiceId ?? null,
         refusal: result.refusal ?? null,
+        /*
+          The refusal again as a code and the values its sentence names — what
+          the web app translates. `refusal` stays for a caller with no
+          catalogue; a screen shows the code's sentence, not this one.
+        */
+        refusalCode: result.refusalCode ?? null,
+        refusalValues: result.refusalValues ?? {},
         header: result.extracted.header,
         confidence: result.extracted.confidence,
         lines: result.extracted.lines.rows.map((row) => row.values),
         /*
           Both the machine-readable findings and the sentence. The screen wants
-          to point at line 3; the log and the toast want "line 3 says 450.000,
-          the figures give 451.500" — and rendering that sentence in three
-          places is how three renderings of one fact drift apart.
+          to point at line 3; the log wants "line 3 says 450.000, the figures
+          give 451.500" — and rendering that sentence in three places is how
+          three renderings of one fact drift apart.
+
+          `stated` and `computed` are the two figures, as decimal strings (never
+          a JS number: KWD carries three places), so a screen in Arabic can put
+          them in its own sentence rather than quoting `message`.
         */
         findings: result.findings.map((finding) => ({
           check: finding.check,
           line: finding.line ?? null,
+          stated: finding.stated.amount.toFixed(),
+          computed: finding.computed.amount.toFixed(),
           message: describeFinding(finding),
         })),
         issues: [
           ...result.extracted.headerIssues,
           ...result.extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
         ],
+        /*
+          The same issues as data — which field, which line, what code — for
+          the screen to word. `issues` above is English and stays for the log
+          and any caller with no catalogue.
+        */
+        readingIssues: invoiceReadingIssues(result.extracted).map((issue) => ({
+          where: issue.where,
+          field: issue.field,
+          line: issue.line ?? null,
+          code: issue.code,
+          values: issue.values ?? {},
+        })),
       })
     } catch (error) {
       /*
@@ -876,6 +936,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         note: result.note,
         locale: result.locale,
         refusal: result.refusal ?? null,
+        // The code is what the web app translates; `refusal` stays for logs.
+        refusalCode: result.refusalCode ?? null,
       })
     } catch (error) {
       // Same 503 as the invoice route: no model, or the budget spent, is a

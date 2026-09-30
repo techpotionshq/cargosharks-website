@@ -15,6 +15,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -55,6 +56,48 @@ const AWAY_ENQUIRY = '00000000-0000-7000-8000-00000000c106'
 */
 const HOME_REJECTED = '00000000-0000-7000-8000-00000000c107'
 const AWAY_REJECTED = '00000000-0000-7000-8000-00000000c108'
+/* An open dollar invoice beside the dinar ones — F45. */
+const HOME_USD_INVOICE = '00000000-0000-7000-8000-00000000c109'
+/* A dollar receipt beside the dinar one — the same bug in `paymentSummary`. */
+const HOME_USD_PAYMENT = '00000000-0000-7000-8000-00000000c10a'
+
+/**
+ * The dollar invoice, written idempotently so any case can ask for it.
+ *
+ * The F45 case inserts it too; each per-currency case below calls this rather
+ * than relying on running after that one.
+ */
+const ensureUsdInvoice = () =>
+  withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+    tx
+      .insert(invoices)
+      .values({
+        id: HOME_USD_INVOICE,
+        branchId: HOME_BRANCH,
+        customerId: CUSTOMER,
+        currency: 'USD',
+        status: 'issued',
+        seriesNo: 'FXH-2026-90002',
+        subtotal: '250.00',
+        total: '250.00',
+        issuedAt: new Date('2026-06-01T00:00:00Z'),
+        dueOn: '2026-06-30',
+      })
+      .onConflictDoNothing(),
+  )
+
+/** Every entry names a different currency and carries its amount as a string. */
+const perCurrency = (entries: readonly { currency: string; amount: string }[]) => {
+  const codes = entries.map((entry) => entry.currency)
+  expect(new Set(codes).size).toBe(codes.length)
+  for (const entry of entries) expect(typeof entry.amount).toBe('string')
+}
+
+/** One currency's line of the receivables position, `'0'` when absent. */
+const owed = (
+  summary: { outstanding: readonly { currency: string; amount: string }[] },
+  currency: string,
+) => summary.outstanding.find((entry) => entry.currency === currency)?.amount ?? '0'
 
 describe.skipIf(!enabled)('ledger registers', () => {
   beforeAll(async () => {
@@ -228,14 +271,89 @@ describe.skipIf(!enabled)('ledger registers', () => {
       // Both fixtures are issued and unpaid, so the wider actor must see more
       // issued invoices and a larger outstanding balance than the narrow one.
       expect(both.issued).toBeGreaterThan(mine.issued)
-      expect(Number(both.outstanding)).toBeGreaterThan(Number(mine.outstanding))
+      expect(Number(owed(both, 'KWD'))).toBeGreaterThan(Number(owed(mine, 'KWD')))
       expect(mine.issued).toBeGreaterThan(0)
+    })
+
+    /*
+      Dinars and dollars do not add. The figure used to be one sum across
+      every invoice, labelled with the newest invoice's currency, so a dollar
+      invoice raised the "KWD" receivables by its face value.
+    */
+    it('keeps each currency its own figure', async () => {
+      const before = await invoiceSummary(homeActor)
+      await ensureUsdInvoice()
+      const after = await invoiceSummary(homeActor)
+
+      expect(owed(after, 'KWD')).toBe(owed(before, 'KWD'))
+      expect(Number(owed(after, 'USD'))).toBeGreaterThanOrEqual(250)
+      // One entry per currency, amounts as strings, never a JS number.
+      const codes = after.outstanding.map((entry) => entry.currency)
+      expect(new Set(codes).size).toBe(codes.length)
+      for (const entry of after.outstanding) expect(typeof entry.amount).toBe('string')
+    })
+
+    /*
+      A draft has been sent to nobody, so nobody owes it. The count beside the
+      figure already left drafts out; the outstanding sum did not, and a draft
+      raised the receivables position the moment it was created.
+    */
+    it('does not count a draft as outstanding', async () => {
+      const before = await invoiceSummary(homeActor)
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.insert(invoices).values({
+          branchId: HOME_BRANCH,
+          customerId: CUSTOMER,
+          currency: 'KWD',
+          status: 'draft',
+          subtotal: '777.000',
+          total: '777.000',
+          dueOn: '2031-01-31',
+        }),
+      )
+      const after = await invoiceSummary(homeActor)
+
+      expect(after.outstanding).toEqual(before.outstanding)
+      expect(after.issued).toBe(before.issued)
     })
 
     it('summarises receipts against the rows it lists', async () => {
       const rows = await listPayments(homeActor)
       const summary = await paymentSummary(homeActor)
       expect(summary.count).toBe(rows.length)
+    })
+
+    /*
+      The same bug as F45, on the receipts side: every receipt was summed and
+      labelled with the newest one's currency, so a dollar receipt raised the
+      "KWD received" figure by its face value.
+    */
+    it('keeps each currency of receipts its own figure', async () => {
+      const received = (
+        summary: { received: readonly { currency: string; amount: string }[] },
+        currency: string,
+      ) => summary.received.find((entry) => entry.currency === currency)?.amount ?? '0'
+
+      const before = await paymentSummary(homeActor)
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx
+          .insert(payments)
+          .values({
+            id: HOME_USD_PAYMENT,
+            branchId: HOME_BRANCH,
+            customerId: CUSTOMER,
+            amount: '75.00',
+            currency: 'USD',
+            receivedOn: '2026-06-06',
+            method: 'bank_transfer',
+          })
+          .onConflictDoNothing(),
+      )
+      const after = await paymentSummary(homeActor)
+
+      expect(received(after, 'KWD')).toBe(received(before, 'KWD'))
+      expect(new D(received(after, 'USD')).greaterThanOrEqualTo('75')).toBe(true)
+      perCurrency(after.received)
     })
 
     /**
@@ -270,12 +388,40 @@ describe.skipIf(!enabled)('ledger registers', () => {
   describe('ageing and debtors', () => {
     it('buckets receivables so the buckets sum to the reported total', async () => {
       const ageing = await receivablesAgeing(homeActor)
-      const summed = ageing.buckets.reduce((total, b) => total + Number(b.amount ?? 0), 0)
+      const kwd = ageing.byCurrency.find((entry) => entry.currency === 'KWD')!
 
       // The whole point of an ageing report: the columns add up to the figure
-      // printed underneath them.
-      expect(summed).toBeCloseTo(Number(ageing.total), 3)
-      expect(Number(ageing.total)).toBeGreaterThan(0)
+      // printed underneath them — exactly, in `Decimal`, per currency.
+      const summed = kwd.buckets.reduce((total, b) => total.plus(b.amount), new D(0))
+      expect(summed.equals(kwd.total)).toBe(true)
+      expect(new D(kwd.total).greaterThan(0)).toBe(true)
+    })
+
+    /*
+      One ageing per currency. The buckets used to be summed across every open
+      invoice and labelled with the first one's currency, so the dollar invoice
+      would have been counted into the dinar buckets at face value.
+    */
+    it('ages each currency on its own', async () => {
+      await ensureUsdInvoice()
+      const ageing = await receivablesAgeing(homeActor)
+
+      perCurrency(ageing.byCurrency.map(({ currency, total }) => ({ currency, amount: total })))
+
+      const usd = ageing.byCurrency.find((entry) => entry.currency === 'USD')
+      expect(usd).toBeDefined()
+      expect(new D(usd!.total).greaterThanOrEqualTo('250')).toBe(true)
+
+      for (const entry of ageing.byCurrency) {
+        expect(typeof entry.overdue).toBe('string')
+        const summed = entry.buckets.reduce((total, b) => total.plus(b.amount), new D(0))
+        expect(summed.equals(entry.total)).toBe(true)
+        // Everything not current is overdue, and nothing more.
+        const late = entry.buckets
+          .filter((b) => b.key !== 'current')
+          .reduce((total, b) => total.plus(b.amount), new D(0))
+        expect(late.equals(entry.overdue)).toBe(true)
+      }
     })
 
     it('lists debtors from visible invoices only', async () => {
@@ -283,6 +429,26 @@ describe.skipIf(!enabled)('ledger registers', () => {
       const names = debtors.map((d) => d.customerName)
       expect(names).toContain('Fixture Home Customer')
       expect(names).not.toContain('Fixture Away Customer')
+    })
+
+    /*
+      A customer owing dinars and dollars is two rows. The balance used to be
+      the two added together, labelled `max(currency)` — "USD", alphabetically
+      — so a dinar debt printed as dollars.
+
+      A wide limit, because the home branch carries many debtors and this is
+      about the shape of one customer's rows, not about where they rank.
+    */
+    it('gives a debtor one row per currency', async () => {
+      await ensureUsdInvoice()
+      const debtors = await topDebtors(homeActor, 1000)
+      const mine = debtors.filter((d) => d.customerId === CUSTOMER)
+
+      expect(mine.map((d) => d.currency)).toEqual(expect.arrayContaining(['KWD', 'USD']))
+      perCurrency(mine.map(({ currency, balance }) => ({ currency, amount: balance })))
+
+      const usd = mine.find((d) => d.currency === 'USD')!
+      expect(new D(usd.balance).greaterThanOrEqualTo('250')).toBe(true)
     })
   })
 

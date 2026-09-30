@@ -43,7 +43,7 @@ export default async function BranchesPage() {
 
   const [rows, calendars] = await Promise.all([
     listBranches(session.actor),
-    listCalendarOptions(session.actor),
+    listCalendarOptions(session.actor, locale),
   ])
   const active = rows.filter((row) => row.isActive).length
 
@@ -88,7 +88,7 @@ export default async function BranchesPage() {
               <TD className="whitespace-nowrap">
                 {row.calendarName ? (
                   <span className="text-ink-muted">
-                    {row.calendarName}
+                    {(locale === 'ar' && row.calendarNameAr) || row.calendarName}
                     <span className="ms-1.5 text-[0.75rem] text-ink-subtle">{row.timeZone}</span>
                   </span>
                 ) : (

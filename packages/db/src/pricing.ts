@@ -48,11 +48,11 @@ import { findCoveringRateCard, type CoveringRateCard, type CoveringRateLine } fr
 import type { Tx } from './actor'
 
 /** What pricing can answer with — the caller turns each into a sentence. */
-export type PricingRefusal = 'not_found' | 'no_mode' | 'no_cover' | 'no_margin' | 'cannot_price'
+export type PricingRefusal =
+  'not_found' | 'no_mode' | 'no_container_count' | 'no_cover' | 'no_margin' | 'cannot_price'
 
 export type PriceOutcome =
-  | { readonly reference: string }
-  | { readonly error: PricingRefusal; readonly detail?: string }
+  { readonly reference: string } | { readonly error: PricingRefusal; readonly detail?: string }
 
 export interface PriceEnquiryHooks {
   /** Called before superseding an existing quotation — the `quote.revise` gate. */
@@ -85,6 +85,7 @@ export async function priceEnquiryToQuote(
              e.destination_id as "destinationId", e.ready_on::text as "readyOn",
              e.gross_weight_kg::text as "grossWeightKg",
              e.volume_cbm::text as "volumeCbm", e.pieces,
+             e.container_count as "containerCount",
              b.base_currency as "baseCurrency",
              b.default_exclusions_en as "exclusionsEn",
              b.default_exclusions_ar as "exclusionsAr",
@@ -102,6 +103,17 @@ export async function priceEnquiryToQuote(
 
   if (!enquiry) return { error: 'not_found' }
   if (!enquiry.mode) return { error: 'no_mode' }
+  /*
+    A FCL lane is priced per container, and only the enquiry's own container
+    count says how many. It used to fall back to `pieces` — packages — so 200
+    cartons in two boxes were quoted as 200 × 40HC (F39). Refused instead: a
+    refusal a coordinator answers by entering the count beats a price that is
+    wrong by two orders of magnitude, and the auto-draft sweep skips it the same
+    way it skips a lane with no cover.
+  */
+  if (enquiry.mode === 'sea_fcl' && enquiry.containerCount === null) {
+    return { error: 'no_container_count' }
+  }
 
   // Cover is asked for on the readiness date, not today — a shipment ready in
   // six weeks is priced against the card that will be live then.
@@ -161,10 +173,11 @@ export async function priceEnquiryToQuote(
   }
 
   let priced: PricedLine[]
+  let cost: PricedLine[] = []
   let marginRule: MarginRule | null = null
 
   try {
-    const cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
+    cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
 
     if (sellCard) {
       priced = [...cost, ...priceLines(inputsFor(sellCard, 'revenue', chargeableKg, ctx), opts)]
@@ -189,7 +202,15 @@ export async function priceEnquiryToQuote(
   if (revenue.length === 0) return { error: 'no_cover' }
 
   const totals = summariseMargin(priced, opts.baseCurrency)
-  const sellCurrency = revenue[0]!.amount.currency
+  /*
+    The totals are in the entity's base currency — `summariseMargin` adds each
+    line's `amountInBase` — so that is the currency the quotation carries.
+    This used to take the first sell line's currency instead: a USD card priced
+    for a KWD branch stored KWD totals labelled USD, to three decimals, on the
+    register, the comparison page and the quotation. Lines keep their own
+    currency; quoting a customer in the card's currency is a separate choice.
+  */
+  const sellCurrency = opts.baseCurrency
 
   const validUntil = new Date(pricedAt)
   validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
@@ -219,16 +240,43 @@ export async function priceEnquiryToQuote(
         baseCurrency: opts.baseCurrency,
         fx: opts.fxRates.map((r) => ({ from: r.from, to: r.to, rate: r.rate.toString() })),
         inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
+        /*
+          The buy side line by line, in the quotation's currency and converted
+          the way the sell lines are, so the internal comparison can put a buy
+          rate beside each sell rate instead of only a buy total (F41). Keyed by
+          charge type because that is what joins a buy line to its sell line;
+          a sell charge with no buy counterpart simply has no entry. Empty when
+          no buy card covered the lane. Quotations priced before this have no
+          `lineCosts` at all, and the comparison shows their buy rate as unknown.
+        */
+        lineCosts: cost.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          basis: line.basis,
+          quantity: line.quantity.toString(),
+          rate: line.rate.times(line.fx.rate).toDecimalPlaces(6).toString(),
+          amount: toScale(line.amountInBase, lookup),
+          currency: line.amountInBase.currency,
+        })),
         exclusions: splitLines(enquiry.exclusionsEn),
         exclusionsAr: splitLines(enquiry.exclusionsAr),
       },
+      /*
+        Lines in the quotation's currency, like its total.
+
+        They were written in the card's currency (USD) under a quotation in the
+        base currency (KWD), and the quotation PDF formats every amount in the
+        quotation's currency — so a customer was sent "KWD 1,856.000" per
+        container for a 1,856 USD rate, five lines summing to 5,281 above a
+        total of 1,629.955. Converted at the rate each line was priced at; that
+        rate and the card's own currency stay in `priced_snapshot`.
+      */
       lines: revenue.map((line, index) => ({
         chargeTypeId: chargeTypeIdFor(line.chargeTypeKey, sellCard ?? buyCard!),
         basis: line.basis,
         quantity: line.quantity.toString(),
-        rate: line.rate.toString(),
-        amount: toScale(line.amount, lookup),
-        currency: line.amount.currency,
+        rate: line.rate.times(line.fx.rate).toDecimalPlaces(6).toString(),
+        amount: toScale(line.amountInBase, lookup),
+        currency: line.amountInBase.currency,
         sortOrder: index,
       })),
     },
@@ -251,6 +299,7 @@ interface EnquiryRow {
   readonly grossWeightKg: string | null
   readonly volumeCbm: string | null
   readonly pieces: number | null
+  readonly containerCount: number | null
   readonly baseCurrency: string
   readonly exclusionsEn: string | null
   readonly exclusionsAr: string | null
@@ -258,17 +307,29 @@ interface EnquiryRow {
   readonly marginValue: string | null
 }
 
-/** What the six bases are calculated against, from the enquiry's own figures. */
+/**
+ * What the six bases are calculated against, from the enquiry's own figures.
+ *
+ * `containers` is the enquiry's container count on a FCL lane — never `pieces`,
+ * which counts packages (F39). The caller has already refused a FCL enquiry
+ * without one; the `?? 1` is only for the type. Other modes keep one container,
+ * as they always have: a per-container line on an LCL or air card is a flat fee.
+ */
 function contextFor(
   mode: string,
-  cargo: { grossWeightKg: string | null; volumeCbm: string | null; pieces: number | null },
+  cargo: {
+    grossWeightKg: string | null
+    volumeCbm: string | null
+    pieces: number | null
+    containerCount: number | null
+  },
   chargeableKg: string | null,
 ): ChargeContext {
   const pieces = cargo.pieces ?? 1
   return {
     kg: chargeableKg ?? cargo.grossWeightKg ?? 0,
     units: pieces,
-    containers: mode === 'sea_fcl' ? pieces : 1,
+    containers: mode === 'sea_fcl' ? (cargo.containerCount ?? 1) : 1,
     days: 1,
   }
 }
@@ -308,7 +369,11 @@ function rateLineFor(
   if (!selection) return { line: base, ctx }
 
   return {
-    line: { ...base, rate: selection.appliedBreak.ratePerKg, minimum: selection.appliedBreak.minimumCharge ?? base.minimum },
+    line: {
+      ...base,
+      rate: selection.appliedBreak.ratePerKg,
+      minimum: selection.appliedBreak.minimumCharge ?? base.minimum,
+    },
     ctx: { ...ctx, kg: selection.billedKg },
   }
 }
@@ -381,11 +446,7 @@ interface QuoteWrite {
  * Write the quotation and its lines, superseding the previous version — the same
  * numbering and versioning `createQuote` performs, because it is the same act.
  */
-async function writeQuote(
-  tx: Tx,
-  write: QuoteWrite,
-  assertRevise: () => void,
-): Promise<string> {
+async function writeQuote(tx: Tx, write: QuoteWrite, assertRevise: () => void): Promise<string> {
   const [latest] = await tx
     .execute(
       sql`

@@ -47,9 +47,24 @@ export function formatMoney(
   if (!value) return '—'
   const { compact = false, showCurrency = true } = options
 
+  /*
+    The currency's own places, also when the code is not printed.
+
+    `style: 'decimal'` ignores `currency`, so `showCurrency: false` fell back
+    to decimal defaults — zero to three places. A dinar figure lost its last
+    zero ("1,145.69" beside "110.495" in one column) and a dollar figure gained
+    a third place ("1,595,486.978 USD"). CLDR knows each currency's places; ask
+    it rather than keep a table.
+  */
+  const places = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: value.currency,
+  }).resolvedOptions().maximumFractionDigits
+
   return new Intl.NumberFormat(intlLocale(locale), {
     style: showCurrency ? 'currency' : 'decimal',
     currency: value.currency,
+    ...(showCurrency ? {} : { minimumFractionDigits: places, maximumFractionDigits: places }),
     notation: compact && Math.abs(value.amount) >= 10_000 ? 'compact' : 'standard',
     /*
       Compact notation and three-decimal currencies do not mix legibly.

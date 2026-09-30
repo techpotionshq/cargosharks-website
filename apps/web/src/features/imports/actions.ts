@@ -29,7 +29,6 @@ import {
   type ImportReport,
   type Mapping,
   type RateRowValues,
-  type RowIssue,
 } from '@qabandi/core/import'
 import {
   customerBranchTerms,
@@ -52,6 +51,7 @@ import {
   type ChargeBasis,
   type CustomerContactRowValues,
   type CustomerRowValues,
+  type ImportCheckCode,
   type ImportKind,
   type LocationRowValues,
   type OpenJobRowValues,
@@ -66,6 +66,9 @@ import {
   resolveRateReferences,
 } from './queries'
 import { CONFLICT_STATES, REFERENCE_STATES, sqlState } from './sql-state'
+import type { ImportIssue } from './issue-messages'
+
+type Report = ImportReport<Record<string, unknown>, ImportCheckCode>
 
 /**
  * What the browser is given back.
@@ -80,7 +83,12 @@ export interface ImportState {
   readonly ok?: boolean
   readonly totalRows?: number
   readonly acceptedRows?: number
-  readonly issues?: readonly RowIssue[]
+  /**
+   * Codes and values, not sentences — the console words them in the
+   * operator's language (`issue-messages.ts`). Validation problems and the
+   * ones only the write can find arrive here in the same shape.
+   */
+  readonly issues?: readonly ImportIssue[]
   readonly issueCount?: number
   readonly headers?: readonly string[]
   readonly mapping?: Mapping
@@ -154,6 +162,26 @@ export async function runImport(_previous: ImportState, form: FormData): Promise
     revalidateFor(kindKey)
     return { ...base, committed }
   } catch (error) {
+    /*
+      The rows the database could not resolve go back as row issues, beside
+      the headline error. Returning only the headline was the old behaviour
+      and it made the per-row detail the writers collect unreachable: the
+      operator read "a row refers to a record that does not exist" over a
+      two-thousand-row file and had nothing to tell them which. The report
+      now flips to blocked and lists every such line, and the download
+      carries them like any other problem.
+    */
+    if (error instanceof UnknownReferenceError && error.issues.length > 0) {
+      const badLines = new Set(error.issues.map((issue) => issue.line)).size
+      return {
+        ...base,
+        ok: false,
+        acceptedRows: Math.max(0, report.rows.length - badLines),
+        issues: error.issues,
+        issueCount: error.issues.length,
+        error: 'unknown_reference',
+      }
+    }
     return { ...base, error: writeError(error) }
   }
 }
@@ -185,7 +213,7 @@ type Session = Awaited<ReturnType<typeof requireSession>>
 async function write(
   session: Session,
   kind: ImportKind,
-  report: ImportReport,
+  report: Report,
   context: { branchId: string; form: FormData },
 ): Promise<{ records: number; cards?: number }> {
   switch (kind) {
@@ -224,7 +252,7 @@ async function write(
  */
 async function writeOpenJobs(
   session: Session,
-  report: ImportReport,
+  report: Report,
   branchId: string,
 ): Promise<{ records: number }> {
   const rows = report.rows.map((row) => ({
@@ -247,16 +275,9 @@ async function writeOpenJobs(
     rows.map((row) => row.values.incoterm).filter((value): value is string => Boolean(value)),
   )
 
-  // Reported as row issues rather than thrown, so an operator gets every bad
-  // line at once instead of fixing them one import at a time.
-  const missing: RowIssue[] = rows
-    .filter((row) => !byCode.has(row.values.customerCode.toUpperCase()))
-    .map((row) => ({
-      line: row.line,
-      column: 'Customer code',
-      value: row.values.customerCode,
-      message: 'No such customer — import customers first',
-    }))
+  // Reported as row issues rather than one error, so an operator gets every
+  // bad line at once instead of fixing them one import at a time.
+  const missing = unknownCustomers(report, rows, byCode)
   if (missing.length > 0) throw new UnknownReferenceError(missing)
 
   await withActor(session.actor, async (tx) => {
@@ -311,7 +332,7 @@ async function writeOpenJobs(
  */
 async function writeOpenReceivables(
   session: Session,
-  report: ImportReport,
+  report: Report,
   branchId: string,
 ): Promise<{ records: number }> {
   const rows = report.rows.map((row) => ({
@@ -324,14 +345,7 @@ async function writeOpenReceivables(
     rows.map((row) => row.values.customerCode),
   )
 
-  const missing: RowIssue[] = rows
-    .filter((row) => !byCode.has(row.values.customerCode.toUpperCase()))
-    .map((row) => ({
-      line: row.line,
-      column: 'Customer code',
-      value: row.values.customerCode,
-      message: 'No such customer — import customers first',
-    }))
+  const missing = unknownCustomers(report, rows, byCode)
   if (missing.length > 0) throw new UnknownReferenceError(missing)
 
   await withActor(session.actor, async (tx) => {
@@ -364,7 +378,7 @@ async function writeOpenReceivables(
 
 async function writeCustomers(
   session: Session,
-  report: ImportReport,
+  report: Report,
   branchId: string,
 ): Promise<{ records: number }> {
   const rows = report.rows.map((row) => row.values as unknown as CustomerRowValues)
@@ -403,7 +417,7 @@ async function writeCustomers(
   return { records: rows.length }
 }
 
-async function writeContacts(session: Session, report: ImportReport): Promise<{ records: number }> {
+async function writeContacts(session: Session, report: Report): Promise<{ records: number }> {
   const rows = report.rows.map((row) => ({
     line: row.line,
     values: row.values as unknown as CustomerContactRowValues,
@@ -415,16 +429,8 @@ async function writeContacts(session: Session, report: ImportReport): Promise<{ 
   // A contact whose customer does not exist is a row error, not a crash — and
   // it is caught here rather than in the descriptor because only the database
   // knows which codes exist.
-  const orphans = rows.filter((row) => !byCode.has(row.values.customerCode))
-  if (orphans.length > 0) {
-    throw new UnknownReferenceError(
-      orphans.map((row) => ({
-        line: row.line,
-        field: 'customerCode',
-        message: `Customer code: "${row.values.customerCode}" does not exist.`,
-      })),
-    )
-  }
+  const orphans = unknownCustomers(report, rows, byCode)
+  if (orphans.length > 0) throw new UnknownReferenceError(orphans)
 
   await withActor(session.actor, async (tx) => {
     for (const { values } of rows) {
@@ -443,7 +449,7 @@ async function writeContacts(session: Session, report: ImportReport): Promise<{ 
   return { records: rows.length }
 }
 
-async function writePartners(session: Session, report: ImportReport): Promise<{ records: number }> {
+async function writePartners(session: Session, report: Report): Promise<{ records: number }> {
   const rows = report.rows.map((row) => row.values as unknown as PartnerRowValues)
 
   await withActor(session.actor, async (tx) => {
@@ -464,10 +470,7 @@ async function writePartners(session: Session, report: ImportReport): Promise<{ 
   return { records: rows.length }
 }
 
-async function writeLocations(
-  session: Session,
-  report: ImportReport,
-): Promise<{ records: number }> {
+async function writeLocations(session: Session, report: Report): Promise<{ records: number }> {
   const rows = report.rows.map((row) => row.values as unknown as LocationRowValues)
 
   await withActor(session.actor, async (tx) => {
@@ -497,7 +500,7 @@ async function writeLocations(
  */
 async function writeRateCards(
   session: Session,
-  report: ImportReport,
+  report: Report,
   context: { branchId: string; form: FormData },
 ): Promise<{ records: number; cards: number }> {
   const direction = context.form.get('direction') === 'sell' ? 'sell' : 'buy'
@@ -570,10 +573,39 @@ function dateRangeLiteral(from: string, to: string | null): string {
   return `[${from},${to ?? ''})`
 }
 
+/**
+ * The rows naming a customer code the database does not hold.
+ *
+ * One builder for the three sheets that carry a customer code, because they
+ * had drifted into three wordings and two shapes — one set `column`, another
+ * `field`, neither set both. The column is the heading the operator's own file
+ * used, read back from the mapping, since that is what they will look for in
+ * Excel; `code` and `values` are what the screen translates.
+ */
+function unknownCustomers(
+  report: Report,
+  rows: readonly { readonly line: number; readonly values: { readonly customerCode: string } }[],
+  known: ReadonlyMap<string, string>,
+): ImportIssue[] {
+  const at = report.mapping.customerCode
+  const column = at == null ? undefined : report.headers[at]
+  return rows
+    .filter((row) => !known.has(row.values.customerCode.toUpperCase()))
+    .map((row) => ({
+      line: row.line,
+      field: 'customerCode',
+      ...(column === undefined ? {} : { column }),
+      code: 'unknownCustomer' as const,
+      values: { value: row.values.customerCode },
+      label: 'Customer code',
+      message: `Customer code: No such customer "${row.values.customerCode}" — import customers first`,
+    }))
+}
+
 /* ------------------------------------------------------------------- errors */
 
 class UnknownReferenceError extends Error {
-  constructor(readonly issues: readonly RowIssue[]) {
+  constructor(readonly issues: readonly ImportIssue[]) {
     super('unknown_reference')
     this.name = 'UnknownReferenceError'
   }

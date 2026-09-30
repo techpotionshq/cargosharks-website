@@ -8,7 +8,7 @@
  * and the exception ends up in a WhatsApp message instead.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -73,7 +73,7 @@ export async function RaiseExceptionDialog({
   if (!can(session, 'job.update')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('exceptionForm'),
     getTranslations('common'),
   ])
@@ -248,7 +248,7 @@ export async function CustomsDialog({
   if (!can(session, 'customs.update')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('customsForm'),
     getTranslations('common'),
   ])
@@ -366,7 +366,12 @@ async function loadOpenShipments(session: Awaited<ReturnType<typeof requireSessi
 
         return withActor(session.actor, (tx) =>
           tx
-            .select({ id: jobs.id, reference: jobs.reference, customer: customers.legalNameEn })
+            .select({
+              id: jobs.id,
+              reference: jobs.reference,
+              customer: customers.legalNameEn,
+              customerAr: customers.legalNameAr,
+            })
             .from(jobs)
             .leftJoin(customers, eq(customers.id, jobs.customerId))
             .where(and(notInArray(jobs.status, ['closed', 'cancelled', 'completed'])))
@@ -375,10 +380,12 @@ async function loadOpenShipments(session: Awaited<ReturnType<typeof requireSessi
         )
       })()
 
-  return rows.map((row) => ({
-    value: row.id,
-    label: row.customer ? `${row.reference} — ${row.customer}` : row.reference,
-  }))
+  // The customer in the reader's language, English where no Arabic is held.
+  const ar = (await getLocale()) === 'ar'
+  return rows.map((row) => {
+    const customer = (ar && row.customerAr) || row.customer
+    return { value: row.id, label: customer ? `${row.reference} — ${customer}` : row.reference }
+  })
 }
 
 /**
@@ -550,7 +557,7 @@ export async function AddContainerDialog({
   if (!can(session, 'job.update')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('jobActions'),
     getTranslations('common'),
   ])

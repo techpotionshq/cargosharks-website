@@ -123,7 +123,28 @@ export interface ExtractInvoiceResult {
   readonly supplierInvoiceId?: string
   /** Why nothing was written, in one line, where nothing was. */
   readonly refusal?: string
+  /**
+   * The same reason as a code, for a screen to say in the reader's language.
+   * `refusal` stays English because the worker log reads it and has no locale.
+   */
+  readonly refusalCode?: InvoiceRefusal
+  /** What the sentence names — the sizes, or how many findings or issues. */
+  readonly refusalValues?: Readonly<Record<string, string>>
 }
+
+/**
+ * Why a bill was not written, as a stable code.
+ *
+ *   `scan_too_large`     refused before the model was called
+ *   `not_reconciled`     the figures do not add up — the findings say where
+ *   `unreadable_fields`  a header field or a line did not parse
+ *   `low_confidence`     nothing wrong with the reading; the model was unsure
+ *
+ * The web app translates these, and its switch has a `never` default, so a
+ * code added here without a sentence there fails its typecheck.
+ */
+export type InvoiceRefusal =
+  'scan_too_large' | 'not_reconciled' | 'unreadable_fields' | 'low_confidence'
 
 /**
  * Read one supplier invoice.
@@ -154,8 +175,12 @@ export async function extractSupplierInvoice(
       costs real money to be told it was too large. The same reasoning the mail
       worker uses: note the fact, keep the row, let a person act.
     */
+    const sizeMb = String(Math.round(bytes.byteLength / 1024 / 1024))
+    const limitMb = String(MAX_DOCUMENT_BYTES / 1024 / 1024)
     return refuse(
-      `The scan is ${Math.round(bytes.byteLength / 1024 / 1024)}MB, above the ${MAX_DOCUMENT_BYTES / 1024 / 1024}MB limit for extraction.`,
+      `The scan is ${sizeMb}MB, above the ${limitMb}MB limit for extraction.`,
+      'scan_too_large',
+      { sizeMb, limitMb },
     )
   }
 
@@ -197,20 +222,79 @@ export async function extractSupplierInvoice(
   const base = { invocationId, extracted, findings, consistent }
 
   if (!input.write) return base
-  if (!consistent) return { ...base, refusal: refusalFor(extracted, findings) }
+  if (!consistent) {
+    const code = refusalCodeFor(extracted, findings)
+    return {
+      ...base,
+      refusal: refusalFor(extracted, findings),
+      refusalCode: code,
+      refusalValues: refusalValuesFor(code, extracted, findings),
+    }
+  }
 
   const supplierInvoiceId = await write(input, extracted, spec!, asset.id, reference)
   return { ...base, supplierInvoiceId }
 
-  function refuse(reason: string): ExtractInvoiceResult {
+  function refuse(
+    reason: string,
+    code: InvoiceRefusal,
+    values: Readonly<Record<string, string>>,
+  ): ExtractInvoiceResult {
     return {
       invocationId: '',
       extracted: emptyExtraction(),
       findings: [],
       consistent: false,
       refusal: reason,
+      refusalCode: code,
+      refusalValues: values,
     }
   }
+}
+
+/**
+ * Which of the three post-reading refusals applies — the order `refusalFor`
+ * words them in, and the one place that order is decided, so the code a screen
+ * translates and the sentence a log prints can never name different reasons.
+ */
+export function refusalCodeFor(
+  extracted: ExtractedInvoice,
+  findings: readonly ArithmeticFinding[],
+): InvoiceRefusal {
+  if (findings.length > 0) return 'not_reconciled'
+  if (readingIssues(extracted).length > 0) return 'unreadable_fields'
+  return 'low_confidence'
+}
+
+/**
+ * Counts only, never the English details.
+ *
+ * The findings travel on their own in the response, with both figures, so the
+ * screen can word each one itself. The parse issues travel the same way, coded
+ * (`invoiceReadingIssues`, sent as `readingIssues` by the route); the count
+ * here is what the screen falls back to when it cannot word one of them.
+ */
+function refusalValuesFor(
+  code: InvoiceRefusal,
+  extracted: ExtractedInvoice,
+  findings: readonly ArithmeticFinding[],
+): Readonly<Record<string, string>> {
+  switch (code) {
+    case 'not_reconciled':
+      return { count: String(findings.length) }
+    case 'unreadable_fields':
+      return { count: String(readingIssues(extracted).length) }
+    default:
+      return {}
+  }
+}
+
+/** The header's issues and the lines', in the one form both callers print. */
+function readingIssues(extracted: ExtractedInvoice): string[] {
+  return [
+    ...extracted.headerIssues,
+    ...extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
+  ]
 }
 
 /**
@@ -231,22 +315,20 @@ export function refusalFor(
   extracted: ExtractedInvoice,
   findings: readonly ArithmeticFinding[],
 ): string {
-  if (findings.length > 0) {
-    return `The invoice does not reconcile: ${findings.map(describeFinding).join('; ')}`
+  switch (refusalCodeFor(extracted, findings)) {
+    case 'not_reconciled':
+      return `The invoice does not reconcile: ${findings.map(describeFinding).join('; ')}`
+    case 'unreadable_fields':
+      return readingIssues(extracted).join('; ')
+    default:
+      /*
+        Nothing wrong with the reading, so the model simply was not sure
+        enough. Said plainly rather than as "validation failed", because there
+        is nothing for the coordinator to correct — the answer is to read the
+        PDF.
+      */
+      return 'The model was not confident enough to write this without review.'
   }
-
-  const issues = [
-    ...extracted.headerIssues,
-    ...extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
-  ]
-  if (issues.length > 0) return issues.join('; ')
-
-  /*
-    Nothing wrong with the reading, so the model simply was not sure enough.
-    Said plainly rather than as "validation failed", because there is nothing
-    for the coordinator to correct — the answer is to read the PDF.
-  */
-  return 'The model was not confident enough to write this without review.'
 }
 
 /* -------------------------------------------------------------------------
@@ -490,10 +572,7 @@ export async function flagVariance(
       ).amount,
       accrued,
       matchCount: 1,
-      tolerance: resolveTolerance(
-        tolerance(type?.percent, type?.absolute),
-        partnerTol,
-      ),
+      tolerance: resolveTolerance(tolerance(type?.percent, type?.absolute), partnerTol),
     })
   }
 
@@ -627,6 +706,7 @@ function emptyExtraction(): ExtractedInvoice {
     },
     confidence: 0,
     headerIssues: [],
+    headerIssueDetails: [],
   }
 }
 

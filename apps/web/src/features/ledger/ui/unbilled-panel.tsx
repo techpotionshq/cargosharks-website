@@ -28,6 +28,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatMoney, formatDate } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
@@ -38,16 +39,16 @@ export async function UnbilledPanel() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const [summary, t, locale] = await Promise.all([
-    unbilledRevenue(session.actor),
+  const locale = await getLocale()
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const [summary, t] = await Promise.all([
+    unbilledRevenue(session.actor, undefined, lang),
     getTranslations('unbilled'),
-    getLocale(),
   ])
 
   // Nothing to chase is worth saying once, not worth a table with no rows in it.
   if (summary.jobCount === 0) return null
 
-  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const billable = can(session, 'invoice.approve')
   const money = (amount: string, currency: string) =>
     formatMoney({ amount: Number(amount), currency }, lang)
@@ -58,7 +59,8 @@ export async function UnbilledPanel() {
         title={t('title')}
         description={t('description', {
           count: summary.jobCount,
-          total: money(summary.totalBase, summary.baseCurrency),
+          // One figure per base currency — dinars and dirhams do not add.
+          total: formatByCurrency(summary.totals, lang),
         })}
       />
       <TableShell>

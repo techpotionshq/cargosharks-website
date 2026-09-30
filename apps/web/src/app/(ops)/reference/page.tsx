@@ -73,7 +73,7 @@ export default async function ReferencePage() {
   const [counts, charges, sample, milestones, calendars, duties, rules] = await Promise.all([
     referenceCounts(session.actor),
     listChargeTypes(session.actor),
-    listReferenceSample(session.actor),
+    listReferenceSample(session.actor, locale),
     listMilestoneTemplates(session.actor),
     listCalendars(session.actor),
     listDutyRates(session.actor),
@@ -84,7 +84,11 @@ export default async function ReferencePage() {
   const clock = (minutes: number) =>
     `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 
-  const calendarOptions = calendars.map((row) => ({ value: row.id, label: row.nameEn }))
+  // Named in the reader's language, as the rows beside it are (F27).
+  const calendarOptions = calendars.map((row) => ({
+    value: row.id,
+    label: locale === 'ar' && row.nameAr ? row.nameAr : row.nameEn,
+  }))
 
   const empty = counts.filter((row) => row.count === 0)
 
@@ -210,7 +214,7 @@ export default async function ReferencePage() {
                   key={calendar.key}
                   className="flex items-center justify-between border-b border-line pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="text-[0.875rem] text-ink">{calendar.nameEn}</span>
+                  <span className="text-[0.875rem] text-ink">{calendar.name}</span>
                   <span className="ref text-[0.75rem] text-ink-subtle">{calendar.timeZone}</span>
                 </li>
               ))}
@@ -233,7 +237,7 @@ export default async function ReferencePage() {
                   className="flex items-center justify-between gap-3 border-b border-line pb-2 last:border-0 last:pb-0"
                 >
                   <span className="min-w-0 text-[0.875rem] text-ink">
-                    {code.nameEn}
+                    {code.name}
                     <span className="ref ms-2 text-[0.75rem] text-ink-subtle">{code.code}</span>
                   </span>
                   <span className="numeric shrink-0 text-[0.75rem] text-ink-muted">
@@ -253,7 +257,7 @@ export default async function ReferencePage() {
             {sample.containers.map((row) => (
               <li key={row.code} className="flex items-center justify-between text-[0.875rem]">
                 <span className="ref text-ink">{row.code}</span>
-                <span className="text-ink-muted">{row.nameEn}</span>
+                <span className="text-ink-muted">{row.name}</span>
               </li>
             ))}
           </ul>
@@ -267,7 +271,7 @@ export default async function ReferencePage() {
             {sample.incoterms.map((row) => (
               <li key={row.code} className="flex flex-col text-[0.8125rem]">
                 <span className="ref text-ink">{row.code}</span>
-                <span className="truncate text-[0.75rem] text-ink-subtle">{row.nameEn}</span>
+                <span className="truncate text-[0.75rem] text-ink-subtle">{row.name}</span>
               </li>
             ))}
           </ul>
@@ -278,7 +282,7 @@ export default async function ReferencePage() {
           <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.documents.map((row) => (
               <li key={row.code} className="flex items-center justify-between text-[0.8125rem]">
-                <span className="text-ink">{row.nameEn}</span>
+                <span className="text-ink">{row.name}</span>
                 <Badge tone="muted">{row.category}</Badge>
               </li>
             ))}

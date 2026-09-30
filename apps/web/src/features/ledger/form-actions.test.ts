@@ -45,6 +45,15 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => harness.session,
 }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   chargeTypes,
   enquiries,
@@ -300,7 +309,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       await allocatePayment({}, form({ paymentId, invoiceId, amount: '400.000' }))
       const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '200.000' }))
 
-      expect(state.errors?.amount).toContain('unallocated')
+      expect(state.errors?.amount).toBe('ledgerValidation.overAllocated')
     })
 
     it('refuses more than the invoice still owes', async () => {
@@ -309,7 +318,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
 
       const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '200.000' }))
 
-      expect(state.errors?.amount).toContain('outstanding')
+      expect(state.errors?.amount).toBe('ledgerValidation.overInvoiced')
       const row = await invoiceRow(invoiceId)
       expect(Number(row.paid)).toBe(0)
     })
@@ -728,7 +737,7 @@ describe.skipIf(!enabled)('quotations', () => {
         }),
       )
 
-      expect(state.errors?.totalSell).toMatch(/below what it costs/)
+      expect(state.errors?.totalSell).toBe('ledgerValidation.priceBelowCost')
       expect(await quotesFor(id)).toEqual([])
     })
 
@@ -861,19 +870,19 @@ describe.skipIf(!enabled)('quotations', () => {
       const quoteId = await draft()
       await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
 
-      await expect(
-        addQuoteLine(
-          {},
-          form({
-            quoteId,
-            chargeTypeId: freightChargeTypeId,
-            quantity: '1',
-            rate: '50',
-            currency: 'USD',
-          }),
-        ),
-      ).rejects.toThrow(/sent quotation cannot be edited/)
+      const state = await addQuoteLine(
+        {},
+        form({
+          quoteId,
+          chargeTypeId: freightChargeTypeId,
+          quantity: '1',
+          rate: '50',
+          currency: 'USD',
+        }),
+      )
 
+      // Returned rather than thrown, so the dialog can say it.
+      expect(state.message).toBe('ledgerValidation.quoteSentNoEdit')
       expect(await linesOf(quoteId)).toEqual([])
     })
   })
@@ -950,12 +959,14 @@ describe.skipIf(!enabled)('quotations', () => {
 
       const state = await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))
 
-      expect(state.message).toMatch(/cannot move to that state/)
+      expect(state.message).toBe('ledgerValidation.quoteBadTransition')
       expect((await quoteRow(quoteId))?.status).toBe('draft')
     })
 
     it('asks for something to update', async () => {
-      expect((await setQuoteStatus({}, form({}))).errors?._).toBe('Nothing to update.')
+      expect((await setQuoteStatus({}, form({}))).errors?._).toBe(
+        'ledgerValidation.nothingToUpdate',
+      )
       expect((await setQuoteStatus({}, form({ quoteId: 'x' }))).errors?._).toBeTruthy()
     })
 
@@ -1289,7 +1300,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: 'Too late' }))
 
-      expect(state.message).toMatch(/draft quotation/)
+      expect(state.message).toBe('ledgerValidation.coverNoteEditDraftOnly')
       expect((await noteOf(quoteId)).en).toBeNull()
     })
 
@@ -1337,8 +1348,49 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/draft quotation/)
+      expect(state.message).toBe('ledgerValidation.coverNoteDraftOnly')
       expect(spy).not.toHaveBeenCalled()
+    })
+
+    /** The service's English is for its log; the code is what gets worded. */
+    it('words the service refusal code, never its English', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            note: null,
+            refusal: 'A covering note can only be drafted on a draft quote.',
+            refusalCode: 'not_draft',
+          }),
+        })),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toBe('ledgerValidation.coverNoteDraftOnly')
+    })
+
+    it('falls back to the generic sentence for a code it does not know', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ note: null, refusal: 'Something new.', refusalCode: 'brand_new' }),
+        })),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toBe('ledgerValidation.nothingDrafted')
     })
 
     it('explains that no model is configured on a 503', async () => {
@@ -1352,7 +1404,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/model is configured/i)
+      expect(state.message).toBe('ledgerValidation.coverNoteNoModel')
     })
 
     it('falls back to writing by hand when the service is not wired up', async () => {
@@ -1360,7 +1412,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/needs the service|by hand/i)
+      expect(state.message).toMatch(/^ledgerValidation\.coverNote(NeedsService|Failed|TimedOut)$/)
     })
 
     it('reports a timeout rather than throwing when the service hangs', async () => {
@@ -1376,7 +1428,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/timed out|by hand/i)
+      expect(state.message).toMatch(/^ledgerValidation\.coverNote(TimedOut|NeedsService|Failed)$/)
     })
   })
 })

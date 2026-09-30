@@ -25,30 +25,42 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { jobs, podPhotos, proofOfDelivery, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
-const optionalCoordinate = z
-  .string()
-  .trim()
-  .regex(/^-?\d+(\.\d+)?$/, 'Not a coordinate')
-  .optional()
-  .transform((v) => v ?? null)
+const optionalCoordinate = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .regex(/^-?\d+(\.\d+)?$/, tv('notCoordinate'))
+    .optional()
+    .transform((v) => v ?? null)
 
-const podSchema = z
-  .object({
-    jobId: z.uuid(),
-    equipmentId: z.uuid().optional(),
-    /*
+const podSchema = (tv: Translate) =>
+  z
+    .object({
+      jobId: z.uuid(),
+      equipmentId: z.uuid().optional(),
+      /*
       A datetime, and it defaults to now in the form rather than here.
 
       Backdating is legitimate and common — the delivery happened at the gate
@@ -57,49 +69,49 @@ const podSchema = z
       `now()`, which would quietly replace the fact with the moment somebody
       typed it up.
     */
-    deliveredAt: z.coerce.date(),
-    receivedByName: z.string().trim().min(2, 'Who signed for it?').max(120),
-    receivedByIdNumber: z
-      .string()
-      .trim()
-      .max(60)
-      .optional()
-      .transform((v) => v || null),
-    latitude: optionalCoordinate,
-    longitude: optionalCoordinate,
-    accuracyMetres: optionalCoordinate,
-    hasException: z
-      .string()
-      .optional()
-      .transform((v) => v === 'on' || v === 'true'),
-    exceptionNotes: z
-      .string()
-      .trim()
-      .max(1000)
-      .optional()
-      .transform((v) => v || null),
-    notes: z
-      .string()
-      .trim()
-      .max(1000)
-      .optional()
-      .transform((v) => v || null),
-    /** Set when this capture replaces an earlier one. */
-    supersedesId: z.uuid().optional(),
-    /** A PNG data URI drawn on the signature pad, or absent. */
-    signature: z.string().optional(),
-  })
-  .refine((v) => !v.hasException || (v.exceptionNotes && v.exceptionNotes.length > 0), {
-    // The database says the same thing. Stated here too, because a constraint
-    // violation reaches the driver as "something went wrong" and this reaches
-    // them as a field with a message under it.
-    message: 'Say what was wrong — short, damaged, refused',
-    path: ['exceptionNotes'],
-  })
-  .refine((v) => (v.latitude === null) === (v.longitude === null), {
-    message: 'A partial fix is not a location',
-    path: ['latitude'],
-  })
+      deliveredAt: z.coerce.date(),
+      receivedByName: z.string().trim().min(2, tv('whoSigned')).max(120),
+      receivedByIdNumber: z
+        .string()
+        .trim()
+        .max(60)
+        .optional()
+        .transform((v) => v || null),
+      latitude: optionalCoordinate(tv),
+      longitude: optionalCoordinate(tv),
+      accuracyMetres: optionalCoordinate(tv),
+      hasException: z
+        .string()
+        .optional()
+        .transform((v) => v === 'on' || v === 'true'),
+      exceptionNotes: z
+        .string()
+        .trim()
+        .max(1000)
+        .optional()
+        .transform((v) => v || null),
+      notes: z
+        .string()
+        .trim()
+        .max(1000)
+        .optional()
+        .transform((v) => v || null),
+      /** Set when this capture replaces an earlier one. */
+      supersedesId: z.uuid().optional(),
+      /** A PNG data URI drawn on the signature pad, or absent. */
+      signature: z.string().optional(),
+    })
+    .refine((v) => !v.hasException || (v.exceptionNotes && v.exceptionNotes.length > 0), {
+      // The database says the same thing. Stated here too, because a constraint
+      // violation reaches the driver as "something went wrong" and this reaches
+      // them as a field with a message under it.
+      message: tv('sayWhatWasWrong'),
+      path: ['exceptionNotes'],
+    })
+    .refine((v) => (v.latitude === null) === (v.longitude === null), {
+      message: tv('partialFix'),
+      path: ['latitude'],
+    })
 
 export async function captureProofOfDelivery(
   _previous: ActionState,
@@ -107,8 +119,9 @@ export async function captureProofOfDelivery(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const tv = await getTranslations('podValidation')
 
-  const parsed = podSchema.safeParse({
+  const parsed = await localeParse(podSchema(tv), {
     jobId: read(form, 'jobId'),
     equipmentId: read(form, 'equipmentId'),
     deliveredAt: read(form, 'deliveredAt'),
@@ -137,7 +150,7 @@ export async function captureProofOfDelivery(
   const [job] = await withActor(session.actor, (tx) =>
     tx.select({ branchId: jobs.branchId }).from(jobs).where(eq(jobs.id, data.jobId)).limit(1),
   )
-  if (!job) return failWith('That shipment could not be found.')
+  if (!job) return failWith(tv('shipmentNotFound'))
 
   const failedUploads: string[] = []
 
@@ -146,7 +159,7 @@ export async function captureProofOfDelivery(
         kind: 'pod_signature',
         jobId: data.jobId,
       }).catch(() => {
-        failedUploads.push('signature')
+        failedUploads.push(tv('uploadSignature'))
         return null
       })
     : null
@@ -165,7 +178,7 @@ export async function captureProofOfDelivery(
       })
       photoAssetIds.push(id)
     } catch {
-      failedUploads.push(file.name || `photo ${index + 1}`)
+      failedUploads.push(file.name || tv('uploadPhoto', { number: index + 1 }))
     }
   }
 
@@ -221,10 +234,7 @@ export async function captureProofOfDelivery(
     a gap discovered during a claim, which is the worst possible moment.
   */
   if (failedUploads.length > 0) {
-    return failWith(
-      `The delivery was recorded, but these could not be uploaded: ${failedUploads.join(', ')}. ` +
-        'Add them again from the job file.',
-    )
+    return failWith(tv('uploadsFailed', { files: failedUploads.join(tv('listSeparator')) }))
   }
 
   return succeed(data.jobId)

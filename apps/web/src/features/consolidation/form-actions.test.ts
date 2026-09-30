@@ -10,7 +10,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -21,7 +21,17 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { consolidations, consolChargeLines, jobCargo, jobs, withActor } = await import('@qabandi/db')
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const { chargeLines, consolidations, consolChargeLines, jobCargo, jobs, withActor } =
+  await import('@qabandi/db')
 
 const { HOME_BRANCH, AWAY_BRANCH, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
@@ -115,6 +125,30 @@ async function house(reference: string): Promise<string> {
   })
 }
 
+/**
+ * What a split has left on one house for one master cost: whether the shares
+ * and their reversals net to zero, and how many reversal lines were posted.
+ * The sum is compared in SQL — money is never a JS number, even in a test.
+ */
+async function splitOn(jobId: string, chargeLineId: string) {
+  const [row] = await withActor(bothBranchesActor, (tx) =>
+    tx
+      .select({
+        netsToZero: sql<boolean>`coalesce(sum(${chargeLines.amount}), 0) = 0`,
+        reversals: sql<number>`count(*) filter (where ${chargeLines.sourceKind} = 'consol_allocation_reversal')::int`,
+      })
+      .from(chargeLines)
+      .where(
+        and(
+          eq(chargeLines.jobId, jobId),
+          eq(chargeLines.sourceId, chargeLineId),
+          inArray(chargeLines.sourceKind, ['consol_allocation', 'consol_allocation_reversal']),
+        ),
+      ),
+  )
+  return row!
+}
+
 async function housesOn(consolidationId: string): Promise<number> {
   const rows = await withActor(bothBranchesActor, (tx) =>
     tx.select({ id: jobs.id }).from(jobs).where(eq(jobs.consolidationId, consolidationId)),
@@ -123,7 +157,11 @@ async function housesOn(consolidationId: string): Promise<number> {
 }
 
 /** A cost on the master, ready to be split. */
-async function cost(consolidationId: string, amount = '900.000'): Promise<string> {
+async function cost(
+  consolidationId: string,
+  amount = '900.000',
+  allocationBasis = 'volume',
+): Promise<string> {
   const state = await addConsolCharge(
     {},
     form({
@@ -133,7 +171,7 @@ async function cost(consolidationId: string, amount = '900.000'): Promise<string
       amount,
       currency: 'KWD',
       fxRate: '1',
-      allocationBasis: 'volume',
+      allocationBasis,
     }),
   )
   if (state.errors || state.message) {
@@ -190,17 +228,45 @@ describe.skipIf(!enabled)('consolidations', () => {
       const consolidationId = await master()
       const jobId = await house('FXH-HSE')
 
-      await attachHouse(form({ consolidationId, jobId }))
+      await attachHouse({}, form({ consolidationId, jobId }))
       expect(await housesOn(consolidationId)).toBe(1)
 
-      await detachHouse(form({ consolidationId, jobId }))
+      await detachHouse({}, form({ consolidationId, jobId }))
       expect(await housesOn(consolidationId)).toBe(0)
     })
 
-    it('refuses outright when no job was given', async () => {
+    /*
+      Returned rather than thrown: the shipment is the one field on the form
+      the operator chooses, and a thrown refusal is redacted in production.
+    */
+    it('asks for a shipment when none was chosen', async () => {
       const consolidationId = await master()
-      await expect(attachHouse(form({ consolidationId }))).rejects.toThrow('Nothing to attach')
+      const state = await attachHouse({}, form({ consolidationId }))
+      expect(state.errors?.jobId).toBe('consolidationValidation.chooseShipment')
       expect(await housesOn(consolidationId)).toBe(0)
+    })
+
+    it('still throws when the master itself is missing — a tampered form', async () => {
+      await expect(attachHouse({}, form({ jobId: await house('FXH-NOM') }))).rejects.toThrow(
+        'Nothing to attach',
+      )
+    })
+
+    /**
+     * Its share of the master cost is a charge line on it, possibly invoiced.
+     * The refusal is one the operator meets by clicking, so it is a sentence.
+     */
+    it('refuses to detach a house whose costs were split onto it', async () => {
+      const consolidationId = await master()
+      const jobId = await house('FXH-SPLIT')
+      await attachHouse({}, form({ consolidationId, jobId }))
+      const chargeLineId = await cost(consolidationId)
+      await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+
+      const state = await detachHouse({}, form({ consolidationId, jobId }))
+
+      expect(state.message).toBe('consolidationValidation.houseHasSplitCosts')
+      expect(await housesOn(consolidationId)).toBe(1)
     })
 
     /**
@@ -210,12 +276,12 @@ describe.skipIf(!enabled)('consolidations', () => {
     it('refuses to attach to a closed master', async () => {
       const consolidationId = await master()
       const first = await house('FXH-HSE')
-      await attachHouse(form({ consolidationId, jobId: first }))
+      await attachHouse({}, form({ consolidationId, jobId: first }))
 
       await closeConsolidation(form({ consolidationId }))
 
       const late = await house('FXH-LATE')
-      await attachHouse(form({ consolidationId, jobId: late }))
+      await attachHouse({}, form({ consolidationId, jobId: late }))
 
       expect(await housesOn(consolidationId)).toBe(1)
     })
@@ -231,7 +297,7 @@ describe.skipIf(!enabled)('consolidations', () => {
     it('splits it across the houses', async () => {
       const consolidationId = await master()
       for (const ref of ['FXH-A', 'FXH-B', 'FXH-C']) {
-        await attachHouse(form({ consolidationId, jobId: await house(ref) }))
+        await attachHouse({}, form({ consolidationId, jobId: await house(ref) }))
       }
       const chargeLineId = await cost(consolidationId, '900.000')
 
@@ -250,7 +316,7 @@ describe.skipIf(!enabled)('consolidations', () => {
     it('splits to the last fils', async () => {
       const consolidationId = await master()
       for (const ref of ['FXH-D', 'FXH-E', 'FXH-F']) {
-        await attachHouse(form({ consolidationId, jobId: await house(ref) }))
+        await attachHouse({}, form({ consolidationId, jobId: await house(ref) }))
       }
       // 100.000 over three equal houses is 33.333 each and one fils over.
       const chargeLineId = await cost(consolidationId, '100.000')
@@ -280,18 +346,18 @@ describe.skipIf(!enabled)('consolidations', () => {
     /** Splitting twice would double the cost on every house. */
     it('refuses to split the same cost twice', async () => {
       const consolidationId = await master()
-      await attachHouse(form({ consolidationId, jobId: await house('FXH-G') }))
+      await attachHouse({}, form({ consolidationId, jobId: await house('FXH-G') }))
       const chargeLineId = await cost(consolidationId)
 
       await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
       const again = await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
 
-      expect(again.message).toContain('already been split')
+      expect(again.message).toBe('consolidationValidation.alreadySplit')
     })
 
     it('reverses a split so it can be done again', async () => {
       const consolidationId = await master()
-      await attachHouse(form({ consolidationId, jobId: await house('FXH-H') }))
+      await attachHouse({}, form({ consolidationId, jobId: await house('FXH-H') }))
       const chargeLineId = await cost(consolidationId)
 
       await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
@@ -301,8 +367,139 @@ describe.skipIf(!enabled)('consolidations', () => {
       expect(redone.message).toBeUndefined()
     })
 
+    /*
+      The second reversal used to reverse *every* share ever posted under the
+      cost — including the first, already reversed — leaving the house one
+      share short: allocate, reverse, allocate, reverse netted to minus one
+      share, not zero.
+    */
+    it('a second reversal undoes only the second split', async () => {
+      const consolidationId = await master()
+      const jobId = await house('FXH-RR')
+      await attachHouse({}, form({ consolidationId, jobId }))
+      const chargeLineId = await cost(consolidationId)
+
+      await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+      await reverseConsolAllocation(form({ consolidationId, chargeLineId }))
+      await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+      await reverseConsolAllocation(form({ consolidationId, chargeLineId }))
+
+      const split = await splitOn(jobId, chargeLineId)
+      expect(split.netsToZero).toBe(true)
+      expect(split.reversals).toBe(2)
+    })
+
+    it('posts nothing when a reversal is submitted twice', async () => {
+      const consolidationId = await master()
+      const jobId = await house('FXH-R2')
+      await attachHouse({}, form({ consolidationId, jobId }))
+      const chargeLineId = await cost(consolidationId)
+
+      await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+      await reverseConsolAllocation(form({ consolidationId, chargeLineId }))
+      await reverseConsolAllocation(form({ consolidationId, chargeLineId }))
+
+      const split = await splitOn(jobId, chargeLineId)
+      expect(split.netsToZero).toBe(true)
+      expect(split.reversals).toBe(1)
+    })
+
+    /*
+      A reversal adds a line rather than removing one, so "any share on the
+      house" stayed true forever and the refusal's own advice — reverse the
+      split first — could not work.
+    */
+    it('lets a house go once its split has been reversed', async () => {
+      const consolidationId = await master()
+      const jobId = await house('FXH-RD')
+      await attachHouse({}, form({ consolidationId, jobId }))
+      const chargeLineId = await cost(consolidationId)
+
+      await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+      await reverseConsolAllocation(form({ consolidationId, chargeLineId }))
+      const state = await detachHouse({}, form({ consolidationId, jobId }))
+
+      expect(state.message).toBeUndefined()
+      expect(await housesOn(consolidationId)).toBe(0)
+    })
+
+    /*
+      The engine's refusals arrive as catalogue keys, not as the English
+      `core` keeps for its log. A house fixture carries volume and gross
+      weight but no chargeable weight, so a cost split by that basis finds
+      every driver at zero.
+    */
+    it('refuses a split with nothing to split by, in the catalogue’s words', async () => {
+      const consolidationId = await master()
+      await attachHouse({}, form({ consolidationId, jobId: await house('FXH-ZERO') }))
+      const chargeLineId = await cost(consolidationId, '900.000', 'chargeable_weight')
+
+      const state = await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+
+      expect(state.message).toBe('consolidationValidation.allocationZeroChargeableWeight')
+    })
+
+    /*
+      The totals come through as strings fixed to the dinar's three places —
+      never through a JS number. The page posts no per-house shares yet, so a
+      manual split states zero for every house.
+    */
+    it('says what a stated split adds up to, in the currency’s places', async () => {
+      const consolidationId = await master()
+      await attachHouse({}, form({ consolidationId, jobId: await house('FXH-MAN') }))
+      const chargeLineId = await cost(consolidationId, '900.000', 'manual')
+
+      const state = await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+
+      expect(state.message).toBe(
+        'consolidationValidation.allocationManualMismatch:{"stated":"0.000","expected":"900.000","currency":"KWD"}',
+      )
+    })
+
+    /*
+      The split form now sends one `share_<jobId>` per house for a cost stated
+      by hand. Before, it sent none, so every manual split stated zero and was
+      refused — the basis was offered and could not be used.
+    */
+    it('splits a cost stated by hand, house by house', async () => {
+      const consolidationId = await master()
+      const first = await house('FXH-MA1')
+      const second = await house('FXH-MA2')
+      await attachHouse({}, form({ consolidationId, jobId: first }))
+      await attachHouse({}, form({ consolidationId, jobId: second }))
+      const chargeLineId = await cost(consolidationId, '900.000', 'manual')
+
+      const state = await allocateConsolCharge(
+        {},
+        form({
+          consolidationId,
+          chargeLineId,
+          [`share_${first}`]: '600.000',
+          [`share_${second}`]: '300.000',
+        }),
+      )
+      expect(state.message).toBeUndefined()
+
+      const shares = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ jobId: chargeLines.jobId, stated: sql<string>`${chargeLines.amount}::text` })
+          .from(chargeLines)
+          .where(
+            and(
+              eq(chargeLines.sourceId, chargeLineId),
+              eq(chargeLines.sourceKind, 'consol_allocation'),
+            ),
+          ),
+      )
+      const byJob = Object.fromEntries(shares.map((row) => [row.jobId, row.stated]))
+      expect(byJob[first]).toMatch(/^600\.0+$/)
+      expect(byJob[second]).toMatch(/^300\.0+$/)
+    })
+
     it('says so plainly when there is nothing to allocate', async () => {
-      expect((await allocateConsolCharge({}, form({}))).message).toBe('Nothing to allocate.')
+      expect((await allocateConsolCharge({}, form({}))).message).toBe(
+        'consolidationValidation.nothingToAllocate',
+      )
     })
 
     it('reports field errors rather than throwing on a bad charge form', async () => {

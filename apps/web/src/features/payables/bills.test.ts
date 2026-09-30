@@ -26,6 +26,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { supplierInvoiceLines, supplierInvoices, supplierPayments, withActor } =
   await import('@qabandi/db')
 
@@ -201,7 +210,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
           taxAmount: '0',
         }),
       )
-      expect(state.message).toContain('no longer visible')
+      expect(state.message).toBe('payablesValidation.billGone')
     })
   })
 
@@ -219,7 +228,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
         form({ supplierInvoiceId: id, action: 'approve' }),
       )
 
-      expect(state.message).toContain('outside tolerance or matched to nothing')
+      expect(state.message).toBe('payablesValidation.varianceNeedsReview')
       expect(await billStatus(id)).toBe('received')
     })
 
@@ -232,7 +241,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
         form({ supplierInvoiceId: id, action: 'approve', acceptVariance: 'on' }),
       )
 
-      expect(state.message).toContain('goes on the record')
+      expect(state.message).toBe('payablesValidation.sayWhy')
       expect(await billStatus(id)).toBe('received')
     })
 
@@ -301,7 +310,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
           reason: 'Agreed with the agent',
         }),
       )
-      expect(again.message).toContain('not waiting for approval')
+      expect(again.message).toBe('payablesValidation.billNotAwaitingApproval')
     })
 
     /** An approved bill's lines are settled fact; editing them is refused. */
@@ -327,11 +336,13 @@ describe.skipIf(!enabled)('supplier bills', () => {
           taxAmount: '0',
         }),
       )
-      expect(state.message).toContain('can no longer change')
+      expect(state.message).toBe('payablesValidation.billLinesLocked')
     })
 
     it('says so plainly when there is nothing to do', async () => {
-      expect((await setSupplierInvoiceStatus({}, form({}))).message).toBe('Nothing to do.')
+      expect((await setSupplierInvoiceStatus({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
     })
 
     it('reports a bill that is not visible', async () => {
@@ -457,7 +468,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
         form({ supplierPaymentId: paymentId, supplierInvoiceId: billId, amount: '100.000' }),
       )
 
-      expect(state.errors?.supplierInvoiceId).toContain('not been approved')
+      expect(state.errors?.supplierInvoiceId).toBe('payablesValidation.billNotApproved')
     })
 
     it('refuses more than the payment has left', async () => {
@@ -468,7 +479,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
         {},
         form({ supplierPaymentId: paymentId, supplierInvoiceId: billId, amount: '500.000' }),
       )
-      expect(state.errors?.amount).toContain('unallocated')
+      expect(state.errors?.amount).toBe('payablesValidation.overAllocated')
     })
 
     it('refuses more than the bill still owes', async () => {
@@ -479,7 +490,7 @@ describe.skipIf(!enabled)('supplier bills', () => {
         {},
         form({ supplierPaymentId: paymentId, supplierInvoiceId: billId, amount: '200.000' }),
       )
-      expect(state.errors?.amount).toContain('outstanding')
+      expect(state.errors?.amount).toBe('payablesValidation.overInvoiced')
     })
 
     it('asks for a bill when none was chosen', async () => {
@@ -520,8 +531,12 @@ describe.skipIf(!enabled)('supplier bills', () => {
     })
 
     it('says so plainly when no partner was chosen', async () => {
-      expect((await setPartnerTolerance({}, form({}))).message).toBe('Nothing to do.')
-      expect((await linkPartnerAccount({}, form({}))).message).toBe('Nothing to do.')
+      expect((await setPartnerTolerance({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
+      expect((await linkPartnerAccount({}, form({}))).message).toBe(
+        'payablesValidation.nothingToDo',
+      )
     })
   })
 })

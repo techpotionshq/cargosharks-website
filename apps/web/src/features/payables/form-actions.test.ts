@@ -40,6 +40,15 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => harness.session,
 }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   branches,
   chargeLines,
@@ -57,7 +66,7 @@ const {
   workingCalendars,
 } = await import('@qabandi/db')
 
-const { matchSupplierLine, unmatchSupplierLine } = await import('./form-actions')
+const { matchSupplierLine, readSupplierBill, unmatchSupplierLine } = await import('./form-actions')
 
 const BRANCH = '00000000-0000-7000-8000-00000000e001'
 const OTHER_BRANCH = '00000000-0000-7000-8000-00000000e002'
@@ -349,7 +358,7 @@ describe.skipIf(!enabled)('supplier invoice matching', () => {
         }),
       )
 
-      expect(state.errors?.amount).toContain('unmatched')
+      expect(state.errors?.amount).toBe('payablesValidation.overMatched')
       expect(await liveMatches(lineId)).toEqual([])
     })
 
@@ -435,7 +444,7 @@ describe.skipIf(!enabled)('supplier invoice matching', () => {
         }),
       )
 
-      expect(state.message).toContain('approved')
+      expect(state.message).toBe('payablesValidation.billApprovedMatchLocked')
       expect(await liveMatches(lineId)).toEqual([])
     })
 
@@ -463,7 +472,7 @@ describe.skipIf(!enabled)('supplier invoice matching', () => {
         }),
       )
 
-      expect(state.errors?.chargeLineId).toContain('already matched')
+      expect(state.errors?.chargeLineId).toBe('payablesValidation.costLineAlreadyMatched')
       expect(await liveMatches(lineId)).toHaveLength(1)
     })
 
@@ -487,7 +496,7 @@ describe.skipIf(!enabled)('supplier invoice matching', () => {
         }),
       )
 
-      expect(state.errors?.chargeLineId).toContain('another branch')
+      expect(state.errors?.chargeLineId).toBe('payablesValidation.costLineOtherBranch')
       expect(await liveMatches(lineId)).toEqual([])
     })
   })
@@ -638,5 +647,155 @@ describe.skipIf(!enabled)('supplier invoice matching', () => {
     it('does nothing without a match id', async () => {
       await expect(unmatchSupplierLine(form({ supplierInvoiceId: 'x' }))).resolves.toBeUndefined()
     })
+  })
+})
+
+/**
+ * Reading a bill with the model — the refusal half, which needs no database.
+ *
+ * The service does the reading; what this action owns is the sentence a
+ * coordinator gets when nothing was written. That sentence is the service's
+ * refusal *code* in the reader's language, never its English `refusal` — and
+ * where the figures did not add up, it is still the figures, line by line.
+ */
+describe('reading a bill that was not written', () => {
+  const fetchMock = vi.fn()
+
+  /** The upload answers first, then the reading answers with `reading`. */
+  const serviceAnswers = (reading: Record<string, unknown>) => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ assetId: 'asset-1' }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ supplierInvoiceId: null, ...reading }),
+      })
+  }
+
+  const scanForm = () => {
+    const data = form({ branchId: BRANCH, partnerId: PARTNER })
+    data.set(
+      'scan',
+      new File([new Uint8Array([37, 80, 68, 70])], 'bill.pdf', { type: 'application/pdf' }),
+    )
+    return data
+  }
+
+  beforeAll(() => {
+    harness.session = session
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('SERVICE_URL', 'http://service.test')
+    vi.stubEnv('INTERNAL_API_SECRET', 'secret')
+  })
+
+  afterAll(() => {
+    harness.session = null
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('puts each finding into its own clause, with both figures', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({
+      refusal:
+        'The invoice does not reconcile: line 2: the document says 990, the figures give 900',
+      refusalCode: 'not_reconciled',
+      refusalValues: { count: '2' },
+      findings: [
+        { check: 'line_amount', line: 2, stated: '990', computed: '900', message: 'English' },
+        { check: 'total', line: null, stated: '990', computed: '900', message: 'English' },
+      ],
+    })
+
+    const state = await readSupplierBill({}, scanForm())
+
+    expect(state.message).toBe(
+      'payablesValidation.billNotReconciled:' +
+        JSON.stringify({
+          details:
+            'payablesValidation.findingLine:{"line":"2","stated":"990","computed":"900"}' +
+            'payablesValidation.findingJoiner' +
+            'payablesValidation.findingTotal:{"stated":"990","computed":"900"}',
+        }),
+    )
+  })
+
+  it('words each part it could not read from its code, field and line', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({
+      refusal: 'Invoice number: required; line 2: Not a known charge type',
+      refusalCode: 'unreadable_fields',
+      refusalValues: { count: '4' },
+      readingIssues: [
+        { where: 'header', field: 'invoiceNumber', line: null, code: 'required', values: {} },
+        { where: 'line', field: 'chargeType', line: 2, code: 'unknownReference', values: {} },
+        { where: 'header', field: 'lines', line: null, code: 'noLines', values: {} },
+        // A field this side has no name for is left out, never guessed at.
+        { where: 'line', field: 'somethingNew', line: 3, code: 'required', values: {} },
+      ],
+    })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe(
+      'payablesValidation.billPartsUnreadableDetail:' +
+        JSON.stringify({
+          details:
+            'payablesValidation.readingInField:' +
+            JSON.stringify({
+              field: 'payablesValidation.readingFieldInvoiceNumber',
+              problem: 'payablesValidation.readingMissing',
+            }) +
+            'payablesValidation.findingJoiner' +
+            'payablesValidation.readingOnLine:' +
+            JSON.stringify({
+              line: '2',
+              field: 'payablesValidation.readingFieldChargeType',
+              problem: 'payablesValidation.readingUnknownChargeType',
+            }) +
+            'payablesValidation.findingJoiner' +
+            'payablesValidation.readingNoLines',
+        }),
+    )
+  })
+
+  it('counts the parts it could not read when none can be worded', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({
+      refusal: 'Invoice number: required',
+      refusalCode: 'unreadable_fields',
+      refusalValues: { count: '3' },
+    })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe('payablesValidation.billPartsUnreadable:{"count":3}')
+  })
+
+  it('says the model was unsure when there is nothing to correct', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({ refusal: 'not confident enough', refusalCode: 'low_confidence' })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe('payablesValidation.billLowConfidence')
+  })
+
+  it('names both sizes for a scan too large to send', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({
+      refusal: 'The scan is 31MB, above the 20MB limit for extraction.',
+      refusalCode: 'scan_too_large',
+      refusalValues: { sizeMb: '31', limitMb: '20' },
+    })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe('payablesValidation.scanTooLarge:{"sizeMb":"31","limitMb":"20"}')
+  })
+
+  /** An English sentence with no code this side knows is never shown. */
+  it('falls back rather than showing the service’s English', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({ refusal: 'Some English sentence', refusalCode: 'something_new' })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe('payablesValidation.scanNotInvoice')
   })
 })

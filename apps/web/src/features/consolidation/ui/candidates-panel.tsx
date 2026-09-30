@@ -42,16 +42,15 @@ export async function CandidatesPanel() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const [clusters, t, locale] = await Promise.all([
-    consolidationCandidates(session.actor),
+  const locale = await getLocale()
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const [clusters, t] = await Promise.all([
+    consolidationCandidates(session.actor, undefined, lang),
     getTranslations('grouping'),
-    getLocale(),
   ])
 
   // Nothing to group is the ordinary state of a tidy week. No empty card.
   if (clusters.length === 0) return null
-
-  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const mayForm = can(session, 'consol.write')
 
   return (

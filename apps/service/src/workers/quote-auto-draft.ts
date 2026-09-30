@@ -111,14 +111,26 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
   return { enabled: true, drafted, skipped }
 }
 
-/** Enquiries with an awarded buy rate, still pre-quote and not yet quoted. */
+/**
+ * Enquiries with an awarded buy rate, still pre-quote and not yet quoted.
+ *
+ * An enquiry pricing refuses writes no quote, so it stays eligible. With no
+ * order the same fifty came back every sweep, and fifty refusals starved every
+ * enquiry behind them. Two guards: a sea FCL enquiry with no container count
+ * is left out (pricing refuses it until a person enters one), and the newest
+ * come first, so a fresh award is drafted even behind a backlog of refusals.
+ */
 async function loadEligible(tx: Tx): Promise<{ enquiryId: string }[]> {
   const result = await tx.execute(sql`
-    select distinct e.id as "enquiryId"
+    select e.id as "enquiryId"
       from enquiries e
-      join rate_requests r on r.enquiry_id = e.id and r.status = 'accepted'
      where e.status in ('new', 'assigned', 'rating')
+       and exists (
+         select 1 from rate_requests r where r.enquiry_id = e.id and r.status = 'accepted'
+       )
        and not exists (select 1 from quotes q where q.enquiry_id = e.id)
+       and (e.mode is distinct from 'sea_fcl' or e.container_count is not null)
+     order by e.created_at desc
      limit ${ENQUIRY_BATCH}
   `)
   return result.rows as { enquiryId: string }[]

@@ -24,15 +24,14 @@ export default async function ConsolidationsPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const [rows, t, tc, tMode] = await Promise.all([
-    listConsolidations(session.actor),
+    listConsolidations(session.actor, {}, locale),
     getTranslations('consolidations'),
     getTranslations('common'),
     getTranslations('mode'),
   ])
-
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   return (
     <>

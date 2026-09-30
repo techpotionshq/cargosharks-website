@@ -27,13 +27,13 @@ export default async function PortalHome() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const shipments = await listPortalShipments(session.actor)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const shipments = await listPortalShipments(session.actor, locale)
 
   const t = await getTranslations('portal')
   const tJob = await getTranslations('job')
   const tMode = await getTranslations('mode')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
   const active = shipments.filter((s) => !['completed', 'closed', 'cancelled'].includes(s.status))

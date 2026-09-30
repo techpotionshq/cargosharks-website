@@ -27,6 +27,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const { consolidations, jobs, locations, withActor } = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
@@ -221,7 +230,7 @@ describe.skipIf(!enabled)('forming a consolidation from a suggestion', () => {
     const only = await looseJob()
     const state = await consolidateCluster({}, form(base(), [only]))
 
-    expect(state.message).toMatch(/incomplete/)
+    expect(state.message).toBe('consolidationValidation.clusterIncomplete')
     expect((await readJobs([only]))[0]?.consolidationId).toBeNull()
   })
 
@@ -233,7 +242,7 @@ describe.skipIf(!enabled)('forming a consolidation from a suggestion', () => {
 
     const again = await consolidateCluster({}, form(base(), [a, b]))
 
-    expect(again.message).toMatch(/consolidated or closed/)
+    expect(again.message).toBe('consolidationValidation.clusterGone')
   })
 
   describe('the suggestion itself', () => {

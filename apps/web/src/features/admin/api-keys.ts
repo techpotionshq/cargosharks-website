@@ -26,6 +26,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -34,13 +35,23 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, failWith, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  fieldErrors,
+  failWith,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 export interface ApiKeyRow {
   readonly id: string
   readonly prefix: string
   readonly name: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly branchId: string | null
   readonly scopes: string[]
   readonly createdBy: string | null
@@ -64,6 +75,7 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
         prefix: apiKeys.prefix,
         name: apiKeys.name,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         branchId: apiKeys.branchId,
         scopes: apiKeys.scopes,
         createdBy: principals.nameEn,
@@ -80,15 +92,16 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
   )
 }
 
-const keySchema = z.object({
-  name: z.string().trim().min(3, 'Name it after the system that will use it').max(120),
-  customerId: z.uuid('Choose the customer this key reads for'),
-  branchId: z.uuid('Choose a branch'),
-  expiresAt: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-})
+const keySchema = (tv: Translate) =>
+  z.object({
+    name: z.string().trim().min(3, tv('keyName')).max(120),
+    customerId: z.uuid(tv('chooseCustomerForKey')),
+    branchId: z.uuid(tv('chooseBranch')),
+    expiresAt: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+  })
 
 /**
  * Mint a key, and hand back the only copy of its secret.
@@ -106,8 +119,9 @@ const keySchema = z.object({
 export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = keySchema.safeParse({
+  const parsed = await localeParse(keySchema(tv), {
     name: String(form.get('name') ?? '').trim(),
     customerId: String(form.get('customerId') ?? ''),
     branchId: String(form.get('branchId') ?? ''),
@@ -163,7 +177,8 @@ export async function revokeApiKey(_previous: ActionState, form: FormData): Prom
   assertCan(session, 'admin.api_keys.write')
 
   const keyId = String(form.get('keyId') ?? '')
-  if (!keyId) return failWith('Nothing to revoke.')
+  const tv = await getTranslations('adminValidation')
+  if (!keyId) return failWith(tv('nothingToRevoke'))
 
   const revoked = await withActor(session.actor, (tx) =>
     tx
@@ -175,7 +190,7 @@ export async function revokeApiKey(_previous: ActionState, form: FormData): Prom
       .returning({ id: apiKeys.id }),
   )
 
-  if (revoked.length === 0) return failWith('That key was already revoked.')
+  if (revoked.length === 0) return failWith(tv('alreadyRevoked'))
 
   revalidatePath('/settings/api-keys')
   return succeed(keyId)
@@ -187,6 +202,7 @@ export interface WebhookEndpointRow {
   readonly id: string
   readonly url: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly events: string[]
   readonly isActive: boolean
   readonly disabledAt: Date | null
@@ -212,7 +228,8 @@ export async function listWebhookEndpoints(): Promise<WebhookEndpointRow[]> {
 
   const rows = await withActor(session.actor, (tx) =>
     tx.execute(sql`
-      select e.id, e.url, c.legal_name_en as "customerName", e.events,
+      select e.id, e.url, c.legal_name_en as "customerName",
+             c.legal_name_ar as "customerNameAr", e.events,
              e.is_active as "isActive", e.disabled_at as "disabledAt",
              e.disabled_reason as "disabledReason",
              (select count(*) from webhook_deliveries d
@@ -231,12 +248,13 @@ export async function listWebhookEndpoints(): Promise<WebhookEndpointRow[]> {
   return rows.rows as unknown as WebhookEndpointRow[]
 }
 
-const endpointSchema = z.object({
-  url: z.url('A URL we can post to').max(500),
-  customerId: z.union([z.uuid(), z.literal('')]).optional(),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  events: z.string().trim().max(2000).optional(),
-})
+const endpointSchema = (tv: Translate) =>
+  z.object({
+    url: z.url(tv('postUrl')).max(500),
+    customerId: z.union([z.uuid(), z.literal('')]).optional(),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    events: z.string().trim().max(2000).optional(),
+  })
 
 /**
  * Subscribe a URL to events, and hand back its signing secret once.
@@ -253,8 +271,9 @@ export async function createWebhookEndpoint(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = endpointSchema.safeParse({
+  const parsed = await localeParse(endpointSchema(tv), {
     url: String(form.get('url') ?? '').trim(),
     customerId: String(form.get('customerId') ?? ''),
     branchId: String(form.get('branchId') ?? ''),
@@ -270,7 +289,7 @@ export async function createWebhookEndpoint(
     stop anyone reading it, and these carry shipment and customer detail.
   */
   if (!data.url.startsWith('https://')) {
-    return fail({ url: 'Must be https — these carry customer data.' }, echo(form))
+    return fail({ url: tv('httpsOnly') }, echo(form))
   }
 
   const secret = randomBytes(32).toString('hex')
@@ -305,7 +324,8 @@ export async function setWebhookEndpointActive(
   assertCan(session, 'admin.api_keys.write')
 
   const endpointId = String(form.get('endpointId') ?? '')
-  if (!endpointId) return failWith('Nothing to change.')
+  const tv = await getTranslations('adminValidation')
+  if (!endpointId) return failWith(tv('nothingToChange'))
   const isActive = form.get('isActive') !== null
 
   await withActor(session.actor, (tx) =>

@@ -25,6 +25,7 @@ import { customers, equipment, inSeries, jobs, locations, withActor, type Actor 
 import type { Mode } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
+import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -212,25 +213,29 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
 
     return {
       jobs: jobRows.map((row) => {
-        const { matchedOn, matchedValue } = classify(term, {
-          reference: row.reference,
-          masterBill: row.masterBillNumber,
-          houseBill: row.houseBillNumber,
-          booking: row.bookingNumber,
-          customerReference: row.customerReference,
-          customer: row.customerName,
-        })
+        const { matchedOn, matchedValue } = classify(
+          term,
+          {
+            reference: row.reference,
+            masterBill: row.masterBillNumber,
+            houseBill: row.houseBillNumber,
+            booking: row.bookingNumber,
+            customerReference: row.customerReference,
+            customer: row.customerName,
+          },
+          row.customerNameAr,
+        )
         return {
           id: row.id,
           reference: row.reference,
           status: row.status,
           mode: row.mode as Mode,
           customerName: row.customerName ?? '—',
-          customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+          customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
           originName: row.originName ?? '—',
-          originNameAr: row.originNameAr ?? row.originName ?? '—',
+          originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
           destinationName: row.destinationName ?? '—',
-          destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+          destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
           eta: row.eta,
           matchedOn,
           matchedValue,
@@ -258,6 +263,7 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
 function classify(
   term: string,
   fields: Readonly<Record<JobMatch, string | null>>,
+  customerAr?: string | null,
 ): { matchedOn: JobMatch; matchedValue: string } {
   const tight = tighten(term)
   const loose = term.toLowerCase()
@@ -273,9 +279,12 @@ function classify(
     if (value && tighten(value).includes(tight)) return { matchedOn: key, matchedValue: value }
   }
 
-  const customer = fields.customer
-  if (customer && customer.toLowerCase().includes(loose)) {
-    return { matchedOn: 'customer', matchedValue: customer }
+  // Both names, because the `where` matches both: a job found by its
+  // customer's Arabic name otherwise fell through to "reference".
+  for (const customer of [fields.customer, customerAr]) {
+    if (customer && customer.toLowerCase().includes(loose)) {
+      return { matchedOn: 'customer', matchedValue: customer }
+    }
   }
 
   // The row came back, so something matched; the reference is the honest

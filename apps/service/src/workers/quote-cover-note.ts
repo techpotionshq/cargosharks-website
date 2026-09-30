@@ -23,7 +23,15 @@
 
 import { and, eq } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { customers, enquiries, locations, quotes, withActor, type Actor, type Tx } from '@qabandi/db'
+import {
+  customers,
+  enquiries,
+  locations,
+  quotes,
+  withActor,
+  type Actor,
+  type Tx,
+} from '@qabandi/db'
 import { finaliseCoverNote } from '@qabandi/core'
 import { invoke } from '../ai/ledger'
 import {
@@ -47,7 +55,16 @@ export interface DraftCoverNoteResult {
   readonly locale: 'en' | 'ar'
   /** Why nothing was drafted, in one line, where nothing was. */
   readonly refusal?: string
+  /**
+   * The same refusal as a stable code, for a caller that must say it in the
+   * reader's language — `refusal` is English and stays for logs and the
+   * auto-draft worker, which only ever records it.
+   */
+  readonly refusalCode?: CoverNoteRefusalCode
 }
+
+/** Every reason the worker itself declines to draft. */
+export type CoverNoteRefusalCode = 'not_found' | 'not_draft'
 
 /**
  * Draft one covering note and store it on the quote.
@@ -57,7 +74,9 @@ export interface DraftCoverNoteResult {
  * screen shows, exactly as the "Read a bill" path does. Everything this worker
  * itself refuses is a state a person can fix, and it says which.
  */
-export async function draftQuoteCoverNote(input: DraftCoverNoteInput): Promise<DraftCoverNoteResult> {
+export async function draftQuoteCoverNote(
+  input: DraftCoverNoteInput,
+): Promise<DraftCoverNoteResult> {
   const facts = await loadFacts(input.actor, input.quoteId)
 
   if (!facts) {
@@ -66,6 +85,7 @@ export async function draftQuoteCoverNote(input: DraftCoverNoteInput): Promise<D
       note: null,
       locale: input.locale,
       refusal: 'No such quote, or it is outside your scope.',
+      refusalCode: 'not_found',
     }
   }
 
@@ -80,6 +100,7 @@ export async function draftQuoteCoverNote(input: DraftCoverNoteInput): Promise<D
       note: null,
       locale: input.locale,
       refusal: 'A covering note can only be drafted on a draft quote.',
+      refusalCode: 'not_draft',
     }
   }
 
@@ -102,10 +123,12 @@ export async function draftQuoteCoverNote(input: DraftCoverNoteInput): Promise<D
             reference: facts.reference,
             // The customer's name and lane in the language being drafted, so the
             // note reads in one voice rather than switching scripts mid-sentence.
-            customerName: (localised ? facts.customerNameAr : facts.customerNameEn) ?? facts.customerNameEn,
+            customerName:
+              (localised ? facts.customerNameAr : facts.customerNameEn) ?? facts.customerNameEn,
             mode: facts.mode,
             origin: (localised ? facts.originAr : facts.originEn) ?? facts.originEn,
-            destination: (localised ? facts.destinationAr : facts.destinationEn) ?? facts.destinationEn,
+            destination:
+              (localised ? facts.destinationAr : facts.destinationEn) ?? facts.destinationEn,
             incoterm: facts.incoterm,
             validUntil: facts.validUntil,
           }),

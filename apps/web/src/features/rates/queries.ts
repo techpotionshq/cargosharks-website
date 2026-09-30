@@ -29,6 +29,7 @@ import {
   type Actor,
   type ExpiringRateCard,
 } from '@qabandi/db'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotExpiringRateCards,
@@ -95,21 +96,30 @@ export interface RateCardRow {
  * glance that a card is populated and roughly where it sits, and the label
  * says as much rather than calling it a price.
  */
-export async function listRateCards(actor: Actor, direction?: string): Promise<RateCardRow[]> {
-  if (usePilotFixtures()) return pilotRateCards(Date.now(), direction)
+export async function listRateCards(
+  actor: Actor,
+  direction?: string,
+  // Names ports and counterparties in the reader's language (F27).
+  locale: 'en' | 'ar' = 'en',
+): Promise<RateCardRow[]> {
+  if (usePilotFixtures()) return pilotRateCards(Date.now(), direction, locale)
 
+  const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
+  const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
+  const partnerName = named(locale, sql`p.legal_name_en`, sql`p.legal_name_ar`)
+  const customerName = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select rc.id,
              rc.direction::text                as direction,
              rc.mode::text                     as mode,
              rc.trade_direction::text          as "tradeDirection",
-             o.name_en                         as "originName",
+             ${originName}                    as "originName",
              o.unlocode                        as "originCode",
-             d.name_en                         as "destinationName",
+             ${destinationName}               as "destinationName",
              d.unlocode                        as "destinationCode",
-             p.legal_name_en                   as "partnerName",
-             c.legal_name_en                   as "customerName",
+             ${partnerName}                   as "partnerName",
+             ${customerName}                  as "customerName",
              b.code                            as "branchCode",
              rc.currency,
              rc.version,
@@ -132,7 +142,7 @@ export async function listRateCards(actor: Actor, direction?: string): Promise<R
            where rcl.rate_card_id = rc.id
         ) l on true
        where ${direction ? sql`rc.direction = ${direction}::rate_direction` : sql`true`}
-       order by rc.valid_from desc, rc.direction, o.name_en
+       order by rc.valid_from desc, rc.direction, ${originName}
        limit 200
     `)
     return result.rows as unknown as RateCardRow[]
@@ -214,8 +224,19 @@ export interface LaneMarginRow {
   readonly marginPct: number | null
 }
 
-export async function laneMargins(actor: Actor): Promise<LaneMarginRow[]> {
-  if (usePilotFixtures()) return pilotLaneMargins()
+/**
+ * `locale` names the ports, and an Arabic lane runs its arrow right to left as
+ * the margin report and the quote comparison draw it (F27).
+ */
+export async function laneMargins(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<LaneMarginRow[]> {
+  if (usePilotFixtures()) return pilotLaneMargins(locale)
+
+  const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
+  const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
+  const arrow = locale === 'ar' ? ' ← ' : ' → '
 
   return withActor(actor, async (tx) => {
     /*
@@ -243,7 +264,7 @@ export async function laneMargins(actor: Actor): Promise<LaneMarginRow[]> {
           from totals
          group by origin_id, destination_id, mode
       )
-      select coalesce(o.name_en, '—') || ' → ' || coalesce(d.name_en, '—') as lane,
+      select coalesce(${originName}, '—') || ${arrow} || coalesce(${destinationName}, '—') as lane,
              l.mode::text     as mode,
              l.buy::text      as "buyTotal",
              l.sell::text     as "sellTotal",

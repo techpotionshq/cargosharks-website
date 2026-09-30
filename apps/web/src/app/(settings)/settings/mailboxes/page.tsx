@@ -45,7 +45,7 @@ export default async function MailboxesPage() {
   const [rows, keyConfigured, options, t, tc] = await Promise.all([
     listMailboxes(),
     mailboxKeyConfigured(),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('mailboxes'),
     getTranslations('common'),
   ])

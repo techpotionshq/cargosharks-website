@@ -107,6 +107,8 @@ export interface ExceptionView {
   readonly owner: string | null
   readonly description: string | null
   readonly customerName: string
+  /** Falls back to `customerName` — the Arabic legal name is optional. */
+  readonly customerNameAr: string
 }
 
 /**
@@ -120,6 +122,8 @@ export interface JobPartnerView {
   readonly id: string
   readonly partnerId: string
   readonly name: string
+  /** Falls back to `name` — few partners have an Arabic legal name yet. */
+  readonly nameAr: string
   readonly role: string
   readonly reference: string | null
 }
@@ -257,7 +261,8 @@ interface QuoteLineView {
   readonly nameAr: string
   readonly basis: string
   readonly quantity: number
-  readonly buyRate: number
+  /** Null where nothing recorded the buy side of this line — a card-priced quotation. */
+  readonly buyRate: number | null
   readonly sellRate: number
   readonly amount: Money
 }
@@ -266,12 +271,16 @@ export interface QuoteComparison {
   /** The enquiry's own status — decides which transitions are offered. */
   readonly status?: string
   readonly enquiryReference: string
-  readonly customerName: string
+  /** Null for an enquiry nobody has matched to a customer yet — a WhatsApp number, an unknown sender. */
+  readonly customerName: string | null
   readonly lane: string | null
-  readonly mode: Mode
+  /** Null until someone — or the model — records it; an emailed enquiry starts without one. */
+  readonly mode: Mode | null
+  /** Sea FCL's container count — pricing refuses without it. Null until recorded. */
+  readonly containerCount: number | null
   readonly containerType: string | null
   readonly incoterm: string | null
-  readonly preparedBy: string
+  readonly preparedBy: string | null
   readonly pricedAt: Date
   /**
    * How long the same enquiry took by hand — Moment 2's punchline — and how
@@ -348,7 +357,8 @@ export interface OpsOverview {
   readonly exceptions: readonly ExceptionView[]
   readonly slaWatch: readonly EnquirySummary[]
   readonly arrivals: readonly JobSummary[]
-  readonly topLanes: readonly { lane: string; count: number; value: Money }[]
+  /** `laneAr` runs ← because an RTL line puts the origin on the right. */
+  readonly topLanes: readonly { lane: string; laneAr: string; count: number; value: Money }[]
 }
 
 export interface PortalShipment {
@@ -430,8 +440,8 @@ export interface InvoiceSummary {
   readonly issued: number
   readonly paid: number
   readonly overdue: number
-  readonly outstanding: string
-  readonly currency: string | null
+  /** One entry per currency, largest balance first — see `invoiceSummary`. */
+  readonly outstanding: readonly { readonly currency: string; readonly amount: string }[]
 }
 
 /** Mirrors `PaymentRow`. */
@@ -452,9 +462,9 @@ export interface PaymentRow {
 /** Mirrors the anonymous return of `paymentSummary`. */
 export interface PaymentSummary {
   readonly count: number
-  readonly received: string
+  /** One entry per currency, largest first — see `paymentSummary`. */
+  readonly received: readonly { readonly currency: string; readonly amount: string }[]
   readonly unallocated: number
-  readonly currency: string | null
 }
 
 /** Mirrors `AgeingBucket`. The keys are the query's, not new ones. */
@@ -466,9 +476,13 @@ export interface AgeingBucket {
 
 /** Mirrors the anonymous return of `receivablesAgeing`. */
 export interface ReceivablesAgeing {
-  readonly buckets: AgeingBucket[]
-  readonly total: string
-  readonly currency: string | null
+  /** One ageing per currency, largest book first — see `receivablesAgeing`. */
+  readonly byCurrency: {
+    readonly currency: string
+    readonly buckets: AgeingBucket[]
+    readonly total: string
+    readonly overdue: string
+  }[]
 }
 
 /** Mirrors `DebtorRow`. */
@@ -694,6 +708,7 @@ export interface ExceptionRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly code: string
   readonly nameEn: string
   readonly nameAr: string
@@ -713,6 +728,7 @@ export interface CustomsRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly status: string
   readonly declarationType: string | null
   readonly declarationNo: string | null
@@ -723,6 +739,7 @@ export interface CustomsRow {
   readonly dutyAmount: string | null
   readonly dutyCurrency: string | null
   readonly brokerName: string | null
+  readonly brokerNameAr: string | null
 }
 
 /**
@@ -736,6 +753,7 @@ export interface DocumentRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly typeCode: string
   readonly typeNameEn: string
   readonly typeNameAr: string
@@ -930,6 +948,7 @@ export interface BranchRow {
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
+  readonly calendarNameAr: string | null
   readonly people: number
   readonly openJobs: number
 }
@@ -954,13 +973,13 @@ export interface ChargeTypeRow {
 
 /** Mirrors the anonymous return of `listReferenceSample`. */
 export interface ReferenceSample {
-  readonly incoterms: { code: string; nameEn: string }[]
-  readonly containers: { code: string; nameEn: string; teu: string | null }[]
-  readonly exceptions: { code: string; nameEn: string; slaHours: number | null }[]
-  readonly documents: { code: string; nameEn: string; category: string }[]
-  readonly calendars: { key: string; nameEn: string; timeZone: string }[]
-  readonly currencies: { code: string; nameEn: string | null }[]
-  readonly countries: { code: string; nameEn: string }[]
+  readonly incoterms: { code: string; name: string }[]
+  readonly containers: { code: string; name: string; teu: string | null }[]
+  readonly exceptions: { code: string; name: string; slaHours: number | null }[]
+  readonly documents: { code: string; name: string; category: string }[]
+  readonly calendars: { key: string; name: string; timeZone: string }[]
+  readonly currencies: { code: string; name: string | null }[]
+  readonly countries: { code: string; name: string }[]
   readonly milestones: number
 }
 
@@ -1691,8 +1710,8 @@ export interface OpenEnquiryRow {
 /** Mirrors the statement in `loadOutstandingInvoices`. */
 export interface OutstandingInvoiceRow {
   readonly id: string
-  /** `series_no`, or the literal `(draft)` the query coalesces to. */
-  readonly label: string
+  /** `series_no`; null until the invoice is numbered — the dialog labels it in the operator's language. */
+  readonly label: string | null
   readonly customer: string
   readonly balance: string
   readonly currency: string
@@ -1703,6 +1722,7 @@ export interface OpenShipmentRow {
   readonly id: string
   readonly reference: string
   readonly customer: string | null
+  readonly customerAr: string | null
 }
 
 /**
@@ -1761,6 +1781,7 @@ export interface ApiKeyRowLike {
   readonly prefix: string
   readonly name: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly branchId: string | null
   readonly scopes: string[]
   readonly createdBy: string | null
@@ -1775,6 +1796,7 @@ export interface WebhookEndpointRowLike {
   readonly id: string
   readonly url: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly events: string[]
   readonly isActive: boolean
   readonly disabledAt: Date | null
@@ -1837,7 +1859,8 @@ export interface RateRequestView {
   readonly id: string
   readonly partnerId: string
   readonly partnerName: string
-  readonly status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired' | 'superseded'
+  readonly status:
+    'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired' | 'superseded'
   readonly sentAt: Date | null
   readonly respondedAt: Date | null
   /** The broker's own figure, in their own currency. */

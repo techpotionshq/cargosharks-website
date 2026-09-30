@@ -10,6 +10,7 @@
 
 import { asc, eq, ilike, or, sql } from 'drizzle-orm'
 import { locations, partners, withActor, type Actor } from '@qabandi/db'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { demoPartnerName } from '@/lib/pilot/demo'
 import {
@@ -189,12 +190,24 @@ export interface PartnerDetail {
   }[]
 }
 
+/**
+ * `locale` names the customers and ports on the partner's live shipments in
+ * the reader's language (F27). The partner's own name arrives in both columns
+ * because the edit dialog needs both.
+ */
 export async function getPartnerDetail(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<PartnerDetail | undefined> {
-  if (usePilotFixtures()) return pilotPartner(id)
+  if (usePilotFixtures()) return pilotPartner(id, Date.now(), locale)
 
+  const customerName = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
+  const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
+  const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
+  // An Arabic line runs right to left, so its arrow does too — as the margin
+  // report and the quote comparison already draw it.
+  const arrow = locale === 'ar' ? ' ← ' : ' → '
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       select p.id, p.code, p.type::text as type,
@@ -229,8 +242,9 @@ export async function getPartnerDetail(
              coalesce((
                select json_agg(json_build_object(
                         'id', j.id, 'reference', j.reference, 'status', j.status::text,
-                        'role', jp.role, 'customerName', c.legal_name_en,
-                        'lane', o.name_en || ' → ' || d.name_en, 'eta', j.eta)
+                        'role', jp.role, 'customerName', ${customerName},
+                        'lane', ${originName} || ${arrow} || ${destinationName},
+                        'eta', j.eta)
                       order by j.eta nulls last)
                  from job_partners jp
                  join jobs j on j.id = jp.job_id
@@ -278,7 +292,8 @@ export async function agentPartnerName(actor: Actor, locale: 'en' | 'ar'): Promi
       .limit(1)
 
     if (!row) return null
-    return (locale === 'ar' ? row.nameAr : row.nameEn) ?? row.nameEn
+    // `||`: an empty Arabic name is as unset as a null one.
+    return (locale === 'ar' ? row.nameAr : row.nameEn) || row.nameEn
   })
 }
 
@@ -315,6 +330,7 @@ export interface PartnerComplianceRow {
 export async function listPartnerCredentials(
   actor: Actor,
   partnerId: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ coverage: PartnerCoverageRow[]; compliance: PartnerComplianceRow[] }> {
   /*
     The `daysRemaining` normalisation below stays behind the branch on purpose.
@@ -322,14 +338,19 @@ export async function listPartnerCredentials(
     a string; the fixture builder computes the number itself, so running it
     over fixture rows would be arithmetic on a shape that never had the fault.
   */
-  if (usePilotFixtures()) return pilotPartnerCredentials(partnerId)
+  if (usePilotFixtures()) return pilotPartnerCredentials(partnerId, Date.now(), locale)
 
+  // Ports and document types in the reader's language (F27).
+  const originName = named(locale, sql`o.name_en`, sql`o.name_ar`)
+  const destinationName = named(locale, sql`d.name_en`, sql`d.name_ar`)
+  const documentType = named(locale, sql`dt.name_en`, sql`dt.name_ar`)
+  const arrow = locale === 'ar' ? ' ← ' : ' → '
   return withActor(actor, async (tx) => {
     const coverage = await tx.execute(sql`
       select c.id, c.mode::text as mode, c.transit_days as "transitDays",
              c.is_active as "isActive",
-             coalesce(o.name_en, c.origin_country, '—') || ' → ' ||
-             coalesce(d.name_en, c.destination_country, '—') as lane
+             coalesce(${originName}, c.origin_country, '—') || ${arrow} ||
+             coalesce(${destinationName}, c.destination_country, '—') as lane
         from partner_coverage c
         left join locations o on o.id = c.origin_id
         left join locations d on d.id = c.destination_id
@@ -338,7 +359,7 @@ export async function listPartnerCredentials(
     `)
 
     const compliance = await tx.execute(sql`
-      select pc.id, dt.name_en as "documentType", pc.reference,
+      select pc.id, ${documentType} as "documentType", pc.reference,
              pc.issued_on::text as "issuedOn", pc.expires_on::text as "expiresOn",
              pc.superseded_by_id as "supersededById",
              case when pc.expires_on is null then null

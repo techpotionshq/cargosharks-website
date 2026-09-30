@@ -31,6 +31,22 @@ import { DocumentNotFoundError } from './documents'
 import type { DocumentLocale } from './document-kit'
 import { DOCUMENT_TYPE_KEYS, type JobDocumentKind } from './job-documents'
 
+/**
+ * The deployment has no `document_types` row for this kind — never seeded, or
+ * the row was retired.
+ *
+ * A `DocumentNotFoundError` still, so a caller that only knows that class
+ * keeps treating it as a 404; its own class so the route can answer with a
+ * code the screen words differently from "no such shipment", which sends the
+ * operator looking for a job that is right there.
+ */
+export class DocumentTypeNotSeededError extends DocumentNotFoundError {
+  constructor(readonly kind: JobDocumentKind) {
+    super(`${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`, 'seeded document type')
+    this.name = 'DocumentTypeNotSeededError'
+  }
+}
+
 export interface StoredDocument {
   readonly documentId: string
   readonly assetId: string
@@ -95,17 +111,12 @@ export async function storeJobDocument(
 
     /*
       A missing type is a deployment that was never seeded, not a shipment
-      nobody may see — but it is raised as the same error because the route
-      turns it into the same 404 either way, and a second class would only
-      change which line of the log says so. The message is what makes the
-      difference legible, so it names the fix.
+      nobody may see. Still a 404 at the route, but its own subclass, so the
+      route can send a code of its own: the screen used to show this English
+      message verbatim, and a translated "no such shipment" would send the
+      operator looking for a job that is right there.
     */
-    if (!type) {
-      throw new DocumentNotFoundError(
-        `${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`,
-        'seeded document type',
-      )
-    }
+    if (!type) throw new DocumentTypeNotSeededError(kind)
 
     const [previous] = await tx
       .select({ id: documents.id, version: documents.version })

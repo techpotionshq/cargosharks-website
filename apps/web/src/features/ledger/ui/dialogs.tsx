@@ -8,7 +8,9 @@
  * asks only for the price makes it an accident.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { isLocale } from '@/i18n/request'
+import { named } from '@/lib/named'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -28,6 +30,16 @@ const TAX_TREATMENTS = [
   'reverse_charge',
 ] as const
 const PAYMENT_METHODS = ['bank_transfer', 'cheque', 'cash', 'card', 'offset'] as const
+
+/**
+ * The reader's language, for the customer names in the pickers (F27). Read
+ * only where a picker is actually loaded, so a dialog that is refused or
+ * pre-bound to a record pays nothing for it.
+ */
+async function pickerLocale(): Promise<'en' | 'ar'> {
+  const resolved = await getLocale()
+  return isLocale(resolved) ? resolved : 'en'
+}
 
 /** Today, and thirty days out — the two dates these forms default to. */
 function isoDay(offsetDays = 0): string {
@@ -49,12 +61,12 @@ export async function QuoteDialog({
   if (!can(session, 'quote.send')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('quoteForm'),
     getTranslations('common'),
   ])
 
-  const enquiries = enquiryId ? [] : await loadOpenEnquiries(session)
+  const enquiries = enquiryId ? [] : await loadOpenEnquiries(session, await pickerLocale())
   const defaultBranch = branchId ?? [...session.branchRoles.keys()][0]
 
   const fields: FieldSpec[] = [
@@ -160,7 +172,7 @@ export async function InvoiceDialog({
   if (!can(session, 'invoice.approve')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('invoiceForm'),
     getTranslations('common'),
   ])
@@ -294,12 +306,14 @@ export async function PaymentDialog({
   if (!can(session, 'payment.record')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('paymentForm'),
     getTranslations('common'),
   ])
 
-  const outstanding = invoiceId ? [] : await loadOutstandingInvoices(session)
+  const outstanding = invoiceId
+    ? []
+    : await loadOutstandingInvoices(session, t('unnumberedInvoice'), await pickerLocale())
   const defaultBranch = [...session.branchRoles.keys()][0]
 
   const fields: FieldSpec[] = [
@@ -416,9 +430,12 @@ export async function PaymentDialog({
  * that proved how that ends: it was the last read on `/quotes` without a
  * fixture branch, so the register rendered offline and the screen still 500ed.
  */
-async function loadOpenEnquiries(session: Awaited<ReturnType<typeof requireSession>>) {
+async function loadOpenEnquiries(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  locale: 'en' | 'ar',
+) {
   const rows: readonly OpenEnquiryRow[] = usePilotFixtures()
-    ? (await import('@/lib/pilot/fixtures')).pilotOpenEnquiries()
+    ? (await import('@/lib/pilot/fixtures')).pilotOpenEnquiries(Date.now(), locale)
     : await (async () => {
         const { withActor, enquiries, customers } = await import('@qabandi/db')
         const { asc, eq, notInArray } = await import('drizzle-orm')
@@ -428,7 +445,7 @@ async function loadOpenEnquiries(session: Awaited<ReturnType<typeof requireSessi
             .select({
               id: enquiries.id,
               reference: enquiries.reference,
-              customer: customers.legalNameEn,
+              customer: named(locale, customers.legalNameEn, customers.legalNameAr),
               contact: enquiries.contactName,
             })
             .from(enquiries)
@@ -451,25 +468,34 @@ async function loadOpenEnquiries(session: Awaited<ReturnType<typeof requireSessi
  * Showing the outstanding amount in the option text is what makes "which one
  * does this cheque settle?" answerable without leaving the dialog.
  */
-const outstandingOption = (row: OutstandingInvoiceRow) => ({
+const outstandingOption = (unnumbered: string) => (row: OutstandingInvoiceRow) => ({
   value: row.id,
-  label: `${row.label} — ${row.customer} — ${row.currency} ${row.balance}`,
+  label: `${row.label ?? unnumbered} — ${row.customer} — ${row.currency} ${row.balance}`,
 })
 
-async function loadOutstandingInvoices(session: Awaited<ReturnType<typeof requireSession>>) {
+/**
+ * `unnumbered` labels an invoice with no series number yet. It used to be the
+ * literal `(draft)` coalesced in SQL, which put English in an Arabic picker.
+ */
+async function loadOutstandingInvoices(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  unnumbered: string,
+  locale: 'en' | 'ar',
+) {
   if (usePilotFixtures()) {
     const { pilotOutstandingInvoices } = await import('@/lib/pilot/fixtures')
-    return pilotOutstandingInvoices().map(outstandingOption)
+    return pilotOutstandingInvoices(Date.now(), locale).map(outstandingOption(unnumbered))
   }
 
   const { withActor } = await import('@qabandi/db')
   const { sql } = await import('drizzle-orm')
+  const customer = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
 
   return withActor(session.actor, async (tx) => {
     const result = await tx.execute(sql`
       select i.id,
-             coalesce(i.series_no, '(draft)') as label,
-             c.legal_name_en                  as customer,
+             i.series_no                      as label,
+             ${customer}                      as customer,
              (i.total - i.amount_paid)        as balance,
              i.currency
         from invoices i
@@ -480,7 +506,7 @@ async function loadOutstandingInvoices(session: Awaited<ReturnType<typeof requir
        limit 200
     `)
 
-    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption)
+    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption(unnumbered))
   })
 }
 
@@ -512,7 +538,7 @@ export async function QuoteLineDialog({
   if (!can(session, 'quote.send')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('quoteForm'),
     getTranslations('common'),
   ])

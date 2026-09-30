@@ -23,6 +23,28 @@ export interface ActionState {
   readonly values?: Record<string, string>
 }
 
+/**
+ * A bound `next-intl` translator, as a schema factory receives it.
+ *
+ * Validation messages reach the operator verbatim, so they are catalogue keys
+ * like every other string — which means a schema that carries messages is built
+ * per request from `await getTranslations(…)` rather than once at module load,
+ * where no locale exists yet. Structural rather than `next-intl`'s own type so
+ * a test's stand-in translator satisfies it too.
+ *
+ * The type argument is the namespace, and it is for `check-messages` rather
+ * than the compiler: a schema file that never calls `getTranslations` itself
+ * types its translator parameter with the namespace name as the argument, and
+ * the check resolves that parameter's calls against it. Without it such a file
+ * is skipped. (Written without an example on purpose — the check reads
+ * comments too.)
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the parameter is read by scripts/check-messages.mjs
+export type Translate<Namespace extends string = string> = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string
+
 /** Zod's issues, flattened onto the field each one belongs to. */
 export function fieldErrors(error: {
   issues: { path: PropertyKey[]; message: string }[]

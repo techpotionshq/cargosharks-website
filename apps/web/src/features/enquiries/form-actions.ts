@@ -16,6 +16,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, eq, sql } from 'drizzle-orm'
 import {
   assertTransition,
@@ -36,9 +37,23 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
-import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  failWith,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 import { createEnquirySchema } from './schema'
-import { enquiryColumn, resolveProposal, type ResolutionFailure } from './proposals'
+import {
+  enquiryColumn,
+  resolveProposal,
+  type ExpectedValue,
+  type ResolutionFailure,
+} from './proposals'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -46,13 +61,14 @@ const FIRST_RESPONSE_MINUTES = 4 * 60
 export async function submitEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const read = (key: string): string | undefined => {
     const value = form.get(key)
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
   }
 
-  const parsed = createEnquirySchema.safeParse({
+  const parsed = await localeParse(createEnquirySchema(tv), {
     branchId: read('branchId'),
     customerId: read('customerId') ?? null,
     contactName: read('contactName') ?? null,
@@ -68,6 +84,7 @@ export async function submitEnquiry(_previous: ActionState, form: FormData): Pro
     grossWeightKg: read('grossWeightKg') ?? null,
     volumeCbm: read('volumeCbm') ?? null,
     pieces: read('pieces') ? Number(read('pieces')) : null,
+    containerCount: read('containerCount') ? Number(read('containerCount')) : null,
     isDangerous: form.get('isDangerous') !== null,
     notes: read('notes') ?? null,
   })
@@ -113,16 +130,56 @@ export async function submitEnquiry(_previous: ActionState, form: FormData): Pro
 }
 
 /** Hands the enquiry to a person. The board's most-used single action. */
+/**
+ * Record how many containers a sea-FCL enquiry is for.
+ *
+ * Pricing multiplies every per-container rate by this and refuses without it,
+ * rather than guessing from "pieces" (packages), which once priced 200 pieces
+ * as 200 containers. The model proposes a count where the mail states one
+ * (F50), but a mail that never said, or an enquiry that existed before the
+ * column did, has no count and no other way to get one — enquiries have no edit
+ * form — so this is the one-field form beside the price button.
+ */
+export async function setEnquiryContainerCount(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
+
+  const enquiryId = String(form.get('enquiryId') ?? '')
+  const raw = String(form.get('containerCount') ?? '').trim()
+  const count = /^\d+$/.test(raw) ? Number(raw) : NaN
+  if (!enquiryId || !Number.isInteger(count) || count < 1 || count > 9999) {
+    return fail({ containerCount: tv('containerCountWhole') }, echo(form))
+  }
+
+  await withActor(session.actor, async (tx) => {
+    const updated = await tx
+      .update(enquiries)
+      .set({ containerCount: count })
+      .where(eq(enquiries.id, enquiryId))
+      .returning({ id: enquiries.id })
+    // Invisible under RLS means not-found — no enumeration signal (FR-ID-04).
+    if (updated.length === 0) throw new Error('not_found')
+  })
+
+  revalidatePath(`/enquiries/${enquiryId}`)
+  return succeed(String(count))
+}
+
 export async function assignEnquiryAction(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
   const ownerId = String(form.get('ownerId') ?? '')
-  if (!enquiryId || !ownerId) return fail({ ownerId: 'Choose who should own this.' }, echo(form))
+  if (!enquiryId || !ownerId) return fail({ ownerId: tv('chooseOwner') }, echo(form))
 
   await withActor(session.actor, async (tx) => {
     const [current] = await tx
@@ -156,9 +213,10 @@ export async function respondEnquiryAction(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
-  if (!enquiryId) return fail({ _: 'Missing enquiry.' })
+  if (!enquiryId) return fail({ _: tv('missingEnquiry') })
 
   await withActor(session.actor, async (tx) => {
     await tx
@@ -179,19 +237,17 @@ export async function closeEnquiryAction(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.close')
+  const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
   const outcome = String(form.get('outcome') ?? '')
   const reason = String(form.get('reason') ?? '').trim()
 
   if (outcome !== 'won' && outcome !== 'lost') {
-    return fail({ outcome: 'Choose won or lost.' }, echo(form))
+    return fail({ outcome: tv('chooseWonOrLost') }, echo(form))
   }
   if (outcome === 'lost' && !reason) {
-    return fail(
-      { reason: 'Say why it was lost — this is the only place that answer gets recorded.' },
-      echo(form),
-    )
+    return fail({ reason: tv('lostReasonRequired') }, echo(form))
   }
 
   await withActor(session.actor, async (tx) => {
@@ -300,13 +356,14 @@ async function nextReference(
  */
 export async function advanceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const tv = await getTranslations('enquiriesValidation')
 
   // This file reads FormData directly, like its siblings above.
   const enquiryId = String(form.get('enquiryId') ?? '')
   const to = String(form.get('to') ?? '')
   const reason = String(form.get('reason') ?? '').trim()
   if (!enquiryId || (to !== 'cancelled' && to !== 'rating')) {
-    return failWith('Nothing to do.')
+    return failWith(tv('nothingToDo'))
   }
 
   // The key the machine declares for the move, rather than one restated here.
@@ -321,7 +378,7 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
     anybody runs on this — why are we not winning work — across two fields.
   */
   if (to === 'cancelled' && reason === '') {
-    return fail({ reason: 'Say why it was cancelled — it stays on the record.' }, echo(form))
+    return fail({ reason: tv('cancelReasonRequired') }, echo(form))
   }
 
   const outcome = await withActor(session.actor, async (tx) => {
@@ -353,9 +410,9 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
     return 'ok' as const
   })
 
-  if (outcome === 'not_found') return failWith('No such enquiry, or it is not one you can see.')
+  if (outcome === 'not_found') return failWith(tv('enquiryNotFound'))
   if (outcome === 'illegal') {
-    return failWith('That is not a step this enquiry can take from where it is.')
+    return failWith(tv('illegalTransition'))
   }
 
   revalidatePath('/enquiries')
@@ -393,10 +450,11 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
 export async function acceptProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')
   const enquiryId = readField(form, 'enquiryId')
-  if (!proposalId || !enquiryId) return failWith('Nothing to do.')
+  if (!proposalId || !enquiryId) return failWith(tv('nothingToDo'))
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [proposal] = await tx
@@ -459,14 +517,14 @@ export async function acceptProposal(_previous: ActionState, form: FormData): Pr
 
   if ('error' in outcome) {
     if (outcome.error === 'unresolved') {
-      return failWith(describeFailure(outcome.failure))
+      return failWith(describeFailure(tv, outcome.failure))
     }
-    if (outcome.error === 'gone') return failWith('That suggestion is no longer there.')
-    if (outcome.error === 'settled') return failWith('Somebody has already decided that one.')
+    if (outcome.error === 'gone') return failWith(tv('suggestionGone'))
+    if (outcome.error === 'settled') return failWith(tv('suggestionSettled'))
     if (outcome.error === 'occupied') {
-      return failWith('That field has been filled in since, so the suggestion was not applied.')
+      return failWith(tv('suggestionFieldFilled'))
     }
-    return failWith('That did not work.')
+    return failWith(tv('actionFailed'))
   }
 
   revalidatePath(`/enquiries/${enquiryId}`)
@@ -491,9 +549,10 @@ export async function acceptAllProposals(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = readField(form, 'enquiryId')
-  if (!enquiryId) return failWith('Nothing to do.')
+  if (!enquiryId) return failWith(tv('nothingToDo'))
 
   const result = await withActor(session.actor, async (tx) => {
     const proposals = await tx
@@ -556,7 +615,7 @@ export async function acceptAllProposals(
 
   revalidatePath(`/enquiries/${enquiryId}`)
   if (result.applied === 0 && result.skipped > 0) {
-    return failWith('None could be applied — those fields have since been filled in.')
+    return failWith(tv('noneApplied'))
   }
   return succeed(String(result.applied))
 }
@@ -572,10 +631,11 @@ export async function acceptAllProposals(
 export async function rejectProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')
   const enquiryId = readField(form, 'enquiryId')
-  if (!proposalId || !enquiryId) return failWith('Nothing to do.')
+  if (!proposalId || !enquiryId) return failWith(tv('nothingToDo'))
 
   await withActor(session.actor, async (tx) => {
     await tx
@@ -606,15 +666,53 @@ function readField(form: FormData, key: string): string | undefined {
 }
 
 /** A refusal, as a sentence the coordinator can act on. */
-function describeFailure(failure: ResolutionFailure): string {
+function describeFailure(tv: Translate, failure: ResolutionFailure): string {
   switch (failure.kind) {
     case 'not_found':
-      return `“${failure.value}” is not a place or commodity on file, so it was not applied. Add it, or set the field by hand.`
+      return tv('suggestionNotOnFile', { value: failure.value })
     case 'ambiguous':
-      return `“${failure.value}” matches ${failure.count} records, and guessing between them is how the wrong one gets written. Set the field by hand.`
+      return tv('suggestionAmbiguous', { value: failure.value, count: failure.count })
     case 'invalid':
-      return `“${failure.value}” is not a valid value — expected ${failure.expected}.`
-    default:
-      return 'That suggestion names a field this screen cannot set.'
+      return tv('suggestionInvalid', {
+        value: failure.value,
+        expected: describeExpected(tv, failure.expected),
+      })
+    case 'unknown_field':
+      return tv('suggestionUnknownField')
+    default: {
+      const unhandled: never = failure
+      return unhandled
+    }
+  }
+}
+
+/**
+ * What the field would have taken, in the reader's language.
+ *
+ * `@qabandi/db` says which kind and the words are chosen here, because the
+ * catalogue lives here — an English phrase from the resolver was the one
+ * untranslated hole in an otherwise Arabic sentence. A list of allowed values
+ * stays as the stored codes (`sea_fcl, air`): those are what the proposal row
+ * beside this refusal shows, and translating one side only would make the two
+ * impossible to compare.
+ */
+function describeExpected(tv: Translate, expected: ExpectedValue): string {
+  switch (expected.kind) {
+    case 'number':
+      return tv('expectedNumber')
+    case 'integer':
+      return tv('expectedInteger')
+    case 'positiveInteger':
+      return tv('expectedPositiveInteger')
+    case 'boolean':
+      return tv('expectedBoolean')
+    case 'date':
+      return tv('expectedDate')
+    case 'oneOf':
+      return tv('expectedOneOf', { values: expected.values.join(', ') })
+    default: {
+      const unhandled: never = expected
+      return unhandled
+    }
   }
 }

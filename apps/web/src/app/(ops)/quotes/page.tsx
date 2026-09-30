@@ -50,7 +50,7 @@ export default async function QuotesPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [rows, counts] = await Promise.all([
-    listQuotes(session.actor, status),
+    listQuotes(session.actor, status, locale),
     quoteStatusCounts(session.actor),
   ])
 

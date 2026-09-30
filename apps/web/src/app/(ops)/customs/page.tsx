@@ -97,7 +97,9 @@ export default async function CustomsPage({
                 <TD>
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
-                <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
+                <TD className="text-ink-muted">
+                  {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+                </TD>
                 <TD>
                   <span className="inline-flex items-center gap-1.5">
                     <Badge tone={customsTone(row.status)} dot>
@@ -122,7 +124,9 @@ export default async function CustomsPage({
                 >
                   {row.slaDueAt ? formatRelative(row.slaDueAt, locale, now) : '—'}
                 </TD>
-                <TD className="text-ink-muted">{row.brokerName ?? '—'}</TD>
+                <TD className="text-ink-muted">
+                  {(locale === 'ar' && row.brokerNameAr) || row.brokerName || '—'}
+                </TD>
                 <TD align="end" numeric>
                   {row.dutyAmount
                     ? `${trimDecimal(row.dutyAmount)} ${row.dutyCurrency ?? ''}`.trim()

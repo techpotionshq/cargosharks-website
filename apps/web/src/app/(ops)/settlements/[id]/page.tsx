@@ -42,14 +42,14 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const { id } = await params
 
-  const settlement = await getSettlement(session.actor, id)
+  const settlement = await getSettlement(session.actor, id, locale)
   if (!settlement) notFound()
 
   const [t, tc] = await Promise.all([getTranslations('settlements'), getTranslations('common')])
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string) =>
     formatMoney({ amount: Number(amount), currency: settlement.currency }, locale)

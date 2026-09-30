@@ -85,7 +85,9 @@ export default async function DocumentsPage() {
                   {t(`categories.${row.category}`)}
                 </Badge>
               </TD>
-              <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
+              <TD className="text-ink-muted">
+                {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+              </TD>
               <TD align="end" numeric>
                 v{row.version}
               </TD>

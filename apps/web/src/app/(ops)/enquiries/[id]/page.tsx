@@ -25,7 +25,7 @@ import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
-import { Field } from '@/ui/layout'
+import { EmptyState, Field } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
@@ -36,23 +36,35 @@ import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automati
 import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
+import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const { id } = await params
-  const comparison = await getQuoteComparison(session.actor, id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  // The locale names the customer and the lane in the reader's language (F27).
+  const comparison = await getQuoteComparison(session.actor, id, locale)
   if (!comparison) notFound()
 
   const t = await getTranslations('quote')
   const tEnq = await getTranslations('enquiry')
+  const tForm = await getTranslations('enquiryForm')
   const tMode = await getTranslations('mode')
   const tc = await getTranslations('common')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const best = comparison.options.reduce((a, b) => (a.marginPct > b.marginPct ? a : b))
+  /*
+    An enquiry that has not been priced yet has no options, and this page is
+    where it gets priced — so it renders with the pricing actions and an empty
+    state where the comparison will be, rather than answering "not found".
+  */
+  const hasOptions = comparison.options.length > 0
+  const best = comparison.options.reduce<(typeof comparison.options)[number] | undefined>(
+    (a, b) => (a && a.marginPct > b.marginPct ? a : b),
+    undefined,
+  )
   const maxMargin = Math.max(...comparison.options.map((o) => o.marginPct), 1)
 
   /*
@@ -113,7 +125,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           </span>
         }
         title={t('title')}
-        description={t('subtitle')}
+        // "Priced from the imported rate card" is not true of an enquiry nobody
+        // has priced yet.
+        description={hasOptions ? t('subtitle') : t('subtitleUnpriced')}
         actionsBefore={
           <EnquiryActions
             enquiryId={id}
@@ -191,61 +205,87 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               timing ? 'border-line/60 lg:border-s lg:ps-6' : ''
             }`}
           >
-            <Field label={tEnq('customer')}>{comparison.customerName}</Field>
+            <Field label={tEnq('customer')}>{orNotRecorded(comparison.customerName)}</Field>
             <Field label={tEnq('lane')}>{orNotRecorded(comparison.lane)}</Field>
             <Field label={tEnq('mode')}>
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name={modeIcon(comparison.mode)} size={15} />
-                {tMode(comparison.mode)}
-                {comparison.containerType ? ` · ${comparison.containerType}` : ''}
-              </span>
+              {comparison.mode ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name={modeIcon(comparison.mode)} size={15} />
+                  {tMode(comparison.mode)}
+                  {comparison.containerType ? ` · ${comparison.containerType}` : ''}
+                </span>
+              ) : (
+                tc('notRecorded')
+              )}
             </Field>
             <Field label={tEnq('incoterm')}>{orNotRecorded(comparison.incoterm)}</Field>
           </dl>
+          {/*
+            Sea FCL is priced per container and refuses without a count; an
+            enquiry that arrived by email or WhatsApp has no other way to get one.
+          */}
+          {comparison.mode === 'sea_fcl' && !comparison.isClosed ? (
+            <ContainerCountForm
+              enquiryId={id}
+              current={comparison.containerCount}
+              labels={{
+                field: tForm('containers'),
+                save: tc('save'),
+                hint: tForm('containersHint'),
+              }}
+            />
+          ) : null}
         </div>
       </Card>
 
+      {!hasOptions ? (
+        <Card>
+          <EmptyState icon="rates" title={t('noOptions')} description={t('noOptionsHint')} />
+        </Card>
+      ) : null}
+
       {/* --- the options, side by side where there is a side by side ----- */}
-      <div className={`mb-4 grid grid-cols-1 gap-4 ${optionColumns}`}>
-        {comparison.options.map((option) => (
-          <Card
-            key={option.id}
-            className={option.isRecommended ? 'ring-2 ring-brand/30' : undefined}
-          >
-            <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
-              <div className="min-w-0">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    {/* Wraps rather than clips: a carrier name is the first thing
+      {hasOptions ? (
+        <div className={`mb-4 grid grid-cols-1 gap-4 ${optionColumns}`}>
+          {comparison.options.map((option) => (
+            <Card
+              key={option.id}
+              className={option.isRecommended ? 'ring-2 ring-brand/30' : undefined}
+            >
+              <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
+                <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      {/* Wraps rather than clips: a carrier name is the first thing
                         compared across the three cards. */}
-                    <p className="text-[0.9375rem] font-semibold text-balance text-ink">
-                      {orNotRecorded(option.carrier)}
-                    </p>
-                    {option.service ? (
-                      <p className="mt-0.5 text-[0.75rem] text-ink-muted">{option.service}</p>
+                      <p className="text-[0.9375rem] font-semibold text-balance text-ink">
+                        {orNotRecorded(option.carrier)}
+                      </p>
+                      {option.service ? (
+                        <p className="mt-0.5 text-[0.75rem] text-ink-muted">{option.service}</p>
+                      ) : null}
+                    </div>
+                    {/* Nothing to recommend it over when it is the only one. */}
+                    {option.isRecommended && !solo ? (
+                      <Badge tone="brand" icon="check">
+                        {t('recommended')}
+                      </Badge>
                     ) : null}
                   </div>
-                  {/* Nothing to recommend it over when it is the only one. */}
-                  {option.isRecommended && !solo ? (
-                    <Badge tone="brand" icon="check">
-                      {t('recommended')}
-                    </Badge>
-                  ) : null}
+
+                  <div className="mt-4 flex items-baseline gap-2">
+                    <span className="numeric font-display text-[1.75rem] leading-none font-semibold tracking-tight text-ink">
+                      {formatMoney(option.sell, locale, { showCurrency: false })}
+                    </span>
+                    <span className="text-[0.8125rem] font-medium text-ink-subtle">
+                      {option.sell.currency}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[0.75rem] text-ink-subtle">{t('sell')}</p>
                 </div>
 
-                <div className="mt-4 flex items-baseline gap-2">
-                  <span className="numeric font-display text-[1.75rem] leading-none font-semibold tracking-tight text-ink">
-                    {formatMoney(option.sell, locale, { showCurrency: false })}
-                  </span>
-                  <span className="text-[0.8125rem] font-medium text-ink-subtle">
-                    {option.sell.currency}
-                  </span>
-                </div>
-                <p className="mt-1 text-[0.75rem] text-ink-subtle">{t('sell')}</p>
-              </div>
-
-              <div className="min-w-0">
-                {/*
+                <div className="min-w-0">
+                  {/*
                   The three numbers together. Splitting them across screens is
                   exactly what the current spreadsheet process does, and why
                   margin is only ever known afterwards.
@@ -254,141 +294,168 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                   this option is the only one, where the rule that separates
                   them runs down rather than across.
                 */}
-                <dl
-                  className={`mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 ${
-                    solo ? 'md:mt-0 md:border-t-0 md:border-s md:pt-0 md:ps-8' : ''
-                  }`}
-                >
-                  <div>
-                    <dt className="eyebrow mb-1">{t('buy')}</dt>
-                    <dd className="numeric text-[0.875rem] font-medium text-ink-muted">
-                      {formatMoney(option.buy, locale, { showCurrency: false })}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="eyebrow mb-1">{t('margin')}</dt>
-                    <dd
-                      className={`numeric text-[0.875rem] font-semibold ${
-                        option.marginPct >= 18
-                          ? 'text-positive'
-                          : option.marginPct < 12
-                            ? 'text-caution'
-                            : 'text-ink'
-                      }`}
-                    >
-                      {option.marginPct.toFixed(1)}%
-                    </dd>
-                  </div>
-                  {option.transitDays ? (
+                  <dl
+                    className={`mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 ${
+                      solo ? 'md:mt-0 md:border-t-0 md:border-s md:pt-0 md:ps-8' : ''
+                    }`}
+                  >
                     <div>
-                      <dt className="eyebrow mb-1">{t('transit')}</dt>
-                      <dd className="numeric text-[0.875rem] font-medium text-ink">
-                        {option.transitDays}
-                        <span className="text-ink-subtle"> {tc('days')}</span>
+                      <dt className="eyebrow mb-1">{t('buy')}</dt>
+                      <dd className="numeric text-[0.875rem] font-medium text-ink-muted">
+                        {formatMoney(option.buy, locale, { showCurrency: false })}
                       </dd>
                     </div>
-                  ) : null}
-                </dl>
+                    <div>
+                      <dt className="eyebrow mb-1">{t('margin')}</dt>
+                      <dd
+                        className={`numeric text-[0.875rem] font-semibold ${
+                          option.marginPct >= 18
+                            ? 'text-positive'
+                            : option.marginPct < 12
+                              ? 'text-caution'
+                              : 'text-ink'
+                        }`}
+                      >
+                        {option.marginPct.toFixed(1)}%
+                      </dd>
+                    </div>
+                    {option.transitDays ? (
+                      <div>
+                        <dt className="eyebrow mb-1">{t('transit')}</dt>
+                        <dd className="numeric text-[0.875rem] font-medium text-ink">
+                          {option.transitDays}
+                          <span className="text-ink-subtle"> {tc('days')}</span>
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
 
-                <Meter
-                  className={`mt-3 ${solo ? 'md:ms-8' : ''}`}
-                  value={option.marginPct}
-                  max={maxMargin}
-                  tone={option.id === best.id ? 'var(--qb-positive)' : 'var(--qb-chart-1)'}
-                  label={`${t('margin')} ${option.marginPct}%`}
-                />
+                  <Meter
+                    className={`mt-3 ${solo ? 'md:ms-8' : ''}`}
+                    value={option.marginPct}
+                    max={maxMargin}
+                    tone={option.id === best?.id ? 'var(--qb-positive)' : 'var(--qb-chart-1)'}
+                    label={`${t('margin')} ${option.marginPct}%`}
+                  />
 
-                <p className={`mt-3 text-[0.6875rem] text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
-                  {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
-                </p>
+                  <p className={`mt-3 text-[0.6875rem] text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
+                    {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
+                  </p>
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+        </div>
+      ) : null}
 
       {/* --- the breakdown, buy and sell in the same row ---------------- */}
-      <Card padding="none">
-        <div className="p-5 pb-3">
-          {/*
+      {hasOptions ? (
+        <Card padding="none">
+          <div className="p-5 pb-3">
+            {/*
             The carrier only when there is one. "Charge breakdown · —" is a
             heading that reads as a bug; a separator has to travel with the
             thing it separates.
           */}
-          <CardHeader
-            icon="rates"
-            eyebrow={t('option')}
-            title={
-              comparison.options[0]?.carrier
-                ? `${t('breakdown')} · ${comparison.options[0].carrier}`
-                : t('breakdown')
-            }
-            description={t('internalOnly')}
-          />
-        </div>
+            <CardHeader
+              icon="rates"
+              eyebrow={t('option')}
+              title={
+                comparison.options[0]?.carrier
+                  ? `${t('breakdown')} · ${comparison.options[0].carrier}`
+                  : t('breakdown')
+              }
+              description={t('internalOnly')}
+            />
+          </div>
 
-        <TableShell>
-          <THead>
-            <TR>
-              <TH>{t('charge')}</TH>
-              <TH>{t('basis')}</TH>
-              <TH align="end">{t('quantity')}</TH>
-              <TH align="end">{t('buy')}</TH>
-              <TH align="end">{t('sell')}</TH>
-              <TH align="end">{t('margin')}</TH>
-              <TH align="end">{t('amount')}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {(comparison.options[0]?.lines ?? []).map((line) => {
-              const margin =
-                line.sellRate === 0 ? 0 : ((line.sellRate - line.buyRate) / line.sellRate) * 100
-              return (
-                <TR key={line.chargeCode}>
-                  <TD className="font-medium">{locale === 'ar' ? line.nameAr : line.nameEn}</TD>
-                  <TD className="text-ink-muted">{t(`bases.${line.basis}` as 'bases.flat')}</TD>
-                  <TD align="end" numeric>
-                    {line.quantity}
-                  </TD>
-                  <TD align="end" numeric className="text-ink-muted">
-                    {line.buyRate.toFixed(2)}
-                  </TD>
-                  <TD align="end" numeric>
-                    {line.sellRate.toFixed(2)}
-                  </TD>
-                  <TD align="end" numeric>
-                    <span className={margin < 12 ? 'text-caution' : 'text-ink-muted'}>
-                      {margin.toFixed(1)}%
-                    </span>
-                  </TD>
-                  <TD align="end" numeric className="font-semibold">
-                    {formatMoney(line.amount, locale, { showCurrency: false })}
-                  </TD>
-                </TR>
-              )
-            })}
-          </TBody>
-          <tfoot>
-            <tr className="border-t-2 border-line-strong bg-surface-sunken">
-              <TD className="font-semibold">{t('total')}</TD>
-              <TD />
-              <TD />
-              <TD align="end" numeric className="font-medium text-ink-muted">
-                {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
-              </TD>
-              <TD align="end" numeric className="font-semibold">
-                {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
-              </TD>
-              <TD align="end" numeric className="font-semibold text-positive">
-                {comparison.options[0]?.marginPct.toFixed(1)}%
-              </TD>
-              <TD align="end" numeric className="font-semibold">
-                {formatMoney(comparison.options[0]?.sell, locale)}
-              </TD>
-            </tr>
-          </tfoot>
-        </TableShell>
-      </Card>
+          <TableShell>
+            <THead>
+              <TR>
+                <TH>{t('charge')}</TH>
+                <TH>{t('basis')}</TH>
+                <TH align="end">{t('quantity')}</TH>
+                <TH align="end">{t('buy')}</TH>
+                <TH align="end">{t('sell')}</TH>
+                <TH align="end">{t('margin')}</TH>
+                <TH align="end">{t('amount')}</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {(comparison.options[0]?.lines ?? []).map((line) => {
+                /*
+                  A line's buy rate is known only where something recorded it —
+                  the pilot fixtures do, a quotation priced from a card does not
+                  (`quote_lines` holds the sell side). It used to render as 0.00
+                  with a 100% margin on every line, on the one screen whose job is
+                  to show buy beside sell. Unknown now says so; the totals row,
+                  which is known, is unaffected.
+
+                  Rates format in the line's currency, not `toFixed(2)`: a KWD
+                  rate has three decimals, and two rounded 250.125 to 250.13.
+                */
+                const currency = line.amount.currency
+                const margin =
+                  line.buyRate === null || line.sellRate === 0
+                    ? null
+                    : ((line.sellRate - line.buyRate) / line.sellRate) * 100
+                return (
+                  <TR key={line.chargeCode}>
+                    <TD className="font-medium">{locale === 'ar' ? line.nameAr : line.nameEn}</TD>
+                    <TD className="text-ink-muted">{t(`bases.${line.basis}` as 'bases.flat')}</TD>
+                    <TD align="end" numeric>
+                      {line.quantity}
+                    </TD>
+                    <TD align="end" numeric className="text-ink-muted">
+                      {line.buyRate === null
+                        ? tc('notRecorded')
+                        : formatMoney({ amount: line.buyRate, currency }, locale, {
+                            showCurrency: false,
+                          })}
+                    </TD>
+                    <TD align="end" numeric>
+                      {formatMoney({ amount: line.sellRate, currency }, locale, {
+                        showCurrency: false,
+                      })}
+                    </TD>
+                    <TD align="end" numeric>
+                      {margin === null ? (
+                        <span className="text-ink-subtle">{tc('notRecorded')}</span>
+                      ) : (
+                        <span className={margin < 12 ? 'text-caution' : 'text-ink-muted'}>
+                          {margin.toFixed(1)}%
+                        </span>
+                      )}
+                    </TD>
+                    <TD align="end" numeric className="font-semibold">
+                      {formatMoney(line.amount, locale, { showCurrency: false })}
+                    </TD>
+                  </TR>
+                )
+              })}
+            </TBody>
+            <tfoot>
+              <tr className="border-t-2 border-line-strong bg-surface-sunken">
+                <TD className="font-semibold">{t('total')}</TD>
+                <TD />
+                <TD />
+                <TD align="end" numeric className="font-medium text-ink-muted">
+                  {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
+                </TD>
+                <TD align="end" numeric className="font-semibold">
+                  {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
+                </TD>
+                <TD align="end" numeric className="font-semibold text-positive">
+                  {comparison.options[0]?.marginPct.toFixed(1)}%
+                </TD>
+                <TD align="end" numeric className="font-semibold">
+                  {formatMoney(comparison.options[0]?.sell, locale)}
+                </TD>
+              </tr>
+            </tfoot>
+          </TableShell>
+        </Card>
+      ) : null}
     </>
   )
 }

@@ -69,6 +69,20 @@ const config: NextConfig = {
   serverExternalPackages: ['pg', 'pg-boss'],
 
   /**
+   * Hosts `next dev` may serve its scripts to, besides localhost.
+   *
+   * Opening the dev server through a tunnel (ngrok, for the Kapso webhook)
+   * rendered pages whose client code Next then refused — "Blocked cross-origin
+   * request to Next.js dev resource" — so buttons did nothing and it read as a
+   * broken screen. Opt-in per developer from `.env.local`, empty by default,
+   * and ignored by `next start`: production is not affected.
+   */
+  allowedDevOrigins: (process.env.DEV_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean),
+
+  /**
    * Administration moved out of the operations shell into `/settings`, and
    * reference data stayed behind in operations at `/reference`.
    *

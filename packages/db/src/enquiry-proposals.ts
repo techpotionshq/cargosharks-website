@@ -26,12 +26,29 @@ import { and, eq, sql } from 'drizzle-orm'
 import { commodities, enquiries, locations } from './schema/index'
 import type { Tx } from './actor'
 
+/**
+ * What a field would have accepted, as a kind rather than a phrase.
+ *
+ * This used to be English — "a number", "true or false" — interpolated into a
+ * catalogue sentence, so the Arabic screen read as Arabic with an English
+ * hole in the middle. The caller owns the catalogue and turns the kind into
+ * words. `oneOf` keeps its list as the stored codes (`sea_fcl`, `air`), which
+ * is what the proposal row itself shows beside the refusal.
+ */
+export type ExpectedValue =
+  | { readonly kind: 'number' }
+  | { readonly kind: 'integer' }
+  | { readonly kind: 'positiveInteger' }
+  | { readonly kind: 'boolean' }
+  | { readonly kind: 'date' }
+  | { readonly kind: 'oneOf'; readonly values: readonly string[] }
+
 /** Why a proposal could not be applied, in a form a caller turns into a sentence. */
 export type ResolutionFailure =
   | { readonly kind: 'unknown_field' }
   | { readonly kind: 'not_found'; readonly value: string }
   | { readonly kind: 'ambiguous'; readonly value: string; readonly count: number }
-  | { readonly kind: 'invalid'; readonly value: string; readonly expected: string }
+  | { readonly kind: 'invalid'; readonly value: string; readonly expected: ExpectedValue }
 
 export type Resolution =
   | { readonly ok: true; readonly column: string; readonly value: unknown }
@@ -55,12 +72,12 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
     case 'mode':
       return MODES.includes(value)
         ? { ok: true, column: 'mode', value }
-        : { ok: false, failure: { kind: 'invalid', value, expected: MODES.join(', ') } }
+        : { ok: false, failure: invalid(value, { kind: 'oneOf', values: MODES }) }
 
     case 'tradeDirection':
       return DIRECTIONS.includes(value)
         ? { ok: true, column: 'tradeDirection', value }
-        : { ok: false, failure: { kind: 'invalid', value, expected: DIRECTIONS.join(', ') } }
+        : { ok: false, failure: invalid(value, { kind: 'oneOf', values: DIRECTIONS }) }
 
     case 'incoterm':
       return { ok: true, column: 'incoterm', value: value.toUpperCase() }
@@ -68,7 +85,7 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
     case 'readyOn':
       return /^\d{4}-\d{2}-\d{2}$/.test(value)
         ? { ok: true, column: 'readyOn', value }
-        : { ok: false, failure: { kind: 'invalid', value, expected: 'YYYY-MM-DD' } }
+        : { ok: false, failure: invalid(value, { kind: 'date' }) }
 
     /*
       Money is text and so is every quantity — the numbers stay strings all the
@@ -79,12 +96,23 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
     case 'volumeCbm':
       return /^\d+(\.\d{1,6})?$/.test(value)
         ? { ok: true, column: field, value }
-        : { ok: false, failure: { kind: 'invalid', value, expected: 'a number' } }
+        : { ok: false, failure: invalid(value, { kind: 'number' }) }
 
     case 'pieces':
       return /^\d{1,9}$/.test(value)
         ? { ok: true, column: 'pieces', value: Number(value) }
-        : { ok: false, failure: { kind: 'invalid', value, expected: 'a whole number' } }
+        : { ok: false, failure: invalid(value, { kind: 'integer' }) }
+
+    /*
+      Positive, not merely whole: `enquiries_container_count_positive` (0048)
+      refuses a zero, and a proposal that resolved only to fail the constraint
+      would surface as a server error rather than a sentence the coordinator
+      can act on. The same ceiling as `setEnquiryContainerCount`'s form.
+    */
+    case 'containerCount':
+      return /^[1-9]\d{0,3}$/.test(value)
+        ? { ok: true, column: 'containerCount', value: Number(value) }
+        : { ok: false, failure: invalid(value, { kind: 'positiveInteger' }) }
 
     case 'dimensions':
       return { ok: true, column: 'dimensions', value }
@@ -92,7 +120,7 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
     case 'isDangerous':
       return /^(true|false)$/i.test(value)
         ? { ok: true, column: 'isDangerous', value: value.toLowerCase() === 'true' }
-        : { ok: false, failure: { kind: 'invalid', value, expected: 'true or false' } }
+        : { ok: false, failure: invalid(value, { kind: 'boolean' }) }
 
     case 'origin':
     case 'destination': {
@@ -120,6 +148,10 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
     default:
       return { ok: false, failure: { kind: 'unknown_field' } }
   }
+}
+
+function invalid(value: string, expected: ExpectedValue): ResolutionFailure {
+  return { kind: 'invalid', value, expected }
 }
 
 /**
@@ -179,6 +211,7 @@ export async function enquiryColumn(
       grossWeightKg: enquiries.grossWeightKg,
       volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
       dimensions: enquiries.dimensions,
     })
     .from(enquiries)

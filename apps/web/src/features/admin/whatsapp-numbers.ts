@@ -25,6 +25,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { branches, whatsappNumbers, withActor } from '@qabandi/db'
@@ -32,7 +33,15 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotWhatsappNumbers } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 
 export interface WhatsappNumberRow {
   readonly id: string
@@ -75,12 +84,20 @@ export async function listWhatsappNumbers(): Promise<WhatsappNumberRow[]> {
   )
 }
 
-const numberSchema = z.object({
-  branchId: z.string().uuid(),
-  phoneNumberId: z.string().trim().min(1).max(64),
-  displayNumber: z.string().trim().max(32).nullable(),
-  label: z.string().trim().max(120).nullable(),
-})
+const numberSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.string().uuid(),
+    /*
+    Digits only. The id is what Kapso stamps on every delivery and what a send
+    is addressed to; the dialable number looks just as plausible in this field
+    and was saved here once — after which every message to the number was
+    skipped as "no active WhatsApp number", with nothing on this screen wrong
+    to the eye. The hint says so; this makes it true.
+  */
+    phoneNumberId: z.string().trim().min(1).max(64).regex(/^\d+$/, tv('phoneNumberIdDigits')),
+    displayNumber: z.string().trim().max(32).nullable(),
+    label: z.string().trim().max(120).nullable(),
+  })
 
 /** Create or update a number → branch mapping. */
 export async function saveWhatsappNumber(
@@ -89,6 +106,7 @@ export async function saveWhatsappNumber(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
     const value = form.get(key)
@@ -97,7 +115,7 @@ export async function saveWhatsappNumber(
 
   const numberId = read('numberId')
 
-  const parsed = numberSchema.safeParse({
+  const parsed = await localeParse(numberSchema(tv), {
     branchId: read('branchId'),
     phoneNumberId: read('phoneNumberId'),
     displayNumber: read('displayNumber') ?? null,
@@ -125,7 +143,7 @@ export async function saveWhatsappNumber(
     */
     const message = error instanceof Error ? error.message : String(error)
     if (message.includes('whatsapp_numbers_phone_number_id_unique')) {
-      return fail({ phoneNumberId: 'This number is already mapped to a branch.' }, echo(form))
+      return fail({ phoneNumberId: tv('numberMapped') }, echo(form))
     }
     throw error
   }
@@ -149,7 +167,8 @@ export async function setWhatsappNumberActive(
 
   const numberId = String(form.get('numberId') ?? '')
   const isActive = form.get('isActive') === 'true'
-  if (!numberId) return fail({ _: 'Missing number.' })
+  const tv = await getTranslations('adminValidation')
+  if (!numberId) return fail({ _: tv('missingNumber') })
 
   await withActor(session.actor, async (tx) => {
     const [current] = await tx

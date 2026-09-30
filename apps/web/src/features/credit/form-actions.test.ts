@@ -39,6 +39,15 @@ vi.mock('next/cache', () => ({
 }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   branches,
   creditOverrides,
@@ -276,7 +285,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
         form({ customerId: await customer(), branchId: BRANCH, reason: 'ok' }),
       )
 
-      expect(state.errors?.reason).toMatch(/sentence/)
+      expect(state.errors?.reason).toBe('creditValidation.reasonSentence')
       // What was typed comes back, so the manager is not made to start again.
       expect(state.values?.reason).toBe('ok')
     })
@@ -292,7 +301,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
         }),
       )
 
-      expect(state.errors?.expiresOn).toMatch(/YYYY-MM-DD/)
+      expect(state.errors?.expiresOn).toBe('creditValidation.dateFormat')
     })
 
     /** An override that expired before it was written authorises nothing. */
@@ -307,7 +316,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
         }),
       )
 
-      expect(state.errors?.expiresOn).toMatch(/already passed/)
+      expect(state.errors?.expiresOn).toBe('creditValidation.datePassed')
     })
 
     /**
@@ -324,7 +333,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
         form({ customerId: id, branchId: BRANCH, reason: REASON }),
       )
 
-      expect(state.errors?._).toMatch(/no credit limit/)
+      expect(state.errors?._).toBe('creditValidation.noCreditLimit')
       expect(await latestOverride(id)).toBeUndefined()
     })
   })

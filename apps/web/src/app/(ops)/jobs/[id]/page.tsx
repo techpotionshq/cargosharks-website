@@ -51,6 +51,7 @@ import { ProofOfDeliveryCard } from '@/features/pod/ui/panels'
 import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
+import { pickName } from '@/lib/named'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
@@ -59,6 +60,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params
   const job = await getJobDetail(session.actor, id)
   if (!job) notFound()
+
+  // Resolved before the reads below: the ledger names its charges in it.
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   // Resolved once rather than per row — the document list can be long and the
   // answer cannot change halfway down it.
@@ -84,7 +89,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       widening it would mean inventing a P&L for twenty demo shipments. Returns
       an empty ledger under fixtures and the card says so.
     */
-    getJobLedger(session.actor, id),
+    getJobLedger(session.actor, id, locale),
     /*
       Proof of delivery, and the containers it can name.
 
@@ -102,10 +107,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const tMode = await getTranslations('mode')
   const tDirection = await getTranslations('direction')
   const tPartners = await getTranslations('jobPartners')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
-  const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  // An empty Arabic name falls back to English rather than rendering blank (F52).
+  const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
 
   return (
     <>
@@ -202,7 +206,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <p className="mt-1 text-[0.8125rem] text-ink-muted">{exception.description}</p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                   <div className="text-end text-[0.6875rem] text-ink-subtle">
                     <p>
                       {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
@@ -342,7 +346,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     // terminal — is a partner already engaged on the job.
                     partners={job.partners.map((partner) => ({
                       value: partner.partnerId,
-                      label: partner.name,
+                      label: nameOf(partner.name, partner.nameAr),
                     }))}
                   />
                 }
@@ -426,7 +430,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     containers={containerOptions}
                     partners={job.partners.map((partner) => ({
                       value: partner.partnerId,
-                      label: partner.name,
+                      label: nameOf(partner.name, partner.nameAr),
                     }))}
                     variant="secondary"
                   />
@@ -539,7 +543,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <TBody>
                 {job.partners.map((partner) => (
                   <TR key={partner.id}>
-                    <TD className="font-medium text-ink">{partner.name}</TD>
+                    <TD className="font-medium text-ink">{nameOf(partner.name, partner.nameAr)}</TD>
                     <TD>
                       <Badge tone="info">
                         {tPartners(`roles.${partner.role}` as 'roles.carrier')}

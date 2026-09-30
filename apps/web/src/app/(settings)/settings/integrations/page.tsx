@@ -154,7 +154,7 @@ export default async function IntegrationsPage() {
                         title={name}
                         description={t(`descriptions.${integration.key}` as 'descriptions.smtp')}
                         actions={
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                             <Badge tone={status.tone}>{status.label}</Badge>
                             <IntegrationDialog
                               integration={integration}

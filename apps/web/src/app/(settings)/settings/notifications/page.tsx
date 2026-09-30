@@ -44,7 +44,7 @@ export default async function NotificationsPage() {
     listTemplates(session.actor),
     listDeliveries(session.actor),
     listChannelSettings(session.actor),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('notificationTemplates'),
     getTranslations('common'),
   ])
