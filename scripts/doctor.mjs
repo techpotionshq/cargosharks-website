@@ -281,10 +281,11 @@ if (isSet('BETTER_AUTH_SECRET')) {
 /*
   The brand, and the two ways it goes wrong.
 
-  Unset is the quiet one: the deployment wears CargoSharks, which is right
-  for a demo and a preview and wrong for a client, whose name and colours
-  then appear on nothing they send a customer. Nothing enforces it at boot,
-  so it can only be caught by a report somebody reads.
+  Unset is the quiet one: the deployment wears its own default brand
+  (DEFAULT_BRAND_KEY), which is right for a demo and a preview and wrong for a
+  separate client, whose name and colours then appear on nothing they send a
+  customer. Nothing enforces it at boot, so it can only be caught by a report
+  somebody reads.
 
   Set to a key nobody wrote is the loud one, and it is loud on purpose:
   `resolveBrand` refuses it rather than falling back, so the application does
@@ -298,6 +299,7 @@ console.log('')
 console.log('Brand')
 
 let brandKeys = []
+let defaultKey = ''
 try {
   const registry = readFileSync(join('packages', 'brand', 'src', 'resolve.ts'), 'utf8')
   const open = registry.indexOf('{', registry.indexOf('export const BRANDS'))
@@ -308,6 +310,10 @@ try {
     .filter((line) => line.endsWith(','))
     .map((line) => line.split(':')[0].trim().replaceAll("'", ''))
     .filter(Boolean)
+  // Which of those an unset BRAND resolves to. Read rather than assumed: this
+  // deployment defaults to its own brand, not the supplier's, and a message
+  // that named the wrong one is the exact drift this whole section guards.
+  defaultKey = /export const DEFAULT_BRAND_KEY\s*=\s*['"]([^'"]+)['"]/.exec(registry)?.[1] ?? ''
 } catch {
   // An unreadable registry only makes the line below less specific.
 }
@@ -315,10 +321,11 @@ try {
 const brand = env.BRAND
 
 if (!brand) {
+  const wears = defaultKey || 'the default brand'
   console.log(`${dash} BRAND is unset`)
-  console.log('       this deployment wears CargoSharks, the supplier brand — right for a')
-  console.log('       demo, a preview or a laptop, and wrong for a client. A client')
-  console.log('       deployment sets BRAND=<key>; nothing enforces that at boot.')
+  console.log(`       this deployment wears ${wears}, its own default brand — right for a`)
+  console.log('       demo, a preview or a laptop. A separate client deployment sets')
+  console.log('       BRAND=<key>; nothing enforces that at boot.')
 } else if (brandKeys.length > 0 && !brandKeys.includes(brand)) {
   blocking++
   console.log(`${cross} BRAND=${brand} is not a registered brand`)

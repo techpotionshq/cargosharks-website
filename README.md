@@ -346,10 +346,10 @@ to `web` and to `web` only — `/internal` authenticates the caller and then let
 that caller name the principal to act as, so it must never be reachable from
 outside.
 
-The marketing site (`apps/landing`) is not part of a customer deployment and
-never has been. It is a separate static app, the `Dockerfile` builds only
+There is no marketing site in this repository: it is a separate CargoSharks
+surface and never part of a customer deployment. The `Dockerfile` builds only
 `@qabandi/web` and `@qabandi/service`, and `compose.prod.yaml` declares no
-container for it. There is nothing to disable per client.
+container for anything else. There is nothing to disable per client.
 
 ### 6. Running the fleet afterwards
 

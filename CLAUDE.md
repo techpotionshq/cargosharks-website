@@ -57,7 +57,7 @@ A `PostToolUse` hook (`scripts/q-hook.mjs`) runs the matching invariant checks
 after every edit and says nothing unless one fails.
 
 `QABANDI_PILOT_FIXTURES=1 pnpm dev` runs *every* screen with no database —
-that is the hosted CargoSharks demo, and `scripts/check-fixtures.mjs` fails the
+that is the hosted pilot demo, and `scripts/check-fixtures.mjs` fails the
 lint on any read that reaches `withActor` without a `usePilotFixtures()` branch.
 `NEEDS_DATABASE` in `apps/web/e2e/support/harness.ts` is empty, and a test fails
 if an entry is added that is not true.
