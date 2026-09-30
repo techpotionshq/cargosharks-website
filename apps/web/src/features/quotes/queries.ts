@@ -160,6 +160,9 @@ export async function getQuoteComparison(
       .orderBy(desc(quotes.createdAt))
       .limit(5)
 
+    // No quote yet is the normal state of a new enquiry, not a missing one —
+    // returning nothing here made every unpriced enquiry's page a 404.
+
     /*
       Only the lines of the options on screen. Unfiltered, this read every quote
       line the actor could see — every quotation in their branches — on every
@@ -189,11 +192,7 @@ export async function getQuoteComparison(
             .where(inArray(quoteLines.quoteId, optionIds))
             .orderBy(asc(quoteLines.sortOrder))
 
-    /**
-     * The cheapest sell is recommended unless a snapshot says otherwise.
-     * Seeded with the first row: `reduce` with no seed throws on the empty
-     * list an unpriced enquiry has.
-     */
+    /** The cheapest sell is recommended unless a snapshot says otherwise. */
     const cheapest = optionRows.reduce<(typeof optionRows)[number] | undefined>(
       (best, row) =>
         !best || Number(row.totalSell ?? 0) < Number(best.totalSell ?? 0) ? row : best,

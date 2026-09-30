@@ -183,9 +183,17 @@ async function matchCommodity(tx: Tx, value: string): Promise<{ id: string }[]> 
 }
 
 /* The comparison sets, kept beside their callers so the columns are visible. */
+/*
+  The English name also matches with its generic suffix dropped. People write
+  "Shuwaikh", the reference row says "Shuwaikh Port", and exact-only sent every
+  such enquiry to a person. Still an exact comparison — "Shuaiba Port" becomes
+  "shuaiba", never "shuwaikh" — and the one-match rule in `resolveProposal`
+  still refuses a name two places share.
+*/
 const sqlAnyMatch = (needle: string) =>
   sql`(lower(${locations.unlocode}) = ${needle}
        or lower(${locations.nameEn}) = ${needle}
+       or lower(regexp_replace(${locations.nameEn}, '\\s+(port|seaport|sea port|harbour|harbor)$', '', 'i')) = ${needle}
        or lower(${locations.nameAr}) = ${needle})`
 
 const sqlAnyCommodity = (needle: string) =>

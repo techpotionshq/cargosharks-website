@@ -30,13 +30,13 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
   const session = await requireSession()
   const canRequest = can(session, 'rate.card.write')
 
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const [view, agents, t] = await Promise.all([
-    getEnquiryRateRequests(session.actor, enquiryId, locale),
-    canRequest ? listCoveringAgents(session.actor, enquiryId, locale) : Promise.resolve([]),
+  const [view, agents, t, resolved] = await Promise.all([
+    getEnquiryRateRequests(session.actor, enquiryId),
+    canRequest ? listCoveringAgents(session.actor, enquiryId) : Promise.resolve([]),
     getTranslations('rateRequests'),
+    getLocale(),
   ])
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   if (!view) return null
   const requests = view.requests
@@ -44,39 +44,35 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
 
   return (
     <Card className="mb-4" padding="none">
-      {/*
-        The card is unpadded so the rows below can run edge to edge with their
-        dividers, which leaves the header to bring its own inset — without it the
-        title sat on the card's border while the rows stood 16px in. `px-4`
-        matches the rows, so heading and content share one starting line.
-      */}
-      <CardHeader
-        className="px-4 pt-4 pb-1"
-        title={t('title')}
-        description={
-          requests.length === 0
-            ? t('emptyDescription')
-            : t('description', { awaiting: view.awaiting, answered: view.answered })
-        }
-        actions={
-          canRequest ? (
-            <RequestRatesDialog
-              enquiryId={enquiryId}
-              agents={agents}
-              labels={{
-                trigger: t('request'),
-                title: t('pickTitle'),
-                description: t('pickDescription'),
-                send: t('send'),
-                empty: t('noAgents'),
-                noEmail: t('noEmail'),
-                alreadyAsked: t('alreadyAsked'),
-                transit: t('transit'),
-              }}
-            />
-          ) : null
-        }
-      />
+      {/* The card is unpadded so its rows run edge to edge; the header is not. */}
+      <div className="px-4 pt-4 pb-2">
+        <CardHeader
+          title={t('title')}
+          description={
+            requests.length === 0
+              ? t('emptyDescription')
+              : t('description', { awaiting: view.awaiting, answered: view.answered })
+          }
+          actions={
+            canRequest ? (
+              <RequestRatesDialog
+                enquiryId={enquiryId}
+                agents={agents}
+                labels={{
+                  trigger: t('request'),
+                  title: t('pickTitle'),
+                  description: t('pickDescription'),
+                  send: t('send'),
+                  empty: t('noAgents'),
+                  noEmail: t('noEmail'),
+                  alreadyAsked: t('alreadyAsked'),
+                  transit: t('transit'),
+                }}
+              />
+            ) : null
+          }
+        />
+      </div>
 
       {requests.length === 0 ? (
         <p className="px-4 py-3 text-[0.875rem] text-ink-muted">{t('empty')}</p>

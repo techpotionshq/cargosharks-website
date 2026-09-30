@@ -1,4 +1,4 @@
-# Qabandi in production — all three containers, as one stack.
+# Qabandi in production — both containers, as one stack.
 #
 # Deliberately not `compose.dev.yaml`. That file is the local stack: Postgres
 # with a password of `postgres`, MinIO with a published key, every port bound to
@@ -25,13 +25,12 @@
 #   Docker Compose Location  /compose.prod.yaml
 #
 # Press **Load Compose File** before saving. Coolify does not read the file on
-# its own, and until it has it does not know `web`, `service` and `landing`
+# its own, and until it has it does not know `web` and `service`
 # exist — no per-service domain fields appear, and a stack deployed in that
 # state gets no Traefik router and answers nothing at all.
 #
-# Set a domain on `web` and, separately, on `landing` — the marketing site and
-# the app are two different public sites and Coolify needs a router for each.
-# The service gets no domain: its two public prefixes, `/api/v1` and
+# Set a domain on `web`. The service gets no domain: its two public prefixes,
+# `/api/v1` and
 # `/webhooks`, are served through the web container
 # (`apps/web/src/lib/service-proxy.ts`), so carrier and provider callbacks
 # point at `https://<web>/webhooks/...` and `/internal` is unreachable from
@@ -47,7 +46,7 @@
 #
 # Everything else degrades honestly against the defaults in `config.ts`.
 #
-# No `container_name`, `restart` or `networks` keys: Coolify manages all three,
+# No `container_name`, `restart` or `networks` keys: Coolify manages both,
 # and a custom network puts containers on two at once, which Traefik then
 # routes to non-deterministically.
 
@@ -81,12 +80,3 @@ services:
       context: .
       dockerfile: Dockerfile
       target: service
-
-  # The marketing site — a static export with no database, no session and no
-  # secrets, so it takes no environment at all. Give it its own domain in the
-  # UI; it shares nothing with `web` but the network.
-  landing:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: landing

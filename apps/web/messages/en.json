@@ -279,9 +279,8 @@
     },
     "priceIt": "Price it",
     "pricing": "Pricing…",
-    "noOptions": "No quote for this enquiry yet.",
-    "noOptionsHint": "Select Price it to price from the rate card. Select New quotation to price by hand.",
-    "subtitleUnpriced": "Not priced yet. The options appear here, buy and sell side by side."
+    "awaitingTitle": "Enquiry",
+    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in."
   },
   "job": {
     "title": "Operations board",
@@ -3247,8 +3246,8 @@
     }
   },
   "proposals": {
-    "title": "Read from the email",
-    "description": "The assistant read {count, plural, one {# field} other {# fields}} from the email — check each against the quoted line and accept, or set it by hand.",
+    "title": "Read from the message",
+    "description": "The assistant read {count, plural, one {# field} other {# fields}} from the message — check each against what the customer wrote and accept, or set it by hand.",
     "readOnly": "Read from the email by the assistant. Deciding needs the assign permission.",
     "accept": "Accept",
     "reject": "Dismiss",

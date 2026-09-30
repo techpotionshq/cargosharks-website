@@ -298,28 +298,52 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
       continue
     }
 
-    sources.push(
-      imapSource({
-        host: row.host,
-        port: row.port,
-        secure: row.secure,
-        user: row.username,
-        password,
-        folder: row.folder,
-        archiveFolder: row.archiveFolder ?? undefined,
-        /*
-          Per mailbox, not per deployment.
+    const source = imapSource({
+      host: row.host,
+      port: row.port,
+      secure: row.secure,
+      user: row.username,
+      password,
+      folder: row.folder,
+      archiveFolder: row.archiveFolder ?? undefined,
+      /*
+        Per mailbox, not per deployment.
 
-          A shared Office 365 mailbox on a throttled tenant and a self-hosted
-          Dovecot want different answers, and `INBOUND_MAIL_BATCH` meant
-          tuning one of them down tuned all five. The columns carry the old
-          environment values as their defaults, so nothing moves until an
-          administrator moves it.
-        */
-        batch: row.pollBatch,
-        maxAttachmentBytes: row.maxAttachmentMb * 1024 * 1024,
-      }),
-    )
+        A shared Office 365 mailbox on a throttled tenant and a self-hosted
+        Dovecot want different answers, and `INBOUND_MAIL_BATCH` meant
+        tuning one of them down tuned all five. The columns carry the old
+        environment values as their defaults, so nothing moves until an
+        administrator moves it.
+      */
+      batch: row.pollBatch,
+      maxAttachmentBytes: row.maxAttachmentMb * 1024 * 1024,
+    })
+
+    /*
+      Every poll's outcome lands on the row, not only an unopenable key.
+
+      Until this, a password the mail server rejected went to the log and
+      nowhere else: the settings screen showed no error and a `last_polled_at`
+      weeks old, and an administrator could re-enter a wrong password and see
+      nothing change. Best-effort — failing to record the outcome must not
+      turn a good poll into a failed one.
+    */
+    sources.push({
+      key: source.key,
+      async collect(handler) {
+        try {
+          const handled = await source.collect(handler)
+          await noteMailboxError(row.id, null).catch(() => {})
+          return handled
+        } catch (error) {
+          await noteMailboxError(
+            row.id,
+            error instanceof Error ? error.message : String(error),
+          ).catch(() => {})
+          throw error
+        }
+      },
+    })
   }
 
   return sources

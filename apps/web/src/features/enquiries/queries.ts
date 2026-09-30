@@ -128,7 +128,14 @@ export async function listEnquiries(
             : undefined,
         ),
       )
-      .orderBy(asc(enquiries.slaDueAt), desc(enquiries.createdAt))
+      // Unanswered first, closest to breach first — the fixture branch above
+      // sorts the same way. An answered enquiry's deadline no longer threatens
+      // anything, so it must not hold a new one down the queue.
+      .orderBy(
+        sql`${enquiries.firstRespondedAt} is not null`,
+        asc(enquiries.slaDueAt),
+        desc(enquiries.createdAt),
+      )
       .limit(limit)
 
     return rows.map((row): EnquirySummary => {

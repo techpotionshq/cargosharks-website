@@ -27,15 +27,16 @@ export const BRANDS: Record<string, Brand> = {
 }
 
 /**
- * The product's own brand, not a client's.
+ * The brand this deployment wears when `BRAND` is unset.
  *
- * An unconfigured environment — a demo, a preview deployment, a developer's
- * machine, the fixture run every screenshot is taken from — used to default to
- * a live client's identity, which put their name and their red into every
- * image and every sample PDF the product produced. The default is now the
- * thing that owns the product; a client is `BRAND=<key>` and one file.
+ * This is Al-Qabandi's own instance: the demo, the fixture run every
+ * screenshot is taken from, and the developer machines that drive it all show
+ * Qabandi's identity by default, because that is who owns this deployment. The
+ * supplier's own brand (`cargosharks`) stays registered as the worked example
+ * — reachable with `BRAND=cargosharks` — but it is never the default here, so
+ * nothing unconfigured ever renders someone else's name on a Qabandi screen.
  */
-export const DEFAULT_BRAND_KEY = 'cargosharks'
+export const DEFAULT_BRAND_KEY = 'qabandi'
 
 /**
  * The brand a `BRAND` value names, or a refusal.
@@ -53,12 +54,12 @@ export const DEFAULT_BRAND_KEY = 'cargosharks'
  * brand at module scope, which makes this a refusal to boot with a readable
  * reason — the kind of failure a deployment checklist can actually catch.
  *
- * An *unset* `BRAND` is still legitimate and still means CargoSharks: that is
- * a demo, a preview deployment, a fixture run, a developer's machine, and none
- * of those is a client.
+ * An *unset* `BRAND` is still legitimate and still means Qabandi: that is a
+ * demo, a preview deployment, a fixture run, a developer's machine — this is
+ * Al-Qabandi's own deployment, so its own identity is the right default.
  */
 function registered(key: string | undefined): Brand {
-  if (key === undefined) return cargosharksBrand
+  if (key === undefined) return qabandiBrand
 
   const brand = BRANDS[key]
   if (brand === undefined) {

@@ -792,6 +792,14 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from supplier_invoice_matches;
       delete from supplier_invoice_lines;
       delete from supplier_payment_allocations;
+      /*
+        Supplier payments were never written by this file, but real use makes
+        them and each can hold the accounting_export it was posted in. So it
+        goes after its allocations (above) and before that export (below);
+        without it the delete of accounting_exports fails on
+        supplier_payments_export_fk.
+      */
+      delete from supplier_payments;
       delete from supplier_invoices;
       /*
         Children of the jobs, invoices and documents removed below.
@@ -803,6 +811,18 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         opposite of what a reset is for.
       */
       delete from credit_overrides;
+      /*
+        The assistant turns and the document-extraction proposals each carry the
+        ai_invocations row they cost, and the schema puts no cascade there on
+        purpose — assistant.ts states ai_invocations is never deleted in
+        normal operation. A dev reset is the one path that does delete it, so its
+        referrers go first: the conversation turns, then the threads that hold
+        them, then the extraction proposals. All are real-use rows this file
+        never seeded, and without them the delete of ai_invocations fails.
+      */
+      delete from assistant_messages;
+      delete from assistant_threads;
+      delete from extraction_proposals;
       delete from ai_invocations;
       delete from consol_allocation_shares;
       delete from pod_photos;
@@ -829,7 +849,15 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       delete from partner_compliance;
       -- Assets outlive the documents that point at them, and the storage key
       -- is unique, so a reseed collides on a key it created last time.
-      delete from assets;
+      --
+      -- Branches are kept by this reset, and a branch's uploaded letterhead is
+      -- an asset — real branding config, not demo data. So the assets a kept
+      -- branch still points at are spared (branches_letterhead_asset_id_..._fk
+      -- would otherwise block the delete); everything else goes.
+      delete from assets
+       where id not in (
+         select letterhead_asset_id from branches where letterhead_asset_id is not null
+       );
       delete from job_partners;
       delete from job_milestones;
       delete from jobs;
