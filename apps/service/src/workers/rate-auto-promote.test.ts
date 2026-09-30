@@ -77,7 +77,12 @@ async function makeAgent(): Promise<string> {
 }
 
 /** A parsed, promotable reply quoting `total` KWD, from a fresh agent. */
-async function parsedReply(enquiryId: string, total: string, createdAt?: Date): Promise<string> {
+async function parsedReply(
+  enquiryId: string,
+  total: string,
+  createdAt?: Date,
+  unpriced?: number,
+): Promise<string> {
   const partnerId = await makeAgent()
   seq += 1
   return withActor(actor, async (tx) => {
@@ -94,6 +99,7 @@ async function parsedReply(enquiryId: string, total: string, createdAt?: Date): 
         ...(createdAt ? { createdAt } : {}),
         response: {
           ok: true,
+          ...(unpriced ? { unpriced } : {}),
           rows: [
             {
               mode: 'sea_fcl',
@@ -195,6 +201,22 @@ describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
         .limit(1),
     )
     expect(card!.direction).toBe('buy')
+  })
+
+  /*
+    A partial total is not a price (F69): a reply whose per-container lines
+    went unpriced carried only its flat fees and beat every whole reply. With
+    a whole reply beside it, the whole one is awarded; the partial one waits.
+  */
+  it('does not award a reply whose total left lines unpriced over a whole one', async () => {
+    const id = await makeEnquiry()
+    const partial = await parsedReply(id, '60.000', undefined, 2)
+    const whole = await parsedReply(id, '900.000')
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(whole)).status).toBe('accepted')
+    expect((await requestRow(partial)).status).toBe('parsed')
   })
 
   it('does nothing on its inert default', async () => {

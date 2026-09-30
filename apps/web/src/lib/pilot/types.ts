@@ -1877,6 +1877,11 @@ export interface RateRequestView {
   readonly isCheapest: boolean
   /** Rate lines the model read that validated — what an accept would promote. */
   readonly lineCount: number
+  /**
+   * Lines the total could not price, so `quotedTotal` is partial and the reply
+   * is left out of the cheapest comparison (F69).
+   */
+  readonly unpricedLines: number
   /** Set where the model read a lane that disagreed with the one we asked about. */
   readonly laneMismatch: string | null
   readonly declinedReason: string | null

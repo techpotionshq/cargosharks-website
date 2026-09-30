@@ -48,7 +48,7 @@ async function makeEnquiry(): Promise<string> {
 async function reply(
   enquiryId: string,
   status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired',
-  quoted?: { total: string; currency: string },
+  quoted?: { total: string; currency: string; unpriced?: number },
 ) {
   seq += 1
   await withActor(system, (tx) =>
@@ -60,7 +60,13 @@ async function reply(
       token: `rrv-${RUN}-${seq}`,
       quotedTotal: quoted?.total ?? null,
       quotedCurrency: quoted?.currency ?? null,
-      response: quoted ? { ok: true, rows: [{ chargeCode: 'ocean_freight' }] } : null,
+      response: quoted
+        ? {
+            ok: true,
+            rows: [{ chargeCode: 'ocean_freight' }],
+            ...(quoted.unpriced ? { unpriced: quoted.unpriced } : {}),
+          }
+        : null,
     }),
   )
 }
@@ -87,6 +93,27 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     expect(view!.awaiting).toBe(1)
     const cheapest = view!.requests.find((r) => r.isCheapest)
     expect(Number(cheapest?.quotedTotal)).toBe(900)
+  })
+
+  /*
+    A partial total is not a price (F69). Two per-container lines the reply
+    could not price left SHACO's 4,120 USD reply at its 60 USD flat fee, and it
+    was ranked cheapest on that. It stays listed, marked partial, and out of
+    the comparison — the whole reply wins even though its figure is higher.
+  */
+  it('leaves a reply with unpriced lines out of the cheapest', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(enquiryId, 'parsed', { total: '60.000', currency: 'KWD', unpriced: 2 })
+    await reply(enquiryId, 'parsed', { total: '900.000', currency: 'KWD' })
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    const partial = view!.requests.find((r) => Number(r.quotedTotal) === 60)
+    expect(partial?.unpricedLines).toBe(2)
+    expect(partial?.isCheapest).toBe(false)
+    expect(Number(view!.requests.find((r) => r.isCheapest)?.quotedTotal)).toBe(900)
+    // A partial reply is still an answer.
+    expect(view!.answered).toBe(2)
   })
 
   /*

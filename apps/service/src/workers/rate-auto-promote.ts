@@ -216,6 +216,15 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
   let bestId: string | null = null
   let bestValue = Infinity
   for (const r of promotable) {
+    /*
+      A reply whose total left lines unpriced is a partial figure, and ranked it
+      beats every whole reply on its flat fees alone (F69) — the same reason a
+      reply with no rate to the base is skipped below. Among several replies it
+      is left for a person; a lone reply above is still awarded, because there
+      is nothing to compare it against.
+    */
+    const unpriced = (r.response as { unpriced?: unknown } | null)?.unpriced
+    if (typeof unpriced === 'number' && unpriced > 0) continue
     const normalised = normalise(r.quotedTotal, r.quotedCurrency, base, fx)
     if (normalised === null) continue
     const value = Number(normalised)

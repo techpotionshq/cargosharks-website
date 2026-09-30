@@ -95,8 +95,10 @@ export async function getEnquiryRateRequests(
         rows?: unknown[]
         declined?: boolean
         laneMismatch?: string
+        unpriced?: number
       }
       const lineCount = Array.isArray(response.rows) ? response.rows.length : 0
+      const unpricedLines = typeof response.unpriced === 'number' ? response.unpriced : 0
 
       const normalizedTotal = normalise(row.quotedTotal, row.quotedCurrency, baseCurrency, fx)
 
@@ -120,6 +122,7 @@ export async function getEnquiryRateRequests(
         comparable: normalizedTotal !== null,
         isCheapest: false,
         lineCount,
+        unpricedLines,
         laneMismatch: response.laneMismatch ?? null,
         declinedReason: row.declinedReason,
         canPromote,
@@ -127,9 +130,19 @@ export async function getEnquiryRateRequests(
       }
     })
 
-    // Cheapest among the answered, non-declined, comparable replies.
+    /*
+      Cheapest among the answered, non-declined, comparable replies — and only
+      the whole ones. A reply with lines its total could not price (a
+      per-container charge on an FCL enquiry with no container count) carries a
+      partial figure; ranked, it won "Cheapest" on its flat fees alone (F69).
+      It is shown, marked partial, and left out, as a reply with no FX rate is.
+    */
     const ranked = requests.filter(
-      (r) => r.comparable && r.status !== 'declined' && r.normalizedTotal !== null,
+      (r) =>
+        r.comparable &&
+        r.unpricedLines === 0 &&
+        r.status !== 'declined' &&
+        r.normalizedTotal !== null,
     )
     if (ranked.length > 0) {
       const cheapest = ranked.reduce((a, b) =>

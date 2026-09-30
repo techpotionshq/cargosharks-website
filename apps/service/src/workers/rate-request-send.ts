@@ -113,7 +113,7 @@ export async function sendRateRequests(
   return { sent, skipped, failed }
 }
 
-interface SendRow {
+export interface SendRow {
   readonly id: string
   readonly token: string
   readonly mode: string | null
@@ -125,6 +125,7 @@ interface SendRow {
   readonly grossWeightKg: string | null
   readonly volumeCbm: string | null
   readonly pieces: number | null
+  readonly containerCount: number | null
   readonly incoterm: string | null
   readonly reference: string | null
   readonly contactEmail: string | null
@@ -177,6 +178,7 @@ async function loadPending(actor: ReturnType<typeof systemActor>): Promise<SendR
         grossWeightKg: enquiry?.grossWeightKg ?? null,
         volumeCbm: enquiry?.volumeCbm ?? null,
         pieces: enquiry?.pieces ?? null,
+        containerCount: enquiry?.containerCount ?? null,
         incoterm: enquiry?.incoterm ?? null,
         reference: enquiry?.reference ?? null,
         contactEmail: contact?.email ?? null,
@@ -197,6 +199,7 @@ async function enquiryFor(tx: Tx, enquiryId: string) {
       grossWeightKg: enquiries.grossWeightKg,
       volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
       incoterm: enquiries.incoterm,
       reference: enquiries.reference,
     })
@@ -219,6 +222,7 @@ async function enquiryFor(tx: Tx, enquiryId: string) {
     grossWeightKg: e.grossWeightKg,
     volumeCbm: e.volumeCbm,
     pieces: e.pieces,
+    containerCount: e.containerCount,
     incoterm: e.incoterm,
     reference: e.reference,
   }
@@ -251,6 +255,7 @@ async function cardLaneFor(tx: Tx, rateCardId: string) {
     grossWeightKg: null,
     volumeCbm: null,
     pieces: null,
+    containerCount: null,
     incoterm: null,
     reference: null,
   }
@@ -313,7 +318,7 @@ function rfqSubject(row: SendRow): string {
  * "reply keeping the subject" instruction: the token in the subject is how the
  * reply finds its way home.
  */
-function rfqBody(row: SendRow): string {
+export function rfqBody(row: SendRow): string {
   const lines: string[] = []
   lines.push(row.contactName ? `Dear ${row.contactName},` : 'Dear partner,')
   lines.push('')
@@ -321,11 +326,20 @@ function rfqBody(row: SendRow): string {
   lines.push('')
   lines.push(`  Lane:      ${laneText(row)}`)
   if (row.mode) lines.push(`  Mode:      ${MODE_LABEL[row.mode] ?? row.mode}`)
+  /*
+    The count an FCL rate is priced by (F72). Without it the RFQ gave lane,
+    date and weight and the agent had to write back to ask how many boxes —
+    the one figure every per-container charge multiplies. The enquiry holds a
+    count and no equipment type, so the type is the agent's to state.
+  */
+  if (row.mode === 'sea_fcl' && row.containerCount != null) {
+    lines.push(`  Containers: ${row.containerCount}`)
+  }
   if (row.readyOn) lines.push(`  Ready on:  ${row.readyOn}`)
   if (row.incoterm) lines.push(`  Incoterm:  ${row.incoterm}`)
   if (row.pieces != null) lines.push(`  Pieces:    ${row.pieces}`)
-  if (row.grossWeightKg) lines.push(`  Weight:    ${row.grossWeightKg} kg`)
-  if (row.volumeCbm) lines.push(`  Volume:    ${row.volumeCbm} cbm`)
+  if (row.grossWeightKg) lines.push(`  Weight:    ${quantity(row.grossWeightKg)} kg`)
+  if (row.volumeCbm) lines.push(`  Volume:    ${quantity(row.volumeCbm)} cbm`)
   lines.push('')
   lines.push('Kindly reply to this email, keeping the subject line, with your charges,')
   lines.push('currency, and how long the rate is valid. Please break the charges out')
@@ -333,4 +347,23 @@ function rfqBody(row: SendRow): string {
   lines.push('')
   lines.push('Thank you.')
   return lines.join('\n')
+}
+
+/**
+ * A `numeric` quantity as a person writes it: "12500.000000" → "12,500",
+ * "1.200000" → "1.2" (F71).
+ *
+ * The column's six decimal places reached the agent verbatim. Done on the
+ * string, not through `Number`, so a large or precise figure is never
+ * rounded on its way into an email — the digits that print are the digits
+ * stored, minus trailing zeros, with the thousands grouped.
+ */
+export function quantity(value: string): string {
+  const trimmed = value.trim()
+  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(trimmed)
+  if (!match) return trimmed
+  const [, sign, whole, fraction = ''] = match
+  const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const decimals = fraction.replace(/0+$/, '')
+  return `${sign}${grouped}${decimals ? `.${decimals}` : ''}`
 }

@@ -113,6 +113,11 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                         locale,
                       )}
                     </div>
+                    {row.unpricedLines > 0 ? (
+                      <div className="text-[0.6875rem] text-caution">
+                        {t('partialTotal', { count: row.unpricedLines })}
+                      </div>
+                    ) : null}
                     {!row.comparable ? (
                       <div className="text-[0.6875rem] text-caution">{t('noFx')}</div>
                     ) : row.quotedCurrency !== view.baseCurrency && row.normalizedTotal ? (

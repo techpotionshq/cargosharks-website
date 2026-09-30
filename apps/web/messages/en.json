@@ -3356,7 +3356,8 @@
       "declined": "Declined",
       "expired": "Expired",
       "superseded": "Replaced"
-    }
+    },
+    "partialTotal": "{count, plural, one {Partial total: # line not priced} other {Partial total: # lines not priced}}"
   },
   "renewals": {
     "title": "Renewals in flight",
