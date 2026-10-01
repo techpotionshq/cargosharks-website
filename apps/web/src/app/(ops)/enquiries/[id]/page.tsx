@@ -108,7 +108,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       */}
       <EnquiryPricingHeader
         enquiryId={id}
-        canPrice={!comparison.isClosed}
+        // An accepted quotation is never superseded, so neither re-pricing nor
+        // a new version is offered once the customer has said yes (S2).
+        canPrice={!comparison.isClosed && !comparison.hasAccepted}
         labels={{ price: t('priceIt'), pricing: t('pricing') }}
         eyebrow={
           <span className="inline-flex items-center gap-2">
@@ -129,7 +131,28 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             status={comparison.status}
           />
         }
-        actionsAfter={<QuoteDialog enquiryId={id} variant="secondary" />}
+        actionsAfter={
+          comparison.isClosed || comparison.hasAccepted ? null : (
+            /*
+              Defaults from the enquiry and its current quotation (S7): the
+              enquiry's branch and base currency, and the figures already
+              priced, so a revision starts from the offer it revises rather
+              than from DXB, USD and two empty boxes.
+            */
+            <QuoteDialog
+              enquiryId={id}
+              branchId={comparison.branchId}
+              currency={comparison.options[0]?.sell.currency ?? comparison.baseCurrency}
+              totalSell={
+                comparison.options[0] ? String(comparison.options[0].sell.amount) : undefined
+              }
+              totalCost={
+                comparison.options[0] ? String(comparison.options[0].buy.amount) : undefined
+              }
+              variant="secondary"
+            />
+          )
+        }
       />
 
       {/*

@@ -83,6 +83,7 @@ import type {
   DocumentView,
   DutyRateRow,
   EngineRuleRow,
+  FxRateRow,
   EnquiryProposalRow,
   EnquirySummary,
   ExceptionRow,
@@ -5179,6 +5180,29 @@ export function pilotDutyRates(now = Date.now()): DutyRateRow[] {
       notes: null,
       isActive: true,
     }))
+}
+
+/**
+ * Serves `listFxRates` — the rates the pilot's USD cards are priced through,
+ * at roughly the levels the demo's KWD totals were computed at.
+ */
+export function pilotFxRates(now = Date.now()): FxRateRow[] {
+  return [
+    {
+      fromCurrency: 'AED',
+      toCurrency: 'KWD',
+      rate: '0.08360000',
+      effectiveOn: day(now, 0),
+      source: 'manual',
+    },
+    {
+      fromCurrency: 'USD',
+      toCurrency: 'KWD',
+      rate: '0.30700000',
+      effectiveOn: day(now, 0),
+      source: 'manual',
+    },
+  ]
 }
 
 /**

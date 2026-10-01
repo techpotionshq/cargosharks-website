@@ -22,6 +22,9 @@
 import { describe, expect, it } from 'vitest'
 import { hasExpired, renderQuotationHtml, type QuotationView } from './quotation'
 
+/** The day the fixture was sent — inside its validity, for the overlay tests. */
+const ISSUED = new Date('2026-06-15T09:00:00Z')
+
 const base: QuotationView = {
   reference: 'QT-KWI-2026-00184',
   version: 1,
@@ -144,6 +147,24 @@ describe('the quotation', () => {
     })
 
     /**
+     * Sent while valid, printed after it lapsed — the copy the overlay is for.
+     * It compared against the send date, on which every quote is still valid.
+     */
+    it('marks a quotation sent before it lapsed when it is printed after', () => {
+      const sentWhileValid = quote({
+        validUntil: '2026-06-20',
+        issuedAt: new Date('2026-06-15T09:00:00Z'),
+      })
+
+      expect(renderQuotationHtml(sentWhileValid, 'en', new Date('2026-06-25T09:00:00Z'))).toContain(
+        'EXPIRED',
+      )
+      expect(
+        renderQuotationHtml(sentWhileValid, 'en', new Date('2026-06-18T09:00:00Z')),
+      ).not.toContain('EXPIRED')
+    })
+
+    /**
      * A quotation valid until the 30th is valid all day on the 30th.
      *
      * Comparing a date column against an instant expires it at midnight UTC,
@@ -177,11 +198,13 @@ describe('the quotation', () => {
     })
 
     it('marks a draft that has not been sent', () => {
-      expect(renderQuotationHtml(quote({ status: 'draft' }), 'en')).toContain('DRAFT')
+      // Printed the day it was drafted, inside its validity.
+      expect(renderQuotationHtml(quote({ status: 'draft' }), 'en', ISSUED)).toContain('DRAFT')
     })
 
     it('leaves a live quotation unmarked', () => {
-      const html = renderQuotationHtml(quote(), 'en')
+      // Printed within its validity — the overlay is decided by the print date.
+      const html = renderQuotationHtml(quote(), 'en', ISSUED)
 
       expect(html).not.toContain('EXPIRED')
       expect(html).not.toContain('SUPERSEDED')

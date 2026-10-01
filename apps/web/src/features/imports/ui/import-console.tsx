@@ -19,7 +19,7 @@
  * operator is looking at rather than one uploaded some minutes ago.
  */
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { issuesCsv } from '@qabandi/core/import'
 import { Button } from '@/ui/layout'
@@ -70,6 +70,8 @@ export function ImportConsole({
   const [overrides, setOverrides] = useState<Record<string, number | null>>({})
   const [fileName, setFileName] = useState('')
   const t = useTranslations('importsValidation')
+  const fileInput = useRef<HTMLInputElement>(null)
+  const chosen = useRef<File | null>(null)
 
   // The mapping the engine guessed, with anything the operator changed layered
   // on top. Reset whenever a different file is chosen.
@@ -78,6 +80,37 @@ export function ImportConsole({
     for (const field of fields) base[field.key] = state.mapping?.[field.key] ?? null
     return { ...base, ...overrides }
   }, [fields, state.mapping, overrides])
+
+  /*
+    What is posted is what somebody decided, not every field (S13).
+
+    Before the first check this posted the whole table above — every field,
+    null — and the engine treats a posted mapping as the operator's word, so
+    `autoMap` never ran, not even on the template this screen offers for
+    download. Until the server has guessed, only the operator's own changes go;
+    after a check, the guess it returned plus those changes.
+  */
+  // A guess about a different file is no guess about this one.
+  const posted = state.mapping && state.fileName === fileName ? mapping : overrides
+
+  /*
+    React resets a form after its action, which empties the file input — so
+    after "Check" the screen still named the file, "Import" then had nothing to
+    send, and choosing it again threw the operator's mapping away (S13). The
+    chosen file is put back, and choosing the *same* file again keeps the
+    mapping; a different file starts afresh.
+  */
+  useEffect(() => {
+    const input = fileInput.current
+    if (!input || !chosen.current || (input.files && input.files.length > 0)) return
+    try {
+      const transfer = new DataTransfer()
+      transfer.items.add(chosen.current)
+      input.files = transfer.files
+    } catch {
+      // A browser without a constructible DataTransfer: the operator re-chooses.
+    }
+  }, [state])
 
   const headers = state.headers ?? []
   const checked = state.headers !== undefined
@@ -108,7 +141,7 @@ export function ImportConsole({
   return (
     <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="kind" value={kind} />
-      <input type="hidden" name="mapping" value={JSON.stringify(mapping)} />
+      <input type="hidden" name="mapping" value={JSON.stringify(posted)} />
 
       {/* ---------------------------------------------------- 1. the file */}
       <Card>
@@ -120,14 +153,22 @@ export function ImportConsole({
               <Icon name="document" size={15} />
               {labels.chooseFile}
               <input
+                ref={fileInput}
                 type="file"
                 name="file"
                 accept=".csv,.tsv,.txt,text/csv,text/plain"
                 required
                 className="sr-only"
                 onChange={(event) => {
-                  setFileName(event.target.files?.[0]?.name ?? '')
-                  setOverrides({})
+                  const file = event.target.files?.[0] ?? null
+                  const same =
+                    file !== null &&
+                    chosen.current !== null &&
+                    file.name === chosen.current.name &&
+                    file.size === chosen.current.size
+                  chosen.current = file
+                  setFileName(file?.name ?? '')
+                  if (!same) setOverrides({})
                 }}
               />
             </label>

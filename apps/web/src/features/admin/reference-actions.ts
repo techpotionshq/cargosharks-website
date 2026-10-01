@@ -28,6 +28,7 @@ import {
   chargeableRules,
   dutyRates,
   freeTimeRules,
+  fxRates,
   milestoneTemplates,
   withActor,
   workingCalendars,
@@ -599,4 +600,85 @@ export async function saveFreeTimeRule(
 
   revalidatePath('/reference')
   return succeed(data.kind)
+}
+
+/* ------------------------------------------------------- exchange rates */
+
+const fxSchema = (tv: Translate) =>
+  z.object({
+    fromCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, tv('unknownCurrency'))
+      .transform((v) => v.toUpperCase()),
+    toCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, tv('unknownCurrency'))
+      .transform((v) => v.toUpperCase()),
+    // `numeric(19,8)`: eight places, because a weak currency onto a strong
+    // one — JPY into KWD — is 0.00204082 and two places is zero.
+    rate: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,8})?$/, tv('fxRateExample'))
+      .refine((v) => /[1-9]/.test(v), tv('fxRateExample')),
+    effectiveOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+  })
+
+/**
+ * An exchange rate, entered by hand — S12.
+ *
+ * Every seeded rate card is in USD and every branch quotes in its own base,
+ * so pricing needs a rate onto the base and refuses without one. The only
+ * source was the service's fx-refresh worker, which a fresh instance — or one
+ * with no feed configured — does not run, and no screen could enter one: on a
+ * new deployment every sea enquiry refused "Price it". This is that screen's
+ * action, under the permission the `fx_rates` policy already names.
+ *
+ * Written as `source = 'manual'`, one row per pair and day. The same pair and
+ * day entered again corrects that day's manual figure (the audit trigger keeps
+ * the old one) rather than adding a second rate for pricing to choose between;
+ * a feed's row for the same day is another source and is left alone. Readers
+ * take the newest rate on or before the pricing date, so a new day's rate
+ * takes over from yesterday's without anything being deleted.
+ */
+export async function saveFxRate(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('adminValidation')
+
+  const parsed = await localeParse(fxSchema(tv), {
+    fromCurrency: read(form, 'fromCurrency') ?? '',
+    toCurrency: read(form, 'toCurrency') ?? '',
+    rate: read(form, 'rate') ?? '',
+    effectiveOn: read(form, 'effectiveOn') ?? '',
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  if (data.fromCurrency === data.toCurrency) {
+    return fail({ toCurrency: tv('fxSameCurrency') }, echo(form))
+  }
+
+  try {
+    await withActor(session.actor, (tx) =>
+      tx
+        .insert(fxRates)
+        .values({ ...data, source: 'manual', takenAt: new Date() })
+        .onConflictDoUpdate({
+          target: [fxRates.fromCurrency, fxRates.toCurrency, fxRates.effectiveOn, fxRates.source],
+          set: { rate: data.rate, takenAt: new Date(), updatedAt: new Date() },
+        }),
+    )
+  } catch (error) {
+    // A code the currencies table does not hold.
+    if (isForeignKeyViolation(error)) {
+      return fail({ fromCurrency: tv('unknownCurrency') }, echo(form))
+    }
+    throw error
+  }
+
+  revalidatePath('/reference')
+  return succeed(`${data.fromCurrency}${data.toCurrency}`)
 }

@@ -24,13 +24,15 @@
 
 import { sql } from 'drizzle-orm'
 import {
-  applyMargin,
   chargeableWeight,
   currencyLookup,
   dayIn,
   dec,
+  distributeMargin,
   fxRate,
+  identityRate,
   priceLines,
+  roundWith,
   selectBreak,
   summariseMargin,
   toScale,
@@ -49,7 +51,16 @@ import type { Tx } from './actor'
 
 /** What pricing can answer with — the caller turns each into a sentence. */
 export type PricingRefusal =
-  'not_found' | 'no_mode' | 'no_container_count' | 'no_cover' | 'no_margin' | 'cannot_price'
+  | 'not_found'
+  | 'no_mode'
+  | 'no_container_count'
+  | 'no_cover'
+  | 'no_margin'
+  | 'cannot_price'
+  /** A version of this enquiry's quotation was accepted; it is never superseded (S2). */
+  | 'quote_accepted'
+  /** Auto-draft only: somebody priced the enquiry first (S19). */
+  | 'already_quoted'
 
 export type PriceOutcome =
   { readonly reference: string } | { readonly error: PricingRefusal; readonly detail?: string }
@@ -57,6 +68,13 @@ export type PriceOutcome =
 export interface PriceEnquiryHooks {
   /** Called before superseding an existing quotation — the `quote.revise` gate. */
   readonly assertRevise?: () => void
+  /**
+   * Write only a first quotation — refuse `already_quoted` if any exists. The
+   * auto-draft sweep's: it picked the enquiry because it had no quote, and a
+   * coordinator who priced it meanwhile must not have that draft superseded
+   * by the machine's (S19).
+   */
+  readonly firstOnly?: boolean
 }
 
 /** How long an instant quotation stands. Beyond this it expires by itself. */
@@ -217,13 +235,35 @@ export async function priceEnquiryToQuote(
     } else {
       marginRule = houseMargin(enquiry, opts.baseCurrency)
       if (!marginRule) return { error: 'no_margin' }
+      /*
+        The margin is laid on the base-currency cost, once for the quotation
+        (R2). It used to be applied to each line's card-currency `amount` too,
+        which threw a currency mismatch for an absolute or target rule (base)
+        on a USD card, and applied that rule once per line. `distributeMargin`
+        decides how a whole-quote rule is shared across the lines and rounds
+        each one; see its comment for why in proportion to cost.
+
+        The sell line's rate is its sell amount over its quantity, in base —
+        never the buy rate it was costed at, which printed beside the margined
+        amount on the customer's quotation (qty 2 × our buy rate ≠ the amount)
+        and handed the customer the rate we buy at.
+      */
+      const sells = distributeMargin(
+        cost.map((line) => line.amountInBase),
+        marginRule,
+        lookup,
+      )
       priced = [
         ...cost,
-        ...cost.map((line) => ({
+        ...cost.map((line, index) => ({
           ...line,
           direction: 'revenue' as const,
-          amount: applyMargin(line.amount, marginRule!),
-          amountInBase: applyMargin(line.amountInBase, marginRule!),
+          rate: line.quantity.isZero()
+            ? sells[index]!.amount
+            : sells[index]!.amount.dividedBy(line.quantity),
+          amount: sells[index]!,
+          amountInBase: sells[index]!,
+          fx: identityRate(opts.baseCurrency, pricedAt),
         })),
       ]
     }
@@ -234,7 +274,17 @@ export async function priceEnquiryToQuote(
   const revenue = priced.filter((line) => line.direction === 'revenue')
   if (revenue.length === 0) return { error: 'no_cover' }
 
-  const totals = summariseMargin(priced, opts.baseCurrency)
+  /*
+    Totals from the lines as they are stored — each rounded to the currency
+    first — so the lines on the quotation add up to the total beneath them.
+    Rounding the unrounded sum instead could differ from the printed lines by
+    a fil per few lines.
+  */
+  const rounded = priced.map((line) => ({
+    direction: line.direction,
+    amountInBase: roundWith(line.amountInBase, lookup),
+  }))
+  const totals = summariseMargin(rounded, opts.baseCurrency)
   /*
     The totals are in the entity's base currency — `summariseMargin` adds each
     line's `amountInBase` — so that is the currency the quotation carries.
@@ -248,7 +298,7 @@ export async function priceEnquiryToQuote(
   const validUntil = new Date(pricedAt)
   validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
 
-  const reference = await writeQuote(
+  return writeQuote(
     tx,
     {
       enquiryId,
@@ -313,10 +363,8 @@ export async function priceEnquiryToQuote(
         sortOrder: index,
       })),
     },
-    hooks.assertRevise ?? (() => {}),
+    hooks,
   )
-
-  return { reference }
 }
 
 // --- the pieces `priceEnquiry` was built from --------------------------------
@@ -479,24 +527,13 @@ interface QuoteWrite {
  * Write the quotation and its lines, superseding the previous version — the same
  * numbering and versioning `createQuote` performs, because it is the same act.
  */
-async function writeQuote(tx: Tx, write: QuoteWrite, assertRevise: () => void): Promise<string> {
-  const [latest] = await tx
-    .execute(
-      sql`
-    select id, version, reference from quotes
-     where enquiry_id = ${write.enquiryId}
-     order by version desc limit 1
-  `,
-    )
-    .then((r) => r.rows as { id: string; version: number; reference: string }[])
-
-  if (latest) assertRevise()
-
-  const version = (latest?.version ?? 0) + 1
-  const seqRow = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
-  const seq = (seqRow.rows[0] as { seq: string }).seq
-  const year = new Date().getUTCFullYear()
-  const stem = latest?.reference?.replace(/-v\d+$/, '') ?? `QUO-${year}-${seq.padStart(5, '0')}`
+async function writeQuote(
+  tx: Tx,
+  write: QuoteWrite,
+  hooks: PriceEnquiryHooks,
+): Promise<PriceOutcome> {
+  const next = await nextQuoteVersion(tx, write.enquiryId, hooks)
+  if (!next.ok) return { error: next.reason }
 
   const inserted = await tx
     .execute(
@@ -504,8 +541,8 @@ async function writeQuote(tx: Tx, write: QuoteWrite, assertRevise: () => void): 
     insert into quotes (reference, enquiry_id, branch_id, version, status, currency,
                         total_sell, total_cost, valid_until, priced_snapshot,
                         rate_card_version_id, prepared_by_id)
-    values (${version === 1 ? stem : `${stem}-v${version}`}, ${write.enquiryId},
-            ${write.branchId}, ${version}, 'draft', ${write.currency},
+    values (${next.reference}, ${write.enquiryId},
+            ${write.branchId}, ${next.version}, 'draft', ${write.currency},
             ${write.totalSell}, ${write.totalCost}, ${write.validUntil}::date,
             ${JSON.stringify(write.snapshot)}::jsonb,
             ${(write.snapshot.sellCardId as string | null) ?? null}, ${write.preparedById})
@@ -523,11 +560,7 @@ async function writeQuote(tx: Tx, write: QuoteWrite, assertRevise: () => void): 
     `)
   }
 
-  if (latest) {
-    await tx.execute(sql`
-      update quotes set status = 'superseded', updated_at = now() where id = ${latest.id}
-    `)
-  }
+  await retireQuoteVersion(tx, next.previousId, inserted.id)
 
   // The enquiry has been answered — a priced quotation is a first reply.
   await tx.execute(sql`
@@ -539,5 +572,109 @@ async function writeQuote(tx: Tx, write: QuoteWrite, assertRevise: () => void): 
      where id = ${write.enquiryId}
   `)
 
-  return inserted.reference
+  return { reference: inserted.reference }
+}
+
+// --- versioning, shared with the manual "New quotation" form ----------------
+
+export type QuoteVersionOutcome =
+  | {
+      readonly ok: true
+      readonly version: number
+      readonly reference: string
+      /** The version this one replaces, or null for a first quotation. */
+      readonly previousId: string | null
+    }
+  | { readonly ok: false; readonly reason: 'quote_accepted' | 'already_quoted' }
+
+/**
+ * The next version and reference for an enquiry's quotation — the numbering
+ * `priceEnquiryToQuote` and the web's `createQuote` both perform, because they
+ * are the same act and drifted apart as two copies.
+ *
+ * Three rules, each a bug it once was:
+ *
+ * - **The enquiry row is locked first.** Auto-draft and a coordinator's "Price
+ *   it" in the same minute both read "no quote yet", both computed version 1,
+ *   and the second died on `quotes_version_unique` (S19). `for update` on the
+ *   enquiry makes the second wait for the first and then number after it.
+ * - **An accepted quotation is never superseded.** Re-pricing used to retire
+ *   whatever the latest version was, accepted or not, with no machine check —
+ *   one click un-accepted the offer a job may already be booked against (S2).
+ *   The customer said yes to that version; a different price now is a new
+ *   enquiry, not a revision.
+ * - **The reference is the first version's stem.** `createQuote` stemmed from
+ *   the previous reference whole, so v7 was `QUO-2026-00006-v2-v3-v4-v5-v6-v7`
+ *   (S6). Every trailing `-vN` is stripped, which also stops references
+ *   already compounded that way from growing further.
+ */
+export async function nextQuoteVersion(
+  tx: Tx,
+  enquiryId: string,
+  hooks: PriceEnquiryHooks = {},
+): Promise<QuoteVersionOutcome> {
+  await tx.execute(sql`select id from enquiries where id = ${enquiryId} for update`)
+
+  const [latest] = await tx
+    .execute(
+      sql`
+    select id, version, reference,
+           exists (select 1 from quotes a
+                    where a.enquiry_id = ${enquiryId} and a.status = 'accepted') as "hasAccepted"
+      from quotes
+     where enquiry_id = ${enquiryId}
+     order by version desc limit 1
+  `,
+    )
+    .then(
+      (r) => r.rows as { id: string; version: number; reference: string; hasAccepted: boolean }[],
+    )
+
+  if (latest?.hasAccepted) return { ok: false, reason: 'quote_accepted' }
+  if (latest && hooks.firstOnly) return { ok: false, reason: 'already_quoted' }
+  if (latest) hooks.assertRevise?.()
+
+  const version = (latest?.version ?? 0) + 1
+  let stem = latest?.reference.replace(/(-v\d+)+$/, '')
+  if (!stem) {
+    const seqRow = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
+    const seq = (seqRow.rows[0] as { seq: string }).seq
+    stem = `QUO-${new Date().getUTCFullYear()}-${seq.padStart(5, '0')}`
+  }
+
+  return {
+    ok: true,
+    version,
+    reference: version === 1 ? stem : `${stem}-v${version}`,
+    previousId: latest?.id ?? null,
+  }
+}
+
+/**
+ * Point the replaced version at its replacement, and retire it where the quote
+ * machine allows.
+ *
+ * `superseded_by_id` is what every "current quotation" read filters on — the
+ * enquiry queue, the comparison page — and nothing wrote it, so an enquiry
+ * priced seven times appeared seven times in the queue and withdrawn versions
+ * were offered as options, one of them "Recommended" (S3). It is set whatever
+ * the old status: a rejected or expired version is no more current than a
+ * superseded one. The *status* moves only from `draft` or `sent`, the two
+ * states `quoteMachine` lets a revision supersede; a rejected quote stays
+ * rejected, because that is what the customer said.
+ */
+export async function retireQuoteVersion(
+  tx: Tx,
+  previousId: string | null,
+  replacementId: string,
+): Promise<void> {
+  if (!previousId) return
+  await tx.execute(sql`
+    update quotes
+       set superseded_by_id = ${replacementId},
+           status = case when status in ('draft', 'sent') then 'superseded'::quote_status
+                         else status end,
+           updated_at = now()
+     where id = ${previousId}
+  `)
 }

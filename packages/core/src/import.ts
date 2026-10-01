@@ -680,7 +680,11 @@ export interface ImportReport<T = Record<string, unknown>, C extends string = ne
 
 export interface ValidateOptions {
   readonly lookups?: ImportLookups
-  /** Explicit mapping, for `FR-RT-09`. Omitted, `autoMap` decides. */
+  /**
+   * Explicit choices, for `FR-RT-09`, laid over what `autoMap` decides: a field
+   * named here (null included, meaning "not mapped") wins; one left out keeps
+   * the guess.
+   */
   readonly mapping?: Mapping
   /** Keys already in the database, per unique field, for collision reporting. */
   readonly existing?: Readonly<Record<string, ReadonlySet<string>>>
@@ -737,7 +741,17 @@ export function validateImport<T = Record<string, unknown>, C extends string = n
     }
   }
 
-  const mapping = options.mapping ?? autoMap(headers, descriptor.fields)
+  /*
+    The operator's choices laid over the engine's guess, field by field (S13).
+
+    An explicit mapping used to *replace* the guess, and the import screen
+    always posted one — every field, null until someone picked a column — so
+    `autoMap` never ran, not even on the system's own template, and every
+    file arrived with its required columns "missing". A field the operator did
+    not touch now keeps the guess; one they set, or deliberately unmapped
+    (null), wins. A full mapping overrides every field exactly as before.
+  */
+  const mapping = { ...autoMap(headers, descriptor.fields), ...options.mapping }
 
   const missingRequired = descriptor.fields
     .filter((field) => field.required && mapping[field.key] == null)
@@ -989,6 +1003,8 @@ export interface GroupedRateCard {
     readonly chargeCode: string
     readonly basis: string
     readonly rate: string
+    /** The line's own currency; `rate_card_lines.currency` carries it. */
+    readonly currency: string
     readonly minimum: string | null
     readonly maximum: string | null
     readonly containerType: string | null
@@ -996,15 +1012,19 @@ export interface GroupedRateCard {
   }[]
 }
 
+/**
+ * What identifies a card: the lane and the validity window — not the currency.
+ *
+ * Currency was part of the key, so a Gulf reply pricing ocean freight in USD
+ * and terminal handling in KWD became two cards with the same partner, lane
+ * and validity, and `rate_cards_no_overlap` refused the second with 23P01 —
+ * the reply could never be accepted, and auto-promote retried it every minute
+ * (S4). A line carries its own currency (`rate_card_lines.currency`, which
+ * pricing already reads per line), so the reply is one card with lines in two
+ * currencies; the card's header currency is its first line's.
+ */
 export function rateCardKey(row: RateRowValues): string {
-  return [
-    row.mode,
-    row.originCode,
-    row.destinationCode,
-    row.currency,
-    row.validFrom,
-    row.validTo ?? '',
-  ].join('|')
+  return [row.mode, row.originCode, row.destinationCode, row.validFrom, row.validTo ?? ''].join('|')
 }
 
 /** Mutable while grouping; frozen into `GroupedRateCard` on the way out. */
@@ -1049,6 +1069,7 @@ export function groupRateCards(rows: readonly ImportRow<RateRowValues>[]): Group
       chargeCode: values.chargeCode,
       basis: values.basis,
       rate: values.rate,
+      currency: values.currency,
       minimum: values.minimum,
       maximum: values.maximum,
       containerType: values.containerType,

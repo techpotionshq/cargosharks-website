@@ -153,3 +153,11 @@ export function isUniqueViolation(error: unknown): boolean {
 export function isForeignKeyViolation(error: unknown): boolean {
   return sqlState(error) === '23503'
 }
+
+/**
+ * An exclusion or temporal-uniqueness violation — `rate_cards_no_overlap`,
+ * the `WITHOUT OVERLAPS` key that refuses two cards for one lane and window.
+ */
+export function isOverlapViolation(error: unknown): boolean {
+  return sqlState(error) === '23P01'
+}

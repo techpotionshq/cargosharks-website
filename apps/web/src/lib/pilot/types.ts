@@ -328,6 +328,18 @@ export interface QuoteComparison {
    */
   readonly hasResponded: boolean
   readonly isClosed: boolean
+  /**
+   * The enquiry's branch and its base currency — what a manual "New
+   * quotation" defaults to, rather than the session's first branch and USD
+   * (S7). Optional, so a fixture without them still renders.
+   */
+  readonly branchId?: string
+  readonly baseCurrency?: string
+  /**
+   * Whether the customer accepted a version. An accepted quotation is never
+   * superseded, so "Price it" and "New quotation" are withdrawn (S2).
+   */
+  readonly hasAccepted?: boolean
   readonly options: readonly QuoteOptionView[]
 }
 
@@ -1053,6 +1065,16 @@ export interface DutyRateRow {
   readonly effectiveTo: string | null
   readonly notes: string | null
   readonly isActive: boolean
+}
+
+/** The newest rate for one currency pair — the reference page's FX panel (S12). */
+export interface FxRateRow {
+  readonly fromCurrency: string
+  readonly toCurrency: string
+  readonly rate: string
+  readonly effectiveOn: string
+  /** `manual`, or the feed that wrote it. */
+  readonly source: string
 }
 
 /** Mirrors `EngineRuleRow`. `raw` pre-fills the edit dialog. */

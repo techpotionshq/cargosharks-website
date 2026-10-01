@@ -9,6 +9,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -17,6 +18,7 @@ import {
   saveChargeableRule,
   saveDutyRate,
   saveFreeTimeRule,
+  saveFxRate,
   saveHoliday,
   saveMilestoneTemplate,
   saveWorkingCalendar,
@@ -453,6 +455,91 @@ export async function DutyRateDialog({
       iconOnly={Boolean(defaults?.id)}
       labels={{
         open: defaults?.id ? tc('edit') : t('open'),
+        title: t('title'),
+        description: t('description'),
+        submit: tc('save'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * An exchange rate, by hand — S12.
+ *
+ * Pricing converts every card into the branch's base currency and refuses
+ * without a rate; on an instance with no FX feed this is the only way one
+ * arrives. One unit of the first currency in the second: USD → KWD 0.307.
+ */
+export async function FxRateDialog({
+  defaults,
+  variant = 'secondary',
+}: {
+  readonly defaults?: { fromCurrency?: string; toCurrency?: string; rate?: string }
+  readonly variant?: 'primary' | 'secondary' | 'ghost'
+}) {
+  const session = await requireSession()
+  if (!can(session, 'admin.reference.write')) return null
+
+  const [options, t, tc] = await Promise.all([
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
+    getTranslations('fxRateForm'),
+    getTranslations('common'),
+  ])
+
+  const fields: FieldSpec[] = [
+    {
+      kind: 'select',
+      name: 'fromCurrency',
+      label: t('from'),
+      span: 6,
+      required: true,
+      options: options.currencies,
+      placeholder: tc('choose'),
+      defaultValue: defaults?.fromCurrency,
+    },
+    {
+      kind: 'select',
+      name: 'toCurrency',
+      label: t('to'),
+      span: 6,
+      required: true,
+      options: options.currencies,
+      placeholder: tc('choose'),
+      hint: t('toHint'),
+      defaultValue: defaults?.toCurrency,
+    },
+    {
+      kind: 'text',
+      name: 'rate',
+      label: t('rate'),
+      span: 6,
+      required: true,
+      mono: true,
+      hint: t('rateHint'),
+      defaultValue: defaults?.rate,
+    },
+    {
+      kind: 'date',
+      name: 'effectiveOn',
+      label: t('effectiveOn'),
+      span: 6,
+      required: true,
+      hint: t('effectiveOnHint'),
+      defaultValue: todayIn(),
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={saveFxRate}
+      fields={fields}
+      icon="finance"
+      variant={variant}
+      iconOnly={Boolean(defaults)}
+      labels={{
+        open: defaults ? tc('edit') : t('open'),
         title: t('title'),
         description: t('description'),
         submit: tc('save'),

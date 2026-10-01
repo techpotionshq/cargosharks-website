@@ -340,6 +340,22 @@ describe.skipIf(!enabled)('bulk import', () => {
       expect(state.ok).toBe(true)
     })
 
+    /**
+     * The screen posts only what the operator chose — nothing, before the
+     * first check — and the headings are still read for every field it left
+     * alone. A posted mapping used to replace the guess outright (S13).
+     */
+    it('auto-maps the fields a posted mapping leaves out', async () => {
+      const state = await runImport(
+        {},
+        upload('customers', customerSheet(unique('AM')), {
+          branchId: HOME_BRANCH,
+          mapping: JSON.stringify({}),
+        }),
+      )
+      expect(state.ok).toBe(true)
+    })
+
     it('drops a column whose mapped index is not a real one', async () => {
       const state = await runImport(
         {},

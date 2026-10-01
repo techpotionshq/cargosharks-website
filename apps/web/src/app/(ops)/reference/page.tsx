@@ -18,6 +18,7 @@ import {
   listCalendars,
   listChargeTypes,
   listDutyRates,
+  listFxRates,
   listEngineRules,
   listMilestoneTemplates,
   listReferenceSample,
@@ -33,6 +34,7 @@ import { ReferenceDialog } from '@/features/admin/ui/dialogs'
 import {
   ChargeableRuleDialog,
   DutyRateDialog,
+  FxRateDialog,
   FreeTimeRuleDialog,
   HolidayDialog,
   MilestoneTemplateDialog,
@@ -70,7 +72,7 @@ export default async function ReferencePage() {
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [counts, charges, sample, milestones, calendars, duties, rules] = await Promise.all([
+  const [counts, charges, sample, milestones, calendars, duties, rules, fx] = await Promise.all([
     referenceCounts(session.actor),
     listChargeTypes(session.actor),
     listReferenceSample(session.actor, locale),
@@ -78,6 +80,7 @@ export default async function ReferencePage() {
     listCalendars(session.actor),
     listDutyRates(session.actor),
     listEngineRules(session.actor),
+    listFxRates(session.actor),
   ])
 
   /** `480` reads as `08:00` — the column is minutes from local midnight. */
@@ -560,6 +563,69 @@ export default async function ReferencePage() {
                     <TD className="numeric text-[0.8125rem] text-ink-muted">{row.detail}</TD>
                     <TD align="end">
                       <FreeTimeRuleDialog defaults={row.raw as never} />
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </TableShell>
+          )}
+        </Card>
+      </Grid>
+
+      {/*
+        Exchange rates (S12). Pricing converts every card into the branch
+        currency and refuses without a rate; with no FX feed configured, a
+        fresh instance had no rates and no screen to enter one, so every sea
+        enquiry refused "Price it".
+      */}
+      <Grid className="mt-4">
+        <Card className={`${PANEL} lg:col-span-6`} padding="none">
+          <div className="p-5 pb-3">
+            <CardHeader
+              icon="finance"
+              eyebrow={t('eyebrow')}
+              title={t('fxRates')}
+              description={t('fxRatesHint')}
+              actions={<FxRateDialog />}
+            />
+          </div>
+          {fx.length === 0 ? (
+            <EmptyState icon="finance" title={t('noFxRates')} description={t('noFxRatesHint')} />
+          ) : (
+            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+              <THead>
+                <TR>
+                  <TH>{t('fxPair')}</TH>
+                  <TH align="end">{t('rate')}</TH>
+                  <TH>{t('fxEffective')}</TH>
+                  <TH>{t('fxSource')}</TH>
+                  <TH align="end" />
+                </TR>
+              </THead>
+              <TBody>
+                {fx.map((row) => (
+                  <TR key={`${row.fromCurrency}-${row.toCurrency}`}>
+                    <TD className="ref whitespace-nowrap">
+                      {/* Codes read left to right in both languages. */}
+                      <bdi dir="ltr">
+                        {row.fromCurrency} → {row.toCurrency}
+                      </bdi>
+                    </TD>
+                    <TD align="end" numeric className="font-semibold">
+                      {trimDecimal(row.rate)}
+                    </TD>
+                    <TD className="numeric text-ink-muted">{row.effectiveOn}</TD>
+                    <TD className="text-ink-muted">
+                      {row.source === 'manual' ? t('fxManual') : row.source}
+                    </TD>
+                    <TD align="end">
+                      <FxRateDialog
+                        defaults={{
+                          fromCurrency: row.fromCurrency,
+                          toCurrency: row.toCurrency,
+                          rate: trimDecimal(row.rate) ?? row.rate,
+                        }}
+                      />
                     </TD>
                   </TR>
                 ))}

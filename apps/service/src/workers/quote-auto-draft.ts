@@ -77,7 +77,9 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
   for (const candidate of eligible) {
     try {
       const outcome = await withActor(actor, (tx) =>
-        priceEnquiryToQuote(tx, candidate.enquiryId, SYSTEM_PRINCIPAL_ID),
+        // First quotation only: a coordinator who priced it since the candidate
+        // list was read keeps their draft (S19).
+        priceEnquiryToQuote(tx, candidate.enquiryId, SYSTEM_PRINCIPAL_ID, { firstOnly: true }),
       )
       if (!('reference' in outcome)) {
         // No cover, no house margin, or a figure the enquiry does not carry —
@@ -118,19 +120,24 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
  * order the same fifty came back every sweep, and fifty refusals starved every
  * enquiry behind them. Two guards: a sea FCL enquiry with no container count
  * is left out (pricing refuses it until a person enters one), and the newest
- * come first, so a fresh award is drafted even behind a backlog of refusals.
+ * *award* comes first, so a fresh award is drafted even behind a backlog of
+ * refusals. Ordered by when the rate was accepted, not by the enquiry's age
+ * (R4): an old enquiry awarded today sat behind fifty newer ones that
+ * `no_margin` refuses every sweep.
  */
 async function loadEligible(tx: Tx): Promise<{ enquiryId: string }[]> {
   const result = await tx.execute(sql`
     select e.id as "enquiryId"
       from enquiries e
+      join lateral (
+        select max(r.updated_at) as awarded_at
+          from rate_requests r
+         where r.enquiry_id = e.id and r.status = 'accepted'
+      ) a on a.awarded_at is not null
      where e.status in ('new', 'assigned', 'rating')
-       and exists (
-         select 1 from rate_requests r where r.enquiry_id = e.id and r.status = 'accepted'
-       )
        and not exists (select 1 from quotes q where q.enquiry_id = e.id)
        and (e.mode is distinct from 'sea_fcl' or e.container_count is not null)
-     order by e.created_at desc
+     order by a.awarded_at desc, e.created_at desc
      limit ${ENQUIRY_BATCH}
   `)
   return result.rows as { enquiryId: string }[]

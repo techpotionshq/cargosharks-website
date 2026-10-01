@@ -89,6 +89,48 @@ describe('the charge context an agent reply is ranked on', () => {
     expect(summary.unpriced).toBe(2)
   })
 
+  /**
+   * Storage per day and insurance as a percentage are ordinary on a FCL
+   * quote. Every per_day and percent line was unpriced, and every reply with
+   * one counted as partial — never ranked, never auto-awarded (R1).
+   */
+  it('prices storage per day at one day, and does not call insurance partial', () => {
+    const ctx = chargeContextFor({
+      mode: 'sea_fcl',
+      grossWeightKg: null,
+      pieces: null,
+      containerCount: 2,
+    })
+
+    const summary = summariseRateReply(
+      [
+        ...reply,
+        row(4, { chargeCode: 'STORAGE', basis: 'per_day', rate: '15' }),
+        row(5, { chargeCode: 'INSURANCE', basis: 'percent', rate: '0.3' }),
+      ],
+      ctx,
+    )
+
+    // 4,120 + one day of storage; insurance needs a value no enquiry carries.
+    expect(summary.primary?.amount.amount.toString()).toBe('4135')
+    expect(summary.unpriced).toBe(1)
+    expect(summary.partial).toBe(0)
+  })
+
+  it('still calls a reply partial when its containers could not be counted', () => {
+    const summary = summariseRateReply(
+      reply,
+      chargeContextFor({
+        mode: 'sea_fcl',
+        grossWeightKg: null,
+        pieces: null,
+        containerCount: null,
+      }),
+    )
+
+    expect(summary.partial).toBe(2)
+  })
+
   it('gives no container count to a mode that is not FCL', () => {
     const ctx = chargeContextFor({
       mode: 'sea_lcl',

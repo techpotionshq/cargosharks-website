@@ -44,7 +44,8 @@ const {
   workingCalendars,
 } = await import('@qabandi/db')
 
-const { runQuoteExpiryWarnings, runInvoiceOverdueNotices } = await import('./commercial-reminders')
+const { runQuoteExpiryWarnings, runInvoiceOverdueNotices, runQuoteLapse } =
+  await import('./commercial-reminders')
 
 const BRANCH = '00000000-0000-7000-8000-00000000ba01'
 const CUSTOMER = '00000000-0000-7000-8000-00000000ba02'
@@ -274,6 +275,89 @@ describe.skipIf(!enabled)('the reminders nobody clicks', () => {
       await runQuoteExpiryWarnings(at('2036-03-09'))
 
       expect(await announced('quote.expiring', 'reference', reference)).toHaveLength(1)
+    })
+  })
+
+  /**
+   * Nothing ever expired a quotation, although the screens said it expired by
+   * itself (S9). Dated in the past on purpose: anything this sweep touches as
+   * of early 2026 really has lapsed, so the shared test database is left as
+   * the real worker would leave it.
+   */
+  describe('a quotation that has lapsed', () => {
+    const LAPSED = '2026-01-02'
+    const statusOf = async (reference: string) => {
+      const [row] = await withActor(systemActor, (tx) =>
+        tx
+          .select({ status: quotes.status, enquiryStatus: enquiries.status })
+          .from(quotes)
+          .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+          .where(eq(quotes.reference, reference)),
+      )
+      return row!
+    }
+    const enquiryQuoted = async (reference: string) =>
+      withActor(systemActor, async (tx) => {
+        const [row] = await tx
+          .select({ enquiryId: quotes.enquiryId })
+          .from(quotes)
+          .where(eq(quotes.reference, reference))
+        await tx.update(enquiries).set({ status: 'quoted' }).where(eq(enquiries.id, row!.enquiryId))
+        return row!.enquiryId
+      })
+
+    it('expires a sent quotation past its last day, and the enquiry it leaves', async () => {
+      const reference = await quote({ validUntil: LAPSED })
+      await enquiryQuoted(reference)
+
+      await runQuoteLapse(at('2026-01-05'))
+
+      expect(await statusOf(reference)).toEqual({ status: 'expired', enquiryStatus: 'expired' })
+    })
+
+    it('leaves it alone on its last valid day', async () => {
+      const reference = await quote({ validUntil: '2026-01-05' })
+
+      await runQuoteLapse(at('2026-01-05'))
+
+      expect((await statusOf(reference)).status).toBe('sent')
+    })
+
+    /** A newer version in flight is somebody's work; the enquiry stays quoted. */
+    it('keeps an enquiry with a newer draft quoted', async () => {
+      const reference = await quote({ validUntil: LAPSED })
+      const enquiryId = await enquiryQuoted(reference)
+      await withActor(systemActor, (tx) =>
+        tx.insert(quotes).values({
+          reference: `${reference}-v2`,
+          enquiryId,
+          branchId: BRANCH,
+          version: 2,
+          status: 'draft',
+          currency: 'KWD',
+          validUntil: '2036-12-31',
+        }),
+      )
+
+      await runQuoteLapse(at('2026-01-05'))
+
+      expect(await statusOf(reference)).toEqual({ status: 'expired', enquiryStatus: 'quoted' })
+    })
+
+    /** "Your quotation expires in three days" to a customer who said no (S9). */
+    it('warns nobody whose enquiry is already closed', async () => {
+      const reference = await quote({ validUntil: '2036-03-10' })
+      await withActor(systemActor, async (tx) => {
+        const [row] = await tx
+          .select({ enquiryId: quotes.enquiryId })
+          .from(quotes)
+          .where(eq(quotes.reference, reference))
+        await tx.update(enquiries).set({ status: 'lost' }).where(eq(enquiries.id, row!.enquiryId))
+      })
+
+      await runQuoteExpiryWarnings(at('2036-03-08'))
+
+      expect(await announced('quote.expiring', 'reference', reference)).toEqual([])
     })
   })
 

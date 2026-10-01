@@ -421,6 +421,108 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
     })
 
     /**
+     * The sell line's rate is the sell amount over its quantity — never our
+     * buy rate, which printed on the customer's quotation beside the margined
+     * amount, so qty × rate did not make the amount and the customer read the
+     * rate we buy at (R2).
+     */
+    it('writes the sell rate on a margined line, not the buy rate', async () => {
+      await setMargin('percent', '15')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'buy', [{ rate: '445.150' }])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const [line] = await linesOf((await quoteFor(id))!.id)
+      // 2 × 445.150 = 890.300 cost, +15% = 1,023.845 sell.
+      expect(line!.amount).toBe('1023.845000')
+      expect(Number(line!.rate)).toBeCloseTo(511.9225, 6)
+      expect(Number(line!.quantity) * Number(line!.rate)).toBeCloseTo(1023.845, 3)
+    })
+
+    /** Each line is rounded before the total, so the lines add up to it (R2). */
+    it('totals the rounded lines, so the quotation adds up', async () => {
+      await setMargin('percent', '10')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [0, 1, 2].map(() => ({ chargeTypeId: documentation, basis: 'flat', rate: '1.234' })),
+      )
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const quote = await quoteFor(id)
+      const lines = await linesOf(quote!.id)
+      expect(lines.map((l) => l.amount)).toEqual(['1.357000', '1.357000', '1.357000'])
+      expect(quote!.totalSell).toBe('4.071000')
+    })
+
+    /**
+     * An absolute or target margin is in the branch currency and applies to
+     * the whole quotation once. On a foreign-currency buy card it threw a
+     * currency mismatch and refused the enquiry, and on several lines it was
+     * applied once per line (R2).
+     */
+    it('lays an absolute margin once over a foreign-currency card', async () => {
+      await setMargin('absolute', '50')
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'INR',
+            toCurrency: 'KWD',
+            rate: '0.01000000',
+            source: 'pricing-test',
+            effectiveOn: new Date().toISOString().slice(0, 10),
+          })
+          .onConflictDoNothing(),
+      )
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [
+          { basis: 'per_container', rate: '25000.00', currency: 'INR' },
+          { chargeTypeId: documentation, basis: 'flat', rate: '5000.00', currency: 'INR' },
+        ],
+        { currency: 'INR' },
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      // 2 × 25,000 + 5,000 = 55,000 INR → 550.000 KWD cost; + 50 once = 600.
+      expect(quote!.totalCost).toBe('550.000000')
+      expect(quote!.totalSell).toBe('600.000000')
+      const lines = await linesOf(quote!.id)
+      expect(lines.map((l) => l.amount)).toEqual(['545.455000', '54.545000'])
+    })
+
+    it('quotes a target sell once, however many lines the card has', async () => {
+      await setMargin('target_sell', '500')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [0, 1, 2].map((i) => ({
+          chargeTypeId: i === 0 ? oceanFreight : documentation,
+          basis: 'flat',
+          rate: '100.000',
+        })),
+      )
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect((await quoteFor(id))!.totalSell).toBe('500.000000')
+    })
+
+    /**
      * Refuses rather than guessing.
      *
      * A house margin of zero is a decision; no house margin is an absence, and
@@ -750,6 +852,73 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(all).toHaveLength(2)
       expect(all[0]!.status).toBe('superseded')
       expect(all[1]!.status).toBe('draft')
+    })
+
+    /** The replaced version points at its replacement (S3). */
+    it('records which version replaced the old one', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const all = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: quotes.id, supersededById: quotes.supersededById })
+          .from(quotes)
+          .where(eq(quotes.enquiryId, id))
+          .orderBy(quotes.version),
+      )
+      expect(all[0]!.supersededById).toBe(all[1]!.id)
+      expect(all[1]!.supersededById).toBeNull()
+    })
+
+    /**
+     * Re-pricing after the customer accepted retired the accepted quote with
+     * one click (S2). It is refused with a sentence instead.
+     */
+    it('refuses to re-price once a version was accepted', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+      await priceEnquiry({}, form({ enquiryId: id }))
+      await withActor(bothBranchesActor, (tx) =>
+        tx.update(quotes).set({ status: 'accepted' }).where(eq(quotes.enquiryId, id)),
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect(state.message).toBe('ledgerValidation.quoteAlreadyAccepted')
+      const quote = await quoteFor(id)
+      expect(quote!.version).toBe(1)
+      expect(quote!.status).toBe('accepted')
+    })
+
+    /**
+     * Two prices at once — auto-draft and a coordinator in the same minute —
+     * both read "no quote yet" and both wrote version 1; the second died on
+     * `quotes_version_unique` (S19). The enquiry lock numbers them in turn.
+     */
+    it('numbers two simultaneous prices one after the other', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+
+      const states = await Promise.all([
+        priceEnquiry({}, form({ enquiryId: id })),
+        priceEnquiry({}, form({ enquiryId: id })),
+      ])
+
+      expect(states.every((s) => s.message === undefined)).toBe(true)
+      const all = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ version: quotes.version })
+          .from(quotes)
+          .where(eq(quotes.enquiryId, id))
+          .orderBy(quotes.version),
+      )
+      expect(all.map((q) => q.version)).toEqual([1, 2])
     })
 
     /**

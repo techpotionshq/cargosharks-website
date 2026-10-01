@@ -69,6 +69,7 @@ import {
   exceptionCodes,
   exceptions,
   freeTimeClocks,
+  fxRates,
   invoiceLines,
   invoices,
   jobCargo,
@@ -970,6 +971,40 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       ])
       .onConflictDoNothing()
   }
+
+  // --- exchange rates -----------------------------------------------------
+  //
+  // Every demo buy card is in USD and both branches quote in their own base,
+  // so pricing needs a rate onto KWD and AED and refuses without one. The only
+  // other source is the service's fx-refresh worker, which a fresh demo
+  // instance usually is not running — and "Price it" then refused every sea
+  // enquiry (S12). Round-number rates near the market, dated well before any
+  // demo enquiry so the newest-on-or-before lookup always finds them, under a
+  // source of their own so a feed's or an administrator's rate for the same
+  // day is a separate row. Administrators correct them on /reference.
+  await tx
+    .insert(fxRates)
+    .values(
+      (
+        [
+          ['USD', 'KWD', '0.30700000'],
+          ['EUR', 'KWD', '0.33300000'],
+          ['GBP', 'KWD', '0.39000000'],
+          ['AED', 'KWD', '0.08360000'],
+          ['CNY', 'KWD', '0.04250000'],
+          ['USD', 'AED', '3.67250000'],
+          ['EUR', 'AED', '3.98000000'],
+          ['KWD', 'AED', '11.96000000'],
+        ] as const
+      ).map(([fromCurrency, toCurrency, rate]) => ({
+        fromCurrency,
+        toCurrency,
+        rate,
+        source: 'seed-demo',
+        effectiveOn: '2026-01-01',
+      })),
+    )
+    .onConflictDoNothing()
 
   const branchRows = await tx.select({ id: branches.id, code: branches.code }).from(branches)
   const branchBy = new Map<string, string>(

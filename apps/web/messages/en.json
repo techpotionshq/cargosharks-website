@@ -1041,7 +1041,15 @@
     "scope": "Applies to",
     "rule": "Rule",
     "kind": "Kind",
-    "terms": "Terms"
+    "terms": "Terms",
+    "fxRates": "Exchange rates",
+    "fxRatesHint": "The newest rate for each pair. Quotations convert every rate card into the branch currency at these.",
+    "noFxRates": "No exchange rates yet",
+    "noFxRatesHint": "A rate card in another currency cannot be priced until its rate into the branch currency is entered here.",
+    "fxPair": "Pair",
+    "fxEffective": "From",
+    "fxManual": "Entered by hand",
+    "fxSource": "Where from"
   },
   "audit": {
     "eyebrow": "Administration",
@@ -3467,7 +3475,9 @@
     "periodEndsAfterStart": "The end date must be after the start date.",
     "unknownContainerType": "Not a known container type. Choose one from the list.",
     "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
-    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again."
+    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again.",
+    "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
+    "fxSameCurrency": "Choose two different currencies."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -3630,7 +3640,10 @@
     "promoteNoCleanLines": "This reply has no clean lines to promote.",
     "promotePortMissing": "A port on the reply ({origin}→{destination}) is no longer on file.",
     "promoteRenewalEndsEarly": "This quote ends {validTo}, before the current rate lapses {lapses}. It cannot renew the lane.",
-    "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it."
+    "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it.",
+    "promoteOverlap": "This rate overlaps another card for the same agent and lane. End or replace that card first.",
+    "promoteLaneMismatch": "This reply priced a different lane ({lane}), so it cannot become this enquiry's rate.",
+    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Accepting this one would overlap it."
   },
   "enquiriesValidation": {
     "chooseOwner": "Choose who should own this.",
@@ -3659,6 +3672,9 @@
     "expectedOneOf": "one of {values}",
     "containerCountWhole": "Enter a whole number of containers, one or more.",
     "expectedPositiveInteger": "a whole number, one or more",
+    "wonNeedsQuoted": "An enquiry can be closed as won only once a quotation has been sent.",
+    "lostNotYet": "A new enquiry cannot be closed as lost. Assign it first, or cancel it.",
+    "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
     "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
     "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25."
   },
@@ -3829,6 +3845,12 @@
     "exportJournalAccountMissing": "No {account, select, rounding {rounding} receivables {receivables} payables {payables} tax {output tax} input_tax {input tax} bank {bank} fx_variance {FX variance} revenue {revenue} cost {cost} other {required}} account is configured, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Add it to the branch’s chart of accounts, then run the export again.",
     "exportJournalChargeTypeUnmapped": "The charge type {chargeType} has no {account, select, revenue {revenue} other {cost}} account, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Map it under Reference data → Charge types, then run the export again.",
     "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close.",
+    "quoteAlreadyAccepted": "The customer has accepted a version of this quotation, so it cannot be revised. A different price now needs a new enquiry.",
+    "pricingAlreadyQuoted": "This enquiry was priced by someone else a moment ago. Open the quotation they drafted.",
+    "quoteEnquiryClosed": "This enquiry is closed, so it cannot be quoted again.",
+    "quoteExpiryInPast": "The expiry date has already passed. A quotation must be valid until today or later.",
+    "quoteLineCurrency": "A line must be in the quotation's own currency.",
+    "quoteLapsed": "This quotation's validity has passed. Issue a new version with a fresh expiry date instead.",
     "exportInvoiceWithoutRate": "Invoice {reference} is in a foreign currency and has no exchange rate, so it cannot post. Give it a rate and run the export again.",
     "exportPeriodChanged": "Part of this period was posted by someone else while this export was being built. Nothing was posted — run it again.",
     "fxRateNeeded": "There is no exchange rate from {currency} to {base} yet. Enter the rate it was agreed at.",
@@ -3925,5 +3947,17 @@
     "london": "London",
     "newYork": "New York",
     "utc": "UTC"
+  },
+  "fxRateForm": {
+    "open": "Add an exchange rate",
+    "title": "Exchange rate",
+    "description": "What one unit of the first currency is worth in the second. Pricing converts every rate card into the branch currency at the newest rate on or before the pricing date.",
+    "from": "From",
+    "to": "Into",
+    "toHint": "Usually the branch's base currency — the one quotations are totalled in.",
+    "rate": "Rate",
+    "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
+    "effectiveOn": "Effective from",
+    "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
   }
 }

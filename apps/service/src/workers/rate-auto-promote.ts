@@ -29,6 +29,7 @@ import {
   SYSTEM_PRINCIPAL_ID,
   type Tx,
 } from '@qabandi/db'
+import { replyIsPartial } from '@qabandi/core'
 import { integration, type LiveIntegration } from '../settings'
 
 const STRATEGIES = ['first', 'all', 'wait'] as const
@@ -121,19 +122,43 @@ async function loadCandidates(
         ? sql`and (select min(w.created_at) from rate_requests w where w.enquiry_id = r.enquiry_id)
                 <= now() - ${waitHours} * interval '1 hour'`
         : sql``
+  /*
+    Mirrors `cheapestReply`, so a set the award can only answer "none" never
+    takes a batch place (R4). Only promotable replies are grouped — parsed
+    clean, with rows, on the lane asked about — and a set of several is a
+    candidate only if at least one of them is whole and can be brought onto
+    the branch's base currency; otherwise it would be skipped every minute, and
+    fifty such sets starved every enquiry behind them again. Newest *reply*
+    first, by when it arrived: `created_at` is when the RFQ was sent, so an
+    agent answering a week late ranked behind everything sent since.
+  */
   const result = await tx.execute(sql`
     select r.enquiry_id as "enquiryId", r.branch_id as "branchId"
       from rate_requests r
+      join branches b on b.id = r.branch_id
      where r.status = 'parsed'
        and r.enquiry_id is not null
        and r.rate_card_id is null
+       and r.response->>'ok' = 'true'
+       and r.response->>'laneMismatch' is null
+       and case when jsonb_typeof(r.response->'rows') = 'array'
+                then jsonb_array_length(r.response->'rows') else 0 end > 0
        and not exists (
          select 1 from rate_requests a
           where a.enquiry_id = r.enquiry_id and a.status = 'accepted'
        )
        ${readiness}
      group by r.enquiry_id, r.branch_id
-     order by max(r.created_at) desc
+    having count(*) = 1
+        or bool_or(
+             coalesce((r.response->>'partial')::int, (r.response->>'unpriced')::int, 0) = 0
+             and r.quoted_total is not null
+             and (r.quoted_currency = b.base_currency
+                  or exists (select 1 from fx_rates f
+                              where f.from_currency = r.quoted_currency
+                                and f.to_currency = b.base_currency))
+           )
+     order by max(coalesce(r.responded_at, r.updated_at)) desc
      limit ${ENQUIRY_BATCH}
   `)
   return result.rows as { enquiryId: string; branchId: string }[]
@@ -198,9 +223,24 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
     )
     .orderBy(rateRequests.createdAt)
 
+  /*
+    A reply that priced another lane is not promotable (S14): it would award a
+    card for a lane nobody asked about. `promoteRateReply` refuses it too; it
+    is dropped here so it neither wins the ranking nor counts as the lone
+    reply that is awarded without one.
+  */
   const promotable = rows.filter((r) => {
-    const response = (r.response ?? {}) as { ok?: boolean; rows?: unknown[] }
-    return response.ok === true && Array.isArray(response.rows) && response.rows.length > 0
+    const response = (r.response ?? {}) as {
+      ok?: boolean
+      rows?: unknown[]
+      laneMismatch?: string
+    }
+    return (
+      response.ok === true &&
+      !response.laneMismatch &&
+      Array.isArray(response.rows) &&
+      response.rows.length > 0
+    )
   })
 
   if (promotable.length === 0) return null
@@ -221,10 +261,10 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
       beats every whole reply on its flat fees alone (F69) — the same reason a
       reply with no rate to the base is skipped below. Among several replies it
       is left for a person; a lone reply above is still awarded, because there
-      is nothing to compare it against.
+      is nothing to compare it against. "Partial" is a missing quantity of the
+      consignment, not a percent line every reply leaves unpriced alike (R1).
     */
-    const unpriced = (r.response as { unpriced?: unknown } | null)?.unpriced
-    if (typeof unpriced === 'number' && unpriced > 0) continue
+    if (replyIsPartial(r.response)) continue
     const normalised = normalise(r.quotedTotal, r.quotedCurrency, base, fx)
     if (normalised === null) continue
     const value = Number(normalised)

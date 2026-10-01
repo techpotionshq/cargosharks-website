@@ -30,7 +30,8 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { enquiries, partners, rateCards, rateRequests, withActor } = await import('@qabandi/db')
+const { enquiries, partners, rateCardLines, rateCards, rateRequests, withActor } =
+  await import('@qabandi/db')
 const { world, bothBranchesActor, HOME_BRANCH, AWAY_BRANCH, CUSTOMER, PARTNER, PRINCIPAL } =
   await import('@/lib/testing/fixtures')
 const { requestRates, acceptRateReply } = await import('./rate-request-actions')
@@ -313,5 +314,143 @@ describe.skipIf(!enabled)('acceptRateReply', () => {
     const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
 
     expect(state.message).toMatch(/^ratesValidation\.(promoteAlreadyCard|promoteNotParsed)$/)
+  })
+
+  /** One reply row, on the fixture's coded lane. */
+  const replyRow = (over: Record<string, unknown> = {}) => ({
+    mode: 'sea_fcl',
+    originCode: 'KWFX1',
+    destinationCode: 'AEFX1',
+    currency: 'USD',
+    validFrom: '2037-01-01',
+    validTo: null,
+    chargeCode: 'ocean_freight',
+    basis: 'per_container',
+    rate: '1500',
+    minimum: null,
+    maximum: null,
+    containerType: null,
+    transitDays: null,
+    notes: null,
+    ...over,
+  })
+
+  const cardsOf = (agent: string) =>
+    withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({
+          id: rateCards.id,
+          currency: rateCards.currency,
+          validFrom: rateCards.validFrom,
+          validTo: rateCards.validTo,
+        })
+        .from(rateCards)
+        .where(eq(rateCards.partnerId, agent))
+        .orderBy(rateCards.validFrom),
+    )
+
+  /**
+   * USD freight and KWD handling in one reply were two cards on one lane and
+   * window, and the second hit `rate_cards_no_overlap` — the reply could never
+   * be accepted (S4). One card now, each line in its own currency.
+   */
+  it('promotes a mixed-currency reply as one card', async () => {
+    const agent = await makeAgent()
+    const { enquiryId, rateRequestId } = await makeRequest(
+      'parsed',
+      {
+        ok: true,
+        rows: [
+          replyRow({ validFrom: '2038-01-01' }),
+          replyRow({
+            validFrom: '2038-01-01',
+            currency: 'KWD',
+            chargeCode: 'documentation',
+            basis: 'flat',
+            rate: '25',
+          }),
+        ],
+      },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
+
+    expect(state.message).toBeUndefined()
+    const cards = await cardsOf(agent)
+    expect(cards).toHaveLength(1)
+    const lines = await withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({ currency: rateCardLines.currency })
+        .from(rateCardLines)
+        .where(eq(rateCardLines.rateCardId, cards[0]!.id))
+        .orderBy(rateCardLines.sortOrder),
+    )
+    expect(lines.map((l) => l.currency)).toEqual(['USD', 'KWD'])
+  })
+
+  /**
+   * An agent with a live card on the lane — an open-ended one, here — used to
+   * make every later award from them fail with 23P01 (S5). The newer rate
+   * ends the older card where it starts; the older one stays for the dates
+   * before.
+   */
+  it('ends the agent’s earlier card on the lane where the new award starts', async () => {
+    const agent = await makeAgent()
+    const first = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2039-01-01' })] },
+      agent,
+    )
+    await acceptRateReply({}, form(first))
+    const second = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2039-03-01', rate: '1400' })] },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form(second))
+
+    expect(state.message).toBeUndefined()
+    const cards = await cardsOf(agent)
+    expect(cards.map((c) => [c.validFrom, c.validTo])).toEqual([
+      ['2039-01-01', '2039-03-01'],
+      ['2039-03-01', null],
+    ])
+  })
+
+  it('refuses, with the date, an award that would start before the agent’s card', async () => {
+    const agent = await makeAgent()
+    const first = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2040-06-01' })] },
+      agent,
+    )
+    await acceptRateReply({}, form(first))
+    const second = await makeRequest(
+      'parsed',
+      { ok: true, rows: [replyRow({ validFrom: '2040-06-01' })] },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form(second))
+
+    expect(state.message).toBe('ratesValidation.promoteOverlapsCard:{"validFrom":"2040-06-01"}')
+    expect(await cardsOf(agent)).toHaveLength(1)
+  })
+
+  /** A reply that priced another lane is not this enquiry's rate (S14). */
+  it('refuses a reply that priced a different lane', async () => {
+    const agent = await makeAgent()
+    const { enquiryId, rateRequestId } = await makeRequest(
+      'parsed',
+      { ok: true, laneMismatch: 'CNSHA → KWSWK', rows: [replyRow({ validFrom: '2041-01-01' })] },
+      agent,
+    )
+
+    const state = await acceptRateReply({}, form({ rateRequestId, enquiryId }))
+
+    expect(state.message).toMatch(/^ratesValidation\.promoteLaneMismatch/)
+    expect(await cardsOf(agent)).toEqual([])
   })
 })

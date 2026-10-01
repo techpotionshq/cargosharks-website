@@ -45,8 +45,14 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { aiInvocations, enquiries, extractionProposals, notificationOutbox, withActor } =
-  await import('@qabandi/db')
+const {
+  aiInvocations,
+  enquiries,
+  extractionProposals,
+  notificationOutbox,
+  rateRequests,
+  withActor,
+} = await import('@qabandi/db')
 
 const {
   AWAY_BRANCH,
@@ -54,6 +60,7 @@ const {
   DESTINATION,
   HOME_BRANCH,
   ORIGIN,
+  PARTNER,
   PRINCIPAL,
   bothBranchesActor,
   world,
@@ -314,6 +321,94 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(await count()).toBe(3)
     })
 
+    /** The form is only shown on an open sea FCL enquiry; the action agrees (R6). */
+    it('refuses a container count on an enquiry that is not sea FCL', async () => {
+      const raised = await raise({ mode: 'air' })
+
+      const state = await setEnquiryContainerCount(
+        {},
+        form({ enquiryId: raised.id, containerCount: '2' }),
+      )
+
+      expect(state.message).toBe('enquiriesValidation.containerCountNotHere')
+    })
+
+    it('refuses a count past the ceiling the other paths keep', async () => {
+      const state = await submitEnquiry({}, enquiryForm({ containerCount: '3000000000' }))
+      expect(state.errors?.containerCount).toBe('enquiriesValidation.containerCountWhole')
+    })
+
+    /**
+     * A reply read before the count was entered had every per-container line
+     * unpriced, and stayed "partial" — unranked — after the count was set (R1).
+     * Setting the count re-prices it from the lines it stored.
+     */
+    it('re-prices the replies already read when the count is entered', async () => {
+      const raised = await raise()
+      const token = `r1-${Date.now().toString(36)}`
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId: raised.id,
+          partnerId: PARTNER,
+          status: 'parsed',
+          token,
+          quotedTotal: '60',
+          quotedCurrency: 'USD',
+          response: {
+            ok: true,
+            unpriced: 1,
+            rows: [
+              {
+                mode: 'sea_fcl',
+                originCode: 'KWFX1',
+                destinationCode: 'AEFX1',
+                currency: 'USD',
+                validFrom: '2035-01-01',
+                validTo: null,
+                chargeCode: 'ocean_freight',
+                basis: 'per_container',
+                rate: '1850',
+                minimum: null,
+                maximum: null,
+                containerType: null,
+                transitDays: null,
+                notes: null,
+              },
+              {
+                mode: 'sea_fcl',
+                originCode: 'KWFX1',
+                destinationCode: 'AEFX1',
+                currency: 'USD',
+                validFrom: '2035-01-01',
+                validTo: null,
+                chargeCode: 'documentation',
+                basis: 'flat',
+                rate: '60',
+                minimum: null,
+                maximum: null,
+                containerType: null,
+                transitDays: null,
+                notes: null,
+              },
+            ],
+          },
+        }),
+      )
+
+      await setEnquiryContainerCount({}, form({ enquiryId: raised.id, containerCount: '2' }))
+
+      const [stored] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ total: rateRequests.quotedTotal, response: rateRequests.response })
+          .from(rateRequests)
+          .where(eq(rateRequests.token, token)),
+      )
+      // 2 × 1,850 + 60 — was the 60 flat fee alone.
+      expect(stored!.total).toBe('3760.000000')
+      expect(stored!.response).toMatchObject({ unpriced: 0, partial: 0 })
+    })
+
     /** An unchecked box arrives absent, not as `false` — the usual HTML trap. */
     it('reads an absent dangerous-goods box as not dangerous', async () => {
       const row = await raise()
@@ -449,16 +544,31 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
 
     /**
      * `won` is only reachable from `quoted` — a customer cannot accept a price
-     * nobody sent them. The machine refuses it and the action lets that throw
-     * rather than dressing a broken screen up as a field error.
+     * nobody sent them. The machine refuses it, and the action says so against
+     * the field (S1): thrown, it reached the error page, which production
+     * redacts to "something went wrong".
      */
-    it('refuses a win on an enquiry nobody has quoted', async () => {
+    it('refuses a win on an enquiry nobody has quoted, with a sentence', async () => {
       const row = await raise()
       await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
 
-      await expect(
-        closeEnquiryAction({}, form({ enquiryId: row.id, outcome: 'won' })),
-      ).rejects.toThrow()
+      const state = await closeEnquiryAction({}, form({ enquiryId: row.id, outcome: 'won' }))
+
+      expect(state.errors?.outcome).toBe('enquiriesValidation.wonNeedsQuoted')
+      expect((await readEnquiry(row.id)).status).toBe('assigned')
+    })
+
+    /** `new → lost` is not a move the machine has; it crashed the same way (S1). */
+    it('refuses to close a new enquiry as lost, with a sentence', async () => {
+      const row = await raise()
+
+      const state = await closeEnquiryAction(
+        {},
+        form({ enquiryId: row.id, outcome: 'lost', reason: 'Went elsewhere' }),
+      )
+
+      expect(state.errors?.outcome).toBe('enquiriesValidation.lostNotYet')
+      expect((await readEnquiry(row.id)).status).toBe('new')
     })
 
     it('records a win once the price has been quoted', async () => {
@@ -587,6 +697,30 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       const fields = await fieldsOf(row.id)
       expect(fields.incoterm).toBe('FOB')
       expect(fields.pieces).toBe(5)
+    })
+
+    /**
+     * A dangerous-goods flag a person set is not cleared by a model reading
+     * "not dangerous" (S20) — the column was never read, so it always looked
+     * empty. An unset flag can still be raised.
+     */
+    it('never clears a dangerous-goods flag a person set, but can raise one', async () => {
+      const flagged = await raise({ isDangerous: 'on' })
+      await propose(flagged.id, [{ field: 'isDangerous', value: 'false' }])
+      const plain = await raise()
+      await propose(plain.id, [{ field: 'isDangerous', value: 'true' }])
+
+      await acceptAllProposals({}, form({ enquiryId: flagged.id }))
+      await acceptAllProposals({}, form({ enquiryId: plain.id }))
+
+      const dangerous = async (id: string) =>
+        (
+          await withActor(bothBranchesActor, (tx) =>
+            tx.select({ d: enquiries.isDangerous }).from(enquiries).where(eq(enquiries.id, id)),
+          )
+        )[0]!.d
+      expect(await dangerous(flagged.id)).toBe(true)
+      expect(await dangerous(plain.id)).toBe(true)
     })
 
     /** A suggestion that will not resolve is skipped, not fatal to the rest. */

@@ -585,6 +585,28 @@ describe('validateImport — FR-MD-11', () => {
     expect(report.rows[0]!.values).toMatchObject({ code: 'AGL', legalNameEn: 'Agility' })
   })
 
+  /**
+   * The screen posts only what the operator chose. A partial mapping used to
+   * replace the guess wholesale, so a file on the system's own template came
+   * back with every required column "missing" (S13).
+   */
+  it('keeps the guess for every field the explicit mapping leaves out', () => {
+    const report = readImport(
+      'Customer code,Legal name (English),Ref\nAGL,Agility,X1\n',
+      customers,
+      { lookups, mapping: {} },
+    )
+    expect(report.ok).toBe(true)
+    expect(report.rows[0]!.values).toMatchObject({ code: 'AGL', legalNameEn: 'Agility' })
+
+    // A field the operator deliberately unmapped stays unmapped.
+    const unmapped = readImport('Customer code,Legal name (English)\nAGL,Agility\n', customers, {
+      lookups,
+      mapping: { legalNameEn: null },
+    })
+    expect(unmapped.ok).toBe(false)
+  })
+
   it('stops reading beyond the row ceiling instead of hanging', () => {
     const body = Array.from({ length: 30 }, (_, i) => `C${i},Name ${i}`).join('\n')
     const report = readImport(`Customer code,Legal name (English)\n${body}\n`, customers, {
@@ -770,16 +792,33 @@ describe('groupRateCards — FR-RT-09', () => {
     expect(cards.map((c) => c.validFrom)).toEqual(['2026-02-01', '2026-03-01'])
   })
 
-  it('separates lanes and currencies', () => {
+  it('separates lanes', () => {
     const cards = groupRateCards(
       read(
         header +
           'FCL,AEJEA,KWSWK,USD,01/03/2026,,OCEAN,per_container,850,,,40HC,,\n' +
-          'FCL,AEJEA,QADOH,USD,01/03/2026,,OCEAN,per_container,700,,,40HC,,\n' +
-          'FCL,AEJEA,KWSWK,KWD,01/03/2026,,OCEAN,per_container,260,,,40HC,,\n',
+          'FCL,AEJEA,QADOH,USD,01/03/2026,,OCEAN,per_container,700,,,40HC,,\n',
       ).rows,
     )
-    expect(cards).toHaveLength(3)
+    expect(cards).toHaveLength(2)
+  })
+
+  /**
+   * USD freight and KWD terminal handling on one lane and window are one
+   * card: as two, they overlapped on `rate_cards_no_overlap` and the reply
+   * could never be accepted (S4). Each line keeps its own currency.
+   */
+  it('keeps a mixed-currency lane as one card, each line in its own currency', () => {
+    const cards = groupRateCards(
+      read(
+        header +
+          'FCL,AEJEA,KWSWK,USD,01/03/2026,,OCEAN,per_container,850,,,40HC,,\n' +
+          'FCL,AEJEA,KWSWK,KWD,01/03/2026,,THC,per_container,45,,,40HC,,\n',
+      ).rows,
+    )
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.currency).toBe('USD')
+    expect(cards[0]!.lines.map((l) => l.currency)).toEqual(['USD', 'KWD'])
   })
 
   it('takes card-level transit time from the first row that states it', () => {

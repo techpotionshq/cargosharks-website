@@ -39,6 +39,7 @@ import {
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { named } from '@/lib/named'
+import type { FxRateRow } from '@/lib/pilot/types'
 import {
   pilotAudit,
   pilotAuditTableCounts,
@@ -48,6 +49,7 @@ import {
   pilotChargeTypes,
   pilotDutyRates,
   pilotEngineRules,
+  pilotFxRates,
   pilotMilestoneTemplates,
   pilotReferenceCounts,
   pilotReferenceSample,
@@ -698,6 +700,30 @@ export async function listDutyRates(actor: Actor): Promise<DutyRateRow[]> {
       )
       .limit(500),
   )
+}
+
+/**
+ * The newest rate for each currency pair, whatever its source — S12.
+ *
+ * What pricing would convert at today: it takes the newest rate on or before
+ * the pricing date, so the newest row per pair is the one that matters. Older
+ * days stay on the table and in the audit log; they are history, not choices.
+ */
+export async function listFxRates(actor: Actor): Promise<FxRateRow[]> {
+  if (usePilotFixtures()) return pilotFxRates()
+
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select distinct on (from_currency, to_currency)
+             from_currency as "fromCurrency", to_currency as "toCurrency",
+             rate::text as rate, effective_on::text as "effectiveOn", source
+        from fx_rates
+       where effective_on <= current_date
+       order by from_currency, to_currency, effective_on desc, taken_at desc
+       limit 200
+    `)
+    return result.rows as unknown as FxRateRow[]
+  })
 }
 
 export interface EngineRuleRow {

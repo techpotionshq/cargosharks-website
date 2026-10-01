@@ -16,7 +16,11 @@ import { runNotificationDispatch, registerChannel } from './notification-dispatc
 import { inAppChannel, resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierPoll } from './carrier-poll'
-import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
+import {
+  runInvoiceOverdueNotices,
+  runQuoteExpiryWarnings,
+  runQuoteLapse,
+} from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
 import { refreshExpiringRateCards } from './rate-card-refresh'
@@ -231,6 +235,9 @@ export async function registerWorkers(log: {
     below owns everything about actually sending.
   */
   await work(JOBS.quoteExpiry, async () => {
+    // Lapse first: a quotation already past its date is expired, not warned.
+    const lapsed = await runQuoteLapse()
+    log.info(lapsed, 'lapsed quotations expired')
     const result = await runQuoteExpiryWarnings()
     log.info(result, 'quote expiry warnings raised')
   })

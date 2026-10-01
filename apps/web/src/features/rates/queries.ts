@@ -247,22 +247,38 @@ export async function laneMargins(
       is both correct and simpler — one row per lane by construction, with
       whichever side is missing arriving as NULL rather than as a second row.
     */
+    /*
+      One card per side, in one currency, per branch (S16).
+
+      This summed every live card on a lane: three agents' buy cards added
+      into one "buy", a USD card added to a KWD one under whichever currency
+      sorted last, and two branches' cards — two base currencies — pooled. The
+      buy side is now the cheapest live buy card and the sell side the
+      cheapest live sell card, paired only within one branch and one
+      currency, so a lane quoted in two currencies is two rows rather than a
+      sum of both. Each card is measured the same way on both sides — one of
+      each line at its rate, in the card's own currency (a line in another
+      currency, which a mixed reply now carries, is left out rather than
+      added in at par) — which is a like-for-like comparison of two tariffs,
+      not a shipment price.
+    */
     const result = await tx.execute(sql`
       with totals as (
-        select rc.origin_id, rc.destination_id, rc.mode, rc.direction, rc.currency,
-               sum(rcl.rate) as total
+        select rc.id, rc.branch_id, rc.origin_id, rc.destination_id, rc.mode, rc.direction,
+               rc.currency, sum(rcl.rate) as total
           from rate_cards rc
-          join rate_card_lines rcl on rcl.rate_card_id = rc.id
+          join rate_card_lines rcl on rcl.rate_card_id = rc.id and rcl.currency = rc.currency
          where current_date <@ rc.validity
-         group by rc.origin_id, rc.destination_id, rc.mode, rc.direction, rc.currency
+           and rc.superseded_by_id is null
+         group by rc.id, rc.branch_id, rc.origin_id, rc.destination_id, rc.mode, rc.direction,
+                  rc.currency
       ),
       lane as (
-        select origin_id, destination_id, mode,
-               max(currency)                              as currency,
-               sum(total) filter (where direction = 'buy')  as buy,
-               sum(total) filter (where direction = 'sell') as sell
+        select origin_id, destination_id, mode, currency,
+               min(total) filter (where direction = 'buy')  as buy,
+               min(total) filter (where direction = 'sell') as sell
           from totals
-         group by origin_id, destination_id, mode
+         group by branch_id, origin_id, destination_id, mode, currency
       )
       select coalesce(${originName}, '—') || ${arrow} || coalesce(${destinationName}, '—') as lane,
              l.mode::text     as mode,
