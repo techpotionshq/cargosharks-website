@@ -693,6 +693,30 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(fields.pieces).toBe(5)
     })
 
+    /**
+     * A dangerous-goods flag a person set is not cleared by a model reading
+     * "not dangerous" (S20) — the column was never read, so it always looked
+     * empty. An unset flag can still be raised.
+     */
+    it('never clears a dangerous-goods flag a person set, but can raise one', async () => {
+      const flagged = await raise({ isDangerous: 'on' })
+      await propose(flagged.id, [{ field: 'isDangerous', value: 'false' }])
+      const plain = await raise()
+      await propose(plain.id, [{ field: 'isDangerous', value: 'true' }])
+
+      await acceptAllProposals({}, form({ enquiryId: flagged.id }))
+      await acceptAllProposals({}, form({ enquiryId: plain.id }))
+
+      const dangerous = async (id: string) =>
+        (
+          await withActor(bothBranchesActor, (tx) =>
+            tx.select({ d: enquiries.isDangerous }).from(enquiries).where(eq(enquiries.id, id)),
+          )
+        )[0]!.d
+      expect(await dangerous(flagged.id)).toBe(true)
+      expect(await dangerous(plain.id)).toBe(true)
+    })
+
     /** A suggestion that will not resolve is skipped, not fatal to the rest. */
     it('skips an unresolvable suggestion and applies the others', async () => {
       const row = await raise()

@@ -251,12 +251,21 @@ export async function enquiryColumn(
       pieces: enquiries.pieces,
       containerCount: enquiries.containerCount,
       dimensions: enquiries.dimensions,
+      isDangerous: enquiries.isDangerous,
     })
     .from(enquiries)
     .where(eq(enquiries.id, enquiryId))
     .limit(1)
 
   if (!row) return null
+  /*
+    Dangerous goods was not selected, so it always read as empty and a
+    proposal of "false" was applied over a flag a person had set (S20). The
+    column is `not null default false`, so `false` is the unset state and
+    reads as empty — a proposal may still raise the flag — while `true` is a
+    held value a proposal can only put up for review, never clear.
+  */
+  if (column === 'isDangerous') return row.isDangerous ? 'true' : null
   const held = (row as Record<string, unknown>)[column]
   return held === null || held === undefined ? null : String(held)
 }
