@@ -144,6 +144,36 @@ export function secretKeyProblem(): string | null {
   }
 }
 
+/**
+ * The same answer as `secretKeyProblem`, as data rather than an English
+ * sentence — for a screen that has to say it in the reader's language (U1).
+ *
+ * The message above is for logs and the boot check, where English is right.
+ * The settings screen used to print it verbatim, on Arabic pages too.
+ */
+export type SecretKeyStatus =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'missing' }
+  | {
+      readonly ok: false
+      readonly reason: 'length'
+      readonly bytes: number
+      readonly expected: number
+    }
+
+export function secretKeyStatus(): SecretKeyStatus {
+  const configured = process.env.MAILBOX_ENCRYPTION_KEY?.trim()
+  if (!configured) return { ok: false, reason: 'missing' }
+  const bytes = Buffer.from(configured, 'base64').byteLength
+  return bytes === KEY_BYTES
+    ? { ok: true }
+    : { ok: false, reason: 'length', bytes, expected: KEY_BYTES }
+}
+
+/** The command that prints a valid key, for a screen to show beside the reason. */
+export const SECRET_KEY_COMMAND =
+  "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\""
+
 /** `v1:<iv>:<tag>:<ciphertext>`, each part base64. */
 export function seal(plaintext: string): string {
   if (plaintext === '') throw new SealedSecretError('Refusing to seal an empty secret.')

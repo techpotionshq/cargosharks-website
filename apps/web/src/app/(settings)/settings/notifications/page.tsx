@@ -141,7 +141,10 @@ export default async function NotificationsPage() {
               icon="bell"
               eyebrow={event.key}
               title={t(`events.${event.key}` as 'events.job.created')}
-              description={event.summary}
+              // From the catalogue, nested by prefix like the titles. The
+              // `summary` in core is the developer's description and is
+              // English; it showed as-is on the Arabic page (U1).
+              description={t(`summaries.${event.key}` as 'summaries.job.created')}
               actions={
                 <span className="flex flex-wrap items-center gap-2">
                   {/*

@@ -41,7 +41,8 @@ import {
 } from '@qabandi/core'
 import {
   integrationSettings,
-  secretKeyProblem,
+  secretKeyStatus,
+  type SecretKeyStatus,
   resolveIntegration,
   sealSecret,
   withActor,
@@ -195,10 +196,28 @@ function callsPerHour(settings: Readonly<Record<string, string | undefined>>): n
  * screen used to report both as "not set on this deployment", which sends
  * somebody to check whether a variable exists when it plainly does.
  */
-export async function integrationKeyProblem(): Promise<string | null> {
+export async function integrationKeyProblem(): Promise<KeyProblem | null> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
-  return secretKeyProblem()
+  const status = secretKeyStatus()
+  return status.ok ? null : status
+}
+
+/**
+ * Why credentials cannot be sealed, as data — U1.
+ *
+ * This returned `secretKeyProblem()`'s English sentence and the page printed
+ * it as-is, so the Arabic settings screen carried a paragraph of English and a
+ * shell command run together in one line wider than a phone. The page now
+ * words the reason from the catalogue and shows the command on its own.
+ */
+export type KeyProblem = Exclude<SecretKeyStatus, { ok: true }>
+
+/** The reason, in the reader's language. */
+function keyProblemText(problem: KeyProblem, tv: Translate): string {
+  return problem.reason === 'missing'
+    ? tv('keyMissing')
+    : tv('keyWrongLength', { bytes: problem.bytes, expected: problem.expected })
 }
 
 /** A form value, trimmed, with blank meaning absent rather than empty. */
@@ -388,9 +407,12 @@ export async function saveIntegration(
     const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet, tv)
     if (Object.keys(errors).length > 0) return fail(errors, safeEcho())
 
-    const keyProblem = secretKeyProblem()
-    if (provided.size > 0 && keyProblem) {
-      return failWith(tv('credentialCannotBeSealed', { problem: keyProblem }), safeEcho())
+    const keyStatus = secretKeyStatus()
+    if (provided.size > 0 && !keyStatus.ok) {
+      return failWith(
+        tv('credentialCannotBeSealed', { problem: keyProblemText(keyStatus, tv) }),
+        safeEcho(),
+      )
     }
 
     /*

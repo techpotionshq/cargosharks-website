@@ -1053,7 +1053,28 @@
     "scope": "Applies to",
     "rule": "Rule",
     "kind": "Kind",
-    "terms": "Terms"
+    "terms": "Terms",
+    "bases": {
+      "flat": "Flat",
+      "per_unit": "Per piece",
+      "per_kg": "Per kg",
+      "per_container": "Per container",
+      "per_day": "Per day",
+      "percent": "Percentage"
+    },
+    "categories": {
+      "freight": "Freight",
+      "origin": "Origin",
+      "destination": "Destination",
+      "customs": "Customs",
+      "transport": "Transport",
+      "documentation": "Documentation",
+      "special": "Special",
+      "other": "Other",
+      "commercial": "Commercial",
+      "compliance": "Compliance",
+      "partner_compliance": "Partner compliance"
+    }
   },
   "audit": {
     "eyebrow": "Administration",
@@ -2675,6 +2696,41 @@
       "read": "Read",
       "failed": "Failed",
       "suppressed": "Held back"
+    },
+    "summaries": {
+      "enquiry": {
+        "created": "A new enquiry has arrived and needs an owner.",
+        "received": "A customer’s enquiry has been received, and acknowledged to them.",
+        "sla_breached": "First response is past its SLA."
+      },
+      "quote": {
+        "sent": "A quotation has been sent to the customer.",
+        "expiring": "A sent quotation reaches the end of its validity soon."
+      },
+      "job": {
+        "created": "A shipment has been booked.",
+        "milestone_reached": "A shipment milestone has been completed.",
+        "eta_changed": "The estimated arrival of a shipment has moved."
+      },
+      "free_time": {
+        "expiring": "A container is about to start accruing demurrage, detention or storage."
+      },
+      "rate_card": {
+        "expiring": "Rate cards reach the end of their validity within the month."
+      },
+      "exception": {
+        "opened": "An exception has been raised against a shipment."
+      },
+      "document": {
+        "released": "A document has been released to the customer."
+      },
+      "invoice": {
+        "issued": "An invoice has been issued.",
+        "overdue": "An issued invoice has passed its due date unpaid."
+      },
+      "supplier_invoice": {
+        "variance_flagged": "A supplier invoice was read with a line billed over what the job accrued."
+      }
     }
   },
   "milestoneForm": {
@@ -3209,7 +3265,8 @@
     "notInUse": "Not in use",
     "configure": "Configure",
     "offHint": "Set to “{driver}”. Nothing is configured here, and nothing needs to be — open Configure to switch it on.",
-    "offHintPlain": "Not switched on. Open Configure to set it up."
+    "offHintPlain": "Not switched on. Open Configure to set it up.",
+    "keyCommand": "Generate a valid key on the server with:"
   },
   "assistant": {
     "title": "Assistant",
@@ -3499,7 +3556,9 @@
     },
     "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
     "apiAccessNotAdministered": "You do not administer API access in that branch.",
-    "portalCustomerInactive": "This customer is retired, so nobody can be given a portal login for it."
+    "portalCustomerInactive": "This customer is retired, so nobody can be given a portal login for it.",
+    "keyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so mailbox passwords and integration credentials can be neither stored nor read.",
+    "keyWrongLength": "MAILBOX_ENCRYPTION_KEY must be {expected} bytes, base64-encoded; this one decodes to {bytes}."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",

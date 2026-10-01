@@ -64,11 +64,41 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
+const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+
+/** The categories the seed writes; an administrator may add others. */
+const CATEGORIES = [
+  'freight',
+  'origin',
+  'destination',
+  'customs',
+  'transport',
+  'documentation',
+  'special',
+  'other',
+  'commercial',
+  'compliance',
+  'partner_compliance',
+] as const
+
 export default async function ReferencePage() {
   const session = await requireSession()
   const t = await getTranslations('reference')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+
+  /*
+    Codes as words — U1. The basis is an enum and every value has a label;
+    a category is a column an administrator writes, so the seeded ones are
+    translated and one somebody invented is shown as they typed it, which is
+    the only honest thing to show for it.
+  */
+  const basisLabel = (basis: string) =>
+    (BASES as readonly string[]).includes(basis) ? t(`bases.${basis}` as 'bases.flat') : basis
+  const categoryLabel = (category: string) =>
+    (CATEGORIES as readonly string[]).includes(category)
+      ? t(`categories.${category}` as 'categories.other')
+      : category
 
   const [counts, charges, sample, milestones, calendars, duties, rules] = await Promise.all([
     referenceCounts(session.actor),
@@ -176,9 +206,9 @@ export default async function ReferencePage() {
                   <TD className="ref whitespace-nowrap text-ink">{row.key}</TD>
                   <TD className="text-ink">{locale === 'ar' ? row.nameAr : row.nameEn}</TD>
                   <TD>
-                    <Badge tone="muted">{row.category}</Badge>
+                    <Badge tone="muted">{categoryLabel(row.category)}</Badge>
                   </TD>
-                  <TD className="ref text-ink-muted">{row.basis}</TD>
+                  <TD className="text-ink-muted">{basisLabel(row.basis)}</TD>
                   {/*
                     Unmapped is the state that stops a period closing, and this
                     is the screen where it gets fixed — so it is shown here
@@ -283,7 +313,7 @@ export default async function ReferencePage() {
             {sample.documents.map((row) => (
               <li key={row.code} className="flex items-center justify-between text-[0.8125rem]">
                 <span className="text-ink">{row.name}</span>
-                <Badge tone="muted">{row.category}</Badge>
+                <Badge tone="muted">{categoryLabel(row.category)}</Badge>
               </li>
             ))}
           </ul>

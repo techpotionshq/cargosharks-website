@@ -29,6 +29,9 @@ export {
   open as openSecret,
   hasSecretKey,
   secretKeyProblem,
+  secretKeyStatus,
+  SECRET_KEY_COMMAND,
+  type SecretKeyStatus,
   SecretKeyError,
   SealedSecretError,
 } from './secrets'

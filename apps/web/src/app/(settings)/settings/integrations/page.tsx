@@ -32,6 +32,7 @@ import { INTEGRATION_GROUPS } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
+import { SECRET_KEY_COMMAND } from '@qabandi/db'
 import { IntegrationDialog, ToggleIntegrationButton } from '@/features/admin/ui/integration-dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
@@ -57,17 +58,25 @@ export default async function IntegrationsPage() {
   */
   if (!can(session, 'admin.integrations.write')) notFound()
 
-  const [integrations, keyProblem, t, tc] = await Promise.all([
+  const [integrations, keyProblem, t, tc, tv] = await Promise.all([
     listIntegrations(),
     integrationKeyProblem(),
     getTranslations('integrations'),
     getTranslations('common'),
+    getTranslations('adminValidation'),
   ])
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const failing = integrations.filter((row) => row.lastError).length
+
+  // The reason in the reader's language, for the banner and for each dialog.
+  const keyProblemText = keyProblem
+    ? keyProblem.reason === 'missing'
+      ? tv('keyMissing')
+      : tv('keyWrongLength', { bytes: keyProblem.bytes, expected: keyProblem.expected })
+    : null
 
   return (
     <>
@@ -83,9 +92,23 @@ export default async function IntegrationsPage() {
         carries the byte count and the command that generates a valid key.
       */}
       {keyProblem ? (
-        <div className="mb-5 rounded-sm border border-critical/30 bg-critical-soft p-3">
+        /*
+          The reason from the catalogue and the command on a line of its own
+          (U1, U2). This printed `secrets.ts`'s English message whole, command
+          included, so the Arabic page carried a paragraph of English and the
+          one long unbreakable line pushed the page 63px past a phone's width.
+          The command scrolls inside its own box; the page does not.
+        */
+        <div className="mb-5 min-w-0 rounded-sm border border-critical/30 bg-critical-soft p-3">
           <p className="text-[0.8125rem] font-medium text-ink">{t('noKeyBanner')}</p>
-          <p className="mt-1 whitespace-pre-line text-[0.8125rem] text-ink-muted">{keyProblem}</p>
+          <p className="mt-1 text-[0.8125rem] text-ink-muted">{keyProblemText}</p>
+          <p className="mt-2 text-[0.75rem] text-ink-muted">{t('keyCommand')}</p>
+          <pre
+            dir="ltr"
+            className="ref mt-1 max-w-full overflow-x-auto rounded-sm bg-surface p-2 text-[0.75rem] text-ink"
+          >
+            {SECRET_KEY_COMMAND}
+          </pre>
         </div>
       ) : null}
 
@@ -158,7 +181,7 @@ export default async function IntegrationsPage() {
                             <Badge tone={status.tone}>{status.label}</Badge>
                             <IntegrationDialog
                               integration={integration}
-                              keyProblem={keyProblem}
+                              keyProblem={keyProblemText}
                               variant="secondary"
                             />
                             {integration.hasRow ? (
