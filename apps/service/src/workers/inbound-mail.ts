@@ -480,6 +480,33 @@ export async function ingestMessage(
     const stored = await storeAttachments(message, branch)
 
     const outcome = await withActor(systemActor(), async (tx) => {
+      /*
+        The receipt, locked for the length of this transaction — and re-read.
+
+        Two runs can hold the same receipt: two service instances polling one
+        mailbox, a webhook job and its re-drive (`inbound-redrive.ts`), or a
+        provider redelivery that re-queued a job still running. `claimReceipt`
+        hands an unprocessed receipt to each of them as resumable, which is
+        right for a run that died part-way and wrong for one that is still
+        going: both filed the mail. The row lock makes the second wait for the
+        first to commit; it then reads `processed_at` and stops, having
+        written nothing.
+      */
+      const [receipt] = await tx
+        .select({ processedAt: inboundWebhookEvents.processedAt })
+        .from(inboundWebhookEvents)
+        .where(eq(inboundWebhookEvents.id, claim.id))
+        .for('update')
+      if (receipt?.processedAt) {
+        return {
+          outcome: 'duplicate' as const,
+          enquiryId: null,
+          messageId: null,
+          partnerId: null,
+          rateRequestId: null,
+        }
+      }
+
       const target = await findTarget(tx, message)
       const customerId = await matchCustomer(tx, message)
       /*

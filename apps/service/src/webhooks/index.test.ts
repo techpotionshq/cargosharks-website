@@ -17,9 +17,10 @@
  * refuse rather than accept.
  *
  * **A redelivery is a no-op, not a second enquiry.** Providers retry. The
- * unique key on `(provider, external_id)` is what makes the second delivery
- * cost nothing, and the enqueue happens only for the insert that won — so one
- * inbound email cannot become three.
+ * unique key on `(provider, external_id)` is what makes the second delivery of
+ * a *processed* event cost nothing — so one inbound email cannot become three.
+ * A redelivery of an event still unprocessed queues its job again: the first
+ * send may be exactly what failed, and the worker refuses to file twice.
  *
  * **Anything recorded is acknowledged.** A 4xx or 5xx for a payload the
  * system simply does not understand teaches the provider to redeliver for
@@ -44,6 +45,8 @@ const VERIFY_TOKEN = 'meta-verify-token'
 
 const harness = vi.hoisted(() => ({
   sent: [] as { name: string; data: unknown }[],
+  /** Set to make the next `boss.send` throw, as a queue that is down does. */
+  failNext: false,
   /** Cleared per test so "no secret configured" can be posed. */
   emailSecret: undefined as string | undefined,
 }))
@@ -74,6 +77,10 @@ vi.mock('../queue', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../queue')>()),
   getBoss: async () => ({
     send: async (name: string, data: unknown) => {
+      if (harness.failNext) {
+        harness.failNext = false
+        throw new Error('queue unavailable')
+      }
       harness.sent.push({ name, data })
       return 'job-id'
     },
@@ -110,6 +117,15 @@ const post = (url: string, raw: string, headers: Record<string, string>) =>
 const body = (over: Record<string, unknown> = {}) =>
   JSON.stringify({ id: `wh-${RUN}-${(seq += 1)}`, ...over })
 
+/** What the worker does once it has filed the event. */
+const markProcessed = async (externalId: string) =>
+  withActor(systemActor, (tx) =>
+    tx
+      .update(inboundWebhookEvents)
+      .set({ processedAt: new Date() })
+      .where(eq(inboundWebhookEvents.externalId, externalId)),
+  )
+
 const recorded = async (externalId: string) =>
   withActor(systemActor, (tx) =>
     tx
@@ -127,6 +143,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
 
   afterEach(() => {
     harness.sent.length = 0
+    harness.failNext = false
     harness.emailSecret = EMAIL_SECRET
   })
 
@@ -336,6 +353,7 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const headers = { 'x-webhook-signature': sign(raw, EMAIL_SECRET) }
 
       const first = await post('/email', raw, headers)
+      await markProcessed(id)
       harness.sent.length = 0
       const second = await post('/email', raw, headers)
 
@@ -344,6 +362,46 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       expect(second.statusCode).toBe(202)
       expect(await recorded(id)).toHaveLength(1)
       expect(harness.sent).toEqual([])
+    })
+
+    /*
+      The lost event (V8). The receipt committed, the send failed, the route
+      answered 500 — and the provider's retry used to hit the unique key and
+      get a 202 for a job nobody queued.
+    */
+    it('queues the job again when the first send failed', async () => {
+      const id = `lost-${RUN}`
+      const raw = body({ id })
+      const headers = { 'x-webhook-signature': sign(raw, EMAIL_SECRET) }
+
+      harness.failNext = true
+      const first = await post('/email', raw, headers)
+      expect(first.statusCode).toBe(500)
+      expect(await recorded(id)).toHaveLength(1)
+      expect(harness.sent).toEqual([])
+
+      const retry = await post('/email', raw, headers)
+
+      expect(retry.statusCode).toBe(202)
+      expect(await recorded(id)).toHaveLength(1)
+      expect(harness.sent).toEqual([
+        { name: JOBS.inboundEmail, data: { eventId: (await recorded(id))[0]!.id } },
+      ])
+    })
+
+    /*
+      Fastify's default body limit is 1 MB, and a provider posts attachments
+      base64 in the JSON — anything past about 700 KB was refused with a 413
+      before the handler ran (V9).
+    */
+    it('accepts an email carrying a real attachment', async () => {
+      const id = `big-${RUN}`
+      const raw = body({ id, attachment: 'A'.repeat(3 * 1024 * 1024) })
+
+      const reply = await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
+
+      expect(reply.statusCode).toBe(202)
+      expect(await recorded(id)).toHaveLength(1)
     })
 
     it('sends each provider’s deliveries to its own job', async () => {
@@ -382,6 +440,14 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       const headers = { 'x-webhook-signature': sign(raw, EMAIL_SECRET) }
 
       await post('/email', raw, headers)
+      await withActor(systemActor, (tx) =>
+        tx
+          .update(inboundWebhookEvents)
+          .set({ processedAt: new Date() })
+          .where(
+            eq(inboundWebhookEvents.id, (harness.sent[0]!.data as { eventId: string }).eventId),
+          ),
+      )
       harness.sent.length = 0
       const second = await post('/email', raw, headers)
 

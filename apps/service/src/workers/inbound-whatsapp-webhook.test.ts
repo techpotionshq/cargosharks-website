@@ -486,4 +486,39 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
     expect(second.outcome).toBe('duplicate')
     expect(ack.sent).toHaveLength(0)
   })
+
+  /*
+    Two runs holding one receipt — a job and its re-drive, or a redelivery that
+    re-queued a job still running. Both used to pass the processed check before
+    either had written, and both filed the message (V16). The receipt lock in
+    `ingestMessage` lets exactly one through.
+  */
+  it('files a receipt once when two runs hold it at the same time', async () => {
+    const sender = `9657${RUN.replace(/[^0-9]/g, '')
+      .padEnd(7, '1')
+      .slice(0, 7)}`
+    const eventId = await fileReceipt(
+      received({
+        message: { id: `wamid.${RUN}-E`, from: sender, text: { body: `Race ${RUN}` } },
+        conversation: { phone_number: sender, phone_number_id: PHONE_NUMBER_ID },
+        top: { phone_number_id: PHONE_NUMBER_ID },
+      }),
+    )
+
+    const ack = capturingChannel()
+    const results = await Promise.all([
+      runInboundWhatsAppWebhook({ eventId }, AT, noEnqueue, ack.resolve),
+      runInboundWhatsAppWebhook({ eventId }, AT, noEnqueue, ack.resolve),
+    ])
+
+    expect(results.map((r) => r.outcome).sort()).toEqual(['created', 'duplicate'])
+    const filed = await withActor(sys, (tx) =>
+      tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.externalRef, `wamid.${RUN}-E`)),
+    )
+    expect(filed).toHaveLength(1)
+    expect(ack.sent).toHaveLength(1)
+  })
 })

@@ -25,10 +25,10 @@
  * ## The receipt is claimed by the route, not here
  *
  * As with email: `/webhooks/whatsapp` inserted the `inbound_webhook_events` row
- * — under Kapso's `X-Idempotency-Key` — and enqueued in one transaction, so a
- * redelivery is a no-op and a crash cannot leave a recorded-but-unqueued event.
- * This worker passes that receipt to `ingestMessage` rather than claiming a
- * second one.
+ * — under Kapso's `X-Idempotency-Key` — and then queued this job. A redelivery
+ * of a processed receipt is a no-op; of an unprocessed one it re-queues, and
+ * `inbound-redrive.ts` sweeps any left behind. This worker passes that receipt
+ * to `ingestMessage` rather than claiming a second one.
  *
  * ## An unreadable payload is reported, not retried
  *
@@ -208,12 +208,20 @@ async function resolveWhatsAppBranch(phoneNumberId: string): Promise<BranchRef |
   return row ?? null
 }
 
-/** Records why a receipt was not turned into anything, without failing the job. */
+/**
+ * Records why a receipt was not turned into anything, without failing the job.
+ *
+ * And settles it: `processed_at` is stamped beside the reason, as the
+ * automatic-mail path does. The re-drive sweep (`inbound-redrive.ts`) queues
+ * every receipt left unprocessed, and these are decisions, not faults — the
+ * same payload is just as unreadable, and the same number just as unconfigured,
+ * on the next attempt.
+ */
 async function note(id: string, reason: string, asOf: Date): Promise<void> {
   await withActor(systemActor(), async (tx) => {
     await tx
       .update(inboundWebhookEvents)
-      .set({ error: reason, updatedAt: asOf })
+      .set({ error: reason, processedAt: asOf, updatedAt: asOf })
       .where(eq(inboundWebhookEvents.id, id))
   })
 }

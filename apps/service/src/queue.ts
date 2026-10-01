@@ -82,6 +82,12 @@ export const JOBS = {
     switched on; the sweep idles otherwise.
   */
   quoteAutoDraft: 'quote-auto-draft',
+  /*
+    Re-queues inbound webhook receipts left unprocessed — a `boss.send` that
+    failed after the receipt committed, or a job that ran out of retries. See
+    `workers/inbound-redrive.ts`.
+  */
+  inboundRedrive: 'inbound-webhook-redrive',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -261,6 +267,29 @@ export async function registerSchedules(): Promise<void> {
   await b.schedule(JOBS.webhookDelivery, '* * * * *')
 
   await b.schedule(JOBS.notificationDispatch, '* * * * *')
+
+  /*
+    Inbound receipts that never became anything, every ten minutes. Slow on
+    purpose: a receipt is only picked up once it has sat ten minutes untouched,
+    which is past a healthy job and past pg-boss's own first retries.
+  */
+  await b.schedule(JOBS.inboundRedrive, '*/10 * * * *')
+}
+
+/**
+ * Queue the job that turns one inbound receipt into an enquiry.
+ *
+ * Keyed on the receipt and throttled to one per minute, so a provider retrying
+ * hard, or the re-drive sweep overlapping a redelivery, does not stack a dozen
+ * jobs for one event. A duplicate that slips through anyway is harmless — see
+ * `enqueueOnce` in `webhooks/index.ts`.
+ */
+export async function sendReceiptJob(
+  b: Pick<PgBoss, 'send'>,
+  jobName: string,
+  eventId: string,
+): Promise<void> {
+  await b.send(jobName, { eventId }, { singletonKey: eventId, singletonSeconds: 60 })
 }
 
 /**
