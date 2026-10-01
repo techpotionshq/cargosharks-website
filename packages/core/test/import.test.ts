@@ -585,6 +585,28 @@ describe('validateImport — FR-MD-11', () => {
     expect(report.rows[0]!.values).toMatchObject({ code: 'AGL', legalNameEn: 'Agility' })
   })
 
+  /**
+   * The screen posts only what the operator chose. A partial mapping used to
+   * replace the guess wholesale, so a file on the system's own template came
+   * back with every required column "missing" (S13).
+   */
+  it('keeps the guess for every field the explicit mapping leaves out', () => {
+    const report = readImport(
+      'Customer code,Legal name (English),Ref\nAGL,Agility,X1\n',
+      customers,
+      { lookups, mapping: {} },
+    )
+    expect(report.ok).toBe(true)
+    expect(report.rows[0]!.values).toMatchObject({ code: 'AGL', legalNameEn: 'Agility' })
+
+    // A field the operator deliberately unmapped stays unmapped.
+    const unmapped = readImport('Customer code,Legal name (English)\nAGL,Agility\n', customers, {
+      lookups,
+      mapping: { legalNameEn: null },
+    })
+    expect(unmapped.ok).toBe(false)
+  })
+
   it('stops reading beyond the row ceiling instead of hanging', () => {
     const body = Array.from({ length: 30 }, (_, i) => `C${i},Name ${i}`).join('\n')
     const report = readImport(`Customer code,Legal name (English)\n${body}\n`, customers, {
