@@ -1430,8 +1430,15 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
     select
       coalesce((select sum(amount) from payment_allocations
                  where payment_id = ${paymentId}), 0)::numeric as allocated,
-      coalesce((select sum(amount) from payment_allocations
-                 where invoice_id = ${invoiceId}), 0)::numeric as settled
+      -- Receipts and agreed set-offs both settle an invoice: the same sum
+      -- rederiveInvoiceSettlement writes, or a netted invoice could be paid
+      -- again in cash.
+      (coalesce((select sum(amount) from payment_allocations
+                  where invoice_id = ${invoiceId}), 0)
+       + coalesce((select sum(sl.amount) from partner_settlement_lines sl
+                     join partner_settlements ps on ps.id = sl.settlement_id
+                    where sl.invoice_id = ${invoiceId}
+                      and ps.status in ('agreed', 'settled')), 0))::numeric as settled
   `)
   const row = result.rows[0] as { allocated: string | null; settled: string | null } | undefined
 

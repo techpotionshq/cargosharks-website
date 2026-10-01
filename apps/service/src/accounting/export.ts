@@ -422,6 +422,7 @@ async function collect(actor: Actor, request: ExportRequest) {
         invoiceDate: supplierInvoices.invoiceDate,
         currency: supplierInvoices.currency,
         fxRate: supplierInvoices.fxRate,
+        taxAmount: supplierInvoices.taxAmount,
         partnerName: partners.legalNameEn,
       })
       .from(supplierInvoices)
@@ -467,22 +468,34 @@ async function collect(actor: Actor, request: ExportRequest) {
             .orderBy(asc(supplierInvoiceLines.sortOrder))
         : []
 
-    const supplierInvoiceInputs: SupplierInvoiceInput[] = supplierRows.map((row) => ({
-      id: row.id,
-      reference: row.reference,
-      invoiceDate: new Date(row.invoiceDate),
-      partnerName: row.partnerName,
-      currency: row.currency,
-      fxRate: row.fxRate,
-      lines: supplierLineRows
-        .filter((l) => l.supplierInvoiceId === row.id)
-        .map((l) => ({
-          chargeTypeId: l.chargeTypeId,
-          description: l.description,
-          amount: l.amount,
-          billed: l.amount,
-          taxAmount: l.taxAmount,
-          /*
+    const supplierInvoiceInputs: SupplierInvoiceInput[] = supplierRows.map((row) => {
+      const ownLines = supplierLineRows.filter((l) => l.supplierInvoiceId === row.id)
+      /*
+        Tax stated once on the bill rather than per line.
+
+        The bill's tax is its lines' where they carry any and the captured
+        header figure where they do not (`rollBillTotals`). The engine reads
+        tax from lines, so header-only tax travels as one more line that
+        bills nothing and was accrued nothing — it posts input tax and the
+        payable, and no variance.
+      */
+      const linesTax = ownLines.reduce((acc, l) => acc.plus(dec(l.taxAmount)), dec(0))
+      const headerOnlyTax = dec(row.taxAmount).minus(linesTax)
+      return {
+        id: row.id,
+        reference: row.reference,
+        invoiceDate: new Date(row.invoiceDate),
+        partnerName: row.partnerName,
+        currency: row.currency,
+        fxRate: row.fxRate,
+        lines: [
+          ...ownLines.map((l) => ({
+            chargeTypeId: l.chargeTypeId,
+            description: l.description,
+            amount: l.amount,
+            billed: l.amount,
+            taxAmount: l.taxAmount,
+            /*
             The accrual, divided back through the bill's own rate.
 
             `core/accounting.ts` multiplies both figures by that rate, so
@@ -495,9 +508,22 @@ async function collect(actor: Actor, request: ExportRequest) {
             FX movement between the two dates, and the journal would not
             balance.
           */
-          accrued: dec(l.accruedBase).div(dec(row.fxRate)).toFixed(),
-        })),
-    }))
+            accrued: dec(l.accruedBase).div(dec(row.fxRate)).toFixed(),
+          })),
+          ...(headerOnlyTax.greaterThan(0)
+            ? [
+                {
+                  chargeTypeId: null,
+                  description: 'Tax',
+                  billed: '0',
+                  accrued: '0',
+                  taxAmount: headerOnlyTax.toFixed(),
+                },
+              ]
+            : []),
+        ],
+      }
+    })
 
     const supplierPaymentRows = await tx
       .select({

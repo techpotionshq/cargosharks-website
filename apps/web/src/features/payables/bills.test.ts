@@ -199,6 +199,51 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(state.errors?.reference).toBeDefined()
     })
 
+    /*
+      F12. Header tax was wiped by the first line (which carried none), so a
+      bill of 1,000 + 50 became 1,000 and paying 1,050 was refused.
+    */
+    it('keeps the tax captured on the header when the lines carry none', async () => {
+      const reference = nextRef()
+      await saveSupplierInvoice(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          reference,
+          currency: 'KWD',
+          fxRate: '1',
+          invoiceDate: '2026-08-18',
+          taxAmount: '50',
+        }),
+      )
+      const [bill] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: supplierInvoices.id })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.reference, reference)),
+      )
+      await addSupplierInvoiceLine(
+        {},
+        form({
+          supplierInvoiceId: bill!.id,
+          description: 'Ocean freight',
+          quantity: '1',
+          unitPrice: '1000',
+          taxAmount: '0',
+        }),
+      )
+
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ tax: supplierInvoices.taxAmount, total: supplierInvoices.total })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.id, bill!.id)),
+      )
+      expect(Number(row!.tax)).toBe(50)
+      expect(Number(row!.total)).toBe(1050)
+    })
+
     it('refuses a line on a bill that does not exist', async () => {
       const state = await addSupplierInvoiceLine(
         {},
@@ -397,6 +442,78 @@ describe.skipIf(!enabled)('supplier bills', () => {
       )
       return row!.id
     }
+
+    /** F10. A payment in another currency settled a bill at face value. */
+    it("refuses a payment in a currency other than the bill's", async () => {
+      const billId = await approvedBill('100.000')
+      const reference = `PAY-USD-${(seq += 1)}-${Date.now()}`
+      await recordSupplierPayment(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          amount: '100.00',
+          currency: 'USD',
+          fxRate: '0.307',
+          paidOn: '2026-08-18',
+          method: 'bank_transfer',
+          reference,
+        }),
+      )
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: supplierPayments.id })
+          .from(supplierPayments)
+          .where(eq(supplierPayments.reference, reference)),
+      )
+
+      const state = await allocateSupplierPayment(
+        {},
+        form({ supplierPaymentId: row!.id, supplierInvoiceId: billId, amount: '100.000' }),
+      )
+
+      expect(state.errors?.supplierInvoiceId).toBe(
+        'payablesValidation.paymentCurrencyMismatch:{"paid":"USD","billed":"KWD"}',
+      )
+    })
+
+    /** F10. Two allocations against one bill at once used to pay it twice. */
+    it('lets only one of two concurrent payments settle a bill', async () => {
+      const billId = await approvedBill('100.000')
+      const first = await payment('100.000')
+      const second = await payment('100.000')
+
+      const states = await Promise.all([
+        allocateSupplierPayment(
+          {},
+          form({ supplierPaymentId: first, supplierInvoiceId: billId, amount: '100.000' }),
+        ),
+        allocateSupplierPayment(
+          {},
+          form({ supplierPaymentId: second, supplierInvoiceId: billId, amount: '100.000' }),
+        ),
+      ])
+
+      expect(states.filter((st) => st.errors === undefined)).toHaveLength(1)
+    })
+
+    /** F17. Disputed is editable, so disputing a paid bill reopened its figures. */
+    it('refuses to dispute a bill that has been paid', async () => {
+      const billId = await approvedBill('100.000')
+      const paymentId = await payment('100.000')
+      await allocateSupplierPayment(
+        {},
+        form({ supplierPaymentId: paymentId, supplierInvoiceId: billId, amount: '100.000' }),
+      )
+
+      const state = await setSupplierInvoiceStatus(
+        {},
+        form({ supplierInvoiceId: billId, action: 'dispute', reason: 'Wrong rate' }),
+      )
+
+      expect(state.message).toBe('payablesValidation.billNotDisputable')
+      expect(await billStatus(billId)).toBe('paid')
+    })
 
     it('records a payment to a supplier', async () => {
       const id = await payment('100.000')

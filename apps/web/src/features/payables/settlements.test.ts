@@ -57,11 +57,13 @@ const {
   principals,
   roles,
   supplierInvoices,
+  supplierPayments,
   withActor,
   workingCalendars,
 } = await import('@qabandi/db')
 
 const {
+  allocateSupplierPayment,
   draftSettlement,
   setSettlementStatus,
   advanceSettlement,
@@ -96,7 +98,7 @@ function sessionWith(permissions: readonly string[]) {
   }
 }
 
-const ALL = ['settlement.run', 'partner.write']
+const ALL = ['settlement.run', 'partner.write', 'payable.pay']
 
 const form = (fields: Record<string, string>): FormData => {
   const data = new FormData()
@@ -411,6 +413,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     it('leaves out an invoice an earlier statement already claimed', async () => {
       const who = await agent()
       await ourInvoice(who, '90.000')
+      // Something to net it against: a statement claims only what its offset
+      // reaches, so an invoice with nothing opposite it is not claimed.
+      await bill(who, '90.000')
       await draft(who)
       expect(Number((await latestSettlement(who))?.receivableTotal)).toBeCloseTo(90, 3)
 
@@ -418,6 +423,69 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
       await draft(who)
 
       expect(Number((await latestSettlement(who))?.receivableTotal)).toBeCloseTo(40, 3)
+    })
+
+    /*
+      F7. Every open balance was written in full on both sides, so agreeing a
+      500-against-300 statement would settle 500 of receivables with 300.
+    */
+    it('claims only what the offset reaches, oldest first', async () => {
+      const who = await agent()
+      await bill(who, '300.000')
+      const older = await ourInvoice(who, '200.000', {
+        issuedAt: new Date('2033-06-05T09:00:00Z'),
+      })
+      const newer = await ourInvoice(who, '300.000')
+
+      await draft(who)
+      const settlement = await latestSettlement(who)
+      const lines = await withActor(actor, (tx) =>
+        tx
+          .select({
+            invoiceId: partnerSettlementLines.invoiceId,
+            amount: partnerSettlementLines.amount,
+            isFull: partnerSettlementLines.isFull,
+          })
+          .from(partnerSettlementLines)
+          .where(eq(partnerSettlementLines.settlementId, settlement!.id)),
+      )
+      const claimed = (id: string) => lines.find((l) => l.invoiceId === id)
+      expect(Number(claimed(older)?.amount)).toBeCloseTo(200, 3)
+      expect(claimed(older)?.isFull).toBe(true)
+      expect(Number(claimed(newer)?.amount)).toBeCloseTo(100, 3)
+      expect(claimed(newer)?.isFull).toBe(false)
+    })
+
+    /** F13. An invoice on a voided statement was never offered again. */
+    it('offers an invoice again once the statement that held it is voided', async () => {
+      const who = await agent()
+      await ourInvoice(who, '90.000')
+      await bill(who, '90.000')
+      await draft(who)
+      const first = await latestSettlement(who)
+      await setSettlementStatus(
+        {},
+        form({ settlementId: first!.id, action: 'void', reason: 'Wrong period' }),
+      )
+
+      await draft(who)
+
+      const second = await latestSettlement(who)
+      expect(second!.id).not.toBe(first!.id)
+      expect(Number(second?.receivableTotal)).toBeCloseTo(90, 3)
+      expect(Number(second?.payableTotal)).toBeCloseTo(90, 3)
+    })
+
+    /** F13. Two drafts over one period each netted the same bill. */
+    it('does not put a bill on a second draft while the first is live', async () => {
+      const who = await agent()
+      await bill(who, '70.000')
+      await ourInvoice(who, '70.000')
+      await draft(who)
+
+      const second = await draft(who)
+
+      expect(second.message).toBe('payablesValidation.nothingOpenInPeriod')
     })
 
     it('says so when there is nothing open to net', async () => {
@@ -504,6 +572,86 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
       expect(state.message).toBeUndefined()
       expect((await latestSettlement(who))?.status).toBe('agreed')
       expect(await settledStatusOf(billId)).toBe(id)
+    })
+
+    /*
+      F7. Agreeing changed only the settlement row: the netted invoice stayed
+      owed in ageing and dunning, and the netted bill stayed approved and could
+      be paid again.
+    */
+    it('settles both sides in their sub-ledgers when agreed, and gives it back on void', async () => {
+      const who = await agent()
+      const billId = await bill(who, '200.000')
+      const invoiceId = await ourInvoice(who, '120.000')
+      await draft(who)
+      const id = (await latestSettlement(who))!.id
+
+      await setSettlementStatus({}, form({ settlementId: id, action: 'agree' }))
+
+      const docs = async () => {
+        const [invoice] = await withActor(actor, (tx) =>
+          tx
+            .select({ status: invoices.status, paid: invoices.amountPaid })
+            .from(invoices)
+            .where(eq(invoices.id, invoiceId)),
+        )
+        const [owed] = await withActor(actor, (tx) =>
+          tx
+            .select({ status: supplierInvoices.status, paid: supplierInvoices.amountPaid })
+            .from(supplierInvoices)
+            .where(eq(supplierInvoices.id, billId)),
+        )
+        return { invoice: invoice!, bill: owed! }
+      }
+
+      let after = await docs()
+      expect(after.invoice.status).toBe('paid')
+      expect(Number(after.invoice.paid)).toBeCloseTo(120, 3)
+      expect(after.bill.status).toBe('part_paid')
+      expect(Number(after.bill.paid)).toBeCloseTo(120, 3)
+
+      await setSettlementStatus(
+        {},
+        form({ settlementId: id, action: 'void', reason: 'Agent disputes it' }),
+      )
+      after = await docs()
+      expect(after.invoice.status).toBe('issued')
+      expect(Number(after.invoice.paid)).toBe(0)
+      expect(after.bill.status).toBe('approved')
+      expect(Number(after.bill.paid)).toBe(0)
+    })
+
+    /** F7. The netted part of a bill cannot be paid again in cash. */
+    it('refuses to pay the part of a bill a set-off already settled', async () => {
+      const who = await agent()
+      const billId = await bill(who, '100.000')
+      await ourInvoice(who, '100.000')
+      await draft(who)
+      await setSettlementStatus(
+        {},
+        form({ settlementId: (await latestSettlement(who))!.id, action: 'agree' }),
+      )
+      const paymentId = await withActor(systemActor, async (tx) => {
+        const [row] = await tx
+          .insert(supplierPayments)
+          .values({
+            branchId: BRANCH,
+            partnerId: who.partnerId,
+            amount: '100.000',
+            currency: 'KWD',
+            paidOn: '2033-06-20',
+            method: 'transfer',
+          })
+          .returning({ id: supplierPayments.id })
+        return row!.id
+      })
+
+      const state = await allocateSupplierPayment(
+        {},
+        form({ supplierPaymentId: paymentId, supplierInvoiceId: billId, amount: '100.000' }),
+      )
+
+      expect(state.errors?.supplierInvoiceId).toBe('payablesValidation.billNotApproved')
     })
 
     it('stamps who agreed it and when', async () => {

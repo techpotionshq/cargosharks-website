@@ -3598,7 +3598,12 @@
     "readingFieldQuantity": "Quantity",
     "readingFieldUnitPrice": "Unit price",
     "readingFieldAmount": "Amount",
-    "readingFieldChargeType": "Charge type"
+    "readingFieldChargeType": "Charge type",
+    "settlementDocsChanged": "Some of these documents have been netted on another statement, paid or changed since this one was drafted. Void it and draft it again.",
+    "billOtherPartner": "That bill is from another supplier than this payment.",
+    "billOtherBranch": "That bill belongs to another branch than this payment.",
+    "paymentCurrencyMismatch": "The payment is in {paid} and the bill in {billed}. Allocate it to a bill in the same currency.",
+    "billNotDisputable": "Only a bill that has not been paid, netted or exported can be disputed. Raise the difference with the supplier as a credit or a new bill."
   },
   "creditValidation": {
     "chooseCustomer": "Choose a customer",

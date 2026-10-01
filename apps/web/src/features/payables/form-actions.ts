@@ -50,6 +50,8 @@ import {
   supplierInvoiceLines,
   supplierInvoiceMatches,
   supplierInvoices,
+  rederiveBillSettlement,
+  rederiveInvoiceSettlement,
   supplierPaymentAllocations,
   supplierPayments,
   withActor,
@@ -179,8 +181,16 @@ export async function saveSupplierInvoice(
           fxRate: data.fxRate,
           invoiceDate: data.invoiceDate,
           dueOn: data.dueOn ?? null,
-          taxAmount: data.taxAmount,
-          total: sql`${supplierInvoices.subtotal} + ${data.taxAmount}::numeric`,
+          /*
+            The lines' tax where they carry any, the typed figure where they
+            do not. An edit used to write the typed tax over whatever the
+            lines said, so correcting a reference on a bill whose lines carried
+            50 of tax silently dropped it from the total.
+          */
+          taxAmount: sql`case when ${lineTax(billId)} > 0 then ${lineTax(billId)}
+                              else ${data.taxAmount}::numeric end`,
+          total: sql`${supplierInvoices.subtotal} + case when ${lineTax(billId)} > 0
+                       then ${lineTax(billId)} else ${data.taxAmount}::numeric end`,
           notes: data.notes,
           updatedAt: new Date(),
         })
@@ -294,18 +304,30 @@ export async function addSupplierInvoiceLine(
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function rollBillTotals(tx: any, billId: string): Promise<void> {
+  /*
+    Tax is the lines' where any line carries it, and otherwise the figure
+    captured on the header. Supplier bills commonly state one tax figure for
+    the whole document; summing lines that carry none wiped it the moment the
+    first line was added, so a bill of 1,000 + 50 became 1,000 and paying the
+    1,050 it asked for was refused.
+  */
   await tx.execute(sql`
     update supplier_invoices set
-      subtotal   = coalesce((select sum(amount)     from supplier_invoice_lines
+      subtotal   = coalesce((select sum(amount) from supplier_invoice_lines
                               where supplier_invoice_id = ${billId}), 0),
-      tax_amount = coalesce((select sum(tax_amount) from supplier_invoice_lines
-                              where supplier_invoice_id = ${billId}), 0),
-      total      = coalesce((select sum(amount + tax_amount) from supplier_invoice_lines
-                              where supplier_invoice_id = ${billId}), 0),
+      tax_amount = case when ${lineTax(billId)} > 0 then ${lineTax(billId)} else tax_amount end,
+      total      = coalesce((select sum(amount) from supplier_invoice_lines
+                              where supplier_invoice_id = ${billId}), 0)
+                 + case when ${lineTax(billId)} > 0 then ${lineTax(billId)} else tax_amount end,
       updated_at = now()
     where id = ${billId}
   `)
 }
+
+/** The tax the bill's lines carry between them — zero where they carry none. */
+const lineTax = (billId: string) =>
+  sql`coalesce((select sum(l.tax_amount) from supplier_invoice_lines l
+                 where l.supplier_invoice_id = ${billId}), 0)`
 
 // --- matching --------------------------------------------------------------
 
@@ -558,7 +580,13 @@ export async function setSupplierInvoiceStatus(
 
     if (action === 'dispute') {
       if (!reason || reason.length < 3) return { error: 'needs_reason' as const }
-      await tx
+      /*
+        Only a bill nothing has happened to yet. Disputed is an editable
+        state, so disputing a paid, netted or exported bill reopened figures
+        that money, a set-off or the ledger already depended on. The guard is
+        in the `where`, so a payment landing first wins.
+      */
+      const disputed = await tx
         .update(supplierInvoices)
         .set({
           status: 'disputed',
@@ -566,8 +594,17 @@ export async function setSupplierInvoiceStatus(
           disputeReason: reason,
           updatedAt: new Date(),
         })
-        .where(eq(supplierInvoices.id, billId))
-      return { error: null }
+        .where(
+          and(
+            eq(supplierInvoices.id, billId),
+            inArray(supplierInvoices.status, ['received', 'approved']),
+            sql`${supplierInvoices.amountPaid} = 0`,
+            isNull(supplierInvoices.settlementId),
+            isNull(supplierInvoices.accountingExportId),
+          ),
+        )
+        .returning({ id: supplierInvoices.id })
+      return { error: disputed.length === 0 ? ('not_disputable' as const) : null }
     }
 
     if (action === 'void') {
@@ -600,6 +637,7 @@ export async function setSupplierInvoiceStatus(
     needs_review: tv('varianceNeedsReview'),
     needs_reason: tv('sayWhy'),
     paid_against: tv('billPaidAgainst'),
+    not_disputable: tv('billNotDisputable'),
     unknown: tv('nothingToDo'),
   }
 
@@ -697,76 +735,120 @@ export async function allocateSupplierPayment(
   }
 
   const outcome = await withActor(session.actor, async (tx) => {
-    const result = await tx.execute(sql`
-      select
-        (select amount from supplier_payments where id = ${paymentId})::numeric   as received,
-        coalesce((select sum(amount) from supplier_payment_allocations
-                   where supplier_payment_id = ${paymentId}), 0)::numeric         as allocated,
-        (select total from supplier_invoices where id = ${billId})::numeric       as invoiced,
-        coalesce((select sum(amount) from supplier_payment_allocations
-                   where supplier_invoice_id = ${billId}), 0)::numeric            as settled,
-        (select currency from supplier_invoices where id = ${billId})             as currency,
-        (select branch_id from supplier_invoices where id = ${billId})            as branch_id,
-        (select status from supplier_invoices where id = ${billId})               as status
-    `)
+    /*
+      Both rows locked, and the four checks an allocation needs before its two
+      ceilings mean anything: the same supplier, the same branch, the same
+      currency, and a bill released for payment. Without the lock two
+      allocations against one bill each read "1,000 owed" and together paid
+      2,000; without the others a payment to one agent could settle another's
+      bill, in another currency, at face value.
+    */
+    const [bill] = await tx
+      .select({
+        total: supplierInvoices.total,
+        amountPaid: supplierInvoices.amountPaid,
+        currency: supplierInvoices.currency,
+        branchId: supplierInvoices.branchId,
+        partnerId: supplierInvoices.partnerId,
+        status: supplierInvoices.status,
+      })
+      .from(supplierInvoices)
+      .where(eq(supplierInvoices.id, billId))
+      .limit(1)
+      .for('update')
+    const [payment] = await tx
+      .select({
+        amount: supplierPayments.amount,
+        currency: supplierPayments.currency,
+        branchId: supplierPayments.branchId,
+        partnerId: supplierPayments.partnerId,
+      })
+      .from(supplierPayments)
+      .where(eq(supplierPayments.id, paymentId))
+      .limit(1)
+      .for('update')
 
-    const row = result.rows[0] as
-      | {
-          received: string | null
-          allocated: string | null
-          invoiced: string | null
-          settled: string | null
-          currency: string | null
-          branch_id: string | null
-          status: string | null
-        }
-      | undefined
-
-    if (!row || row.received === null || row.invoiced === null || !row.branch_id) {
-      return { error: 'not_found' as const }
-    }
-    if (!['approved', 'part_paid'].includes(row.status ?? '')) {
+    if (!bill || !payment) return { error: 'not_found' as const }
+    if (!['approved', 'part_paid'].includes(bill.status)) {
       return { error: 'not_approved' as const }
     }
-    assertInBranch(session, row.branch_id)
+    assertInBranch(session, bill.branchId)
+    if (payment.partnerId !== bill.partnerId) return { error: 'other_partner' as const }
+    if (payment.branchId !== bill.branchId) return { error: 'other_branch' as const }
+    if (payment.currency !== bill.currency) {
+      return { error: 'currency' as const, paid: payment.currency, billed: bill.currency }
+    }
 
-    const currency = row.currency ?? 'KWD'
-    const verdict = checkSettlement(amount, positionFromDb(row, currency), currency)
+    const [allocated] = await tx
+      .select({ sum: sql<string | null>`sum(${supplierPaymentAllocations.amount})::text` })
+      .from(supplierPaymentAllocations)
+      .where(eq(supplierPaymentAllocations.supplierPaymentId, paymentId))
+
+    /*
+      "Settled" is the bill's paid-to-date, which counts agreed set-offs as
+      well as payments (`rederiveBillSettlement`). Counting payments alone
+      is how a bill already netted away against the agent's receivable could
+      be paid again in cash: the netting never touched this figure.
+    */
+    const currency = bill.currency
+    const verdict = checkSettlement(
+      amount,
+      positionFromDb(
+        {
+          received: payment.amount,
+          allocated: allocated?.sum ?? null,
+          invoiced: bill.total,
+          settled: bill.amountPaid,
+        },
+        currency,
+      ),
+      currency,
+    )
     if (!verdict.ok) return { error: verdict.reason }
 
-    await tx.insert(supplierPaymentAllocations).values({
-      supplierPaymentId: paymentId,
-      supplierInvoiceId: billId,
-      branchId: row.branch_id,
-      amount,
-    })
+    // A top-up adds to the allocation already there, as on the receivables
+    // side, rather than tripping the (payment, bill) unique key.
+    await tx
+      .insert(supplierPaymentAllocations)
+      .values({
+        supplierPaymentId: paymentId,
+        supplierInvoiceId: billId,
+        branchId: bill.branchId,
+        amount,
+      })
+      .onConflictDoUpdate({
+        target: [
+          supplierPaymentAllocations.supplierPaymentId,
+          supplierPaymentAllocations.supplierInvoiceId,
+        ],
+        set: {
+          amount: sql`${supplierPaymentAllocations.amount} + excluded.amount`,
+          updatedAt: new Date(),
+        },
+      })
 
-    // Paid-to-date and status derived from the allocations, in one statement.
-    await tx.execute(sql`
-      update supplier_invoices set
-        amount_paid = coalesce((select sum(amount) from supplier_payment_allocations
-                                 where supplier_invoice_id = ${billId}), 0),
-        status = case
-          when coalesce((select sum(amount) from supplier_payment_allocations
-                          where supplier_invoice_id = ${billId}), 0) >= total
-            then 'paid'::supplier_invoice_status
-          when coalesce((select sum(amount) from supplier_payment_allocations
-                          where supplier_invoice_id = ${billId}), 0) > 0
-            then 'part_paid'::supplier_invoice_status
-          else status
-        end,
-        updated_at = now()
-      where id = ${billId}
-    `)
-
+    await rederiveBillSettlement(tx, billId)
     return { error: null }
   })
 
+  if (outcome.error === 'currency') {
+    return fail(
+      {
+        supplierInvoiceId: tv('paymentCurrencyMismatch', {
+          paid: outcome.paid,
+          billed: outcome.billed,
+        }),
+      },
+      echo(form),
+    )
+  }
   const messages: Record<string, string> = {
     not_found: tv('billGone'),
     not_approved: tv('billNotApproved'),
     over_allocated: tv('overAllocated'),
     over_invoiced: tv('overInvoiced'),
+    other_partner: tv('billOtherPartner'),
+    other_branch: tv('billOtherBranch'),
   }
   if (outcome.error) {
     const key =
@@ -856,8 +938,16 @@ export async function draftSettlement(
           inArray(supplierInvoices.status, ['approved', 'part_paid']),
           sql`${supplierInvoices.invoiceDate} between ${data.periodFrom}::date and ${data.periodTo}::date`,
           sql`${supplierInvoices.total} > ${supplierInvoices.amountPaid}`,
+          // Not already on another live statement — a draft as much as an
+          // agreed one, or two drafts each net the same bill.
+          sql`not exists (
+            select 1 from partner_settlement_lines sl
+              join partner_settlements ps on ps.id = sl.settlement_id
+             where sl.supplier_invoice_id = "supplier_invoices"."id" and ps.status <> 'void'
+          )`,
         ),
       )
+      .orderBy(supplierInvoices.invoiceDate, supplierInvoices.id)
 
     const ours = await tx
       .select({
@@ -873,11 +963,19 @@ export async function draftSettlement(
           inArray(invoices.status, ['issued', 'part_paid']),
           sql`${invoices.issuedAt}::date between ${data.periodFrom}::date and ${data.periodTo}::date`,
           sql`${invoices.total} > ${invoices.amountPaid}`,
+          /*
+            Not on another *live* statement. Any line at all used to exclude
+            it, so an invoice on a voided settlement could never be netted
+            again.
+          */
           sql`not exists (
-            select 1 from partner_settlement_lines sl where sl.invoice_id = "invoices"."id"
+            select 1 from partner_settlement_lines sl
+              join partner_settlements ps on ps.id = sl.settlement_id
+             where sl.invoice_id = "invoices"."id" and ps.status <> 'void'
           )`,
         ),
       )
+      .orderBy(invoices.issuedAt, invoices.id)
 
     if (bills.length === 0 && ours.length === 0) return { error: 'nothing_to_net' as const }
 
@@ -909,24 +1007,48 @@ export async function draftSettlement(
 
     const settlementId = row!.id
 
-    await tx.insert(partnerSettlementLines).values([
-      ...ours.map((i) => ({
+    /*
+      Each line is what the set-off *claims* of its document, as the column
+      says — not the document's whole open balance.
+
+      Only the offset is extinguished. On the smaller side that is every
+      document in full; on the larger side it is the offset spread oldest
+      first, the last one partly and the rest not at all. Writing every open
+      balance in full meant agreeing a 500-against-300 statement would have
+      settled 500 of receivables with 300 of payables. A document the offset
+      does not reach is left off, so next month's statement still sees it.
+    */
+    const claim = <T extends { id: string; total: string; amountPaid: string }>(rows: T[]) => {
+      let left = net.offset.amount
+      return rows.flatMap((r) => {
+        const open = new D(r.total).minus(new D(r.amountPaid))
+        const take = D.min(open, left)
+        left = left.minus(take)
+        return take.greaterThan(0)
+          ? [{ id: r.id, amount: take.toFixed(), isFull: take.eq(open) }]
+          : []
+      })
+    }
+
+    const lines = [
+      ...claim(ours).map((c) => ({
         settlementId,
         branchId: data.branchId,
         kind: 'invoice' as const,
-        invoiceId: i.id,
-        amount: new D(i.total).minus(new D(i.amountPaid)).toFixed(),
-        isFull: true,
+        invoiceId: c.id,
+        amount: c.amount,
+        isFull: c.isFull,
       })),
-      ...bills.map((b) => ({
+      ...claim(bills).map((c) => ({
         settlementId,
         branchId: data.branchId,
         kind: 'bill' as const,
-        supplierInvoiceId: b.id,
-        amount: new D(b.total).minus(new D(b.amountPaid)).toFixed(),
-        isFull: true,
+        supplierInvoiceId: c.id,
+        amount: c.amount,
+        isFull: c.isFull,
       })),
-    ])
+    ]
+    if (lines.length > 0) await tx.insert(partnerSettlementLines).values(lines)
 
     return { error: null, id: settlementId }
   })
@@ -990,19 +1112,65 @@ export async function setSettlementStatus(
       if (updated.length === 0) return { error: 'not_draft' as const }
 
       /*
-        Claim the bills, in the same transaction as the agreement.
+        The documents behind it, locked, and still what the draft said.
 
-        Without this the next statement lists them again and they get netted
-        twice — which is not caught by any balance check, because both
-        settlements are individually consistent.
+        Two drafts over the same period both listed the same bills, and
+        agreeing the second netted them twice — no balance check catches that,
+        because each settlement is consistent on its own. So at agreement every
+        document must be unclaimed by any other agreed statement, still open
+        for at least what this one claims, and still in a state that can be
+        settled; otherwise the clerk voids and redrafts. Throwing rolls back
+        the status change above.
+      */
+      await tx.execute(sql`
+        select id from invoices where id in (
+          select invoice_id from partner_settlement_lines where settlement_id = ${settlementId}
+        ) for update
+      `)
+      await tx.execute(sql`
+        select id from supplier_invoices where id in (
+          select supplier_invoice_id from partner_settlement_lines where settlement_id = ${settlementId}
+        ) for update
+      `)
+      const stale = await tx.execute(sql`
+        select count(*)::int as n
+          from partner_settlement_lines sl
+          left join invoices i on i.id = sl.invoice_id
+          left join supplier_invoices si on si.id = sl.supplier_invoice_id
+         where sl.settlement_id = ${settlementId}
+           and (
+             (si.id is not null and (si.settlement_id is not null and si.settlement_id <> ${settlementId}
+                                     or si.status not in ('approved', 'part_paid')
+                                     or sl.amount > si.total - si.amount_paid))
+             or (i.id is not null and (i.status not in ('issued', 'part_paid')
+                                       or sl.amount > i.total - i.amount_paid
+                                       or exists (
+                                         select 1 from partner_settlement_lines other
+                                           join partner_settlements ps on ps.id = other.settlement_id
+                                          where other.invoice_id = i.id
+                                            and other.settlement_id <> ${settlementId}
+                                            and ps.status in ('agreed', 'settled'))))
+           )
+      `)
+      if (Number((stale.rows[0] as { n: number } | undefined)?.n ?? 0) > 0) {
+        throw new SettlementChanged()
+      }
+
+      /*
+        Claim the bills, in the same transaction as the agreement — that is
+        what keeps them off the next statement — and settle both sides in
+        their sub-ledgers. Netting used to change only this row: the netted
+        invoices stayed owed in ageing and dunning, and the netted bills stayed
+        approved and could be paid a second time.
       */
       await tx.execute(sql`
         update supplier_invoices set settlement_id = ${settlementId}, updated_at = now()
-         where id in (
+         where settlement_id is null and id in (
            select supplier_invoice_id from partner_settlement_lines
             where settlement_id = ${settlementId} and supplier_invoice_id is not null
          )
       `)
+      await resettleDocuments(tx, settlementId)
       return { error: null }
     }
 
@@ -1035,15 +1203,20 @@ export async function setSettlementStatus(
         })
         .where(eq(partnerSettlements.id, settlementId))
 
-      // Release the bills it claimed, so the next statement sees them again.
+      // Release the bills it claimed, so the next statement sees them again,
+      // and give back what it had settled on both sides.
       await tx
         .update(supplierInvoices)
         .set({ settlementId: null, updatedAt: new Date() })
         .where(eq(supplierInvoices.settlementId, settlementId))
+      await resettleDocuments(tx, settlementId)
       return { error: null }
     }
 
     return { error: 'unknown' as const }
+  }).catch((error: unknown) => {
+    if (error instanceof SettlementChanged) return { error: 'changed' as const }
+    throw error
   })
 
   const messages: Record<string, string> = {
@@ -1052,13 +1225,44 @@ export async function setSettlementStatus(
     not_agreed: tv('agreeBeforeSettling'),
     already_settled: tv('settlementSettled'),
     needs_reason: tv('sayWhy'),
+    changed: tv('settlementDocsChanged'),
     unknown: tv('nothingToDo'),
   }
   if (outcome.error) return failWith(messages[outcome.error]!, echo(form))
 
   revalidatePath('/settlements')
+  revalidatePath('/invoices')
+  revalidatePath('/payables')
   revalidatePath(`/settlements/${settlementId}`)
   return succeed(settlementId)
+}
+
+/** A settlement whose documents moved under it; caught into a sentence. */
+class SettlementChanged extends Error {
+  constructor() {
+    super('settlement_changed')
+    this.name = 'SettlementChanged'
+  }
+}
+
+/**
+ * Re-derive every document a settlement names — paid-to-date and status —
+ * after it is agreed or voided. The rule lives in `packages/db/src/settled.ts`
+ * because the ledger slice applies it to receipts too.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resettleDocuments(tx: any, settlementId: string): Promise<void> {
+  const lines = await tx
+    .select({
+      invoiceId: partnerSettlementLines.invoiceId,
+      supplierInvoiceId: partnerSettlementLines.supplierInvoiceId,
+    })
+    .from(partnerSettlementLines)
+    .where(eq(partnerSettlementLines.settlementId, settlementId))
+  for (const line of lines as { invoiceId: string | null; supplierInvoiceId: string | null }[]) {
+    if (line.invoiceId) await rederiveInvoiceSettlement(tx, line.invoiceId)
+    if (line.supplierInvoiceId) await rederiveBillSettlement(tx, line.supplierInvoiceId)
+  }
 }
 
 /**
