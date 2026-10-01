@@ -149,7 +149,7 @@ export async function creditStanding(
       )
       if (isZero(owed)) continue
 
-      const rate = await latestRate(tx, invoice.currency, currency)
+      const rate = await latestFxRate(tx, invoice.currency, currency)
       if (!rate) {
         unconvertible.push({ currency: invoice.currency, amount: owed.amount.toFixed() })
         continue
@@ -181,7 +181,7 @@ export async function creditStanding(
  * rather than the exact day's is deliberate: a credit check on a Friday must
  * not fail because the feed does not publish at the weekend.
  */
-async function latestRate(
+export async function latestFxRate(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   from: string,
@@ -320,7 +320,7 @@ export async function checkCredit(
   let proposed = input.proposed ?? null
   if (proposed && proposed.currency !== standing.currency) {
     const rate = await withActor(actor, (tx) =>
-      latestRate(tx, proposed!.currency, standing.currency),
+      latestFxRate(tx, proposed!.currency, standing.currency),
     )
     proposed = rate
       ? convert(proposed, fxRate(proposed.currency, standing.currency, rate, new Date()))

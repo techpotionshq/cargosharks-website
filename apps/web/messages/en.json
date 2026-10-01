@@ -1297,7 +1297,13 @@
     "languages": {
       "en": "English",
       "ar": "Arabic"
-    }
+    },
+    "lineDescription": "What it is for",
+    "lineDescriptionHint": "The first line of the invoice, as the customer will read it. Add more lines on the draft.",
+    "charge": "Charge",
+    "chargeHint": "Decides which revenue account the line posts to",
+    "fxRate": "Rate to base currency",
+    "fxRateHint": "Units of the branch's base currency per one unit invoiced. Leave empty to use the latest rate on file; ignored for an invoice in the base currency."
   },
   "paymentForm": {
     "open": "Record a receipt",
@@ -1325,7 +1331,9 @@
       "card": "Card",
       "offset": "Offset against a credit"
     },
-    "unnumberedInvoice": "(draft)"
+    "unnumberedInvoice": "(draft)",
+    "fxRate": "Rate to base currency",
+    "fxRateHint": "Units of the branch's base currency per one unit received. Leave empty to use the latest rate on file; ignored when the receipt is in the base currency."
   },
   "jobForm": {
     "open": "New shipment",
@@ -3792,7 +3800,17 @@
     "exportJournalChargeTypeUnmapped": "The charge type {chargeType} has no {account, select, revenue {revenue} other {cost}} account, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Map it under Reference data → Charge types, then run the export again.",
     "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close.",
     "exportInvoiceWithoutRate": "Invoice {reference} is in a foreign currency and has no exchange rate, so it cannot post. Give it a rate and run the export again.",
-    "exportPeriodChanged": "Part of this period was posted by someone else while this export was being built. Nothing was posted — run it again."
+    "exportPeriodChanged": "Part of this period was posted by someone else while this export was being built. Nothing was posted — run it again.",
+    "fxRateNeeded": "There is no exchange rate from {currency} to {base} yet. Enter the rate it was agreed at.",
+    "fxRatePositive": "The exchange rate must be a number greater than zero.",
+    "amountMustBePositive": "Enter an amount greater than zero.",
+    "invoiceNotPayable": "This invoice cannot take a payment: it has not been issued, or it is already paid, credited or voided.",
+    "receiptCurrencyMismatch": "The receipt is in {received} and the invoice in {invoiced}. Record the receipt in the invoice's currency.",
+    "invoiceOtherCustomer": "That invoice belongs to another customer.",
+    "invoiceOtherBranch": "That invoice was raised by another branch.",
+    "invoiceNotDraftNoEdit": "This invoice is no longer a draft, so its lines cannot change. Correct it with a credit note.",
+    "invoiceNoLines": "Add at least one line before approving or issuing this invoice.",
+    "quantityMoreThanZero": "Quantity must be more than zero."
   },
   "validation": {
     "invalidType": "Enter a valid value.",

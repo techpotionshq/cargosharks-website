@@ -8384,8 +8384,9 @@ export function pilotOutstandingInvoices(
   now = Date.now(),
   locale: 'en' | 'ar' = 'en',
 ): OutstandingInvoiceRow[] {
+  // The query's filter: only what a receipt can settle — issued, so numbered.
   return pilotInvoices(now, undefined, locale)
-    .filter((row) => ['issued', 'part_paid', 'approved'].includes(row.status))
+    .filter((row) => ['issued', 'part_paid'].includes(row.status) && row.seriesNo)
     .filter((row) => new D(minus(row.total ?? '0', row.amountPaid ?? '0')).greaterThan(0))
     .map((row) => ({
       id: row.id,

@@ -1297,7 +1297,13 @@
     "languages": {
       "en": "الإنجليزية",
       "ar": "العربية"
-    }
+    },
+    "lineDescription": "مقابل ماذا",
+    "lineDescriptionHint": "البند الأول في الفاتورة كما سيقرؤه العميل. أضف بنودًا أخرى على المسودة.",
+    "charge": "الرسوم",
+    "chargeHint": "يحدد حساب الإيرادات الذي يُرحَّل إليه البند",
+    "fxRate": "سعر الصرف إلى العملة الأساسية",
+    "fxRateHint": "عدد وحدات العملة الأساسية للفرع مقابل وحدة واحدة مفوترة. اتركه فارغًا لاستخدام أحدث سعر مسجّل؛ لا يُستخدم لفاتورة بالعملة الأساسية."
   },
   "paymentForm": {
     "open": "تسجيل مقبوضات",
@@ -1325,7 +1331,9 @@
       "card": "بطاقة",
       "offset": "مقاصة مقابل رصيد"
     },
-    "unnumberedInvoice": "(مسودة)"
+    "unnumberedInvoice": "(مسودة)",
+    "fxRate": "سعر الصرف إلى العملة الأساسية",
+    "fxRateHint": "عدد وحدات العملة الأساسية للفرع مقابل وحدة واحدة مستلمة. اتركه فارغًا لاستخدام أحدث سعر مسجّل؛ لا يُستخدم إذا كان الإيصال بالعملة الأساسية."
   },
   "jobForm": {
     "open": "شحنة جديدة",
@@ -3792,7 +3800,17 @@
     "exportJournalChargeTypeUnmapped": "نوع الرسم {chargeType} غير مربوط بحساب {account, select, revenue {إيرادات} other {تكاليف}}، فلا يمكن ترحيل {document, select, journal {القيد} invoice {الفاتورة {reference}} job_cost {التكلفة على {reference}} supplier_invoice {فاتورة المورد {reference}} payment {الدفعة {reference}} receipt {سند القبض {reference}} settlement {المقاصّة {reference}} other {{reference}}}. اربطه من البيانات المرجعية ← أنواع الرسوم، ثم أعد تشغيل التصدير.",
     "exportJournalLineNoChargeType": "البند «{line}» في {document, select, supplier_invoice {فاتورة المورد {reference}} other {الفاتورة {reference}}} بلا نوع رسم، فلا يمكن ترحيله. حدّد له نوع رسم قبل إقفال الفترة.",
     "exportInvoiceWithoutRate": "الفاتورة {reference} بعملة أجنبية وليس لها سعر صرف، لذا لا يمكن ترحيلها. أدخل سعر الصرف ثم أعد تشغيل التصدير.",
-    "exportPeriodChanged": "رُحِّل جزء من هذه الفترة من قِبل شخص آخر أثناء إعداد هذا التصدير. لم يُرحَّل شيء — أعد تشغيله."
+    "exportPeriodChanged": "رُحِّل جزء من هذه الفترة من قِبل شخص آخر أثناء إعداد هذا التصدير. لم يُرحَّل شيء — أعد تشغيله.",
+    "fxRateNeeded": "لا يوجد بعد سعر صرف من {currency} إلى {base}. أدخل السعر المتفق عليه.",
+    "fxRatePositive": "يجب أن يكون سعر الصرف رقمًا أكبر من صفر.",
+    "amountMustBePositive": "أدخل مبلغًا أكبر من صفر.",
+    "invoiceNotPayable": "لا يمكن تسجيل دفعة على هذه الفاتورة: لم تُصدر بعد، أو سُدّدت أو أُلغيت أو صدر بها إشعار دائن.",
+    "receiptCurrencyMismatch": "الإيصال بعملة {received} والفاتورة بعملة {invoiced}. سجّل الإيصال بعملة الفاتورة.",
+    "invoiceOtherCustomer": "هذه الفاتورة تخص عميلًا آخر.",
+    "invoiceOtherBranch": "هذه الفاتورة صادرة من فرع آخر.",
+    "invoiceNotDraftNoEdit": "لم تعد هذه الفاتورة مسودة، لذا لا يمكن تعديل بنودها. صحّحها بإشعار دائن.",
+    "invoiceNoLines": "أضف بندًا واحدًا على الأقل قبل اعتماد هذه الفاتورة أو إصدارها.",
+    "quantityMoreThanZero": "يجب أن تكون الكمية أكبر من صفر."
   },
   "validation": {
     "invalidType": "أدخل قيمة صالحة.",

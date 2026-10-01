@@ -24,17 +24,23 @@ import { getTranslations } from 'next-intl/server'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
+  SettlementError,
   assertTransition,
   checkSettlement,
+  dec,
   fromDb,
   invoiceMachine,
+  money as moneyOf,
   positionFromDb,
   quoteMachine,
+  round,
   toScale,
 } from '@qabandi/core'
 import {
+  branches,
   chargeLines,
   checkCredit,
+  currencies,
   enquiries,
   invoiceLines,
   invoices,
@@ -42,8 +48,10 @@ import {
   notificationOutbox,
   paymentAllocations,
   payments,
+  latestFxRate,
   quoteLines,
   quotes,
+  rederiveInvoiceSettlement,
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
@@ -76,6 +84,13 @@ const money = (message: string) =>
     .string()
     .trim()
     .regex(/^\d+(\.\d{1,6})?$/, message)
+
+/**
+ * Above zero — judged only once the figure is a decimal at all, because a
+ * refinement runs after a failed regex too and `dec('')` throws.
+ */
+const aboveZero = (v: string | null): boolean =>
+  v === null || !/^\d+(\.\d{1,6})?$/.test(v) || dec(v).greaterThan(0)
 
 const optionalMoney = (tv: Translate) =>
   z
@@ -517,6 +532,108 @@ export async function setQuoteCoverNote(
 
 // --- invoices --------------------------------------------------------------
 
+/**
+ * A quantity on an invoice line: a decimal greater than zero.
+ *
+ * Its own refusal for a negative or zero figure, because "-1" *is* a number
+ * and being told otherwise sends the clerk looking for a typo that is not
+ * there. A correction to an issued invoice is a credit note, never a negative
+ * line.
+ */
+const lineQuantity = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .refine((v) => !v.startsWith('-'), tv('quantityMoreThanZero'))
+    .pipe(money(tv('quantityNumber')))
+    .refine(aboveZero, tv('quantityMoreThanZero'))
+
+/** An exchange rate typed on a form: optional, and above zero where given. */
+const optionalRate = (tv: Translate) => optionalMoney(tv).refine(aboveZero, tv('fxRatePositive'))
+
+/**
+ * The currency's minor units, from the table that is the authority on them
+ * (NFR-02). Two where a currency is somehow missing, which is the common case
+ * and never more precise than the column.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function minorUnits(tx: any, currency: string): Promise<number> {
+  const [row] = await tx
+    .select({ minorUnits: currencies.minorUnits })
+    .from(currencies)
+    .where(eq(currencies.code, currency))
+    .limit(1)
+  return row?.minorUnits ?? 2
+}
+
+/**
+ * A line's amount and tax, each rounded to the currency at the line.
+ *
+ * Unrounded, a KWD line of 3 × 560.433883 stored 1681.301650 — shown on the
+ * page as 1,681.302, so a customer paying the figure they were shown was told
+ * it was more than they owed, and paying 1,681.301 left the invoice part-paid
+ * for ever. Rounding each line, then summing, is the NFR-02 rule: the header
+ * is always a sum of figures the currency can actually hold.
+ */
+function lineFigures(
+  quantity: string,
+  unitPrice: string,
+  taxRatePercent: string,
+  taxable: boolean,
+  currency: string,
+  units: number,
+): { amount: string; taxAmount: string } {
+  const spec = { code: currency, minorUnits: units }
+  const amount = round(moneyOf(dec(quantity).times(dec(unitPrice)), currency), spec)
+  const tax = taxable
+    ? round(moneyOf(amount.amount.times(dec(taxRatePercent)).dividedBy(100), currency), spec)
+    : moneyOf(0, currency)
+  return { amount: amount.amount.toFixed(), taxAmount: tax.amount.toFixed() }
+}
+
+/**
+ * The rate to the branch's base currency for a receipt or a hand-raised
+ * invoice — 1 in base, what was typed where something was, and otherwise the
+ * latest rate on file (the same lookup the credit check uses).
+ *
+ * Null where none of those exists, which the caller refuses: a USD receipt
+ * stored at rate 1 cleared a USD 10,000 receivable as 10,000 KWD in the
+ * export, and nothing downstream could tell.
+ */
+async function rateToBase(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  branchId: string,
+  currency: string,
+  typed: string | null,
+): Promise<{ rate: string | null; base: string }> {
+  const [branch] = await tx
+    .select({ base: branches.baseCurrency })
+    .from(branches)
+    .where(eq(branches.id, branchId))
+    .limit(1)
+  const base: string = branch?.base ?? currency
+  if (base === currency) return { rate: '1', base }
+  if (typed) return { rate: typed, base }
+  return { rate: await latestFxRate(tx, currency, base), base }
+}
+
+/**
+ * Header totals recomputed from the lines, so a corrected line cannot leave
+ * the header permanently out by the difference.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rollInvoiceTotals(tx: any, invoiceId: string): Promise<void> {
+  await tx.execute(sql`
+    update invoices set
+      subtotal   = coalesce((select sum(amount)     from invoice_lines where invoice_id = ${invoiceId}), 0),
+      tax_amount = coalesce((select sum(tax_amount) from invoice_lines where invoice_id = ${invoiceId}), 0),
+      total      = coalesce((select sum(amount) + sum(tax_amount) from invoice_lines where invoice_id = ${invoiceId}), 0),
+      updated_at = now()
+    where id = ${invoiceId}
+  `)
+}
+
 const invoiceSchema = (tv: Translate) =>
   z.object({
     branchId: z.uuid(tv('chooseBranch')),
@@ -526,7 +643,13 @@ const invoiceSchema = (tv: Translate) =>
       .trim()
       .length(3)
       .transform((v) => v.toUpperCase()),
-    subtotal: money(tv('enterSubtotal')),
+    subtotal: money(tv('enterSubtotal')).refine(aboveZero, tv('amountMustBePositive')),
+    descriptionEn: z.string().trim().min(1, tv('describeCharge')).max(200),
+    chargeTypeId: z
+      .uuid()
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    fxRate: optionalRate(tv),
     taxTreatment: z.enum(['out_of_scope', 'zero_rated', 'exempt', 'standard', 'reverse_charge']),
     taxRatePercent: z
       .string()
@@ -543,6 +666,15 @@ const invoiceSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
+/**
+ * A draft invoice, with its first line.
+ *
+ * The typed amount becomes a *line*, not a header figure. It used to be
+ * written onto the header alone: the export builds receivables from lines, so
+ * the invoice posted nothing at all, and the first line added afterwards
+ * recomputed the header and silently threw the typed subtotal away. Every
+ * total on an invoice is now a sum of its lines, however it was raised.
+ */
 export async function createInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
@@ -553,6 +685,9 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
     customerId: read(form, 'customerId'),
     currency: read(form, 'currency') ?? 'KWD',
     subtotal: read(form, 'subtotal') ?? '',
+    descriptionEn: read(form, 'descriptionEn') ?? '',
+    chargeTypeId: read(form, 'chargeTypeId'),
+    fxRate: read(form, 'fxRate'),
     taxTreatment: read(form, 'taxTreatment') ?? 'out_of_scope',
     taxRatePercent: read(form, 'taxRatePercent') ?? '0',
     dueOn: read(form, 'dueOn') ?? '',
@@ -564,27 +699,57 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
   const data = parsed.data
   assertInBranch(session, data.branchId)
 
-  // Tax and total are computed by PostgreSQL from the subtotal and the rate,
-  // so the three columns cannot disagree — a total typed by hand is a total
-  // that is eventually wrong.
   const rate = data.taxTreatment === 'standard' ? data.taxRatePercent : '0'
 
-  await withActor(session.actor, async (tx) => {
-    await tx.insert(invoices).values({
-      branchId: data.branchId,
-      customerId: data.customerId,
-      status: 'draft',
-      currency: data.currency,
-      subtotal: data.subtotal,
-      taxAmount: sql`round(${data.subtotal}::numeric * ${rate}::numeric / 100, 6)`,
-      total: sql`${data.subtotal}::numeric + round(${data.subtotal}::numeric * ${rate}::numeric / 100, 6)`,
-      taxTreatment: data.taxTreatment,
-      taxRatePercent: rate,
-      language: data.language,
-      dueOn: data.dueOn,
-      notes: data.notes,
+  const outcome = await withActor(session.actor, async (tx) => {
+    const fx = await rateToBase(tx, data.branchId, data.currency, data.fxRate)
+    if (!fx.rate) return { error: 'no_rate' as const, base: fx.base }
+
+    const [invoice] = await tx
+      .insert(invoices)
+      .values({
+        branchId: data.branchId,
+        customerId: data.customerId,
+        status: 'draft',
+        currency: data.currency,
+        taxTreatment: data.taxTreatment,
+        taxRatePercent: rate,
+        fxRate: fx.rate,
+        language: data.language,
+        dueOn: data.dueOn,
+        notes: data.notes,
+      })
+      .returning({ id: invoices.id })
+
+    const taxable = dec(rate).greaterThan(0)
+    const figures = lineFigures(
+      '1',
+      data.subtotal,
+      rate,
+      taxable,
+      data.currency,
+      await minorUnits(tx, data.currency),
+    )
+    await tx.insert(invoiceLines).values({
+      invoiceId: invoice!.id,
+      chargeTypeId: data.chargeTypeId ?? null,
+      descriptionEn: data.descriptionEn,
+      quantity: '1',
+      unitPrice: data.subtotal,
+      amount: figures.amount,
+      taxAmount: figures.taxAmount,
+      isTaxable: taxable,
     })
+    await rollInvoiceTotals(tx, invoice!.id)
+    return { error: null, id: invoice!.id }
   })
+
+  if (outcome.error === 'no_rate') {
+    return fail(
+      { fxRate: tv('fxRateNeeded', { currency: data.currency, base: outcome.base }) },
+      echo(form),
+    )
+  }
 
   revalidatePath('/invoices')
   revalidatePath('/finance')
@@ -604,7 +769,7 @@ export async function addInvoiceLine(_previous: ActionState, form: FormData): Pr
       .optional()
       .or(z.literal('').transform(() => undefined)),
     descriptionEn: z.string().trim().min(1, tv('describeCharge')).max(200),
-    quantity: money(tv('quantityNumber')),
+    quantity: lineQuantity(tv),
     unitPrice: money(tv('unitPriceNumber')),
     isTaxable: z.coerce.boolean(),
   })
@@ -621,38 +786,52 @@ export async function addInvoiceLine(_previous: ActionState, form: FormData): Pr
 
   const data = parsed.data
 
-  await withActor(session.actor, async (tx) => {
+  const refused = await withActor(session.actor, async (tx) => {
+    /*
+      Locked, and only ever a draft.
+
+      This read used to fetch the status and ignore it, so a line could be
+      added to an issued — or paid — invoice, changing a statutory document
+      the customer already holds. The lock makes the check hold against an
+      approval or an issue landing between this read and the insert.
+    */
     const [invoice] = await tx
-      .select({ status: invoices.status, rate: invoices.taxRatePercent })
+      .select({
+        status: invoices.status,
+        rate: invoices.taxRatePercent,
+        currency: invoices.currency,
+      })
       .from(invoices)
       .where(eq(invoices.id, data.invoiceId))
       .limit(1)
+      .for('update')
     if (!invoice) throw new Error('not_found')
+    if (invoice.status !== 'draft') return true
 
+    const figures = lineFigures(
+      data.quantity,
+      data.unitPrice,
+      invoice.rate,
+      data.isTaxable,
+      invoice.currency,
+      await minorUnits(tx, invoice.currency),
+    )
     await tx.insert(invoiceLines).values({
       invoiceId: data.invoiceId,
       chargeTypeId: data.chargeTypeId ?? null,
       descriptionEn: data.descriptionEn,
       quantity: data.quantity,
       unitPrice: data.unitPrice,
-      amount: sql`${data.quantity}::numeric * ${data.unitPrice}::numeric`,
-      taxAmount: data.isTaxable
-        ? sql`round(${data.quantity}::numeric * ${data.unitPrice}::numeric * ${invoice.rate}::numeric / 100, 6)`
-        : '0',
+      amount: figures.amount,
+      taxAmount: figures.taxAmount,
       isTaxable: data.isTaxable,
     })
 
-    // Recomputed from the lines rather than incremented, so a corrected line
-    // cannot leave the header permanently out by the difference.
-    await tx.execute(sql`
-      update invoices set
-        subtotal   = coalesce((select sum(amount)     from invoice_lines where invoice_id = ${data.invoiceId}), 0),
-        tax_amount = coalesce((select sum(tax_amount) from invoice_lines where invoice_id = ${data.invoiceId}), 0),
-        total      = coalesce((select sum(amount) + sum(tax_amount) from invoice_lines where invoice_id = ${data.invoiceId}), 0),
-        updated_at = now()
-      where id = ${data.invoiceId}
-    `)
+    await rollInvoiceTotals(tx, data.invoiceId)
+    return false
   })
+
+  if (refused) return failWith(tv('invoiceNotDraftNoEdit'), echo(form))
 
   revalidatePath(`/invoices/${data.invoiceId}`)
   revalidatePath('/invoices')
@@ -715,9 +894,30 @@ export async function setInvoiceStatus(
         .from(invoices)
         .where(eq(invoices.id, invoiceId))
         .limit(1)
+        /*
+          Locked for the rest of the transaction. Two clicks on Issue both read
+          "approved, no number" without it, and each allocated a series number
+          — the second overwrote the first, leaving a permanent gap in a
+          statutory sequence. With the lock the second waits, then reads
+          "issued" and is refused by the machine.
+        */
+        .for('update')
       if (!current) throw new Error('not_found')
 
       assertTransition(invoiceMachine, current.status, status as 'issued')
+
+      /*
+        Nothing with no lines is approved or issued. The export builds the
+        receivable from the lines, so an invoice without any posts nothing
+        while asking the customer for its header total.
+      */
+      if (status === 'approved' || status === 'issued') {
+        const [lines] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(invoiceLines)
+          .where(eq(invoiceLines.invoiceId, invoiceId))
+        if (!lines || Number(lines.count) === 0) throw new Error('invoice_no_lines')
+      }
 
       /**
        * The number is allocated at *issue*, not at creation.
@@ -763,7 +963,9 @@ export async function setInvoiceStatus(
           issuedById: status === 'issued' ? session.principal.id : undefined,
           updatedAt: new Date(),
         })
-        .where(eq(invoices.id, invoiceId))
+        // The status it was read in, as well as the lock: belt and braces on
+        // the one write that consumes a statutory number.
+        .where(and(eq(invoices.id, invoiceId), eq(invoices.status, current.status)))
 
       /*
         FR-NT-01, and only on issue.
@@ -796,6 +998,9 @@ export async function setInvoiceStatus(
   } catch (error) {
     if (error instanceof Error && error.message.includes('transition')) {
       return failWith(tv('invoiceBadTransition'))
+    }
+    if (error instanceof Error && error.message === 'invoice_no_lines') {
+      return failWith(tv('invoiceNoLines'))
     }
     throw error
   }
@@ -863,7 +1068,7 @@ const paymentSchema = (tv: Translate) =>
   z.object({
     branchId: z.uuid(tv('chooseBranch')),
     customerId: z.uuid(tv('chooseCustomer')),
-    amount: money(tv('enterAmountReceived')),
+    amount: money(tv('enterAmountReceived')).refine(aboveZero, tv('amountMustBePositive')),
     currency: z
       .string()
       .trim()
@@ -877,7 +1082,7 @@ const paymentSchema = (tv: Translate) =>
       .max(80)
       .optional()
       .transform((v) => v || null),
-    fxRate: optionalMoney(tv),
+    fxRate: optionalRate(tv),
     notes: z
       .string()
       .trim()
@@ -913,27 +1118,51 @@ export async function recordPayment(_previous: ActionState, form: FormData): Pro
   const data = parsed.data
   assertInBranch(session, data.branchId)
 
-  await withActor(session.actor, async (tx) => {
-    const [payment] = await tx
-      .insert(payments)
-      .values({
-        branchId: data.branchId,
-        customerId: data.customerId,
-        amount: data.amount,
-        currency: data.currency,
-        fxRate: data.fxRate ?? '1',
-        receivedOn: data.receivedOn,
-        method: data.method,
-        reference: data.reference,
-        notes: data.notes,
-        recordedById: session.principal.id,
-      })
-      .returning({ id: payments.id })
+  try {
+    const outcome = await withActor(session.actor, async (tx) => {
+      /*
+        The rate the money arrived at — typed, or the latest on file, and
+        refused where there is neither. It was always stored as 1: the dialog
+        had no field for it, so a USD receipt reached the ledger at face value.
+      */
+      const fx = await rateToBase(tx, data.branchId, data.currency, data.fxRate)
+      if (!fx.rate) return { error: 'no_rate' as const, base: fx.base }
 
-    if (data.invoiceId) {
-      await allocate(tx, payment!.id, data.invoiceId, data.amount)
+      const [payment] = await tx
+        .insert(payments)
+        .values({
+          branchId: data.branchId,
+          customerId: data.customerId,
+          amount: data.amount,
+          currency: data.currency,
+          fxRate: fx.rate,
+          receivedOn: data.receivedOn,
+          method: data.method,
+          reference: data.reference,
+          notes: data.notes,
+          recordedById: session.principal.id,
+        })
+        .returning({ id: payments.id })
+
+      // A refusal here throws, and the receipt rolls back with it: a cheque
+      // recorded against the wrong invoice is re-entered, not half-kept.
+      if (data.invoiceId) {
+        await allocate(tx, payment!.id, data.invoiceId, data.amount)
+      }
+      return { error: null }
+    })
+
+    if (outcome.error === 'no_rate') {
+      return fail(
+        { fxRate: tv('fxRateNeeded', { currency: data.currency, base: outcome.base }) },
+        echo(form),
+      )
     }
-  })
+  } catch (error) {
+    const refused = allocationRefusal(error, tv)
+    if (refused) return fail(refused, echo(form))
+    throw error
+  }
 
   revalidatePath('/payments')
   revalidatePath('/invoices')
@@ -961,12 +1190,8 @@ export async function allocatePayment(
   try {
     await withActor(session.actor, (tx) => allocate(tx, paymentId, invoiceId, amount))
   } catch (error) {
-    if (error instanceof Error && error.message === 'over_allocated') {
-      return fail({ amount: tv('overAllocated') }, echo(form))
-    }
-    if (error instanceof Error && error.message === 'over_invoiced') {
-      return fail({ amount: tv('overInvoiced') }, echo(form))
-    }
+    const refused = allocationRefusal(error, tv)
+    if (refused) return fail(refused, echo(form))
     throw error
   }
 
@@ -977,69 +1202,164 @@ export async function allocatePayment(
 }
 
 /**
- * The allocation itself, with both ceilings checked inside the transaction.
+ * Why an allocation was refused, as the field error that says so — or null
+ * for an error that is not a refusal and should reach the boundary.
  *
- * Both checks matter and they are different: you cannot allocate more of a
- * receipt than you received, and you cannot settle an invoice by more than it
- * is owed. Doing them in the same transaction as the insert is what makes them
- * hold when two people are allocating the same receipt at the same moment.
+ * Shared by both actions. `recordPayment` used to catch none of these, so a
+ * customer paying exactly the balance shown on an unrounded invoice got a 500
+ * where `allocatePayment` gave the same case a sentence.
+ */
+function allocationRefusal(error: unknown, tv: Translate): Record<string, string> | null {
+  if (error instanceof SettlementError) return { amount: tv('amountMustBePositive') }
+  if (error instanceof AllocationRefused) {
+    switch (error.code) {
+      case 'over_allocated':
+        return { amount: tv('overAllocated') }
+      case 'over_invoiced':
+        return { amount: tv('overInvoiced') }
+      case 'not_payable':
+        return { invoiceId: tv('invoiceNotPayable') }
+      case 'currency_mismatch':
+        return {
+          invoiceId: tv('receiptCurrencyMismatch', {
+            received: error.values.received ?? '',
+            invoiced: error.values.invoiced ?? '',
+          }),
+        }
+      case 'other_customer':
+        return { invoiceId: tv('invoiceOtherCustomer') }
+      case 'other_branch':
+        return { invoiceId: tv('invoiceOtherBranch') }
+      default: {
+        const unhandled: never = error.code
+        return unhandled
+      }
+    }
+  }
+  return null
+}
+
+class AllocationRefused extends Error {
+  constructor(
+    readonly code:
+      | 'over_allocated'
+      | 'over_invoiced'
+      | 'not_payable'
+      | 'currency_mismatch'
+      | 'other_customer'
+      | 'other_branch',
+    readonly values: Readonly<Record<string, string>> = {},
+  ) {
+    super(code)
+    this.name = 'AllocationRefused'
+  }
+}
+
+/**
+ * The allocation itself, with every check inside the transaction.
+ *
+ * The two ceilings — not more of a receipt than was received, not more of an
+ * invoice than is owed — and the four things that make an allocation
+ * meaningful at all: the invoice is issued and still owed (a draft has no
+ * number, and a credited or voided one is owed by nobody), and the receipt is
+ * the same customer's, the same branch's and in the invoice's currency. 500
+ * KWD settling a 500 USD invoice is not a payment; it is a typo the ledger
+ * would keep.
+ *
+ * Both rows are locked first. Without it two allocations against one invoice
+ * each read "120 owed" and together settled 240 of it; with it the second
+ * waits and reads the first one's result.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function allocate(tx: any, paymentId: string, invoiceId: string, amount: string) {
+  const [invoice] = await tx
+    .select({
+      status: invoices.status,
+      seriesNo: invoices.seriesNo,
+      currency: invoices.currency,
+      customerId: invoices.customerId,
+      branchId: invoices.branchId,
+      total: invoices.total,
+    })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1)
+    .for('update')
+  const [payment] = await tx
+    .select({
+      amount: payments.amount,
+      currency: payments.currency,
+      customerId: payments.customerId,
+      branchId: payments.branchId,
+    })
+    .from(payments)
+    .where(eq(payments.id, paymentId))
+    .limit(1)
+    .for('update')
+  if (!invoice || !payment) throw new Error('not_found')
+
+  if (!['issued', 'part_paid'].includes(invoice.status) || !invoice.seriesNo) {
+    throw new AllocationRefused('not_payable')
+  }
+  if (invoice.currency !== payment.currency) {
+    throw new AllocationRefused('currency_mismatch', {
+      received: payment.currency,
+      invoiced: invoice.currency,
+    })
+  }
+  if (invoice.customerId !== payment.customerId) throw new AllocationRefused('other_customer')
+  if (invoice.branchId !== payment.branchId) throw new AllocationRefused('other_branch')
+
   const result = await tx.execute(sql`
     select
-      (select amount from payments where id = ${paymentId})::numeric as received,
       coalesce((select sum(amount) from payment_allocations
-                 where payment_id = ${paymentId}), 0)::numeric       as allocated,
-      (select total from invoices where id = ${invoiceId})::numeric  as invoiced,
+                 where payment_id = ${paymentId}), 0)::numeric as allocated,
       coalesce((select sum(amount) from payment_allocations
-                 where invoice_id = ${invoiceId}), 0)::numeric       as settled,
-      (select currency from invoices where id = ${invoiceId})        as currency
+                 where invoice_id = ${invoiceId}), 0)::numeric as settled
   `)
-
-  const row = result.rows[0] as
-    | {
-        received: string | null
-        allocated: string | null
-        invoiced: string | null
-        settled: string | null
-        currency: string | null
-      }
-    | undefined
-  if (!row || row.received === null || row.invoiced === null) throw new Error('not_found')
+  const row = result.rows[0] as { allocated: string | null; settled: string | null } | undefined
 
   /*
     The ceilings are decided in `core` — see `settlement.ts` for why they are
-    not decided here. The read and the insert stay in this one transaction,
-    which is the half that cannot move: two people allocating the same receipt
-    at the same moment must not both pass a check that was true when they read
-    it.
+    not decided here.
   */
   const verdict = checkSettlement(
     amount,
-    positionFromDb(row, row.currency ?? 'KWD'),
-    row.currency ?? 'KWD',
+    positionFromDb(
+      {
+        received: payment.amount,
+        allocated: row?.allocated ?? null,
+        invoiced: invoice.total,
+        settled: row?.settled ?? null,
+      },
+      invoice.currency,
+    ),
+    invoice.currency,
   )
-  if (!verdict.ok) throw new Error(verdict.reason)
+  if (!verdict.ok) throw new AllocationRefused(verdict.reason)
 
-  await tx.insert(paymentAllocations).values({ paymentId, invoiceId, amount })
+  /*
+    A top-up adds to the allocation already there.
 
-  // The invoice's paid-to-date and its status are both derived from the
-  // allocations, in one statement, so they cannot drift apart.
-  await tx.execute(sql`
-    update invoices set
-      amount_paid = coalesce((select sum(amount) from payment_allocations
-                               where invoice_id = ${invoiceId}), 0),
-      status = case
-        when coalesce((select sum(amount) from payment_allocations
-                        where invoice_id = ${invoiceId}), 0) >= total then 'paid'::invoice_status
-        when coalesce((select sum(amount) from payment_allocations
-                        where invoice_id = ${invoiceId}), 0) > 0 then 'part_paid'::invoice_status
-        else status
-      end,
-      updated_at = now()
-    where id = ${invoiceId}
-  `)
+    `payment_allocations` is unique on (payment, invoice), so the second part
+    of one receipt against the same invoice hit a raw unique violation. The
+    ceilings above were checked against the sum *including* the existing row,
+    so incrementing it is exactly as safe as a new one would have been.
+  */
+  await tx
+    .insert(paymentAllocations)
+    .values({ paymentId, invoiceId, amount })
+    .onConflictDoUpdate({
+      target: [paymentAllocations.paymentId, paymentAllocations.invoiceId],
+      set: {
+        amount: sql`${paymentAllocations.amount} + excluded.amount`,
+        updatedAt: new Date(),
+      },
+    })
+
+  // Paid-to-date and status re-derived from everything set against it —
+  // receipts and agreed set-offs alike (`packages/db/src/settled.ts`).
+  await rederiveInvoiceSettlement(tx, invoiceId)
 }
 
 // --- billing what was earned ----------------------------------------------

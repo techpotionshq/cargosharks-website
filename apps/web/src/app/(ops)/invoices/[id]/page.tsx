@@ -67,9 +67,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     formatMoney({ amount: Number(amount), currency: invoice.currency }, locale)
 
   const balance = Number(invoice.total) - Number(invoice.amountPaid)
-  const overdue =
-    balance > 0 && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
   const isDraft = invoice.status === 'draft'
+  // Owed by somebody: a credited or voided invoice keeps a balance on paper
+  // and is overdue for nobody.
+  const payable = invoice.status === 'issued' || invoice.status === 'part_paid'
+  const overdue =
+    payable &&
+    balance > 0 &&
+    invoice.dueOn !== null &&
+    new Date(invoice.dueOn).getTime() < Date.now()
 
   return (
     <>
@@ -99,10 +105,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {ti(`statuses.${invoice.status}` as 'statuses.issued')}
             </Badge>
             {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
-            {balance > 0 && !isDraft ? (
+            {/* Only where a receipt can land: issued and still owed. A draft,
+                an approved-but-unnumbered, a credited or a voided invoice was
+                offered "Record a receipt" and every one failed with a 500. */}
+            {balance > 0 && payable ? (
               <PaymentDialog
                 customerId={invoice.customerId}
                 invoiceId={invoice.id}
+                branchId={invoice.branchId}
+                currency={invoice.currency}
                 variant="secondary"
               />
             ) : null}

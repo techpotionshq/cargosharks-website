@@ -56,6 +56,7 @@ vi.mock('next-intl/server', () => ({
 
 const {
   chargeTypes,
+  currencies,
   enquiries,
   invoiceLines,
   invoices,
@@ -89,6 +90,13 @@ const {
 let freightChargeTypeId: string
 
 const BRANCH = '00000000-0000-7000-8000-00000000f001'
+
+/**
+ * A currency of this suite's own that no feed and no other suite ever rates —
+ * ISO 4217's code reserved for testing — so "no rate on file" stays true
+ * whatever ran before.
+ */
+const UNRATED = 'XTS'
 const CUSTOMER = '00000000-0000-7000-8000-00000000f002'
 const PRINCIPAL = '00000000-0000-7000-8000-00000000f003'
 
@@ -124,13 +132,22 @@ const form = (fields: Record<string, string>): FormData => {
   return data
 }
 
-/** A draft invoice for `total`, returning its id. */
+/**
+ * A draft invoice for `total`, with one line for it, returning its id. The
+ * line matters: approving or issuing an invoice with no lines is refused.
+ */
 async function draftInvoice(total: string, currency = 'KWD'): Promise<string> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .insert(invoices)
       .values({ branchId: BRANCH, customerId: CUSTOMER, currency, subtotal: total, total })
       .returning({ id: invoices.id })
+    await tx.insert(invoiceLines).values({
+      invoiceId: row!.id,
+      descriptionEn: 'Ocean freight',
+      unitPrice: total,
+      amount: total,
+    })
     return row!.id
   })
 }
@@ -237,6 +254,11 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       await tx
         .insert(principalBranchRoles)
         .values({ principalId: PRINCIPAL, branchId: BRANCH, roleId: financeRole.id })
+        .onConflictDoNothing()
+
+      await tx
+        .insert(currencies)
+        .values({ code: UNRATED, nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 })
         .onConflictDoNothing()
 
       const [freight] = await tx
@@ -438,6 +460,135 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       expect(state.errors).toBeDefined()
       expect(Object.keys(state.errors ?? {}).length).toBeGreaterThan(0)
     })
+
+    const receiptFor = (invoiceId: string, fields: Record<string, string> = {}) =>
+      form({
+        branchId: BRANCH,
+        customerId: CUSTOMER,
+        amount: '50.000',
+        currency: 'KWD',
+        receivedOn: '2026-08-18',
+        method: 'bank_transfer',
+        invoiceId,
+        ...fields,
+      })
+
+    /** F4. This returned a 500: `recordPayment` caught none of the refusals. */
+    it('says so, rather than crashing, when the receipt is more than is owed', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await recordPayment({}, receiptFor(invoiceId))
+      expect(state.errors?.amount).toBe('ledgerValidation.overInvoiced')
+      expect(Number((await invoiceRow(invoiceId)).paid)).toBe(0)
+    })
+
+    it('refuses a receipt of nothing', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '0' }))
+      expect(state.errors?.amount).toBe('ledgerValidation.amountMustBePositive')
+    })
+
+    it('refuses to settle an invoice that has not been issued', async () => {
+      const invoiceId = await draftInvoice('40.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '40.000' }))
+      expect(state.errors?.invoiceId).toBe('ledgerValidation.invoiceNotPayable')
+    })
+
+    it('refuses to settle a credited invoice', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '40.000' }))
+      expect(state.errors?.invoiceId).toBe('ledgerValidation.invoiceNotPayable')
+    })
+
+    /** 500 KWD settling a 500 USD invoice. */
+    it("refuses a receipt in a currency other than the invoice's", async () => {
+      const invoiceId = await issuedInvoice('40.00', 'USD')
+      const state = await recordPayment(
+        {},
+        receiptFor(invoiceId, { amount: '40.000', currency: 'KWD' }),
+      )
+      expect(state.errors?.invoiceId).toBe(
+        'ledgerValidation.receiptCurrencyMismatch:{"received":"KWD","invoiced":"USD"}',
+      )
+    })
+
+    /** F2. A foreign receipt was always stored at rate 1. */
+    it('stores the rate a foreign receipt was typed at', async () => {
+      const state = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '100.00',
+          currency: 'USD',
+          fxRate: '0.3071',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          reference: 'FX-TYPED',
+        }),
+      )
+      expect(state.errors).toBeUndefined()
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ fxRate: payments.fxRate })
+          .from(payments)
+          .where(eq(payments.reference, 'FX-TYPED'))
+          .limit(1),
+      )
+      expect(Number(row!.fxRate)).toBeCloseTo(0.3071, 8)
+    })
+
+    it('asks for a rate where none is typed and none is on file', async () => {
+      const state = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '100.00',
+          currency: UNRATED,
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+        }),
+      )
+      expect(state.errors?.fxRate).toBe(
+        `ledgerValidation.fxRateNeeded:{"currency":"${UNRATED}","base":"KWD"}`,
+      )
+    })
+
+    /** F8. The second part of one receipt against the same invoice. */
+    it('adds a top-up to the allocation already there', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('100.000')
+
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '30.000' }))
+      const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '70.000' }))
+
+      expect(state.errors).toBeUndefined()
+      const rows = await withActor(actor, (tx) =>
+        tx
+          .select({ amount: paymentAllocations.amount })
+          .from(paymentAllocations)
+          .where(eq(paymentAllocations.paymentId, paymentId)),
+      )
+      expect(rows.map((r) => Number(r.amount))).toEqual([100])
+      expect((await invoiceRow(invoiceId)).status).toBe('paid')
+    })
+
+    /** F10. Two allocations against one invoice at once used to over-settle it. */
+    it('lets only one of two concurrent allocations settle the last of an invoice', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const first = await receipt('100.000')
+      const second = await receipt('100.000')
+
+      const states = await Promise.all([
+        allocatePayment({}, form({ paymentId: first, invoiceId, amount: '100.000' })),
+        allocatePayment({}, form({ paymentId: second, invoiceId, amount: '100.000' })),
+      ])
+
+      expect(states.filter((st) => st.errors === undefined)).toHaveLength(1)
+      expect(Number((await invoiceRow(invoiceId)).paid)).toBe(100)
+    })
   })
 
   describe('setInvoiceStatus — the statutory series', () => {
@@ -525,6 +676,40 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
     })
 
     /** Issuing twice must not burn a second number. */
+    /** F10. Two clicks on Issue each allocated a number, leaving a gap. */
+    it('consumes one number when the same invoice is issued twice at once', async () => {
+      const counter = () =>
+        withActor(actor, async (tx) => {
+          const [row] = await tx
+            .select({ next: branches.invoiceSeriesNext })
+            .from(branches)
+            .where(eq(branches.id, BRANCH))
+          return Number(row!.next)
+        })
+      const id = await draftInvoice('10.000')
+      await setInvoiceStatus({}, form({ invoiceId: id, status: 'approved' }))
+      const before = await counter()
+
+      await Promise.all([
+        setInvoiceStatus({}, form({ invoiceId: id, status: 'issued' })),
+        setInvoiceStatus({}, form({ invoiceId: id, status: 'issued' })),
+      ])
+
+      expect(await counter()).toBe(before + 1)
+    })
+
+    it('refuses to approve an invoice with no lines', async () => {
+      const id = await withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({ branchId: BRANCH, customerId: CUSTOMER, currency: 'KWD' })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
+      const state = await setInvoiceStatus({}, form({ invoiceId: id, status: 'approved' }))
+      expect(state.message).toBe('ledgerValidation.invoiceNoLines')
+    })
+
     it('keeps the first number if issue is repeated', async () => {
       const invoiceId = await issuedInvoice('9.000')
       const [first] = await withActor(actor, (tx) =>
@@ -1016,6 +1201,7 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
       customerId: CUSTOMER,
       currency: 'KWD',
       subtotal: '1000.000',
+      descriptionEn: 'Ocean freight',
       taxTreatment: 'out_of_scope',
       dueOn: '2035-12-31',
       language: 'en',
@@ -1058,6 +1244,45 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
     expect(row.seriesNo).toBeNull()
   })
 
+  /*
+    F5. The typed amount used to land on the header only: the export builds
+    the receivable from lines, so the invoice posted nothing, and the first
+    line added afterwards silently replaced the typed figure.
+  */
+  it('writes the amount as its first line, so the totals are a sum of lines', async () => {
+    await createInvoice({}, draft({ subtotal: '250.500', descriptionEn: 'Customs clearance' }))
+
+    const row = await newest()
+    const lines = await linesOf(row.id)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]!.descriptionEn).toBe('Customs clearance')
+    expect(Number(lines[0]!.amount)).toBeCloseTo(250.5, 6)
+    expect(Number(row.subtotal)).toBeCloseTo(250.5, 6)
+  })
+
+  /** F2. A hand-raised foreign invoice carries its rate for the export. */
+  it('records the rate a foreign invoice was raised at', async () => {
+    await createInvoice({}, draft({ currency: 'USD', subtotal: '100.00', fxRate: '0.307' }))
+    expect(Number((await newest()).fxRate)).toBeCloseTo(0.307, 8)
+  })
+
+  it('stores rate 1 for an invoice in the branch currency', async () => {
+    await createInvoice({}, draft())
+    expect(Number((await newest()).fxRate)).toBe(1)
+  })
+
+  it('asks for a rate for a foreign invoice with none on file', async () => {
+    const state = await createInvoice({}, draft({ currency: UNRATED, subtotal: '100.00' }))
+    expect(state.errors?.fxRate).toBe(
+      `ledgerValidation.fxRateNeeded:{"currency":"${UNRATED}","base":"KWD"}`,
+    )
+  })
+
+  it('refuses an invoice for nothing', async () => {
+    const state = await createInvoice({}, draft({ subtotal: '0' }))
+    expect(state.errors?.subtotal).toBe('ledgerValidation.amountMustBePositive')
+  })
+
   it('remembers which language the customer is invoiced in', async () => {
     await createInvoice({}, draft({ language: 'ar' }))
 
@@ -1087,10 +1312,79 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
   })
 
   describe('its lines', () => {
+    /** A draft with no lines yet, at the given tax treatment. */
     async function drafted(fields: Record<string, string> = {}): Promise<string> {
-      await createInvoice({}, draft({ subtotal: '0', ...fields }))
-      return (await newest()).id
+      return withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            currency: 'KWD',
+            taxTreatment: (fields.taxTreatment ?? 'out_of_scope') as 'standard',
+            taxRatePercent: fields.taxRatePercent ?? '0',
+          })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
     }
+
+    /*
+      F4. The line amount was unrounded `qty × price` and tax was rounded to
+      six places: this invoice stored 1681.301650, showed 1,681.302, and paying
+      the figure shown was refused as more than was owed.
+    */
+    it('rounds each line, and its tax, to the currency', async () => {
+      const invoiceId = await drafted({ taxTreatment: 'standard', taxRatePercent: '5' })
+
+      await addInvoiceLine(
+        {},
+        form({
+          invoiceId,
+          descriptionEn: 'Ocean freight',
+          quantity: '3',
+          unitPrice: '533.746',
+          isTaxable: 'on',
+        }),
+      )
+
+      const [line] = await linesOf(invoiceId)
+      expect(line!.amount).toBe('1601.238000')
+      expect(line!.taxAmount).toBe('80.062000')
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.id, invoiceId)),
+      )
+      expect(row!.total).toBe('1681.300000')
+    })
+
+    /** F6. The status was read and ignored, so an issued invoice took new lines. */
+    it('refuses a line on an invoice that is no longer a draft', async () => {
+      const invoiceId = await draftInvoice('10.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      await setInvoiceStatus({}, form({ invoiceId, status: 'issued' }))
+
+      const state = await addInvoiceLine(
+        {},
+        form({ invoiceId, descriptionEn: 'Late extra', quantity: '1', unitPrice: '5.000' }),
+      )
+
+      expect(state.message).toBe('ledgerValidation.invoiceNotDraftNoEdit')
+      expect(await linesOf(invoiceId)).toHaveLength(1)
+    })
+
+    /** U6. "-1" is a number; being told otherwise sends the clerk hunting a typo. */
+    it('says a negative quantity must be more than zero', async () => {
+      const state = await addInvoiceLine(
+        {},
+        form({
+          invoiceId: await drafted(),
+          descriptionEn: 'Freight',
+          quantity: '-1',
+          unitPrice: '5.000',
+        }),
+      )
+      expect(state.errors?.quantity).toBe('ledgerValidation.quantityMoreThanZero')
+    })
 
     /**
      * Recomputed from the lines rather than incremented, so a corrected line

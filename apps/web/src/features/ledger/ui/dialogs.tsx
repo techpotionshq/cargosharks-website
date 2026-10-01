@@ -9,6 +9,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { fromDb, toScale } from '@qabandi/core'
 import { isLocale } from '@/i18n/request'
 import { named } from '@/lib/named'
 import { requireSession } from '@/lib/session'
@@ -201,6 +202,23 @@ export async function InvoiceDialog({
     },
     {
       kind: 'text',
+      name: 'descriptionEn',
+      label: t('lineDescription'),
+      span: 12,
+      required: true,
+      hint: t('lineDescriptionHint'),
+    },
+    {
+      kind: 'select',
+      name: 'chargeTypeId',
+      label: t('charge'),
+      span: 12,
+      hint: t('chargeHint'),
+      options: options.chargeTypes,
+      placeholder: tc('none'),
+    },
+    {
+      kind: 'text',
       name: 'subtotal',
       label: t('subtotal'),
       span: 6,
@@ -215,6 +233,14 @@ export async function InvoiceDialog({
       required: true,
       options: options.currencies,
       defaultValue: 'KWD',
+    },
+    {
+      kind: 'text',
+      name: 'fxRate',
+      label: t('fxRate'),
+      span: 6,
+      mono: true,
+      hint: t('fxRateHint'),
     },
     {
       kind: 'select',
@@ -296,10 +322,19 @@ export async function InvoiceDialog({
 export async function PaymentDialog({
   customerId,
   invoiceId,
+  branchId,
+  currency,
   variant = 'primary',
 }: {
   readonly customerId?: string
   readonly invoiceId?: string
+  /**
+   * The record's own branch and currency, where the dialog is opened from
+   * one. Defaulting to the principal's first branch put a KWI invoice's
+   * receipt in DXB, and the allocation then refused it as another branch's.
+   */
+  readonly branchId?: string
+  readonly currency?: string
   readonly variant?: 'primary' | 'secondary' | 'ghost'
 }) {
   const session = await requireSession()
@@ -311,10 +346,17 @@ export async function PaymentDialog({
     getTranslations('common'),
   ])
 
-  const outstanding = invoiceId
-    ? []
-    : await loadOutstandingInvoices(session, t('unnumberedInvoice'), await pickerLocale())
-  const defaultBranch = [...session.branchRoles.keys()][0]
+  const outstanding = invoiceId ? [] : await loadOutstandingInvoices(session, await pickerLocale())
+  /*
+    No guess where there is nothing to go on. "The first branch the principal
+    holds" is an accident of row order — it put KWI receipts in DXB — so a
+    principal in several branches chooses, and one in a single branch is not
+    asked.
+  */
+  const defaultBranch =
+    branchId ?? (session.branchRoles.size === 1 ? [...session.branchRoles.keys()][0] : undefined)
+  const defaultRate =
+    branchId && currency ? await defaultRateToBase(session, branchId, currency) : undefined
 
   const fields: FieldSpec[] = [
     {
@@ -324,6 +366,7 @@ export async function PaymentDialog({
       span: 6,
       required: true,
       options: options.branches,
+      placeholder: tc('choose'),
       defaultValue: defaultBranch,
     },
     {
@@ -351,7 +394,16 @@ export async function PaymentDialog({
       span: 6,
       required: true,
       options: options.currencies,
-      defaultValue: 'KWD',
+      defaultValue: currency ?? 'KWD',
+    },
+    {
+      kind: 'text',
+      name: 'fxRate',
+      label: t('fxRate'),
+      span: 6,
+      mono: true,
+      hint: t('fxRateHint'),
+      defaultValue: defaultRate,
     },
     {
       kind: 'date',
@@ -463,28 +515,56 @@ async function loadOpenEnquiries(
 }
 
 /**
+ * The rate a receipt in `currency` would take today, to prefill the field.
+ *
+ * Only a suggestion — the action looks the same rate up when the field is
+ * left empty, and refuses where there is none. Nothing to suggest offline or
+ * for a receipt in the branch's own currency.
+ */
+async function defaultRateToBase(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  branchId: string,
+  currency: string,
+): Promise<string | undefined> {
+  if (usePilotFixtures()) return undefined
+  const { withActor, branches, latestFxRate } = await import('@qabandi/db')
+  const { eq } = await import('drizzle-orm')
+  return withActor(session.actor, async (tx) => {
+    const [branch] = await tx
+      .select({ base: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, branchId))
+      .limit(1)
+    if (!branch || branch.base === currency) return undefined
+    return (await latestFxRate(tx, currency, branch.base)) ?? undefined
+  })
+}
+
+/**
  * Invoices with a balance, newest first, with the balance in the label.
  *
  * Showing the outstanding amount in the option text is what makes "which one
- * does this cheque settle?" answerable without leaving the dialog.
+ * does this cheque settle?" answerable without leaving the dialog. At the
+ * currency's own precision: the column's six places printed "KWD
+ * 3940.500000".
  */
-const outstandingOption = (unnumbered: string) => (row: OutstandingInvoiceRow) => ({
+const outstandingOption = (row: OutstandingInvoiceRow) => ({
   value: row.id,
-  label: `${row.label ?? unnumbered} — ${row.customer} — ${row.currency} ${row.balance}`,
+  label: `${row.label ?? ''} — ${row.customer} — ${row.currency} ${toScale(fromDb(row.balance, row.currency))}`,
 })
 
 /**
- * `unnumbered` labels an invoice with no series number yet. It used to be the
- * literal `(draft)` coalesced in SQL, which put English in an Arabic picker.
+ * Only invoices a receipt can actually settle: issued or part paid, and so
+ * numbered. Drafts, approved-but-unissued, credited and voided invoices were
+ * offered here and each one failed the allocation with a 500.
  */
 async function loadOutstandingInvoices(
   session: Awaited<ReturnType<typeof requireSession>>,
-  unnumbered: string,
   locale: 'en' | 'ar',
 ) {
   if (usePilotFixtures()) {
     const { pilotOutstandingInvoices } = await import('@/lib/pilot/fixtures')
-    return pilotOutstandingInvoices(Date.now(), locale).map(outstandingOption(unnumbered))
+    return pilotOutstandingInvoices(Date.now(), locale).map(outstandingOption)
   }
 
   const { withActor } = await import('@qabandi/db')
@@ -500,13 +580,14 @@ async function loadOutstandingInvoices(
              i.currency
         from invoices i
         join customers c on c.id = i.customer_id
-       where i.status in ('issued', 'part_paid', 'approved')
+       where i.status in ('issued', 'part_paid')
+         and i.series_no is not null
          and i.total > i.amount_paid
        order by i.due_on asc nulls last
        limit 200
     `)
 
-    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption(unnumbered))
+    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption)
   })
 }
 

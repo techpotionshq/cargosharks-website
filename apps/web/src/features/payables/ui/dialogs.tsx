@@ -88,7 +88,13 @@ export async function SupplierInvoiceDialog({
           span: 6,
           required: true,
           options: options.branches,
-          defaultValue: defaults?.branchId ?? [...session.branchRoles.keys()][0],
+          placeholder: tc('choose'),
+          // The bill's own branch when editing; otherwise a choice for anyone
+          // in more than one branch, not the first in row order — which put
+          // KWI bills in DXB.
+          defaultValue:
+            defaults?.branchId ??
+            (session.branchRoles.size === 1 ? [...session.branchRoles.keys()][0] : undefined),
         },
         {
           kind: 'select',

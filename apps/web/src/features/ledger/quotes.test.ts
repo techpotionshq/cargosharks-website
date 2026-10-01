@@ -310,6 +310,7 @@ describe.skipIf(!enabled)('quotations', () => {
           customerId: CUSTOMER,
           currency: 'KWD',
           subtotal,
+          descriptionEn: 'Ocean freight',
           taxTreatment: treatment,
           taxRatePercent: rate,
           dueOn: '2026-12-31',
