@@ -12,7 +12,7 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { customsCounts, listCustoms } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDateTime, formatRelative, trimDecimal } from '@/lib/format'
+import { formatDateTime, formatMoney, formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, customsTone } from '@/ui/status'
 import { Icon } from '@/ui/icon'
@@ -128,8 +128,15 @@ export default async function CustomsPage({
                   {(locale === 'ar' && row.brokerNameAr) || row.brokerName || '—'}
                 </TD>
                 <TD align="end" numeric>
+                  {/* At the currency's own precision: trimmed, a KWD duty of
+                      1840.500 read "1840.5 KWD". */}
                   {row.dutyAmount
-                    ? `${trimDecimal(row.dutyAmount)} ${row.dutyCurrency ?? ''}`.trim()
+                    ? row.dutyCurrency
+                      ? formatMoney(
+                          { amount: Number(row.dutyAmount), currency: row.dutyCurrency },
+                          locale,
+                        )
+                      : trimDecimal(row.dutyAmount)
                     : '—'}
                 </TD>
               </TR>
