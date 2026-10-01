@@ -36,6 +36,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 import type { NotificationChannel } from '../ports/index'
@@ -570,6 +571,57 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
       expect(addresses).toContain(CONTACT_EMAIL)
       // Staff are not on a customer event.
       expect(addresses).not.toContain(STAFF_EMAIL)
+    })
+
+    /*
+      `customer_contacts` has no unique key and the importer inserts blindly, so
+      a contacts CSV imported twice leaves two rows per address. Each became a
+      delivery, and the claim's join on (customer, address) then returned each
+      delivery twice — four sends of one notice. One address, one mail.
+    */
+    it('sends one mail per address when a contact was imported twice', async () => {
+      const channel = fakeChannel({ accepted: true })
+      registerChannel(channel)
+
+      const customerId = randomUUID()
+      const address = `dispatch-dup-${RUN}@customer.test`.toLowerCase()
+      await withActor(systemActor, async (tx) => {
+        await tx.insert(customers).values({
+          id: customerId,
+          code: `CUST-DUP-${RUN}`,
+          legalNameEn: 'Duplicated Contacts Customer',
+          primaryBranchId: BRANCH,
+        })
+        await tx.insert(customerContacts).values([
+          { customerId, nameEn: 'Dup Contact', email: address },
+          { customerId, nameEn: 'Dup Contact', email: address.toUpperCase() },
+        ])
+      })
+
+      const id = await raised('invoice.issued', { customerId })
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      const deliveries = (await deliveriesFor(id)).filter(
+        (d) => d.toAddress.toLowerCase() === address,
+      )
+      expect(deliveries).toHaveLength(1)
+      expect(channel.sent.filter((m) => m.to.toLowerCase() === address)).toHaveLength(1)
+    })
+
+    /*
+      An addressed run of an event that was already expanded writes nothing —
+      a second runner, or a retried job, must not double every delivery.
+    */
+    it('does not expand an already dispatched event a second time', async () => {
+      const id = await raised('enquiry.sla_breached')
+      await runNotificationDispatch({ outboxId: id }, DAYTIME)
+      const first = (await deliveriesFor(id)).length
+      expect(first).toBeGreaterThan(0)
+
+      const again = await runNotificationDispatch({ outboxId: id }, DAYTIME)
+
+      expect(again.expanded).toBe(0)
+      expect(await deliveriesFor(id)).toHaveLength(first)
     })
 
     /** FR-NT-04 — recorded as suppressed, so the opt-out is auditable. */
