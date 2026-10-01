@@ -141,6 +141,13 @@ export const consolChargeLines = pgTable(
      */
     allocatedAt: tsz('allocated_at'),
     allocatedById: ref('allocated_by_id').references(() => principals.id),
+    /**
+     * A cost withdrawn before it was ever split — entered against the wrong
+     * master, or twice. Stamped rather than deleted (§5.5); the page and the
+     * split read only rows where this is null. A split cost cannot be
+     * withdrawn: its allocation is reversed first.
+     */
+    withdrawnAt: tsz('withdrawn_at'),
     ...timestamps,
   },
   (t) => [index('consol_charge_lines_consol_idx').on(t.consolidationId, t.direction)],

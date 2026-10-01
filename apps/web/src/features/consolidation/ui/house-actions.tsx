@@ -129,23 +129,29 @@ export function AllocateButton({
       <input type="hidden" name="consolidationId" value={consolidationId} />
       <input type="hidden" name="chargeLineId" value={chargeLineId} />
       {manual
-        ? manual.houses.map((house) => (
-            <label
-              key={house.jobId}
-              className="flex items-center gap-2 text-[0.75rem] text-ink-muted"
-            >
-              <span className="ref numeric">{house.label}</span>
-              <input
-                name={`share_${house.jobId}`}
-                inputMode="decimal"
-                required
-                dir="ltr"
-                placeholder={manual.currency}
-                defaultValue={state.values?.[`share_${house.jobId}`] ?? ''}
-                className="h-8 w-28 rounded-sm border border-line bg-surface-sunken px-2 text-end text-[0.8125rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
-              />
-            </label>
-          ))
+        ? manual.houses.map((house) => {
+            // A share that is not an amount comes back on its own box (R3),
+            // rather than as a 500 from decimal.js inside the transaction.
+            const error = state.errors?.[`share_${house.jobId}`]
+            return (
+              <span key={house.jobId} className="flex flex-col items-end gap-0.5">
+                <label className="flex items-center gap-2 text-[0.75rem] text-ink-muted">
+                  <span className="ref numeric">{house.label}</span>
+                  <input
+                    name={`share_${house.jobId}`}
+                    inputMode="decimal"
+                    required
+                    dir="ltr"
+                    placeholder={manual.currency}
+                    aria-invalid={error ? true : undefined}
+                    defaultValue={state.values?.[`share_${house.jobId}`] ?? ''}
+                    className="h-8 w-28 rounded-sm border border-line bg-surface-sunken px-2 text-end text-[0.8125rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
+                  />
+                </label>
+                <Refusal message={error} />
+              </span>
+            )
+          })
         : null}
       <Button type="submit" size="sm" variant="secondary" disabled={pending}>
         {label}

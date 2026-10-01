@@ -28,7 +28,12 @@ import {
   AttachHouseForm,
   DetachHouseButton,
 } from '@/features/consolidation/ui/house-actions'
-import { closeConsolidation, reverseConsolAllocation } from '@/features/consolidation/form-actions'
+import {
+  closeConsolidation,
+  reverseConsolAllocation,
+  withdrawConsolCharge,
+} from '@/features/consolidation/form-actions'
+import { localInputValue } from '@qabandi/core'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -115,6 +120,12 @@ export default async function ConsolidationDetailPage({
                   voyageNumber: consol.voyageNumber,
                   flightNumber: consol.flightNumber,
                   notes: consol.notes,
+                  carrierPartnerId: consol.carrierPartnerId,
+                  coloadPartnerId: consol.coloadPartnerId,
+                  originId: consol.originId,
+                  destinationId: consol.destinationId,
+                  etd: localInputValue(consol.etd, consol.branchTimeZone),
+                  eta: localInputValue(consol.eta, consol.branchTimeZone),
                 }}
               />
             ) : null}
@@ -325,6 +336,38 @@ export default async function ConsolidationDetailPage({
                         <Badge tone="caution">{t('notAllocated')}</Badge>
                       )}
                     </div>
+
+                    {/*
+                      An unsplit cost can be corrected or withdrawn (O12).
+                      Before, a mistyped amount or the wrong basis stayed on
+                      the master for good. Withdrawn, not deleted: the row is
+                      stamped and drops out of the page and the split.
+                    */}
+                    {mayWrite && !charge.allocatedAt ? (
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <ConsolChargeDialog
+                          consolidationId={id}
+                          defaults={{
+                            id: charge.id,
+                            direction: charge.direction,
+                            chargeTypeId: charge.chargeTypeId,
+                            counterpartyPartnerId: charge.counterpartyPartnerId,
+                            amount: charge.amount,
+                            currency: charge.currency,
+                            fxRate: charge.fxRate,
+                            allocationBasis: charge.allocationBasis,
+                            description: charge.description,
+                          }}
+                        />
+                        <form action={withdrawConsolCharge}>
+                          <input type="hidden" name="consolidationId" value={id} />
+                          <input type="hidden" name="chargeLineId" value={charge.id} />
+                          <Button type="submit" size="sm" variant="ghost">
+                            {t('withdrawCharge')}
+                          </Button>
+                        </form>
+                      </div>
+                    ) : null}
 
                     {/*
                     The split, on request.
