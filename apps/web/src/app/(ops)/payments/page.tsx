@@ -17,7 +17,8 @@ import { formatByCurrency } from '@/lib/by-currency'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { PaymentDialog } from '@/features/ledger/ui/dialogs'
+import { dec, fromDb, toScale } from '@qabandi/core'
+import { AllocateReceiptDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('payments')
@@ -65,6 +66,7 @@ export default async function PaymentsPage() {
             <TH align="end">{t('amount')}</TH>
             <TH align="end">{t('allocated')}</TH>
             <TH>{t('recordedBy')}</TH>
+            <TH align="end">{t('allocate')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -102,6 +104,18 @@ export default async function PaymentsPage() {
                     : t('fullyAllocated')}
                 </TD>
                 <TD className="whitespace-nowrap text-ink-muted">{row.recordedBy ?? '—'}</TD>
+                <TD align="end">
+                  {unallocated > 0 ? (
+                    <AllocateReceiptDialog
+                      paymentId={row.id}
+                      // Decimal, at the currency's precision: this is typed
+                      // straight back into the action as the amount.
+                      unallocated={toScale(
+                        fromDb(dec(row.amount).minus(dec(row.allocated)).toFixed(), row.currency),
+                      )}
+                    />
+                  ) : null}
+                </TD>
               </TR>
             )
           })}

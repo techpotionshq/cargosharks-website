@@ -18,7 +18,13 @@ import { loadOptions } from '@/lib/options'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import type { OpenEnquiryRow, OutstandingInvoiceRow } from '@/lib/pilot/types'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
-import { addQuoteLine, createInvoice, createQuote, recordPayment } from '../form-actions'
+import {
+  addQuoteLine,
+  allocatePayment,
+  createInvoice,
+  createQuote,
+  recordPayment,
+} from '../form-actions'
 
 /** The charge bases a quotation line can carry — `rating.ts` in core. */
 const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
@@ -471,6 +477,113 @@ export async function PaymentDialog({
       }}
     />
   )
+}
+
+/**
+ * Match what is left of a receipt against an open invoice — FR-FI-08.
+ *
+ * `allocatePayment` was written and tested and wired to nothing, so a receipt
+ * recorded with "allocate later" stayed unallocated for ever: the money was in
+ * the bank and the invoice it paid stayed overdue. Offered only the invoices
+ * the action would accept — the same customer, branch and currency, issued and
+ * still owed — so the select never holds a choice that is then refused.
+ * Renders nothing where there is no such invoice.
+ */
+export async function AllocateReceiptDialog({
+  paymentId,
+  unallocated,
+}: {
+  readonly paymentId: string
+  /** What is left on the receipt, at the currency's precision. */
+  readonly unallocated: string
+}) {
+  const session = await requireSession()
+  if (!can(session, 'payment.record')) return null
+
+  const [t, tc, open] = await Promise.all([
+    getTranslations('paymentForm'),
+    getTranslations('common'),
+    loadAllocatableInvoices(session, paymentId, await pickerLocale()),
+  ])
+  if (open.length === 0) return null
+
+  const fields: FieldSpec[] = [
+    { kind: 'hidden', name: 'paymentId', value: paymentId },
+    {
+      kind: 'select',
+      name: 'invoiceId',
+      label: t('settles'),
+      span: 12,
+      required: true,
+      options: open,
+      placeholder: tc('choose'),
+    },
+    {
+      kind: 'text',
+      name: 'amount',
+      label: t('allocationAmount'),
+      span: 6,
+      required: true,
+      mono: true,
+      defaultValue: unallocated,
+    },
+  ]
+
+  return (
+    <RecordDialog
+      action={allocatePayment}
+      fields={fields}
+      icon="check"
+      variant="ghost"
+      size="md"
+      labels={{
+        open: t('allocate'),
+        title: t('allocateTitle'),
+        description: t('allocateHint'),
+        submit: t('allocate'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/** The invoices one receipt could settle — `allocate`'s own conditions. */
+async function loadAllocatableInvoices(
+  session: Awaited<ReturnType<typeof requireSession>>,
+  paymentId: string,
+  locale: 'en' | 'ar',
+) {
+  if (usePilotFixtures()) {
+    const { pilotOutstandingInvoices } = await import('@/lib/pilot/fixtures')
+    return pilotOutstandingInvoices(Date.now(), locale).map(outstandingOption)
+  }
+
+  const { withActor } = await import('@qabandi/db')
+  const { sql } = await import('drizzle-orm')
+  const customer = named(locale, sql`c.legal_name_en`, sql`c.legal_name_ar`)
+
+  return withActor(session.actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select i.id,
+             i.series_no               as label,
+             ${customer}               as customer,
+             (i.total - i.amount_paid) as balance,
+             i.currency
+        from payments p
+        join invoices i on i.customer_id = p.customer_id
+                       and i.branch_id = p.branch_id
+                       and i.currency = p.currency
+        join customers c on c.id = i.customer_id
+       where p.id = ${paymentId}
+         and i.status in ('issued', 'part_paid')
+         and i.series_no is not null
+         and i.total > i.amount_paid
+       order by i.due_on asc nulls last
+       limit 200
+    `)
+    return (result.rows as unknown as OutstandingInvoiceRow[]).map(outstandingOption)
+  })
 }
 
 /**

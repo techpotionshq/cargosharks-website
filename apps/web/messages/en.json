@@ -919,7 +919,8 @@
       "cash": "Cash",
       "card": "Card",
       "offset": "Offset"
-    }
+    },
+    "allocate": "Match to an invoice"
   },
   "users": {
     "eyebrow": "Administration",
@@ -1333,7 +1334,11 @@
     },
     "unnumberedInvoice": "(draft)",
     "fxRate": "Rate to base currency",
-    "fxRateHint": "Units of the branch's base currency per one unit received. Leave empty to use the latest rate on file; ignored when the receipt is in the base currency."
+    "fxRateHint": "Units of the branch's base currency per one unit received. Leave empty to use the latest rate on file; ignored when the receipt is in the base currency.",
+    "allocate": "Allocate",
+    "allocateTitle": "Allocate this receipt",
+    "allocateHint": "Match what is left of this receipt against one of the customer's open invoices in the same currency and branch.",
+    "allocationAmount": "Amount to allocate"
   },
   "jobForm": {
     "open": "New shipment",
