@@ -43,7 +43,9 @@ import {
   type CurrencySpec,
 } from '@qabandi/core'
 import {
+  branches,
   invoices,
+  latestFxRate,
   partnerSettlementLines,
   partnerSettlements,
   partners,
@@ -103,7 +105,11 @@ const billSchema = (tv: Translate) =>
     partnerId: z.uuid(tv('chooseSupplier')),
     reference: z.string().trim().min(1, tv('enterInvoiceNumber')).max(60),
     currency: z.string().trim().length(3),
-    fxRate: decimalString(tv('enterExchangeRate')),
+    // Blank takes the latest rate on file (O3) — a default of 1 booked a USD
+    // bill at face value in KWD. A typed rate still wins.
+    fxRate: decimalString(tv('enterExchangeRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     invoiceDate: isoDate(tv),
     dueOn: isoDate(tv)
       .optional()
@@ -131,7 +137,7 @@ export async function saveSupplierInvoice(
     partnerId: read(form, 'partnerId'),
     reference: read(form, 'reference'),
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     invoiceDate: read(form, 'invoiceDate') ?? '',
     dueOn: read(form, 'dueOn') ?? '',
     taxAmount: read(form, 'taxAmount') ?? '0',
@@ -144,6 +150,18 @@ export async function saveSupplierInvoice(
 
   try {
     const outcome = await withActor(session.actor, async (tx) => {
+      const [branch] = await tx
+        .select({ baseCurrency: branches.baseCurrency })
+        .from(branches)
+        .where(eq(branches.id, data.branchId))
+        .limit(1)
+      const fxRate =
+        data.fxRate ??
+        (await latestFxRate(tx, data.currency, branch?.baseCurrency ?? data.currency))
+      if (fxRate === null) {
+        return { id: billId ?? '', error: 'no_rate' as const, base: branch?.baseCurrency ?? '' }
+      }
+
       if (!billId) {
         const [row] = await tx
           .insert(supplierInvoices)
@@ -152,7 +170,7 @@ export async function saveSupplierInvoice(
             partnerId: data.partnerId,
             reference: data.reference,
             currency: data.currency,
-            fxRate: data.fxRate,
+            fxRate,
             invoiceDate: data.invoiceDate,
             dueOn: data.dueOn ?? null,
             taxAmount: data.taxAmount,
@@ -176,7 +194,7 @@ export async function saveSupplierInvoice(
           partnerId: data.partnerId,
           reference: data.reference,
           currency: data.currency,
-          fxRate: data.fxRate,
+          fxRate,
           invoiceDate: data.invoiceDate,
           dueOn: data.dueOn ?? null,
           taxAmount: data.taxAmount,
@@ -197,6 +215,12 @@ export async function saveSupplierInvoice(
 
     if (outcome.error === 'locked') {
       return failWith(tv('billApprovedLocked'), echo(form))
+    }
+    if (outcome.error === 'no_rate') {
+      return fail(
+        { fxRate: tv('noRateOnFile', { from: data.currency, to: outcome.base }) },
+        echo(form),
+      )
     }
 
     revalidatePath('/payables')

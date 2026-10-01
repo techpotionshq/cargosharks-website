@@ -161,7 +161,9 @@ export async function ChargeLineDialog({
             payables balance nobody can reconcile.
           */
           hint: t('fxRateHint'),
-          defaultValue: defaults?.fxRate ?? '1',
+          // Blank, not 1: a blank rate is looked up from `fx_rates`, and a
+          // default of 1 booked every foreign cost at face value in base.
+          defaultValue: defaults?.fxRate,
         },
         {
           kind: 'select',

@@ -206,6 +206,10 @@ export async function JobLedgerCard({
                             rate: trimDecimal(line.rate),
                             currency: line.currency,
                             fxRate: trimDecimal(line.fxRate),
+                            // Without it the select opened on "none" and the
+                            // save wrote null — payables matching and the
+                            // partner settlement both lost the line.
+                            counterpartyPartnerId: line.counterpartyPartnerId,
                           }}
                         />
                       )}

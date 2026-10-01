@@ -49,6 +49,8 @@ export interface ChargeLineRow {
   readonly amountBase: string
   readonly baseCurrency: string
   readonly fxRate: string
+  readonly counterpartyPartnerId: string | null
+  readonly counterpartyCustomerId: string | null
   readonly counterpartyName: string | null
   readonly isAccrual: boolean
   /** Where a worker or the allocator wrote it — `null` means somebody typed it. */
@@ -140,6 +142,8 @@ export async function getJobLedger(
         amountBase: chargeLines.amountBase,
         baseCurrency: chargeLines.baseCurrency,
         fxRate: chargeLines.fxRate,
+        counterpartyPartnerId: chargeLines.counterpartyPartnerId,
+        counterpartyCustomerId: chargeLines.counterpartyCustomerId,
         counterpartyName:
           locale === 'ar'
             ? sql<string | null>`coalesce(

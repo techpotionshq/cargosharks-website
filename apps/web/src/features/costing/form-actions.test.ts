@@ -44,7 +44,7 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { chargeLines, jobs, withActor } = await import('@qabandi/db')
+const { chargeLines, currencies, fxRates, jobs, withActor } = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
@@ -204,6 +204,82 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       await saveChargeLine({}, lineForm(jobId, { direction: 'revenue' }))
 
       expect((await latestLine(jobId))?.direction).toBe('revenue')
+    })
+
+    /*
+      O3. "Rate to base" defaulted to 1 and the action trusted it, so a USD
+      2,900 cost was booked as KWD 2,900. Blank now takes the latest rate on
+      file; nothing on file is a sentence on the field, never 1.
+
+      Two ISO test codes of this suite's own, because the database is never
+      emptied and a rate written here for a real currency would be read by
+      every other suite that converts it.
+    */
+    it('takes the latest rate on file when none was typed', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      await withActor(systemActor, async (tx) => {
+        await tx
+          .insert(currencies)
+          .values([
+            { code: 'XTS', nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 },
+            { code: 'XXX', nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 },
+          ])
+          .onConflictDoNothing()
+        await tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'XTS',
+            toCurrency: 'KWD',
+            rate: '0.30700000',
+            source: 'costing-test',
+            effectiveOn: today,
+          })
+          .onConflictDoNothing()
+      })
+
+      const jobId = await freshJob()
+      const state = await saveChargeLine(
+        {},
+        lineForm(jobId, { rate: '2900.00', currency: 'XTS', fxRate: '' }),
+      )
+      expect(state.errors).toBeUndefined()
+      const line = await latestLine(jobId)
+      expect(line?.fxRate).toBe('0.30700000')
+      expect(line?.amountBase).toBe('890.300000')
+
+      const none = await saveChargeLine(
+        {},
+        lineForm(await freshJob(), { rate: '10.00', currency: 'XXX', fxRate: '' }),
+      )
+      expect(none.errors?.fxRate).toBe('costingValidation.noRateOnFile:{"from":"XXX","to":"KWD"}')
+    })
+
+    /*
+      O10. The edit dialog was given no counterparty, so it opened on "none"
+      and saving wrote null. A form without the customer field leaves that
+      one alone too.
+    */
+    it('keeps the counterparty through an edit', async () => {
+      const jobId = await freshJob()
+      await saveChargeLine(
+        {},
+        lineForm(jobId, { counterpartyPartnerId: PARTNER, counterpartyCustomerId: CUSTOMER }),
+      )
+      const line = await latestLine(jobId)
+
+      await saveChargeLine(
+        {},
+        lineForm(jobId, {
+          chargeLineId: line!.id,
+          rate: '120.000',
+          counterpartyPartnerId: PARTNER,
+        }),
+      )
+
+      const after = await latestLine(jobId)
+      expect(after?.amount).toBe('120.000000')
+      expect(after?.counterpartyPartnerId).toBe(PARTNER)
+      expect(after?.counterpartyCustomerId).toBe(CUSTOMER)
     })
 
     it('records who the line is with', async () => {
