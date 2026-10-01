@@ -893,7 +893,8 @@
       "overdue": "Overdue",
       "approved": "Approved",
       "credited": "Credited"
-    }
+    },
+    "billedFrom": "Billed from {reference}"
   },
   "payments": {
     "eyebrow": "Finance",

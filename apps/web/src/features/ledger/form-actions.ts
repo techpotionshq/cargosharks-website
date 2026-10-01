@@ -890,6 +890,7 @@ export async function setInvoiceStatus(
           total: invoices.total,
           currency: invoices.currency,
           dueOn: invoices.dueOn,
+          isCreditNote: invoices.isCreditNote,
         })
         .from(invoices)
         .where(eq(invoices.id, invoiceId))
@@ -954,18 +955,51 @@ export async function setInvoiceStatus(
         seriesNo = numbered.next
       }
 
-      await tx
+      const [moved] = await tx
         .update(invoices)
         .set({
           status: status as 'issued',
           seriesNo,
           issuedAt: status === 'issued' ? sql`coalesce(${invoices.issuedAt}, now())` : undefined,
           issuedById: status === 'issued' ? session.principal.id : undefined,
+          /*
+            An invoice issued with no due date fell into no ageing bucket and
+            was never overdue — every draft billed from a job was one. The
+            customer's terms at this branch, from today, where nobody set one.
+          */
+          dueOn:
+            status === 'issued'
+              ? sql`coalesce(${invoices.dueOn}, current_date + coalesce((
+                  select t.payment_terms_days from customer_branch_terms t
+                   where t.customer_id = ${invoices.customerId}
+                     and t.branch_id = ${invoices.branchId}
+                ), 30))`
+              : undefined,
           updatedAt: new Date(),
         })
         // The status it was read in, as well as the lock: belt and braces on
         // the one write that consumes a statutory number.
         .where(and(eq(invoices.id, invoiceId), eq(invoices.status, current.status)))
+        .returning({ dueOn: invoices.dueOn })
+
+      /*
+        A voided draft gives its revenue back. Billing a job stamps each charge
+        line with the invoice it went on, which is what keeps it off a second
+        invoice — and voiding the draft left the stamp, so the revenue was off
+        the unbilled register and could never be billed again. Only a draft or
+        an approved invoice can be voided, so nothing here has been sent.
+      */
+      if (status === 'void') {
+        await tx
+          .update(chargeLines)
+          .set({ invoiceId: null, updatedAt: new Date() })
+          .where(eq(chargeLines.invoiceId, invoiceId))
+      }
+
+      if (status === 'credited') {
+        if (current.isCreditNote) throw new Error('invoice_transition_credit_note')
+        await raiseCreditNote(tx, invoiceId, session.principal.id)
+      }
 
       /*
         FR-NT-01, and only on issue.
@@ -990,7 +1024,7 @@ export async function setInvoiceStatus(
             // As above: the currency's precision, not the column's.
             total: toScale(fromDb(current.total, current.currency)),
             currency: current.currency,
-            dueOn: current.dueOn ?? '',
+            dueOn: moved?.dueOn ?? current.dueOn ?? '',
           },
         })
       }
@@ -1009,6 +1043,88 @@ export async function setInvoiceStatus(
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath('/finance')
   return succeed(status)
+}
+
+/**
+ * The credit note behind "Credit note raised" — §5.5.
+ *
+ * Crediting used to flip the invoice's status and nothing else: no document,
+ * so the export posted the revenue and never reversed it, while ageing and
+ * top debtors kept counting the balance and the credit exposure did not.
+ * Now it raises the note as its own statutory document, numbered from the
+ * branch series, pointing at what it reverses and carrying the same lines.
+ *
+ * Amounts are positive with `is_credit_note` set — the convention the export
+ * already reverses on (`core/accounting.ts`), and the one the pilot data
+ * shows. The note is born `credited` with `amount_paid` equal to its total,
+ * which is how a credited document leaves every "what is owed" query without
+ * being deleted. It credits the whole invoice: a partial credit is a document
+ * somebody has to compose, and that is not what this button offers.
+ *
+ * The rate travels with it — the invoice's own, or the one on the charge
+ * lines it was billed from — so the reversal posts at exactly the figure the
+ * original did.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function raiseCreditNote(tx: any, invoiceId: string, principalId: string): Promise<void> {
+  const [original] = await tx
+    .select({
+      branchId: invoices.branchId,
+      customerId: invoices.customerId,
+      currency: invoices.currency,
+      subtotal: invoices.subtotal,
+      taxAmount: invoices.taxAmount,
+      total: invoices.total,
+      taxTreatment: invoices.taxTreatment,
+      taxRatePercent: invoices.taxRatePercent,
+      language: invoices.language,
+      fxRate: sql<string | null>`coalesce(${invoices.fxRate}, (
+        select cl.fx_rate from charge_lines cl where cl.invoice_id = ${invoices.id} limit 1
+      ))`,
+    })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1)
+  if (!original) throw new Error('not_found')
+
+  const allocated = await tx.execute(
+    sql`select app.allocate_series_number(${original.branchId}::uuid, 'invoice') as next`,
+  )
+  const seriesNo = (allocated.rows[0] as { next: string | null } | undefined)?.next
+  if (!seriesNo) throw new Error('not_found')
+
+  const [note] = await tx
+    .insert(invoices)
+    .values({
+      branchId: original.branchId,
+      customerId: original.customerId,
+      seriesNo,
+      status: 'credited',
+      isCreditNote: true,
+      creditsInvoiceId: invoiceId,
+      currency: original.currency,
+      subtotal: original.subtotal,
+      taxAmount: original.taxAmount,
+      total: original.total,
+      amountPaid: original.total,
+      taxTreatment: original.taxTreatment,
+      taxRatePercent: original.taxRatePercent,
+      fxRate: original.fxRate,
+      language: original.language,
+      issuedAt: new Date(),
+      issuedById: principalId,
+    })
+    .returning({ id: invoices.id })
+
+  await tx.execute(sql`
+    insert into invoice_lines
+      (invoice_id, charge_type_id, description_en, description_ar, quantity,
+       unit_price, amount, tax_amount, is_taxable, sort_order)
+    select ${note!.id}, charge_type_id, description_en, description_ar, quantity,
+           unit_price, amount, tax_amount, is_taxable, sort_order
+      from invoice_lines
+     where invoice_id = ${invoiceId}
+  `)
 }
 
 /**
@@ -1404,6 +1520,7 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
 
   const jobId = read(form, 'jobId')
   if (!jobId) return failWith(tv('nothingToDo'))
+  const ti = await getTranslations('invoices')
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [job] = await tx
@@ -1466,7 +1583,18 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         subtotal: '0',
         taxAmount: '0',
         total: '0',
-        notes: `Billed from ${job.reference}`,
+        /*
+          The customer's terms at this branch, from today — redrawn at issue
+          if this draft waits. Without it these invoices were in no ageing
+          bucket and never overdue.
+        */
+        dueOn: sql`current_date + coalesce((
+          select t.payment_terms_days from customer_branch_terms t
+           where t.customer_id = ${job.customerId} and t.branch_id = ${job.branchId}
+        ), 30)`,
+        // In the language of whoever billed it; it was English whatever the
+        // screen, and the invoice page shows it.
+        notes: ti('billedFrom', { reference: job.reference }),
       })
       .returning({ id: invoices.id })
 

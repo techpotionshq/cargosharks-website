@@ -201,9 +201,9 @@ export async function invoiceSummary(actor: Actor): Promise<{
   return withActor(actor, async (tx) => {
     const counts = await tx.execute(sql`
       select
-        count(*) filter (where status not in ('paid', 'void', 'draft'))::int as issued,
+        count(*) filter (where status in ('issued', 'part_paid'))::int     as issued,
         count(*) filter (where status = 'paid')::int                         as paid,
-        count(*) filter (where status not in ('paid', 'void', 'draft')
+        count(*) filter (where status in ('issued', 'part_paid')
                            and due_on < current_date)::int                   as overdue
       from invoices
     `)
@@ -211,6 +211,12 @@ export async function invoiceSummary(actor: Actor): Promise<{
       { issued: number; paid: number; overdue: number } | undefined
 
     /*
+      Only issued and part-paid invoices are owed. A credited invoice was
+      counted here (and in the ageing and top debtors below) as long as
+      anything was left on it, while the credit exposure excluded it — three
+      screens disagreeing about what a customer owes. An approved invoice has
+      not been sent, so is not owed either.
+
       Drafts are not owed: nothing has been sent. Counted here and not in
       "issued" beside it, a draft raised the receivables figure the moment it
       was created. A currency whose open invoices net to zero is left out
@@ -220,7 +226,7 @@ export async function invoiceSummary(actor: Actor): Promise<{
       select currency,
              sum(total - coalesce(amount_paid, 0))::text as amount
       from invoices
-      where status not in ('paid', 'void', 'draft')
+      where status in ('issued', 'part_paid')
       group by currency
       having sum(total - coalesce(amount_paid, 0)) <> 0
       order by sum(total - coalesce(amount_paid, 0)) desc, currency
@@ -385,7 +391,7 @@ export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: Cur
       with open_invoices as (
         select due_on, currency, (total - coalesce(amount_paid, 0)) as balance
           from invoices
-         where status not in ('paid', 'void', 'draft')
+         where status in ('issued', 'part_paid')
            and total > coalesce(amount_paid, 0)
       )
       select
@@ -475,7 +481,7 @@ export async function topDebtors(
              greatest(0, current_date - min(i.due_on))::int  as "daysOverdue"
         from invoices i
         join customers c on c.id = i.customer_id
-       where i.status not in ('paid', 'void', 'draft')
+       where i.status in ('issued', 'part_paid')
          and i.total > coalesce(i.amount_paid, 0)
        group by c.id, c.legal_name_en, c.legal_name_ar, i.currency
        order by sum(i.total - coalesce(i.amount_paid, 0)) desc, i.currency

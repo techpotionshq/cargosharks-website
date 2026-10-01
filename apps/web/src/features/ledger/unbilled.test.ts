@@ -50,7 +50,7 @@ const { chargeLines, invoiceLines, invoices, jobs, withActor } = await import('@
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { billJob } = await import('./form-actions')
+const { billJob, setInvoiceStatus } = await import('./form-actions')
 const { unbilledRevenue, unbilledLinesFor } = await import('./unbilled')
 
 const session = {
@@ -62,7 +62,7 @@ const session = {
     email: 'finance@qabandi.test',
     locale: 'en' as const,
   },
-  permissions: new Set(['invoice.approve']),
+  permissions: new Set(['invoice.approve', 'invoice.void']),
   branchRoles: new Map([
     [HOME_BRANCH, 'finance'],
     [AWAY_BRANCH, 'finance'],
@@ -214,6 +214,39 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
   })
 
   /** Our own estimate of a cost to come is not a thing to bill a customer for. */
+  /*
+    F11. Voiding the draft left \`charge_lines.invoice_id\` pointing at it, so
+    the revenue left the register and could never be billed again.
+  */
+  it('gives the revenue back when the draft is voided', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId)
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const voided = await setInvoiceStatus({}, form({ invoiceId, status: 'void' }))
+
+    expect(voided.message).toBeUndefined()
+    expect((await readLine(line))?.invoiceId).toBeNull()
+    const again = await billJob({}, form({ jobId }))
+    expect(again.message).toBeUndefined()
+    expect((await readLine(line))?.invoiceId).toBeTruthy()
+  })
+
+  /** F11. No due date meant no ageing bucket, and never overdue. */
+  it('gives the draft a due date from the terms, and a note in the reader’s language', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId)
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const [invoice] = await withActor(bothBranchesActor, (tx) =>
+      tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1),
+    )
+    expect(invoice?.dueOn).toBeTruthy()
+    expect(invoice?.notes).toMatch(/^invoices\.billedFrom:/)
+  })
+
   it('leaves an accrual alone', async () => {
     const jobId = await aJob()
     const accrual = await aLine(jobId, { isAccrual: true })

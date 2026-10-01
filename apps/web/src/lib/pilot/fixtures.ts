@@ -2649,7 +2649,7 @@ export function pilotInvoices(
 /** Every invoice still owing something, with how far past due it is. */
 function openInvoices(now: number): { row: InvoiceRow; balance: string; daysOverdue: number }[] {
   return pilotInvoices(now)
-    .filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+    .filter((row) => ['issued', 'part_paid'].includes(row.status))
     .map((row) => ({
       row,
       balance: minus(row.total ?? '0', row.amountPaid ?? '0'),
@@ -2672,7 +2672,7 @@ function openInvoices(now: number): { row: InvoiceRow; balance: string; daysOver
  */
 export function pilotInvoiceSummary(now = Date.now()): InvoiceSummary {
   const rows = pilotInvoices(now)
-  const open = rows.filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+  const open = rows.filter((row) => ['issued', 'part_paid'].includes(row.status))
 
   const byCurrency = new Map<string, string[]>()
   for (const row of open) {
@@ -8546,7 +8546,7 @@ export function pilotCreditStanding(
 
   const owed = pilotInvoices(now)
     .filter((row) => row.customerName === seed?.en)
-    .filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+    .filter((row) => ['issued', 'part_paid'].includes(row.status))
     .map((row) => minus(row.total ?? '0', row.amountPaid ?? '0'))
 
   return {

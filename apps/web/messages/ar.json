@@ -893,7 +893,8 @@
       "overdue": "متأخرة",
       "approved": "معتمدة",
       "credited": "مقيدة دائنًا"
-    }
+    },
+    "billedFrom": "مفوترة من {reference}"
   },
   "payments": {
     "eyebrow": "المالية",

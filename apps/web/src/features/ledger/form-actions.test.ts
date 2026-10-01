@@ -494,6 +494,29 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       expect(state.errors?.invoiceId).toBe('ledgerValidation.invoiceNotPayable')
     })
 
+    /*
+      F9. Crediting flipped the status and wrote nothing else, so the export
+      never reversed the revenue and the reports disagreed about what was owed.
+    */
+    it('raises a numbered credit note that reverses the invoice', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      expect(state.errors).toBeUndefined()
+
+      const [note] = await withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.creditsInvoiceId, invoiceId)),
+      )
+      expect(note).toMatchObject({ isCreditNote: true, status: 'credited' })
+      expect(note!.seriesNo).toBeTruthy()
+      expect(Number(note!.total)).toBe(40)
+      // Born settled, so no "what is owed" query ever counts it.
+      expect(Number(note!.amountPaid)).toBe(40)
+      const lines = await withActor(actor, (tx) =>
+        tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, note!.id)),
+      )
+      expect(lines.map((l) => Number(l.amount))).toEqual([40])
+    })
+
     it('refuses to settle a credited invoice', async () => {
       const invoiceId = await issuedInvoice('40.000')
       await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
