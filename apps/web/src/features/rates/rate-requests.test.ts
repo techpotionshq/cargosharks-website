@@ -49,6 +49,7 @@ async function reply(
   enquiryId: string,
   status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired',
   quoted?: { total: string; currency: string; unpriced?: number },
+  extra: Record<string, unknown> = {},
 ) {
   seq += 1
   await withActor(system, (tx) =>
@@ -65,6 +66,7 @@ async function reply(
             ok: true,
             rows: [{ chargeCode: 'ocean_freight' }],
             ...(quoted.unpriced ? { unpriced: quoted.unpriced } : {}),
+            ...extra,
           }
         : null,
     }),
@@ -114,6 +116,46 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
     expect(Number(view!.requests.find((r) => r.isCheapest)?.quotedTotal)).toBe(900)
     // A partial reply is still an answer.
     expect(view!.answered).toBe(2)
+  })
+
+  /*
+    Insurance at 0.3% is unpriced on every reply — no enquiry carries a
+    declared value — and counted as partial it left every FCL reply that
+    quoted insurance unranked (R1). Only a missing consignment quantity makes
+    a total partial.
+  */
+  it('still ranks a reply whose only unpriced line is a percentage', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '800.000', currency: 'KWD', unpriced: 1 },
+      { partial: 0 },
+    )
+    await reply(enquiryId, 'parsed', { total: '900.000', currency: 'KWD' })
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    expect(Number(view!.requests.find((r) => r.isCheapest)?.quotedTotal)).toBe(800)
+  })
+
+  /* A reply that priced another lane is shown, never offered or ranked (S14). */
+  it('neither offers nor ranks a reply that priced a different lane', async () => {
+    const enquiryId = await makeEnquiry()
+    await reply(
+      enquiryId,
+      'parsed',
+      { total: '500.000', currency: 'KWD' },
+      { laneMismatch: 'CNSHA → KWSWK' },
+    )
+    await reply(enquiryId, 'parsed', { total: '900.000', currency: 'KWD' })
+
+    const view = await getEnquiryRateRequests(bothBranchesActor, enquiryId)
+
+    const wrongLane = view!.requests.find((r) => r.laneMismatch !== null)
+    expect(wrongLane?.canPromote).toBe(false)
+    expect(wrongLane?.isCheapest).toBe(false)
+    expect(Number(view!.requests.find((r) => r.isCheapest)?.quotedTotal)).toBe(900)
   })
 
   /*

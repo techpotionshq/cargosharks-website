@@ -96,16 +96,33 @@ export async function getEnquiryRateRequests(
         declined?: boolean
         laneMismatch?: string
         unpriced?: number
+        partial?: number
       }
       const lineCount = Array.isArray(response.rows) ? response.rows.length : 0
-      const unpricedLines = typeof response.unpriced === 'number' ? response.unpriced : 0
+      /*
+        The lines that make the total partial, not every unpriced one (R1): a
+        percent line (insurance at 0.3%) is unpriced on every reply alike and
+        left none of them comparable. Older replies carry only `unpriced`.
+      */
+      const unpricedLines =
+        typeof response.partial === 'number'
+          ? response.partial
+          : typeof response.unpriced === 'number'
+            ? response.unpriced
+            : 0
 
       const normalizedTotal = normalise(row.quotedTotal, row.quotedCurrency, baseCurrency, fx)
 
+      /*
+        A reply that priced another lane than the one asked about is shown,
+        with the mismatch, and never offered as this enquiry's buy rate (S14):
+        accepted, it wrote a card for a lane nobody asked to cover.
+      */
       const canPromote =
         row.status === 'parsed' &&
         response.ok === true &&
         response.declined !== true &&
+        !response.laneMismatch &&
         row.rateCardId === null &&
         lineCount > 0
 
@@ -141,6 +158,7 @@ export async function getEnquiryRateRequests(
       (r) =>
         r.comparable &&
         r.unpricedLines === 0 &&
+        r.laneMismatch === null &&
         r.status !== 'declined' &&
         r.normalizedTotal !== null,
     )

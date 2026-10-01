@@ -20,9 +20,11 @@ import { getTranslations } from 'next-intl/server'
 import { and, eq, sql } from 'drizzle-orm'
 import {
   assertTransition,
+  canTransition,
   decideProposal,
   enquiryMachine,
   entryPermission,
+  isTerminal,
   slaDueAt,
   type WorkingCalendar,
 } from '@qabandi/core'
@@ -32,6 +34,7 @@ import {
   enquiries,
   extractionProposals,
   notificationOutbox,
+  resummariseRateReplies,
   withActor,
   workingCalendars,
 } from '@qabandi/db'
@@ -155,15 +158,35 @@ export async function setEnquiryContainerCount(
     return fail({ containerCount: tv('containerCountWhole') }, echo(form))
   }
 
-  await withActor(session.actor, async (tx) => {
-    const updated = await tx
-      .update(enquiries)
-      .set({ containerCount: count })
+  const refused = await withActor(session.actor, async (tx) => {
+    const [current] = await tx
+      .select({ mode: enquiries.mode, status: enquiries.status })
+      .from(enquiries)
       .where(eq(enquiries.id, enquiryId))
-      .returning({ id: enquiries.id })
+      .limit(1)
+      .for('update')
     // Invisible under RLS means not-found — no enumeration signal (FR-ID-04).
-    if (updated.length === 0) throw new Error('not_found')
+    if (!current) throw new Error('not_found')
+    /*
+      The page shows this form only on an open sea-FCL enquiry; the action
+      took the post regardless (R6). A count on an air enquiry is a figure
+      pricing never reads, and on a closed one it rewrites a record.
+    */
+    if (current.mode !== 'sea_fcl' || isTerminal(enquiryMachine, current.status)) return true
+
+    await tx.update(enquiries).set({ containerCount: count }).where(eq(enquiries.id, enquiryId))
+
+    /*
+      Replies already read were summarised against the count they found, and
+      with none every per-container line counted as unpriced — so a reply that
+      arrived before the coordinator typed the count stayed "partial" for good
+      and was never ranked (R1). Re-summarised here from the lines each reply
+      stored, against the new count.
+    */
+    await resummariseRateReplies(tx, enquiryId)
+    return false
   })
+  if (refused) return failWith(tv('containerCountNotHere'), echo(form))
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(String(count))
@@ -250,15 +273,24 @@ export async function closeEnquiryAction(
     return fail({ reason: tv('lostReasonRequired') }, echo(form))
   }
 
-  await withActor(session.actor, async (tx) => {
+  const moved = await withActor(session.actor, async (tx) => {
     const [current] = await tx
       .select({ status: enquiries.status })
       .from(enquiries)
       .where(eq(enquiries.id, enquiryId))
       .limit(1)
+      .for('update')
     if (!current) throw new Error('not_found')
 
-    assertTransition(enquiryMachine, current.status, outcome)
+    /*
+      Asked, not asserted (S1). The machine allows `won` only from `quoted` and
+      `lost` from `assigned`, `rating` or `quoted`; a thrown
+      `IllegalTransitionError` reached the error page, which production
+      redacts to "something went wrong". The dialog now offers only the legal
+      outcomes, so this is the stale-tab case, and it gets a sentence against
+      the field.
+    */
+    if (!canTransition(enquiryMachine, current.status, outcome)) return false
 
     await tx
       .update(enquiries)
@@ -268,9 +300,18 @@ export async function closeEnquiryAction(
         lostReason: outcome === 'lost' ? reason : null,
       })
       .where(eq(enquiries.id, enquiryId))
+    return true
   })
 
+  if (!moved) {
+    return fail(
+      { outcome: outcome === 'won' ? tv('wonNeedsQuoted') : tv('lostNotYet') },
+      echo(form),
+    )
+  }
+
   revalidatePath('/enquiries')
+  revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome)
 }

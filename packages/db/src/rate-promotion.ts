@@ -16,9 +16,17 @@
  * who is awarding the rate; everything else is decided here.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { rateReplyContext, summariseRateReply } from '@qabandi/core'
 import { groupRateCards, type ImportRow, type RateRowValues } from '@qabandi/core/import'
-import { chargeTypes, locations, rateCardLines, rateCards, rateRequests } from './schema/index'
+import {
+  chargeTypes,
+  enquiries,
+  locations,
+  rateCardLines,
+  rateCards,
+  rateRequests,
+} from './schema/index'
 import type { Tx } from './actor'
 
 /**
@@ -39,6 +47,10 @@ export type PromoteRefusal =
   | 'port_missing'
   | 'renewal_ends_early'
   | 'charge_missing'
+  /** The model read a different lane from the one asked about (S14). */
+  | 'lane_mismatch'
+  /** The agent has a card on this lane starting on or after this one (S5). */
+  | 'overlaps_card'
 
 export type PromoteResult =
   | { readonly ok: true; readonly cardId: string }
@@ -102,10 +114,25 @@ export async function promoteRateReply(
   const response = (request.response ?? {}) as {
     ok?: boolean
     declined?: boolean
+    laneMismatch?: string
     rows?: RateRowValues[]
   }
   if (response.declined) {
     return { ok: false, reason: 'declined', message: 'The agent declined this lane.' }
+  }
+  /*
+    A reply that priced another lane is not this enquiry's buy rate (S14).
+    The comparison showed the mismatch and still offered Accept, and the
+    auto-award never looked: it awarded a card for a lane nobody asked to
+    cover, and pricing then found no cover for the one that was.
+  */
+  if (response.laneMismatch) {
+    return {
+      ok: false,
+      reason: 'lane_mismatch',
+      values: { lane: response.laneMismatch },
+      message: `The reply priced a different lane (${response.laneMismatch}).`,
+    }
   }
   if (response.ok !== true || !Array.isArray(response.rows) || response.rows.length === 0) {
     return {
@@ -198,11 +225,71 @@ export async function promoteRateReply(
       lines.push({ line, chargeTypeId })
     }
 
-    prepared.push({ card, originId, destinationId, validFrom, lines })
+    /*
+      The agent's own live card on this lane (S5).
+
+      `rate_cards_no_overlap` holds one card per partner, lane and window, and
+      only a renewal was clamped to start where the old card ends — so an
+      ordinary RFQ award to an agent who already had a card on the lane threw
+      23P01, and a reply with no end date, stored open-ended, blocked every
+      later award from that agent on that lane for good. The newer rate is the
+      decision, so a card that started earlier is *ended* where this one
+      starts: its earlier window still answers enquiries ready before then,
+      which is why it is ended rather than marked superseded (pricing skips a
+      superseded card on every date). Nothing is deleted. A card starting on
+      or after this one cannot be ended before it began, so that is refused
+      with the date, for a person to settle.
+
+      Scoped to the request's branch, as the constraint is once it carries
+      `branch_id` (S15): another branch's card on the same agent and lane is
+      that branch's business and its RLS hides it from this one anyway.
+    */
+    const overlapping = await tx
+      .execute(
+        sql`
+        select id, valid_from::text as "validFrom"
+          from rate_cards
+         where direction = 'buy'
+           and partner_id is not distinct from ${request.partnerId}
+           and customer_id is null
+           and branch_id = ${request.branchId}
+           and mode = ${card.mode}::transport_mode
+           and origin_id = ${originId}
+           and destination_id = ${destinationId}
+           and validity && daterange(${validFrom}::date, ${card.validTo}::date, '[)')
+      `,
+      )
+      .then((r) => r.rows as { id: string; validFrom: string }[])
+
+    const later = overlapping.find((existing) => existing.validFrom >= validFrom)
+    if (later) {
+      return {
+        ok: false,
+        reason: 'overlaps_card',
+        values: { validFrom: later.validFrom },
+        message: `This agent already has a rate on this lane from ${later.validFrom}; it would overlap.`,
+      }
+    }
+
+    prepared.push({
+      card,
+      originId,
+      destinationId,
+      validFrom,
+      lines,
+      toEnd: overlapping.map((existing) => existing.id),
+    })
   }
 
   let firstCardId: string | null = null
-  for (const { card, originId, destinationId, validFrom, lines } of prepared) {
+  for (const { card, originId, destinationId, validFrom, lines, toEnd } of prepared) {
+    if (toEnd.length > 0) {
+      await tx
+        .update(rateCards)
+        .set({ validTo: validFrom, updatedAt: new Date() })
+        .where(inArray(rateCards.id, toEnd))
+    }
+
     const [inserted] = await tx
       .insert(rateCards)
       .values({
@@ -232,7 +319,7 @@ export async function promoteRateReply(
           basis: line.basis as
             'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent',
           rate: line.rate,
-          currency: card.currency,
+          currency: line.currency,
           minimum: line.minimum,
           maximum: line.maximum,
           containerType: line.containerType,
@@ -248,6 +335,66 @@ export async function promoteRateReply(
     .where(eq(rateRequests.id, rateRequestId))
 
   return { ok: true, cardId: firstCardId ?? '' }
+}
+
+/**
+ * Re-price the replies already read on an enquiry against its current figures
+ * — R1.
+ *
+ * A reply's headline total and its unpriced count are frozen when the model
+ * reads it. One that arrived before a coordinator entered the container count
+ * had every per-container line unpriced, stayed "partial" after the count was
+ * set, and was never ranked or auto-awarded. Called when the count changes;
+ * the stored `response.rows` are exactly what `summariseRateReply` reads, so
+ * nothing is re-extracted and no model is asked again.
+ */
+export async function resummariseRateReplies(tx: Tx, enquiryId: string): Promise<number> {
+  const [enquiry] = await tx
+    .select({
+      mode: enquiries.mode,
+      grossWeightKg: enquiries.grossWeightKg,
+      pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
+    })
+    .from(enquiries)
+    .where(eq(enquiries.id, enquiryId))
+    .limit(1)
+  if (!enquiry) return 0
+  const ctx = rateReplyContext(enquiry)
+
+  const replies = await tx
+    .select({ id: rateRequests.id, response: rateRequests.response })
+    .from(rateRequests)
+    .where(and(eq(rateRequests.enquiryId, enquiryId), eq(rateRequests.status, 'parsed')))
+
+  let updated = 0
+  for (const reply of replies) {
+    const response = (reply.response ?? {}) as Record<string, unknown>
+    if (!Array.isArray(response.rows)) continue
+    const rows = (response.rows as RateRowValues[]).map((values, index) => ({
+      line: index + 1,
+      values,
+    }))
+    const summary = summariseRateReply(rows, ctx)
+    await tx
+      .update(rateRequests)
+      .set({
+        quotedCurrency: summary.primary?.currency ?? null,
+        quotedTotal: summary.primary ? summary.primary.amount.amount.toString() : null,
+        response: {
+          ...response,
+          totals: summary.totals.map((t) => ({
+            currency: t.currency,
+            amount: t.amount.amount.toString(),
+          })),
+          unpriced: summary.unpriced,
+          partial: summary.partial,
+        },
+      })
+      .where(eq(rateRequests.id, reply.id))
+    updated += 1
+  }
+  return updated
 }
 
 async function resolveCodes(tx: Tx, codes: readonly string[]): Promise<Map<string, string>> {

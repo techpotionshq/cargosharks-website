@@ -25,7 +25,13 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import {
+  failWith,
+  isOverlapViolation,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
 
 /** A token that survives a mail round-trip — hex, matched by `rfq-routing.ts`. */
 function newToken(): string {
@@ -110,9 +116,20 @@ export async function acceptRateReply(
   const enquiryId = String(form.get('enquiryId') ?? '').trim()
   if (!rateRequestId) return failWith(tv('rateRequestMissing'))
 
-  const result = await withActor(session.actor, (tx) =>
-    promoteRateReply(tx, rateRequestId, session.principal.id),
-  )
+  let result: Awaited<ReturnType<typeof promoteRateReply>>
+  try {
+    result = await withActor(session.actor, (tx) =>
+      promoteRateReply(tx, rateRequestId, session.principal.id),
+    )
+  } catch (error) {
+    /*
+      The promotion ends the agent's own earlier card and refuses a later one
+      (S5), so an overlap reaching the constraint is a race or a card it could
+      not see. A sentence rather than the error page either way.
+    */
+    if (isOverlapViolation(error)) return failWith(tv('promoteOverlap'))
+    throw error
+  }
 
   /*
     The code, not `result.message`. That sentence is English and is kept for
@@ -160,6 +177,10 @@ function refusal(
       })
     case 'charge_missing':
       return tv('promoteChargeMissing', { charge: values.charge ?? '' })
+    case 'lane_mismatch':
+      return tv('promoteLaneMismatch', { lane: values.lane ?? '' })
+    case 'overlaps_card':
+      return tv('promoteOverlapsCard', { validFrom: values.validFrom ?? '' })
     default: {
       const unhandled: never = reason
       return unhandled

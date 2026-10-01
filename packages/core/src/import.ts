@@ -989,6 +989,8 @@ export interface GroupedRateCard {
     readonly chargeCode: string
     readonly basis: string
     readonly rate: string
+    /** The line's own currency; `rate_card_lines.currency` carries it. */
+    readonly currency: string
     readonly minimum: string | null
     readonly maximum: string | null
     readonly containerType: string | null
@@ -996,15 +998,19 @@ export interface GroupedRateCard {
   }[]
 }
 
+/**
+ * What identifies a card: the lane and the validity window — not the currency.
+ *
+ * Currency was part of the key, so a Gulf reply pricing ocean freight in USD
+ * and terminal handling in KWD became two cards with the same partner, lane
+ * and validity, and `rate_cards_no_overlap` refused the second with 23P01 —
+ * the reply could never be accepted, and auto-promote retried it every minute
+ * (S4). A line carries its own currency (`rate_card_lines.currency`, which
+ * pricing already reads per line), so the reply is one card with lines in two
+ * currencies; the card's header currency is its first line's.
+ */
 export function rateCardKey(row: RateRowValues): string {
-  return [
-    row.mode,
-    row.originCode,
-    row.destinationCode,
-    row.currency,
-    row.validFrom,
-    row.validTo ?? '',
-  ].join('|')
+  return [row.mode, row.originCode, row.destinationCode, row.validFrom, row.validTo ?? ''].join('|')
 }
 
 /** Mutable while grouping; frozen into `GroupedRateCard` on the way out. */
@@ -1049,6 +1055,7 @@ export function groupRateCards(rows: readonly ImportRow<RateRowValues>[]): Group
       chargeCode: values.chargeCode,
       basis: values.basis,
       rate: values.rate,
+      currency: values.currency,
       minimum: values.minimum,
       maximum: values.maximum,
       containerType: values.containerType,

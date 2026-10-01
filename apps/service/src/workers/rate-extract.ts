@@ -45,6 +45,7 @@ import {
 } from '@qabandi/db'
 import {
   parseModelJson,
+  rateReplyContext,
   readExtractedRateReply,
   summariseRateReply,
   BASES,
@@ -199,6 +200,8 @@ export async function extractRateReply(
             amount: t.amount.amount.toString(),
           })),
           unpriced: summary.unpriced,
+          // Which of those make the total partial — the ranking gate (R1).
+          partial: summary.partial,
         },
       })
       .where(eq(rateRequests.id, input.rateRequestId))
@@ -420,6 +423,12 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
  * USD 60, and the comparison ranked it "Cheapest" on the flat fee alone (F66).
  * With no count at all the per-container lines stay unpriced — counted, not
  * guessed — because a count of one would be a number nobody gave.
+ *
+ * The rule lives in core as `rateReplyContext` now (R1): the web re-summarises
+ * the replies already read when a coordinator enters the container count, and
+ * the two must price a reply against the same context. It also prices a
+ * `per_day` line at one day, as `pricing.ts` does — this context supplied no
+ * days, so every storage-per-day line was unpriced and its reply partial.
  */
 async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
   const rows = await tx
@@ -437,20 +446,7 @@ async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
 }
 
 /** The pure half of `contextFor`, exported so the rule is tested without a database. */
-export function chargeContextFor(e: {
-  readonly mode: string | null
-  readonly grossWeightKg: string | null
-  readonly pieces: number | null
-  readonly containerCount: number | null
-}): ChargeContext {
-  const ctx: ChargeContext = {}
-  if (e.grossWeightKg != null) Object.assign(ctx, { kg: e.grossWeightKg })
-  if (e.pieces != null) Object.assign(ctx, { units: e.pieces })
-  if (e.mode === 'sea_fcl' && e.containerCount != null) {
-    Object.assign(ctx, { containers: e.containerCount })
-  }
-  return ctx
-}
+export const chargeContextFor = rateReplyContext
 
 async function loadAttachmentParts(rows: readonly AttachmentRow[]) {
   const store = await fileStore()

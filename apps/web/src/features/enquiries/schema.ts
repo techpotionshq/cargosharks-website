@@ -49,6 +49,9 @@ export const createEnquirySchema = (tv: Translate<'enquiriesValidation'>) =>
         .number({ error: tv('containerCountWhole') })
         .int(tv('containerCountWhole'))
         .min(1, tv('containerCountWhole'))
+        // The same ceiling the in-place form and the proposal resolver keep;
+        // past int4 it was a database error rather than a field error (R6).
+        .max(9999, tv('containerCountWhole'))
         .nullish(),
     })
     .refine((value) => value.customerId || value.contactEmail, {

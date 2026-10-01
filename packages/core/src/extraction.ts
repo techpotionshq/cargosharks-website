@@ -1387,6 +1387,67 @@ export interface RateReplySummary {
   readonly primary?: { readonly currency: string; readonly amount: Money }
   /** Lines whose basis needed context the enquiry did not supply. */
   readonly unpriced: number
+  /**
+   * The unpriced lines that make the total *partial*: those missing a
+   * quantity of the consignment itself — weight, units or containers.
+   *
+   * Not every unpriced line does (R1). A `percent` line (insurance at 0.3%)
+   * needs a base no enquiry supplies, so it is unpriced on every reply alike;
+   * counted as partial, any FCL reply quoting insurance could never be ranked
+   * or auto-awarded, whatever the enquiry held. It leaves every rival short by
+   * the same kind of line, so the totals still rank. A per-container line
+   * with no container count is different: one reply's total is missing its
+   * biggest figure and another's may not be, which is what ranking it
+   * "Cheapest" on its flat fees got wrong (F69).
+   */
+  readonly partial: number
+}
+
+/**
+ * Whether a stored reply's total is partial — the gate the comparison and the
+ * auto-award both rank on, read from `rate_requests.response`.
+ *
+ * `partial` where the reply was summarised since it existed; older rows carry
+ * only `unpriced`, which is the stricter reading and is kept for them rather
+ * than guessing which of their lines were which. Re-summarising (a container
+ * count entered) writes `partial`.
+ */
+export function replyIsPartial(response: unknown): boolean {
+  const r = (response ?? {}) as { partial?: unknown; unpriced?: unknown }
+  const count = typeof r.partial === 'number' ? r.partial : r.unpriced
+  return typeof count === 'number' && count > 0
+}
+
+/** The context fields that are quantities of the consignment — see `partial`. */
+const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'containers'])
+
+/**
+ * The quantities a rate reply is priced against, from the enquiry's figures.
+ *
+ * Shared by the service, which summarises a reply when it is read, and the web,
+ * which re-summarises the replies already read when a coordinator enters the
+ * container count — so both price a reply against the same context (R1).
+ *
+ * Approximate by design: the figure is a *sort key* for the comparison view,
+ * not the quote, which is struck later when `priceEnquiry` runs against the
+ * promoted card. Weight is the gross. On a FCL lane the container count is the
+ * enquiry's own `container_count` — never `pieces`, which counts packages (F39,
+ * F66) — and with no count at all the per-container lines stay unpriced:
+ * counted, not guessed. `days` is one, exactly as `pricing.ts` prices a
+ * `per_day` line, so the two engines agree on what "priceable" means; a storage
+ * charge per day costs one day in both.
+ */
+export function rateReplyContext(e: {
+  readonly mode: string | null
+  readonly grossWeightKg: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+}): ChargeContext {
+  const ctx: { -readonly [K in keyof ChargeContext]: ChargeContext[K] } = { days: 1 }
+  if (e.grossWeightKg != null) ctx.kg = e.grossWeightKg
+  if (e.pieces != null) ctx.units = e.pieces
+  if (e.mode === 'sea_fcl' && e.containerCount != null) ctx.containers = e.containerCount
+  return ctx
 }
 
 export function summariseRateReply(
@@ -1395,6 +1456,7 @@ export function summariseRateReply(
 ): RateReplySummary {
   const byCurrency = new Map<string, Money>()
   let unpriced = 0
+  let partial = 0
 
   for (const { values } of rows) {
     let amount: Money
@@ -1413,6 +1475,7 @@ export function summariseRateReply(
       // Only a missing-context refusal is swallowed; a genuine bug still throws.
       if (error instanceof MissingChargeContextError) {
         unpriced += 1
+        if (CONSIGNMENT_FIELDS.has(error.field)) partial += 1
         continue
       }
       throw error
@@ -1427,5 +1490,6 @@ export function summariseRateReply(
     totals,
     ...(totals.length === 1 ? { primary: totals[0] } : {}),
     unpriced,
+    partial,
   }
 }

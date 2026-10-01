@@ -492,8 +492,9 @@ async function writeLocations(session: Session, report: Report): Promise<{ recor
 /**
  * `FR-RT-09` — the flat sheet becomes cards and lines.
  *
- * The lane, currency and validity identify the card; everything else is a line
- * beneath it. `validity` is written explicitly as a `daterange` literal rather
+ * The lane and validity identify the card; everything else is a line beneath
+ * it, currency included — a USD freight line and a KWD handling line on one
+ * lane are one card (S4). `validity` is written explicitly as a `daterange` literal rather
  * than left to the trigger: the trigger would set the same value, but the
  * column is `not null` and an explicit literal means the insert is correct
  * whether or not the trigger fires first.
@@ -554,7 +555,7 @@ async function writeRateCards(
           chargeTypeId,
           basis: line.basis as ChargeBasis,
           rate: line.rate,
-          currency: card.currency,
+          currency: line.currency,
           minimum: line.minimum,
           maximum: line.maximum,
           containerType: line.containerType,
