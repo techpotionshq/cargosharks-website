@@ -59,17 +59,35 @@ function Alert({ children }: { readonly children: string }) {
   )
 }
 
-function CodeField({ label }: { readonly label: string }) {
+/**
+ * The code input.
+ *
+ * `acceptsBackup` on the challenge, where the page invites a backup code
+ * (`aB3x9-Q7kLm`, A6): a text keyboard rather than the numeric pad, room for
+ * eleven characters plus stray spaces, and no auto-capitalisation, because the
+ * codes are case-sensitive. Enrolment takes only the six digits — there are no
+ * backup codes to spend before the factor exists.
+ */
+function CodeField({
+  label,
+  acceptsBackup = false,
+}: {
+  readonly label: string
+  readonly acceptsBackup?: boolean
+}) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="eyebrow">{label}</span>
       <input
         name="code"
         required
-        inputMode="numeric"
+        inputMode={acceptsBackup ? 'text' : 'numeric'}
         autoComplete="one-time-code"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         autoFocus
-        maxLength={7}
+        maxLength={acceptsBackup ? 16 : 7}
         dir="ltr"
         className={CODE_FIELD}
       />
@@ -90,7 +108,7 @@ export function ChallengeForm({ labels }: { readonly labels: ChallengeLabels }) 
   return (
     <form action={action} className="flex flex-col gap-3">
       {state.error ? <Alert>{state.error}</Alert> : null}
-      <CodeField label={labels.code} />
+      <CodeField label={labels.code} acceptsBackup />
       <Submit label={labels.submit} pendingLabel={labels.submitting} />
     </form>
   )
