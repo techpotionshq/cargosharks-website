@@ -62,8 +62,8 @@
  * The refusal names the row to fix.
  */
 
-import { D, dec, equals, money, negate, round, subtract, sum, zero } from './money'
-import type { CurrencyCode, CurrencySpec, Money, Numeric } from './money'
+import { D, add, dec, equals, money, negate, round, subtract, sum, zero } from './money'
+import type { CurrencyCode, CurrencySpec, Decimal, Money, Numeric } from './money'
 import { DomainError } from './errors'
 
 /**
@@ -189,6 +189,15 @@ export interface PaymentInput {
   readonly allocations: readonly {
     readonly invoiceSeriesNo: string
     readonly baseAmount: Numeric
+    /**
+     * The same allocation in the receipt's own currency.
+     *
+     * What lets the entry tell an exchange difference from money nobody has
+     * matched yet: a 1,000 receipt allocated 600 has 400 *on account*, and
+     * without this figure the 400 was booked as FX variance. Optional only so
+     * a caller that allocates the whole receipt keeps the entry it had.
+     */
+    readonly amount?: Numeric
   }[]
 }
 
@@ -240,6 +249,8 @@ export interface SupplierPaymentInput {
   readonly allocations: readonly {
     readonly supplierReference: string
     readonly baseAmount: Numeric
+    /** In the payment's own currency — see `PaymentInput.allocations`. */
+    readonly amount?: Numeric
   }[]
 }
 
@@ -767,38 +778,40 @@ function supplierPaymentEntry(
     sourceId: payment.id,
   }
 
-  const cleared =
-    payment.allocations.length === 0
-      ? paid
-      : round(
-          money(
-            payment.allocations.reduce((acc, a) => acc.plus(dec(a.baseAmount)), D(0)),
-            base,
-          ),
-          spec,
-        )
+  const split = splitAllocated(payment.amount, payment.allocations, rate, paid, base, spec)
 
-  const lines: JournalLine[] = [
-    {
+  const lines: JournalLine[] = []
+  if (!dec(split.cleared.amount).isZero()) {
+    lines.push({
       ...common,
       account: payables,
-      description:
-        payment.allocations.length === 0
-          ? 'On account'
-          : `Settles ${payment.allocations.map((a) => a.supplierReference).join(', ')}`,
-      debit: cleared,
+      description: `Settles ${payment.allocations.map((a) => a.supplierReference).join(', ')}`,
+      debit: split.cleared,
       credit: zero(base),
-    },
-    {
+      transactionAmount: split.allocatedTxn.toString(),
+    })
+  }
+  if (!dec(split.onAccount.amount).isZero()) {
+    lines.push({
       ...common,
-      account: bank,
-      description: `Payment — ${payment.method}`,
-      debit: zero(base),
-      credit: paid,
-    },
-  ]
+      account: payables,
+      description: 'On account',
+      debit: split.onAccount,
+      credit: zero(base),
+      transactionAmount: dec(payment.amount).minus(split.allocatedTxn).toString(),
+    })
+  }
+  lines.push({
+    ...common,
+    account: bank,
+    description: `Payment — ${payment.method}`,
+    debit: zero(base),
+    credit: paid,
+  })
 
-  const variance = subtract(cleared, paid)
+  // Only the true exchange difference: the allocated part at the payment's
+  // rate against the same part at the bill's.
+  const variance = subtract(add(split.cleared, split.onAccount), paid)
   if (!dec(variance.amount).isZero()) {
     const account = required(
       input.controls.fxVariance,
@@ -938,29 +951,41 @@ function receiptEntry(
     figure. Clearing at the receipt's rate would leave the receivable balance
     permanently wrong by exactly the amount nobody could explain.
   */
-  const cleared =
-    payment.allocations.length === 0
-      ? received
-      : round(
-          money(
-            payment.allocations.reduce((acc, a) => acc.plus(dec(a.baseAmount)), D(0)),
-            base,
-          ),
-          spec,
-        )
+  const split = splitAllocated(payment.amount, payment.allocations, rate, received, base, spec)
 
-  lines.push({
-    ...common,
-    account: receivables,
-    description:
-      payment.allocations.length === 0
-        ? 'On account'
-        : `Settles ${payment.allocations.map((a) => a.invoiceSeriesNo).join(', ')}`,
-    debit: zero(base),
-    credit: cleared,
-  })
+  if (!dec(split.cleared.amount).isZero()) {
+    lines.push({
+      ...common,
+      account: receivables,
+      description: `Settles ${payment.allocations.map((a) => a.invoiceSeriesNo).join(', ')}`,
+      debit: zero(base),
+      credit: split.cleared,
+      transactionAmount: split.allocatedTxn.toString(),
+    })
+  }
 
-  const variance = subtract(received, cleared)
+  /*
+    What nobody has matched yet stays a credit on the receivable, *on account*,
+    at the rate the money arrived at.
+
+    It used to fall into the exchange difference, so a 1,000 KWD receipt
+    allocated 600 posted a 400 KWD "FX loss" — and the later allocation never
+    posted at all, because the receipt was already exported. On account is the
+    same treatment a wholly unallocated receipt has always had, and it leaves
+    the customer's balance right whichever invoice the rest is matched to.
+  */
+  if (!dec(split.onAccount.amount).isZero()) {
+    lines.push({
+      ...common,
+      account: receivables,
+      description: 'On account',
+      debit: zero(base),
+      credit: split.onAccount,
+      transactionAmount: dec(payment.amount).minus(split.allocatedTxn).toString(),
+    })
+  }
+
+  const variance = subtract(received, add(split.cleared, split.onAccount))
   if (!dec(variance.amount).isZero()) {
     const account = required(
       input.controls.fxVariance,
@@ -980,6 +1005,49 @@ function receiptEntry(
   }
 
   return lines
+}
+
+/**
+ * A receipt or payment split three ways, all in base currency.
+ *
+ *   cleared    the allocations, at the rate each document was *raised* at
+ *   onAccount  what is left unallocated, at the cash's own rate
+ *
+ * Whatever remains between those two and the cash is the exchange difference,
+ * and only that. `onAccount` is taken as the cash less the allocated part at
+ * the cash's rate, rather than converted on its own, so the three can never
+ * disagree by a rounding fils between them.
+ *
+ * An allocation without its transaction `amount` (an older caller) is read as
+ * settling the whole of the cash, which is the entry this produced before.
+ */
+function splitAllocated(
+  cashAmount: Numeric,
+  allocations: readonly { readonly baseAmount: Numeric; readonly amount?: Numeric }[],
+  rate: Decimal,
+  cashBase: Money,
+  base: CurrencyCode,
+  spec: CurrencySpec,
+): { cleared: Money; onAccount: Money; allocatedTxn: Decimal } {
+  if (allocations.length === 0) {
+    return { cleared: zero(base), onAccount: cashBase, allocatedTxn: D(0) }
+  }
+
+  const cleared = round(
+    money(
+      allocations.reduce((acc, a) => acc.plus(dec(a.baseAmount)), D(0)),
+      base,
+    ),
+    spec,
+  )
+
+  if (allocations.some((a) => a.amount === undefined)) {
+    return { cleared, onAccount: zero(base), allocatedTxn: dec(cashAmount) }
+  }
+
+  const allocatedTxn = allocations.reduce((acc, a) => acc.plus(dec(a.amount!)), D(0))
+  const allocatedAtCashRate = round(money(allocatedTxn.times(rate), base), spec)
+  return { cleared, onAccount: subtract(cashBase, allocatedAtCashRate), allocatedTxn }
 }
 
 /**

@@ -53,7 +53,7 @@ interface ServiceRefusal {
 /**
  * Every refusal code the export and void routes send.
  *
- * The first four are `ExportError`s the service raises itself; the three
+ * The first six are `ExportError`s the service raises itself; the three
  * `journal_*` are the accounting engine's own, passed through by code and
  * values (`AccountingError`); the last
  * three are the void's. Anything else — a code added in the service before a
@@ -65,6 +65,8 @@ const EXPORT_REFUSALS = [
   'branch_not_found',
   'unmapped_charge_types',
   'asset_conflict',
+  'invoice_without_rate',
+  'period_changed',
   'journal_unbalanced',
   'journal_unmapped',
   'journal_unmapped_line',
@@ -106,6 +108,10 @@ function refusal(
     }
     case 'asset_conflict':
       return tv('exportAssetConflict')
+    case 'invoice_without_rate':
+      return tv('exportInvoiceWithoutRate', { reference: values.reference ?? '' })
+    case 'period_changed':
+      return tv('exportPeriodChanged')
     /*
       The three engine refusals name the invoice or account they are about
       (`AccountingError.values`). The enums — which account, which kind of

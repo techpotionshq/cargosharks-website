@@ -44,8 +44,17 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 */
 process.env.FILE_STORE_DRIVER = 'memory'
 
-const { accountingExports, branches, chargeTypes, customers, invoiceLines, invoices, withActor } =
-  await import('@qabandi/db')
+const {
+  accountingExports,
+  branches,
+  chargeTypes,
+  customers,
+  invoiceLines,
+  invoices,
+  paymentAllocations,
+  payments,
+  withActor,
+} = await import('@qabandi/db')
 
 const { buildAccountingExport, voidAccountingExport, ExportError } = await import('./export')
 
@@ -496,6 +505,158 @@ describe.skipIf(!enabled)('the accounting export', () => {
       await expect(
         voidAccountingExport(actor, '00000000-0000-7000-8000-00000000acda', 'Gone'),
       ).rejects.toMatchObject({ code: 'not_found' })
+    })
+  })
+
+  describe('foreign currency', () => {
+    /** A USD invoice raised by hand, with the rate it was raised at on itself. */
+    async function usdInvoice(issuedAt: string, fxRate: string | null): Promise<string> {
+      seq += 1
+      return withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `FXE-${RUN}-${seq}`,
+            status: 'issued',
+            currency: 'USD',
+            subtotal: '1000',
+            total: '1000',
+            fxRate,
+            issuedAt: new Date(issuedAt),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '1000',
+          amount: '1000',
+        })
+        return invoice!.id
+      })
+    }
+
+    /*
+      F1. The receipt's allocation was converted with a rate looked up by the
+      *payment's* id, in a map holding only this period's invoices — so it
+      always missed, and a USD receipt cleared AR at 1.
+    */
+    it('clears a receipt at the rate of the invoice it settles, from an earlier period', async () => {
+      await mapCharge('4100')
+      const invoiceId = await usdInvoice('2036-01-15T09:00:00Z', '0.307')
+      await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-01-01',
+        to: '2036-01-31',
+        post: true,
+      })
+
+      await withActor(systemActor, async (tx) => {
+        const [payment] = await tx
+          .insert(payments)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            amount: '1000',
+            currency: 'USD',
+            fxRate: '0.309',
+            receivedOn: '2036-02-10',
+            method: 'bank_transfer',
+            reference: `TT-${RUN}`,
+          })
+          .returning({ id: payments.id })
+        await tx
+          .insert(paymentAllocations)
+          .values({ paymentId: payment!.id, invoiceId, amount: '1000' })
+      })
+
+      const result = await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-02-01',
+        to: '2036-02-28',
+      })
+
+      const rows = result.csv.split('\r\n').map((line) => line.split(','))
+      const ar = rows.find((r) => r[1] === '1200')!
+      const fx = rows.find((r) => r[1] === '7800')!
+      expect(ar[5]).toBe('307')
+      expect(fx[5]).toBe('2')
+      expect(result.totalDebit).toBe(result.totalCredit)
+    })
+
+    /** F2. A foreign invoice with no rate anywhere used to post at 1. */
+    it('refuses a foreign invoice that carries no rate, and names it', async () => {
+      await mapCharge('4100')
+      await usdInvoice('2036-03-15T09:00:00Z', null)
+
+      await expect(
+        buildAccountingExport(actor, { branchId: BRANCH, from: '2036-03-01', to: '2036-03-31' }),
+      ).rejects.toMatchObject({ code: 'invoice_without_rate' })
+    })
+
+    it('posts a hand-raised foreign invoice at its own rate', async () => {
+      await mapCharge('4100')
+      await usdInvoice('2036-04-15T09:00:00Z', '0.307')
+
+      const result = await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-04-01',
+        to: '2036-04-30',
+      })
+
+      const ar = result.csv
+        .split('\r\n')
+        .map((line) => line.split(','))
+        .find((r) => r[1] === '1200')!
+      expect(ar[4]).toBe('307')
+    })
+  })
+
+  /*
+    F19. Two people posting the same month at once: the \`is null\` guard kept the
+    second from re-pointing the rows, but it still committed a second "posted"
+    export carrying the same journal.
+  */
+  describe('two posts of one period at once', () => {
+    it('never leaves two posted exports carrying the same invoice', async () => {
+      await mapCharge('4100')
+      const period = { from: '2036-05-01', to: '2036-05-31' }
+      seq += 1
+      await withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `FXE-${RUN}-${seq}`,
+            status: 'issued',
+            currency: 'KWD',
+            subtotal: '50',
+            total: '50',
+            issuedAt: new Date('2036-05-10T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '50',
+          amount: '50',
+        })
+      })
+
+      const outcomes = await Promise.allSettled([
+        buildAccountingExport(actor, { branchId: BRANCH, ...period, post: true }),
+        buildAccountingExport(actor, { branchId: BRANCH, ...period, post: true }),
+      ])
+
+      const posted = outcomes.filter((o) => o.status === 'fulfilled' && o.value.invoiceCount > 0)
+      expect(posted).toHaveLength(1)
+      for (const o of outcomes) {
+        if (o.status === 'rejected') expect(o.reason).toMatchObject({ code: 'period_changed' })
+      }
     })
   })
 })

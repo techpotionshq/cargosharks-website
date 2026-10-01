@@ -3790,7 +3790,9 @@
     "exportJournalUnbalancedBy": "القيد غير متوازن بفارق {amount} {currency}، وهو أكبر من أن يُعزى إلى التقريب. ثمة شيء في هذه الفترة ليس على حقيقته.",
     "exportJournalAccountMissing": "لم يُعدّ حساب {account, select, rounding {التقريب} receivables {الذمم المدينة} payables {الذمم الدائنة} tax {ضريبة المخرجات} input_tax {ضريبة المدخلات} bank {البنك} fx_variance {فروق الصرف} revenue {الإيرادات} cost {التكاليف} other {مطلوب}}، فلا يمكن ترحيل {document, select, journal {القيد} invoice {الفاتورة {reference}} job_cost {التكلفة على {reference}} supplier_invoice {فاتورة المورد {reference}} payment {الدفعة {reference}} receipt {سند القبض {reference}} settlement {المقاصّة {reference}} other {{reference}}}. أضفه إلى دليل حسابات الفرع، ثم أعد تشغيل التصدير.",
     "exportJournalChargeTypeUnmapped": "نوع الرسم {chargeType} غير مربوط بحساب {account, select, revenue {إيرادات} other {تكاليف}}، فلا يمكن ترحيل {document, select, journal {القيد} invoice {الفاتورة {reference}} job_cost {التكلفة على {reference}} supplier_invoice {فاتورة المورد {reference}} payment {الدفعة {reference}} receipt {سند القبض {reference}} settlement {المقاصّة {reference}} other {{reference}}}. اربطه من البيانات المرجعية ← أنواع الرسوم، ثم أعد تشغيل التصدير.",
-    "exportJournalLineNoChargeType": "البند «{line}» في {document, select, supplier_invoice {فاتورة المورد {reference}} other {الفاتورة {reference}}} بلا نوع رسم، فلا يمكن ترحيله. حدّد له نوع رسم قبل إقفال الفترة."
+    "exportJournalLineNoChargeType": "البند «{line}» في {document, select, supplier_invoice {فاتورة المورد {reference}} other {الفاتورة {reference}}} بلا نوع رسم، فلا يمكن ترحيله. حدّد له نوع رسم قبل إقفال الفترة.",
+    "exportInvoiceWithoutRate": "الفاتورة {reference} بعملة أجنبية وليس لها سعر صرف، لذا لا يمكن ترحيلها. أدخل سعر الصرف ثم أعد تشغيل التصدير.",
+    "exportPeriodChanged": "رُحِّل جزء من هذه الفترة من قِبل شخص آخر أثناء إعداد هذا التصدير. لم يُرحَّل شيء — أعد تشغيله."
   },
   "validation": {
     "invalidType": "أدخل قيمة صالحة.",

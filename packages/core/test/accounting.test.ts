@@ -278,6 +278,69 @@ describe('cash and realised FX', () => {
     expect(journal.lines[1]!.description).toBe('On account')
     expect(isBalanced(journal)).toBe(true)
   })
+
+  /*
+    A 1,000 KWD receipt allocated 600 used to post an "exchange difference" of
+    400 KWD: the unallocated rest fell into `received - cleared`.
+  */
+  it('keeps the unallocated rest of a receipt on account, not in FX variance', () => {
+    const journal = buildJournal(
+      base({
+        payments: [
+          {
+            id: 'pay-4',
+            receivedOn: new Date('2026-04-02T00:00:00Z'),
+            customerName: 'Gulf Trading Co.',
+            currency: 'KWD',
+            amount: '1000',
+            fxRate: 1,
+            method: 'transfer',
+            allocations: [{ invoiceSeriesNo: 'KWI-2026-00001', baseAmount: '600', amount: '600' }],
+          },
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines.some((l) => l.account === '7800')).toBe(false)
+    const credits = journal.lines.filter((l) => l.account === '1200')
+    expect(credits.map((l) => [l.description, l.credit.amount.toString()])).toEqual([
+      ['Settles KWI-2026-00001', '600'],
+      ['On account', '400'],
+    ])
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('posts only the true exchange difference on a part-allocated foreign receipt', () => {
+    // USD 1,000 at 0.309 = 309 KWD. USD 600 settles an invoice raised at 0.307
+    // (184.2 KWD); USD 400 is on account at the receipt's rate (123.6 KWD).
+    // The gain is 600 × (0.309 − 0.307) = 1.2 KWD, not 124.8.
+    const journal = buildJournal(
+      base({
+        payments: [
+          {
+            id: 'pay-5',
+            receivedOn: new Date('2026-04-02T00:00:00Z'),
+            customerName: 'Gulf Trading Co.',
+            currency: 'USD',
+            amount: '1000',
+            fxRate: '0.309',
+            method: 'transfer',
+            allocations: [
+              { invoiceSeriesNo: 'KWI-2026-00001', baseAmount: '184.2', amount: '600' },
+            ],
+          },
+        ],
+      }),
+      KWD,
+    )
+
+    const fx = journal.lines.find((l) => l.account === '7800')!
+    expect(fx.credit.amount.toString()).toBe('1.2')
+    const onAccount = journal.lines.find((l) => l.description === 'On account')!
+    expect(onAccount.credit.amount.toString()).toBe('123.6')
+    expect(isBalanced(journal)).toBe(true)
+  })
 })
 
 describe('refusals', () => {
@@ -713,6 +776,31 @@ describe('paying a supplier', () => {
     const journal = buildJournal(base({ supplierPayments: [payment({ allocations: [] })] }), KWD)
     expect(journal.lines).toHaveLength(2)
     expect(journal.lines[0]!.description).toBe('On account')
+  })
+
+  it('keeps the unallocated rest of a payment on account, not in FX variance', () => {
+    const journal = buildJournal(
+      base({
+        supplierPayments: [
+          payment({
+            amount: '1000',
+            allocations: [{ supplierReference: 'JEA/2026/8841', baseAmount: '600', amount: '600' }],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines.some((l) => l.account === '7800')).toBe(false)
+    expect(
+      journal.lines
+        .filter((l) => l.account === '2100')
+        .map((l) => [l.description, l.debit.amount.toString()]),
+    ).toEqual([
+      ['Settles JEA/2026/8841', '600'],
+      ['On account', '400'],
+    ])
+    expect(isBalanced(journal)).toBe(true)
   })
 })
 

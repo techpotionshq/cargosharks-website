@@ -3790,7 +3790,9 @@
     "exportJournalUnbalancedBy": "The journal is out by {amount} {currency}, which is more than rounding can explain. Something in the period is not what it claims to be.",
     "exportJournalAccountMissing": "No {account, select, rounding {rounding} receivables {receivables} payables {payables} tax {output tax} input_tax {input tax} bank {bank} fx_variance {FX variance} revenue {revenue} cost {cost} other {required}} account is configured, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Add it to the branch’s chart of accounts, then run the export again.",
     "exportJournalChargeTypeUnmapped": "The charge type {chargeType} has no {account, select, revenue {revenue} other {cost}} account, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Map it under Reference data → Charge types, then run the export again.",
-    "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close."
+    "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close.",
+    "exportInvoiceWithoutRate": "Invoice {reference} is in a foreign currency and has no exchange rate, so it cannot post. Give it a rate and run the export again.",
+    "exportPeriodChanged": "Part of this period was posted by someone else while this export was being built. Nothing was posted — run it again."
   },
   "validation": {
     "invalidType": "Enter a valid value.",

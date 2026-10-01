@@ -111,6 +111,14 @@ export const invoices = pgTable(
     amountPaid: amount('amount_paid').notNull().default('0'),
     taxTreatment: taxTreatmentEnum('tax_treatment').notNull().default('out_of_scope'),
     taxRatePercent: quantity('tax_rate_percent').notNull().default('0'),
+    /**
+     * The rate to the branch's base currency, for an invoice raised by hand.
+     *
+     * Null where the invoice was billed from a job: there the rate is on the
+     * charge lines behind it (FR-RT-06). A hand-raised invoice has no charge
+     * lines, so without this column a USD invoice posted to the ledger at 1.
+     */
+    fxRate: rate('fx_rate'),
     language: localeEnum('language').notNull().default('en'),
     issuedAt: tsz('issued_at'),
     dueOn: date('due_on'),
