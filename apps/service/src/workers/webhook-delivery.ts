@@ -292,12 +292,19 @@ async function recordFailure(
 }
 
 /**
- * Switch off an endpoint that has delivered nothing for a week.
+ * Switch off an endpoint that has been failing for a week.
  *
  * A customer's URL that died in a redeploy will not come back on its own, and
  * retrying it for ever costs a request every few minutes and hides the real
  * failures behind it. Disabled with a reason, so the answer to "why did we
  * stop getting these" is on the row rather than in somebody's memory.
+ *
+ * *Failing*, not *quiet*. The test used to be "some delivery is older than the
+ * cutoff and none was delivered since", which an endpoint that worked eight
+ * days ago and simply had nothing to receive since passes — a healthy
+ * subscriber on a slow week was switched off. Dead now needs evidence: a
+ * delivery older than the cutoff that was attempted and never got through,
+ * with no success since.
  */
 async function disableDeadEndpoints(now: Date): Promise<number> {
   const cutoff = new Date(now.getTime() - DISABLE_AFTER_DAYS * 24 * 60 * 60 * 1000)
@@ -312,7 +319,10 @@ async function disableDeadEndpoints(now: Date): Promise<number> {
        where e.is_active
          and exists (
            select 1 from webhook_deliveries d
-            where d.endpoint_id = e.id and d.created_at < ${cutoff.toISOString()}
+            where d.endpoint_id = e.id
+              and d.created_at < ${cutoff.toISOString()}
+              and d.delivered_at is null
+              and d.attempts > 0
          )
          and not exists (
            select 1 from webhook_deliveries d
