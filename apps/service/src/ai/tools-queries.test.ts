@@ -31,6 +31,7 @@ const {
   customerBranchTerms,
   customers,
   enquiries,
+  freeTimeClocks,
   invoices,
   jobs,
   locations,
@@ -249,6 +250,47 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       // Only the non-accrual revenue line — the 999 accrual is left out.
       expect(mine!.lines).toBe(1)
       expect(Number(mine!.amountBase)).toBeCloseTo(150, 3)
+    })
+  })
+
+  /*
+    O20. This filtered on `ends_on` — the day the box came back — which nothing
+    set, so the assistant answered "what free time is running out" with nothing,
+    and would have listed only clocks already stopped.
+  */
+  describe('list_free_time', () => {
+    it('lists a running clock whose free time ends soon, and not a stopped one', async () => {
+      await withActor(systemActor, (tx) =>
+        tx.insert(freeTimeClocks).values([
+          {
+            jobId: JOB,
+            kind: 'demurrage',
+            freeDays: 5,
+            startsOn: day(-2),
+            perDiem: '20.000',
+            currency: 'KWD',
+          },
+          {
+            jobId: JOB,
+            kind: 'storage',
+            freeDays: 5,
+            startsOn: day(-2),
+            endsOn: day(-1),
+            perDiem: '20.000',
+            currency: 'KWD',
+          },
+        ]),
+      )
+
+      const rows = (await runTool(actor, 'list_free_time', { withinDays: 7 })) as {
+        shipment: string
+        kind: string
+        freeUntil: string
+      }[]
+      const mine = rows.filter((row) => row.shipment === JOB_REF)
+      expect(mine.map((row) => row.kind)).toEqual(['demurrage'])
+      // Day one is the start: five free days from two days ago end in two.
+      expect(mine[0]!.freeUntil).toBe(day(2))
     })
   })
 

@@ -153,10 +153,17 @@ export async function writeCarrierMilestone(
         feed silently move that date hours later would make the board argue
         with the person reading it. The feed fills gaps and corrects its *own*
         dates; it does not overrule a human.
+
+        "Its own" means nobody has completed it by hand since (O6). The note
+        alone was the test, and an operator correcting a feed-written date
+        through the milestone dialog leaves the note as the feed wrote it — so
+        the correction reverted within the hour, and that date drives
+        demurrage. A hand completion stamps `completed_by_id`; the feed never
+        does.
       */
       setWhere: or(
         isNull(jobMilestones.actualAt),
-        sql`${jobMilestones.notes} like 'Carrier feed%'`,
+        and(isNull(jobMilestones.completedById), sql`${jobMilestones.notes} like 'Carrier feed%'`),
       ),
     })
     /*

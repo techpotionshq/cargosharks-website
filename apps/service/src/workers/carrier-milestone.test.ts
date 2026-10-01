@@ -329,6 +329,29 @@ describe.skipIf(!enabled)('writing a carrier milestone', () => {
       expect(written?.notes).toBe('Confirmed by phone with the terminal')
     })
 
+    /**
+     * O6. The feed wrote it, an operator corrected the date through the
+     * milestone dialog — which stamps who did it and leaves the note — and the
+     * next poll put the carrier's date back.
+     */
+    it('leaves a feed date a person has since corrected', async () => {
+      const target = await job()
+      await write(target, 'discharged', '2034-06-14T11:00:00Z')
+      const corrected = new Date('2034-06-15T07:30:00Z')
+      await withActor(systemActor, (tx) =>
+        tx
+          .update(jobMilestones)
+          .set({ actualAt: corrected, completedById: PRINCIPAL })
+          .where(and(eq(jobMilestones.jobId, target.id), eq(jobMilestones.code, 'discharged'))),
+      )
+
+      const result = await write(target, 'discharged', '2034-06-14T11:00:00Z')
+
+      expect(result.status).toBe('preserved')
+      const after = await milestoneOn(target.id, 'discharged')
+      expect(after?.actualAt?.toISOString()).toBe(corrected.toISOString())
+    })
+
     /** A milestone a person created but left incomplete is a gap to fill. */
     it('fills a milestone a person created but never completed', async () => {
       const target = await job()

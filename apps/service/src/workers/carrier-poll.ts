@@ -34,7 +34,7 @@
  * counted.
  */
 
-import { and, asc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import {
   authSession,
   jobMilestones,
@@ -200,7 +200,14 @@ export async function runCarrierPoll(): Promise<CarrierPollResult> {
         and(
           isNull(jobs.closedAt),
           isNull(jobs.cancelledAt),
-          ne(jobs.status, 'draft'),
+          /*
+            Only shipments still moving (O7). Delivered and completed jobs are
+            rarely closed the same day, have the earliest ETAs, and filled the
+            ETA-ordered batch every hour — so the in-transit shipments behind
+            them stopped being polled. Nothing a carrier reports after delivery
+            changes the board.
+          */
+          inArray(jobs.status, ['booked', 'in_transit', 'arrived', 'customs', 'on_hold']),
           or(eq(jobs.mode, 'sea_fcl'), eq(jobs.mode, 'sea_lcl')),
           isNotNull(partners.scac),
           eq(partners.isActive, true),
