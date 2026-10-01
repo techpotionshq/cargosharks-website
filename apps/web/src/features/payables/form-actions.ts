@@ -1513,6 +1513,7 @@ const BILL_REFUSALS = [
   'not_reconciled',
   'unreadable_fields',
   'low_confidence',
+  'no_exchange_rate',
 ] as const
 
 type BillRefusal = (typeof BILL_REFUSALS)[number]
@@ -1565,6 +1566,11 @@ function billRefusal(tv: Translate<'payablesValidation'>, body: BillReading): st
     }
     case 'low_confidence':
       return tv('billLowConfidence')
+    case 'no_exchange_rate':
+      return tv('billNoExchangeRate', {
+        currency: values.currency ?? '',
+        base: values.base ?? '',
+      })
     default: {
       const unhandled: never = code
       return unhandled

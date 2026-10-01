@@ -790,6 +790,24 @@ describe('reading a bill that was not written', () => {
     expect(state.message).toBe('payablesValidation.scanTooLarge:{"sizeMb":"31","limitMb":"20"}')
   })
 
+  /*
+    F18. The extractor wrote every bill at the column default rate of 1; with
+    no rate on file it now writes nothing and says which rate is missing.
+  */
+  it('names the missing exchange rate when the bill was not written for want of one', async () => {
+    fetchMock.mockReset()
+    serviceAnswers({
+      refusal: 'No exchange rate from USD to KWD is on file, so the bill was not written.',
+      refusalCode: 'no_exchange_rate',
+      refusalValues: { currency: 'USD', base: 'KWD' },
+    })
+
+    const state = await readSupplierBill({}, scanForm())
+    expect(state.message).toBe(
+      'payablesValidation.billNoExchangeRate:{"currency":"USD","base":"KWD"}',
+    )
+  })
+
   /** An English sentence with no code this side knows is never shown. */
   it('falls back rather than showing the service’s English', async () => {
     fetchMock.mockReset()

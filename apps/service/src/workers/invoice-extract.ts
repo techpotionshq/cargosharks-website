@@ -38,11 +38,13 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import {
   assets,
+  branches,
   chargeLines,
   chargeTypes,
   currencies,
   inSeries,
   jobs,
+  latestFxRate,
   notificationOutbox,
   partners,
   supplierInvoiceLines,
@@ -139,12 +141,13 @@ export interface ExtractInvoiceResult {
  *   `not_reconciled`     the figures do not add up — the findings say where
  *   `unreadable_fields`  a header field or a line did not parse
  *   `low_confidence`     nothing wrong with the reading; the model was unsure
+ *   `no_exchange_rate`   a foreign-currency bill, and no rate to the base on file
  *
  * The web app translates these, and its switch has a `never` default, so a
  * code added here without a sentence there fails its typecheck.
  */
 export type InvoiceRefusal =
-  'scan_too_large' | 'not_reconciled' | 'unreadable_fields' | 'low_confidence'
+  'scan_too_large' | 'not_reconciled' | 'unreadable_fields' | 'low_confidence' | 'no_exchange_rate'
 
 /**
  * Read one supplier invoice.
@@ -232,8 +235,17 @@ export async function extractSupplierInvoice(
     }
   }
 
-  const supplierInvoiceId = await write(input, extracted, spec!, asset.id, reference)
-  return { ...base, supplierInvoiceId }
+  const written = await write(input, extracted, spec!, asset.id, reference)
+  if ('noRateTo' in written) {
+    const values = { currency: spec!.code, base: written.noRateTo }
+    return {
+      ...base,
+      refusal: `No exchange rate from ${values.currency} to ${values.base} is on file, so the bill was not written.`,
+      refusalCode: 'no_exchange_rate',
+      refusalValues: values,
+    }
+  }
+  return { ...base, supplierInvoiceId: written.id }
 
   function refuse(
     reason: string,
@@ -354,11 +366,28 @@ async function write(
   spec: CurrencySpec,
   assetId: string,
   reference: Reference,
-): Promise<string> {
+): Promise<{ id: string } | { noRateTo: string }> {
   const { header } = extracted
   const code = spec.code
 
   return withActor(input.actor, async (tx: Tx) => {
+    /*
+      The rate to the branch's base, taken now and written on the bill
+      (FR-RT-06). It was never set, so every bill the extractor wrote carried
+      the column default of 1 — a USD 2,900 bill approved and paid as 2,900
+      dinars. Where no rate is on file nothing is written, rather than a bill
+      that looks right and posts at face value; the coordinator captures it by
+      hand with the rate the agent agreed.
+    */
+    const [branch] = await tx
+      .select({ base: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, input.branchId))
+      .limit(1)
+    const base = branch?.base ?? code
+    const fxRate = base === code ? '1' : await latestFxRate(tx, code, base)
+    if (!fxRate) return { noRateTo: base }
+
     /*
       Decimal throughout, never a JS number (§11). KWD carries three decimals
       and a supplier invoice is exactly where the difference shows.
@@ -385,6 +414,7 @@ async function write(
         */
         status: 'received' as const,
         currency: code,
+        fxRate,
         subtotal: header.subtotal ?? toDb(net),
         taxAmount: tax,
         /*
@@ -440,7 +470,7 @@ async function write(
     */
     await flagVariance(tx, input, extracted, spec, code, reference)
 
-    return invoiceId
+    return { id: invoiceId }
   })
 }
 
