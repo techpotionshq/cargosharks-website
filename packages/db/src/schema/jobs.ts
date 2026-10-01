@@ -621,6 +621,8 @@ export const documents = pgTable(
   },
   (t) => [
     index('documents_job_idx').on(t.jobId, t.documentTypeId, t.version),
+    // One row per version per language — the backstop under the issue lock.
+    uniqueIndex('documents_version_unique').on(t.jobId, t.documentTypeId, t.locale, t.version),
     index('documents_released_idx').on(t.releasedAt),
   ],
 )

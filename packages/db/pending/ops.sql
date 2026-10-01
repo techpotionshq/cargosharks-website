@@ -25,3 +25,15 @@ create unique index if not exists jobs_house_bill_unique
 -- page and the allocation read only rows where this is null, and the action
 -- refuses to withdraw a cost whose split is standing.
 alter table consol_charge_lines add column if not exists withdrawn_at timestamptz;
+
+-- --------------------------------------------------------------------------
+-- O13: one document row per (job, type, language, version).
+--
+-- The version was read in one transaction and written in another, so two
+-- issues at once both recorded the same version against one storage key.
+-- `storeJobDocument` now takes an advisory lock and versions per language;
+-- this is the backstop that refuses a duplicate rather than recording it.
+-- No existing row violates it: versions were unique per job and type, which
+-- is stricter than per language.
+create unique index if not exists documents_version_unique
+  on documents (job_id, document_type_id, locale, version);
