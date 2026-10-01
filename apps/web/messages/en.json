@@ -609,7 +609,8 @@
     "submitting": "Sending…",
     "sent": "If that address belongs to an account, a link is on its way. It expires in one hour.",
     "errorMissing": "Enter your email address.",
-    "backToSignIn": "Back to sign in"
+    "backToSignIn": "Back to sign in",
+    "errorThrottled": "Too many reset requests. Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "resetPassword": {
     "title": "Set a new password",
