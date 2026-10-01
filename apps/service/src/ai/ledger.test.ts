@@ -28,7 +28,7 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
   was asked. `fail` makes the next call throw, which is how the "a failed call
   is not an answer" case is produced.
 */
-const provider = vi.hoisted(() => ({ calls: 0, fail: false }))
+const provider = vi.hoisted(() => ({ calls: 0, fail: false, empty: false }))
 
 vi.mock('../adapters/index', async () => {
   const { readCompletion } = await import('../adapters/model')
@@ -42,12 +42,13 @@ vi.mock('../adapters/index', async () => {
           provider.fail = false
           throw new Error('provider down')
         }
+        // One empty-but-successful reply, as the provider sends now and then.
+        const content = provider.empty ? '' : JSON.stringify({ ok: true })
+        provider.empty = false
         return readCompletion(
           {
             model: 'test/model',
-            choices: [
-              { message: { content: JSON.stringify({ ok: true }) }, finish_reason: 'stop' },
-            ],
+            choices: [{ message: { content }, finish_reason: 'stop' }],
             usage: { prompt_tokens: 12, completion_tokens: 4, cost: 0.0002 },
           },
           'test/model',
@@ -137,6 +138,7 @@ describe.skipIf(!enabled)('answering from the ledger', () => {
 
   afterEach(() => {
     provider.fail = false
+    provider.empty = false
   })
 
   it('asks the model the first time, and records having asked', async () => {
@@ -224,5 +226,30 @@ describe.skipIf(!enabled)('answering from the ledger', () => {
 
     expect(provider.calls).toBe(before + 1)
     expect(retried.reused).toBe(false)
+  })
+
+  /*
+    An empty reply is recorded with `error` null — the provider completed the
+    call — and used to be served to every retry of the same document, so the
+    retry policy could never recover it. A structured question is reused only
+    when the recorded answer parses.
+  */
+  it('does not answer a structured question from an empty reply', async () => {
+    const request: ModelRequest = { ...question(), schema: { type: 'object' } }
+    provider.empty = true
+    const first = await invoke(context(), request, { reuse: true })
+    expect(first.response.text).toBe('')
+    const before = provider.calls
+
+    const retried = await invoke(context(), request, { reuse: true })
+
+    expect(provider.calls).toBe(before + 1)
+    expect(retried.reused).toBe(false)
+    expect(retried.response.text).toBe(JSON.stringify({ ok: true }))
+
+    // And the good answer is what a third asking reuses.
+    const third = await invoke(context(), request, { reuse: true })
+    expect(third.reused).toBe(true)
+    expect(third.invocationId).toBe(retried.invocationId)
   })
 })

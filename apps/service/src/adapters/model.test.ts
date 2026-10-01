@@ -214,6 +214,36 @@ describe('the response', () => {
     ])
   })
 
+  /*
+    `Operations_Findings` §11, OP-31: the answer can arrive in `reasoning` with
+    no content. The provider sends that as `null` *and* as `""`, and only the
+    first used to fall through — the second read as "the model returned
+    nothing" and was retried five times at full price.
+  */
+  it('reads the reply from reasoning when content is empty, not only when it is null', () => {
+    for (const content of [null, '', '  ']) {
+      const result = readCompletion(
+        completion({
+          choices: [{ message: { content, reasoning: '{"mode":"sea"}' }, finish_reason: 'stop' }],
+        }) as never,
+        'vendor/model-a',
+      )
+      expect(result.text).toBe('{"mode":"sea"}')
+    }
+  })
+
+  it('keeps real content over reasoning', () => {
+    const result = readCompletion(
+      completion({
+        choices: [
+          { message: { content: '{"mode":"air"}', reasoning: 'thinking…' }, finish_reason: 'stop' },
+        ],
+      }) as never,
+      'vendor/model-a',
+    )
+    expect(result.text).toBe('{"mode":"air"}')
+  })
+
   it('treats a missing usage block as zero tokens and no cost, not as a crash', () => {
     const result = readCompletion(completion({ usage: undefined }) as never, 'vendor/model-a')
     expect(result.inputTokens).toBe(0)

@@ -37,7 +37,7 @@
 import { createHash } from 'node:crypto'
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import { aiInvocations, systemActor, withActor, type Actor, type Tx } from '@qabandi/db'
-import type { AiSurface } from '@qabandi/core'
+import { parseModelJson, type AiSurface } from '@qabandi/core'
 import type { ModelRequest, ModelResponse } from '../ports/index'
 import { modelProvider } from '../adapters/index'
 import { integration } from '../settings'
@@ -235,7 +235,12 @@ export async function invoke(
     month's paid ones are spent would be the wrong economy.
   */
   if (options.reuse) {
-    const previous = await previousResponse([context.branchId], context.surface, inputHash)
+    const previous = await previousResponse(
+      [context.branchId],
+      context.surface,
+      inputHash,
+      request.schema !== undefined,
+    )
     if (previous) {
       return { response: previous.response, invocationId: previous.id, reused: true }
     }
@@ -392,8 +397,17 @@ export async function previousResponse(
   branchIds: readonly string[],
   surface: AiSurface,
   inputHash: string,
+  /**
+   * The question asked for structured output, so an answer is only an answer
+   * if it parses. See `usableAnswer`.
+   */
+  structured = false,
 ): Promise<{ id: string; response: ModelResponse } | undefined> {
-  const [row] = await withActor(systemActor([...branchIds]), (tx: Tx) =>
+  /*
+    The newest few, not the newest one: a bad answer recorded after a good one
+    must not hide the good one, and the bad one is skipped below.
+  */
+  const rows = await withActor(systemActor([...branchIds]), (tx: Tx) =>
     tx
       .select({
         id: aiInvocations.id,
@@ -411,25 +425,54 @@ export async function previousResponse(
         ),
       )
       .orderBy(desc(aiInvocations.createdAt))
-      .limit(1),
+      .limit(REUSE_CANDIDATES),
   )
-  if (!row) return undefined
 
-  /*
-    The row holds the provider's body as returned, so the reply is rebuilt the
-    same way it was read the first time. A body that can no longer be read —
-    a provider that changed shape, a row from before a parser fix — is a miss,
-    not a failure: the model is simply asked again.
-  */
-  try {
-    return {
-      id: row.id,
-      response: readCompletion(
+  for (const row of rows) {
+    /*
+      The row holds the provider's body as returned, so the reply is rebuilt the
+      same way it was read the first time. A body that can no longer be read —
+      a provider that changed shape, a row from before a parser fix — is a miss,
+      not a failure: the model is simply asked again.
+    */
+    let response: ModelResponse
+    try {
+      response = readCompletion(
         row.response as Parameters<typeof readCompletion>[0],
         row.modelRequested,
-      ),
+      )
+    } catch {
+      continue
     }
+    if (usableAnswer(response, structured)) return { id: row.id, response }
+  }
+  return undefined
+}
+
+/** How many recorded answers to the same question are looked through for a usable one. */
+const REUSE_CANDIDATES = 5
+
+/**
+ * Whether a recorded answer is worth serving again.
+ *
+ * `error` is null on any call the *provider* completed, and that includes the
+ * calls that came back empty, cut off at the token limit, or as prose where
+ * JSON was asked for. Served from the cache, one of those became the answer to
+ * every pg-boss retry and every attended "Read a bill" of the same document —
+ * the retry policy could no longer recover what it exists to recover. So a
+ * cached answer is reused only when it would have been accepted the first
+ * time: words, a finish that was not truncation or an error, and — where a
+ * schema was asked for — text that parses. Anything else is asked again, and
+ * the ledger keeps the bad row as the evidence it is.
+ */
+export function usableAnswer(response: ModelResponse, structured: boolean): boolean {
+  if (response.text.trim() === '' && response.toolCalls.length === 0) return false
+  if (response.finishReason === 'length' || response.finishReason === 'error') return false
+  if (!structured) return true
+  try {
+    parseModelJson(response.text)
+    return true
   } catch {
-    return undefined
+    return false
   }
 }
