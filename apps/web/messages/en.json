@@ -1038,7 +1038,15 @@
     "scope": "Applies to",
     "rule": "Rule",
     "kind": "Kind",
-    "terms": "Terms"
+    "terms": "Terms",
+    "fxRates": "Exchange rates",
+    "fxRatesHint": "The newest rate for each pair. Quotations convert every rate card into the branch currency at these.",
+    "noFxRates": "No exchange rates yet",
+    "noFxRatesHint": "A rate card in another currency cannot be priced until its rate into the branch currency is entered here.",
+    "fxPair": "Pair",
+    "fxEffective": "From",
+    "fxManual": "Entered by hand",
+    "fxSource": "Where from"
   },
   "audit": {
     "eyebrow": "Administration",
@@ -3450,7 +3458,9 @@
     "periodEndsAfterStart": "The end date must be after the start date.",
     "unknownContainerType": "Not a known container type. Choose one from the list.",
     "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
-    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again."
+    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again.",
+    "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
+    "fxSameCurrency": "Choose two different currencies."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -3886,5 +3896,17 @@
     "london": "London",
     "newYork": "New York",
     "utc": "UTC"
+  },
+  "fxRateForm": {
+    "open": "Add an exchange rate",
+    "title": "Exchange rate",
+    "description": "What one unit of the first currency is worth in the second. Pricing converts every rate card into the branch currency at the newest rate on or before the pricing date.",
+    "from": "From",
+    "to": "Into",
+    "toHint": "Usually the branch's base currency — the one quotations are totalled in.",
+    "rate": "Rate",
+    "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
+    "effectiveOn": "Effective from",
+    "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
   }
 }

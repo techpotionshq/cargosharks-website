@@ -40,6 +40,7 @@ const {
   chargeableRules,
   dutyRates,
   freeTimeRules,
+  fxRates,
   milestoneTemplates,
   withActor,
   workingCalendars,
@@ -55,6 +56,7 @@ const {
   saveDutyRate,
   saveChargeableRule,
   saveFreeTimeRule,
+  saveFxRate,
 } = await import('./reference-actions')
 
 const baseSession = {
@@ -853,6 +855,55 @@ describe.skipIf(!enabled)('reference configuration — FR-AD-03', () => {
     )
   })
 
+  /* -------------------------------------------------------- exchange rates */
+
+  /**
+   * Pricing refuses a USD card without a rate onto the base, and a fresh
+   * instance had no rate and no screen to enter one (S12). Entered again for
+   * the same pair and day, the manual figure is corrected, not doubled.
+   */
+  describe('an exchange rate', () => {
+    // INR into QAR: a pair no other suite converts, so this cannot move theirs.
+    const ratesFor = (day: string) =>
+      withActor(adminActor, (tx) =>
+        tx
+          .select({ rate: fxRates.rate, source: fxRates.source })
+          .from(fxRates)
+          .where(
+            and(
+              eq(fxRates.fromCurrency, 'INR'),
+              eq(fxRates.toCurrency, 'QAR'),
+              eq(fxRates.effectiveOn, day),
+            ),
+          ),
+      )
+
+    it('records a manual rate, and corrects it on a second entry for the day', async () => {
+      const day = `2031-0${(Number(RUN.charCodeAt(0)) % 9) + 1}-15`
+      const entry = (rate: string) =>
+        saveFxRate({}, form({ fromCurrency: 'inr', toCurrency: 'QAR', rate, effectiveOn: day }))
+
+      expect((await entry('0.04400000')).errors).toBeUndefined()
+      expect((await entry('0.04410000')).errors).toBeUndefined()
+
+      expect(await ratesFor(day)).toEqual([{ rate: '0.04410000', source: 'manual' }])
+    })
+
+    it('refuses a rate of zero and a pair of one currency', async () => {
+      const zero = await saveFxRate(
+        {},
+        form({ fromCurrency: 'INR', toCurrency: 'QAR', rate: '0', effectiveOn: '2031-01-01' }),
+      )
+      expect(zero.errors?.rate).toBe('adminValidation.fxRateExample')
+
+      const same = await saveFxRate(
+        {},
+        form({ fromCurrency: 'QAR', toCurrency: 'QAR', rate: '1', effectiveOn: '2031-01-01' }),
+      )
+      expect(same.errors?.toCurrency).toBe('adminValidation.fxSameCurrency')
+    })
+  })
+
   /* ------------------------------------------------------------ permission */
 
   /**
@@ -870,6 +921,7 @@ describe.skipIf(!enabled)('reference configuration — FR-AD-03', () => {
         saveDutyRate,
         saveChargeableRule,
         saveFreeTimeRule,
+        saveFxRate,
       ]) {
         await expect(action({}, form({}))).rejects.toThrow()
       }

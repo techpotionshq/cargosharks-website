@@ -1038,6 +1038,16 @@ export interface DutyRateRow {
   readonly isActive: boolean
 }
 
+/** The newest rate for one currency pair — the reference page's FX panel (S12). */
+export interface FxRateRow {
+  readonly fromCurrency: string
+  readonly toCurrency: string
+  readonly rate: string
+  readonly effectiveOn: string
+  /** `manual`, or the feed that wrote it. */
+  readonly source: string
+}
+
 /** Mirrors `EngineRuleRow`. `raw` pre-fills the edit dialog. */
 export interface EngineRuleRow {
   readonly id: string
