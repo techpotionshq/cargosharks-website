@@ -111,7 +111,7 @@
   },
   "search": {
     "title": "Search",
-    "subtitle": "References, container numbers and customers, across every shipment you can see.",
+    "subtitle": "Shipment, enquiry, quote, invoice and consolidation references, bills of lading, container numbers and customers — across everything you can see.",
     "prompt": "Type a reference, a container number or a customer name.",
     "promptHint": "Master and house bill numbers, booking numbers and the customer's own reference all match too.",
     "empty": "Nothing matches “{query}”.",
@@ -130,6 +130,14 @@
       "booking": "booking",
       "customerReference": "customer reference",
       "customer": "customer"
+    },
+    "records": "Enquiries, quotes, invoices and consolidations",
+    "kind": "Record",
+    "kinds": {
+      "enquiry": "Enquiry",
+      "quote": "Quotation",
+      "invoice": "Invoice",
+      "consolidation": "Consolidation"
     }
   },
   "dashboard": {
