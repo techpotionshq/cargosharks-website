@@ -38,11 +38,12 @@
  * a row somebody can find, rather than thrown into pg-boss's backoff.
  */
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, gte, lte, sql } from 'drizzle-orm'
 import {
   branches,
   enquiries,
   inboundWebhookEvents,
+  messages,
   systemActor,
   whatsappNumbers,
   withActor,
@@ -129,17 +130,91 @@ export async function runInboundWhatsAppWebhook(
     Only on a freshly *created* enquiry — a threaded reply or a duplicate is not
     a new conversation to greet — and best-effort: a failed reply must never fail
     the intake, because the enquiry is already filed and its SLA clock running.
-    The loop that scarred the email path (Operations_Findings §11) cannot form
-    here: our reply is a `whatsapp.message.sent`, which the webhook route drops,
-    and even a misrouted echo is refused by the parser as outbound.
+
+    This is a path that replies to the sender of inbound mail, so it needs a loop
+    breaker before anything else (Operations_Findings §11). Our own echo is not
+    the risk — the route drops `whatsapp.message.sent` and the parser refuses an
+    outbound message. The risk is another company's auto-responder answering our
+    acknowledgement with a message of its own, which carries no header saying a
+    machine wrote it. Three locks, in order: the sender's follow-ups thread onto
+    their open enquiry (`findOpenConversation`), so a reply opens nothing new; a
+    sender is acknowledged at most once per window; and a sender writing faster
+    than a person types is not acknowledged at all. See `acknowledgementRefused`.
   */
   if (handled.outcome === 'created' && handled.enquiryId) {
-    await acknowledge(message, handled.enquiryId, resolveChannel).catch(() => {
-      // Swallowed by design; the enquiry stands with or without the reply.
-    })
+    await acknowledge(message, handled.enquiryId, branch, resolveChannel, asOf).catch(
+      (error: unknown) => {
+        // Swallowed by design; the enquiry stands with or without the reply.
+        console.error(
+          {
+            enquiryId: handled.enquiryId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'inbound whatsapp: acknowledgement not sent',
+        )
+      },
+    )
   }
 
   return { outcome: handled.outcome, enquiryId: handled.enquiryId }
+}
+
+/** A sender is acknowledged at most once in this many hours. */
+export const ACK_WINDOW_HOURS = 24
+/** More inbound messages than this from one sender inside `BURST_MINUTES`... */
+export const BURST_LIMIT = 5
+/** ...and the sender is treated as a machine and not acknowledged. */
+export const BURST_MINUTES = 10
+
+/**
+ * Why this sender must not be acknowledged, or null when they may be.
+ *
+ * Both rules are about the *sender*, across every enquiry, because a loop does
+ * not stay on one: each turn of the 195-enquiry incident was a fresh enquiry
+ * that every per-enquiry guard saw as new.
+ */
+async function acknowledgementRefused(
+  message: InboundMessage,
+  branch: BranchRef,
+  asOf: Date,
+): Promise<string | null> {
+  return withActor(systemActor(), async (tx) => {
+    const ackSince = new Date(asOf.getTime() - ACK_WINDOW_HOURS * 60 * 60 * 1000)
+    const [recentAck] = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.branchId, branch.id),
+          eq(messages.channel, 'whatsapp'),
+          eq(messages.direction, 'outbound'),
+          sql`${messages.toAddresses} @> ${JSON.stringify([message.from])}::jsonb`,
+          gte(messages.sentAt, ackSince),
+          lte(messages.sentAt, asOf),
+        ),
+      )
+      .limit(1)
+    if (recentAck) return `already acknowledged within ${ACK_WINDOW_HOURS}h`
+
+    const burstSince = new Date(message.receivedAt.getTime() - BURST_MINUTES * 60 * 1000)
+    const [burst] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.branchId, branch.id),
+          eq(messages.channel, 'whatsapp'),
+          eq(messages.direction, 'inbound'),
+          eq(messages.fromAddress, message.from),
+          gte(messages.sentAt, burstSince),
+          lte(messages.sentAt, message.receivedAt),
+        ),
+      )
+    if ((burst?.count ?? 0) > BURST_LIMIT) {
+      return `more than ${BURST_LIMIT} messages in ${BURST_MINUTES} minutes`
+    }
+    return null
+  })
 }
 
 /**
@@ -153,10 +228,18 @@ export async function runInboundWhatsAppWebhook(
 async function acknowledge(
   message: InboundMessage,
   enquiryId: string,
+  branch: BranchRef,
   resolveChannel: ResolveWhatsAppChannel,
+  asOf: Date,
 ): Promise<void> {
   const channel = await resolveChannel()
   if (!channel) return // WhatsApp is off; the enquiry is filed, just not greeted.
+
+  const refused = await acknowledgementRefused(message, branch, asOf)
+  if (refused) {
+    console.info({ enquiryId, reason: refused }, 'inbound whatsapp: acknowledgement withheld')
+    return
+  }
 
   const [row] = await withActor(systemActor(), async (tx) =>
     tx
@@ -167,12 +250,40 @@ async function acknowledge(
   )
   if (!row?.reference) return
 
-  await channel.send({
+  const body = acknowledgementBody(row.reference)
+  const sent = await channel.send({
     to: message.from,
     // The business number that received it — the branch's own, from the receipt.
     from: message.mailbox,
-    body: acknowledgementBody(row.reference),
+    body,
     locale: 'en',
+  })
+  if (!sent.accepted) return
+
+  /*
+    The acknowledgement goes on the thread as an outbound message, with the
+    wamid Kapso returned.
+
+    It used to leave no row. A customer who long-pressed it and replied quoted a
+    message we had no record of, so the reply could not thread by
+    `inReplyTo`; and the once-per-window rule above has nothing to count without
+    it. The thread is also simply more honest with it — the coordinator sees
+    what the customer was told.
+  */
+  await withActor(systemActor(), async (tx) => {
+    await tx.insert(messages).values({
+      branchId: branch.id,
+      enquiryId,
+      channel: 'whatsapp',
+      direction: 'outbound',
+      body,
+      fromAddress: message.mailbox,
+      toAddresses: [message.from],
+      ccAddresses: [],
+      externalRef: sent.externalRef ?? null,
+      customerVisible: true,
+      sentAt: asOf,
+    })
   })
 }
 
@@ -332,7 +443,14 @@ export function toWhatsAppInboundMessage(
     // second, authenticated call. The words are captured; the attachment is noted
     // in the body so nothing is silently lost, and pulling the file is a follow-on.
     attachments: [],
-    // WhatsApp has no bounce loop the way email does; a machine does not write in.
+    /*
+      WhatsApp carries no `Auto-Submitted` or null return path, so nothing here
+      can say a machine wrote this — and machines do write in: another
+      company's auto-responder answers our acknowledgement like any customer.
+      The loop breakers are therefore the worker's, not the parser's: threading
+      onto the sender's open enquiry, one acknowledgement per sender per window,
+      and none to a sender writing in a burst.
+    */
     automatic: false,
   }
 }

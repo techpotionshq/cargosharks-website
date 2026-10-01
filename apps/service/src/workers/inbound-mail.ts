@@ -508,7 +508,23 @@ export async function ingestMessage(
         }
       }
 
-      const target = await findTarget(tx, message)
+      /*
+        One sender's WhatsApp messages are taken one at a time.
+
+        "Hi", "2x40HC", "Shanghai to Shuwaikh" arrive as three webhooks within a
+        second, and the threading below depends on the first having filed its
+        enquiry before the second looks for one. A transaction-scoped advisory
+        lock on the sender serialises exactly that, and nothing else.
+      */
+      if (message.channel === 'whatsapp') {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`whatsapp:${branch.id}:${message.from}`}))`,
+        )
+      }
+
+      const target =
+        (await findTarget(tx, message)) ??
+        (message.channel === 'whatsapp' ? await findOpenConversation(tx, message, branch.id) : null)
       const customerId = await matchCustomer(tx, message)
       /*
         The sender may be a supplier as well as — or instead of — a customer.
@@ -986,6 +1002,60 @@ async function findTarget(tx: any, message: InboundMessage): Promise<Target | nu
 }
 
 /**
+ * How far back a WhatsApp sender's last message still makes the next one part
+ * of the same conversation.
+ *
+ * WhatsApp has no subject and no reference line: a customer types "Hi", then
+ * "2x40HC", then "Shanghai to Shuwaikh" as three messages, and nobody quotes a
+ * reference into a chat. A day matches WhatsApp's own customer-service window.
+ */
+export const WHATSAPP_CONVERSATION_HOURS = 24
+
+/** Enquiry states a follow-up message can still be threaded onto. */
+const OPEN_ENQUIRY_STATUSES = ['new', 'assigned', 'rating', 'quoted'] as const
+
+/**
+ * The sender's open enquiry, where they wrote to it recently — WhatsApp only.
+ *
+ * Without this every message opened its own enquiry, with its own SLA clock,
+ * model call and acknowledgement: three for one request, and an endless supply
+ * for another company's auto-responder answering our acknowledgement — the
+ * 195-enquiry loop of `Operations_Findings` §11 on a new channel. The match is
+ * the exact sender on the same business number's branch, an enquiry still
+ * open, and a message from them on it inside the window; the most recent wins.
+ * A sender whose enquiry was closed, or who has been silent for a day, starts a
+ * new one, which is what a new conversation is.
+ */
+async function findOpenConversation(
+  tx: any,
+  message: InboundMessage,
+  branchId: string,
+): Promise<Target | null> {
+  if (message.from === '') return null
+  const since = new Date(
+    message.receivedAt.getTime() - WHATSAPP_CONVERSATION_HOURS * 60 * 60 * 1000,
+  )
+  const rows = await tx
+    .select({ enquiryId: messages.enquiryId })
+    .from(messages)
+    .innerJoin(enquiries, eq(enquiries.id, messages.enquiryId))
+    .where(
+      and(
+        eq(messages.branchId, branchId),
+        eq(messages.channel, 'whatsapp'),
+        eq(messages.direction, 'inbound'),
+        eq(messages.fromAddress, message.from),
+        sql`${messages.sentAt} >= ${since}`,
+        sql`${messages.sentAt} <= ${message.receivedAt}`,
+        inArray(enquiries.status, [...OPEN_ENQUIRY_STATUSES]),
+      ),
+    )
+    .orderBy(sql`${messages.sentAt} desc`)
+    .limit(1)
+  return rows[0]?.enquiryId ? { enquiryId: rows[0].enquiryId, jobId: null, created: false } : null
+}
+
+/**
  * Which customer sent this, if it can be said without guessing.
  *
  * Exact contact address first. Then the domain, but only where it belongs to
@@ -1140,19 +1210,31 @@ async function matchCustomerByEmail(tx: any, from: string): Promise<string | nul
  * contact. There is no domain fallback the way email has one: a phone number
  * identifies one person, not an organisation, so an unrecognised number opens an
  * enquiry a coordinator triages rather than guessing at a customer.
+ *
+ * Most Kuwaiti contacts are typed the way people say them — `2220 1234`, no
+ * country code — and those never matched the E.164 sender. So a stored number
+ * also matches as the *national* part of the sender's: after stripping a `00`
+ * international prefix or a `0` trunk prefix, it must be at least seven digits
+ * and the sender's number must be it with one to three digits — a country
+ * code — in front. Two customers matching is still none.
  */
 async function matchCustomerByPhone(tx: any, from: string): Promise<string | null> {
-  const digits = from.replace(/[^0-9]/g, '')
+  const digits = from.replace(/[^0-9]/g, '').replace(/^00/, '')
   // Too short to identify anyone — a stray digit or two is not a phone number,
   // and a loose match here files a stranger's message under a real customer.
   if (digits.length < 7) return null
 
+  const stored = sql`regexp_replace(regexp_replace(coalesce(${customerContacts.phone}, ''), '[^0-9]', '', 'g'), '^0{1,2}', '')`
   const rows = await tx
     .selectDistinct({ customerId: customerContacts.customerId })
     .from(customerContacts)
     .where(
       and(
-        sql`regexp_replace(coalesce(${customerContacts.phone}, ''), '[^0-9]', '', 'g') = ${digits}`,
+        sql`(${stored} = ${digits} or (
+          length(${stored}) >= 7
+          and ${digits.length} - length(${stored}) between 1 and 3
+          and right(${digits}, length(${stored})) = ${stored}
+        ))`,
         eq(customerContacts.isActive, true),
       ),
     )
