@@ -2067,7 +2067,7 @@
     "noCounterparty": "No counterparty",
     "amount": "Amount",
     "fxRate": "FX rate",
-    "fxRateHint": "To the branch base currency, captured now",
+    "fxRateHint": "To the branch base currency. Leave blank to use the latest rate on file.",
     "basis": "Allocation basis",
     "basisHint": "Every basis except manual reads figures the system already holds",
     "cost": "Cost",
@@ -2099,7 +2099,9 @@
       "carrier": "The carrier’s numbers",
       "carrierHint": "The master bill belongs here, not on any house",
       "route": "Route and dates"
-    }
+    },
+    "editChargeTitle": "Correct this cost",
+    "withdrawCharge": "Withdraw"
   },
   "accountingExport": {
     "preview": "Preview journal",
@@ -2187,7 +2189,7 @@
     "rate": "Rate",
     "currency": "Currency",
     "fxRate": "Rate to base",
-    "fxRateHint": "Taken now and kept on the line, so this figure never moves again.",
+    "fxRateHint": "Leave blank to use the latest rate on file. Kept on the line, so this figure never moves again.",
     "counterparty": "Owed to",
     "counterpartyHint": "The agent, carrier or haulier this cost is owed to",
     "sections": {
@@ -2280,7 +2282,7 @@
     "dueOn": "Due",
     "currency": "Currency",
     "fxRate": "Rate to base",
-    "fxRateHint": "Taken now and kept on the row, so the payable never revalues.",
+    "fxRateHint": "Leave blank to use the latest rate on file. Kept on the row, so the payable never revalues.",
     "tax": "Tax",
     "amount": "Amount",
     "quantity": "Quantity",
@@ -3460,7 +3462,8 @@
     "jobNotVisible": "That job is no longer visible.",
     "lineBilled": "That line has been billed to the customer and can no longer be edited. Raise a credit note instead.",
     "lineMatched": "A supplier invoice has been matched against that line. Unmatch it first — editing the accrual now would change a variance somebody has already reviewed.",
-    "lineIncomplete": "Something on that line is missing."
+    "lineIncomplete": "Something on that line is missing.",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate the cost was taken at."
   },
   "networkValidation": {
     "minTwoChars": "At least two characters",
@@ -3584,7 +3587,8 @@
     "readingFieldQuantity": "Quantity",
     "readingFieldUnitPrice": "Unit price",
     "readingFieldAmount": "Amount",
-    "readingFieldChargeType": "Charge type"
+    "readingFieldChargeType": "Charge type",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate on the bill."
   },
   "creditValidation": {
     "chooseCustomer": "Choose a customer",
@@ -3633,7 +3637,9 @@
     "expectedDate": "a date as YYYY-MM-DD",
     "expectedOneOf": "one of {values}",
     "containerCountWhole": "Enter a whole number of containers, one or more.",
-    "expectedPositiveInteger": "a whole number, one or more"
+    "expectedPositiveInteger": "a whole number, one or more",
+    "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
+    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
@@ -3653,7 +3659,11 @@
     "allocationZeroChargeableWeight": "Every house has a zero chargeable weight, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
     "allocationZeroGrossWeight": "Every house has a zero gross weight, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
     "allocationZeroPackages": "Every house has zero packages, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
-    "allocationManualMismatch": "The stated shares total {stated} {currency}, but the cost is {expected} {currency}. They must match exactly."
+    "allocationManualMismatch": "The stated shares total {stated} {currency}, but the cost is {expected} {currency}. They must match exactly.",
+    "arrivalBeforeDeparture": "Arrival cannot be before departure.",
+    "houseNotAttached": "That shipment could not be added. It is already under a master, it is finished or cancelled, or this master is closed.",
+    "shareNumber": "Enter an amount, such as 125.500.",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate the cost was taken at."
   },
   "documentsValidation": {
     "numbersOnly": "Numbers only",
@@ -3684,7 +3694,12 @@
     "billNumberTaken": "That bill number is already on another shipment.",
     "creditHold": "This customer is on credit hold. Release the hold on their account before booking.",
     "creditLimitExceeded": "Booking this shipment puts the customer {excess} past their credit limit. A branch manager can record an override on the customer account.",
-    "choosePartner": "Choose a partner"
+    "choosePartner": "Choose a partner",
+    "houseBillTaken": "That house bill number is already on another shipment in this branch.",
+    "quoteNotBookable": "That quotation could not be found.",
+    "quoteNotAccepted": "Only an accepted quotation can be booked.",
+    "quoteOtherCustomer": "That quotation is for a different customer or branch.",
+    "quoteAlreadyBooked": "A shipment has already been opened from that quotation."
   },
   "supportValidation": {
     "supportSessionCannotGrant": "A support session cannot grant support access",
@@ -3716,7 +3731,9 @@
     "uploadSignature": "signature",
     "uploadPhoto": "photo {number}",
     "uploadsFailed": "The delivery was recorded, but these could not be uploaded: {files}. Add them again from the job file.",
-    "listSeparator": ", "
+    "listSeparator": ", ",
+    "notDeliveryTime": "Enter when it was delivered, as a date and time.",
+    "nothingToCorrect": "That delivery record is not on this shipment, or has already been corrected."
   },
   "ledgerValidation": {
     "numbersOnly": "Numbers only",

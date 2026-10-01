@@ -18,6 +18,7 @@ import {
   unique,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { amount, pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable } from './table'
 import {
@@ -276,6 +277,11 @@ export const jobs = pgTable(
     index('jobs_customer_idx').on(t.customerId, t.status),
     index('jobs_owner_idx').on(t.ownerId, t.status),
     index('jobs_consolidation_idx').on(t.consolidationId),
+    // One house bill per branch — the number we issue names one consignment.
+    // The master bill is not unique: consolidated houses share it.
+    uniqueIndex('jobs_house_bill_unique')
+      .on(t.branchId, t.houseBillNumber)
+      .where(sql`${t.houseBillNumber} is not null`),
   ],
 )
 

@@ -52,6 +52,7 @@ import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 import { pickName } from '@/lib/named'
+import { localInputValue } from '@qabandi/core'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
@@ -164,13 +165,25 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 customerId: job.customerId,
                 mode: job.mode,
                 tradeDirection: job.direction,
-                status: job.status,
+                ownerId: job.ownerId,
+                quoteId: job.quoteId,
                 originId: job.originId,
                 destinationId: job.destinationId,
+                commodityId: job.commodityId,
                 incoterm: job.incoterm,
                 masterBillNumber: job.masterBillNumber,
                 houseBillNumber: job.houseBillNumber,
-                vesselName: job.vesselOrFlight,
+                bookingNumber: job.bookingNumber,
+                // The raw columns, not `vesselOrFlight`: that is the vessel and
+                // voyage joined for display, and saving it back as the vessel
+                // name grew it by the voyage on every save.
+                vesselName: job.vesselName,
+                voyageNumber: job.voyageNumber,
+                flightNumber: job.flightNumber,
+                // In the branch's zone, the one `saveJob` reads them back in,
+                // so a form opened and saved untouched writes the same instant.
+                etd: localInputValue(job.etd, job.branchTimeZone),
+                eta: localInputValue(job.eta, job.branchTimeZone),
                 placeOfReceipt: job.placeOfReceipt,
                 placeOfDelivery: job.placeOfDelivery,
                 customerReference: job.customerReference,
@@ -614,6 +627,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           records={podRecords}
           equipment={podEquipment}
+          branchTimeZone={job.branchTimeZone}
           className="lg:col-span-12"
         />
 

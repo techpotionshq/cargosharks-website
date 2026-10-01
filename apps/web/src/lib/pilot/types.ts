@@ -183,6 +183,21 @@ export interface JobDetail extends JobSummary {
   readonly originId: string | null
   readonly destinationId: string | null
   readonly commodityId: string | null
+  /*
+    The raw columns behind `vesselOrFlight`, and the owner and quotation ids.
+
+    The edit form was given the combined display string as the vessel name and
+    nothing for the rest, and saving wrote what it was given: the voyage was
+    appended to the vessel on every save, and the owner, flight, voyage and
+    quotation were blanked.
+  */
+  readonly ownerId: string | null
+  readonly quoteId: string | null
+  /** The branch's zone — the one its times are typed and edited in. */
+  readonly branchTimeZone: string
+  readonly vesselName: string | null
+  readonly voyageNumber: string | null
+  readonly flightNumber: string | null
   readonly customerReference: string | null
   readonly masterBillNumber: string | null
   readonly houseBillNumber: string | null
@@ -1376,6 +1391,9 @@ export interface LedgerLineRow {
   readonly amountBase: string
   readonly baseCurrency: string
   readonly fxRate: string
+  /** The ids behind `counterpartyName`, so the edit form can pre-select it. */
+  readonly counterpartyPartnerId: string | null
+  readonly counterpartyCustomerId: string | null
   readonly counterpartyName: string | null
   readonly isAccrual: boolean
   /**
@@ -1593,6 +1611,9 @@ export interface ConsolidationHouseRow {
 export interface ConsolidationChargeRow {
   readonly id: string
   readonly direction: 'cost' | 'revenue'
+  readonly chargeTypeId: string
+  readonly counterpartyPartnerId: string | null
+  readonly fxRate: string
   readonly chargeTypeName: string
   readonly description: string | null
   readonly amount: string
@@ -1619,6 +1640,11 @@ export interface ConsolidationDetailRows {
   readonly row: {
     readonly id: string
     readonly branchId: string
+    readonly branchTimeZone: string
+    readonly carrierPartnerId: string | null
+    readonly coloadPartnerId: string | null
+    readonly originId: string | null
+    readonly destinationId: string | null
     readonly reference: string
     readonly status: 'open' | 'closed' | 'cancelled'
     readonly mode: string

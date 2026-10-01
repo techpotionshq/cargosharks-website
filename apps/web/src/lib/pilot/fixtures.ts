@@ -1267,6 +1267,12 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
     originId: locationId(seed.origin),
     destinationId: locationId(seed.destination),
     commodityId: null,
+    ownerId: null,
+    quoteId: null,
+    branchTimeZone: branch(seed.branch).timeZone,
+    vesselName: summary.vesselOrFlight,
+    voyageNumber: null,
+    flightNumber: null,
     customerReference: `PO-${2026}-${String(seed.seq * 3).padStart(4, '0')}`,
     masterBillNumber:
       seed.mode === 'air'
@@ -7455,6 +7461,8 @@ export function pilotJobLedger(
       amountBase: accrual.amountBase,
       baseCurrency: home.currency,
       fxRate: accrual.fxRate,
+      counterpartyPartnerId: accrual.partner === null ? null : partnerId(accrual.partner),
+      counterpartyCustomerId: null,
       counterpartyName: accrual.partner === null ? null : partner(accrual.partner)[locale],
       isAccrual: claims.length === 0,
       sourceKind: accrual.sourceKind,
@@ -7491,6 +7499,8 @@ export function pilotJobLedger(
       amountBase: numeric(rate),
       baseCurrency: home.currency,
       fxRate: numeric('1'),
+      counterpartyPartnerId: null,
+      counterpartyCustomerId: customerId(seed.customer),
       counterpartyName: customer[locale],
       isAccrual: false,
       sourceKind: accrual.sourceKind,
@@ -8076,6 +8086,9 @@ function consolidationCharges(
       // Every master line here is a cost. Revenue on a groupage master is
       // raised on the houses, which is what the allocation puts there.
       direction: 'cost',
+      chargeTypeId: `charge-${charge.charge}`,
+      counterpartyPartnerId: partnerId(charge.party),
+      fxRate: numeric('1'),
       chargeTypeName: chargeName(charge.charge, locale),
       description: null,
       amount: numeric(charge.amount),
@@ -8180,6 +8193,11 @@ export function pilotConsolidation(
     row: {
       id: row.id,
       branchId: branch(seed.branch).id,
+      branchTimeZone: branch(seed.branch).timeZone,
+      carrierPartnerId: partnerId(carrier),
+      coloadPartnerId: null,
+      originId: null,
+      destinationId: null,
       reference: row.reference,
       status: row.status,
       mode: row.mode,

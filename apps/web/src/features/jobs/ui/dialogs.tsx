@@ -17,6 +17,7 @@ import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addJobPartner, saveJob } from '../form-actions'
+import { quoteBookingDefaults } from '../queries'
 
 /** The roles a partner can hold on a shipment — `job_partners.role`. */
 const PARTNER_ROLES = [
@@ -30,16 +31,21 @@ const PARTNER_ROLES = [
 
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
-const STATUSES = [
+/*
+  The states a shipment can be opened in — what `saveJob` accepts.
+
+  Offered on creation only. Moving a shipment on is the status dialog's, which
+  checks hold, complete, close and cancel each on its own key; this form once
+  offered every state with none of those checks, and an edit of a cancelled job
+  (not in the list) silently saved it back as a draft.
+*/
+const OPENING_STATUSES = [
   'draft',
   'booked',
   'in_transit',
   'arrived',
   'customs',
   'delivered',
-  'completed',
-  'closed',
-  'on_hold',
 ] as const
 
 const MODE_ICON = {
@@ -105,6 +111,14 @@ export async function JobDialog({
 
   const fields: FieldSpec[] = [
     ...(editing ? [{ kind: 'hidden' as const, name: 'jobId', value: defaults!.id! }] : []),
+    /*
+      The quotation travels only on a booking — the quote page's "Open
+      shipment" — where `saveJob` checks and claims it. An edit never sends
+      it, so it can never be re-pointed past those checks.
+    */
+    ...(!editing && defaults?.quoteId
+      ? [{ kind: 'hidden' as const, name: 'quoteId', value: defaults.quoteId }]
+      : []),
 
     {
       kind: 'section',
@@ -149,19 +163,23 @@ export async function JobDialog({
           mono: true,
           defaultValue: defaults?.customerReference,
         },
-        {
-          kind: 'select',
-          name: 'status',
-          label: tc('status'),
-          span: 6,
-          required: true,
-          hint: t('statusHint'),
-          options: STATUSES.map((key) => ({
-            value: key,
-            label: tJob(`statuses.${key}` as 'statuses.booked'),
-          })),
-          defaultValue: defaults?.status ?? 'booked',
-        },
+        ...(editing
+          ? []
+          : [
+              {
+                kind: 'select' as const,
+                name: 'status',
+                label: tc('status'),
+                span: 6 as const,
+                required: true,
+                hint: t('statusHint'),
+                options: OPENING_STATUSES.map((key) => ({
+                  value: key,
+                  label: tJob(`statuses.${key}` as 'statuses.booked'),
+                })),
+                defaultValue: defaults?.status ?? 'booked',
+              },
+            ]),
       ],
     },
 
@@ -385,6 +403,35 @@ export async function JobDialog({
         submit: editing ? tc('save') : t('submit'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * "Open shipment" on an accepted quotation — S8.
+ *
+ * The accept dialog has always told the operator a shipment could now be
+ * opened, and there was no way to do it: `JobDialog` took a `quoteId` and
+ * never rendered one. This pre-fills the booking from the enquiry the quote
+ * answers and carries the quote id with it; `saveJob` checks it is accepted,
+ * this customer's and not already booked, and wins the enquiry. Renders
+ * nothing when the quote cannot be booked, or the reader cannot book.
+ */
+export async function OpenShipmentFromQuote({ quoteId }: { readonly quoteId: string }) {
+  const session = await requireSession()
+  if (!can(session, 'job.book')) return null
+  const defaults = await quoteBookingDefaults(session.actor, quoteId)
+  if (!defaults) return null
+
+  return (
+    <JobDialog
+      variant="primary"
+      defaults={{
+        ...defaults,
+        mode: defaults.mode ?? undefined,
+        tradeDirection: defaults.tradeDirection ?? undefined,
+        status: 'booked',
       }}
     />
   )

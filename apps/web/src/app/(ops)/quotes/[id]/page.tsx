@@ -38,6 +38,7 @@ import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
+import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
 
 export async function generateMetadata({
   params,
@@ -121,6 +122,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               {t('pdfAr')}
             </Button>
             <QuoteStatusActions quoteId={quote.id} status={quote.status} />
+            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
           </>
         }
       />

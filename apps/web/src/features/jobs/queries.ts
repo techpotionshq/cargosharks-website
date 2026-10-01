@@ -13,7 +13,7 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   assets,
@@ -22,6 +22,7 @@ import {
   customsStages,
   documentTypes,
   documents,
+  enquiries,
   equipment,
   exceptionCodes,
   exceptions,
@@ -33,6 +34,7 @@ import {
   locations,
   partners,
   principals,
+  quotes,
   withActor,
   type Actor,
 } from '@qabandi/db'
@@ -292,6 +294,9 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         originId: jobs.originId,
         destinationId: jobs.destinationId,
         commodityId: jobs.commodityId,
+        ownerId: jobs.ownerId,
+        quoteId: jobs.quoteId,
+        branchTimeZone: branches.timeZone,
         status: jobs.status,
         mode: jobs.mode,
         direction: jobs.tradeDirection,
@@ -333,6 +338,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         accruingAmount,
       })
       .from(jobs)
+      .innerJoin(branches, eq(branches.id, jobs.branchId))
       .leftJoin(customers, eq(customers.id, jobs.customerId))
       .leftJoin(principals, eq(principals.id, jobs.ownerId))
       .leftJoin(origin, eq(origin.id, jobs.originId))
@@ -409,6 +415,12 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       originId: row.originId,
       destinationId: row.destinationId,
       commodityId: row.commodityId,
+      ownerId: row.ownerId,
+      quoteId: row.quoteId,
+      branchTimeZone: row.branchTimeZone,
+      vesselName: row.vesselName,
+      voyageNumber: row.voyageNumber,
+      flightNumber: row.flightNumber,
       customerReference: row.customerReference,
       masterBillNumber: row.masterBillNumber,
       houseBillNumber: row.houseBillNumber,
@@ -578,6 +590,85 @@ export async function listRunningClocks(
       jobId: row.clock.jobId,
       jobReference: row.jobReference,
     }))
+  })
+}
+
+/**
+ * What a shipment booked from this quotation starts with — S8.
+ *
+ * Null unless the quotation can be booked: accepted, its enquiry has a known
+ * customer, and no live shipment already carries it. That is the same rule
+ * `saveJob` enforces under a lock; asking it here only decides whether the
+ * quote page offers the button, so a page opened twice never invites a second
+ * booking that the action would then refuse.
+ *
+ * The pilot fixtures never write, so they never offer it.
+ */
+export async function quoteBookingDefaults(
+  actor: Actor,
+  quoteId: string,
+): Promise<{
+  readonly quoteId: string
+  readonly branchId: string
+  readonly customerId: string
+  readonly ownerId: string | null
+  readonly mode: string | null
+  readonly tradeDirection: string | null
+  readonly originId: string | null
+  readonly destinationId: string | null
+  readonly commodityId: string | null
+  readonly incoterm: string | null
+  readonly grossWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly pieces: number | null
+} | null> {
+  if (usePilotFixtures()) return null
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        status: quotes.status,
+        branchId: quotes.branchId,
+        customerId: enquiries.customerId,
+        ownerId: enquiries.ownerId,
+        mode: enquiries.mode,
+        tradeDirection: enquiries.tradeDirection,
+        originId: enquiries.originId,
+        destinationId: enquiries.destinationId,
+        commodityId: enquiries.commodityId,
+        incoterm: enquiries.incoterm,
+        grossWeightKg: enquiries.grossWeightKg,
+        volumeCbm: enquiries.volumeCbm,
+        pieces: enquiries.pieces,
+      })
+      .from(quotes)
+      .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+      .where(eq(quotes.id, quoteId))
+      .limit(1)
+    if (!row || row.status !== 'accepted' || !row.customerId) return null
+
+    const [booked] = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.quoteId, quoteId), ne(jobs.status, 'cancelled')))
+      .limit(1)
+    if (booked) return null
+
+    return {
+      quoteId,
+      branchId: row.branchId,
+      customerId: row.customerId,
+      ownerId: row.ownerId,
+      mode: row.mode,
+      tradeDirection: row.tradeDirection,
+      originId: row.originId,
+      destinationId: row.destinationId,
+      commodityId: row.commodityId,
+      incoterm: row.incoterm,
+      grossWeightKg: row.grossWeightKg,
+      volumeCbm: row.volumeCbm,
+      pieces: row.pieces,
+    }
   })
 }
 
