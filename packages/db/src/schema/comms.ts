@@ -96,6 +96,21 @@ export const mailboxes = pgTable(
     lastPolledAt: tsz('last_polled_at'),
     lastMessageAt: tsz('last_message_at'),
     lastError: text('last_error'),
+    /**
+     * Where the poll has got to — the folder and UIDVALIDITY it belongs to,
+     * the next UID not yet looked at, and the UIDs below it still owed a
+     * filing. See `UidCursor` in the service's IMAP adapter.
+     *
+     * Not `\Seen`: these are live office mailboxes, and a message a person
+     * opened before the poll reached it used to be skipped for good. Null until
+     * the first poll, which falls back once to the unseen rule.
+     */
+    uidCursor: jsonb('uid_cursor').$type<{
+      folder: string
+      uidValidity: string
+      uidNext: number
+      pending: Record<string, { attempts: number; failedAt: string | null }>
+    }>(),
     ...timestamps,
   },
   (t) => [

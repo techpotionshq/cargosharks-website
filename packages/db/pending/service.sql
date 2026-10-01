@@ -13,3 +13,9 @@ alter table rate_requests add column send_attempts integer not null default 0;
 alter table rate_requests add column last_send_attempt_at timestamp with time zone;
 alter table rate_requests add column send_error text;
 create index rate_requests_unsent_idx on rate_requests (status, sent_at, last_send_attempt_at);
+
+-- V11, R5: the IMAP poll decided "new" by \Seen, so mail a person opened first
+-- was never ingested, and failing messages filled every batch. The mailbox row
+-- keeps the poll's UID cursor: folder, UIDVALIDITY, next UID, and the UIDs
+-- below it still owed a filing with their retry state.
+alter table mailboxes add column uid_cursor jsonb;

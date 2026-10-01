@@ -35,12 +35,141 @@
  *
  * The alternative — flag first, then work — cannot lose a duplicate but can
  * lose an enquiry, and this is a business whose enquiries are its pipeline.
+ *
+ * ## What is new is decided by UID, not by `\Seen`
+ *
+ * These are live office mailboxes, and people read them. The poll used to
+ * search for unseen mail, so a message a coordinator opened before the next
+ * minute — or any mail that arrived while the service was down and was read in
+ * the meantime — was never ingested and left no trace anywhere. `\Seen` is a
+ * person's flag; it cannot also be the machine's.
+ *
+ * So the mailbox row keeps a cursor (`UidCursor`): the folder and UIDVALIDITY
+ * it belongs to, the next UID not yet looked at, and the UIDs below that still
+ * owed a filing. Every UID at or past the cursor is new whatever its flags; a
+ * UID below it is done unless it is in `pending`. The flag is still set after
+ * a filing, as a courtesy to the people reading the same mailbox.
+ *
+ * A first poll — or a new UIDVALIDITY, or a different folder — has no history
+ * to go on, and falls back to exactly the old rule once: what is unseen now is
+ * owed, what is seen is history, and from then on the cursor decides.
+ *
+ * ## A failing message waits its turn
+ *
+ * A message whose filing throws goes into `pending` with a growing wait, and
+ * pending messages take at most half a batch while new mail is waiting. Before,
+ * failures stayed unseen and the search handed them back oldest first, so
+ * `poll_batch` failing messages — twenty-five PDFs behind a misconfigured
+ * bucket — filled every poll and the plain-text mail behind them was never
+ * read (R5). There is still no retry cap, for the reason given at the end of
+ * `collect`.
  */
 
 import { createHash } from 'node:crypto'
 import { ImapFlow } from 'imapflow'
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser'
 import type { InboundAttachment, InboundMailSource, InboundMessage } from '../ports/index'
+
+/**
+ * Where the poll has got to in one folder — kept on the mailbox row.
+ *
+ * `uidValidity` is a decimal string because IMAP's is an unsigned 32-bit
+ * number that imapflow hands over as a `bigint`.
+ */
+export interface UidCursor {
+  readonly folder: string
+  readonly uidValidity: string
+  /** Every UID below this has been looked at once. */
+  readonly uidNext: number
+  /** UIDs below `uidNext` still owed a filing, and how often they have failed. */
+  readonly pending: Readonly<Record<string, PendingUid>>
+}
+
+export interface PendingUid {
+  readonly attempts: number
+  /** When it last failed; null for one owed since the first poll and never tried. */
+  readonly failedAt: string | null
+}
+
+/** Loads and saves a mailbox's cursor. Absent, the poll keeps no history. */
+export interface UidCursorStore {
+  load(): Promise<UidCursor | null>
+  save(cursor: UidCursor): Promise<void>
+}
+
+/** The longest a failing message waits between attempts. */
+const MAX_RETRY_WAIT_MINUTES = 60
+
+/**
+ * Whether a pending UID is due another attempt: at once if never tried, then
+ * after 1, 2, 4 … minutes, capped at an hour.
+ */
+export function pendingDue(entry: PendingUid, now: Date): boolean {
+  if (entry.attempts === 0 || entry.failedAt === null) return true
+  const wait = Math.min(2 ** (entry.attempts - 1), MAX_RETRY_WAIT_MINUTES) * 60_000
+  return now.getTime() - new Date(entry.failedAt).getTime() >= wait
+}
+
+/**
+ * Which UIDs this poll takes.
+ *
+ * New mail first, in arrival order, but never the whole batch while pending
+ * messages are due: they get up to half, so neither starves the other. Slots
+ * either side leaves empty go to the other.
+ */
+export function planBatch(
+  fresh: readonly number[],
+  pending: UidCursor['pending'],
+  batch: number,
+  now: Date,
+): { fresh: number[]; retry: number[] } {
+  const due = Object.entries(pending)
+    .filter(([, entry]) => pendingDue(entry, now))
+    // Never-tried first, then the longest since a failure, then by UID.
+    .sort(([ua, a], [ub, b]) => {
+      const ta = a.failedAt ? new Date(a.failedAt).getTime() : 0
+      const tb = b.failedAt ? new Date(b.failedAt).getTime() : 0
+      return ta - tb || Number(ua) - Number(ub)
+    })
+    .map(([uid]) => Number(uid))
+
+  const sortedFresh = [...fresh].sort((a, b) => a - b)
+  const retryShare = sortedFresh.length > 0 ? Math.ceil(batch / 2) : batch
+  const retry = due.slice(0, Math.min(retryShare, due.length))
+  const freshTaken = sortedFresh.slice(0, batch - retry.length)
+  // Fresh left room: hand it back to the pending queue.
+  const more = due.slice(retry.length, retry.length + (batch - retry.length - freshTaken.length))
+  return { fresh: freshTaken, retry: [...retry, ...more] }
+}
+
+/** What happened to one UID this poll. */
+export type UidOutcome = 'filed' | 'failed' | 'gone'
+
+/**
+ * The cursor after a poll.
+ *
+ * `uidNext` moves past every fresh UID taken — they were taken lowest first,
+ * so nothing below the new mark was skipped — and a fresh one that failed is
+ * carried in `pending` instead. A filed or vanished pending UID leaves it.
+ */
+export function advanceCursor(
+  cursor: UidCursor,
+  freshTaken: readonly number[],
+  outcomes: ReadonlyMap<number, UidOutcome>,
+  now: Date,
+): UidCursor {
+  const pending: Record<string, PendingUid> = { ...cursor.pending }
+  for (const [uid, outcome] of outcomes) {
+    const key = String(uid)
+    if (outcome === 'failed') {
+      pending[key] = { attempts: (pending[key]?.attempts ?? 0) + 1, failedAt: now.toISOString() }
+    } else {
+      delete pending[key]
+    }
+  }
+  const highest = freshTaken.length > 0 ? Math.max(...freshTaken) : 0
+  return { ...cursor, uidNext: Math.max(cursor.uidNext, highest + 1), pending }
+}
 
 export interface ImapOptions {
   readonly host: string
@@ -56,6 +185,11 @@ export interface ImapOptions {
   readonly batch: number
   /** Attachments above this are recorded by name and their bytes dropped. */
   readonly maxAttachmentBytes: number
+  /**
+   * Where the cursor lives — the mailbox row. Without one (a test, a one-off
+   * script) the poll falls back to taking unseen mail, as it always did.
+   */
+  readonly cursor?: UidCursorStore
 }
 
 /**
@@ -458,15 +592,58 @@ export function imapSource(options: ImapOptions): InboundMailSource {
             it, and the flag would land on the wrong mail. Silently, and on
             somebody else's correspondence.
           */
-          const uids = await client.search({ seen: false }, { uid: true })
+          const now = new Date()
+          const box = client.mailbox
+          const stored = options.cursor ? await options.cursor.load() : null
 
-          // imapflow answers `false` where the server refused the search.
-          const batch = (uids || []).slice(0, options.batch)
+          let cursor: UidCursor | null = null
+          let fresh: number[]
+          if (options.cursor && box) {
+            const uidValidity = String(box.uidValidity)
+            if (stored && stored.folder === options.folder && stored.uidValidity === uidValidity) {
+              cursor = stored
+              // `N:*` always answers with the highest UID even when it is below N.
+              const found = await client.search({ uid: `${stored.uidNext}:*` }, { uid: true })
+              fresh = (found || []).filter((uid) => uid >= stored.uidNext)
+            } else {
+              /*
+                No history for this folder: what is unseen now is owed, what is
+                seen is history, and everything from the next UID on is new.
+              */
+              const unseen = (await client.search({ seen: false }, { uid: true })) || []
+              cursor = {
+                folder: options.folder,
+                uidValidity,
+                uidNext: unseen.reduce(
+                  (next, uid) => Math.max(next, uid + 1),
+                  Math.max(box.uidNext, 1),
+                ),
+                pending: Object.fromEntries(
+                  unseen.map((uid) => [String(uid), { attempts: 0, failedAt: null }]),
+                ),
+              }
+              fresh = []
+            }
+          } else {
+            // imapflow answers `false` where the server refused the search.
+            fresh = (await client.search({ seen: false }, { uid: true })) || []
+          }
+
+          const plan = cursor
+            ? planBatch(fresh, cursor.pending, options.batch, now)
+            : { fresh: [...fresh].sort((a, b) => a - b).slice(0, options.batch), retry: [] }
+          const batch = [...plan.retry, ...plan.fresh]
           attempted = batch.length
+          const outcomes = new Map<number, UidOutcome>()
 
           const outcome = await eachIsolated(batch, async (uid) => {
+            outcomes.set(uid, 'failed')
             const fetched = await client.fetchOne(String(uid), { source: true }, { uid: true })
-            if (!fetched || !fetched.source) return
+            if (!fetched || !fetched.source) {
+              // Moved or expunged since the search; nothing left to file.
+              outcomes.set(uid, 'gone')
+              return
+            }
 
             const parsed = await simpleParser(fetched.source)
             const message = toInboundMessage(parsed, options.user, options.maxAttachmentBytes)
@@ -492,6 +669,10 @@ export function imapSource(options: ImapOptions): InboundMailSource {
               )
             }
 
+            // Filed. The flag and the move below are courtesy for the people
+            // reading this mailbox; the cursor is what stops a second filing.
+            outcomes.set(uid, 'filed')
+
             await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true })
 
             if (options.archiveFolder) {
@@ -501,6 +682,22 @@ export function imapSource(options: ImapOptions): InboundMailSource {
 
           handled = outcome.handled
           failures = outcome.failures
+
+          /*
+            The cursor, saved whatever happened above. A save that fails costs
+            a re-read next poll, which the receipt's unique key turns into a
+            duplicate — never a lost message — and it is reported with the
+            rest so the mailbox row shows it.
+          */
+          if (cursor && options.cursor) {
+            try {
+              await options.cursor.save(advanceCursor(cursor, plan.fresh, outcomes, now))
+            } catch (error) {
+              failures.push(
+                `the poll position could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
+          }
         } finally {
           lock.release()
         }
