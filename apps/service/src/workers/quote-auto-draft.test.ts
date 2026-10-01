@@ -26,6 +26,7 @@ const {
   enquiries,
   locations,
   partners,
+  priceEnquiryToQuote,
   quotes,
   rateCardLines,
   rateCards,
@@ -310,5 +311,22 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
 
     const after = await draftQuote(id)
     expect(after!.id).toBe(first!.id)
+  })
+
+  /**
+   * The race the eligibility read cannot see: a coordinator prices the
+   * enquiry after the sweep listed it. The sweep asks for a first quotation
+   * only, so it refuses rather than superseding the person's draft (S19).
+   */
+  it('never supersedes a quotation somebody wrote after the sweep looked', async () => {
+    const id = await coveredEnquiry()
+    const first = await withActor(actor, (tx) => priceEnquiryToQuote(tx, id, SYSTEM_PRINCIPAL_ID))
+
+    const second = await withActor(actor, (tx) =>
+      priceEnquiryToQuote(tx, id, SYSTEM_PRINCIPAL_ID, { firstOnly: true }),
+    )
+
+    expect('reference' in first).toBe(true)
+    expect(second).toEqual({ error: 'already_quoted' })
   })
 })

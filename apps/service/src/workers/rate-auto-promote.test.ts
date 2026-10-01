@@ -82,6 +82,7 @@ async function parsedReply(
   total: string,
   createdAt?: Date,
   unpriced?: number,
+  extra: Record<string, unknown> = {},
 ): Promise<string> {
   const partnerId = await makeAgent()
   seq += 1
@@ -100,6 +101,7 @@ async function parsedReply(
         response: {
           ok: true,
           ...(unpriced ? { unpriced } : {}),
+          ...extra,
           rows: [
             {
               mode: 'sea_fcl',
@@ -217,6 +219,33 @@ describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
 
     expect((await requestRow(whole)).status).toBe('accepted')
     expect((await requestRow(partial)).status).toBe('parsed')
+  })
+
+  /**
+   * Insurance at a percentage is unpriced on every reply alike; it is not a
+   * partial total (R1). Both replies here carry one, and the cheaper wins.
+   */
+  it('ranks replies whose only unpriced line is a percentage', async () => {
+    const id = await makeEnquiry()
+    const cheaper = await parsedReply(id, '700.000', undefined, 1, { partial: 0 })
+    const dearer = await parsedReply(id, '800.000', undefined, 1, { partial: 0 })
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(cheaper)).status).toBe('accepted')
+    expect((await requestRow(dearer)).status).toBe('parsed')
+  })
+
+  /** A reply that priced another lane is never awarded — not even alone (S14). */
+  it('never awards a reply that priced a different lane', async () => {
+    const id = await makeEnquiry()
+    const wrongLane = await parsedReply(id, '100.000', undefined, undefined, {
+      laneMismatch: 'CNSHA → KWSWK',
+    })
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(wrongLane)).status).toBe('parsed')
   })
 
   it('does nothing on its inert default', async () => {
