@@ -45,6 +45,7 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
@@ -112,8 +113,29 @@ const isoDay = (date: Date) => date.toISOString().slice(0, 10)
  * Dubai entity billing a Dubai customer in Kuwaiti dinars, to three decimals.
  */
 const branchCurrency = (branch: string): 'KWD' | 'AED' => (branch === 'DXB' ? 'AED' : 'KWD')
-/** Minor units per major unit: KWD carries three decimals, AED two. */
-const minorUnits = (currency: string): number => (currency === 'KWD' ? 1000 : 100)
+/** Decimal places: KWD carries three, AED two. */
+const places = (currency: string): number => (currency === 'KWD' ? 3 : 2)
+
+/**
+ * The demo's rates out of USD, for the two base currencies seeded here.
+ *
+ * The tariff is in USD, as an agent quotes it; a quotation and an invoice are
+ * in the branch's own currency. Converting through a fixed figure here keeps
+ * every seeded document internally consistent — its lines sum to its total —
+ * without pretending to be the day's rate.
+ */
+const USD_TO: Readonly<Record<string, string>> = { KWD: '0.307', AED: '3.6725' }
+
+/** A USD figure in `currency`, rounded to its places — Decimal, never float. */
+const fromUsd = (
+  usd: number | string,
+  currency: string,
+  factor: InstanceType<typeof D> | string | number = 1,
+) =>
+  new D(usd)
+    .times(factor)
+    .times(USD_TO[currency] ?? '1')
+    .toDecimalPlaces(places(currency))
 
 /**
  * The next number in a branch's invoice series — the application's own
@@ -1237,8 +1259,33 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
       */
       const quoteSeq = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
       const quoteNumber = (quoteSeq.rows[0] as { seq: string }).seq.padStart(5, '0')
-      const cost = 2400 + enquirySeq * 180
-      const sell = Math.round(cost * (1.14 + (enquirySeq % 5) * 0.045))
+      /*
+        Priced from the seeded tariff, in the branch's own currency, so the
+        lines make the total and the margin is the one the lines imply.
+
+        It was a USD total from a formula beside four unrelated USD lines —
+        one of them "per kg" at a quantity of 1 — on a KWD branch: the quote
+        page showed lines summing to 1,615 under a total of 2,900. Container
+        charges go per container on a sea FCL enquiry and flat otherwise.
+      */
+      const currency = branchCurrency(spec.branch)
+      const containers = 'containerCount' in spec && spec.containerCount ? spec.containerCount : 1
+      const markup = new D('1.14').plus(new D('0.045').times(enquirySeq % 5))
+      const priced = anyCharge.slice(0, 4).map((row) => {
+        const perContainer = row.basis === 'per_container' && spec.mode === 'sea_fcl'
+        const quantity = perContainer ? containers : 1
+        const rate = fromUsd(row.rate, currency, markup)
+        return {
+          chargeTypeId: row.id,
+          basis: perContainer ? ('per_container' as const) : ('flat' as const),
+          quantity: String(quantity),
+          rate,
+          amount: rate.times(quantity),
+          cost: fromUsd(row.rate, currency).times(quantity),
+        }
+      })
+      const sell = priced.reduce((acc, line) => acc.plus(line.amount), new D(0))
+      const cost = priced.reduce((acc, line) => acc.plus(line.cost), new D(0))
       const [quote] = await tx
         .insert(quotes)
         .values({
@@ -1247,13 +1294,15 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           branchId: branchBy.get(spec.branch)!,
           version: 1,
           status: spec.status === 'won' ? 'accepted' : spec.status === 'lost' ? 'rejected' : 'sent',
-          currency: 'USD',
-          totalSell: String(sell),
-          totalCost: String(cost),
+          currency,
+          totalSell: sell.toFixed(),
+          totalCost: cost.toFixed(),
           validUntil: isoDay(days(spec.status === 'quoted' ? 12 : -5)),
           pricedSnapshot: {
             pricedAt: at(spec.createdHours + 2).toISOString(),
-            marginPct: Number((((sell - cost) / sell) * 100).toFixed(2)),
+            marginPct: sell.isZero()
+              ? 0
+              : Number(sell.minus(cost).dividedBy(sell).times(100).toFixed(2)),
           },
           preparedById: owner(enquirySeq),
           sentAt: at(spec.createdHours + 2),
@@ -1262,22 +1311,19 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         })
         .returning({ id: quotes.id })
 
-      if (anyCharge.length) {
+      if (priced.length) {
         await tx.insert(quoteLines).values(
-          anyCharge.slice(0, 4).map((row2: { id: string }, index: number) => {
-            const rate = [980, 145, 380, 110][index]!
-            return {
-              quoteId: quote!.id,
-              chargeTypeId: row2.id,
-              description: null,
-              basis: (['per_container', 'flat', 'per_kg', 'flat'] as const)[index]!,
-              quantity: '1',
-              rate: String(rate),
-              amount: String(rate),
-              currency: 'USD',
-              sortOrder: index,
-            }
-          }),
+          priced.map((line, index) => ({
+            quoteId: quote!.id,
+            chargeTypeId: line.chargeTypeId,
+            description: null,
+            basis: line.basis,
+            quantity: line.quantity,
+            rate: line.rate.toFixed(),
+            amount: line.amount.toFixed(),
+            currency,
+            sortOrder: index,
+          })),
         )
       }
     }
@@ -1489,10 +1535,43 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     }
 
     if ('invoice' in spec && spec.invoice) {
-      const total = Number(spec.invoice.total)
-      const paid = Number(spec.invoice.paid)
-      const subtotal = Math.round(total / 1.05)
+      /*
+        Built from the lines up, in Decimal, the way the application builds
+        one: each line rounded to the currency, 5% tax on each line rounded
+        the same way, and the header the sum of both.
+
+        It was the other way round — a subtotal of `Math.round(total / 1.05)`,
+        tax as whatever was left, and three lines of a third each rounded to
+        two places — so the tax was not 5%, the lines did not sum to the
+        subtotal, and none of them had an Arabic description.
+      */
       const currency = branchCurrency(spec.branch)
+      const dp = places(currency)
+      const target = new D(spec.invoice.total)
+      const net = target.dividedBy('1.05').toDecimalPlaces(dp)
+      const charges = anyCharge.slice(0, 3) as { id: string }[]
+      const count = Math.max(charges.length, 1)
+      const share = net.dividedBy(count).toDecimalPlaces(dp)
+      const DESCRIPTIONS = [
+        { en: 'Ocean freight', ar: 'الشحن البحري' },
+        { en: 'Terminal handling', ar: 'مناولة المحطة' },
+        { en: 'Customs clearance', ar: 'التخليص الجمركي' },
+      ]
+      const lines = Array.from({ length: count }, (_, index) => {
+        // The last line takes the rounding remainder, so the lines are the net.
+        const amount = index === count - 1 ? net.minus(share.times(count - 1)) : share
+        return {
+          chargeTypeId: charges[index]?.id ?? null,
+          descriptionEn: DESCRIPTIONS[index]!.en,
+          descriptionAr: DESCRIPTIONS[index]!.ar,
+          amount,
+          taxAmount: amount.times('0.05').toDecimalPlaces(dp),
+        }
+      })
+      const tax = lines.reduce((acc, line) => acc.plus(line.taxAmount), new D(0))
+      const total = net.plus(tax)
+      // A fully paid seed stays fully paid when the rebuilt total moves a fils.
+      const paid = D.min(new D(spec.invoice.paid), total)
       /*
         Numbered by the branch's own series rather than a `{branch}-INV-…`
         shape of this file's own (F40). Idempotent all the same: an invoice is
@@ -1506,57 +1585,43 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           branchId,
           customerId: customer.get(spec.customer)!,
           seriesNo,
-          status: paid >= total ? 'paid' : paid > 0 ? 'part_paid' : 'issued',
+          status: paid.gte(total) ? 'paid' : paid.isPositive() ? 'part_paid' : 'issued',
           currency,
-          subtotal: String(subtotal),
-          taxAmount: String(total - subtotal),
-          total: String(total),
-          amountPaid: String(paid),
+          subtotal: net.toFixed(),
+          taxAmount: tax.toFixed(),
+          total: total.toFixed(),
+          amountPaid: paid.toFixed(),
           taxTreatment: 'standard',
           taxRatePercent: '5',
+          fxRate: '1',
           issuedAt: days(spec.invoice.dueDays - 30),
           dueOn: isoDay(days(spec.invoice.dueDays)),
           issuedById: owner(1),
         })
         .returning({ id: invoices.id })
 
-      if (anyCharge.length) {
-        await tx.insert(invoiceLines).values(
-          anyCharge.slice(0, 3).map((row: { id: string }, index: number) => {
-            const amount = Math.round((subtotal / 3) * 100) / 100
-            /*
-              Line tax has to be set, not left at its zero default.
+      await tx.insert(invoiceLines).values(
+        lines.map((line, index) => ({
+          invoiceId: invoice!.id,
+          chargeTypeId: line.chargeTypeId,
+          descriptionEn: line.descriptionEn,
+          descriptionAr: line.descriptionAr,
+          quantity: '1',
+          unitPrice: line.amount.toFixed(),
+          amount: line.amount.toFixed(),
+          taxAmount: line.taxAmount.toFixed(),
+          isTaxable: true,
+          sortOrder: index,
+        })),
+      )
 
-              The header's tax came from the invoice-level calculation while
-              every line said "—", so the detail page showed a document whose
-              lines did not compose its own total. The header is right; the
-              lines were the ones lying.
-            */
-            // Rounded to the currency's own minor unit — three places for
-            // KWD, two for AED.
-            const lineTax = Math.round(amount * 0.05 * minorUnits(currency)) / minorUnits(currency)
-            return {
-              invoiceId: invoice!.id,
-              chargeTypeId: row.id,
-              descriptionEn: ['Ocean freight', 'Terminal handling', 'Customs clearance'][index]!,
-              quantity: '1',
-              unitPrice: String(amount),
-              amount: String(amount),
-              taxAmount: String(lineTax),
-              isTaxable: true,
-              sortOrder: index,
-            }
-          }),
-        )
-      }
-
-      if (paid > 0) {
+      if (paid.isPositive()) {
         const [payment] = await tx
           .insert(payments)
           .values({
             branchId,
             customerId: customer.get(spec.customer)!,
-            amount: String(paid),
+            amount: paid.toFixed(),
             currency,
             receivedOn: isoDay(days(spec.invoice.dueDays - 2)),
             method: 'bank_transfer',
@@ -1568,7 +1633,7 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
         await tx.insert(paymentAllocations).values({
           paymentId: payment!.id,
           invoiceId: invoice!.id,
-          amount: String(paid),
+          amount: paid.toFixed(),
         })
       }
     }
