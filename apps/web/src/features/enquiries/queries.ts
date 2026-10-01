@@ -96,6 +96,7 @@ export async function listEnquiries(
         destinationName: named(locale, destination.nameEn, destination.nameAr),
         quotedSell: quotes.totalSell,
         quotedCost: quotes.totalCost,
+        quotedCurrency: quotes.currency,
       })
       .from(enquiries)
       .leftJoin(branches, eq(branches.id, enquiries.branchId))
@@ -174,7 +175,9 @@ export async function listEnquiries(
         createdAt: row.createdAt,
         slaDueAt: row.slaDueAt,
         firstRespondedAt: row.firstRespondedAt,
-        quotedSell: sell === null ? null : { amount: sell, currency: 'KWD' },
+        // In the quotation's own currency. It was labelled KWD whatever the
+        // quote was in — a Dubai branch's AED quotes read as dinars (S16).
+        quotedSell: sell === null ? null : { amount: sell, currency: row.quotedCurrency ?? 'KWD' },
         quotedMargin:
           sell === null || cost === null || sell === 0
             ? null
