@@ -1308,6 +1308,51 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
       expect(v2?.supersededById).toBeNull()
     })
 
+    /**
+     * O13. The Arabic copy is its own document. Versioned with the English,
+     * issuing it superseded the released English bill, which then vanished
+     * from the customer's portal.
+     */
+    it('versions each language on its own', async () => {
+      const id = await job()
+
+      const english = await storeJobDocument(
+        actor,
+        id,
+        'house_bill',
+        'en',
+        Buffer.from('a'),
+        'a.pdf',
+      )
+      const arabic = await storeJobDocument(
+        actor,
+        id,
+        'house_bill',
+        'ar',
+        Buffer.from('b'),
+        'b.pdf',
+      )
+
+      expect(arabic.version).toBe(1)
+      const rows = await versionsOf(id)
+      expect(rows.find((r) => r.id === english.documentId)?.supersededById).toBeNull()
+    })
+
+    /** O13. Two issues at once both computed the same version and stored it twice. */
+    it('gives two simultaneous issues two versions', async () => {
+      const id = await job()
+
+      const [a, b] = await Promise.all([
+        storeJobDocument(actor, id, 'house_bill', 'en', Buffer.from('a'), 'a.pdf'),
+        storeJobDocument(actor, id, 'house_bill', 'en', Buffer.from('bb'), 'b.pdf'),
+      ])
+
+      expect([a.version, b.version].sort()).toEqual([1, 2])
+      expect(a.storageKey).not.toBe(b.storageKey)
+      const rows = await versionsOf(id)
+      expect(rows.filter((r) => r.supersededById === null)).toHaveLength(1)
+    })
+
     /** Versions are per document type, not per job. */
     it('versions each kind on its own', async () => {
       const id = await job()

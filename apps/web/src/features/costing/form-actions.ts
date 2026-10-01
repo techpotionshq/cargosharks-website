@@ -27,7 +27,7 @@ import { getTranslations } from 'next-intl/server'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { SEED_CURRENCIES, dec, type CurrencySpec } from '@qabandi/core'
-import { chargeLines, branches, jobs, withActor } from '@qabandi/db'
+import { chargeLines, branches, jobs, latestFxRate, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch } from '@/lib/permissions'
 import {
@@ -84,7 +84,17 @@ const chargeLineSchema = (tv: Translate) =>
     quantity: decimalString(tv('enterQuantity')),
     rate: decimalString(tv('enterRate')),
     currency: z.string().trim().length(3),
-    fxRate: decimalString(tv('enterFxRate')),
+    /*
+      Optional now, and looked up when it is left blank.
+
+      The form defaulted it to 1 and this trusted it, so a USD 2,900 cost was
+      booked as KWD 2,900 — 3.26 times the truth — on a branch whose `fx_rates`
+      held the real rate. A typed rate still wins (FR-RT-06: the rate a cost was
+      taken at belongs to the cost); a blank one takes the latest on file.
+    */
+    fxRate: decimalString(tv('enterFxRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     counterpartyPartnerId: optionalUuid,
     counterpartyCustomerId: optionalUuid,
   })
@@ -104,7 +114,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
     quantity: read(form, 'quantity') ?? '1',
     rate: read(form, 'rate') ?? '',
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     counterpartyPartnerId: read(form, 'counterpartyPartnerId') ?? '',
     counterpartyCustomerId: read(form, 'counterpartyCustomerId') ?? '',
   })
@@ -137,10 +147,15 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
       assertInBranch(session, job.branchId)
 
       const baseSpec = spec(job.baseCurrency)
+      const fxRate =
+        data.currency === job.baseCurrency
+          ? '1'
+          : (data.fxRate ?? (await latestFxRate(tx, data.currency, job.baseCurrency)))
+      if (fxRate === null) return { error: 'no_rate' as const, base: job.baseCurrency }
       const amountBase =
         data.currency === job.baseCurrency
           ? amount
-          : amount.times(dec(data.fxRate)).toDecimalPlaces(baseSpec.minorUnits)
+          : amount.times(dec(fxRate)).toDecimalPlaces(baseSpec.minorUnits)
 
       const values = {
         jobId: data.jobId,
@@ -153,7 +168,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         rate: data.rate,
         amount: amount.toFixed(),
         currency: data.currency,
-        fxRate: data.fxRate,
+        fxRate,
         amountBase: amountBase.toFixed(),
         baseCurrency: job.baseCurrency,
         counterpartyPartnerId: data.counterpartyPartnerId ?? null,
@@ -164,6 +179,16 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         await tx.insert(chargeLines).values(values)
         return { error: null }
       }
+
+      /*
+        A counterparty the form does not carry is left as it is. The dialog
+        offers partners only; a customer named on a revenue line was erased by
+        every edit, and with it the line's place in the settlement.
+      */
+      const { counterpartyCustomerId, ...always } = values
+      const updatable = form.has('counterpartyCustomerId')
+        ? { ...always, counterpartyCustomerId }
+        : always
 
       /*
         Both freezes, read in the same transaction as the update.
@@ -190,7 +215,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
 
       const updated = await tx
         .update(chargeLines)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...updatable, updatedAt: new Date() })
         .where(sql`${chargeLines.id} = ${chargeLineId} and ${chargeLines.invoiceId} is null`)
         .returning({ id: chargeLines.id })
 
@@ -199,6 +224,12 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
 
     if (result.error === 'not_found') {
       return failWith(tv('jobNotVisible'), echo(form))
+    }
+    if (result.error === 'no_rate') {
+      return fail(
+        { fxRate: tv('noRateOnFile', { from: data.currency, to: result.base }) },
+        echo(form),
+      )
     }
     if (result.error === 'billed') {
       return failWith(tv('lineBilled'), echo(form))

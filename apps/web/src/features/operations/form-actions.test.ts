@@ -48,6 +48,7 @@ const {
   customsStages,
   exceptionCodes,
   exceptions,
+  freeTimeClocks,
   jobMilestones,
   jobs,
   principalBranchRoles,
@@ -64,6 +65,7 @@ const {
   completeMilestone,
   addContainer,
   setJobStatus,
+  saveFreeTimeClock,
 } = await import('./form-actions')
 
 const BRANCH = '00000000-0000-7000-8000-00000000d001'
@@ -243,6 +245,30 @@ describe.skipIf(!enabled)('operations mutations', () => {
           .where(eq(jobMilestones.id, milestoneId)),
       )
       expect(new Date(row!.at as Date).toISOString()).toContain('2026-08-01')
+    })
+
+    /** O4. 09:15 typed in Kuwait is 06:15 UTC — not 09:15 UTC, read as noon. */
+    it("reads the typed time in the branch's zone", async () => {
+      const jobId = await job()
+      const milestoneId = await milestone(jobId, false)
+
+      await completeMilestone({}, form({ milestoneId, jobId, actualAt: '2026-08-01T09:15' }))
+
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ at: jobMilestones.actualAt })
+          .from(jobMilestones)
+          .where(eq(jobMilestones.id, milestoneId)),
+      )
+      expect(row!.at!.toISOString()).toBe('2026-08-01T06:15:00.000Z')
+    })
+
+    /** O17. An Invalid Date reached the database and came back as a 500. */
+    it('refuses a time that is not one, on the field', async () => {
+      const jobId = await job()
+      const milestoneId = await milestone(jobId, false)
+      const state = await completeMilestone({}, form({ milestoneId, jobId, actualAt: 'soon' }))
+      expect(state.errors?.actualAt).toBe('operationsValidation.invalidDateTime')
     })
 
     /** Un-ticking clears both the time and the attribution. */
@@ -481,6 +507,29 @@ describe.skipIf(!enabled)('operations mutations', () => {
       expect(rows[0]!.severity).toBe('high')
     })
 
+    /** O17. A lone "." passed the old money rule and failed in `numeric`. */
+    it('refuses a lone point as a cost impact, on the field', async () => {
+      const jobId = await job()
+      const state = await raiseException(
+        {},
+        form({ jobId, exceptionCodeId, severity: 'low', costImpact: '.', costCurrency: 'KWD' }),
+      )
+      expect(state.errors?.costImpact).toBe('operationsValidation.numbersOnly')
+    })
+
+    /** O4. The due time is the branch's wall clock. */
+    it("stores the due time in the branch's zone", async () => {
+      const jobId = await job()
+      await raiseException(
+        {},
+        form({ jobId, exceptionCodeId, severity: 'low', dueAt: '2026-10-05T17:00' }),
+      )
+      const [row] = await withActor(actor, (tx) =>
+        tx.select({ dueAt: exceptions.dueAt }).from(exceptions).where(eq(exceptions.jobId, jobId)),
+      )
+      expect(row!.dueAt!.toISOString()).toBe('2026-10-05T14:00:00.000Z')
+    })
+
     it('refuses an unknown severity', async () => {
       const jobId = await job()
       const state = await raiseException(
@@ -536,6 +585,53 @@ describe.skipIf(!enabled)('operations mutations', () => {
       const jobId = await job()
       const state = await addContainer({}, form({ jobId, containerNo: 'MSKU4419519' }))
       expect(state.errors).toBeUndefined()
+    })
+  })
+
+  /** O2. A clock could be started and never stopped. */
+  describe('free-time clocks', () => {
+    it('stops a clock by giving it an end date', async () => {
+      const jobId = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = {
+        jobId,
+        kind: 'demurrage',
+        startsOn: today,
+        freeDays: '5',
+        perDiem: '25.000',
+        currency: 'KWD',
+      }
+      expect((await saveFreeTimeClock({}, form(clock))).errors).toBeUndefined()
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, jobId)),
+      )
+
+      const state = await saveFreeTimeClock({}, form({ ...clock, clockId: row!.id, endsOn: today }))
+      expect(state.errors).toBeUndefined()
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.endsOn).toBe(today)
+    })
+
+    it("will not move another job's clock", async () => {
+      const mine = await job('arrived')
+      const theirs = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = { kind: 'demurrage', startsOn: today, freeDays: '5', perDiem: '25.000' }
+      await saveFreeTimeClock({}, form({ ...clock, jobId: theirs }))
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, theirs)),
+      )
+
+      await saveFreeTimeClock({}, form({ ...clock, jobId: mine, clockId: row!.id, endsOn: today }))
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.jobId).toBe(theirs)
+      expect(after!.endsOn).toBeNull()
     })
   })
 

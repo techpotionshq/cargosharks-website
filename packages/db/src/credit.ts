@@ -23,7 +23,7 @@
  * `unconvertible` and the caller shows it.
  */
 
-import { and, desc, eq, isNotNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, or } from 'drizzle-orm'
 import {
   add,
   assessCredit,
@@ -44,8 +44,8 @@ import { withActor, type Actor } from './actor'
 import { customerBranchTerms } from './schema/commercial'
 import { creditOverrides } from './schema/commercial'
 import { branches } from './schema/identity'
-import { fxRates } from './schema/reference'
 import { invoices } from './schema/finance'
+import { latestFxRate } from './fx-latest'
 
 export interface CreditStanding extends CreditPosition {
   readonly customerId: string
@@ -171,57 +171,6 @@ export async function creditStanding(
       unconvertible,
     }
   })
-}
-
-/**
- * The most recent rate on or before today, in either direction.
- *
- * Feeds publish one direction and the reverse is arithmetic, so a deployment
- * holding USD→KWD can answer KWD→USD without a second row. Taking the latest
- * rather than the exact day's is deliberate: a credit check on a Friday must
- * not fail because the feed does not publish at the weekend.
- */
-export async function latestFxRate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tx: any,
-  from: string,
-  to: string,
-): Promise<string | null> {
-  const today = new Date().toISOString().slice(0, 10)
-
-  const [direct] = await tx
-    .select({ rate: fxRates.rate })
-    .from(fxRates)
-    .where(
-      and(
-        eq(fxRates.fromCurrency, from),
-        eq(fxRates.toCurrency, to),
-        lte(fxRates.effectiveOn, today),
-      ),
-    )
-    .orderBy(desc(fxRates.effectiveOn))
-    .limit(1)
-
-  if (direct) return direct.rate
-
-  const [inverse] = await tx
-    .select({ rate: fxRates.rate })
-    .from(fxRates)
-    .where(
-      and(
-        eq(fxRates.fromCurrency, to),
-        eq(fxRates.toCurrency, from),
-        lte(fxRates.effectiveOn, today),
-        // A zero rate would divide by zero below. Feeds do not publish them;
-        // a hand-entered override can.
-        sql`${fxRates.rate} <> 0`,
-      ),
-    )
-    .orderBy(desc(fxRates.effectiveOn))
-    .limit(1)
-
-  if (!inverse) return null
-  return money('1', to).amount.dividedBy(money(inverse.rate, to).amount).toFixed()
 }
 
 /**

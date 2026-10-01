@@ -23,6 +23,7 @@ import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
 import { pickName } from '@/lib/named'
+import { formatByCurrency, sumByCurrency } from '@/lib/by-currency'
 
 type Filter = 'live' | 'exceptions' | 'arriving' | 'all'
 
@@ -69,7 +70,18 @@ export default async function JobsPage({
   )
   const visible = filter === 'arriving' ? arriving : rows
   const held = rows.filter((r) => r.customsStatus === 'held' || r.status === 'on_hold').length
-  const accruing = clocks.reduce((sum, clock) => sum + clock.accrued.amount, 0)
+  /*
+    Per currency, never one sum (O15). The clocks are each in their own
+    currency, and adding a USD per-diem to a KWD one and printing "KWD" was
+    the same mistake the finance summaries made.
+  */
+  const accruingByCurrency = sumByCurrency(
+    clocks.map((clock) => ({
+      currency: clock.accrued.currency,
+      amount: String(clock.accrued.amount),
+    })),
+  )
+  const accruing = accruingByCurrency.length > 0
 
   return (
     <>
@@ -105,13 +117,10 @@ export default async function JobsPage({
         />
         <StatTile
           label={tDash('accruing')}
-          value={formatMoney({ amount: accruing, currency: 'KWD' }, locale, {
-            showCurrency: false,
-          })}
-          unit="KWD"
+          value={formatByCurrency(accruingByCurrency, locale)}
           icon="clock"
-          tone={accruing > 0 ? 'caution' : 'muted'}
-          live={accruing > 0}
+          tone={accruing ? 'caution' : 'muted'}
+          live={accruing}
         />
       </div>
 
@@ -128,7 +137,7 @@ export default async function JobsPage({
             title={t('clocksHint')}
             actions={
               <Badge tone="caution" icon="dot">
-                {formatMoney({ amount: accruing, currency: 'KWD' }, locale)}
+                {formatByCurrency(accruingByCurrency, locale)}
               </Badge>
             }
           />

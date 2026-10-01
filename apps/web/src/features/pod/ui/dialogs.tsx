@@ -19,11 +19,13 @@ export async function PodCaptureDialog({
   jobId,
   equipment,
   supersedesId,
+  timeZone,
   variant = 'primary',
 }: {
   readonly jobId: string
   readonly equipment: readonly { value: string; label: string }[]
   readonly supersedesId?: string
+  readonly timeZone: string
   readonly variant?: 'primary' | 'secondary' | 'ghost'
 }) {
   const session = await requireSession()
@@ -34,6 +36,7 @@ export async function PodCaptureDialog({
       jobId={jobId}
       equipment={equipment}
       supersedesId={supersedesId}
+      timeZone={timeZone}
       variant={variant}
     />
   )

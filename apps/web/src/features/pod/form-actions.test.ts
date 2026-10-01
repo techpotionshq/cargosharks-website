@@ -193,6 +193,21 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
       expect(pod!.deliveredAt.getTime()).toBeLessThan(Date.now())
     })
 
+    /** O4. 14:20 at a Kuwaiti gate is 11:20 UTC, not 14:20 UTC. */
+    it("reads the stated time in the branch's zone", async () => {
+      const jobId = await freshJob()
+      await captureProofOfDelivery({}, capture(jobId, { deliveredAt: '2026-08-14T14:20' }))
+      expect((await podFor(jobId))!.deliveredAt.toISOString()).toBe('2026-08-14T11:20:00.000Z')
+    })
+
+    it('refuses a delivery time that is not one, on the field', async () => {
+      const state = await captureProofOfDelivery(
+        {},
+        capture(await freshJob(), { deliveredAt: 'yesterday' }),
+      )
+      expect(state.errors?.deliveredAt).toBe('podValidation.notDeliveryTime')
+    })
+
     it('records an identity document where the driver took one', async () => {
       const jobId = await freshJob()
       await captureProofOfDelivery({}, capture(jobId, { receivedByIdNumber: '284091700123' }))
@@ -455,6 +470,24 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
       expect(retired?.receivedByName).toBe('Wrong Name Written')
       expect(retired?.supersededById).toBe(current!.id)
       expect(current?.supersededById).toBeNull()
+    })
+
+    /**
+     * O16. The id is a hidden field. Unchecked, a correction posted on one
+     * shipment retired another shipment's delivery record.
+     */
+    it("will not retire another shipment's record", async () => {
+      const victim = await freshJob()
+      await captureProofOfDelivery({}, capture(victim))
+      const theirs = await podFor(victim)
+
+      const mine = await freshJob()
+      const state = await captureProofOfDelivery({}, capture(mine, { supersedesId: theirs!.id }))
+
+      expect(state.message).toBe('podValidation.nothingToCorrect')
+      expect((await podFor(victim))!.supersededById).toBeNull()
+      // The correction is rolled back with the refusal, not left half-done.
+      expect(await podFor(mine)).toBeUndefined()
     })
 
     it('refuses a supersedes that is not an identifier', async () => {

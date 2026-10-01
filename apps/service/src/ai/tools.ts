@@ -66,7 +66,7 @@ import {
   toScale,
   type GroupableShipment,
 } from '@qabandi/core'
-import { dayIn, todayIn } from '@qabandi/core'
+import { dayIn, shiftDay, todayIn } from '@qabandi/core'
 
 const candidateOrigin = alias(locations, 'candidate_origin')
 const candidateDestination = alias(locations, 'candidate_destination')
@@ -486,8 +486,18 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
   const withinDays = Number.isFinite(Number(args.withinDays)) ? Number(args.withinDays) : 7
 
   return withActor(actor, (tx: Tx) => {
-    const horizon = new Date()
-    horizon.setUTCDate(horizon.getUTCDate() + Math.max(0, Math.min(60, withinDays)))
+    const horizon = shiftDay(todayIn(), Math.max(0, Math.min(60, withinDays)))
+    /*
+      The last free day, which is what "running out" means (O20).
+
+      This filtered and sorted on `ends_on` — the day the box came back — so it
+      matched only clocks that had already stopped, and with nothing setting
+      that column it answered every question with nothing. The free time ends
+      `free_days - 1` after the start (the start day is day one). Counted in
+      calendar days; on a working-day clock that names a day at or before the
+      real one, which errs towards warning early.
+    */
+    const freeUntil = sql<string>`(${freeTimeClocks.startsOn} + greatest(${freeTimeClocks.freeDays} - 1, 0))`
 
     return (
       tx
@@ -496,7 +506,7 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
           container: equipment.containerNo,
           kind: freeTimeClocks.kind,
           startsOn: freeTimeClocks.startsOn,
-          endsOn: freeTimeClocks.endsOn,
+          freeUntil: sql<string>`${freeUntil}::text`,
           accruedDays: freeTimeClocks.accruedDays,
           accruedAmount: freeTimeClocks.accruedAmount,
           currency: freeTimeClocks.currency,
@@ -505,13 +515,18 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
         .innerJoin(jobs, eq(jobs.id, freeTimeClocks.jobId))
         .leftJoin(equipment, eq(equipment.id, freeTimeClocks.equipmentId))
         /*
-        No `closed_at` on this table: a clock stops when the box is returned,
-        which `equipment.empty_returned_at` records. Filtering on that rather
-        than inventing a column keeps the assistant's answer identical to the
-        board's.
-      */
-        .where(and(isNull(equipment.emptyReturnedAt), lte(freeTimeClocks.endsOn, dayIn(horizon))))
-        .orderBy(freeTimeClocks.endsOn)
+          Only clocks still running: no end date, and the box not back. Both,
+          because an operator records either — the clock's own end date, or
+          the container's empty return.
+        */
+        .where(
+          and(
+            isNull(freeTimeClocks.endsOn),
+            isNull(equipment.emptyReturnedAt),
+            sql`${freeUntil} <= ${horizon}::date`,
+          ),
+        )
+        .orderBy(freeUntil)
         .limit(limit)
     )
   })

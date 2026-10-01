@@ -35,6 +35,7 @@ import { useTranslations } from 'next-intl'
 import { Field, FormError, Input, Select, Submit, Textarea } from '@/ui/form'
 import { Icon } from '@/ui/icon'
 import type { ActionState } from '@/lib/form-state'
+import { localInputValue } from '@qabandi/core'
 
 export interface PodCaptureProps {
   readonly action: (previous: ActionState, form: FormData) => Promise<ActionState>
@@ -42,14 +43,19 @@ export interface PodCaptureProps {
   readonly equipment: readonly { value: string; label: string }[]
   /** Set when this capture replaces an earlier record. */
   readonly supersedesId?: string
+  /** The job's branch zone — the one the action reads the time back in. */
+  readonly timeZone: string
   readonly onDone?: () => void
 }
 
-/** `datetime-local` wants local wall-clock, not an ISO instant. */
-function localNow(): string {
-  const now = new Date()
-  const offset = now.getTimezoneOffset() * 60_000
-  return new Date(now.getTime() - offset).toISOString().slice(0, 16)
+/**
+ * `datetime-local` wants wall-clock, not an ISO instant — and the branch's
+ * wall-clock, because that is how the action reads it. The device's own
+ * offset was used here, so a phone set to another zone pre-filled a time the
+ * server then stored hours out.
+ */
+function localNow(timeZone: string): string {
+  return localInputValue(new Date(), timeZone) ?? ''
 }
 
 export function PodCaptureForm({
@@ -57,6 +63,7 @@ export function PodCaptureForm({
   jobId,
   equipment,
   supersedesId,
+  timeZone,
   onDone,
 }: PodCaptureProps) {
   const t = useTranslations('pod')
@@ -181,7 +188,7 @@ export function PodCaptureForm({
           type="datetime-local"
           span={6}
           required
-          defaultValue={state.values?.deliveredAt ?? localNow()}
+          defaultValue={state.values?.deliveredAt ?? localNow(timeZone)}
           error={state.errors?.deliveredAt}
           hint={t('deliveredAtHint')}
         />

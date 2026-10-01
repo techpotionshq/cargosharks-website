@@ -14,9 +14,10 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   chargeTypes,
   consolAllocationShares,
   consolChargeLines,
@@ -100,21 +101,29 @@ export async function listConsolidations(
         houseCount: sql<number>`(
           select count(*)::int from jobs j where j.consolidation_id = "consolidations"."id"
         )`,
+        /*
+          Each house's cargo lines, or its own header where it has none — the
+          same figure the allocation splits by (O12), so the total here is
+          the one the split will see.
+        */
         volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text
-            from job_cargo c
-            join jobs j on j.id = c.job_id
+          select coalesce(sum(coalesce(
+                   (select sum(c.volume_cbm) from job_cargo c where c.job_id = j.id),
+                   j.volume_cbm)), 0)::text
+            from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
         grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c
-            join jobs j on j.id = c.job_id
+          select coalesce(sum(coalesce(
+                   (select sum(c.gross_weight_kg) from job_cargo c where c.job_id = j.id),
+                   j.gross_weight_kg)), 0)::text
+            from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
         unallocatedCount: sql<number>`(
           select count(*)::int from consol_charge_lines l
            where l.consolidation_id = "consolidations"."id" and l.allocated_at is null
+             and l.withdrawn_at is null
         )`,
       })
       .from(consolidations)
@@ -145,6 +154,10 @@ export interface ConsolidationHouse {
 export interface ConsolidationCharge {
   readonly id: string
   readonly direction: 'cost' | 'revenue'
+  /** The ids and rate behind the names, for the edit form (O12). */
+  readonly chargeTypeId: string
+  readonly counterpartyPartnerId: string | null
+  readonly fxRate: string
   readonly chargeTypeName: string
   readonly description: string | null
   readonly amount: string
@@ -159,6 +172,16 @@ export interface ConsolidationCharge {
 
 export interface ConsolidationDetail extends ConsolidationSummary {
   readonly branchId: string
+  /*
+    The ids behind the names, and the zone its dates are typed in, so the edit
+    form opens on what is stored. Without them every edit blanked the carrier,
+    the co-loader, both ports and both dates.
+  */
+  readonly branchTimeZone: string
+  readonly carrierPartnerId: string | null
+  readonly coloadPartnerId: string | null
+  readonly originId: string | null
+  readonly destinationId: string | null
   readonly carrierName: string | null
   readonly coloadPartnerName: string | null
   readonly bookingNumber: string | null
@@ -187,6 +210,11 @@ export async function getConsolidation(
       .select({
         id: consolidations.id,
         branchId: consolidations.branchId,
+        branchTimeZone: branches.timeZone,
+        carrierPartnerId: consolidations.carrierPartnerId,
+        coloadPartnerId: consolidations.coloadPartnerId,
+        originId: consolidations.originId,
+        destinationId: consolidations.destinationId,
         reference: consolidations.reference,
         status: consolidations.status,
         mode: consolidations.mode,
@@ -206,6 +234,7 @@ export async function getConsolidation(
         coloadPartnerName: named(locale, coload.legalNameEn, coload.legalNameAr),
       })
       .from(consolidations)
+      .innerJoin(branches, eq(branches.id, consolidations.branchId))
       .leftJoin(origin, eq(origin.id, consolidations.originId))
       .leftJoin(destination, eq(destination.id, consolidations.destinationId))
       .leftJoin(carrier, eq(carrier.id, consolidations.carrierPartnerId))
@@ -223,18 +252,20 @@ export async function getConsolidation(
         customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         status: jobs.status,
         chargeableWeightKg: jobs.chargeableWeightKg,
-        packages: sql<number>`(
-          select coalesce(sum(c.package_count), 0)::int
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
+        // Cargo lines where there are any, the job header where not — what
+        // the allocation splits by (O12), so the table shows what it will use.
+        packages: sql<number>`coalesce(
+          (select sum(c.package_count) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."pieces", 0
+        )::int`,
+        grossWeightKg: sql<string>`coalesce(
+          (select sum(c.gross_weight_kg) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."gross_weight_kg", 0
+        )::text`,
+        volumeCbm: sql<string>`coalesce(
+          (select sum(c.volume_cbm) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."volume_cbm", 0
+        )::text`,
       })
       .from(jobs)
       .innerJoin(customers, eq(customers.id, jobs.customerId))
@@ -245,6 +276,9 @@ export async function getConsolidation(
       .select({
         id: consolChargeLines.id,
         direction: consolChargeLines.direction,
+        chargeTypeId: consolChargeLines.chargeTypeId,
+        counterpartyPartnerId: consolChargeLines.counterpartyPartnerId,
+        fxRate: consolChargeLines.fxRate,
         chargeTypeName: named(locale, chargeTypes.nameEn, chargeTypes.nameAr),
         description: consolChargeLines.description,
         amount: consolChargeLines.amount,
@@ -262,7 +296,7 @@ export async function getConsolidation(
       .from(consolChargeLines)
       .innerJoin(chargeTypes, eq(chargeTypes.id, consolChargeLines.chargeTypeId))
       .leftJoin(partners, eq(partners.id, consolChargeLines.counterpartyPartnerId))
-      .where(eq(consolChargeLines.consolidationId, id))
+      .where(and(eq(consolChargeLines.consolidationId, id), isNull(consolChargeLines.withdrawnAt)))
       .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
 
     return consolidationOf(row, houses as ConsolidationHouse[], charges as ConsolidationCharge[])
@@ -402,7 +436,15 @@ export async function listAllocationShares(
         consolChargeLines,
         eq(consolChargeLines.id, consolAllocationShares.consolChargeLineId),
       )
-      .where(eq(consolChargeLines.consolidationId, consolidationId))
+      // Only standing splits. A reversal leaves the share rows in place
+      // (nothing is deleted), and listing them would show a breakdown of a
+      // split that no longer exists.
+      .where(
+        and(
+          eq(consolChargeLines.consolidationId, consolidationId),
+          isNotNull(consolChargeLines.allocatedAt),
+        ),
+      )
       .orderBy(asc(jobs.reference)),
   )
 }

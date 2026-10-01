@@ -192,12 +192,26 @@ export const loadOptions = cache(
            *
            * A customer contact is a principal too, and offering one as the
            * owner of an enquiry would be a quiet privilege leak in a dropdown.
+           *
+           * And only someone who can act on what they would own. A read-only
+           * user was offered as the owner of a job or an exception they could
+           * not so much as tick a milestone on, and the work then sat with
+           * nobody able to move it. "Can act" is read off the role's grants
+           * rather than its name, so a branch's own role with these keys
+           * qualifies and a renamed read-only one does not.
            */
           pe as (
             select json_agg(json_build_object('value', id, 'label', name_en) order by name_en) v
-              from (select id, name_en from principals
-                     where type = 'internal' and is_active and email not like '%@qabandi.internal'
-                     order by name_en limit 300) t
+              from (select pr.id, pr.name_en from principals pr
+                     where pr.type = 'internal' and pr.is_active
+                       and pr.email not like '%@qabandi.internal'
+                       and exists (
+                         select 1 from principal_branch_roles pbr
+                           join role_permissions rp on rp.role_id = pbr.role_id
+                          where pbr.principal_id = pr.id and pbr.is_active and rp.allowed
+                            and rp.permission_key in
+                                ('job.update', 'enquiry.assign', 'enquiry.rate', 'customs.update'))
+                     order by pr.name_en limit 300) t
           ),
           ro as (
             select json_agg(json_build_object('value', id, 'label', ${name}) order by ${name}) v

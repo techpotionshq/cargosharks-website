@@ -33,6 +33,7 @@
 import { dec, money, round, sum, zero } from './money'
 import type { CurrencyCode, CurrencySpec, Money, Numeric } from './money'
 import { DomainError } from './errors'
+import { DEFAULT_TIME_ZONE, dayIn } from './time'
 
 export class DutyError extends DomainError {
   constructor(code: string, message: string) {
@@ -49,6 +50,11 @@ export interface TariffLine {
   /** ISO date. Compared as a date, not a timestamp — a tariff changes at midnight. */
   readonly effectiveFrom: string
   readonly effectiveTo?: string | null
+  /**
+   * A row an administrator switched off. Optional so a literal tariff in a
+   * test need not say so; `false` is the only value that excludes it.
+   */
+  readonly isActive?: boolean
 }
 
 export interface DutiableLine {
@@ -104,13 +110,22 @@ export function findRate(
   country: string,
   hsCode: string,
   on: Date,
+  /*
+    The branch's zone, because the tariff day is a business date: a rate
+    change that takes effect on the 1st applies from midnight in Kuwait, not
+    from three in the morning when UTC catches up.
+  */
+  timeZone: string = DEFAULT_TIME_ZONE,
 ): TariffLine | undefined {
   const code = normaliseHsCode(hsCode)
   if (code === '') return undefined
 
-  const day = isoDate(on)
+  const day = dayIn(on, timeZone)
   const candidates = tariff.filter(
     (t) =>
+      // A deactivated row is one an administrator withdrew; quoting from it
+      // is quoting a rate the office has said is wrong.
+      t.isActive !== false &&
       t.country === country &&
       code.startsWith(t.hsPrefix) &&
       t.effectiveFrom <= day &&
@@ -136,6 +151,8 @@ export function estimateDuty(
     readonly currency: CurrencyCode
     readonly on: Date
     readonly spec: CurrencySpec
+    /** The branch's zone, for the tariff day. Kuwait when not given. */
+    readonly timeZone?: string
     /** Opt in to the general rate for codes with no row. Never assumed. */
     readonly generalRatePercent?: Numeric
     readonly generalRateDescription?: string
@@ -148,7 +165,7 @@ export function estimateDuty(
   for (const line of lines) {
     const code = normaliseHsCode(line.hsCode)
     const value = round(money(line.value, currency), spec)
-    const match = code === '' ? undefined : findRate(tariff, country, code, on)
+    const match = code === '' ? undefined : findRate(tariff, country, code, on, options.timeZone)
 
     if (!match) {
       if (options.generalRatePercent === undefined) {

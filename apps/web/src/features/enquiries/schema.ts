@@ -38,6 +38,21 @@ export const createEnquirySchema = (tv: Translate<'enquiriesValidation'>) =>
       notes: true,
     })
     .extend({
+      /*
+        The table's own rule, with the operator's wording. The generated
+        schema says "not a floating-point number" when "1e3" is typed — in
+        English on an Arabic page, and in words written for developers.
+      */
+      grossWeightKg: z
+        .string()
+        .trim()
+        .regex(/^\d{1,13}(\.\d{1,6})?$/, tv('weightAmount'))
+        .nullish(),
+      volumeCbm: z
+        .string()
+        .trim()
+        .regex(/^\d{1,13}(\.\d{1,6})?$/, tv('volumeAmount'))
+        .nullish(),
       readyOn: isoDate.nullish(),
       /*
         A whole number of containers, one or more (F39). FCL pricing multiplies

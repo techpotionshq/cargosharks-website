@@ -242,6 +242,12 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(state.errors?.destinationId).toBeDefined()
     })
 
+    /** U6. "1e3" was answered with "not a floating-point number", in English. */
+    it('refuses an exponent as a weight, in the catalogue’s words', async () => {
+      const state = await submitEnquiry({}, enquiryForm({ grossWeightKg: '1e3' }))
+      expect(state.errors?.grossWeightKg).toBe('enquiriesValidation.weightAmount')
+    })
+
     it('accepts a lane with two different ends', async () => {
       const state = await submitEnquiry(
         {},

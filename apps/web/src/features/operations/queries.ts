@@ -79,33 +79,48 @@ export async function listExceptions(
           ? isNotNull(exceptions.closedAt)
           : undefined
 
-    return tx
-      .select({
-        id: exceptions.id,
-        jobId: exceptions.jobId,
-        jobReference: jobs.reference,
-        customerName: customers.legalNameEn,
-        customerNameAr: customers.legalNameAr,
-        code: exceptionCodes.code,
-        nameEn: exceptionCodes.nameEn,
-        nameAr: exceptionCodes.nameAr,
-        severity: exceptions.severity,
-        description: exceptions.description,
-        openedAt: exceptions.openedAt,
-        dueAt: exceptions.dueAt,
-        closedAt: exceptions.closedAt,
-        owner: principals.nameEn,
-        costImpact: exceptions.costImpact,
-        costCurrency: exceptions.costCurrency,
-      })
-      .from(exceptions)
-      .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-      .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(principals, eq(principals.id, exceptions.ownerId))
-      .where(filter)
-      .orderBy(asc(exceptions.openedAt))
-      .limit(200)
+    return (
+      tx
+        .select({
+          id: exceptions.id,
+          jobId: exceptions.jobId,
+          jobReference: jobs.reference,
+          customerName: customers.legalNameEn,
+          customerNameAr: customers.legalNameAr,
+          code: exceptionCodes.code,
+          nameEn: exceptionCodes.nameEn,
+          nameAr: exceptionCodes.nameAr,
+          severity: exceptions.severity,
+          description: exceptions.description,
+          openedAt: exceptions.openedAt,
+          dueAt: exceptions.dueAt,
+          closedAt: exceptions.closedAt,
+          owner: principals.nameEn,
+          costImpact: exceptions.costImpact,
+          costCurrency: exceptions.costCurrency,
+        })
+        .from(exceptions)
+        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+        .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
+        .leftJoin(customers, eq(customers.id, jobs.customerId))
+        .leftJoin(principals, eq(principals.id, exceptions.ownerId))
+        .where(filter)
+        /*
+        Oldest first is right for the open ones and wrong for the closed (O18):
+        with more than 200 closed, the newest closures — the ones anybody is
+        looking for — never made the page. Closed ones read newest-closed
+        first; "all" lists the open ones (oldest first) and then the closed.
+      */
+        .orderBy(
+          ...(scope === 'open'
+            ? [asc(exceptions.openedAt)]
+            : [
+                desc(sql`coalesce(${exceptions.closedAt}, 'infinity'::timestamptz)`),
+                asc(exceptions.openedAt),
+              ]),
+        )
+        .limit(200)
+    )
   })
 }
 
@@ -163,32 +178,42 @@ export async function listCustoms(
           ? isNotNull(customsStages.releasedAt)
           : undefined
 
-    return tx
-      .select({
-        id: customsStages.id,
-        jobId: customsStages.jobId,
-        jobReference: jobs.reference,
-        customerName: customers.legalNameEn,
-        customerNameAr: customers.legalNameAr,
-        status: customsStages.status,
-        declarationType: customsStages.declarationType,
-        declarationNo: customsStages.declarationNo,
-        filedAt: customsStages.filedAt,
-        releasedAt: customsStages.releasedAt,
-        slaDueAt: customsStages.slaDueAt,
-        inspectionRequired: customsStages.inspectionRequired,
-        dutyAmount: customsStages.dutyAmount,
-        dutyCurrency: customsStages.dutyCurrency,
-        brokerName: partners.legalNameEn,
-        brokerNameAr: partners.legalNameAr,
-      })
-      .from(customsStages)
-      .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
-      .where(filter)
-      .orderBy(asc(customsStages.slaDueAt))
-      .limit(200)
+    return (
+      tx
+        .select({
+          id: customsStages.id,
+          jobId: customsStages.jobId,
+          jobReference: jobs.reference,
+          customerName: customers.legalNameEn,
+          customerNameAr: customers.legalNameAr,
+          status: customsStages.status,
+          declarationType: customsStages.declarationType,
+          declarationNo: customsStages.declarationNo,
+          filedAt: customsStages.filedAt,
+          releasedAt: customsStages.releasedAt,
+          slaDueAt: customsStages.slaDueAt,
+          inspectionRequired: customsStages.inspectionRequired,
+          dutyAmount: customsStages.dutyAmount,
+          dutyCurrency: customsStages.dutyCurrency,
+          brokerName: partners.legalNameEn,
+          brokerNameAr: partners.legalNameAr,
+        })
+        .from(customsStages)
+        .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
+        .leftJoin(customers, eq(customers.id, jobs.customerId))
+        .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
+        .where(filter)
+        // Released ones newest first, for the reason the exceptions give (O18).
+        .orderBy(
+          ...(scope === 'live'
+            ? [asc(customsStages.slaDueAt)]
+            : [
+                desc(sql`coalesce(${customsStages.releasedAt}, 'infinity'::timestamptz)`),
+                asc(customsStages.slaDueAt),
+              ]),
+        )
+        .limit(200)
+    )
   })
 }
 

@@ -23,12 +23,15 @@ import {
   assertTransition,
   customsMachine,
   entryPermission,
+  instantFromLocal,
+  isLocalDateTime,
   isPlausibleClockStart,
   isTerminal,
   jobMachine,
   MAX_CLOCK_BACKDATE_DAYS,
 } from '@qabandi/core'
 import {
+  branchTimeZone,
   customsStages,
   documentTypes,
   documents,
@@ -61,16 +64,43 @@ function read(form: FormData, key: string): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
-/** A `datetime-local` arrives as `YYYY-MM-DDTHH:mm` with no zone. */
+/**
+ * A `datetime-local` arrives as `YYYY-MM-DDTHH:mm` with no zone.
+ *
+ * Kept as the string it was typed as, and turned into an instant only inside
+ * the write, once the job's branch — and so its zone — is known. `new Date()`
+ * here read it as UTC on the server, so a time typed in Kuwait was stored
+ * three hours late.
+ */
 const localDateTime = (tv: Translate) =>
   z
     .string()
     .trim()
     .optional()
-    .transform((value) => (value ? new Date(value) : null))
-    .refine((value) => value === null || !Number.isNaN(value.getTime()), {
+    .transform((value) => value || null)
+    .refine((value) => value === null || isLocalDateTime(value), {
       message: tv('invalidDateTime'),
     })
+
+/** A typed wall-clock time as the instant it names in `timeZone`. */
+const at = (value: string | null, timeZone: string): Date | null =>
+  value ? instantFromLocal(value, timeZone) : null
+
+/*
+  An amount: digits, then optionally a point and up to six more.
+
+  `^\d*\.?\d*$` was the rule, and it accepts a lone "." — which reached
+  `numeric` and came back as a 500 rather than a message on the field.
+*/
+const AMOUNT = /^\d{1,13}(\.\d{1,6})?$/
+
+const optionalAmount = (message: string) =>
+  z
+    .string()
+    .trim()
+    .regex(AMOUNT, message)
+    .optional()
+    .transform((v) => (v ? v : null))
 
 // --- exceptions ------------------------------------------------------------
 
@@ -91,12 +121,7 @@ const raiseSchema = (tv: Translate) =>
       .or(z.literal('').transform(() => undefined)),
     dueAt: localDateTime(tv),
     customerVisible: z.coerce.boolean(),
-    costImpact: z
-      .string()
-      .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
-      .optional()
-      .transform((v) => (v ? v : null)),
+    costImpact: optionalAmount(tv('numbersOnly')),
     costCurrency: z
       .string()
       .trim()
@@ -124,13 +149,14 @@ export async function raiseException(_previous: ActionState, form: FormData): Pr
 
   const data = parsed.data
   await withActor(session.actor, async (tx) => {
+    const timeZone = await branchTimeZone(tx, { jobId: data.jobId })
     await tx.insert(exceptions).values({
       jobId: data.jobId,
       exceptionCodeId: data.exceptionCodeId,
       severity: data.severity,
       description: data.description,
       ownerId: data.ownerId ?? null,
-      dueAt: data.dueAt,
+      dueAt: at(data.dueAt, timeZone),
       customerVisible: data.customerVisible,
       costImpact: data.costImpact,
       costCurrency: data.costCurrency,
@@ -247,12 +273,7 @@ const customsSchema = (tv: Translate) =>
       .uuid()
       .optional()
       .or(z.literal('').transform(() => undefined)),
-    dutyAmount: z
-      .string()
-      .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
-      .optional()
-      .transform((v) => (v ? v : null)),
+    dutyAmount: optionalAmount(tv('numbersOnly')),
     dutyCurrency: z
       .string()
       .trim()
@@ -330,6 +351,7 @@ export async function saveCustomsStage(
         .from(customsStages)
         .where(eq(customsStages.jobId, data.jobId))
         .limit(1)
+      const timeZone = await branchTimeZone(tx, { jobId: data.jobId })
 
       const values = {
         status: data.status,
@@ -339,7 +361,7 @@ export async function saveCustomsStage(
         dutyAmount: data.dutyAmount,
         dutyCurrency: data.dutyCurrency,
         inspectionRequired: data.inspectionRequired,
-        slaDueAt: data.slaDueAt,
+        slaDueAt: at(data.slaDueAt, timeZone),
         notes: data.notes,
         // The two timestamps that are *derived* from the status rather than
         // typed: filing and release stamp themselves the first time the stage
@@ -408,9 +430,18 @@ export async function completeMilestone(
 
   const undo = form.get('undo') !== null
   const actualAt = read(form, 'actualAt')
+  // Refused on the field rather than left to `new Date('…')`, whose Invalid
+  // Date reached the database and came back as a 500.
+  if (!undo && actualAt && !isLocalDateTime(actualAt)) {
+    return fail({ actualAt: tv('invalidDateTime') }, echo(form))
+  }
 
   await withActor(session.actor, async (tx) => {
-    const reachedAt = undo ? null : actualAt ? new Date(actualAt) : new Date()
+    const reachedAt = undo
+      ? null
+      : actualAt
+        ? at(actualAt, await branchTimeZone(tx, { jobId }))
+        : new Date()
 
     const [milestone] = await tx
       .update(jobMilestones)
@@ -419,7 +450,7 @@ export async function completeMilestone(
         completedById: undo ? null : session.principal.id,
         updatedAt: new Date(),
       })
-      .where(eq(jobMilestones.id, milestoneId))
+      .where(and(eq(jobMilestones.id, milestoneId), eq(jobMilestones.jobId, jobId)))
       .returning({
         nameEn: jobMilestones.nameEn,
         nameAr: jobMilestones.nameAr,
@@ -512,18 +543,8 @@ const containerSchema = (tv: Translate) =>
       .max(40)
       .optional()
       .transform((v) => v || null),
-    grossWeightKg: z
-      .string()
-      .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
-      .optional()
-      .transform((v) => (v ? v : null)),
-    tareWeightKg: z
-      .string()
-      .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
-      .optional()
-      .transform((v) => (v ? v : null)),
+    grossWeightKg: optionalAmount(tv('numbersOnly')),
+    tareWeightKg: optionalAmount(tv('numbersOnly')),
   })
 
 export async function addContainer(_previous: ActionState, form: FormData): Promise<ActionState> {
@@ -838,10 +859,12 @@ export async function saveFreeTimeClock(
     }
 
     if (data.clockId) {
+      // The clock must be this job's: the id is a hidden field, and an edit
+      // posted from one job's page must not move another job's clock onto it.
       await tx
         .update(freeTimeClocks)
         .set({ ...values, updatedAt: new Date() })
-        .where(eq(freeTimeClocks.id, data.clockId))
+        .where(and(eq(freeTimeClocks.id, data.clockId), eq(freeTimeClocks.jobId, data.jobId)))
     } else {
       await tx.insert(freeTimeClocks).values(values)
     }

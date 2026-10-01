@@ -27,11 +27,14 @@ export async function ProofOfDeliveryCard({
   jobId,
   records,
   equipment,
+  branchTimeZone,
   className,
 }: {
   readonly jobId: string
   readonly records: readonly PodRow[]
   readonly equipment: readonly { value: string; label: string }[]
+  /** The job's branch zone, for the capture form's default time. */
+  readonly branchTimeZone: string
   readonly className?: string
 }) {
   const timeZone = await getTimeZone()
@@ -49,7 +52,12 @@ export async function ProofOfDeliveryCard({
         title={t('title')}
         actions={
           mayCapture ? (
-            <PodCaptureDialog jobId={jobId} equipment={equipment} variant="secondary" />
+            <PodCaptureDialog
+              jobId={jobId}
+              equipment={equipment}
+              timeZone={branchTimeZone}
+              variant="secondary"
+            />
           ) : undefined
         }
       />

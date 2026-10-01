@@ -349,6 +349,15 @@ describe.skipIf(!enabled)('estimating duty', () => {
       expect((await estimate(jobId, { goodsValue: 'a lot' })).message).toBeDefined()
     })
 
+    /** O17. A lone "." passed the old rule and decimal.js threw on it — a 500. */
+    it('refuses a lone point as the freight, with a sentence', async () => {
+      const jobId = await freshJob()
+      await cargo(jobId, [{ hsCode: '8703239000', weight: '100' }])
+      expect((await estimate(jobId, { freightValue: '.' })).message).toBe(
+        'operationsValidation.numbersOnly',
+      )
+    })
+
     it('refuses a currency that is not three letters', async () => {
       const jobId = await freshJob()
       expect((await estimate(jobId, { currency: 'KUWAITI' })).message).toBeDefined()

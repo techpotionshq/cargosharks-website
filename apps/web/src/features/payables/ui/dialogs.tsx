@@ -13,6 +13,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
+import { todayIn } from '@/lib/time'
 import {
   addSupplierInvoiceLine,
   allocateSupplierPayment,
@@ -38,7 +39,9 @@ export interface MatchCandidateOption {
   readonly group?: string
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+// The business day, not the UTC one: between midnight and 03:00 in Kuwait the
+// UTC date is still yesterday, and that is what these forms defaulted to.
+const today = () => todayIn()
 
 // --- capture ---------------------------------------------------------------
 
@@ -154,7 +157,8 @@ export async function SupplierInvoiceDialog({
           span: 4,
           mono: true,
           hint: t('fxRateHint'),
-          defaultValue: defaults?.fxRate ?? '1',
+          // Blank, not 1: the action looks a blank rate up (O3).
+          defaultValue: defaults?.fxRate,
         },
         {
           kind: 'text',

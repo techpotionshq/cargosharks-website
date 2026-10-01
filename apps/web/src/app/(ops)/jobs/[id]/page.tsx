@@ -52,6 +52,7 @@ import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 import { pickName } from '@/lib/named'
+import { localInputValue } from '@qabandi/core'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
@@ -164,13 +165,25 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 customerId: job.customerId,
                 mode: job.mode,
                 tradeDirection: job.direction,
-                status: job.status,
+                ownerId: job.ownerId,
+                quoteId: job.quoteId,
                 originId: job.originId,
                 destinationId: job.destinationId,
+                commodityId: job.commodityId,
                 incoterm: job.incoterm,
                 masterBillNumber: job.masterBillNumber,
                 houseBillNumber: job.houseBillNumber,
-                vesselName: job.vesselOrFlight,
+                bookingNumber: job.bookingNumber,
+                // The raw columns, not `vesselOrFlight`: that is the vessel and
+                // voyage joined for display, and saving it back as the vessel
+                // name grew it by the voyage on every save.
+                vesselName: job.vesselName,
+                voyageNumber: job.voyageNumber,
+                flightNumber: job.flightNumber,
+                // In the branch's zone, the one `saveJob` reads them back in,
+                // so a form opened and saved untouched writes the same instant.
+                etd: localInputValue(job.etd, job.branchTimeZone),
+                eta: localInputValue(job.eta, job.branchTimeZone),
                 placeOfReceipt: job.placeOfReceipt,
                 placeOfDelivery: job.placeOfDelivery,
                 customerReference: job.customerReference,
@@ -362,6 +375,42 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                         <span className="ref numeric text-[0.8125rem] text-ink-muted">
                           {clock.containerNo}
                         </span>
+                        {clock.endsOn ? (
+                          <Badge tone="muted">
+                            {t('clockStopped', {
+                              on: formatDate(
+                                new Date(`${clock.endsOn}T12:00:00Z`),
+                                locale,
+                                timeZone,
+                              ),
+                            })}
+                          </Badge>
+                        ) : null}
+                        {/*
+                          Correct or stop this clock (O2). It could only ever
+                          be started: nothing rendered the dialog with a
+                          clock's values, so nothing set `ends_on`, and the
+                          nightly accrual billed until the 730-day guard.
+                        */}
+                        <FreeTimeClockDialog
+                          jobId={job.id}
+                          containers={containerOptions}
+                          partners={job.partners.map((partner) => ({
+                            value: partner.partnerId,
+                            label: nameOf(partner.name, partner.nameAr),
+                          }))}
+                          defaults={{
+                            id: clock.id,
+                            kind: clock.kind,
+                            equipmentId: clock.equipmentId,
+                            startsOn: clock.startsOnDay,
+                            endsOn: clock.endsOn,
+                            freeDays: clock.freeDays,
+                            perDiem: clock.perDiemText,
+                            currency: clock.perDiem.currency,
+                            counterpartyId: clock.counterpartyId,
+                          }}
+                        />
                       </span>
                       <span className="numeric accruing font-display text-[1.375rem] leading-none font-semibold text-critical">
                         {formatMoney(clock.accrued, locale)}
@@ -614,6 +663,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           records={podRecords}
           equipment={podEquipment}
+          branchTimeZone={job.branchTimeZone}
           className="lg:col-span-12"
         />
 
