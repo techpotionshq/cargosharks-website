@@ -210,9 +210,58 @@ export function recordResetRequest(
   return byEmail
 }
 
+/**
+ * The public tracking budgets — A10, FR-CP-05.
+ *
+ * `/track` needs no session, references are sequential, and the verifier can
+ * be a shared LCL container number — so somebody holding one container could
+ * walk the references and read every co-loaded customer's route and
+ * milestones. `features/tracking/queries.ts` said a limit sat in front of it
+ * in the service; the page never went through the service, so nothing did.
+ *
+ * Three budgets, each closing one way in:
+ *
+ *   per address    every lookup, 30 a quarter-hour. Far above a customer
+ *                  checking their shipments, far below a walk.
+ *   per verifier   misses only, 10 a quarter-hour. One container number tried
+ *                  against reference after reference, from however many
+ *                  addresses — the attack the report describes.
+ *   per reference  misses only, 10 a quarter-hour. One reference tried against
+ *                  guessed verifiers.
+ *
+ * Misses rather than lookups for the last two, so a customer refreshing their
+ * own shipment all afternoon never spends them.
+ */
+const trackByAddress = createThrottle(30, 15 * 60 * 1000)
+const trackMissByVerifier = createThrottle(10, 15 * 60 * 1000)
+const trackMissByReference = createThrottle(10, 15 * 60 * 1000)
+
+/** Spend a lookup, and say whether to run it. Call before the query. */
+export function recordTrackingLookup(
+  address: string | null,
+  reference: string,
+  verifier: string,
+  now = Date.now(),
+): ThrottleVerdict {
+  const byAddress = trackByAddress.hit(address, now)
+  if (!byAddress.allowed) return byAddress
+  const byVerifier = trackMissByVerifier.peek(verifier, now)
+  if (!byVerifier.allowed) return byVerifier
+  return trackMissByReference.peek(reference, now)
+}
+
+/** Count a lookup that matched nothing against its verifier and its reference. */
+export function recordTrackingMiss(reference: string, verifier: string, now = Date.now()): void {
+  trackMissByVerifier.hit(verifier, now)
+  trackMissByReference.hit(reference, now)
+}
+
 /** Test seam. Not exported from any barrel; nothing in the product calls it. */
 export function __resetThrottle(): void {
   signIn.reset()
   resetByAddress.reset()
   resetByEmail.reset()
+  trackByAddress.reset()
+  trackMissByVerifier.reset()
+  trackMissByReference.reset()
 }

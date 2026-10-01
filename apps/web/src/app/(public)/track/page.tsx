@@ -21,8 +21,11 @@
  */
 
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { trackShipment } from '@/features/tracking/queries'
+import { clientAddressFrom } from '@/lib/client-address'
+import { recordTrackingLookup, recordTrackingMiss } from '@/lib/throttle'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { getBrand } from '@/lib/brand'
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format'
@@ -51,7 +54,22 @@ export default async function TrackPage({
   const verifier = params.verifier?.trim() ?? ''
   const submitted = reference !== '' && verifier !== ''
 
-  const result = submitted ? await trackShipment(reference, verifier) : undefined
+  /*
+    The rate limit the query's docstring promised — A10, `lib/throttle.ts`.
+
+    Spent before the lookup, so a refused walk costs us nothing. Keys are
+    normalised the way the query normalises them, or `abc 123` and `ABC123`
+    would be two budgets for one container. A refusal says so plainly: it
+    describes the caller's rate, not whether any reference exists.
+  */
+  const key = (value: string) => value.toUpperCase().replace(/\s+/g, '')
+  const verdict = submitted
+    ? recordTrackingLookup(clientAddressFrom(await headers()), key(reference), key(verifier))
+    : null
+  const throttled = verdict !== null && !verdict.allowed
+
+  const result = submitted && !throttled ? await trackShipment(reference, verifier) : undefined
+  if (submitted && !throttled && !result) recordTrackingMiss(key(reference), key(verifier))
 
   const t = await getTranslations('track')
   const tJob = await getTranslations('job')
@@ -122,7 +140,15 @@ export default async function TrackPage({
         </form>
       </Card>
 
-      {submitted && !result ? (
+      {throttled ? (
+        <Card>
+          <EmptyState
+            icon="clock"
+            title={t('throttled')}
+            description={t('throttledHint', { minutes: verdict.minutesRemaining })}
+          />
+        </Card>
+      ) : submitted && !result ? (
         <Card>
           <EmptyState icon="search" title={t('notFound')} description={t('notFoundHint')} />
         </Card>
