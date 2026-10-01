@@ -971,8 +971,8 @@ export async function setInvoiceStatus(
             status === 'issued'
               ? sql`coalesce(${invoices.dueOn}, current_date + coalesce((
                   select t.payment_terms_days from customer_branch_terms t
-                   where t.customer_id = ${invoices.customerId}
-                     and t.branch_id = ${invoices.branchId}
+                   where t.customer_id = "invoices"."customer_id"
+                     and t.branch_id = "invoices"."branch_id"
                 ), 30))`
               : undefined,
           updatedAt: new Date(),
@@ -1079,7 +1079,7 @@ async function raiseCreditNote(tx: any, invoiceId: string, principalId: string):
       taxRatePercent: invoices.taxRatePercent,
       language: invoices.language,
       fxRate: sql<string | null>`coalesce(${invoices.fxRate}, (
-        select cl.fx_rate from charge_lines cl where cl.invoice_id = ${invoices.id} limit 1
+        select cl.fx_rate from charge_lines cl where cl.invoice_id = "invoices"."id" limit 1
       ))`,
     })
     .from(invoices)
@@ -1577,6 +1577,9 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
     }
 
     const currency = currencies[0]!
+    // Plain values for the terms lookup below — bound as parameters.
+    const customerId = job.customerId
+    const jobBranchId = job.branchId
 
     /*
       Tax is out of scope until somebody says otherwise, which is the same
@@ -1601,7 +1604,7 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         */
         dueOn: sql`current_date + coalesce((
           select t.payment_terms_days from customer_branch_terms t
-           where t.customer_id = ${job.customerId} and t.branch_id = ${job.branchId}
+           where t.customer_id = ${customerId} and t.branch_id = ${jobBranchId}
         ), 30)`,
         // In the language of whoever billed it; it was English whatever the
         // screen, and the invoice page shows it.
