@@ -77,3 +77,95 @@ export function isTimeZone(value: string | null | undefined): value is string {
 export function resolveTimeZone(value: string | null | undefined): string {
   return isTimeZone(value) ? value : DEFAULT_TIME_ZONE
 }
+
+/*
+  The other direction — a wall-clock time typed into a form, back to an instant.
+
+  A `datetime-local` input submits `2026-10-04T09:00` with no zone, and
+  `new Date()` on a server that runs in UTC reads it as 09:00 UTC. A milestone
+  an operator in Kuwait ticked at nine in the morning then displayed as noon,
+  and an ETA of 22:00 went out to the customer as the following day. The time
+  a person types belongs to the branch they are working for, so it is read in
+  that branch's zone — the same rule `dayIn` applies to business dates.
+*/
+
+const LOCAL_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/
+
+/** Whether `value` has the `YYYY-MM-DDTHH:mm[:ss]` shape a `datetime-local` posts. */
+export function isLocalDateTime(value: string): boolean {
+  const match = LOCAL_DATE_TIME.exec(value)
+  if (!match) return false
+  const [, y, mo, d, h, mi, s] = match
+  const probe = new Date(Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!, +(s ?? 0)))
+  // `Date.UTC` rolls 2026-02-31 over into March; a round trip catches it.
+  return (
+    probe.getUTCFullYear() === +y! &&
+    probe.getUTCMonth() === +mo! - 1 &&
+    probe.getUTCDate() === +d! &&
+    probe.getUTCHours() === +h! &&
+    probe.getUTCMinutes() === +mi!
+  )
+}
+
+/** How far `timeZone` is ahead of UTC at `instant`, in milliseconds. */
+function offsetAt(instant: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(instant)
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0)
+  const wall = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second'),
+  )
+  return wall - Math.floor(instant.getTime() / 1000) * 1000
+}
+
+/**
+ * The instant a wall-clock time names in `timeZone`, or null if `value` is not
+ * one.
+ *
+ * Two passes rather than one, because the offset that applies is the offset
+ * *at the answer*, not at the guess — they differ only across a daylight-saving
+ * change, which the Gulf does not keep and half our counterparties do.
+ */
+export function instantFromLocal(value: string, timeZone: string = DEFAULT_TIME_ZONE): Date | null {
+  if (!isLocalDateTime(value)) return null
+  const [, y, mo, d, h, mi, s] = LOCAL_DATE_TIME.exec(value)!
+  const wall = Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!, +(s ?? 0))
+  const zone = resolveTimeZone(timeZone)
+  let guess = wall - offsetAt(new Date(wall), zone)
+  guess = wall - offsetAt(new Date(guess), zone)
+  return new Date(guess)
+}
+
+/**
+ * The value a `datetime-local` input needs to show `instant` in `timeZone`:
+ * `YYYY-MM-DDTHH:mm`. The inverse of `instantFromLocal`, so an edit form that
+ * is opened and saved untouched writes back the instant it read.
+ */
+export function localInputValue(
+  instant: Date | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE,
+): string | null {
+  if (!instant || Number.isNaN(instant.getTime())) return null
+  const shifted = new Date(instant.getTime() + offsetAt(instant, resolveTimeZone(timeZone)))
+  return shifted.toISOString().slice(0, 16)
+}
+
+/** `day` (`YYYY-MM-DD`) moved by `days` calendar days — pure date arithmetic. */
+export function shiftDay(day: string, days: number): string {
+  const date = new Date(`${day}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_TIME_ZONE, dayIn, isTimeZone, resolveTimeZone, todayIn } from '../src/index'
+import {
+  DEFAULT_TIME_ZONE,
+  dayIn,
+  instantFromLocal,
+  isTimeZone,
+  localInputValue,
+  resolveTimeZone,
+  shiftDay,
+  todayIn,
+} from '../src/index'
 
 /**
  * The three-hour window.
@@ -80,5 +89,52 @@ describe('resolveTimeZone', () => {
   it('falls back rather than propagating a stored value tzdata has dropped', () => {
     expect(resolveTimeZone('Nowhere/Bogus')).toBe(DEFAULT_TIME_ZONE)
     expect(resolveTimeZone(null)).toBe(DEFAULT_TIME_ZONE)
+  })
+})
+
+describe('instantFromLocal', () => {
+  it('reads a typed time in the branch zone, not the server zone', () => {
+    // 09:00 in Kuwait is 06:00 UTC; `new Date()` on a UTC server said 09:00Z.
+    expect(instantFromLocal('2026-10-04T09:00', 'Asia/Kuwait')?.toISOString()).toBe(
+      '2026-10-04T06:00:00.000Z',
+    )
+    expect(instantFromLocal('2026-10-04T09:00', 'Asia/Dubai')?.toISOString()).toBe(
+      '2026-10-04T05:00:00.000Z',
+    )
+  })
+
+  it('keeps a late-evening ETA on its own day', () => {
+    const eta = instantFromLocal('2026-10-04T22:00', 'Asia/Kuwait')!
+    expect(dayIn(eta, 'Asia/Kuwait')).toBe('2026-10-04')
+  })
+
+  it('follows daylight saving', () => {
+    expect(instantFromLocal('2026-07-14T09:00', 'Europe/London')?.toISOString()).toBe(
+      '2026-07-14T08:00:00.000Z',
+    )
+    expect(instantFromLocal('2026-01-14T09:00', 'Europe/London')?.toISOString()).toBe(
+      '2026-01-14T09:00:00.000Z',
+    )
+  })
+
+  it('refuses what is not a wall-clock time', () => {
+    expect(instantFromLocal('2026-02-31T09:00', 'Asia/Kuwait')).toBeNull()
+    expect(instantFromLocal('tomorrow', 'Asia/Kuwait')).toBeNull()
+    expect(instantFromLocal('2026-10-04T09:00Z', 'Asia/Kuwait')).toBeNull()
+  })
+
+  it('round-trips with localInputValue', () => {
+    const instant = new Date('2026-10-04T19:30:00Z')
+    const shown = localInputValue(instant, 'Asia/Kuwait')
+    expect(shown).toBe('2026-10-04T22:30')
+    expect(instantFromLocal(shown!, 'Asia/Kuwait')?.getTime()).toBe(instant.getTime())
+    expect(localInputValue(null)).toBeNull()
+  })
+})
+
+describe('shiftDay', () => {
+  it('moves across a month end', () => {
+    expect(shiftDay('2026-10-31', 1)).toBe('2026-11-01')
+    expect(shiftDay('2026-10-01', -1)).toBe('2026-09-30')
   })
 })

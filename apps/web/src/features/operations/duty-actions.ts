@@ -24,7 +24,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   SEED_CURRENCIES,
@@ -58,16 +58,20 @@ const schema = (tv: Translate) =>
       .string()
       .trim()
       .regex(/^\d+(\.\d{1,6})?$/, tv('goodsValueNumber')),
+    /*
+      The same shape as the goods value. `^\d*\.?\d*$` let a lone "." through,
+      and decimal.js threw on it — a 500 instead of a message.
+    */
     freightValue: z
       .string()
       .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
+      .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
       .optional()
       .transform((v) => v || '0'),
     insuranceValue: z
       .string()
       .trim()
-      .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
+      .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
       .optional()
       .transform((v) => v || '0'),
     currency: z.string().trim().length(3),
@@ -108,7 +112,7 @@ export async function estimateJobDuty(
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [job] = await tx
-      .select({ id: jobs.id, branchCountry: branches.country })
+      .select({ id: jobs.id, branchCountry: branches.country, timeZone: branches.timeZone })
       .from(jobs)
       .innerJoin(branches, eq(branches.id, jobs.branchId))
       .where(eq(jobs.id, data.jobId))
@@ -130,7 +134,9 @@ export async function estimateJobDuty(
     const tariff = (await tx
       .select()
       .from(dutyRates)
-      .where(eq(dutyRates.country, job.branchCountry))) as unknown as TariffLine[]
+      .where(
+        and(eq(dutyRates.country, job.branchCountry), eq(dutyRates.isActive, true)),
+      )) as unknown as TariffLine[]
 
     /*
       CIF, not the commercial invoice.
@@ -209,6 +215,7 @@ export async function estimateJobDuty(
       currency,
       on,
       spec: currencySpec,
+      timeZone: job.timeZone,
       ...(data.useGeneralRate
         ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' }
         : {}),

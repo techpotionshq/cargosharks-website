@@ -17,6 +17,8 @@ import { loadOptions } from '@/lib/options'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import type { OpenEnquiryRow, OutstandingInvoiceRow } from '@/lib/pilot/types'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
+import { todayIn } from '@/lib/time'
+import { shiftDay } from '@qabandi/core'
 import { addQuoteLine, createInvoice, createQuote, recordPayment } from '../form-actions'
 
 /** The charge bases a quotation line can carry — `rating.ts` in core. */
@@ -41,11 +43,14 @@ async function pickerLocale(): Promise<'en' | 'ar'> {
   return isLocale(resolved) ? resolved : 'en'
 }
 
-/** Today, and thirty days out — the two dates these forms default to. */
+/**
+ * Today, and thirty days out — the two dates these forms default to.
+ *
+ * The business day (`todayIn`), not the UTC one: between midnight and 03:00 in
+ * Kuwait the UTC date is still yesterday, and every default was a day stale.
+ */
 function isoDay(offsetDays = 0): string {
-  const date = new Date()
-  date.setUTCDate(date.getUTCDate() + offsetDays)
-  return date.toISOString().slice(0, 10)
+  return shiftDay(todayIn(), offsetDays)
 }
 
 export async function QuoteDialog({

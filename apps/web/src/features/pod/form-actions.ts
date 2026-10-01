@@ -26,9 +26,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { jobs, podPhotos, proofOfDelivery, withActor } from '@qabandi/db'
+import { instantFromLocal, isLocalDateTime } from '@qabandi/core'
+import { branches, jobs, podPhotos, proofOfDelivery, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import {
@@ -41,6 +42,9 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+
+/** A correction naming a record it may not retire — thrown to roll back. */
+class PodRefusal extends Error {}
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -69,7 +73,10 @@ const podSchema = (tv: Translate) =>
       `now()`, which would quietly replace the fact with the moment somebody
       typed it up.
     */
-      deliveredAt: z.coerce.date(),
+      deliveredAt: z
+        .string()
+        .trim()
+        .refine((v) => isLocalDateTime(v), { message: tv('notDeliveryTime') }),
       receivedByName: z.string().trim().min(2, tv('whoSigned')).max(120),
       receivedByIdNumber: z
         .string()
@@ -148,9 +155,20 @@ export async function captureProofOfDelivery(
     branch the principal happens to hold but the shipment does not belong to.
   */
   const [job] = await withActor(session.actor, (tx) =>
-    tx.select({ branchId: jobs.branchId }).from(jobs).where(eq(jobs.id, data.jobId)).limit(1),
+    tx
+      .select({ branchId: jobs.branchId, timeZone: branches.timeZone })
+      .from(jobs)
+      .innerJoin(branches, eq(branches.id, jobs.branchId))
+      .where(eq(jobs.id, data.jobId))
+      .limit(1),
   )
   if (!job) return failWith(tv('shipmentNotFound'))
+  /*
+    The time the cargo changed hands, as typed at the gate, read in the
+    branch's zone. `z.coerce.date()` read it as UTC on the server, so a
+    delivery signed at 14:20 in Kuwait was stored as 17:20.
+  */
+  const deliveredAt = instantFromLocal(data.deliveredAt, job.timeZone)!
 
   const failedUploads: string[] = []
 
@@ -182,13 +200,13 @@ export async function captureProofOfDelivery(
     }
   }
 
-  await withActor(session.actor, async (tx) => {
+  const outcome = await withActor(session.actor, async (tx) => {
     const [pod] = await tx
       .insert(proofOfDelivery)
       .values({
         jobId: data.jobId,
         equipmentId: data.equipmentId ?? null,
-        deliveredAt: data.deliveredAt,
+        deliveredAt,
         receivedByName: data.receivedByName,
         receivedByIdNumber: data.receivedByIdNumber,
         signatureAssetId,
@@ -216,12 +234,30 @@ export async function captureProofOfDelivery(
       on the customer portal.
     */
     if (data.supersedesId) {
-      await tx
+      /*
+        Only a record on this job, and only one still standing (O16). The id
+        is a hidden field: unchecked, a correction posted against job A could
+        retire job B's delivery record, which then reads as "never delivered"
+        on B's portal. Matching nothing rolls the new record back with it.
+      */
+      const retired = await tx
         .update(proofOfDelivery)
         .set({ supersededById: pod!.id })
-        .where(eq(proofOfDelivery.id, data.supersedesId))
+        .where(
+          and(
+            eq(proofOfDelivery.id, data.supersedesId),
+            eq(proofOfDelivery.jobId, data.jobId),
+            isNull(proofOfDelivery.supersededById),
+          ),
+        )
+        .returning({ id: proofOfDelivery.id })
+      if (retired.length === 0) throw new PodRefusal()
     }
+  }).catch((error: unknown) => {
+    if (error instanceof PodRefusal) return 'refused' as const
+    throw error
   })
+  if (outcome === 'refused') return failWith(tv('nothingToCorrect'))
 
   revalidatePath(`/jobs/${data.jobId}`)
   revalidatePath('/portal')

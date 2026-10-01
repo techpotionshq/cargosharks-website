@@ -62,6 +62,35 @@ describe('the lookup', () => {
     expect(findRate(tariff, 'AE', '8703239000', on)?.descriptionEn).toBe('Motor cars — UAE')
   })
 
+  it('skips a row an administrator switched off', () => {
+    const withdrawn = tariff.map((t) => (t.hsPrefix === '870323' ? { ...t, isActive: false } : t))
+    expect(findRate(withdrawn, 'KW', '8703239000', on)?.hsPrefix).toBe('8703')
+  })
+
+  it("reads the tariff day in the branch's zone", () => {
+    const changing: TariffLine[] = [
+      {
+        country: 'KW',
+        hsPrefix: '99',
+        ratePercent: '5',
+        descriptionEn: 'old',
+        effectiveFrom: '2003-01-01',
+        effectiveTo: '2026-10-01',
+      },
+      {
+        country: 'KW',
+        hsPrefix: '99',
+        ratePercent: '8',
+        descriptionEn: 'new',
+        effectiveFrom: '2026-10-01',
+      },
+    ]
+    // 01:00 on 1 October in Kuwait is still 30 September in UTC.
+    const justAfterMidnight = new Date('2026-09-30T22:00:00Z')
+    expect(findRate(changing, 'KW', '9901', justAfterMidnight)?.ratePercent).toBe('8')
+    expect(findRate(changing, 'KW', '9901', justAfterMidnight, 'UTC')?.ratePercent).toBe('5')
+  })
+
   it('ignores separators in the declared code', () => {
     expect(findRate(tariff, 'KW', '8703.23.90', on)?.hsPrefix).toBe('870323')
     expect(normaliseHsCode('8703.23.90')).toBe('87032390')
