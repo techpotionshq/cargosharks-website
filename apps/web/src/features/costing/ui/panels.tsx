@@ -107,7 +107,12 @@ export async function JobLedgerCard({
         </Figure>
         <Figure label={t('gross')} tone={marginTone}>
           {display(margin.gross.amount.toString(), baseCurrency, locale)}
-          <span className="ms-2 text-[0.75rem] font-normal text-ink-subtle">
+          {/*
+            A real space, not only the margin: copied, read aloud or found with
+            the browser's search, the two ran together as "KWD 0.000not priced
+            yet" (U6).
+          */}{' '}
+          <span className="ms-1 text-[0.75rem] font-normal text-ink-subtle">
             {margin.grossPercent === null
               ? t('unpriced')
               : formatPercent(Number(margin.grossPercent.toString()), locale)}
