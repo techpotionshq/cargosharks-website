@@ -29,6 +29,7 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import type { Session } from '@/lib/session'
+import { assistantFailure, type AssistantFailure } from '@/features/assistant/failures'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,8 +47,9 @@ function service(): { url: string; secret: string } | null {
   return url && secret ? { url: url.replace(/\/$/, ''), secret } : null
 }
 
-const unavailable = (message: string, status = 503) =>
-  NextResponse.json({ ok: false, unavailable: message }, { status })
+// Codes, not sentences — `features/assistant/failures.ts` says why (U1, U3).
+const unavailable = (reason: AssistantFailure, status = 503) =>
+  NextResponse.json({ ok: false, reason }, { status })
 
 /** One call into the service, with the session's identity attached. */
 async function call(
@@ -90,13 +92,13 @@ export async function POST(request: Request): Promise<Response> {
   const threadId = typeof body.threadId === 'string' ? body.threadId : null
 
   if (!service()) {
-    return unavailable('The assistant runs in the service, which is not configured here.')
+    return unavailable('serviceNotConfigured')
   }
 
   try {
     if (op === 'threads') {
       const response = await call('threads', session, {}, 15_000)
-      if (!response.ok) return unavailable('Could not load your conversations.', 502)
+      if (!response.ok) return unavailable('threadsFailed', 502)
       /*
         Carries `configured` as well as the list. The panel asks this once when
         it opens, and the answer decides whether it offers a composer at all —
@@ -109,14 +111,14 @@ export async function POST(request: Request): Promise<Response> {
     if (op === 'thread') {
       if (!threadId) return NextResponse.json({ ok: false }, { status: 400 })
       const response = await call('thread', session, { threadId }, 15_000)
-      if (!response.ok) return unavailable('Could not open that conversation.', 502)
+      if (!response.ok) return unavailable('threadFailed', 502)
       return NextResponse.json({ ok: true, ...((await response.json()) as object) })
     }
 
     if (op === 'close') {
       if (!threadId) return NextResponse.json({ ok: false }, { status: 400 })
       const response = await call('thread/close', session, { threadId }, 15_000)
-      if (!response.ok) return unavailable('Could not close that conversation.', 502)
+      if (!response.ok) return unavailable('closeFailed', 502)
       return NextResponse.json({ ok: true, ...((await response.json()) as object) })
     }
 
@@ -134,7 +136,7 @@ export async function POST(request: Request): Promise<Response> {
       taken from every branch on the actor.
     */
     const branchId = session.actor.branchIds[0]
-    if (!branchId) return unavailable('You are not assigned to a branch.')
+    if (!branchId) return unavailable('noBranch')
 
     /*
       No transcript is posted from the browser.
@@ -163,16 +165,16 @@ export async function POST(request: Request): Promise<Response> {
     )
 
     if (response.status === 503) {
-      const failure = (await response.json().catch(() => ({}))) as { message?: string }
+      const failure = (await response.json().catch(() => ({}))) as { error?: string }
       /*
         Not configured and out of budget both arrive here, and both are "not
-        right now" rather than "something broke". The service's own sentence
-        says which, so it is passed through rather than replaced.
+        right now" rather than "something broke". The service's code says
+        which, and the panel words it in the reader's language.
       */
-      return unavailable(failure.message ?? 'The assistant is not available on this deployment.')
+      return unavailable(assistantFailure(failure.error))
     }
 
-    if (!response.ok || !response.body) return unavailable('The assistant could not answer.', 502)
+    if (!response.ok || !response.body) return unavailable('couldNotAnswer', 502)
 
     /*
       The service's stream, passed straight through.
@@ -191,11 +193,6 @@ export async function POST(request: Request): Promise<Response> {
     })
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'TimeoutError'
-    return unavailable(
-      timedOut
-        ? 'The assistant did not answer in time. Try a narrower question.'
-        : 'The assistant could not be reached.',
-      timedOut ? 504 : 502,
-    )
+    return unavailable(timedOut ? 'timedOut' : 'unreachable', timedOut ? 504 : 502)
   }
 }

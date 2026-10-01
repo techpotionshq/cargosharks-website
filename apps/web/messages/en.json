@@ -3255,6 +3255,22 @@
       "clearance": "What is sitting in customs clearance?",
       "freeTime": "Whose free time runs out this week?",
       "exceptions": "What should I look at today?"
+    },
+    "serviceMissing": "The assistant service is not connected",
+    "serviceMissingHint": "The assistant runs in the background service, and this deployment is not connected to it. Nothing is down; an administrator needs to set SERVICE_URL and INTERNAL_API_SECRET.",
+    "failures": {
+      "serviceNotConfigured": "The assistant service is not connected on this deployment.",
+      "noBranch": "You are not assigned to a branch, so the assistant has nothing to look at.",
+      "threadsFailed": "Your conversations could not be loaded.",
+      "threadFailed": "That conversation could not be opened.",
+      "closeFailed": "That conversation could not be closed.",
+      "couldNotAnswer": "The assistant could not answer.",
+      "couldNotFinish": "The assistant could not finish that answer.",
+      "timedOut": "The assistant did not answer in time. Try a narrower question.",
+      "unreachable": "The assistant could not be reached.",
+      "notAvailable": "The assistant is not available on this deployment.",
+      "aiNotConfigured": "No model is configured for this deployment.",
+      "aiBudgetExhausted": "This month's model budget has been spent. The assistant is back next month, or when an administrator raises the ceiling."
     }
   },
   "proposals": {

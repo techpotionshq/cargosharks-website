@@ -25,6 +25,7 @@
 
 import { ASSISTANT_TOOLS } from '@qabandi/core'
 import type { DockLabels } from './ui/assistant-dock'
+import { ASSISTANT_FAILURES, type AssistantFailure } from './failures'
 
 type Translator = (key: string) => string
 
@@ -79,6 +80,13 @@ export function assistantLabels(t: Translator): DockLabels {
     openSettings: t('openSettings'),
     unreachable: t('unreachable'),
     unreachableHint: t('unreachableHint'),
+    serviceMissing: t('serviceMissing'),
+    serviceMissingHint: t('serviceMissingHint'),
+    // A record built from the codes, so a code added to `failures.ts` without
+    // a sentence here is a type error rather than `undefined` on screen.
+    failures: Object.fromEntries(
+      ASSISTANT_FAILURES.map((code) => [code, t(`failures.${code}`)]),
+    ) as Record<AssistantFailure, string>,
     newThread: t('newThread'),
     threads: t('threads'),
     noThreads: t('noThreads'),
