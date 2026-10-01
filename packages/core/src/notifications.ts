@@ -193,6 +193,21 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['asOf', 'count', 'horizonDays', 'soonest', 'lanes', 'lanesAr'],
   }),
 
+  /*
+    An agent wrote again about a rate request that was already read, decided
+    or replaced — a revised rate after the first was parsed, the real quote
+    after an auto-reply, a second answer to a renewal. The mail is filed and
+    the request is left as it was decided; whether the new figure changes
+    anything is the desk's call. Internal for `rate_card.expiring`'s reason.
+  */
+  event({
+    key: 'rate_request.late_reply',
+    audience: 'internal',
+    requirement: 'FR-RT-10',
+    summary: 'An agent replied again on a rate request that was already read or decided.',
+    fields: ['reference', 'partnerName'],
+  }),
+
   // --- exception -----------------------------------------------------------
   event({
     key: 'exception.opened',

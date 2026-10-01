@@ -53,6 +53,7 @@ import {
   mailboxes,
   enquiries,
   partnerContacts,
+  partners,
   inboundWebhookEvents,
   jobs,
   messageAttachments,
@@ -531,12 +532,23 @@ export async function ingestMessage(
         `createEnquiry` would put a broker's price on the board as a shipment
         request. The row is filed, the request moves to `responded`, and a model
         reads the charges after the commit.
+
+        That holds whatever state the request is in. Only `sent` and
+        `responded` used to match, so the agent's *second* mail — "revised rate
+        attached" after the first was read, the real quote after an auto-ack,
+        any reply to a renewal RFQ that has no enquiry — fell through to
+        `createEnquiry` and landed on the board as a customer's shipment, with
+        an SLA clock, a model call and, with auto-fanout on, RFQs about itself.
+        A request already read or decided is not reopened (`late`, below): the
+        mail is filed on its enquiry and a person is told.
       */
       const rfqToken = rfqTokenIn(message.subject ?? null, message.body)
-      const rateRequest = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+      const matched = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+      const rateRequest = matched && AWAITING_REPLY.has(matched.status) ? matched : null
+      const late = matched && !rateRequest ? matched : null
 
-      const context = rateRequest
-        ? { enquiryId: rateRequest.enquiryId, jobId: null, created: false }
+      const context = matched
+        ? { enquiryId: matched.enquiryId, jobId: null, created: false }
         : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf)))
 
       const [row] = await tx
@@ -631,13 +643,43 @@ export async function ingestMessage(
           .where(eq(rateRequests.id, rateRequest.id))
       }
 
+      /*
+        A reply to a request that was already read, decided or replaced.
+
+        Filed — on the enquiry, or unattached for a renewal RFQ, which has none
+        — and *not* re-read: the request keeps its status, its parsed figures
+        and any card already promoted from it, because a model overwriting an
+        accepted award with a later mail is a decision nobody made. Whether the
+        new mail changes anything is a person's call, so a person is told, on
+        the internal channel the variance alarm uses. The receipt says the same
+        thing for whoever looks there first.
+      */
+      if (late) {
+        await tx.insert(notificationOutbox).values({
+          branchId: branch.id,
+          eventKey: 'rate_request.late_reply',
+          enquiryId: late.enquiryId,
+          payload: {
+            reference: late.enquiryReference ?? late.token,
+            partnerName: late.partnerName,
+          },
+        })
+      }
+
       await tx
         .update(inboundWebhookEvents)
-        .set({ processedAt: asOf, error: null, updatedAt: asOf })
+        .set({
+          processedAt: asOf,
+          error: late
+            ? `rate reply to a request already ${late.status}: filed, not re-read; ` +
+              'a person has been told'
+            : null,
+          updatedAt: asOf,
+        })
         .where(eq(inboundWebhookEvents.id, claim.id))
 
       return {
-        outcome: rateRequest
+        outcome: matched
           ? ('rate_reply' as const)
           : context.created
             ? ('created' as const)
@@ -1003,31 +1045,43 @@ async function matchPartner(tx: any, from: string): Promise<string | null> {
   return byDomain.length === 1 ? byDomain[0]!.partnerId : null
 }
 
+/** The request states a reply is read into; any other state is a late reply. */
+const AWAITING_REPLY = new Set(['sent', 'responded'])
+
 /**
  * The rate request a reply's token names, scoped to the branch — FR-RT-10.
  *
  * `token` is unique across the table, so the branch predicate is a guard rather
  * than a tiebreak: a token that resolves to another branch's request is treated
- * as no match, and the reply falls through to the ordinary rules. Only a request
- * still awaiting an answer is matched — a `superseded` re-send or one already
- * `accepted` is not reopened by a late duplicate reply, which would otherwise
- * roll a decided request back to `responded`.
+ * as no match, and the reply falls through to the ordinary rules. Every status
+ * matches — the caller decides what a reply to a decided request does — so a
+ * token we issued can never open an enquiry.
  */
 async function findRateRequestByToken(
   tx: any,
   token: string,
   branchId: string,
-): Promise<{ id: string; enquiryId: string | null } | null> {
+): Promise<{
+  id: string
+  enquiryId: string | null
+  status: string
+  token: string
+  partnerName: string
+  enquiryReference: string | null
+} | null> {
   const rows = await tx
-    .select({ id: rateRequests.id, enquiryId: rateRequests.enquiryId })
+    .select({
+      id: rateRequests.id,
+      enquiryId: rateRequests.enquiryId,
+      status: rateRequests.status,
+      token: rateRequests.token,
+      partnerName: partners.legalNameEn,
+      enquiryReference: enquiries.reference,
+    })
     .from(rateRequests)
-    .where(
-      and(
-        eq(rateRequests.token, token),
-        eq(rateRequests.branchId, branchId),
-        sql`${rateRequests.status} in ('sent', 'responded')`,
-      ),
-    )
+    .innerJoin(partners, eq(partners.id, rateRequests.partnerId))
+    .leftJoin(enquiries, eq(enquiries.id, rateRequests.enquiryId))
+    .where(and(eq(rateRequests.token, token), eq(rateRequests.branchId, branchId)))
     .limit(1)
   return rows[0] ?? null
 }
