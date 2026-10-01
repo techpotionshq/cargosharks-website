@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getJobDetail } from '@/features/jobs/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import {
@@ -57,7 +58,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const job = await getJobDetail(session.actor, id)
   if (!job) notFound()
 

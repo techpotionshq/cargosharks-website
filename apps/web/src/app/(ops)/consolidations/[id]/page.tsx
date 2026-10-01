@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import {
   getConsolidation,
@@ -47,7 +48,7 @@ export default async function ConsolidationDetailPage({
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const { id } = await params
+  const id = recordId((await params).id)
 
   const consol = await getConsolidation(session.actor, id, locale)
   if (!consol) notFound()

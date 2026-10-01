@@ -10,6 +10,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
@@ -32,7 +33,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const customer = await getCustomer(session.actor, id)
   if (!customer) return { title: 'Customer' }
   // The tab says what the heading says (F27).
@@ -44,7 +45,7 @@ export async function generateMetadata({
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
 
   const customer = await getCustomer(session.actor, id)
   if (!customer) notFound()

@@ -3919,5 +3919,28 @@
       "en": "English",
       "ar": "Arabic"
     }
+  },
+  "fileRefusal": {
+    "back": "Go back",
+    "not_found": {
+      "title": "This document is not available",
+      "body": "It does not exist, or it is not one you can open. Check the link, or ask the person who sent it."
+    },
+    "not_configured": {
+      "title": "Documents cannot be produced on this system yet",
+      "body": "The document service is not connected. The record itself is safe; an administrator needs to finish setting up the service before files can be generated or downloaded."
+    },
+    "not_available": {
+      "title": "Documents are not part of this demo",
+      "body": "This demo runs on sample data with no document service behind it, so files cannot be generated here."
+    },
+    "render_failed": {
+      "title": "The document could not be produced",
+      "body": "The document service did not finish. Try again in a minute; if it keeps failing, tell your administrator."
+    },
+    "storage_unavailable": {
+      "title": "The file could not be fetched",
+      "body": "The file store did not answer. Try again in a minute; if it keeps failing, tell your administrator."
+    }
   }
 }

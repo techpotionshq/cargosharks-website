@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import { getSettlement } from '@/features/payables/queries'
 import { advanceSettlement } from '@/features/payables/form-actions'
@@ -44,7 +45,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const { id } = await params
+  const id = recordId((await params).id)
 
   const settlement = await getSettlement(session.actor, id, locale)
   if (!settlement) notFound()

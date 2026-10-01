@@ -21,6 +21,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney, formatNumber } from '@/lib/format'
@@ -42,7 +43,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   // The locale names the customer and the lane in the reader's language (F27).

@@ -30,14 +30,18 @@ import { NextResponse } from 'next/server'
 import { and, eq, isNull } from 'drizzle-orm'
 import { assets, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
+import { fileRefusal } from '@/lib/file-refusal'
+import { isUuid } from '@/lib/ids'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
   const { id } = await params
+  // Not a uuid is not an asset, and used to be a 500 from the cast (A17).
+  if (!isUuid(id)) return fileRefusal(request, 'not_found')
 
   const [record] = await withActor(session.actor, (tx) =>
     tx
@@ -50,21 +54,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       .limit(1),
   )
 
-  if (!record) return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  if (!record) return fileRefusal(request, 'not_found')
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
   if (!serviceUrl || !secret) {
-    return NextResponse.json(
-      {
-        error: 'storage_not_configured',
-        message:
-          'The file store is reached through the service. Set SERVICE_URL and ' +
-          'INTERNAL_API_SECRET to enable downloads; the record itself is intact.',
-        fileName: record.fileName,
-      },
-      { status: 503 },
-    )
+    return fileRefusal(request, 'not_configured', { fileName: record.fileName })
   }
 
   const signed = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
@@ -75,10 +70,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   })
 
   if (!signed.ok) {
-    return NextResponse.json(
-      { error: 'storage_unavailable', fileName: record.fileName },
-      { status: 502 },
-    )
+    return fileRefusal(request, 'storage_unavailable', { fileName: record.fileName })
   }
 
   const { url } = (await signed.json()) as { url: string }
