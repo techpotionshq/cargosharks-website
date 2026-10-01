@@ -26,7 +26,7 @@
  * rule guards against cannot start here either.
  */
 
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import {
   enquiries,
   locations,
@@ -50,6 +50,20 @@ import { rfqSubjectTag } from './rfq-routing'
  * near this, and a genuine backlog drains steadily rather than in a spike.
  */
 const SEND_BATCH = 200
+
+/**
+ * How many times a request is tried before the drain stops on it.
+ *
+ * With the backoff below, eight tries spread over about four hours: enough to
+ * ride out a relay outage or a contact added the same morning, few enough that
+ * a relay which accepts the mail and then times out — so every "failure" was
+ * in fact delivered — sends an agent eight copies rather than one a minute
+ * for ever. After the last, the row keeps `sent_at` null and its `send_error`,
+ * and a person chases it.
+ */
+export const MAX_SEND_ATTEMPTS = 8
+/** The wait after the n-th failed try is 2^n minutes, capped here. */
+const MAX_BACKOFF_MINUTES = 120
 
 export interface SendRateRequestsResult {
   readonly sent: number
@@ -89,6 +103,7 @@ export async function sendRateRequests(
   for (const row of rows) {
     if (!row.contactEmail) {
       skipped += 1
+      await recordAttempt(actor, row.id, 'No agent contact with an email address is on file.')
       continue
     }
 
@@ -101,16 +116,48 @@ export async function sendRateRequests(
 
     if (!result.accepted) {
       failed += 1
+      await recordAttempt(actor, row.id, result.error ?? 'The mail relay refused the message.')
       continue
     }
 
     await withActor(actor, async (tx: Tx) => {
-      await tx.update(rateRequests).set({ sentAt: new Date() }).where(eq(rateRequests.id, row.id))
+      await tx
+        .update(rateRequests)
+        .set({ sentAt: new Date(), sendError: null })
+        .where(eq(rateRequests.id, row.id))
     })
     sent += 1
   }
 
   return { sent, skipped, failed }
+}
+
+/**
+ * One more failed try, and why — what the backoff and the ceiling read.
+ *
+ * Best-effort in the sense that matters: a failure to record it costs one
+ * extra try a minute early, never a lost request.
+ */
+async function recordAttempt(
+  actor: ReturnType<typeof systemActor>,
+  id: string,
+  reason: string,
+): Promise<void> {
+  await withActor(actor, async (tx: Tx) => {
+    await tx
+      .update(rateRequests)
+      .set({
+        sendAttempts: sql`${rateRequests.sendAttempts} + 1`,
+        lastSendAttemptAt: new Date(),
+        sendError: reason.slice(0, 500),
+      })
+      .where(eq(rateRequests.id, id))
+  }).catch((error: unknown) => {
+    console.error(
+      { rateRequestId: id, error: error instanceof Error ? error.message : String(error) },
+      'rate request send: could not record the failed attempt',
+    )
+  })
 }
 
 export interface SendRow {
@@ -152,7 +199,28 @@ async function loadPending(actor: ReturnType<typeof systemActor>): Promise<SendR
         sourceRateCardId: rateRequests.sourceRateCardId,
       })
       .from(rateRequests)
-      .where(and(eq(rateRequests.status, 'sent'), isNull(rateRequests.sentAt)))
+      .where(
+        and(
+          eq(rateRequests.status, 'sent'),
+          isNull(rateRequests.sentAt),
+          lt(rateRequests.sendAttempts, MAX_SEND_ATTEMPTS),
+          /*
+            Due: never tried, or tried long enough ago. 2^attempts minutes,
+            capped — a row that failed once waits two minutes, one that failed
+            six times waits two hours.
+          */
+          or(
+            isNull(rateRequests.lastSendAttemptAt),
+            sql`${rateRequests.lastSendAttemptAt} <= now() - make_interval(mins => least(power(2, ${rateRequests.sendAttempts})::int, ${MAX_BACKOFF_MINUTES}))`,
+          ),
+        ),
+      )
+      /*
+        Untried first, then the longest-waiting, then the oldest. The query
+        had no order at all, so with more than a batch of unsendable rows the
+        same two hundred came back every minute and a new request never went.
+      */
+      .orderBy(sql`${rateRequests.lastSendAttemptAt} asc nulls first`, asc(rateRequests.createdAt))
       .limit(SEND_BATCH)
 
     const out: SendRow[] = []
