@@ -434,9 +434,10 @@
   },
   "agent": {
     "title": "Assigned shipments",
-    "subtitle": "Shipments where you are named as a partner, and open rate requests.",
+    "subtitle": "Shipments where your company is named as a partner.",
     "empty": "Nothing assigned to you.",
-    "rateRequests": "Rate requests"
+    "rateRequests": "Rate requests",
+    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email."
   },
   "rates": {
     "title": "Rate cards",

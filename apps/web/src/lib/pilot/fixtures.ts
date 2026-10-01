@@ -2210,6 +2210,42 @@ export function pilotPortalShipments(
 }
 
 /**
+ * The agent's own view — the jobs their partner is named on (A9).
+ *
+ * The same projection as the customer's, filtered the way the
+ * `agent_contact` RLS arm filters a real database: by the partner on the
+ * job's partner panel. The demo agent works for the origin agent on the
+ * imports, so that is what it sees.
+ */
+export function pilotAgentShipments(
+  partner: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalShipment[] {
+  const ar = locale === 'ar'
+  return pilotJobs(now)
+    .map((job) => ({ job, detail: pilotJob(job.id, now) }))
+    .filter(({ detail }) => detail?.partners.some((p) => p.partnerId === partner))
+    .map(({ job, detail }) => {
+      const next = detail?.milestones.find((m) => m.actualAt === null)
+      return {
+        id: job.id,
+        reference: job.reference,
+        customerReference: null,
+        status: job.status,
+        mode: job.mode,
+        originName: ar ? job.originNameAr : job.originName,
+        destinationName: ar ? job.destinationNameAr : job.destinationName,
+        eta: job.eta,
+        milestonesTotal: job.milestonesTotal,
+        milestonesDone: job.milestonesDone,
+        documentsReleased: 0,
+        nextMilestone: (ar ? next?.nameAr : next?.nameEn) ?? null,
+      }
+    })
+}
+
+/**
  * Public tracking — `FR-CP-05`.
  *
  * Two identifiers, not one: a reference alone is guessable and this page has
