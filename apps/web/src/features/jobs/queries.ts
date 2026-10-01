@@ -15,9 +15,11 @@
 import 'server-only'
 import { and, asc, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { KUWAIT_CALENDAR, accrue, dec, type WorkingCalendar, type Weekday } from '@qabandi/core'
 import {
   assets,
   branches,
+  calendarHolidays,
   customers,
   customsStages,
   documentTypes,
@@ -36,6 +38,7 @@ import {
   principals,
   quotes,
   withActor,
+  workingCalendars,
   type Actor,
 } from '@qabandi/db'
 import type {
@@ -90,9 +93,22 @@ const openExceptions = sql<number>`(
    where ${exceptions.jobId} = "jobs"."id" and ${exceptions.closedAt} is null
 )`
 
-const accruingAmount = sql<string | null>`(
-  select sum(${freeTimeClocks.accruedAmount}) from ${freeTimeClocks}
-   where ${freeTimeClocks.jobId} = "jobs"."id" and ${freeTimeClocks.endsOn} is null
+/*
+  The running clocks' accrual, in one currency (O15).
+
+  This summed every clock's amount and the row labelled it KWD, so a USD
+  per-diem and a KWD one added up as dinars. Grouped by currency instead, and
+  the largest group returned with its own code: the figure is what it says it
+  is, and on the rare job with clocks in two currencies it is the larger one
+  rather than an invented total.
+*/
+const accruingAmount = sql<{ amount: string; currency: string } | null>`(
+  select json_build_object('amount', sum(c.accrued_amount)::text, 'currency', c.currency)
+    from free_time_clocks c
+   where c.job_id = "jobs"."id" and c.ends_on is null
+   group by c.currency
+   order by sum(c.accrued_amount) desc nulls last
+   limit 1
 )`
 
 export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
@@ -218,7 +234,7 @@ type JobRow = {
   milestonesTotal: number
   milestonesDone: number
   openExceptions: number
-  accruingAmount: string | null
+  accruingAmount: { amount: string | null; currency: string } | null
 }
 
 function toJobSummary(row: JobRow): JobSummary {
@@ -267,7 +283,9 @@ function toJobSummary(row: JobRow): JobSummary {
      * `core/money`'s job.
      */
     accruing:
-      row.accruingAmount === null ? null : { amount: Number(row.accruingAmount), currency: 'KWD' },
+      row.accruingAmount === null || row.accruingAmount.amount === null
+        ? null
+        : { amount: Number(row.accruingAmount.amount), currency: row.accruingAmount.currency },
     updatedAt: row.updatedAt,
   }
 }
@@ -405,6 +423,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       ])
 
     const summary = toJobSummary(row as JobRow)
+    const calendar = await clockCalendar(tx, row.branchId)
 
     return {
       ...summary,
@@ -464,7 +483,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         gateOutAt: c.gateOutAt,
         emptyReturnedAt: c.emptyReturnedAt,
       })),
-      clocks: clockRows.map(toClockView),
+      clocks: clockRows.map((clock) => toClockView(clock, calendar)),
       documents: documentRows.map((d) => ({
         id: d.id,
         code: d.code,
@@ -479,12 +498,66 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
   })
 }
 
-function toClockView(row: typeof freeTimeClocks.$inferSelect): ClockView {
+type Tx = Parameters<Parameters<typeof withActor>[1]>[0]
+
+/**
+ * The branch's working calendar, as `accrue` reads it — zone, weekend and
+ * holidays. A branch with none falls back to Kuwait's, which is what every
+ * clock was counted in before branches had calendars.
+ */
+async function clockCalendar(tx: Tx, branchId: string): Promise<WorkingCalendar> {
+  const [cal] = await tx
+    .select({
+      id: workingCalendars.id,
+      timeZone: workingCalendars.timeZone,
+      weekend: workingCalendars.weekend,
+    })
+    .from(branches)
+    .innerJoin(workingCalendars, eq(workingCalendars.id, branches.calendarId))
+    .where(eq(branches.id, branchId))
+    .limit(1)
+  if (!cal) return KUWAIT_CALENDAR
+  const holidays = await tx
+    .select({ on: calendarHolidays.onDate })
+    .from(calendarHolidays)
+    .where(eq(calendarHolidays.calendarId, cal.id))
+  return {
+    ...KUWAIT_CALENDAR,
+    id: cal.id,
+    timeZone: cal.timeZone,
+    weekend: cal.weekend as Weekday[],
+    holidays: new Set(holidays.map((h) => h.on)),
+  }
+}
+
+function toClockView(
+  row: typeof freeTimeClocks.$inferSelect,
+  calendar: WorkingCalendar = KUWAIT_CALENDAR,
+): ClockView {
   const startsOn = new Date(row.startsOn)
-  const elapsedDays = Math.max(
-    0,
-    Math.floor((Date.now() - startsOn.getTime()) / (24 * 60 * 60 * 1000)),
+  /*
+    The meter counts the way the accrual does (O15): the start day is day one,
+    working days on a working-day clock, and a stopped clock stops at its end
+    date. It counted whole 24-hour periods from midnight UTC — a day short of
+    `accrue` from the first morning, still counting after the box came back,
+    and counting weekends the bill did not.
+  */
+  const accrual = accrue(
+    {
+      kind: row.kind,
+      freeDays: row.freeDays,
+      perDiem: dec(row.perDiem),
+      currency: row.currency,
+      dayBasis: row.dayBasis,
+    },
+    {
+      startedOn: new Date(`${row.startsOn}T12:00:00Z`),
+      endedOn: row.endsOn ? new Date(`${row.endsOn}T12:00:00Z`) : null,
+    },
+    calendar,
+    new Date(),
   )
+  const elapsedDays = accrual.freeDaysUsed + accrual.chargeableDays
   return {
     id: row.id,
     kind: row.kind,
@@ -498,10 +571,13 @@ function toClockView(row: typeof freeTimeClocks.$inferSelect): ClockView {
     counterparty: null,
     /** The line the nightly accrual wrote — `FR-FN-03`. */
     chargeLineWritten: row.chargeLineId !== null,
+    equipmentId: row.equipmentId,
+    counterpartyId: row.counterpartyId,
+    startsOnDay: row.startsOn,
+    endsOn: row.endsOn,
+    perDiemText: row.perDiem,
   }
 }
-
-type Tx = Parameters<Parameters<typeof withActor>[1]>[0]
 
 async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[]> {
   const rows = await tx
@@ -575,6 +651,7 @@ export async function listRunningClocks(
       .select({
         clock: freeTimeClocks,
         jobReference: jobs.reference,
+        branchId: jobs.branchId,
         containerNo: equipment.containerNo,
       })
       .from(freeTimeClocks)
@@ -584,8 +661,16 @@ export async function listRunningClocks(
       .orderBy(desc(freeTimeClocks.accruedAmount))
       .limit(20)
 
+    // One calendar per branch on the list, not one per clock.
+    const calendars = new Map<string, WorkingCalendar>()
+    for (const row of rows) {
+      if (!calendars.has(row.branchId)) {
+        calendars.set(row.branchId, await clockCalendar(tx, row.branchId))
+      }
+    }
+
     return rows.map((row) => ({
-      ...toClockView(row.clock),
+      ...toClockView(row.clock, calendars.get(row.branchId)),
       containerNo: row.containerNo,
       jobId: row.clock.jobId,
       jobReference: row.jobReference,

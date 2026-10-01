@@ -48,6 +48,7 @@ const {
   customsStages,
   exceptionCodes,
   exceptions,
+  freeTimeClocks,
   jobMilestones,
   jobs,
   principalBranchRoles,
@@ -64,6 +65,7 @@ const {
   completeMilestone,
   addContainer,
   setJobStatus,
+  saveFreeTimeClock,
 } = await import('./form-actions')
 
 const BRANCH = '00000000-0000-7000-8000-00000000d001'
@@ -583,6 +585,53 @@ describe.skipIf(!enabled)('operations mutations', () => {
       const jobId = await job()
       const state = await addContainer({}, form({ jobId, containerNo: 'MSKU4419519' }))
       expect(state.errors).toBeUndefined()
+    })
+  })
+
+  /** O2. A clock could be started and never stopped. */
+  describe('free-time clocks', () => {
+    it('stops a clock by giving it an end date', async () => {
+      const jobId = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = {
+        jobId,
+        kind: 'demurrage',
+        startsOn: today,
+        freeDays: '5',
+        perDiem: '25.000',
+        currency: 'KWD',
+      }
+      expect((await saveFreeTimeClock({}, form(clock))).errors).toBeUndefined()
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, jobId)),
+      )
+
+      const state = await saveFreeTimeClock({}, form({ ...clock, clockId: row!.id, endsOn: today }))
+      expect(state.errors).toBeUndefined()
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.endsOn).toBe(today)
+    })
+
+    it("will not move another job's clock", async () => {
+      const mine = await job('arrived')
+      const theirs = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = { kind: 'demurrage', startsOn: today, freeDays: '5', perDiem: '25.000' }
+      await saveFreeTimeClock({}, form({ ...clock, jobId: theirs }))
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, theirs)),
+      )
+
+      await saveFreeTimeClock({}, form({ ...clock, jobId: mine, clockId: row!.id, endsOn: today }))
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.jobId).toBe(theirs)
+      expect(after!.endsOn).toBeNull()
     })
   })
 

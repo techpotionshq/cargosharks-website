@@ -371,7 +371,8 @@
       "storage": "Storage"
     },
     "noClocks": "No free time running",
-    "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves."
+    "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves.",
+    "clockStopped": "Stopped {on}"
   },
   "mode": {
     "sea_fcl": "Sea FCL",

@@ -859,10 +859,12 @@ export async function saveFreeTimeClock(
     }
 
     if (data.clockId) {
+      // The clock must be this job's: the id is a hidden field, and an edit
+      // posted from one job's page must not move another job's clock onto it.
       await tx
         .update(freeTimeClocks)
         .set({ ...values, updatedAt: new Date() })
-        .where(eq(freeTimeClocks.id, data.clockId))
+        .where(and(eq(freeTimeClocks.id, data.clockId), eq(freeTimeClocks.jobId, data.jobId)))
     } else {
       await tx.insert(freeTimeClocks).values(values)
     }

@@ -375,6 +375,42 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                         <span className="ref numeric text-[0.8125rem] text-ink-muted">
                           {clock.containerNo}
                         </span>
+                        {clock.endsOn ? (
+                          <Badge tone="muted">
+                            {t('clockStopped', {
+                              on: formatDate(
+                                new Date(`${clock.endsOn}T12:00:00Z`),
+                                locale,
+                                timeZone,
+                              ),
+                            })}
+                          </Badge>
+                        ) : null}
+                        {/*
+                          Correct or stop this clock (O2). It could only ever
+                          be started: nothing rendered the dialog with a
+                          clock's values, so nothing set `ends_on`, and the
+                          nightly accrual billed until the 730-day guard.
+                        */}
+                        <FreeTimeClockDialog
+                          jobId={job.id}
+                          containers={containerOptions}
+                          partners={job.partners.map((partner) => ({
+                            value: partner.partnerId,
+                            label: nameOf(partner.name, partner.nameAr),
+                          }))}
+                          defaults={{
+                            id: clock.id,
+                            kind: clock.kind,
+                            equipmentId: clock.equipmentId,
+                            startsOn: clock.startsOnDay,
+                            endsOn: clock.endsOn,
+                            freeDays: clock.freeDays,
+                            perDiem: clock.perDiemText,
+                            currency: clock.perDiem.currency,
+                            counterpartyId: clock.counterpartyId,
+                          }}
+                        />
                       </span>
                       <span className="numeric accruing font-display text-[1.375rem] leading-none font-semibold text-critical">
                         {formatMoney(clock.accrued, locale)}

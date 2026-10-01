@@ -1155,6 +1155,11 @@ function clocksFor(seed: JobSeed, now: number): ClockView[] {
       accrued: { amount: chargeable * perDiem * 3, currency: 'KWD' },
       counterparty: 'ONE — Ocean Network Express',
       chargeLineWritten: true,
+      equipmentId: null,
+      counterpartyId: partnerId('one'),
+      startsOnDay: startsOn.toISOString().slice(0, 10),
+      endsOn: null,
+      perDiemText: String(perDiem),
     },
   ]
 }

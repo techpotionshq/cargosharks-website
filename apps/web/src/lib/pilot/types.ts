@@ -92,6 +92,19 @@ export interface ClockView {
   readonly accrued: Money
   readonly counterparty: string | null
   readonly chargeLineWritten: boolean
+  /*
+    What the edit form needs to open on the stored clock (O2). It could only
+    ever start one: nothing rendered it with defaults, so nothing set
+    `ends_on`, and a clock ran until the 730-day guard tripped.
+  */
+  readonly equipmentId: string | null
+  readonly counterpartyId: string | null
+  /** `YYYY-MM-DD`, as the date input and the column hold it. */
+  readonly startsOnDay: string
+  /** When it was stopped — the box came back. Null while it runs. */
+  readonly endsOn: string | null
+  /** The per-diem as stored, for the form; `perDiem` is for display. */
+  readonly perDiemText: string
 }
 
 export interface ExceptionView {
