@@ -28,7 +28,7 @@
 import type { FastifyInstance } from 'fastify'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { assets, db, principals, withActor, type Actor } from '@qabandi/db'
+import { assets, principals, systemActor, withActor, type Actor } from '@qabandi/db'
 import { fileStore, mailSettings, modelProvider, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
 import { config } from '../config'
@@ -965,12 +965,22 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       language of the device, not of the person's account. Someone whose
       account is Arabic must get the Arabic mail even when they ask for the
       link from a colleague's English laptop.
+
+      As the system principal, through `withActor` — A8. This was the one read
+      in the service on bare `db`, and `principals` is FORCE ROW LEVEL
+      SECURITY: with no actor stamped every policy arm is false, the query
+      found nobody, and every reset mail went out in English with no name.
+      There is no caller to act as (the person is signed out by definition),
+      and the read is one fixed projection keyed by the address the link is
+      being sent to.
     */
-    const [principal] = await db
-      .select({ locale: principals.locale, nameEn: principals.nameEn, nameAr: principals.nameAr })
-      .from(principals)
-      .where(eq(principals.email, email.toLowerCase()))
-      .limit(1)
+    const [principal] = await withActor(systemActor(), (tx) =>
+      tx
+        .select({ locale: principals.locale, nameEn: principals.nameEn, nameAr: principals.nameAr })
+        .from(principals)
+        .where(eq(principals.email, email.toLowerCase()))
+        .limit(1),
+    )
 
     const locale = principal?.locale === 'ar' ? 'ar' : 'en'
     const name = (locale === 'ar' ? principal?.nameAr : principal?.nameEn) ?? ''
