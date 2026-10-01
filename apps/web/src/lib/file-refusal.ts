@@ -75,17 +75,15 @@ export async function fileRefusal(
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 48px 16px; background: #f6f7f9; color: #1d2433; }
-  main { max-width: 32rem; margin: 0 auto; background: #fff; border: 1px solid #e3e6eb; border-radius: 12px; padding: 24px; }
+  /* System colours only: this page renders outside every layout, so the
+     brand's tokens are not on it, and a hard-coded palette would be one more
+     operator's colours in someone else's deployment. */
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 48px 16px; background: Canvas; color: CanvasText; }
+  main { max-width: 32rem; margin: 0 auto; border: 1px solid GrayText; border-radius: 12px; padding: 24px; }
   h1 { font-size: 1.125rem; margin: 0 0 8px; }
-  p { font-size: 0.9375rem; line-height: 1.5; color: #4a5468; margin: 0 0 16px; }
-  a { color: #1f5fbf; font-weight: 600; text-decoration: none; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #12151b; color: #e6e9ef; }
-    main { background: #1a1e26; border-color: #2a303b; }
-    p { color: #a9b1c1; }
-    a { color: #7fb0ff; }
-  }
+  p { font-size: 0.9375rem; line-height: 1.5; margin: 0 0 16px; }
+  a { color: LinkText; font-weight: 600; text-decoration: none; }
 </style></head>
 <body><main><h1>${escape(title)}</h1><p>${escape(body)}</p>
 <a href="${escape(backHref(request))}">${escape(back)}</a></main></body></html>`
