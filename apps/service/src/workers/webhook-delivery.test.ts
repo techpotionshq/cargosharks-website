@@ -356,7 +356,7 @@ describe.skipIf(!enabled)('outbound webhook delivery', () => {
     const dead = await endpoint(E_DEAD)
     expect(dead.isActive).toBe(false)
     expect(dead.disabledAt).not.toBeNull()
-    expect(dead.disabledReason).toMatch(/Nothing delivered since/)
+    expect(dead.disabledReason).toMatch(/^no_delivery_since:\d{4}-\d{2}-\d{2}$/)
 
     // The one that delivered this week is left alone, and so is one with no history.
     expect((await endpoint(E_INVOICE)).isActive).toBe(true)

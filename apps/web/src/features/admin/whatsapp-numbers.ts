@@ -30,7 +30,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { branches, whatsappNumbers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotWhatsappNumbers } from '@/lib/pilot/fixtures'
 import {
@@ -126,11 +126,19 @@ export async function saveWhatsappNumber(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  // In that branch, not anywhere — FR-ID-02, A2.
+  assertCanIn(session, 'admin.mailboxes.write', data.branchId)
 
   try {
     await withActor(session.actor, async (tx) => {
       if (numberId) {
+        // The branch it is in now, as well as the one it is going to (A2).
+        const [current] = await tx
+          .select({ branchId: whatsappNumbers.branchId })
+          .from(whatsappNumbers)
+          .where(eq(whatsappNumbers.id, numberId))
+          .limit(1)
+        if (current) assertCanIn(session, 'admin.mailboxes.write', current.branchId)
         await tx.update(whatsappNumbers).set(data).where(eq(whatsappNumbers.id, numberId))
         return
       }
@@ -183,6 +191,8 @@ export async function setWhatsappNumberActive(
     // Invisible under RLS means not-found, which is the right answer to give:
     // no enumeration signal for another branch's configuration.
     if (!current) throw new Error('not_found')
+    // The row's own branch decides, not the pooled permission set (A2).
+    assertCanIn(session, 'admin.mailboxes.write', current.branchId)
 
     await tx
       .update(whatsappNumbers)

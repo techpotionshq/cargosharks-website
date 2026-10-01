@@ -1,12 +1,12 @@
 /**
  * Users and roles — `FR-ID-02`, `FR-ID-03`.
  *
- * Read-only, and that is a decision rather than an omission. The product is
- * invitation-only (`FR-ID-07`), so accounts are provisioned with
- * `pnpm db:create-user` by someone with shell access to the server — the first
- * administrator necessarily precedes any account that could authorise one, and
- * a self-service "add user" form on an internal freight platform is the entry
- * point the 2026 pre-account-hijacking advisory needs.
+ * The product is invitation-only (`FR-ID-07`): there is no self-service
+ * sign-up, which is the entry point the 2026 pre-account-hijacking advisory
+ * needs. The first administrator is provisioned with `pnpm db:create-user`
+ * from a shell; after that, an administrator invites from this screen, which
+ * creates the login and emails the person a link to set their own password
+ * (A7). Nobody types a colleague's password.
  *
  * What the screen *is* for: seeing who holds what, where. A role is per branch,
  * so the same person can be a coordinator in Kuwait and read-only in Dubai, and
@@ -29,6 +29,7 @@ import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { SuspendUserDialog, UserDialog } from '@/features/admin/ui/dialogs'
+import { SignInLinkButton } from '@/features/admin/ui/sign-in-link-button'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('users')
@@ -65,7 +66,7 @@ export default async function UsersPage() {
 
   const [people, roleRows] = await Promise.all([listUsers(session.actor), listRoles(session.actor)])
 
-  const withLogin = people.filter((person) => person.hasLogin).length
+  const withLogin = people.filter((person) => person.hasPassword).length
 
   return (
     <Register
@@ -120,10 +121,25 @@ export default async function UsersPage() {
                 )}
               </TD>
               <TD>
-                {person.hasLogin ? (
+                {person.type === 'system' ? (
+                  <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
+                ) : person.hasPassword ? (
                   <Icon name="check" size={16} className="text-positive" />
                 ) : (
-                  <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
+                  /*
+                    Invited, or recorded before invitations created a login —
+                    either way they cannot sign in yet, and the register says
+                    so rather than drawing a tick (A7). The button reports
+                    what became of the mail.
+                  */
+                  <span className="flex flex-col items-start gap-1">
+                    <span className="text-[0.75rem] text-ink-subtle">
+                      {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
+                    </span>
+                    {person.isActive ? (
+                      <SignInLinkButton principalId={person.id} label={t('sendSignInLink')} />
+                    ) : null}
+                  </span>
                 )}
               </TD>
               <TD className="whitespace-nowrap text-ink-muted">

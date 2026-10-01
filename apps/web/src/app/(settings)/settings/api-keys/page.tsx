@@ -52,6 +52,25 @@ export default async function ApiKeysPage() {
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
+  /*
+    Why an endpoint is off, translated here rather than stored as a sentence
+    (U1). The row holds a code — `switched_off`, or `no_delivery_since:<day>`
+    from the service's dead-endpoint sweep — because a sentence written into
+    the database is in whichever language its writer spoke, which was English
+    on an Arabic page. A reason written before that change is shown as it was
+    stored rather than hidden.
+  */
+  const disabledReasonText = (reason: string): string => {
+    const [code, day] = reason.split(':', 2)
+    if (code === 'switched_off') return t('disabledReasons.switchedOff')
+    if (code === 'no_delivery_since' && day) {
+      return t('disabledReasons.noDeliverySince', {
+        day: formatDate(new Date(`${day}T00:00:00Z`), locale, timeZone),
+      })
+    }
+    return reason
+  }
+
   return (
     <>
       <PageHeader eyebrow={t('eyebrow')} title={t('title')} description={t('subtitle')} />
@@ -217,7 +236,7 @@ export default async function ApiKeysPage() {
                         <Badge tone="muted">{t('off')}</Badge>
                         {endpoint.disabledReason ? (
                           <span className="text-[0.6875rem] text-ink-subtle">
-                            {endpoint.disabledReason}
+                            {disabledReasonText(endpoint.disabledReason)}
                           </span>
                         ) : null}
                       </span>

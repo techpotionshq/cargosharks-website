@@ -20,9 +20,12 @@ import {
   ForbiddenError,
   SETTINGS_AREAS,
   assertCan,
+  assertCanIn,
   assertInBranch,
   availableActions,
+  branchesWhere,
   can,
+  canIn,
   canOpenSettings,
   inBranch,
   settingsAreasFor,
@@ -202,5 +205,43 @@ describe('availableActions', () => {
   it('never offers a transition out of a terminal state', () => {
     const finance = session(['invoice.issue', 'invoice.void', 'invoice.credit', 'invoice.approve'])
     expect(availableActions(finance, invoiceMachine, 'paid')).toEqual([])
+  })
+})
+
+/*
+  Per-branch permissions — FR-ID-02, A2.
+
+  The pooled set answers "anywhere", and that let an administrator in one
+  branch who was read-only in another act as administrator in both.
+*/
+describe('permissions in a branch', () => {
+  const split = {
+    permissions: new Set(['admin.users.write', 'job.read']),
+    branchRoles: new Map([
+      [KUWAIT, 'read_only'],
+      [DUBAI, 'administrator'],
+    ]),
+    branchPermissions: new Map([
+      [KUWAIT, new Set(['job.read'])],
+      [DUBAI, new Set(['admin.users.write', 'job.read'])],
+    ]),
+  } as unknown as Session
+
+  it('answers for the branch asked about, not for the pool', () => {
+    expect(can(split, 'admin.users.write')).toBe(true)
+    expect(canIn(split, 'admin.users.write', DUBAI)).toBe(true)
+    expect(canIn(split, 'admin.users.write', KUWAIT)).toBe(false)
+    expect(() => assertCanIn(split, 'admin.users.write', KUWAIT)).toThrow(ForbiddenError)
+    expect(branchesWhere(split, 'admin.users.write')).toEqual([DUBAI])
+  })
+
+  it('refuses a branch the principal holds no role in at all', () => {
+    expect(canIn(split, 'job.read', '00000000-0000-7000-8000-0000000000b9')).toBe(false)
+  })
+
+  it('reads a hand-built session as one role everywhere it names', () => {
+    const uniform = session(['admin.users.write'], [[KUWAIT, 'administrator']])
+    expect(canIn(uniform, 'admin.users.write', KUWAIT)).toBe(true)
+    expect(canIn(uniform, 'admin.users.write', DUBAI)).toBe(false)
   })
 })

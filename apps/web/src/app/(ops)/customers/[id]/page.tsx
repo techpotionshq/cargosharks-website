@@ -18,6 +18,7 @@ import { RetireCustomerDialog } from '@/features/customers/ui/dialogs'
 import { creditView } from '@/features/credit/queries'
 import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
+import { PortalContactsCard } from '@/features/admin/ui/portal-contacts'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { trimDecimal } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -165,6 +166,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </TableShell>
         </Card>
       ) : null}
+
+      {/* Who at this customer can sign in to the portal (A7). Renders only
+          for somebody who may grant a login. */}
+      <PortalContactsCard customerId={id} className="mb-4" />
 
       {mayWrite ? (
         <CustomerForm

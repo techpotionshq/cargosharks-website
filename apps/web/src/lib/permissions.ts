@@ -173,6 +173,37 @@ export function assertInBranch(session: Session, branchId: string): void {
 }
 
 /**
+ * Does the principal hold `permission` *in this branch* — FR-ID-02, A2.
+ *
+ * `can` pools every branch's permissions, so an administrator in Dubai who is
+ * read-only in Kuwait "can" `admin.users.write`, and `inBranch` only says they
+ * hold *some* role in Kuwait. Together they let that person make themselves
+ * administrator in Kuwait. A write against a branch's record asks this
+ * instead, and `app.has_permission_in` is the same question in the database.
+ *
+ * A session with no `branchPermissions` was built by hand with one role
+ * everywhere (see the field's comment in `session.ts`), so the pooled set is
+ * that role's set in every branch it names.
+ */
+export function canIn(session: Session, permission: string, branchId: string): boolean {
+  if (!session.branchRoles.has(branchId)) return false
+  const scoped = session.branchPermissions
+  if (!scoped) return session.permissions.has(permission)
+  return scoped.get(branchId)?.has(permission) ?? false
+}
+
+export function assertCanIn(session: Session, permission: string, branchId: string): void {
+  if (!canIn(session, permission, branchId)) {
+    throw new ForbiddenError(`${permission}@branch:${branchId}`)
+  }
+}
+
+/** The branches in which the principal holds `permission`, for pickers and filters. */
+export function branchesWhere(session: Session, permission: string): string[] {
+  return [...session.branchRoles.keys()].filter((id) => canIn(session, permission, id))
+}
+
+/**
  * The actions to render on a record, derived from the state machine rather
  * than restated in the component. A new transition appears in the interface by
  * virtue of existing in `core/states.ts`.

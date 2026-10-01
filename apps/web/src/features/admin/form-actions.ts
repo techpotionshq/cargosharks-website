@@ -18,12 +18,14 @@
  *     rather than a column on the user.
  */
 
+import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import { NOTIFICATION_EVENTS, unknownMergeFields } from '@qabandi/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
+  authUser,
   branches,
   chargeTypes,
   commodities,
@@ -34,10 +36,13 @@ import {
   principalBranchRoles,
   principals,
   roles,
+  systemActor,
   withActor,
+  type Tx,
 } from '@qabandi/db'
-import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { requireSession, type Session } from '@/lib/session'
+import { assertCan, assertCanIn, branchesWhere } from '@/lib/permissions'
+import { sendSignInLink, type SignInLinkOutcome } from './sign-in-link'
 import {
   echo,
   fail,
@@ -103,17 +108,37 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
   const data = parsed.data
 
   /**
-   * An administrator cannot grant access to a branch they do not hold.
+   * An administrator grants only in branches they *administer* — FR-ID-02, A2.
    *
-   * Without this, `admin.users.write` in one branch is a route to every branch
-   * in the system — grant yourself a colleague, sign in, done. The permission
-   * is about managing *people*, not about widening your own reach.
+   * This used to check that the administrator held *some* role in each
+   * branch, against a permission set pooled across all of them. So somebody
+   * who was administrator in Dubai and read-only in Kuwait passed both halves
+   * and could make themselves administrator in Kuwait. The question is per
+   * branch: does this person hold `admin.users.write` *there*. The database
+   * asks the same thing (`app.has_permission_in`, A3) and refuses the row if
+   * this is ever skipped.
    */
-  const ownBranches = new Set(session.branchRoles.keys())
-  const reaching = data.branchIds.filter((id) => !ownBranches.has(id))
-  if (reaching.length) {
+  const administered = new Set(branchesWhere(session, 'admin.users.write'))
+  if (data.branchIds.some((id) => !administered.has(id))) {
     return fail({ branchIds: tv('grantOwnBranchesOnly') }, echo(form))
   }
+
+  /*
+    Editing somebody who also works in a branch this administrator does not
+    administer. Their grants there are left exactly as they are (below), and
+    the person-level fields — name, address, language, whether they can sign
+    in at all — are refused, because those change the person in *every*
+    branch. Suspending a Kuwait administrator is a decision for somebody who
+    administers Kuwait.
+  */
+  if (data.principalId) {
+    const elsewhere = await grantsOutside(data.principalId, administered)
+    if (elsewhere.length && (await personChanged(session, data))) {
+      return failWith(tv('personSpansOtherBranches'), echo(form))
+    }
+  }
+
+  let invitedEmail: string | null = null
 
   try {
     await withActor(session.actor, async (tx) => {
@@ -154,6 +179,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
         await tx.insert(principals).values({
           id: principalId,
           type: 'internal',
+          authUserId: await loginFor(tx, data.email, data.nameEn),
           nameEn: data.nameEn,
           nameAr: data.nameAr,
           email: data.email,
@@ -161,20 +187,32 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
           locale: data.locale,
           isActive: data.isActive,
         })
+        invitedEmail = data.email
       }
 
       /**
-       * Grants are replaced, not merged.
+       * Grants are replaced, not merged — within the branches this
+       * administrator administers.
        *
-       * The form shows the complete set of branches, so what it submits *is*
-       * the intended state — merging would make removing a branch impossible
-       * through the only interface that offers it. `app_user` holds no
-       * DELETE (§5.5), so revocation is a deactivation of the grant row.
+       * The form shows the complete set of *those* branches, so what it
+       * submits is the intended state there; merging would make removing a
+       * branch impossible through the only interface that offers it. A grant
+       * in a branch the form never showed is not the form's to remove, and
+       * used to be: editing a colleague's phone number from Kuwait silently
+       * revoked their Dubai role. `app_user` holds no DELETE (§5.5), so
+       * revocation is a deactivation of the grant row.
        */
-      await tx
-        .update(principalBranchRoles)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(principalBranchRoles.principalId, principalId))
+      if (administered.size) {
+        await tx
+          .update(principalBranchRoles)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(principalBranchRoles.principalId, principalId),
+              inArray(principalBranchRoles.branchId, [...administered]),
+            ),
+          )
+      }
 
       for (const branchId of data.branchIds) {
         await tx
@@ -193,8 +231,111 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
     throw error
   }
 
+  /*
+    The first password, through the reset flow — A7, `sign-in-link.ts`.
+
+    After the commit, never inside it: the link names an `auth_user` that has
+    to exist when the person clicks it, and a mail sent from a transaction that
+    then rolled back is an invitation to an account that never was. What
+    became of the mail is shown on the people list, where the administrator
+    can send it again.
+  */
+  if (invitedEmail) await sendSignInLink(invitedEmail)
+
   revalidatePath('/settings/users')
   return succeed(data.email)
+}
+
+/**
+ * The login behind a new principal — A7.
+ *
+ * An `auth_user` with no credential row: nobody can sign in as it until the
+ * owner of the mailbox follows the link and sets a password, which is when
+ * Better Auth writes the credential. Reused if one already exists for the
+ * address — an earlier invitation that was rolled back, or `db:create-user` —
+ * so an invitation can never fork one person into two logins.
+ *
+ * `email_verified` is true for the reason `create-user.ts` gives: the
+ * invitation *is* the verification, and following the emailed link proves the
+ * mailbox before any password exists.
+ */
+async function loginFor(tx: Tx, email: string, name: string): Promise<string> {
+  const [existing] = await tx
+    .select({ id: authUser.id })
+    .from(authUser)
+    .where(eq(authUser.email, email))
+    .limit(1)
+  if (existing) return existing.id
+
+  const id = randomUUID()
+  const now = new Date()
+  await tx
+    .insert(authUser)
+    .values({ id, name, email, emailVerified: true, createdAt: now, updatedAt: now })
+  return id
+}
+
+/**
+ * Branches the person holds an active role in that `administered` does not
+ * cover.
+ *
+ * Read as the system principal, because the point is to find grants the
+ * administrator *cannot* see: `principal_branch_roles` shows them only their
+ * own branches, so their own read would always answer "none". It reads branch
+ * ids for one named principal and returns nothing to the caller but whether
+ * there are any — the same narrow widening the session lookup argues for.
+ */
+async function grantsOutside(principalId: string, administered: Set<string>): Promise<string[]> {
+  const rows = await withActor(systemActor(), (tx) =>
+    tx
+      .select({ branchId: principalBranchRoles.branchId })
+      .from(principalBranchRoles)
+      .where(
+        and(
+          eq(principalBranchRoles.principalId, principalId),
+          eq(principalBranchRoles.isActive, true),
+        ),
+      ),
+  )
+  return rows.map((row) => row.branchId).filter((id) => !administered.has(id))
+}
+
+/** Would saving this change the person rather than only their grants? */
+async function personChanged(
+  session: Session,
+  data: {
+    principalId?: string
+    nameEn: string
+    nameAr: string | null
+    email: string
+    phone: string | null
+    locale: string
+    isActive: boolean
+  },
+): Promise<boolean> {
+  const [row] = await withActor(session.actor, (tx) =>
+    tx
+      .select({
+        nameEn: principals.nameEn,
+        nameAr: principals.nameAr,
+        email: principals.email,
+        phone: principals.phone,
+        locale: principals.locale,
+        isActive: principals.isActive,
+      })
+      .from(principals)
+      .where(eq(principals.id, data.principalId!))
+      .limit(1),
+  )
+  if (!row) return true
+  return (
+    row.nameEn !== data.nameEn ||
+    (row.nameAr ?? null) !== data.nameAr ||
+    row.email !== data.email ||
+    (row.phone ?? null) !== data.phone ||
+    row.locale !== data.locale ||
+    row.isActive !== data.isActive
+  )
 }
 
 /**
@@ -204,6 +345,10 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
  * the session lookup re-reads `is_active` every time rather than trusting a
  * claim baked into a token. That is the difference between revocation and a
  * note in a table.
+ *
+ * Suspension is of the person, in every branch at once, so it needs
+ * `admin.users.write` in every branch they hold a role in (A2). An
+ * administrator of one branch can still take away the grant in theirs.
  */
 export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
@@ -219,6 +364,11 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
     return failWith(tv('cannotSuspendSelf'))
   }
 
+  const administered = new Set(branchesWhere(session, 'admin.users.write'))
+  if ((await grantsOutside(principalId, administered)).length) {
+    return failWith(tv('personSpansOtherBranches'))
+  }
+
   const isActive = form.get('isActive') !== null
   await withActor(session.actor, async (tx) => {
     await tx
@@ -229,6 +379,81 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
 
   revalidatePath('/settings/users')
   return succeed(principalId)
+}
+
+/**
+ * Send a person the link that sets their password — A7.
+ *
+ * For an invitation whose mail did not go (the service was down, or not yet
+ * configured), for a link that expired after its hour, and for the accounts
+ * invited before invitations created a login at all: those get their
+ * `auth_user` here. The message says what actually happened to the mail.
+ */
+export async function sendUserSignInLink(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'admin.users.write')
+  const tv = await getTranslations('adminValidation')
+
+  const principalId = read(form, 'principalId')
+  if (!principalId) return fail({ _: tv('nothingToUpdate') })
+
+  const target = await withActor(session.actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        email: principals.email,
+        nameEn: principals.nameEn,
+        authUserId: principals.authUserId,
+        isActive: principals.isActive,
+        type: principals.type,
+      })
+      .from(principals)
+      .where(eq(principals.id, principalId))
+      .limit(1)
+    return row
+  })
+  // Not visible is not found — an administrator cannot mail somebody outside
+  // their own branches into an account.
+  if (!target) return failWith(tv('nothingToUpdate'))
+  if (!target.isActive) return failWith(tv('signInLinkSuspended'))
+
+  if (target.type === 'internal') {
+    const administered = new Set(branchesWhere(session, 'admin.users.write'))
+    const reachable = await withActor(session.actor, (tx) =>
+      tx
+        .select({ branchId: principalBranchRoles.branchId })
+        .from(principalBranchRoles)
+        .where(
+          and(
+            eq(principalBranchRoles.principalId, principalId),
+            eq(principalBranchRoles.isActive, true),
+          ),
+        ),
+    )
+    if (!reachable.some((row) => administered.has(row.branchId))) {
+      return failWith(tv('grantOwnBranchesOnly'))
+    }
+  }
+
+  if (!target.authUserId) {
+    await withActor(session.actor, async (tx) => {
+      const authUserId = await loginFor(tx, target.email, target.nameEn)
+      await tx
+        .update(principals)
+        .set({ authUserId, updatedAt: new Date() })
+        .where(eq(principals.id, principalId))
+    })
+  }
+
+  return signInLinkState(tv, await sendSignInLink(target.email), target.email)
+}
+
+/** The sentence for what became of a link, as an `ActionState`. */
+function signInLinkState(tv: Translate, outcome: SignInLinkOutcome, email: string): ActionState {
+  if (outcome === 'sent') return { ...succeed(email), message: tv('signInLinkSent', { email }) }
+  return failWith(tv(`signInLink.${outcome}` as 'signInLink.refused'))
 }
 
 // --- branches --------------------------------------------------------------
@@ -705,7 +930,7 @@ export async function saveNotificationTemplate(
 
   const data = parsed.data
   const branchId = data.branchId ? data.branchId : null
-  if (branchId) assertInBranch(session, branchId)
+  if (branchId) assertCanIn(session, 'admin.reference.write', branchId)
 
   /*
     Merge fields, checked before the row is written.

@@ -30,9 +30,9 @@ import { getTranslations } from 'next-intl/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { apiKeys, customers, principals, webhookEndpoints, withActor } from '@qabandi/db'
-import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { apiKeys, branches, customers, principals, webhookEndpoints, withActor } from '@qabandi/db'
+import { requireSession, type Session } from '@/lib/session'
+import { assertCan, assertCanIn, canIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
 import {
@@ -130,7 +130,8 @@ export async function createApiKey(_previous: ActionState, form: FormData): Prom
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  // In that branch, not anywhere — FR-ID-02, A2.
+  assertCanIn(session, 'admin.api_keys.write', data.branchId)
 
   /*
     Two halves, and the split is what makes a key identifiable without being
@@ -179,6 +180,12 @@ export async function revokeApiKey(_previous: ActionState, form: FormData): Prom
   const keyId = String(form.get('keyId') ?? '')
   const tv = await getTranslations('adminValidation')
   if (!keyId) return failWith(tv('nothingToRevoke'))
+  const scope = await scopeOf(session, apiKeys, keyId)
+  // A key the caller may not touch reads exactly like one that is not there,
+  // which is how an unknown key has always read (FR-ID-04).
+  if (!scope || !(await mayScope(session, scope.branchId))) {
+    return failWith(tv('alreadyRevoked'))
+  }
 
   const revoked = await withActor(session.actor, (tx) =>
     tx
@@ -282,7 +289,6 @@ export async function createWebhookEndpoint(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  if (data.branchId) assertInBranch(session, data.branchId)
 
   /*
     Only over TLS. A signature proves who sent a payload and does nothing to
@@ -290,6 +296,20 @@ export async function createWebhookEndpoint(
   */
   if (!data.url.startsWith('https://')) {
     return fail({ url: tv('httpsOnly') }, echo(form))
+  }
+
+  /*
+    No branch means every branch's events, and every customer's — the worker
+    treats null/null as deployment-wide (`webhook-delivery.ts`). That used to
+    be one empty select away for an administrator of a single branch (A4), who
+    could then stream another branch's shipments to a URL of their choosing.
+    Deployment-wide is for somebody who administers every branch.
+  */
+  if (!(await mayScope(session, data.branchId || null))) {
+    return fail(
+      { branchId: data.branchId ? tv('apiAccessNotAdministered') : tv('webhookEveryBranch') },
+      echo(form),
+    )
   }
 
   const secret = randomBytes(32).toString('hex')
@@ -326,6 +346,10 @@ export async function setWebhookEndpointActive(
   const endpointId = String(form.get('endpointId') ?? '')
   const tv = await getTranslations('adminValidation')
   if (!endpointId) return failWith(tv('nothingToChange'))
+  const scope = await scopeOf(session, webhookEndpoints, endpointId)
+  if (!scope || !(await mayScope(session, scope.branchId))) {
+    return failWith(tv('nothingToChange'))
+  }
   const isActive = form.get('isActive') !== null
 
   await withActor(session.actor, (tx) =>
@@ -336,7 +360,8 @@ export async function setWebhookEndpointActive(
         // Cleared on re-enable, so a stale "disabled because…" does not sit
         // under a live endpoint.
         disabledAt: isActive ? null : new Date(),
-        disabledReason: isActive ? null : 'Switched off by an administrator',
+        // A code, translated where it is shown (U1) — see the settings page.
+        disabledReason: isActive ? null : 'switched_off',
         updatedAt: new Date(),
       })
       .where(eq(webhookEndpoints.id, endpointId)),
@@ -344,4 +369,36 @@ export async function setWebhookEndpointActive(
 
   revalidatePath('/settings/api-keys')
   return succeed(endpointId)
+}
+
+/**
+ * May this administrator act on a key or endpoint scoped to `branchId` —
+ * FR-ID-02, A2, A4.
+ *
+ * A branch asks for `admin.api_keys.write` in that branch. Null is every
+ * branch, so it asks for the permission in every active one: the authority to
+ * hand an outsider the whole deployment's events is the sum of the authority
+ * over each part of it.
+ */
+async function mayScope(session: Session, branchId: string | null): Promise<boolean> {
+  if (branchId) return canIn(session, 'admin.api_keys.write', branchId)
+  const all = await withActor(session.actor, (tx) =>
+    tx.select({ id: branches.id }).from(branches).where(eq(branches.isActive, true)),
+  )
+  return all.length > 0 && all.every((branch) => canIn(session, 'admin.api_keys.write', branch.id))
+}
+
+/**
+ * The branch a key or endpoint is scoped to, or undefined for a row the actor
+ * cannot see — which the caller answers as not found (FR-ID-04).
+ */
+async function scopeOf(
+  session: Session,
+  table: typeof apiKeys | typeof webhookEndpoints,
+  id: string,
+): Promise<{ branchId: string | null } | undefined> {
+  const [row] = await withActor(session.actor, (tx) =>
+    tx.select({ branchId: table.branchId }).from(table).where(eq(table.id, id)).limit(1),
+  )
+  return row
 }

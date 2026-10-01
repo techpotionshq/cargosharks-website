@@ -53,15 +53,18 @@ grant execute on function app.has_permission_in(text, uuid) to app_user;
 
 drop policy if exists principal_branch_roles_scope on principal_branch_roles;
 
+drop policy if exists principal_branch_roles_read on principal_branch_roles;
 create policy principal_branch_roles_read on principal_branch_roles for select using (
   principal_id = app.principal_id()
   or app.is_system()
   or (app.principal_type() = 'internal' and branch_id = any(app.branch_ids()))
 );
 
+drop policy if exists principal_branch_roles_insert on principal_branch_roles;
 create policy principal_branch_roles_insert on principal_branch_roles for insert
   with check (app.has_permission_in('admin.users.write', branch_id));
 
+drop policy if exists principal_branch_roles_update on principal_branch_roles;
 create policy principal_branch_roles_update on principal_branch_roles for update
   using      (app.has_permission_in('admin.users.write', branch_id))
   with check (app.has_permission_in('admin.users.write', branch_id));
@@ -93,6 +96,7 @@ create policy principal_branch_roles_update on principal_branch_roles for update
 drop policy if exists principals_scope on principals;
 drop policy if exists principals_admin_invite on principals;
 
+drop policy if exists principals_read on principals;
 create policy principals_read on principals for select using (
   id = app.principal_id()
   or app.is_system()
@@ -102,13 +106,20 @@ create policy principals_read on principals for select using (
            and pbr.branch_id = any(app.branch_ids())))
   or (app.principal_type() = 'customer_contact' and customer_id = app.customer_id())
   or (app.principal_type() = 'agent_contact'    and partner_id  = app.partner_id())
+  -- New (A7): staff see the portal and agent logins of the companies they
+  -- trade with. Customer and partner records are group-shared (§5.3), and a
+  -- portal login with no branch role was otherwise invisible to everyone
+  -- inside the company — so the customer page could not say who has access.
+  or (app.principal_type() = 'internal' and principals.type in ('customer_contact', 'agent_contact'))
 );
 
+drop policy if exists principals_insert on principals;
 create policy principals_insert on principals for insert with check (
   app.is_system()
   or (app.principal_type() = 'internal' and app.has_permission('admin.users.write'))
 );
 
+drop policy if exists principals_update on principals;
 create policy principals_update on principals for update
   using (
     id = app.principal_id()
@@ -163,3 +174,114 @@ drop trigger if exists principals_guard_identity on principals;
 create trigger principals_guard_identity
   before update on principals
   for each row execute function app.principals_guard_identity();
+
+-- --------------------------------------------------------------------------
+-- 4. API keys and webhook endpoints: written by their administrators only — A4
+-- --------------------------------------------------------------------------
+--
+-- Both had one `for all` policy whose `using` admitted any internal principal
+-- for a row with `branch_id is null` or in one of their branches — so the
+-- check on write was the same, and a coordinator could insert a webhook
+-- endpoint with no branch and receive every branch's events, which is the
+-- deployment-wide case `webhook-delivery.ts` serves. The web app now asks for
+-- `admin.api_keys.write` in the row's branch, or in every branch for a null
+-- one; these say the same thing where it holds when the app forgets.
+
+create or replace function app.has_permission_everywhere(permission text) returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+  select app.is_system() or (
+    exists (select 1 from branches where is_active)
+    and not exists (
+      select 1 from branches b
+       where b.is_active
+         and not app.has_permission_in(permission, b.id))
+  )
+$$;
+
+grant execute on function app.has_permission_everywhere(text) to app_user;
+
+drop policy if exists webhook_endpoints_scope on webhook_endpoints;
+
+drop policy if exists webhook_endpoints_read on webhook_endpoints;
+create policy webhook_endpoints_read on webhook_endpoints for select using (
+  case app.principal_type()
+    when 'internal'         then branch_id is null or branch_id = any(app.branch_ids())
+    when 'system'           then true
+    when 'customer_contact' then customer_id = app.customer_id()
+    else false
+  end
+);
+
+drop policy if exists webhook_endpoints_insert on webhook_endpoints;
+create policy webhook_endpoints_insert on webhook_endpoints for insert with check (
+  case when branch_id is null
+       then app.has_permission_everywhere('admin.api_keys.write')
+       else app.has_permission_in('admin.api_keys.write', branch_id)
+  end
+);
+
+drop policy if exists webhook_endpoints_update on webhook_endpoints;
+create policy webhook_endpoints_update on webhook_endpoints for update
+  using (
+    case when branch_id is null
+         then app.has_permission_everywhere('admin.api_keys.write')
+         else app.has_permission_in('admin.api_keys.write', branch_id)
+    end
+  )
+  with check (
+    case when branch_id is null
+         then app.has_permission_everywhere('admin.api_keys.write')
+         else app.has_permission_in('admin.api_keys.write', branch_id)
+    end
+  );
+
+drop policy if exists api_keys_scope on api_keys;
+
+drop policy if exists api_keys_read on api_keys;
+create policy api_keys_read on api_keys for select using (
+  case app.principal_type()
+    when 'internal'         then branch_id is null or branch_id = any(app.branch_ids())
+    when 'system'           then true
+    when 'customer_contact' then customer_id = app.customer_id()
+    else false
+  end
+);
+
+drop policy if exists api_keys_insert on api_keys;
+create policy api_keys_insert on api_keys for insert with check (
+  case when branch_id is null
+       then app.has_permission_everywhere('admin.api_keys.write')
+       else app.has_permission_in('admin.api_keys.write', branch_id)
+  end
+);
+
+drop policy if exists api_keys_update on api_keys;
+create policy api_keys_update on api_keys for update
+  using (
+    case when branch_id is null
+         then app.has_permission_everywhere('admin.api_keys.write')
+         else app.has_permission_in('admin.api_keys.write', branch_id)
+    end
+  )
+  with check (
+    case when branch_id is null
+         then app.has_permission_everywhere('admin.api_keys.write')
+         else app.has_permission_in('admin.api_keys.write', branch_id)
+    end
+  );
+
+-- --------------------------------------------------------------------------
+-- 5. Why an endpoint is off: a code, not an English sentence — U1
+-- --------------------------------------------------------------------------
+--
+-- The settings page now translates `switched_off` and
+-- `no_delivery_since:<day>`. Rows written before that carry the English
+-- sentence; rewritten here so an Arabic page does not keep showing them.
+
+update webhook_endpoints
+   set disabled_reason = 'switched_off'
+ where disabled_reason = 'Switched off by an administrator';
+
+update webhook_endpoints
+   set disabled_reason = 'no_delivery_since:' || substring(disabled_reason from '(\d{4}-\d{2}-\d{2})')
+ where disabled_reason ~ '^Nothing delivered since \d{4}-\d{2}-\d{2}$';

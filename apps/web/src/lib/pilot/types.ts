@@ -904,6 +904,8 @@ export interface UserRow {
   readonly isActive: boolean
   readonly lastSeenAt: Date | null
   readonly hasLogin: boolean
+  /** Whether the login has a password yet — see `features/admin/queries.ts`. */
+  readonly hasPassword: boolean
   readonly assignments: { branchCode: string; roleKey: string; requiresTwoFactor: boolean }[]
 }
 

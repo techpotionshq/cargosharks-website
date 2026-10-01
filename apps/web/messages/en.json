@@ -943,10 +943,13 @@
     "rolesTitle": "Roles",
     "rolesHint": "The permission matrix is seeded and editable without a release.",
     "addTitle": "Adding someone",
-    "addBody": "The product is invitation-only, so there is no sign-up form. Accounts are created from a shell on the server, which is also the password-reset path.",
+    "addBody": "The product is invitation-only, so there is no sign-up form. Invite someone with the button above: they receive an email with a link to set their own password. The first administrator is created from a shell on the server.",
     "addNote": "Re-running for an existing email resets that password. Administrator and Finance additionally require TOTP enrolment.",
     "forbidden": "You cannot view users",
-    "forbiddenHint": "Your role does not include admin.users.write."
+    "forbiddenHint": "Your role does not include admin.users.write.",
+    "awaitingPassword": "Invited — no password set yet",
+    "noLoginYet": "No login yet",
+    "sendSignInLink": "Send sign-in link"
   },
   "branches": {
     "eyebrow": "Administration",
@@ -2798,7 +2801,11 @@
     "failedCount": "{count} failing",
     "off": "Off",
     "enable": "Turn on",
-    "disable": "Turn off"
+    "disable": "Turn off",
+    "disabledReasons": {
+      "switchedOff": "Switched off by an administrator",
+      "noDeliverySince": "Nothing delivered since {day}"
+    }
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3451,7 +3458,20 @@
     "periodEndsAfterStart": "The end date must be after the start date.",
     "unknownContainerType": "Not a known container type. Choose one from the list.",
     "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
-    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again."
+    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again.",
+    "personSpansOtherBranches": "This person also works in a branch you do not administer. You can change their access in your branches, but their name, address, language and whether they can sign in are for an administrator of every branch they work in.",
+    "signInLinkSent": "A link to set a password has been emailed to {email}. It works for one hour.",
+    "signInLinkSuspended": "This account is suspended. Restore it before sending a sign-in link.",
+    "signInLink": {
+      "not_configured": "No email was sent: the mail service is not configured on this deployment. The account exists; send the link again once mail works.",
+      "refused": "No email was sent: the mail service refused it. The account exists; check the outbound mail settings and try again.",
+      "unreachable": "No email was sent: the mail service could not be reached. The account exists; try again in a few minutes.",
+      "throttled": "Several links have already gone to this address in the last hour. Ask them to use the newest one, or try again later.",
+      "no_login": "No email was sent: this person has no login to set a password for."
+    },
+    "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
+    "apiAccessNotAdministered": "You do not administer API access in that branch.",
+    "portalCustomerInactive": "This customer is retired, so nobody can be given a portal login for it."
   },
   "costingValidation": {
     "chooseChargeType": "Choose a charge type",
@@ -3875,5 +3895,25 @@
     "london": "London",
     "newYork": "New York",
     "utc": "UTC"
+  },
+  "portalContacts": {
+    "eyebrow": "Customer portal",
+    "title": "Portal logins",
+    "description": "People at this customer who can sign in to see their own shipments, documents and invoices — and nothing else.",
+    "none": "Nobody at this customer has a portal login yet.",
+    "invite": "Give portal access",
+    "inviteTitle": "Give someone portal access",
+    "inviteDescription": "Creates their login and emails them a link to set their own password.",
+    "inviteSubmit": "Create login and send link",
+    "inviteNote": "They will see only this customer's records. The link works for one hour; you can send another from this card.",
+    "name": "Name",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "email": "Email",
+    "locale": "Language for emails",
+    "locales": {
+      "en": "English",
+      "ar": "Arabic"
+    }
   }
 }

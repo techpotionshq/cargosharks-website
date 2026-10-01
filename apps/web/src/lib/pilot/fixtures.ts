@@ -4690,6 +4690,7 @@ export function pilotUsers(now = Date.now()): UserRow[] {
     isActive: person.active,
     lastSeenAt: person.lastSeen === null ? null : hours(now, -person.lastSeen),
     hasLogin: person.hasLogin,
+    hasPassword: person.hasLogin,
     assignments: person.roles.map(([branchCode, roleKey]) => ({
       branchCode,
       roleKey,

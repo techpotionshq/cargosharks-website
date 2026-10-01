@@ -29,7 +29,7 @@ import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { principals, supportGrants, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan } from '@/lib/permissions'
+import { assertCan, branchesWhere } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -149,7 +149,8 @@ export async function grantSupportAccess(
    * `admin.users.write` in one branch is a route to every branch in the system
    * — grant a support session across the group, then read the trail.
    */
-  const holds = [...session.branchRoles.keys()]
+  // Administers, not merely holds a role in — FR-ID-02, A2.
+  const holds = branchesWhere(session, 'admin.users.write')
   const outside = branchIds.filter((id) => !holds.includes(id))
   if (outside.length > 0) {
     return fail({ branchIds: tv('ownBranchesOnly') }, echo(form))

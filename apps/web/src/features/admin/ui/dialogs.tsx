@@ -11,7 +11,7 @@
 import { getLocale, getTranslations } from 'next-intl/server'
 import { brandMailDomain, getBrand } from '@/lib/brand'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import {
@@ -59,14 +59,16 @@ export async function UserDialog({
   const editing = Boolean(defaults?.id)
 
   /**
-   * Only branches the administrator holds themselves.
+   * Only branches the administrator *administers* — FR-ID-02, A2.
    *
-   * The server action refuses a grant outside them anyway, so this is about
-   * not offering a choice that will be rejected — but the check on the action
-   * is the one that matters, because this list is a hint and that one is a
-   * boundary.
+   * Holding any role in a branch used to be enough to be offered it here, and
+   * to pass the action's check. The server action refuses a grant outside
+   * these anyway, so this is about not offering a choice that will be
+   * rejected — but the check on the action is the one that matters, because
+   * this list is a hint and that one is a boundary.
    */
-  const grantable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+  const administered = new Set(branchesWhere(session, 'admin.users.write'))
+  const grantable = options.branches.filter((branch) => administered.has(branch.value))
 
   const fields: FieldSpec[] = [
     ...(editing ? [{ kind: 'hidden' as const, name: 'principalId', value: defaults!.id! }] : []),
