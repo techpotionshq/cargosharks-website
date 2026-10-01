@@ -240,6 +240,73 @@ export function applyMargin(cost: Money, rule: MarginRule): Money {
   }
 }
 
+/**
+ * The house margin laid over a whole quotation's cost lines, one sell amount
+ * per line, each already rounded to the currency and summing to the sell total.
+ *
+ * `applyMargin` is a rule applied to one figure; a quotation is several lines,
+ * and only a percentage means the same thing per line as it does for the
+ * whole. A 500 KWD `target_sell` applied line by line quoted a six-line card at
+ * 3,000, and an `absolute` uplift was added once per line. So the rule is
+ * applied to the quotation, once:
+ *
+ *   percent      each line carries the same percentage — the per-line and the
+ *                whole-quote readings agree, so nothing needs distributing.
+ *   absolute     the sell total is the cost total plus the uplift once; the
+ *                uplift is shared across the lines in proportion to their cost.
+ *   target_sell  the sell total is the target; it is shared across the lines in
+ *                proportion to their cost.
+ *
+ * Proportional to cost because that keeps every line's own margin percentage
+ * equal, which is what a customer comparing lines across two quotations would
+ * expect, and no line can go negative. Each line is rounded to the currency's
+ * minor units *before* the total is taken, and the few fils of rounding left
+ * over land on the largest line — so the lines printed on the quotation add up
+ * to the total printed beneath them, which rounding the sum separately did not
+ * (three lines of 1.357 under a total of 4.072). With no cost at all to weigh
+ * by, the whole sell lands on the first line.
+ *
+ * Every cost must be in one currency — the caller's base — and so must an
+ * absolute or target rule; anything else is a programming error and throws
+ * through `add`, rather than adding dollars to dinars.
+ */
+export function distributeMargin(
+  costs: readonly Money[],
+  rule: MarginRule,
+  lookup: CurrencyLookup,
+): Money[] {
+  if (costs.length === 0) return []
+  const currency = costs[0]!.currency
+  const spec = lookup(currency)
+  if (!spec) throw new Error(`Unknown currency ${currency}`)
+  const scale = (m: Money) => round(m, spec)
+
+  if (rule.kind === 'percent') return costs.map((cost) => scale(applyMargin(cost, rule)))
+
+  const totalCost = sum(costs, currency)
+  const target =
+    rule.kind === 'absolute'
+      ? scale(add(scale(totalCost), money(rule.value, rule.currency)))
+      : scale(money(rule.value, rule.currency))
+
+  const shares = totalCost.amount.isZero()
+    ? costs.map((_, index) => (index === 0 ? target : zero(currency)))
+    : costs.map((cost) =>
+        scale(money(target.amount.times(cost.amount).dividedBy(totalCost.amount), currency)),
+      )
+
+  // The rounding remainder, onto the largest line.
+  const remainder = target.amount.minus(sum(shares, currency).amount)
+  if (!remainder.isZero()) {
+    const largest = shares.reduce(
+      (best, share, index) => (share.amount.greaterThan(shares[best]!.amount) ? index : best),
+      0,
+    )
+    shares[largest] = money(shares[largest]!.amount.plus(remainder), currency)
+  }
+  return shares
+}
+
 export interface MarginSummary {
   readonly cost: Money
   readonly revenue: Money

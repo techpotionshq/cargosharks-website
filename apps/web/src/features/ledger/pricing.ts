@@ -74,6 +74,12 @@ function refusal(tv: Translate, reason: PricingRefusal): string {
       return tv('pricingNoMargin')
     case 'cannot_price':
       return tv('pricingCannotPrice')
+    case 'quote_accepted':
+      return tv('quoteAlreadyAccepted')
+    case 'already_quoted':
+      // Only the auto-draft sweep asks for a first quotation; a click never
+      // does. Worded anyway, so the switch stays exhaustive.
+      return tv('pricingAlreadyQuoted')
     default: {
       const unhandled: never = reason
       return unhandled

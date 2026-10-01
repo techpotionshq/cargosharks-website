@@ -144,6 +144,24 @@ describe('the quotation', () => {
     })
 
     /**
+     * Sent while valid, printed after it lapsed — the copy the overlay is for.
+     * It compared against the send date, on which every quote is still valid.
+     */
+    it('marks a quotation sent before it lapsed when it is printed after', () => {
+      const sentWhileValid = quote({
+        validUntil: '2026-06-20',
+        issuedAt: new Date('2026-06-15T09:00:00Z'),
+      })
+
+      expect(renderQuotationHtml(sentWhileValid, 'en', new Date('2026-06-25T09:00:00Z'))).toContain(
+        'EXPIRED',
+      )
+      expect(
+        renderQuotationHtml(sentWhileValid, 'en', new Date('2026-06-18T09:00:00Z')),
+      ).not.toContain('EXPIRED')
+    })
+
+    /**
      * A quotation valid until the 30th is valid all day on the 30th.
      *
      * Comparing a date column against an instant expires it at midnight UTC,

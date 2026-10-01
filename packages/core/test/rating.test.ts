@@ -5,6 +5,7 @@ import {
   UnknownCurrencyError,
   applyMargin,
   calcCharge,
+  distributeMargin,
   emptyMargin,
   fxRate,
   money,
@@ -120,6 +121,65 @@ describe('margin rules', () => {
     expect(
       toDb(applyMargin(cost, { kind: 'target_sell', value: new D('1200'), currency: 'KWD' })),
     ).toBe('1200')
+  })
+})
+
+describe('distributeMargin — the house margin over a whole quotation (R2)', () => {
+  const kwd = (v: string) => money(v, 'KWD')
+  const amounts = (lines: ReturnType<typeof distributeMargin>) => lines.map((l) => toDb(l))
+  const total = (lines: ReturnType<typeof distributeMargin>) =>
+    toDb(lines.reduce((a, b) => money(a.amount.plus(b.amount), 'KWD'), kwd('0')))
+
+  it('rounds each percent line before the total, so the lines add up to it', () => {
+    // 1.234 × 1.1 = 1.3574 each. Rounded per line: 1.357 × 3 = 4.071 — and
+    // that, not the 4.072 of the rounded sum, is the quotation's total.
+    const lines = distributeMargin(
+      [kwd('1.234'), kwd('1.234'), kwd('1.234')],
+      { kind: 'percent', value: new D('10') },
+      seedCurrencyLookup,
+    )
+    expect(amounts(lines)).toEqual(['1.357', '1.357', '1.357'])
+    expect(total(lines)).toBe('4.071')
+  })
+
+  it('applies a target sell once to the quotation, not once per line', () => {
+    // Six lines under a 500 KWD target used to quote 3,000.
+    const lines = distributeMargin(
+      Array.from({ length: 6 }, () => kwd('50')),
+      { kind: 'target_sell', value: new D('500'), currency: 'KWD' },
+      seedCurrencyLookup,
+    )
+    expect(total(lines)).toBe('500')
+    expect(lines).toHaveLength(6)
+  })
+
+  it('adds an absolute uplift once, shared in proportion to cost', () => {
+    const lines = distributeMargin(
+      [kwd('300'), kwd('100')],
+      { kind: 'absolute', value: new D('80'), currency: 'KWD' },
+      seedCurrencyLookup,
+    )
+    expect(amounts(lines)).toEqual(['360', '120'])
+  })
+
+  it('puts the rounding remainder on the largest line', () => {
+    const odd = distributeMargin(
+      [kwd('1'), kwd('1'), kwd('1.001')],
+      { kind: 'target_sell', value: new D('1'), currency: 'KWD' },
+      seedCurrencyLookup,
+    )
+    expect(total(odd)).toBe('1')
+    expect(amounts(odd)).toEqual(['0.333', '0.333', '0.334'])
+  })
+
+  it('refuses an absolute rule in another currency rather than add dollars to dinars', () => {
+    expect(() =>
+      distributeMargin(
+        [kwd('100')],
+        { kind: 'absolute', value: new D('10'), currency: 'USD' },
+        seedCurrencyLookup,
+      ),
+    ).toThrow()
   })
 })
 

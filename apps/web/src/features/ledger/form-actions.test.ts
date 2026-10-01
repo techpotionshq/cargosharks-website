@@ -101,6 +101,7 @@ const PERMISSIONS = [
   'invoice.approve',
   'quote.send',
   'quote.accept',
+  'quote.revise',
   'quote.reject',
 ]
 
@@ -718,6 +719,73 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(rows[1]?.status).toBe('draft')
       // Same document, second version.
       expect(rows[1]?.reference).toBe(`${rows[0]?.reference}-v2`)
+      // And the old one says what replaced it — every "current quotation"
+      // read filters on this, and nothing wrote it (S3).
+      expect(rows[0]?.supersededById).toBe(rows[1]?.id)
+      expect(rows[1]?.supersededById).toBeNull()
+    })
+
+    /** v3 is the first version's stem plus `-v3`, not `-v2-v3` (S6). */
+    it('numbers every revision from the first reference', async () => {
+      const id = await enquiry()
+      for (const sell of ['4250.00', '4300.00', '4400.00']) {
+        await createQuote(
+          {},
+          form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: sell }) }),
+        )
+      }
+
+      const rows = await quotesFor(id)
+      expect(rows[2]?.reference).toBe(`${rows[0]?.reference}-v3`)
+      expect(rows[1]?.supersededById).toBe(rows[2]?.id)
+    })
+
+    /** Superseding a quote the customer may hold is a revision — its own key (S6). */
+    it('asks quote.revise before superseding a version', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      harness.session = { ...session, permissions: new Set(['quote.send']) }
+
+      await expect(
+        createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() })),
+      ).rejects.toThrow()
+      harness.session = session
+
+      expect((await quotesFor(id)).map((r) => r.status)).toEqual(['draft'])
+    })
+
+    /**
+     * The customer said yes to that version. Re-quoting used to retire it
+     * whatever its status, and a job booked from it then pointed at a
+     * superseded quote (S2).
+     */
+    it('never supersedes an accepted quotation', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      await setQuoteStatus({}, form({ quoteId: first!.id, status: 'sent' }))
+      await setQuoteStatus({}, form({ quoteId: first!.id, status: 'accepted' }))
+
+      const state = await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+
+      expect(state.message).toBe('ledgerValidation.quoteAlreadyAccepted')
+      const rows = await quotesFor(id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.status).toBe('accepted')
+      expect(rows[0]?.supersededById).toBeNull()
+    })
+
+    /** A quotation already past its date is not an offer (S9). */
+    it('refuses an expiry date that has already passed', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ validUntil: '2020-01-01' }) }),
+      )
+
+      expect(state.errors?.validUntil).toBe('ledgerValidation.quoteExpiryInPast')
+      expect(await quotesFor(id)).toEqual([])
     })
 
     /**
@@ -779,17 +847,22 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(state.errors?.totalSell).toBeTruthy()
     })
 
-    it('refuses a branch the salesperson does not sit in', async () => {
-      await expect(
-        createQuote(
-          {},
-          form({
-            enquiryId: await enquiry(),
-            branchId: '00000000-0000-7000-8000-0000000000b2',
-            ...priced(),
-          }),
-        ),
-      ).rejects.toThrow()
+    /**
+     * The branch is the enquiry's. The dialog defaulted to the session's
+     * first branch and the action trusted it, so a KWI enquiry got a DXB
+     * quotation (S7); a posted branch is now ignored, and one outside the
+     * salesperson's branches cannot reach it either.
+     */
+    it('takes the branch from the enquiry, not from the form', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: '00000000-0000-7000-8000-0000000000b2', ...priced() }),
+      )
+
+      expect(state.ok).toBeTruthy()
+      expect((await quotesFor(id))[0]?.branchId).toBe(BRANCH)
     })
   })
 
@@ -885,6 +958,41 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(state.message).toBe('ledgerValidation.quoteSentNoEdit')
       expect(await linesOf(quoteId)).toEqual([])
     })
+
+    /** The hidden currency field was the only guard (S10). */
+    it('refuses a line in another currency than the quotation', async () => {
+      const quoteId = await draft()
+
+      const state = await addQuoteLine(
+        {},
+        form({ quoteId, chargeTypeId: freightChargeTypeId, rate: '100', currency: 'KWD' }),
+      )
+
+      expect(state.message).toBe('ledgerValidation.quoteLineCurrency')
+      expect(await linesOf(quoteId)).toEqual([])
+    })
+
+    /**
+     * Once a draft has lines they are the offer, and the total follows them.
+     * The typed total stood unreconciled beneath the lines on the PDF (S10).
+     */
+    it('keeps the total equal to its lines, rounded to the currency', async () => {
+      const quoteId = await draft()
+      for (const rate of ['1000.004', '250']) {
+        await addQuoteLine(
+          {},
+          form({ quoteId, chargeTypeId: freightChargeTypeId, rate, currency: 'USD' }),
+        )
+      }
+
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(quotes).where(eq(quotes.id, quoteId)),
+      )
+      // USD has two decimals: 1000.004 is 1000.00 on the line and in the sum.
+      expect(row?.totalSell).toBe('1250.000000')
+      // Restated against the frozen cost of 3600 — a loss, and it says so.
+      expect((row!.pricedSnapshot as { marginPct: number }).marginPct).toBe(-188)
+    })
   })
 
   describe('sending and deciding', () => {
@@ -940,6 +1048,58 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(payload.total).toBe('4250.00')
       expect(payload.currency).toBe('USD')
       expect(event?.customerId).toBe(CUSTOMER)
+    })
+
+    /**
+     * Sending is what quotes the enquiry (S1). An enquiry that went through
+     * an RFQ sat in `rating` for good, and `won` is legal only from `quoted`.
+     */
+    it('moves an enquiry in rating to quoted when the quotation is sent', async () => {
+      const quoteId = await draft()
+      const enquiryId = (await quoteRow(quoteId))!.enquiryId
+
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      const [row] = await withActor(actor, (tx) =>
+        tx.select({ status: enquiries.status }).from(enquiries).where(eq(enquiries.id, enquiryId)),
+      )
+      expect(row?.status).toBe('quoted')
+    })
+
+    /** A double-click is two sends; the customer gets one mail (S17). */
+    it('raises one quote.sent however many times Send is pressed at once', async () => {
+      const quoteId = await draft()
+      const { reference } = (await quoteRow(quoteId))!
+
+      await Promise.all([
+        setQuoteStatus({}, form({ quoteId, status: 'sent' })),
+        setQuoteStatus({}, form({ quoteId, status: 'sent' })),
+      ])
+
+      const events = await withActor(actor, (tx) =>
+        tx.execute(
+          sql`select 1 from notification_outbox
+               where event_key = 'quote.sent' and payload->>'reference' = ${reference}`,
+        ),
+      )
+      expect(events.rows).toHaveLength(1)
+    })
+
+    /** Past its last valid day it cannot be sent or accepted (S9). */
+    it('refuses to send or accept a lapsed quotation, but lets the customer say no', async () => {
+      const quoteId = await draft()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+      await withActor({ ...actor, type: 'system' }, (tx) =>
+        tx.update(quotes).set({ validUntil: '2020-01-01' }).where(eq(quotes.id, quoteId)),
+      )
+
+      expect((await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))).message).toBe(
+        'ledgerValidation.quoteLapsed',
+      )
+      expect((await quoteRow(quoteId))?.status).toBe('sent')
+
+      await setQuoteStatus({}, form({ quoteId, status: 'rejected' }))
+      expect((await quoteRow(quoteId))?.status).toBe('rejected')
     })
 
     it('records the decision date when the customer answers', async () => {

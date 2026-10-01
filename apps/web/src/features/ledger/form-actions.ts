@@ -31,6 +31,7 @@ import {
   positionFromDb,
   quoteMachine,
   toScale,
+  todayIn,
 } from '@qabandi/core'
 import {
   chargeLines,
@@ -39,11 +40,13 @@ import {
   invoiceLines,
   invoices,
   jobs,
+  nextQuoteVersion,
   notificationOutbox,
   paymentAllocations,
   payments,
   quoteLines,
   quotes,
+  retireQuoteVersion,
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
@@ -132,73 +135,98 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
 
   if (Number(data.totalCost) > Number(data.totalSell)) {
     return fail({ totalSell: tv('priceBelowCost') }, echo(form))
   }
+  /*
+    A quotation that has already lapsed is not an offer (S9). Compared as
+    calendar days in the branch's zone — the same reading the quote page and
+    the PDF give `valid_until` — so "today" is still allowed all day.
+  */
+  if (data.validUntil < todayIn()) {
+    return fail({ validUntil: tv('quoteExpiryInPast') }, echo(form))
+  }
 
-  const reference = await withActor(session.actor, async (tx) => {
-    // The next version for this enquiry, and the previous one superseded in
-    // the same transaction — so there is never a moment where two versions of
-    // a quotation are both live.
-    const [latest] = await tx
-      .select({ id: quotes.id, version: quotes.version, reference: quotes.reference })
-      .from(quotes)
-      .where(eq(quotes.enquiryId, data.enquiryId))
-      .orderBy(sql`${quotes.version} desc`)
-      .limit(1)
+  const outcome = await withActor(
+    session.actor,
+    async (tx): Promise<{ error: string } | { reference: string }> => {
+      /*
+      The branch is the enquiry's, not the form's. The dialog defaulted to the
+      session's first branch, so a KWI enquiry got a DXB quotation (S7); the
+      form still posts one for the register's unbound dialog, and it is
+      ignored rather than trusted.
+    */
+      const [enquiry] = await tx
+        .select({ branchId: enquiries.branchId, status: enquiries.status })
+        .from(enquiries)
+        .where(eq(enquiries.id, data.enquiryId))
+        .limit(1)
+      if (!enquiry) throw new Error('not_found')
+      assertInBranch(session, enquiry.branchId)
+      if (['won', 'lost', 'cancelled', 'expired'].includes(enquiry.status)) {
+        return { error: tv('quoteEnquiryClosed') }
+      }
 
-    const version = (latest?.version ?? 0) + 1
-    const result = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
-    const seq = (result.rows[0] as { seq: string }).seq
-    const year = new Date().getUTCFullYear()
-    const newReference = latest?.reference ?? `QUO-${year}-${seq.padStart(5, '0')}`
-
-    const marginPct =
-      Number(data.totalSell) > 0
-        ? Number(
-            (
-              ((Number(data.totalSell) - Number(data.totalCost)) / Number(data.totalSell)) *
-              100
-            ).toFixed(2),
-          )
-        : 0
-
-    const [row] = await tx
-      .insert(quotes)
-      .values({
-        reference: version === 1 ? newReference : `${newReference}-v${version}`,
-        enquiryId: data.enquiryId,
-        branchId: data.branchId,
-        version,
-        status: 'draft',
-        currency: data.currency,
-        totalSell: data.totalSell,
-        totalCost: data.totalCost,
-        validUntil: data.validUntil,
-        pricedSnapshot: {
-          pricedAt: new Date().toISOString(),
-          marginPct,
-          notes: data.notes,
-        },
-        preparedById: session.principal.id,
+      // The next version for this enquiry, and the previous one superseded in
+      // the same transaction — so there is never a moment where two versions of
+      // a quotation are both live. Shared with "Price it", which numbers the
+      // same way because it is the same act.
+      const next = await nextQuoteVersion(tx, data.enquiryId, {
+        // Superseding a quotation the customer may be holding is a revision,
+        // and a different right from raising the first one (S6).
+        assertRevise: () => assertCan(session, 'quote.revise'),
       })
-      .returning({ reference: quotes.reference })
+      if (!next.ok) {
+        return {
+          error:
+            next.reason === 'quote_accepted' ? tv('quoteAlreadyAccepted') : tv('nothingToUpdate'),
+        }
+      }
 
-    if (latest) {
-      await tx
-        .update(quotes)
-        .set({ status: 'superseded', updatedAt: new Date() })
-        .where(eq(quotes.id, latest.id))
-    }
+      const marginPct =
+        Number(data.totalSell) > 0
+          ? Number(
+              (
+                ((Number(data.totalSell) - Number(data.totalCost)) / Number(data.totalSell)) *
+                100
+              ).toFixed(2),
+            )
+          : 0
 
-    return row!.reference
-  })
+      const [row] = await tx
+        .insert(quotes)
+        .values({
+          reference: next.reference,
+          enquiryId: data.enquiryId,
+          branchId: enquiry.branchId,
+          version: next.version,
+          status: 'draft',
+          currency: data.currency,
+          totalSell: data.totalSell,
+          totalCost: data.totalCost,
+          validUntil: data.validUntil,
+          pricedSnapshot: {
+            pricedAt: new Date().toISOString(),
+            marginPct,
+            notes: data.notes,
+          },
+          preparedById: session.principal.id,
+        })
+        .returning({ id: quotes.id, reference: quotes.reference })
+
+      await retireQuoteVersion(tx, next.previousId, row!.id)
+
+      return { reference: row!.reference }
+    },
+  )
+
+  if ('error' in outcome) return failWith(outcome.error, echo(form))
 
   revalidatePath('/quotes')
+  revalidatePath(`/enquiries/${data.enquiryId}`)
   revalidatePath('/dashboard')
-  return succeed(reference)
+  return succeed(outcome.reference)
 }
 
 /** Add a priced line to a draft quotation. */
@@ -240,17 +268,26 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
   const data = parsed.data
 
   const refused = await withActor(session.actor, async (tx) => {
+    // Locked, so two lines added at once both land in the total below.
     const [quote] = await tx
-      .select({ status: quotes.status })
+      .select({ status: quotes.status, currency: quotes.currency })
       .from(quotes)
       .where(eq(quotes.id, data.quoteId))
       .limit(1)
+      .for('update')
     if (!quote) throw new Error('not_found')
-    if (quote.status !== 'draft') return true
+    if (quote.status !== 'draft') return 'sent' as const
+    /*
+      The dialog fixes the currency to the quotation's in a hidden field, and
+      the action took whatever was posted (S10). A quotation whose lines are in
+      two currencies has no total, so the server says no as well.
+    */
+    if (data.currency !== quote.currency) return 'currency' as const
 
     // The amount is multiplied in PostgreSQL, on `numeric`, rather than in
     // JavaScript. `0.1 * 3` is not `0.3` in a float and a quotation is not the
-    // place to find that out.
+    // place to find that out. Rounded to the currency's own minor units, so
+    // the line printed is the line summed.
     await tx.insert(quoteLines).values({
       quoteId: data.quoteId,
       chargeTypeId: data.chargeTypeId,
@@ -258,10 +295,33 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
       basis: data.basis,
       quantity: data.quantity,
       rate: data.rate,
-      amount: sql`${data.quantity}::numeric * ${data.rate}::numeric`,
-      currency: data.currency,
+      amount: sql`round(${data.quantity}::numeric * ${data.rate}::numeric,
+                        (select minor_units from currencies where code = ${quote.currency}))`,
+      currency: quote.currency,
     })
-    return false
+
+    /*
+      The total is the lines (S10). A manual quotation was created with a
+      typed total and then given lines, and nothing reconciled the two: the
+      PDF printed the lines and then an unrelated stored total beneath them.
+      Once a draft has lines they are the offer, so the sell total follows
+      them, and the frozen margin percentage is restated against the cost the
+      quotation already carries.
+    */
+    const quoteId = data.quoteId
+    await tx.execute(sql`
+      update quotes q
+         set total_sell = l.total,
+             priced_snapshot = jsonb_set(
+               coalesce(q.priced_snapshot, '{}'::jsonb), '{marginPct}',
+               to_jsonb(case when l.total > 0
+                             then round((l.total - coalesce(q.total_cost, 0)) / l.total * 100, 2)
+                             else 0 end)),
+             updated_at = now()
+        from (select sum(amount) as total from quote_lines where quote_id = ${quoteId}) l
+       where q.id = ${quoteId}
+    `)
+    return null
   })
 
   /*
@@ -270,7 +330,8 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
     race, and thrown it reached the error boundary, where production redacts
     the one sentence that says why the line was not added.
   */
-  if (refused) return failWith(tv('quoteSentNoEdit'), echo(form))
+  if (refused === 'sent') return failWith(tv('quoteSentNoEdit'), echo(form))
+  if (refused === 'currency') return failWith(tv('quoteLineCurrency'), echo(form))
 
   revalidatePath(`/quotes/${data.quoteId}`)
   return succeed(data.chargeTypeId)
@@ -289,6 +350,7 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
     status === 'accepted' ? 'quote.accept' : status === 'rejected' ? 'quote.reject' : 'quote.send'
   assertCan(session, permission)
 
+  let lapsed = false
   try {
     await withActor(session.actor, async (tx) => {
       /*
@@ -316,9 +378,31 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
         .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
         .where(eq(quotes.id, quoteId))
         .limit(1)
+        /*
+          Locked, so a double-click on Send is two transactions in a row
+          rather than two at once: the second reads `sent`, the machine
+          refuses sent → sent, and the customer gets one `quote.sent` mail
+          instead of two (S17).
+        */
+        .for('update', { of: quotes })
       if (!current) throw new Error('not_found')
 
       assertTransition(quoteMachine, current.status, status as 'sent')
+
+      /*
+        A lapsed quotation is not an offer anyone can send or accept (S9). The
+        validity is a calendar day, compared in the branch's zone, so the last
+        valid day is valid all day. Rejecting one stays allowed — a customer
+        may well say no to an offer that ran out.
+      */
+      if (
+        (status === 'sent' || status === 'accepted') &&
+        current.validUntil !== null &&
+        current.validUntil < todayIn()
+      ) {
+        lapsed = true
+        return
+      }
 
       await tx
         .update(quotes)
@@ -353,6 +437,28 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
             validUntil: current.validUntil ?? '',
           },
         })
+
+        /*
+          Sending the quotation is what makes the enquiry `quoted` (S1).
+          Nothing moved it out of `rating` — pricing only ever moved `new` and
+          `assigned` — and `won` is legal only from `quoted`, so an enquiry
+          that went through an RFQ could be sent, accepted and then never
+          closed as won. `rating → quoted` is the machine's own transition,
+          gated on the `quote.send` this action already asserted.
+        */
+        await tx
+          .update(enquiries)
+          .set({
+            status: 'quoted',
+            firstRespondedAt: sql`coalesce(${enquiries.firstRespondedAt}, now())`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(enquiries.id, current.enquiryId),
+              inArray(enquiries.status, ['new', 'assigned', 'rating']),
+            ),
+          )
       }
     })
   } catch (error) {
@@ -361,9 +467,11 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
     }
     throw error
   }
+  if (lapsed) return failWith(tv('quoteLapsed'))
 
   revalidatePath('/quotes')
   revalidatePath(`/quotes/${quoteId}`)
+  revalidatePath('/enquiries')
   return succeed(status)
 }
 

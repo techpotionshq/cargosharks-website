@@ -23,6 +23,7 @@ import type { Metadata, Route } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
@@ -66,13 +67,20 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const tc = await getTranslations('common')
   const tq = await getTranslations('quotes')
   const tMode = await getTranslations('mode')
+  const tBasis = await getTranslations('quoteForm')
 
   const sell = Number(quote.totalSell ?? 0)
   const cost = Number(quote.totalCost ?? 0)
   const marginPct = sell > 0 ? ((sell - cost) / sell) * 100 : null
   const money = (amount: number) => formatMoney({ amount, currency: quote.currency }, locale)
 
-  const expired = quote.validUntil !== null && new Date(quote.validUntil).getTime() < Date.now()
+  /*
+    Calendar days in the reader's zone, not instants (S18). `new Date('2026-10-01')`
+    is midnight UTC — 03:00 in Kuwait — so a quotation valid until the 1st read
+    "expired" for most of the 1st. Valid until a day means valid all that day,
+    the reading the PDF and the send/accept guard already give it.
+  */
+  const expired = quote.validUntil !== null && quote.validUntil < todayIn(timeZone)
   const pdf = `/api/quotes/${quote.id}/pdf`
 
   return (
@@ -204,7 +212,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                         </span>
                       ) : null}
                     </TD>
-                    <TD className="text-ink-muted">{line.basis.replace(/_/g, ' ')}</TD>
+                    {/* The basis in the reader's language — it was the enum, spaced out. */}
+                    <TD className="text-ink-muted">
+                      {tBasis(`bases.${line.basis}` as 'bases.flat')}
+                    </TD>
                     <TD align="end" numeric className="text-ink-muted">
                       {Number(line.quantity)}
                     </TD>

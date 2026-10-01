@@ -14,9 +14,10 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   chargeTypes,
   enquiries,
   customers,
@@ -102,6 +103,11 @@ export async function getQuoteComparison(
         incoterm: enquiries.incoterm,
         firstRespondedAt: enquiries.firstRespondedAt,
         status: enquiries.status,
+        branchId: enquiries.branchId,
+        baseCurrency: branches.baseCurrency,
+        hasAccepted: sql<boolean>`exists (
+          select 1 from quotes a where a.enquiry_id = "enquiries"."id" and a.status = 'accepted'
+        )`,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
         preparedBy: principals.nameEn,
@@ -111,6 +117,7 @@ export async function getQuoteComparison(
         destinationNameAr: destination.nameAr,
       })
       .from(enquiries)
+      .innerJoin(branches, eq(branches.id, enquiries.branchId))
       .leftJoin(customers, eq(customers.id, enquiries.customerId))
       .leftJoin(principals, eq(principals.id, enquiries.ownerId))
       // The lane the enquiry actually names. It used to be a hard-coded dash
@@ -263,6 +270,9 @@ export async function getQuoteComparison(
       // The raw status too: "start rating" is only a move from `assigned`,
       // and `isClosed` cannot answer which of the open states it is in.
       status: header.status,
+      branchId: header.branchId,
+      baseCurrency: header.baseCurrency,
+      hasAccepted: header.hasAccepted,
       options,
     }
   })

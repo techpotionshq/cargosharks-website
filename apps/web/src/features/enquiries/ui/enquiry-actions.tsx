@@ -16,6 +16,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { canTransition, enquiryMachine, type EnquiryStatus } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -56,6 +57,21 @@ export async function EnquiryActions({
   // A closed enquiry is a record, not a queue item. Offering actions on it
   // would be offering to reopen something the state machine will refuse.
   if (isClosed) return null
+
+  /*
+    Only the outcomes the machine allows from here (S1). Won is legal only
+    from `quoted` and lost not from `new`; both were offered in every open
+    state, and choosing one the machine refused crashed the action. With no
+    status known (an older caller), both stay offered and the action refuses.
+  */
+  const closeOutcomes = [
+    ...(!status || canTransition(enquiryMachine, status as EnquiryStatus, 'won')
+      ? [{ value: 'won', label: t('won'), icon: 'check' as const, hint: t('wonHint') }]
+      : []),
+    ...(!status || canTransition(enquiryMachine, status as EnquiryStatus, 'lost')
+      ? [{ value: 'lost', label: t('lost'), icon: 'close' as const, hint: t('lostHint') }]
+      : []),
+  ]
 
   return (
     <>
@@ -172,7 +188,7 @@ export async function EnquiryActions({
         />
       ) : null}
 
-      {mayClose ? (
+      {mayClose && closeOutcomes.length > 0 ? (
         <RecordDialog
           action={closeEnquiryAction}
           icon="sealed"
@@ -186,10 +202,7 @@ export async function EnquiryActions({
               label: t('outcome'),
               span: 12,
               required: true,
-              options: [
-                { value: 'won', label: t('won'), icon: 'check', hint: t('wonHint') },
-                { value: 'lost', label: t('lost'), icon: 'close', hint: t('lostHint') },
-              ],
+              options: closeOutcomes,
             },
             {
               kind: 'textarea',

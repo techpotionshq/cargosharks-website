@@ -51,10 +51,18 @@ function isoDay(offsetDays = 0): string {
 export async function QuoteDialog({
   enquiryId,
   branchId,
+  currency,
+  totalSell,
+  totalCost,
   variant = 'primary',
 }: {
   readonly enquiryId?: string
   readonly branchId?: string
+  /** The enquiry's quotation currency — its current quote's, or the branch base. */
+  readonly currency?: string
+  /** The current quotation's figures, so a revision starts from them. */
+  readonly totalSell?: string
+  readonly totalCost?: string
   readonly variant?: 'primary' | 'secondary' | 'ghost'
 }) {
   const session = await requireSession()
@@ -84,15 +92,22 @@ export async function QuoteDialog({
             placeholder: tc('choose'),
           },
         ]),
-    {
-      kind: 'select',
-      name: 'branchId',
-      label: t('branch'),
-      span: 6,
-      required: true,
-      options: options.branches,
-      defaultValue: defaultBranch,
-    },
+    /*
+      Bound to an enquiry, the branch is the enquiry's and not a choice: the
+      action takes it from the enquiry regardless, and a picker defaulting to
+      the session's first branch produced DXB quotations on KWI enquiries (S7).
+    */
+    enquiryId && branchId
+      ? { kind: 'hidden' as const, name: 'branchId', value: branchId }
+      : {
+          kind: 'select' as const,
+          name: 'branchId',
+          label: t('branch'),
+          span: 6 as const,
+          required: true,
+          options: options.branches,
+          defaultValue: defaultBranch,
+        },
     {
       kind: 'select',
       name: 'currency',
@@ -100,7 +115,7 @@ export async function QuoteDialog({
       span: 6,
       required: true,
       options: options.currencies,
-      defaultValue: 'USD',
+      defaultValue: currency ?? 'USD',
     },
     {
       kind: 'text',
@@ -109,6 +124,7 @@ export async function QuoteDialog({
       span: 6,
       required: true,
       hint: t('costHint'),
+      defaultValue: totalCost,
     },
     {
       kind: 'text',
@@ -117,6 +133,7 @@ export async function QuoteDialog({
       span: 6,
       required: true,
       hint: t('sellHint'),
+      defaultValue: totalSell,
     },
     {
       kind: 'note',

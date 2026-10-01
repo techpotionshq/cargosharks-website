@@ -214,7 +214,11 @@ function quantity(value: string): string {
   return value.includes('.') ? value.replace(/\.?0+$/, '') : value
 }
 
-export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale): string {
+export function renderQuotationHtml(
+  quote: QuotationView,
+  locale: DocumentLocale,
+  printedAt: Date = new Date(),
+): string {
   const t = STRINGS[locale]
   const money = (value: string): string => esc(formatMoney(value, quote.currency, locale))
   const name = (line: QuotationLineView): string =>
@@ -265,7 +269,13 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
   const overlay =
     quote.status === 'superseded'
       ? t.superseded
-      : hasExpired(quote.validUntil, quote.issuedAt)
+      : /*
+          Against the day it is printed, as `hasExpired` says (S11). It was
+          the issue date — the day it was sent — and a quotation is always
+          valid on the day it is sent, so the overlay could never appear on
+          the very copies it exists for: one printed after it lapsed.
+        */
+        hasExpired(quote.validUntil, printedAt)
         ? t.expired
         : quote.status === 'draft'
           ? t.draft

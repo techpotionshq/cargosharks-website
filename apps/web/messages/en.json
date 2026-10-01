@@ -3605,7 +3605,10 @@
     "promoteNoCleanLines": "This reply has no clean lines to promote.",
     "promotePortMissing": "A port on the reply ({origin}→{destination}) is no longer on file.",
     "promoteRenewalEndsEarly": "This quote ends {validTo}, before the current rate lapses {lapses}. It cannot renew the lane.",
-    "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it."
+    "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it.",
+    "promoteOverlap": "This rate overlaps another card for the same agent and lane. End or replace that card first.",
+    "promoteLaneMismatch": "This reply priced a different lane ({lane}), so it cannot become this enquiry's rate.",
+    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Accepting this one would overlap it."
   },
   "enquiriesValidation": {
     "chooseOwner": "Choose who should own this.",
@@ -3633,7 +3636,10 @@
     "expectedDate": "a date as YYYY-MM-DD",
     "expectedOneOf": "one of {values}",
     "containerCountWhole": "Enter a whole number of containers, one or more.",
-    "expectedPositiveInteger": "a whole number, one or more"
+    "expectedPositiveInteger": "a whole number, one or more",
+    "wonNeedsQuoted": "An enquiry can be closed as won only once a quotation has been sent.",
+    "lostNotYet": "A new enquiry cannot be closed as lost. Assign it first, or cancel it.",
+    "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
@@ -3790,7 +3796,13 @@
     "exportJournalUnbalancedBy": "The journal is out by {amount} {currency}, which is more than rounding can explain. Something in the period is not what it claims to be.",
     "exportJournalAccountMissing": "No {account, select, rounding {rounding} receivables {receivables} payables {payables} tax {output tax} input_tax {input tax} bank {bank} fx_variance {FX variance} revenue {revenue} cost {cost} other {required}} account is configured, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Add it to the branch’s chart of accounts, then run the export again.",
     "exportJournalChargeTypeUnmapped": "The charge type {chargeType} has no {account, select, revenue {revenue} other {cost}} account, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Map it under Reference data → Charge types, then run the export again.",
-    "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close."
+    "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close.",
+    "quoteAlreadyAccepted": "The customer has accepted a version of this quotation, so it cannot be revised. A different price now needs a new enquiry.",
+    "pricingAlreadyQuoted": "This enquiry was priced by someone else a moment ago. Open the quotation they drafted.",
+    "quoteEnquiryClosed": "This enquiry is closed, so it cannot be quoted again.",
+    "quoteExpiryInPast": "The expiry date has already passed. A quotation must be valid until today or later.",
+    "quoteLineCurrency": "A line must be in the quotation's own currency.",
+    "quoteLapsed": "This quotation's validity has passed. Issue a new version with a fresh expiry date instead."
   },
   "validation": {
     "invalidType": "Enter a valid value.",
