@@ -1163,14 +1163,18 @@ async function creditBlockOnIssue(
   // customer is over their limit would be refusing to lower the balance.
   if (invoice.isCreditNote) return null
 
-  const { assessment, allowed, standing } = await checkCredit(session.actor, {
+  const { assessment, allowed, standing, unconverted } = await checkCredit(session.actor, {
     customerId: invoice.customerId,
     branchId: invoice.branchId,
     proposed: fromDb(invoice.total, invoice.currency),
     invoiceId,
+    refuseUnconvertible: true,
   })
 
   if (allowed) return null
+  if (unconverted && assessment.outcome !== 'on_hold') {
+    return failWith(tv('creditNoRate', { currency: unconverted, limit: standing.currency }))
+  }
 
   const excess = `${toScale(assessment.excess)} ${standing.currency}`
   return failWith(

@@ -375,6 +375,31 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
       expect(inside.assessment.blocked).toBe(false)
     })
 
+    /*
+      F14. With no rate the proposal became null and was assessed as nothing,
+      so a GBP 1,000,000 invoice passed a 1,000 KWD limit.
+    */
+    it('blocks a proposal it cannot convert when asked to, and says why', async () => {
+      const id = await limited()
+
+      const refused = await checkCredit(actor, {
+        customerId: id,
+        branchId: BRANCH,
+        proposed: money('1000000.00', 'GBP'),
+        refuseUnconvertible: true,
+      })
+      expect(refused.allowed).toBe(false)
+      expect(refused.unconverted).toBe('GBP')
+
+      // The booking screen has not opted in, and keeps its own judgement.
+      const booking = await checkCredit(actor, {
+        customerId: id,
+        branchId: BRANCH,
+        proposed: money('1000000.00', 'GBP'),
+      })
+      expect(booking.allowed).toBe(true)
+    })
+
     /**
      * A hold is not overridable, and this is the assertion that keeps it that
      * way. Releasing it is editing the hold in front of whoever set it.

@@ -3821,7 +3821,8 @@
     "invoiceOtherBranch": "That invoice was raised by another branch.",
     "invoiceNotDraftNoEdit": "This invoice is no longer a draft, so its lines cannot change. Correct it with a credit note.",
     "invoiceNoLines": "Add at least one line before approving or issuing this invoice.",
-    "quantityMoreThanZero": "Quantity must be more than zero."
+    "quantityMoreThanZero": "Quantity must be more than zero.",
+    "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override."
   },
   "validation": {
     "invalidType": "Enter a valid value.",
