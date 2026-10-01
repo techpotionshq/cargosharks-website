@@ -5,6 +5,7 @@ import {
   accrue,
   addWorkingDays,
   elapsedWorkingHours,
+  freeTimeExpiresOn,
   freeTimeRemaining,
   isPlausibleClockStart,
   isWorkingDay,
@@ -88,6 +89,25 @@ describe('free-time clocks (FR-JB-08, PP-07)', () => {
     expect(result.amount.amount.toFixed(2)).toBe('140.00')
     expect(result.firstChargeableOn).toBe('2026-08-06')
     expect(result.stillRunning).toBe(true)
+  })
+
+  it('counts working free days from a clock started on the weekend', () => {
+    // Friday 2 Oct 2026 is a Kuwaiti weekend day, so the first free day is
+    // Sunday 4th: three working free days run Sun-Mon-Tue and the first
+    // charged day is Wednesday 7th. Both used to come out a day early.
+    const storage = { ...demurrage, freeDays: 3, dayBasis: 'working' as const }
+    const started = { startedOn: new Date('2026-10-02T06:00:00Z'), endedOn: null }
+    expect(freeTimeExpiresOn(storage, started, kuwait)).toBe('2026-10-06')
+    const result = accrue(storage, started, kuwait, new Date('2026-10-08T06:00:00Z'))
+    expect(result.firstChargeableOn).toBe('2026-10-07')
+    expect(result.chargeableDays).toBe(2)
+
+    // A working-day start was right before and stays right: Sun 4th + 3.
+    const sunday = { startedOn: new Date('2026-10-04T06:00:00Z'), endedOn: null }
+    expect(freeTimeExpiresOn(storage, sunday, kuwait)).toBe('2026-10-06')
+    expect(
+      accrue(storage, sunday, kuwait, new Date('2026-10-08T06:00:00Z')).firstChargeableOn,
+    ).toBe('2026-10-07')
   })
 
   it('stops at gate-in', () => {

@@ -313,10 +313,17 @@ export function accrue(
   const freeDaysUsed = Math.min(elapsed, cfg.freeDays)
   const chargeableDays = Math.max(0, elapsed - cfg.freeDays)
 
+  /*
+    Counted from the day *before* the start, so the start day is the first
+    candidate. `addWorkingDays` steps forward before it counts, and from the
+    start itself it skipped day one whenever the clock began on a working day
+    and counted nothing for it when it began on a weekend — so a clock started
+    on a Friday in Kuwait charged from Tuesday instead of Wednesday.
+  */
   const firstChargeableOn =
     chargeableDays > 0
       ? basis === 'working'
-        ? addWorkingDays(startDate, cfg.freeDays, calendar)
+        ? addWorkingDays(addCalendarDays(startDate, -1), cfg.freeDays + 1, calendar)
         : addCalendarDays(startDate, cfg.freeDays)
       : null
 
@@ -428,10 +435,17 @@ export function freeTimeExpiresOn(
   /*
     Free days are inclusive of the start day, so the last free day is
     `freeDays - 1` after it. A clock with zero free days expired the day it
-    started, which `Math.max` keeps from walking backwards into last week.
+    started, which the guard keeps from walking backwards into last week.
   */
-  const offset = Math.max(0, cfg.freeDays - 1)
+  if (cfg.freeDays <= 0) return start
+  /*
+    The `freeDays`-th working day *at or after* the start, which is why the
+    count begins the day before it. Counting from the start itself is right
+    only when the start is a working day; a clock that began on a Kuwaiti
+    Friday reported its free time running out a day early, and that date is
+    the one in the warning email.
+  */
   return basis === 'working'
-    ? addWorkingDays(start, offset, calendar)
-    : addCalendarDays(start, offset)
+    ? addWorkingDays(addCalendarDays(start, -1), cfg.freeDays, calendar)
+    : addCalendarDays(start, cfg.freeDays - 1)
 }
