@@ -64,6 +64,7 @@ const DEST_A = '00000000-0000-7000-8000-0000000000e3'
 const DEST_B = '00000000-0000-7000-8000-0000000000e4'
 const AGENT_A = '00000000-0000-7000-8000-0000000000e5' // covers lane A, has email
 const AGENT_B = '00000000-0000-7000-8000-0000000000e6' // covers lane B, no contact
+const AGENT_C = '00000000-0000-7000-8000-00000000f5e7' // covers lane A, has email, deactivated
 
 const actor = systemActor()
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
@@ -169,6 +170,13 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
         .values([
           { id: AGENT_A, code: 'AGT-FAN-A', type: 'agent', legalNameEn: 'Fanout Agent A' },
           { id: AGENT_B, code: 'AGT-FAN-B', type: 'agent', legalNameEn: 'Fanout Agent B' },
+          {
+            id: AGENT_C,
+            code: 'AGT-FAN-C',
+            type: 'agent',
+            legalNameEn: 'Fanout Agent C',
+            isActive: false,
+          },
         ])
         .onConflictDoNothing()
 
@@ -189,6 +197,13 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
             destinationId: DEST_B,
             isActive: true,
           },
+          {
+            partnerId: AGENT_C,
+            mode: 'sea_fcl',
+            originId: ORIGIN,
+            destinationId: DEST_A,
+            isActive: true,
+          },
         ])
         .onConflictDoNothing()
 
@@ -203,6 +218,26 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
           isActive: true,
         })
         .onConflictDoNothing()
+
+      /*
+        Agent C covers lane A and can be mailed, but the partner itself was
+        switched off. Guarded by a select: `partner_contacts` has no unique key,
+        so an unguarded insert would add a row on every run.
+      */
+      const cContact = await tx
+        .select({ id: partnerContacts.id })
+        .from(partnerContacts)
+        .where(eq(partnerContacts.partnerId, AGENT_C))
+        .limit(1)
+      if (cContact.length === 0) {
+        await tx.insert(partnerContacts).values({
+          partnerId: AGENT_C,
+          nameEn: 'Desk C',
+          email: 'agent-c@fanout.test',
+          isPrimary: true,
+          isActive: true,
+        })
+      }
     })
   })
 
@@ -217,6 +252,16 @@ describe.skipIf(!enabled)('autoFanoutRateRequests', () => {
     expect(rows[0]!.partnerId).toBe(AGENT_A)
     expect(rows[0]!.status).toBe('sent')
     expect(rows[0]!.token).toMatch(/^[a-f0-9]{24}$/)
+  })
+
+  it('never asks a partner that has been deactivated', async () => {
+    const id = await makeEnquiry({})
+
+    await autoFanoutRateRequests({ source: gate('auto') })
+
+    const asked = (await requestsFor(id)).map((r) => r.partnerId)
+    expect(asked).toContain(AGENT_A)
+    expect(asked).not.toContain(AGENT_C)
   })
 
   it('does nothing at all on its inert default', async () => {
