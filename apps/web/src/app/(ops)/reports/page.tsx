@@ -29,7 +29,8 @@ import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { money, summariseMargin } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
-import { assertCan } from '@/lib/permissions'
+import { redirect } from 'next/navigation'
+import { can } from '@/lib/permissions'
 import {
   REPORT_DIMENSIONS,
   marginByDimension,
@@ -69,8 +70,13 @@ export default async function ReportsPage({
     view in the product — it is the whole book, not one file — so it sits
     behind `report.read`, which finance and management hold and a coordinator
     does not. RLS still narrows it to the principal's branches on top of that.
+
+    A redirect rather than `assertCan`'s throw (A16): the throw reached the
+    error boundary, so a coordinator who typed `/reports` read "Something went
+    wrong" — a fault, for what is simply a page that is not theirs. The
+    settings shell answers the same case the same way.
   */
-  assertCan(session, 'report.read')
+  if (!can(session, 'report.read')) redirect('/dashboard')
 
   const params = await searchParams
   const t = await getTranslations('reports')
