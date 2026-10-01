@@ -346,12 +346,13 @@ export interface OpsOverview {
     readonly sentThisMonth: number
     readonly winRatePct: number
     readonly averageMarginPct: number
-    readonly quotedValue: Money
+    /** One figure per currency — amounts in two currencies do not add. */
+    readonly quotedValue: readonly { readonly currency: string; readonly amount: string }[]
     readonly medianResponseMinutes: number
   }
   readonly clocks: {
     readonly running: number
-    readonly accruing: Money
+    readonly accruing: readonly { readonly currency: string; readonly amount: string }[]
     readonly containersAtRisk: number
   }
   readonly exceptions: readonly ExceptionView[]

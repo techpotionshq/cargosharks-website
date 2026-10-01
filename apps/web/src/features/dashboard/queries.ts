@@ -13,7 +13,7 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNull, lt, ne, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   customers,
@@ -59,7 +59,9 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       jobByStatus,
       jobByMode,
       quoteTotals,
+      quotedByCurrency,
       clockTotals,
+      accruedByCurrency,
       exceptionRows,
       slaWatch,
       arrivals,
@@ -94,7 +96,10 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       // quiet weekend renders as a gap rather than vanishing from the axis.
       () =>
         tx.execute(sql`
-        select to_char(d.day, 'DD Mon') as label,
+        -- The day itself, not a label: to_char(..., 'DD Mon') printed
+        -- "17 Sep" on the Arabic page. The page words it in the reader's
+        -- language.
+        select to_char(d.day, 'YYYY-MM-DD') as label,
                count(${enquiries.id})::int as value
           from generate_series(${fortnightAgo}::date, ${now}::date, interval '1 day') as d(day)
           left join ${enquiries}
@@ -135,9 +140,6 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             sent: sql<number>`count(*) filter (where ${quotes.sentAt} >= ${monthStart})::int`,
             won: sql<number>`count(*) filter (where ${quotes.status} = 'accepted')::int`,
             decided: sql<number>`count(*) filter (where ${quotes.status} in ('accepted','rejected'))::int`,
-            value: sql<
-              string | null
-            >`sum(${quotes.totalSell}) filter (where ${quotes.sentAt} >= ${monthStart})`,
             // Margin from the frozen snapshot, never recomputed from today's
             // rate card — that is the whole point of `priced_snapshot` (§6.3).
             margin: sql<string | null>`avg(
@@ -149,15 +151,43 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
           })
           .from(quotes),
 
+      /*
+        What was quoted this month, one figure per currency — and only the
+        live version of each quotation. It was one sum across every currency
+        labelled KWD, counting every superseded version as well, so a quote
+        revised four times was quoted five times over.
+      */
+      () =>
+        tx
+          .select({
+            currency: quotes.currency,
+            amount: sql<string>`sum(${quotes.totalSell})::text`,
+          })
+          .from(quotes)
+          .where(and(gte(quotes.sentAt, monthStart), ne(quotes.status, 'superseded')))
+          .groupBy(quotes.currency)
+          .orderBy(desc(sql`sum(${quotes.totalSell})`), asc(quotes.currency)),
+
       () =>
         tx
           .select({
             running: sql<number>`count(*)::int`,
-            accrued: sql<string | null>`sum(${freeTimeClocks.accruedAmount})`,
             atRisk: sql<number>`count(*) filter (where ${freeTimeClocks.accruedDays} > 0)::int`,
           })
           .from(freeTimeClocks)
           .where(isNull(freeTimeClocks.endsOn)),
+
+      // Per currency for the same reason: a USD per-diem is not dinars.
+      () =>
+        tx
+          .select({
+            currency: freeTimeClocks.currency,
+            amount: sql<string>`sum(${freeTimeClocks.accruedAmount})::text`,
+          })
+          .from(freeTimeClocks)
+          .where(and(isNull(freeTimeClocks.endsOn), gt(freeTimeClocks.accruedAmount, '0')))
+          .groupBy(freeTimeClocks.currency)
+          .orderBy(desc(sql`sum(${freeTimeClocks.accruedAmount})`), asc(freeTimeClocks.currency)),
 
       () =>
         tx
@@ -300,12 +330,12 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             ? Math.round((quoteRow.won / quoteRow.decided) * 100)
             : 0,
         averageMarginPct: quoteRow?.margin ? Math.round(Number(quoteRow.margin) * 10) / 10 : 0,
-        quotedValue: { amount: Number(quoteRow?.value ?? 0), currency: 'KWD' },
+        quotedValue: quotedByCurrency,
         medianResponseMinutes: Math.round(Number(quoteRow?.medianMinutes ?? 0)),
       },
       clocks: {
         running: clockRow?.running ?? 0,
-        accruing: { amount: Number(clockRow?.accrued ?? 0), currency: 'KWD' },
+        accruing: accruedByCurrency,
         containersAtRisk: clockRow?.atRisk ?? 0,
       },
       exceptions: exceptionRows.map((row) => ({

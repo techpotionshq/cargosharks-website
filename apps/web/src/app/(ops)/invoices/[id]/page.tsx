@@ -65,6 +65,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
   const money = (amount: string | number) =>
     formatMoney({ amount: Number(amount), currency: invoice.currency }, locale)
+  /*
+    The tiles carry the figure alone and the currency as the tile's unit,
+    which wraps beneath it. With the Arabic currency name inside the figure
+    the amounts ran past the tile edge at 1280px.
+  */
+  const figure = (amount: string | number) =>
+    formatMoney({ amount: Number(amount), currency: invoice.currency }, locale, {
+      showCurrency: false,
+    })
 
   const balance = Number(invoice.total) - Number(invoice.amountPaid)
   const isDraft = invoice.status === 'draft'
@@ -129,16 +138,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Metric label={t('total')} value={money(invoice.total)} icon="invoices" tone="brand" />
+        <Metric
+          label={t('total')}
+          value={figure(invoice.total)}
+          unit={invoice.currency}
+          icon="invoices"
+          tone="brand"
+        />
         <Metric
           label={t('paid')}
-          value={money(invoice.amountPaid)}
+          value={figure(invoice.amountPaid)}
+          unit={invoice.currency}
           icon="payments"
           tone={Number(invoice.amountPaid) > 0 ? 'positive' : 'neutral'}
         />
         <Metric
           label={t('balance')}
-          value={money(balance)}
+          value={figure(balance)}
+          unit={invoice.currency}
           icon={balance > 0 ? 'alert' : 'check'}
           tone={balance <= 0 ? 'positive' : overdue ? 'critical' : 'caution'}
           hint={t('balanceHint')}

@@ -26,6 +26,7 @@ import {
 } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { Card } from '@/ui/card'
 import { EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
@@ -134,7 +135,13 @@ export default async function PayablesPage({
         <StatTile
           className="lg:col-span-3"
           label={t('owed')}
-          value={money(ageing.ageing.total.amount.toString(), ageing.currency)}
+          value={formatByCurrency(
+            ageing.byCurrency.map(({ currency, ageing: aged }) => ({
+              currency,
+              amount: aged.total.amount.toString(),
+            })),
+            locale,
+          )}
           hint={t('owedHint')}
           icon="finance"
           tone="info"

@@ -267,7 +267,9 @@ export async function payablesSummary(actor: Actor): Promise<PayablesSummary> {
 export async function payablesAgeing(
   actor: Actor,
   asOf = new Date(),
-): Promise<{ readonly currency: string; readonly ageing: Ageing }> {
+): Promise<{
+  readonly byCurrency: readonly { readonly currency: string; readonly ageing: Ageing }[]
+}> {
   /*
     The fixture stops at the items and `ageItems` still runs, exactly as it
     does below. The bucketing is the part a finance manager is being shown, so
@@ -279,16 +281,21 @@ export async function payablesAgeing(
     today's buckets under yesterday's heading.
   */
   if (usePilotFixtures()) {
-    return { currency: 'KWD', ageing: ageItems(pilotPayableAgeing(asOf.getTime()), 'KWD', asOf) }
+    return {
+      byCurrency: [
+        { currency: 'KWD', ageing: ageItems(pilotPayableAgeing(asOf.getTime()), 'KWD', asOf) },
+      ],
+    }
   }
 
   return withActor(actor, async (tx) => {
-    const [branch] = await tx
-      .select({ baseCurrency: branches.baseCurrency })
-      .from(branches)
-      .limit(1)
-    const base = branch?.baseCurrency ?? 'KWD'
+    /*
+      One ageing per base currency, each bill in its own branch's base.
 
+      It took the base of whichever branch came back first and aged every
+      visible bill in it — a DXB bill converted to dirhams counted as dinars
+      for a principal who sees both branches.
+    */
     const rows = await tx
       .select({
         outstanding: sql<string>`(
@@ -296,20 +303,27 @@ export async function payablesAgeing(
           * "supplier_invoices"."fx_rate"
         )::text`,
         dueOn: supplierInvoices.dueOn,
+        base: branches.baseCurrency,
       })
       .from(supplierInvoices)
+      .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
       .where(inArray(supplierInvoices.status, ['received', 'approved', 'part_paid']))
 
+    const bases = [...new Set(rows.map((r) => r.base))].sort()
     return {
-      currency: base,
-      ageing: ageItems(
-        rows.map((r) => ({
-          outstanding: r.outstanding,
-          dueOn: r.dueOn ? new Date(r.dueOn) : null,
-        })),
-        base,
-        asOf,
-      ),
+      byCurrency: bases.map((base) => ({
+        currency: base,
+        ageing: ageItems(
+          rows
+            .filter((r) => r.base === base)
+            .map((r) => ({
+              outstanding: r.outstanding,
+              dueOn: r.dueOn ? new Date(r.dueOn) : null,
+            })),
+          base,
+          asOf,
+        ),
+      })),
     }
   })
 }

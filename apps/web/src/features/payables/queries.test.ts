@@ -74,10 +74,14 @@ describe.skipIf(!enabled)('payables reads', () => {
       expect(await payablesSummary(homeActor)).toBeDefined()
     })
 
-    it('ages payables and reports the currency it aged them in', async () => {
-      const result = await payablesAgeing(homeActor)
-      expect(typeof result.currency).toBe('string')
-      expect(result.ageing).toBeDefined()
+    /** F16. One ageing per base currency, never two bases added together. */
+    it('ages payables once per base currency', async () => {
+      const result = await payablesAgeing(bothBranchesActor)
+      const currencies = result.byCurrency.map((entry) => entry.currency)
+      expect(new Set(currencies).size).toBe(currencies.length)
+      for (const entry of result.byCurrency) {
+        expect(entry.ageing.total.currency).toBe(entry.currency)
+      }
     })
   })
 

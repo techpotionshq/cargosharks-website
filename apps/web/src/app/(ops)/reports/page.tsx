@@ -38,6 +38,7 @@ import {
 } from '@/features/reports/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatMoney, formatNumber } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { Button, EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
 import { Badge } from '@/ui/status'
@@ -99,14 +100,32 @@ export default async function ReportsPage({
     return locale === 'ar' ? row.labelAr || row.labelEn : row.labelEn
   }
 
-  const currency = rows[0]?.currency ?? 'KWD'
-  const totals = summariseMargin(
-    rows.flatMap((row) => [
-      { direction: 'revenue' as const, amountInBase: money(row.revenue, row.currency) },
-      { direction: 'cost' as const, amountInBase: money(row.cost, row.currency) },
-    ]),
+  /*
+    The totals per base currency. Branches book in different ones, and these
+    were one `summariseMargin` over every row, labelled with the first row's
+    currency — dirhams added into dinars.
+  */
+  const currencies = [...new Set(rows.map((row) => row.currency))]
+  const totalsByCurrency = currencies.map((currency) => ({
     currency,
-  )
+    totals: summariseMargin(
+      rows
+        .filter((row) => row.currency === currency)
+        .flatMap((row) => [
+          { direction: 'revenue' as const, amountInBase: money(row.revenue, row.currency) },
+          { direction: 'cost' as const, amountInBase: money(row.cost, row.currency) },
+        ]),
+      currency,
+    ),
+  }))
+  const totalOf = (pick: 'revenue' | 'cost' | 'gross') =>
+    formatByCurrency(
+      totalsByCurrency.map(({ currency, totals }) => ({
+        currency,
+        amount: totals[pick].amount.toString(),
+      })),
+      locale,
+    )
   const jobCount = rows.reduce((acc, row) => acc + row.jobCount, 0)
 
   const href = (next: Partial<{ dimension: string; from: string; to: string }>) => {
@@ -184,21 +203,9 @@ export default async function ReportsPage({
       </form>
 
       <Grid className="mb-4">
-        <Metric
-          className="lg:col-span-3"
-          label={t('revenue')}
-          value={formatMoney({ amount: Number(totals.revenue.amount), currency }, locale)}
-        />
-        <Metric
-          className="lg:col-span-3"
-          label={t('cost')}
-          value={formatMoney({ amount: Number(totals.cost.amount), currency }, locale)}
-        />
-        <Metric
-          className="lg:col-span-3"
-          label={t('grossProfit')}
-          value={formatMoney({ amount: Number(totals.gross.amount), currency }, locale)}
-        />
+        <Metric className="lg:col-span-3" label={t('revenue')} value={totalOf('revenue')} />
+        <Metric className="lg:col-span-3" label={t('cost')} value={totalOf('cost')} />
+        <Metric className="lg:col-span-3" label={t('grossProfit')} value={totalOf('gross')} />
         <Metric
           className="lg:col-span-3"
           label={t('jobs')}
@@ -232,7 +239,7 @@ export default async function ReportsPage({
               const negative = Number(row.grossProfit) < 0
 
               return (
-                <TR key={row.key}>
+                <TR key={`${row.key}:${row.currency}`}>
                   <TD>{labelOf(row)}</TD>
                   <TD className="text-end tabular-nums">{formatNumber(row.jobCount, locale)}</TD>
                   <TD className="text-end tabular-nums">

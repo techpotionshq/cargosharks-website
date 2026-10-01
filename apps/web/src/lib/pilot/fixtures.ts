@@ -2092,7 +2092,6 @@ export function pilotOverview(now = Date.now()): OpsOverview {
     })
   }
 
-  const accruing = jobs.reduce((sum, job) => sum + (job.accruing?.amount ?? 0), 0)
   const quoted = enquiries.filter((e) => e.quotedSell)
   const won = enquiries.filter((e) => e.status === 'won').length
   const decided = enquiries.filter((e) => e.status === 'won' || e.status === 'lost').length
@@ -2104,7 +2103,8 @@ export function pilotOverview(now = Date.now()): OpsOverview {
     /** Friday and Saturday are the Kuwaiti weekend — the trough is real. */
     const base = weekday === 5 ? 1 : weekday === 6 ? 2 : 4 + ((index * 7) % 5)
     return {
-      label: day.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      // The day, as the query returns it; the page words it per language.
+      label: day.toISOString().slice(0, 10),
       value: base,
     }
   })
@@ -2145,15 +2145,24 @@ export function pilotOverview(now = Date.now()): OpsOverview {
           : Math.round(
               (quoted.reduce((sum, e) => sum + (e.quotedMargin ?? 0), 0) / quoted.length) * 10,
             ) / 10,
-      quotedValue: {
-        amount: quoted.reduce((sum, e) => sum + (e.quotedSell?.amount ?? 0), 0),
-        currency: 'KWD',
-      },
+      quotedValue: sumByCurrency(
+        quoted.map((e) => ({
+          currency: e.quotedSell!.currency,
+          amount: String(e.quotedSell!.amount),
+        })),
+      ),
       medianResponseMinutes: 14,
     },
     clocks: {
       running: jobs.filter((j) => j.accruing !== null).length,
-      accruing: { amount: accruing, currency: 'KWD' },
+      accruing: sumByCurrency(
+        jobs
+          .filter((job) => job.accruing !== null)
+          .map((job) => ({
+            currency: job.accruing!.currency,
+            amount: String(job.accruing!.amount),
+          })),
+      ),
       containersAtRisk: 3,
     },
     exceptions,

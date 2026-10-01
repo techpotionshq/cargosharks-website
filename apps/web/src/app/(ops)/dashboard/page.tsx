@@ -35,6 +35,7 @@ import { SetupChecklist } from '@/features/onboarding/ui/setup-checklist'
 import { NewEnquiryButton } from '@/features/enquiries/ui/new-enquiry-dialog'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay, formatMoney, formatNumber, formatRelative, formatTime } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { BarList, CompositionBar, TrendColumns } from '@/ui/chart'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Button, EmptyState, Grid, Lane } from '@/ui/layout'
@@ -199,12 +200,13 @@ export default async function DashboardPage() {
 
         <Metric
           label={<Term name="demurrage">{t('accruing')}</Term>}
-          value={formatMoney(overview.clocks.accruing, locale, { showCurrency: false })}
-          unit={overview.clocks.accruing.currency}
+          // One figure per currency: a USD per-diem summed into dinars was
+          // printed as dinars.
+          value={formatByCurrency(overview.clocks.accruing, locale)}
           icon="clock"
-          tone={overview.clocks.accruing.amount > 0 ? 'caution' : 'neutral'}
+          tone={overview.clocks.accruing.length > 0 ? 'caution' : 'neutral'}
           // The one number on the page that is genuinely still moving.
-          live={overview.clocks.accruing.amount > 0}
+          live={overview.clocks.accruing.length > 0}
           href="/jobs?filter=exceptions"
         >
           <TickMeter
@@ -249,21 +251,18 @@ export default async function DashboardPage() {
           The one graphic anybody understands without being told: this is
           where our cargo comes from and where it goes. Every line is a live
           shipment and every dot is a port we are currently using. */}
-      <Panel
-        className="mb-4"
-        icon="globe"
-        title={t('map')}
-        explain={t('mapExplain')}
-        actions={
-          <LaneMapLegend
-            modes={overview.jobs.byMode.map((row) => ({
-              mode: row.mode,
-              label: tMode(row.mode),
-              count: row.count,
-            }))}
-          />
-        }
-      >
+      <Panel className="mb-4" icon="globe" title={t('map')} explain={t('mapExplain')}>
+        {/* In the body rather than the header's actions slot, which does not
+            shrink: at 390px the Arabic legend pushed the page 58px sideways.
+            Here it wraps under the title instead. */}
+        <LaneMapLegend
+          className="mb-3"
+          modes={overview.jobs.byMode.map((row) => ({
+            mode: row.mode,
+            label: tMode(row.mode),
+            count: row.count,
+          }))}
+        />
         {map.lanes.length === 0 ? (
           <EmptyState icon="globe" title={t('noLanes')} description={t('mapEmptyHint')} />
         ) : (
@@ -436,6 +435,9 @@ export default async function DashboardPage() {
               height={190}
               points={overview.enquiries.trend.map((point, index) => ({
                 ...point,
+                // The query hands over the day; it is worded here so the axis
+                // reads in Arabic on the Arabic page.
+                label: formatDay(`${point.label}T00:00:00Z`, locale, 'UTC'),
                 emphasis: index === overview.enquiries.trend.length - 1,
               }))}
               label={t('enquiryTrend')}
@@ -553,7 +555,7 @@ export default async function DashboardPage() {
               { label: t('winRate'), value: `${overview.quotes.winRatePct}%` },
               {
                 label: t('winRateHint', { quoted: overview.quotes.sentThisMonth }),
-                value: formatMoney(overview.quotes.quotedValue, locale, { compact: true }),
+                value: formatByCurrency(overview.quotes.quotedValue, locale, { compact: true }),
               },
               {
                 label: t('medianResponse'),
