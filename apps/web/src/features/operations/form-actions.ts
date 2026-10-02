@@ -56,6 +56,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { dayIn, todayIn } from '@/lib/time'
 
@@ -783,6 +784,7 @@ const clockSchema = (tv: Translate) =>
     perDiem: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('amountPerDay')),
     currency: z
       .string()

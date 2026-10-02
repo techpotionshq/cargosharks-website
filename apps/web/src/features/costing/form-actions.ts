@@ -40,6 +40,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
@@ -67,6 +68,7 @@ const decimalString = (label: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^-?\d+(\.\d{1,6})?$/, label)
 
 const chargeLineSchema = (tv: Translate) =>

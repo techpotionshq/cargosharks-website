@@ -627,6 +627,31 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(none.errors?.fxRate).toBe('payablesValidation.noRateOnFile:{"from":"XXX","to":"KWD"}')
     })
 
+    /** QA P3: "1,200.500", as every invoice prints it, was refused as not a number. */
+    it('reads a grouped amount as the figure it is', async () => {
+      const reference = `PAY-GRP-${(seq += 1)}-${Date.now()}`
+      const state = await recordSupplierPayment(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          amount: '1,200.500',
+          currency: 'KWD',
+          paidOn: '2026-08-18',
+          method: 'transfer',
+          reference,
+        }),
+      )
+      expect(state.errors).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ amount: supplierPayments.amount })
+          .from(supplierPayments)
+          .where(eq(supplierPayments.reference, reference)),
+      )
+      expect(row?.amount).toBe('1200.500000')
+    })
+
     it('reports field errors rather than throwing on a bad payment form', async () => {
       const state = await recordSupplierPayment({}, form({ branchId: HOME_BRANCH }))
       expect(state.errors).toBeDefined()

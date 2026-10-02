@@ -73,6 +73,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
@@ -91,6 +92,7 @@ const money = (message: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^\d+(\.\d{1,6})?$/, message)
 
 /**
@@ -1387,7 +1389,9 @@ export async function creditInvoice(_previous: ActionState, form: FormData): Pro
   const tv = await getTranslations('ledgerValidation')
 
   const invoiceId = read(form, 'invoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   const notes = read(form, 'notes')?.slice(0, 1000) ?? null
   if (!invoiceId) return failWith(tv('nothingToUpdate'))
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
@@ -1613,7 +1617,9 @@ export async function allocatePayment(
 
   const paymentId = read(form, 'paymentId')
   const invoiceId = read(form, 'invoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   if (!paymentId || !invoiceId) return fail({ invoiceId: tv('chooseInvoiceToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
     return fail({ amount: tv('enterAllocation') }, echo(form))

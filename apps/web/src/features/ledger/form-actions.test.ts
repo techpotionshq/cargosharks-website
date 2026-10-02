@@ -1305,18 +1305,38 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(state.errors?.validUntil).toBeTruthy()
     })
 
-    /** Money is decimal all the way down; a thousand-separator is not a number. */
+    /**
+     * Money is decimal all the way down, and a figure that cannot be read
+     * unambiguously is refused — a comma as the decimal mark, say.
+     */
     it('refuses an amount that is not one', async () => {
       const state = await createQuote(
         {},
         form({
           enquiryId: await enquiry(),
           branchId: BRANCH,
-          ...priced({ totalSell: '4,250.00' }),
+          ...priced({ totalSell: '4.250,00' }),
         }),
       )
 
       expect(state.errors?.totalSell).toBeTruthy()
+    })
+
+    /**
+     * QA P3. A thousands separator used to be refused as "not a number",
+     * although "4,250.00" is how every quotation in the business prints the
+     * figure. It reads as the figure it is, and stays a decimal string.
+     */
+    it('reads a grouped amount as the figure it is', async () => {
+      const id = await enquiry()
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: '4,250.00' }) }),
+      )
+
+      expect(state.errors).toBeUndefined()
+      const [row] = await quotesFor(id)
+      expect(row?.totalSell).toBe('4250.000000')
     })
 
     /**

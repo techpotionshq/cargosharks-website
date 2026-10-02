@@ -71,6 +71,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
@@ -86,6 +87,7 @@ const decimalString = (label: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^\d+(\.\d{1,6})?$/, label)
 
 const optionalUuid = z
@@ -367,7 +369,9 @@ export async function matchSupplierLine(
 
   const lineId = read(form, 'supplierInvoiceLineId')
   const chargeLineId = read(form, 'chargeLineId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   const billId = read(form, 'supplierInvoiceId')
 
   if (!lineId || !chargeLineId || !billId) {
@@ -792,7 +796,9 @@ export async function allocateSupplierPayment(
 
   const paymentId = read(form, 'supplierPaymentId')
   const billId = read(form, 'supplierInvoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
 
   if (!paymentId || !billId) return fail({ supplierInvoiceId: tv('chooseBillToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
@@ -1388,8 +1394,8 @@ export async function setPartnerTolerance(
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
-  const percent = read(form, 'varianceTolerancePercent') ?? '0'
-  const absolute = read(form, 'varianceToleranceAbsolute') ?? '0'
+  const percent = normaliseAmount(read(form, 'varianceTolerancePercent') ?? '0')
+  const absolute = normaliseAmount(read(form, 'varianceToleranceAbsolute') ?? '0')
   if (!partnerId) return failWith(tv('nothingToDo'))
 
   if (!/^\d+(\.\d{1,6})?$/.test(percent) || !/^\d+(\.\d{1,6})?$/.test(absolute)) {

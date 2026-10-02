@@ -45,6 +45,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 
 function read(form: FormData, key: string): string | undefined {
@@ -328,6 +329,7 @@ const dutySchema = (tv: Translate) =>
     ratePercent: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('percentageExample')),
     descriptionEn: z.string().trim().min(2, tv('required')).max(200),
     descriptionAr: optional(200),
@@ -415,6 +417,7 @@ const chargeableSchema = (tv: Translate) =>
         z
           .string()
           .trim()
+          .overwrite(normaliseAmount)
           .regex(/^\d+(\.\d{1,6})?$/, tv('divisorExample')),
         z.literal(''),
       ])
@@ -423,10 +426,12 @@ const chargeableSchema = (tv: Translate) =>
     roundUpToKg: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('incrementExample')),
     minimumKg: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('floorOrZero')),
     isActive: z.coerce.boolean(),
   })
@@ -505,6 +510,7 @@ const freeTimeSchema = (tv: Translate) =>
     perDiem: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('amountPerDay')),
     currency: z
       .string()
