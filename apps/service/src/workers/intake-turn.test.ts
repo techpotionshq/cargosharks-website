@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 /*
   A scripted model under the real ledger. It reads the transcript the turn sends
@@ -94,8 +94,9 @@ function readFacts(text: string) {
   const type = /\b(40HC|20GP|40GP)\b/i.exec(text)
   if (type && !out.some((f) => f.field === 'containerType')) add('containerType', type[1]!)
   if (/\bby air\b|air ?freight|جوي/i.test(text)) add('mode', 'air')
+  // The last lane named wins, as a careful reader takes a customer's correction.
   const lane =
-    /\bfrom ([A-Z][a-z]+) to ([A-Z][a-z]+)/.exec(text) ??
+    [...text.matchAll(/\bfrom ([A-Z][a-z]+) to ([A-Z][a-z]+)/g)].at(-1) ??
     /\b([A-Z][a-z]+) to ([A-Z][a-z]+)\b/.exec(text)
   if (lane) {
     add('origin', lane[1]!)
@@ -125,6 +126,7 @@ const {
   assets,
   branches,
   enquiries,
+  extractionProposals,
   intakeConversations,
   intakeNotReady,
   intakeRequirements,
@@ -597,6 +599,50 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     const after = await runIntakeTurn(id, at(15 * HOUR + 200), { resolveWhatsApp: wa.resolve })
     expect(after.decision?.reason).toBe('handed_off')
     expect(wa.sent).toHaveLength(2)
+  })
+
+  it('lets a later message correct a fact an earlier turn proposed', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2x40HC furniture from China to Kuwait', 0)
+    const enquiryId = first.enquiryId!
+    const { id } = await conversationFor(enquiryId)
+    await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+
+    await say(sender, 'Sorry, I mean from Shanghai to Shuwaikh', 2 * HOUR)
+    await runIntakeTurn(id, at(2 * HOUR + 130), { resolveWhatsApp: wa.resolve })
+
+    const rows = await withActor(sys, (tx) =>
+      tx
+        .select({
+          field: extractionProposals.field,
+          value: extractionProposals.value,
+          status: extractionProposals.status,
+          decidedById: extractionProposals.decidedById,
+        })
+        .from(extractionProposals)
+        .where(
+          and(
+            eq(extractionProposals.targetId, enquiryId),
+            inArray(extractionProposals.field, ['origin', 'destination', 'commodity']),
+          ),
+        )
+        .orderBy(extractionProposals.createdAt),
+    )
+    const of = (field: string) =>
+      rows.filter((r) => r.field === field).map((r) => [r.value, r.status])
+    // The first answer is kept as history, closed by the newer read; one open answer each.
+    expect(of('origin')).toEqual([
+      ['China', 'superseded'],
+      ['Shanghai', 'proposed'],
+    ])
+    expect(of('destination')).toEqual([
+      ['Kuwait', 'superseded'],
+      ['Shuwaikh', 'proposed'],
+    ])
+    // An answer read again unchanged is neither duplicated nor superseded.
+    expect(of('commodity')).toEqual([['furniture', 'proposed']])
+    expect(rows.find((r) => r.status === 'superseded')?.decidedById).toBe(SYSTEM_PRINCIPAL_ID)
   })
 
   it('answers neither a greeting alone nor anything once a person has replied', async () => {
