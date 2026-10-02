@@ -20,6 +20,7 @@ import {
   assets,
   branches,
   calendarHolidays,
+  commodities,
   customers,
   customsStages,
   documentTypes,
@@ -340,6 +341,8 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         pieces: jobs.pieces,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
+        commodityName: commodities.nameEn,
+        commodityNameAr: commodities.nameAr,
         originName: origin.nameEn,
         originNameAr: origin.nameAr,
         originCode: origin.unlocode,
@@ -359,6 +362,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       .innerJoin(branches, eq(branches.id, jobs.branchId))
       .leftJoin(customers, eq(customers.id, jobs.customerId))
       .leftJoin(principals, eq(principals.id, jobs.ownerId))
+      .leftJoin(commodities, eq(commodities.id, jobs.commodityId))
       .leftJoin(origin, eq(origin.id, jobs.originId))
       .leftJoin(destination, eq(destination.id, jobs.destinationId))
       .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
@@ -448,7 +452,10 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       placeOfReceipt: row.placeOfReceipt,
       placeOfDelivery: row.placeOfDelivery,
       incoterm: row.incoterm,
-      commodity: '—',
+      // Read off the row it names. It was the literal '—' whatever the job
+      // carried, so a commodity chosen on the booking never showed (QA P3).
+      commodity: row.commodityName ?? '—',
+      commodityAr: row.commodityNameAr,
       grossWeightKg: row.grossWeightKg === null ? null : Number(row.grossWeightKg),
       chargeableWeightKg: row.chargeableWeightKg === null ? null : Number(row.chargeableWeightKg),
       volumeCbm: row.volumeCbm === null ? null : Number(row.volumeCbm),

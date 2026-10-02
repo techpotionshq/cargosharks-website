@@ -222,6 +222,8 @@ export interface JobDetail extends JobSummary {
   readonly placeOfDelivery: string | null
   readonly incoterm: string | null
   readonly commodity: string
+  /** The commodity's Arabic name, where the row has one; the page falls back to `commodity`. */
+  readonly commodityAr?: string | null
   readonly grossWeightKg: number | null
   readonly chargeableWeightKg: number | null
   readonly volumeCbm: number | null
