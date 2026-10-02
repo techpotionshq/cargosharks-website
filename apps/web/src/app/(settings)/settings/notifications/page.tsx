@@ -118,7 +118,7 @@ export default async function NotificationsPage() {
           <div className="mt-4 flex justify-end border-t border-line pt-3">
             <button
               type="submit"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-body font-semibold text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('save')}
             </button>
@@ -185,19 +185,17 @@ export default async function NotificationsPage() {
                         {template.branchCode ? (
                           <Badge tone="brand">{template.branchCode}</Badge>
                         ) : (
-                          <span className="text-[0.6875rem] text-ink-subtle">
-                            {t('allBranches')}
-                          </span>
+                          <span className="text-micro text-ink-subtle">{t('allBranches')}</span>
                         )}
                         {template.isActive ? null : <Badge tone="muted">{tc('inactive')}</Badge>}
                       </span>
                       {template.subject ? (
-                        <span className="mt-1 block text-[0.875rem] font-medium text-ink">
+                        <span className="mt-1 block text-body font-medium text-ink">
                           {template.subject}
                         </span>
                       ) : null}
                       <p
-                        className="mt-1 line-clamp-2 text-[0.8125rem] whitespace-pre-line text-ink-muted"
+                        className="mt-1 line-clamp-2 text-body-sm whitespace-pre-line text-ink-muted"
                         dir={template.locale === 'ar' ? 'rtl' : 'ltr'}
                       >
                         {template.body}
@@ -287,7 +285,7 @@ export default async function NotificationsPage() {
                 <TR key={row.id}>
                   <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
                     {row.eventKey}
-                    <span className="block font-sans text-[0.75rem] text-ink-muted md:hidden">
+                    <span className="block font-sans text-caption text-ink-muted md:hidden">
                       {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
                     </span>
                   </TD>
@@ -314,7 +312,7 @@ export default async function NotificationsPage() {
                           {t(`deliveryStates.${row.status}` as 'deliveryStates.sent')}
                         </Badge>
                         {row.attempts > 1 ? (
-                          <span className="text-[0.6875rem] text-ink-subtle">
+                          <span className="text-micro text-ink-subtle">
                             {t('attempts', { count: row.attempts })}
                           </span>
                         ) : null}
@@ -322,7 +320,7 @@ export default async function NotificationsPage() {
                       {/* The reason, where there is one — that is the whole
                           value of a delivery log. */}
                       {(row.lastError ?? row.suppressedReason) ? (
-                        <span className="text-[0.6875rem] break-words text-ink-subtle">
+                        <span className="text-micro break-words text-ink-subtle">
                           {row.lastError ?? row.suppressedReason}
                         </span>
                       ) : null}
@@ -335,7 +333,7 @@ export default async function NotificationsPage() {
         )}
       </Card>
 
-      <p className="mt-4 text-[0.75rem] text-ink-subtle">{t('footnote', { locale })}</p>
+      <p className="mt-4 text-caption text-ink-subtle">{t('footnote', { locale })}</p>
     </>
   )
 }

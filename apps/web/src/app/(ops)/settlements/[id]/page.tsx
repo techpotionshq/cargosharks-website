@@ -130,7 +130,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
           </dl>
 
           {settlement.agreedAt ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-ink-muted">
               {t('agreedOn', { when: formatDateTime(settlement.agreedAt, locale, timeZone) })}
               {settlement.settledAt
                 ? ` · ${t('settledOn', { when: formatDateTime(settlement.settledAt, locale, timeZone) })}`
@@ -138,7 +138,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
             </p>
           ) : null}
           {settlement.voidReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-critical">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-critical">
               <span className="font-medium">{t('voided')}</span> {settlement.voidReason}
             </p>
           ) : null}

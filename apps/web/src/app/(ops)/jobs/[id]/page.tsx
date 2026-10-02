@@ -219,7 +219,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[0.875rem] font-medium text-ink">
+                    <span className="text-body font-medium text-ink">
                       {nameOf(exception.nameEn, exception.nameAr)}
                     </span>
                     <Badge tone={severityTone(exception.severity)}>
@@ -227,13 +227,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     </Badge>
                   </div>
                   {exception.description ? (
-                    <p dir="auto" className="mt-1 text-[0.8125rem] text-ink-muted">
+                    <p dir="auto" className="mt-1 text-body-sm text-ink-muted">
                       {exception.description}
                     </p>
                   ) : null}
                 </div>
                 <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
-                  <div className="text-end text-[0.6875rem] text-ink-subtle">
+                  <div className="text-end text-micro text-ink-subtle">
                     <p>
                       {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
                     </p>
@@ -247,7 +247,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             ))}
           </ul>
           {job.customsNote ? (
-            <p className="mt-3 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            // `dir="auto"`: the note is free text in whatever language the
+            // broker wrote it. An English note in the Arabic page had its full
+            // stop thrown to the start of the line.
+            <p dir="auto" className="mt-3 border-t border-line pt-3 text-body-sm text-ink-muted">
               {job.customsNote}
             </p>
           ) : null}
@@ -395,7 +398,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                         <Badge tone="critical">
                           {t(`clockKinds.${clock.kind}` as 'clockKinds.demurrage')}
                         </Badge>
-                        <span className="ref numeric text-[0.8125rem] text-ink-muted">
+                        <span className="ref numeric text-body-sm text-ink-muted">
                           {clock.containerNo}
                         </span>
                         {clock.endsOn ? (
@@ -435,7 +438,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                           }}
                         />
                       </span>
-                      <span className="numeric accruing font-display text-[1.375rem] leading-none font-semibold text-critical">
+                      <span className="numeric accruing font-display text-headline leading-none font-semibold text-critical">
                         {formatMoney(clock.accrued, locale)}
                       </span>
                     </div>
@@ -448,7 +451,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       label={`${clock.elapsedDays} / ${clock.freeDays}`}
                     />
 
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[0.75rem] text-ink-muted">
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-caption text-ink-muted">
                       <span>
                         {t('freeDays', { days: clock.freeDays })} ·{' '}
                         <span className="font-medium text-critical">
@@ -458,7 +461,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       </span>
                       {clock.counterparty ? (
                         <span>
-                          {t('counterparty')} {clock.counterparty}
+                          {/* <bdi>: a Latin carrier name after "مستحقة لـ" let
+                              the bidi algorithm move the preposition to the
+                              far end of the name. */}
+                          {t('counterparty')} <bdi>{clock.counterparty}</bdi>
                         </span>
                       ) : null}
                     </div>
@@ -468,7 +474,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       to add this line — the nightly accrual wrote it.
                     */}
                     {clock.chargeLineWritten ? (
-                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-positive-soft px-2 py-1 text-[0.75rem] font-medium text-positive">
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-positive-soft px-2 py-1 text-caption font-medium text-positive">
                         <Icon name="check" size={13} strokeWidth={2.5} />
                         {t('chargeLineWritten')}
                       </p>
@@ -520,7 +526,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <CardHeader
               icon="document"
               eyebrow={t('documents')}
-              title={t('documents')}
+              title={t('documentVault')}
               description={t('documentsHint')}
             />
           </div>
@@ -538,10 +544,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <Icon name="document" size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[0.875rem] font-medium text-ink">
+                    <p className="truncate text-body font-medium text-ink">
                       {nameOf(document.nameEn, document.nameAr)}
                     </p>
-                    <p className="text-[0.6875rem] text-ink-subtle">
+                    <p className="text-micro text-ink-subtle">
                       {t('version', { version: document.version })} · {document.sizeKb} KB
                     </p>
                   </div>
@@ -659,7 +665,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <TR key={container.containerNo}>
                     <TD>
                       <span className="ref numeric font-medium">{container.containerNo}</span>
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-0.5 block text-micro text-ink-subtle">
                         {container.type}
                       </span>
                     </TD>

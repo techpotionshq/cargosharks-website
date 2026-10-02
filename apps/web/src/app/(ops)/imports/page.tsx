@@ -177,7 +177,7 @@ export default async function ImportsPage({
               href={`/imports?kind=${option.key}` as Route}
               aria-current={isActive ? 'page' : undefined}
               className={[
-                'inline-flex h-8 items-center rounded-full px-3.5 text-[0.8125rem] font-medium transition-colors',
+                'inline-flex h-8 items-center rounded-full px-3.5 text-body-sm font-medium transition-colors',
                 isActive
                   ? 'bg-brand text-on-brand'
                   : 'border border-line bg-surface text-ink-muted hover:text-ink',
@@ -192,7 +192,7 @@ export default async function ImportsPage({
       {fixtures ? (
         <div className="mb-5 flex items-start gap-2.5 rounded-sm border border-line bg-surface-sunken p-4">
           <Icon name="alert" size={16} className="mt-0.5 shrink-0 text-ink-muted" />
-          <p className="text-[0.8125rem] text-ink-muted">{t('fixturesHint')}</p>
+          <p className="text-body-sm text-ink-muted">{t('fixturesHint')}</p>
         </div>
       ) : null}
 

@@ -44,12 +44,12 @@ export async function RenewalsPanel() {
           <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-[0.9375rem] font-medium text-ink" dir="auto">
+                <span className="text-title font-medium text-ink" dir="auto">
                   {row.lane}
                 </span>
                 <StatusBadge row={row} t={tShared} />
               </div>
-              <p className="mt-0.5 text-[0.8125rem] text-ink-muted" dir="auto">
+              <p className="mt-0.5 text-body-sm text-ink-muted" dir="auto">
                 {row.partnerName}
                 {row.oldValidTo ? (
                   <span className="ms-2 text-ink-subtle">
@@ -58,7 +58,7 @@ export async function RenewalsPanel() {
                 ) : null}
               </p>
               {row.declinedReason ? (
-                <p className="mt-1 text-[0.8125rem] text-ink-muted" dir="auto">
+                <p className="mt-1 text-body-sm text-ink-muted" dir="auto">
                   {row.declinedReason}
                 </p>
               ) : null}
@@ -66,14 +66,14 @@ export async function RenewalsPanel() {
 
             <div className="text-end">
               {row.quotedTotal && row.quotedCurrency ? (
-                <div className="text-[0.9375rem] font-semibold text-ink">
+                <div className="text-title font-semibold text-ink">
                   {formatMoney({ amount: row.quotedTotal, currency: row.quotedCurrency }, locale)}
                 </div>
               ) : (
-                <span className="text-[0.8125rem] text-ink-subtle">{tShared('awaiting')}</span>
+                <span className="text-body-sm text-ink-subtle">{tShared('awaiting')}</span>
               )}
               {row.lineCount > 0 ? (
-                <div className="text-[0.6875rem] text-ink-subtle">
+                <div className="text-micro text-ink-subtle">
                   {tShared('lines', { count: row.lineCount })}
                 </div>
               ) : null}

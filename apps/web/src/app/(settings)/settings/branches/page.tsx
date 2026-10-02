@@ -93,7 +93,7 @@ export default async function BranchesPage() {
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
                 {row.calendarName ? null : (
-                  <span className="mt-0.5 flex items-center gap-1 text-[0.75rem] text-caution md:hidden">
+                  <span className="mt-0.5 flex items-center gap-1 text-caption text-caution md:hidden">
                     <Icon name="alert" size={13} className="shrink-0" />
                     {t('noCalendar')}
                   </span>
@@ -105,11 +105,13 @@ export default async function BranchesPage() {
               <TD priority="low" className="ref whitespace-nowrap text-ink">
                 {row.baseCurrency}
               </TD>
+              {/* The zone sits under the calendar's name: on one line the
+                  pair was 222px, and eleven columns at 1280 have 966px. */}
               <TD priority="low" className="whitespace-nowrap">
                 {row.calendarName ? (
                   <span className="text-ink-muted">
                     {(locale === 'ar' && row.calendarNameAr) || row.calendarName}
-                    <span className="ms-1.5 text-[0.75rem] text-ink-subtle">{row.timeZone}</span>
+                    <span className="ref block text-caption text-ink-subtle">{row.timeZone}</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 font-medium text-caution">

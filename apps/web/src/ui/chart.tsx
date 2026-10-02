@@ -67,7 +67,7 @@ export function BarList({
   readonly emptyLabel?: string
 }) {
   if (data.length === 0) {
-    return <p className="py-6 text-center text-sm text-ink-subtle">{emptyLabel}</p>
+    return <p className="py-6 text-center text-body text-ink-subtle">{emptyLabel}</p>
   }
 
   const ceiling = Math.max(max ?? 0, ...data.map((d) => d.value), 1)
@@ -79,8 +79,8 @@ export function BarList({
         const row = (
           <>
             <span className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-[0.8125rem] text-ink">{datum.label}</span>
-              <span className="numeric shrink-0 text-[0.8125rem] font-semibold text-ink tabular-nums">
+              <span className="truncate text-body-sm text-ink">{datum.label}</span>
+              <span className="numeric shrink-0 text-body-sm font-semibold text-ink tabular-nums">
                 {datum.display ?? datum.value.toLocaleString()}
               </span>
             </span>
@@ -171,7 +171,7 @@ export function CompositionBar({
       {/* The legend is always present: identity must never be colour alone. */}
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
         {segments.map((segment, index) => (
-          <li key={segment.label} className="flex items-center gap-1.5 text-[0.75rem]">
+          <li key={segment.label} className="flex items-center gap-1.5 text-caption">
             <span
               className="size-2 shrink-0 rounded-full"
               style={{ backgroundColor: segment.color ?? seriesColor(index) }}
@@ -229,7 +229,7 @@ export function TrendColumns({
               title={`${point.label}: ${point.value}`}
             >
               {isPeak ? (
-                <span className="numeric absolute -top-0.5 text-[0.625rem] font-semibold text-ink-muted">
+                <span className="numeric absolute -top-0.5 text-micro font-semibold text-ink-muted">
                   {point.value}
                 </span>
               ) : null}
@@ -246,7 +246,7 @@ export function TrendColumns({
         })}
       </div>
       {/* A baseline, and only the first and last labels: fourteen ticks is a smear. */}
-      <div className="mt-2 flex items-center justify-between border-t border-line pt-1.5 text-[0.6875rem] text-ink-subtle">
+      <div className="mt-2 flex items-center justify-between border-t border-line pt-1.5 text-micro text-ink-subtle">
         <span>{points[0]?.label}</span>
         <span>{points[points.length - 1]?.label}</span>
       </div>

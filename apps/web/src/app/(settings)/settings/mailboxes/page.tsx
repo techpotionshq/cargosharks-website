@@ -142,7 +142,7 @@ export default async function MailboxesPage() {
                   */
                   <div className="flex flex-col items-start gap-1">
                     <Badge tone="critical">{t('erroring')}</Badge>
-                    <span className="text-xs break-words text-muted">{row.lastError}</span>
+                    <span className="text-caption break-words text-muted">{row.lastError}</span>
                   </div>
                 ) : (
                   <Badge tone="positive">{tc('active')}</Badge>
@@ -175,7 +175,7 @@ export default async function MailboxesPage() {
       </TableShell>
 
       {rows.some((row) => row.isActive && row.lastError) ? (
-        <p className="mt-3 text-sm text-muted">{t('errorHint')}</p>
+        <p className="mt-3 text-body text-muted">{t('errorHint')}</p>
       ) : null}
 
       {/*
@@ -184,7 +184,7 @@ export default async function MailboxesPage() {
         which reads as a bug in the page rather than as a gap in their roles.
       */}
       {assignable.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">{t('noBranchRole')}</p>
+        <p className="mt-3 text-body text-muted">{t('noBranchRole')}</p>
       ) : null}
     </Register>
   )

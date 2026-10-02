@@ -42,16 +42,16 @@ export function ContainerCountForm({
           step={1}
           required
           defaultValue={state.values?.containerCount ?? current ?? ''}
-          className={`h-9 w-24 rounded-sm border border-line-strong bg-surface-sunken px-2 text-[0.875rem] text-ink focus:bg-surface ${FOCUS_RING}`}
+          className={`h-9 w-24 rounded-sm border border-line-strong bg-surface-sunken px-2 text-body text-ink focus:bg-surface ${FOCUS_RING}`}
         />
       </label>
       <Button type="submit" variant="secondary" size="sm" disabled={pending}>
         {labels.save}
       </Button>
       {error ? (
-        <span className="w-full text-[0.75rem] text-caution">{error}</span>
+        <span className="w-full text-caption text-caution">{error}</span>
       ) : current === null ? (
-        <span className="w-full text-[0.75rem] text-ink-muted">{labels.hint}</span>
+        <span className="w-full text-caption text-ink-muted">{labels.hint}</span>
       ) : null}
     </form>
   )

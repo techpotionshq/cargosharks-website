@@ -31,6 +31,7 @@ import { Badge } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
 import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automation-strip'
@@ -191,11 +192,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 <Icon name="clock" size={18} />
               </span>
               <div>
-                <p className="text-[0.9375rem] font-semibold text-ink">
+                <p className="text-title font-semibold text-ink">
                   {t('pricedIn', { ms: formatNumber(comparison.pricingMs ?? 0, locale) })}
                 </p>
                 {comparison.manualTurnaroundHours ? (
-                  <p className="text-[0.8125rem] text-ink-muted">
+                  <p className="text-body-sm text-ink-muted">
                     {t('manualComparison', { hours: comparison.manualTurnaroundHours })}
                   </p>
                 ) : null}
@@ -282,11 +283,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                       <div className="min-w-0">
                         {/* Wraps rather than clips: a carrier name is the first thing
                         compared across the three cards. */}
-                        <p className="text-[0.9375rem] font-semibold text-balance text-ink">
+                        <p className="text-title font-semibold text-balance text-ink">
                           {orNotRecorded(option.carrier)}
                         </p>
                         {option.service ? (
-                          <p className="mt-0.5 text-[0.75rem] text-ink-muted">{option.service}</p>
+                          <p className="mt-0.5 text-caption text-ink-muted">{option.service}</p>
                         ) : null}
                       </div>
                       {/* Nothing to recommend it over when it is the only one. */}
@@ -298,14 +299,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     </div>
 
                     <div className="mt-4 flex items-baseline gap-2">
-                      <span className="numeric font-display text-[1.75rem] leading-none font-semibold tracking-tight text-ink">
+                      <span className="numeric font-display text-display-lg leading-none font-semibold tracking-tight text-ink">
                         {formatMoney(option.sell, locale, { showCurrency: false })}
                       </span>
-                      <span className="text-[0.8125rem] font-medium text-ink-subtle">
+                      <span className="text-body-sm font-medium text-ink-subtle">
                         {option.sell.currency}
                       </span>
                     </div>
-                    <p className="mt-1 text-[0.75rem] text-ink-subtle">{t('sell')}</p>
+                    <p className="mt-1 text-caption text-ink-subtle">{t('sell')}</p>
                   </div>
 
                   <div className="min-w-0">
@@ -325,14 +326,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     >
                       <div>
                         <dt className="eyebrow mb-1">{t('buy')}</dt>
-                        <dd className="numeric text-[0.875rem] font-medium text-ink-muted">
+                        <dd className="numeric text-body font-medium text-ink-muted">
                           {formatMoney(option.buy, locale, { showCurrency: false })}
                         </dd>
                       </div>
                       <div>
                         <dt className="eyebrow mb-1">{t('margin')}</dt>
                         <dd
-                          className={`numeric text-[0.875rem] font-semibold ${
+                          className={`numeric text-body font-semibold ${
                             option.marginPct >= 18
                               ? 'text-positive'
                               : option.marginPct < 12
@@ -346,7 +347,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                       {option.transitDays ? (
                         <div>
                           <dt className="eyebrow mb-1">{t('transit')}</dt>
-                          <dd className="numeric text-[0.875rem] font-medium text-ink">
+                          <dd className="numeric text-body font-medium text-ink">
                             {option.transitDays}
                             <span className="text-ink-subtle"> {tc('days')}</span>
                           </dd>
@@ -362,7 +363,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                       label={`${t('margin')} ${option.marginPct}%`}
                     />
 
-                    <p className={`mt-3 text-[0.6875rem] text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
+                    <p className={`mt-3 text-micro text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
                       {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
                     </p>
                   </div>
@@ -440,16 +441,22 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                         {line.quantity}
                       </TD>
                       <TD priority="low" align="end" numeric className="text-ink-muted">
-                        {line.buyRate === null
-                          ? tc('notRecorded')
-                          : formatMoney({ amount: line.buyRate, currency }, locale, {
-                              showCurrency: false,
-                            })}
+                        {line.buyRate === null ? (
+                          tc('notRecorded')
+                        ) : (
+                          <Money
+                            value={{ amount: line.buyRate, currency }}
+                            locale={locale}
+                            showCurrency={false}
+                          />
+                        )}
                       </TD>
                       <TD priority="low" align="end" numeric>
-                        {formatMoney({ amount: line.sellRate, currency }, locale, {
-                          showCurrency: false,
-                        })}
+                        <Money
+                          value={{ amount: line.sellRate, currency }}
+                          locale={locale}
+                          showCurrency={false}
+                        />
                       </TD>
                       <TD align="end" numeric>
                         {margin === null ? (
@@ -461,7 +468,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                         )}
                       </TD>
                       <TD align="end" numeric className="font-semibold">
-                        {formatMoney(line.amount, locale, { showCurrency: false })}
+                        <Money value={line.amount} locale={locale} showCurrency={false} />
                       </TD>
                     </TR>
                   )
@@ -473,16 +480,24 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                   <TD priority="low" />
                   <TD priority="low" />
                   <TD priority="low" align="end" numeric className="font-medium text-ink-muted">
-                    {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
+                    <Money
+                      value={comparison.options[0]?.buy}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
                   <TD priority="low" align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
+                    <Money
+                      value={comparison.options[0]?.sell}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
                   <TD align="end" numeric className="font-semibold text-positive">
                     {comparison.options[0]?.marginPct.toFixed(1)}%
                   </TD>
                   <TD align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale)}
+                    <Money value={comparison.options[0]?.sell} locale={locale} />
                   </TD>
                 </tr>
               </tfoot>

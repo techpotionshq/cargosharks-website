@@ -43,7 +43,7 @@ export function CreateApiKeyForm({
             name="name"
             required
             placeholder={labels.namePlaceholder}
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
         </label>
 
@@ -52,7 +52,7 @@ export function CreateApiKeyForm({
           <select
             name="customerId"
             required
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             <option value="">{labels.choose}</option>
             {customers.map((option) => (
@@ -68,7 +68,7 @@ export function CreateApiKeyForm({
           <select
             name="branchId"
             required
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             {branches.map((option) => (
               <option key={option.value} value={option.value}>
@@ -83,9 +83,9 @@ export function CreateApiKeyForm({
           <input
             type="date"
             name="expiresAt"
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
-          <span className="text-[0.6875rem] text-ink-subtle">{labels.expiresHint}</span>
+          <span className="text-micro text-ink-subtle">{labels.expiresHint}</span>
         </label>
 
         <div className="flex items-end sm:col-span-2">
@@ -97,14 +97,12 @@ export function CreateApiKeyForm({
 
       {state.errors
         ? Object.entries(state.errors).map(([field, message]) => (
-            <p key={field} className="mt-2 text-[0.8125rem] text-critical">
+            <p key={field} className="mt-2 text-body-sm text-critical">
               {message}
             </p>
           ))
         : null}
-      {state.message ? (
-        <p className="mt-2 text-[0.8125rem] text-critical">{state.message}</p>
-      ) : null}
+      {state.message ? <p className="mt-2 text-body-sm text-critical">{state.message}</p> : null}
 
       {/*
         The one moment the secret exists outside the action.
@@ -115,8 +113,8 @@ export function CreateApiKeyForm({
       */}
       {issued ? (
         <div className="mt-4 rounded-sm border border-caution/40 bg-caution-soft/50 p-3">
-          <p className="text-[0.8125rem] font-medium text-caution">{labels.onceOnly}</p>
-          <code className="ref mt-2 block break-all rounded-sm bg-surface px-2.5 py-2 text-[0.8125rem] select-all">
+          <p className="text-body-sm font-medium text-caution">{labels.onceOnly}</p>
+          <code className="ref mt-2 block break-all rounded-sm bg-surface px-2.5 py-2 text-body-sm select-all">
             {issued}
           </code>
         </div>
@@ -140,9 +138,7 @@ export function RevokeApiKeyButton({
       <Button type="submit" variant="ghost" size="sm" icon="close">
         {label}
       </Button>
-      {state.message ? (
-        <span className="text-[0.6875rem] text-caution">{state.message}</span>
-      ) : null}
+      {state.message ? <span className="text-micro text-caution">{state.message}</span> : null}
     </form>
   )
 }
@@ -177,16 +173,16 @@ export function CreateWebhookForm({
             required
             type="url"
             placeholder="https://…"
-            className="ref rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="ref rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
-          <span className="text-[0.6875rem] text-ink-subtle">{labels.urlHint}</span>
+          <span className="text-micro text-ink-subtle">{labels.urlHint}</span>
         </label>
 
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className="eyebrow">{labels.customer}</span>
           <select
             name="customerId"
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             {/* Empty is a deployment-wide subscriber — the operator's own
                 systems, rather than one customer's. */}
@@ -203,7 +199,7 @@ export function CreateWebhookForm({
           <span className="eyebrow">{labels.branch}</span>
           <select
             name="branchId"
-            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             <option value="">{labels.everyBranch}</option>
             {branches.map((option) => (
@@ -219,9 +215,9 @@ export function CreateWebhookForm({
           <input
             name="events"
             placeholder="job.milestone_reached document.released"
-            className="ref rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.875rem]"
+            className="ref rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
-          <span className="text-[0.6875rem] text-ink-subtle">{labels.eventsHint}</span>
+          <span className="text-micro text-ink-subtle">{labels.eventsHint}</span>
         </label>
 
         <div className="flex items-start sm:col-span-1">
@@ -233,19 +229,17 @@ export function CreateWebhookForm({
 
       {state.errors
         ? Object.entries(state.errors).map(([field, message]) => (
-            <p key={field} className="mt-2 text-[0.8125rem] text-critical">
+            <p key={field} className="mt-2 text-body-sm text-critical">
               {message}
             </p>
           ))
         : null}
-      {state.message ? (
-        <p className="mt-2 text-[0.8125rem] text-critical">{state.message}</p>
-      ) : null}
+      {state.message ? <p className="mt-2 text-body-sm text-critical">{state.message}</p> : null}
 
       {secret ? (
         <div className="mt-4 rounded-sm border border-caution/40 bg-caution-soft/50 p-3">
-          <p className="text-[0.8125rem] font-medium text-caution">{labels.secretOnce}</p>
-          <code className="ref mt-2 block break-all rounded-sm bg-surface px-2.5 py-2 text-[0.8125rem] select-all">
+          <p className="text-body-sm font-medium text-caution">{labels.secretOnce}</p>
+          <code className="ref mt-2 block break-all rounded-sm bg-surface px-2.5 py-2 text-body-sm select-all">
             {secret}
           </code>
         </div>

@@ -149,7 +149,7 @@ export function ImportConsole({
 
         <div className="flex flex-col gap-4 pt-1">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-body font-medium text-ink transition-colors hover:bg-surface-sunken">
               <Icon name="document" size={15} />
               {labels.chooseFile}
               <input
@@ -173,7 +173,7 @@ export function ImportConsole({
               />
             </label>
 
-            <span className="text-[0.8125rem] text-ink-muted">
+            <span className="text-body-sm text-ink-muted">
               {fileName || state.fileName || labels.noFile}
             </span>
 
@@ -184,14 +184,14 @@ export function ImportConsole({
 
           {needsBranch ? (
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="branchId" className="text-[0.8125rem] font-medium text-ink">
+              <label htmlFor="branchId" className="text-body-sm font-medium text-ink">
                 {labels.branch}
               </label>
               <select
                 id="branchId"
                 name="branchId"
                 required
-                className="h-10 w-full max-w-sm rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                className="h-10 w-full max-w-sm rounded-sm border border-line bg-surface px-3 text-body text-ink"
               >
                 <option value="">{labels.chooseBranch}</option>
                 {branches.map((branch) => (
@@ -200,34 +200,34 @@ export function ImportConsole({
                   </option>
                 ))}
               </select>
-              <p className="text-[0.75rem] text-ink-subtle">{labels.branchHint}</p>
+              <p className="text-caption text-ink-subtle">{labels.branchHint}</p>
             </div>
           ) : null}
 
           {needsPartner ? (
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="direction" className="text-[0.8125rem] font-medium text-ink">
+                <label htmlFor="direction" className="text-body-sm font-medium text-ink">
                   {labels.direction}
                 </label>
                 <select
                   id="direction"
                   name="direction"
                   defaultValue="buy"
-                  className="h-10 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                  className="h-10 rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="buy">{labels.buy}</option>
                   <option value="sell">{labels.sell}</option>
                 </select>
               </div>
               <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-                <label htmlFor="partnerId" className="text-[0.8125rem] font-medium text-ink">
+                <label htmlFor="partnerId" className="text-body-sm font-medium text-ink">
                   {labels.partner}
                 </label>
                 <select
                   id="partnerId"
                   name="partnerId"
-                  className="h-10 w-full rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                  className="h-10 w-full rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="">{labels.choosePartner}</option>
                   {partners.map((partner) => (
@@ -236,7 +236,7 @@ export function ImportConsole({
                     </option>
                   ))}
                 </select>
-                <p className="text-[0.75rem] text-ink-subtle">{labels.partnerHint}</p>
+                <p className="text-caption text-ink-subtle">{labels.partnerHint}</p>
               </div>
             </div>
           ) : null}
@@ -246,13 +246,13 @@ export function ImportConsole({
               type="submit"
               name="intent"
               value="check"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-[0.875rem] font-semibold text-ink transition-colors hover:bg-surface-sunken"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-body font-semibold text-ink transition-colors hover:bg-surface-sunken"
             >
               <Icon name="search" size={15} weight="bold" />
               {labels.check}
             </button>
             {state.error ? (
-              <span className="text-[0.8125rem] font-medium text-critical">
+              <span className="text-body-sm font-medium text-critical">
                 {labels[`error_${state.error}`] ?? labels.error_unknown}
               </span>
             ) : null}
@@ -282,7 +282,7 @@ export function ImportConsole({
                       </span>
                     ) : null}
                     {field.hint ? (
-                      <span className="block text-[0.75rem] text-ink-subtle">{field.hint}</span>
+                      <span className="block text-caption text-ink-subtle">{field.hint}</span>
                     ) : null}
                   </TD>
                   <TD>
@@ -296,7 +296,7 @@ export function ImportConsole({
                         }))
                       }
                       className={[
-                        'h-8 w-full max-w-xs rounded-sm border bg-surface px-2 text-[0.8125rem]',
+                        'h-8 w-full max-w-xs rounded-sm border bg-surface px-2 text-body-sm',
                         field.required && mapping[field.key] === null
                           ? 'border-critical text-critical'
                           : 'border-line text-ink',
@@ -316,7 +316,7 @@ export function ImportConsole({
           </TableShell>
 
           {state.ignoredColumns && state.ignoredColumns.length > 0 ? (
-            <p className="pt-3 text-[0.75rem] text-ink-subtle">
+            <p className="pt-3 text-caption text-ink-subtle">
               {labels.ignored}: {state.ignoredColumns.join(', ')}
             </p>
           ) : null}
@@ -366,14 +366,14 @@ export function ImportConsole({
 
               <div className="flex flex-wrap items-center gap-3 pt-3">
                 {issues.length > MAX_ROWS_SHOWN ? (
-                  <span className="text-[0.75rem] text-ink-subtle">
+                  <span className="text-caption text-ink-subtle">
                     {labels.showingFirst} {MAX_ROWS_SHOWN} / {state.issueCount}
                   </span>
                 ) : null}
                 <button
                   type="button"
                   onClick={downloadIssues}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-sm px-3 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-sm px-3 text-body-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
                 >
                   <Icon name="download" size={15} />
                   {labels.downloadIssues}
@@ -400,7 +400,7 @@ export function ImportConsole({
             <Icon name="check" size={20} className="text-accent" />
             <div>
               <p className="font-semibold text-ink">{labels.doneTitle}</p>
-              <p className="text-[0.8125rem] text-ink-muted">
+              <p className="text-body-sm text-ink-muted">
                 {state.committed.cards !== undefined
                   ? `${state.committed.cards} ${labels.doneCards} · ${state.committed.records} ${labels.doneLines}`
                   : `${state.committed.records} ${labels.doneRecords}`}
@@ -424,10 +424,10 @@ function Figure({
 }) {
   return (
     <div>
-      <p className="text-[0.75rem] uppercase tracking-wide text-ink-subtle">{label}</p>
+      <p className="text-caption uppercase tracking-wide text-ink-subtle">{label}</p>
       <p
         className={[
-          'text-[1.375rem] font-semibold tabular-nums',
+          'text-headline font-semibold tabular-nums',
           tone === 'critical' && value > 0 ? 'text-critical' : 'text-ink',
         ].join(' ')}
       >

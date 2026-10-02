@@ -53,7 +53,7 @@ export function PodCaptureModal({
           type="button"
           onClick={onClick}
           className={[
-            'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-[0.875rem] font-medium transition-colors',
+            'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-body font-medium transition-colors',
             variant === 'primary'
               ? 'bg-brand text-on-brand hover:bg-brand-hover'
               : 'border border-line bg-surface text-ink hover:bg-surface-sunken',

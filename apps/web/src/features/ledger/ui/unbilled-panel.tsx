@@ -27,11 +27,12 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatMoney, formatDate } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { unbilledRevenue } from '../unbilled'
 import { BillJobButton } from './bill-job-button'
 import { Button } from '@/ui/layout'
@@ -56,8 +57,6 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
   if (summary.jobCount === 0) return null
 
   const billable = can(session, 'invoice.approve')
-  const money = (amount: string, currency: string) =>
-    formatMoney({ amount: amount, currency }, lang)
 
   return (
     <Card className="mb-4" padding="none">
@@ -93,7 +92,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
               <TR key={row.jobId}>
                 <TD className="ref">
                   {row.reference}
-                  <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
+                  <span className="block text-micro text-ink-subtle md:hidden">
                     {formatDate(row.oldestAt, lang, timeZone)}
                   </span>
                 </TD>
@@ -104,7 +103,10 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
                   {row.lines}
                 </TD>
                 <TD numeric align="end">
-                  {money(row.amountBase, row.baseCurrency)}
+                  <Money
+                    value={{ amount: row.amountBase, currency: row.baseCurrency }}
+                    locale={lang}
+                  />
                   {mixed ? (
                     <Badge tone="caution" className="ms-2">
                       {row.currencies.join(' / ')}
@@ -116,7 +118,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
                   {billable && !mixed ? (
                     <BillJobButton jobId={row.jobId} label={t('bill')} />
                   ) : mixed ? (
-                    <span className="text-[0.75rem] text-ink-subtle">{t('mixedCurrency')}</span>
+                    <span className="text-caption text-ink-subtle">{t('mixedCurrency')}</span>
                   ) : null}
                 </TD>
               </TR>

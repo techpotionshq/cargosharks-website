@@ -154,18 +154,18 @@ export default async function JobsPage({
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <Link
                       href={`/jobs/${clock.jobId}`}
-                      className="ref numeric text-[0.8125rem] font-medium text-ink hover:text-accent hover:underline"
+                      className="ref numeric text-body-sm font-medium text-ink hover:text-accent hover:underline"
                     >
                       {clock.jobReference}
                     </Link>
-                    <span className="ref numeric text-[0.75rem] text-ink-muted">
+                    <span className="ref numeric text-caption text-ink-muted">
                       {clock.containerNo}
                     </span>
                     <Badge tone="critical">
                       {t(`clockKinds.${clock.kind}` as 'clockKinds.demurrage')}
                     </Badge>
                   </div>
-                  <p className="mt-1.5 text-[0.75rem] text-ink-muted">
+                  <p className="mt-1.5 text-caption text-ink-muted">
                     {t('freeDays', { days: clock.freeDays })} ·{' '}
                     <span className="font-medium text-critical">
                       {t('chargeableDays', { days: clock.chargeableDays })}
@@ -182,11 +182,11 @@ export default async function JobsPage({
                 </div>
 
                 <div className="text-end">
-                  <p className="numeric accruing font-display text-[1.25rem] leading-none font-semibold text-critical">
+                  <p className="numeric accruing font-display text-headline leading-none font-semibold text-critical">
                     {formatMoney(clock.accrued, locale)}
                   </p>
                   {clock.chargeLineWritten ? (
-                    <p className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-positive">
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-micro font-medium text-positive">
                       <Icon name="check" size={12} strokeWidth={2.5} />
                       {t('chargeLineWritten')}
                     </p>
@@ -208,7 +208,7 @@ export default async function JobsPage({
                 href={option.key === 'live' ? '/jobs' : `/jobs?filter=${option.key}`}
                 aria-current={active ? 'page' : undefined}
                 // The register filters' tint (`ui/register.tsx`), 40px on a phone.
-                className={`inline-flex h-8 items-center rounded-sm px-3 text-[0.8125rem] font-medium transition-colors max-md:h-10 ${
+                className={`inline-flex h-8 items-center rounded-sm px-3 text-body-sm font-medium transition-colors max-md:h-10 ${
                   active
                     ? 'bg-accent-soft text-accent'
                     : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
@@ -218,7 +218,7 @@ export default async function JobsPage({
               </Link>
             )
           })}
-          <span className="ms-auto text-[0.75rem] text-ink-subtle">
+          <span className="ms-auto text-caption text-ink-subtle">
             {tc('showing', { count: visible.length })}
           </span>
         </div>
@@ -254,18 +254,30 @@ export default async function JobsPage({
                       >
                         {job.reference}
                       </Link>
-                      <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
-                        <Icon name={modeIcon(job.mode)} size={12} />
-                        {tMode(job.mode)}
-                        {job.containerCount > 0
-                          ? ` · ${job.containerCount} ${
+                      {/* The reference never breaks; the line under it may.
+                          "Sea FCL · 3 containers" was the widest thing in the
+                          cell, and the last 10px by which the board scrolled
+                          at 1280. */}
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-micro whitespace-normal text-ink-subtle">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                          <Icon name={modeIcon(job.mode)} size={12} />
+                          {tMode(job.mode)}
+                        </span>
+                        {job.containerCount > 0 ? (
+                          <span className="whitespace-nowrap">
+                            {`· ${job.containerCount} ${
                               job.containerCount === 1 ? tc('container') : tc('containers')
-                            }`
-                          : ''}
+                            }`}
+                          </span>
+                        ) : null}
                       </span>
                     </TD>
 
-                    <TD priority="low" className="max-w-52 truncate">
+                    {/* Customer and vessel wrap rather than truncate: the
+                        reference beside them is two lines already, and a
+                        truncated cell still asks the table for the width of
+                        its whole unbroken text. */}
+                    <TD priority="low" className="min-w-28">
                       {pickName(locale, job.customerName, job.customerNameAr)}
                     </TD>
 
@@ -276,7 +288,7 @@ export default async function JobsPage({
                       />
                     </TD>
 
-                    <TD priority="lowest" className="max-w-48 truncate text-ink-muted">
+                    <TD priority="lowest" className="min-w-28 text-ink-muted">
                       {job.vesselOrFlight ?? '—'}
                     </TD>
 
@@ -325,7 +337,7 @@ export default async function JobsPage({
                       ) : (
                         <>
                           <span className="block">{formatDay(job.eta, locale, timeZone)}</span>
-                          <span className="block text-[0.6875rem] text-ink-subtle">
+                          <span className="block text-micro text-ink-subtle">
                             {formatRelative(job.eta, locale, now)}
                           </span>
                         </>

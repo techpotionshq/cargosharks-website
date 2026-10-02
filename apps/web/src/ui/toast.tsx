@@ -89,7 +89,7 @@ export function Toaster({
       {entries.map((entry) => (
         <div
           key={entry.id}
-          className="pointer-events-auto flex max-w-sm items-center gap-2.5 rounded-card border border-positive/30 bg-surface-raised py-2.5 ps-3 pe-1.5 text-[0.875rem] text-ink shadow-pop motion-safe:animate-[qb-modal-in_140ms_ease-out]"
+          className="pointer-events-auto flex max-w-sm items-center gap-2.5 rounded-card border border-positive/30 bg-surface-raised py-2.5 ps-3 pe-1.5 text-body text-ink shadow-pop motion-safe:animate-[qb-modal-in_140ms_ease-out]"
         >
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-positive-soft text-positive">
             <Icon name="check" size={14} weight="bold" />

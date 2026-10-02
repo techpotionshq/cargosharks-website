@@ -676,7 +676,7 @@ export function LaneMapLegend({
         .join(' ')}
     >
       {modes.map((entry) => (
-        <li key={entry.mode} className="flex items-center gap-1.5 text-[0.75rem] text-ink-muted">
+        <li key={entry.mode} className="flex items-center gap-1.5 text-caption text-ink-muted">
           <span
             aria-hidden
             className="h-[3px] w-4 rounded-full"

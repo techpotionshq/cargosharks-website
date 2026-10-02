@@ -59,7 +59,7 @@ export default async function SettingsIndexPage() {
                 <Icon name={area.icon} size={18} />
               </span>
               <span className="min-w-0">
-                <span className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-ink">
+                <span className="flex items-center gap-1.5 text-title font-semibold text-ink">
                   {t(`areas.${key}.title` as 'areas.users.title')}
                   <Icon
                     name="chevron-end"
@@ -67,7 +67,7 @@ export default async function SettingsIndexPage() {
                     className="text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100"
                   />
                 </span>
-                <span className="mt-1 block text-[0.8125rem] leading-relaxed text-ink-muted">
+                <span className="mt-1 block text-body-sm leading-relaxed text-ink-muted">
                   {t(`areas.${key}.description` as 'areas.users.description')}
                 </span>
               </span>
@@ -83,7 +83,7 @@ export default async function SettingsIndexPage() {
         remembers it being here will look for it here first. One line costs
         nothing and saves a support message.
       */}
-      <p className="mt-6 flex items-center gap-2 text-[0.8125rem] text-ink-muted">
+      <p className="mt-6 flex items-center gap-2 text-body-sm text-ink-muted">
         <Icon name="reference" size={15} className="shrink-0 text-ink-subtle" />
         {t('referenceMoved')}{' '}
         <Link href="/reference" className="font-medium text-accent hover:underline">

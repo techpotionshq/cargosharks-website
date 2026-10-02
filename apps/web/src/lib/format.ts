@@ -55,10 +55,28 @@ export function formatMoney(
   options: { compact?: boolean; showCurrency?: boolean } = {},
 ): string {
   if (!value) return '—'
+  return moneyFormat(value, locale, options).formatter.format(moneyOperand(value.amount))
+}
+
+/** A string goes to `Intl` as a string, so it is never a float on the way. */
+function moneyOperand(amount: number | string): number | Intl.StringNumericLiteral {
+  return typeof amount === 'string' ? (amount as Intl.StringNumericLiteral) : amount
+}
+
+/**
+ * The one `Intl.NumberFormat` behind both `formatMoney` and
+ * `formatMoneyParts`, so the text and the table cell cannot drift apart.
+ */
+function moneyFormat(
+  value: { amount: number | string; currency: string },
+  locale: Locale,
+  options: { compact?: boolean; showCurrency?: boolean },
+): { formatter: Intl.NumberFormat; compacted: boolean } {
   const { compact = false, showCurrency = true } = options
   // Only the size test needs a number; the formatted figure never passes
   // through one.
   const magnitude = Math.abs(Number(value.amount))
+  const compacted = compact && magnitude >= 10_000
 
   /*
     The currency's own places, also when the code is not printed.
@@ -74,11 +92,11 @@ export function formatMoney(
     currency: value.currency,
   }).resolvedOptions().maximumFractionDigits
 
-  return new Intl.NumberFormat(intlLocale(locale), {
+  const formatter = new Intl.NumberFormat(intlLocale(locale), {
     style: showCurrency ? 'currency' : 'decimal',
     currency: value.currency,
     ...(showCurrency ? {} : { minimumFractionDigits: places, maximumFractionDigits: places }),
-    notation: compact && magnitude >= 10_000 ? 'compact' : 'standard',
+    notation: compacted ? 'compact' : 'standard',
     /*
       Compact notation and three-decimal currencies do not mix legibly.
 
@@ -91,12 +109,60 @@ export function formatMoney(
       the whole fix, and it makes the output the same under any ICU build
       instead of depending on how one resolves the conflict.
     */
-    ...(compact && magnitude >= 10_000
-      ? { minimumFractionDigits: 0, maximumFractionDigits: 1 }
-      : {}),
-  }).format(
-    typeof value.amount === 'string' ? (value.amount as Intl.StringNumericLiteral) : value.amount,
-  )
+    ...(compacted ? { minimumFractionDigits: 0, maximumFractionDigits: 1 } : {}),
+  })
+  return { formatter, compacted }
+}
+
+/** The widest minor unit a column of money has to line up against (KWD). */
+const ALIGN_PLACES = 3
+const FIGURE_SPACE = '\u2007'
+const PUNCTUATION_SPACE = '\u2008'
+// Bidi marks ICU puts around an Arabic figure. The cell isolates the figure
+// itself, so left in they only shift it by a mark's width.
+const BIDI_MARKS = /[\u061c\u200e\u200f]/g
+
+/**
+ * The same figure as `formatMoney`, in the pieces a table column needs.
+ *
+ * A column of money reads against its decimal point, and mixed currencies
+ * broke that: "AED 5,502.00" above "KWD 980.250" ends one digit short, so
+ * every figure in the dirham row sat a place to the left of the dinar row.
+ * The code comes back on its own (a cell draws it muted, at the start), the
+ * figure without it, and `pad` is the blank a short minor unit needs to end
+ * where a three-place one does: a figure space per missing digit — the width
+ * of a tabular digit — and a punctuation space for a missing decimal point.
+ * Compact figures are not padded; they are not read against a column.
+ *
+ * `formatMoney` keeps its single string for every non-table use.
+ */
+export function formatMoneyParts(
+  value: { amount: number | string; currency: string } | null | undefined,
+  locale: Locale,
+  options: { compact?: boolean; showCurrency?: boolean } = {},
+): { currency: string | null; amount: string; pad: string } | null {
+  if (!value) return null
+  const { formatter, compacted } = moneyFormat(value, locale, options)
+  const parts = formatter.formatToParts(moneyOperand(value.amount))
+  const currency = parts.find((part) => part.type === 'currency')?.value ?? null
+  // The space that joined code and figure goes with the code, or a negative
+  // figure reads "- 1,500.000".
+  const amount = parts
+    .filter(
+      (part) =>
+        part.type !== 'currency' &&
+        !(part.type === 'literal' && part.value.replace(BIDI_MARKS, '').trim() === ''),
+    )
+    .map((part) => part.value)
+    .join('')
+    .replace(BIDI_MARKS, '')
+    .trim()
+  const fraction = parts.find((part) => part.type === 'fraction')?.value.length ?? 0
+  const pad = compacted
+    ? ''
+    : (fraction === 0 ? PUNCTUATION_SPACE : '') +
+      FIGURE_SPACE.repeat(Math.max(0, ALIGN_PLACES - fraction))
+  return { currency, amount, pad }
 }
 
 /**

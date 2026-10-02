@@ -38,6 +38,7 @@ import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
 import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
@@ -234,7 +235,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <TD className="font-medium text-ink">
                       {line.chargeName}
                       {line.description ? (
-                        <span className="block text-[0.75rem] font-normal text-ink-subtle">
+                        <span dir="auto" className="block text-caption font-normal text-ink-subtle">
                           {line.description}
                         </span>
                       ) : null}
@@ -247,14 +248,18 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       {Number(line.quantity)}
                     </TD>
                     <TD priority="low" align="end" numeric className="text-ink-muted">
-                      {formatMoney({ amount: line.rate, currency: line.currency }, locale, {
-                        showCurrency: false,
-                      })}
+                      <Money
+                        value={{ amount: line.rate, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {formatMoney({ amount: line.amount, currency: line.currency }, locale, {
-                        showCurrency: false,
-                      })}
+                      <Money
+                        value={{ amount: line.amount, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                   </TR>
                 ))}
@@ -287,10 +292,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </Field>
             </dl>
             {quote.notes ? (
-              <p
-                dir="auto"
-                className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted"
-              >
+              <p dir="auto" className="mt-4 border-t border-line pt-4 text-body-sm text-ink-muted">
                 {quote.notes}
               </p>
             ) : null}
@@ -316,11 +318,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       href={`/quotes/${version.id}` as Route}
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
-                      <span className="ref numeric text-[0.8125rem] text-accent">
+                      <span className="ref numeric text-body-sm text-accent">
                         {version.reference}
                       </span>
                       <span className="flex items-center gap-2">
-                        <span className="numeric text-[0.75rem] text-ink-subtle">
+                        <span className="numeric text-caption text-ink-subtle">
                           {t('version', { version: version.version })}
                         </span>
                         <Badge tone={quoteTone(version.status)}>

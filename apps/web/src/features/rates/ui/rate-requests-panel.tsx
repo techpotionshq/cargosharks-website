@@ -75,14 +75,14 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
       </div>
 
       {requests.length === 0 ? (
-        <p className="px-4 py-3 text-[0.875rem] text-ink-muted">{t('empty')}</p>
+        <p className="px-4 py-3 text-body text-ink-muted">{t('empty')}</p>
       ) : (
         <ul className="divide-y divide-line">
           {requests.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-[0.9375rem] font-medium text-ink" dir="auto">
+                  <span className="text-title font-medium text-ink" dir="auto">
                     {row.partnerName}
                   </span>
                   <StatusBadge row={row} t={t} />
@@ -93,12 +93,12 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                   ) : null}
                 </div>
                 {row.declinedReason ? (
-                  <p className="mt-1 text-[0.8125rem] text-ink-muted" dir="auto">
+                  <p className="mt-1 text-body-sm text-ink-muted" dir="auto">
                     {row.declinedReason}
                   </p>
                 ) : null}
                 {row.laneMismatch ? (
-                  <p className="mt-1 text-[0.75rem] text-caution" dir="auto">
+                  <p className="mt-1 text-caption text-caution" dir="auto">
                     {t('laneMismatch')}: {row.laneMismatch}
                   </p>
                 ) : null}
@@ -107,21 +107,21 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
               <div className="text-end">
                 {row.quotedTotal && row.quotedCurrency ? (
                   <>
-                    <div className="text-[0.9375rem] font-semibold text-ink">
+                    <div className="text-title font-semibold text-ink">
                       {formatMoney(
                         { amount: row.quotedTotal, currency: row.quotedCurrency },
                         locale,
                       )}
                     </div>
                     {row.unpricedLines > 0 ? (
-                      <div className="text-[0.6875rem] text-caution">
+                      <div className="text-micro text-caution">
                         {t('partialTotal', { count: row.unpricedLines })}
                       </div>
                     ) : null}
                     {!row.comparable ? (
-                      <div className="text-[0.6875rem] text-caution">{t('noFx')}</div>
+                      <div className="text-micro text-caution">{t('noFx')}</div>
                     ) : row.quotedCurrency !== view.baseCurrency && row.normalizedTotal ? (
-                      <div className="text-[0.6875rem] text-ink-subtle">
+                      <div className="text-micro text-ink-subtle">
                         ≈{' '}
                         {formatMoney(
                           { amount: row.normalizedTotal, currency: view.baseCurrency },
@@ -129,12 +129,12 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                         )}
                       </div>
                     ) : null}
-                    <div className="text-[0.6875rem] text-ink-subtle">
+                    <div className="text-micro text-ink-subtle">
                       {t('lines', { count: row.lineCount })}
                     </div>
                   </>
                 ) : (
-                  <span className="text-[0.8125rem] text-ink-subtle">{t('awaiting')}</span>
+                  <span className="text-body-sm text-ink-subtle">{t('awaiting')}</span>
                 )}
               </div>
 

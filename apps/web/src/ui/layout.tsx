@@ -43,13 +43,13 @@ export function PageHeader({
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+          <h1 className="font-display text-display leading-tight font-semibold tracking-tight text-ink">
             {title}
           </h1>
           {status ? <div className="flex flex-wrap items-center gap-1.5">{status}</div> : null}
         </div>
         {description ? (
-          <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-body text-ink-muted">{description}</p>
         ) : null}
       </div>
       {/*
@@ -207,14 +207,18 @@ export function EmptyState({
   if (variant === 'inline') {
     return (
       <div
-        className={['flex items-start gap-2 text-[0.8125rem] text-ink-muted', className]
+        className={['flex items-start gap-2 text-body-sm text-ink-muted', className]
           .filter(Boolean)
           .join(' ')}
       >
         <Icon name={icon} size={15} className="mt-px shrink-0 text-ink-subtle" />
+        {/* The title is a phrase with no full stop ("Nothing delivered yet"),
+            so run straight into the hint it read as one broken sentence:
+            "Nothing delivered yet Capture the signature…". Weight and a dash
+            make it a heading and its note, in either language. */}
         <span>
-          {title}
-          {description ? <span className="text-ink-subtle"> {description}</span> : null}
+          <span className="font-medium">{title}</span>
+          {description ? <span className="text-ink-subtle"> — {description}</span> : null}
         </span>
         {action}
       </div>
@@ -230,9 +234,9 @@ export function EmptyState({
       <span className="mb-3 flex size-11 items-center justify-center rounded-full bg-surface-sunken text-ink-subtle">
         <Icon name={icon} size={20} />
       </span>
-      <p className="text-[0.9375rem] font-medium text-ink">{title}</p>
+      <p className="text-title font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[0.8125rem] text-ink-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-body-sm text-ink-muted">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -268,7 +272,7 @@ export function Field({
         still carries the whole value for anything longer.
       */}
       <dd
-        className={`line-clamp-2 text-[0.875rem] break-words text-ink ${mono ? 'ref numeric' : ''}`}
+        className={`line-clamp-2 text-body break-words text-ink ${mono ? 'ref numeric' : ''}`}
         title={typeof children === 'string' ? children : undefined}
       >
         {children}
@@ -299,17 +303,25 @@ export function Lane({
   readonly className?: string
 }) {
   return (
-    // Wraps below md, origin over destination: held to one line, a lane was
-    // the widest cell in a phone register and its two names truncated to
-    // "Ista… → Shuw…" — the one fact the column exists to show.
+    // Wraps, origin over destination, whenever the line does not fit: held to
+    // one line, a lane was the widest cell in a phone register and its two
+    // names truncated to "Ista… → Shuw…" — the one fact the column exists to
+    // show. It used to stop wrapping at md, and then "Nhava Sheva → Shuwaikh"
+    // on one line was 286px of a 966px card and the reason the enquiry and
+    // job registers scrolled sideways at 1280. Wrapping costs nothing where
+    // there is room: a table gives a cell its one-line width when it can.
     <span
-      className={['inline-flex flex-wrap items-center gap-x-1.5 md:flex-nowrap', className]
+      className={['inline-flex flex-wrap items-center gap-x-1.5', className]
         .filter(Boolean)
         .join(' ')}
     >
       <span className="truncate">{origin}</span>
-      <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
-      <span className="truncate">{destination}</span>
+      {/* The arrow travels with the destination (a no-break pair): wrapped on
+          its own, it sat alone on a middle line between two place names. */}
+      <span className="inline-flex min-w-0 items-center gap-x-1.5">
+        <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
+        <span className="truncate">{destination}</span>
+      </span>
     </span>
   )
 }

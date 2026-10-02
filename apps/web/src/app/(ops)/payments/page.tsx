@@ -17,6 +17,7 @@ import { formatByCurrency } from '@/lib/by-currency'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { dec, fromDb, toScale } from '@qabandi/core'
 import { AllocateReceiptDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
 
@@ -118,7 +119,7 @@ export default async function PaymentsPage({
                 </TD>
                 <TD className="font-medium text-ink">
                   {row.customerName ?? '—'}
-                  <span className="block text-[0.6875rem] font-normal whitespace-nowrap text-ink-subtle md:hidden">
+                  <span className="block text-micro font-normal whitespace-nowrap text-ink-subtle md:hidden">
                     {formatDate(new Date(row.receivedOn), locale, timeZone)}
                   </span>
                 </TD>
@@ -133,11 +134,11 @@ export default async function PaymentsPage({
                   )}
                 </TD>
                 <TD align="end" numeric>
-                  {formatMoney({ amount: row.amount, currency: row.currency }, locale)}
+                  <Money value={{ amount: row.amount, currency: row.currency }} locale={locale} />
                   <span
                     // May wrap after the figure: on one line this second line
                     // was wider than the amount it sits under.
-                    className={`block text-[0.6875rem] whitespace-normal md:hidden ${open ? 'text-caution' : 'text-ink-subtle'}`}
+                    className={`block text-micro whitespace-normal md:hidden ${open ? 'text-caution' : 'text-ink-subtle'}`}
                   >
                     {allocation}
                   </span>
@@ -148,7 +149,11 @@ export default async function PaymentsPage({
                   numeric
                   className={open ? 'text-caution' : 'text-ink-subtle'}
                 >
-                  {allocation}
+                  {/* May wrap after the figure, which itself never breaks
+                      (Intl joins code and amount with a no-break space):
+                      "KWD 1,500.000 unmatched" on one line was 192px, and
+                      the reason this register scrolled at 1280. */}
+                  <span className="whitespace-normal">{allocation}</span>
                 </TD>
                 <TD priority="lowest" className="whitespace-nowrap text-ink-muted">
                   {row.recordedBy ?? '—'}

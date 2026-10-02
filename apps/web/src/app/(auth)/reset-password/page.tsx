@@ -50,15 +50,13 @@ export default async function ResetPasswordPage({
       <div className="w-full max-w-sm">
         <Logo brand={brand} locale={locale} size="md" markOnly className="mb-5" />
 
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
+        <h1 className="font-display text-display font-semibold tracking-tight text-ink">
           {t('title')}
         </h1>
 
         {token ? (
           <>
-            <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-ink-muted">
-              {t('subtitle')}
-            </p>
+            <p className="mt-1.5 text-title leading-relaxed text-ink-muted">{t('subtitle')}</p>
 
             <div className="mt-7">
               <ResetPasswordForm
@@ -75,13 +73,11 @@ export default async function ResetPasswordPage({
           </>
         ) : (
           <>
-            <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-ink-muted">
-              {t('noTokenHint')}
-            </p>
+            <p className="mt-1.5 text-title leading-relaxed text-ink-muted">{t('noTokenHint')}</p>
 
             <Link
               href="/forgot-password"
-              className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+              className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover"
             >
               {t('requestAnother')}
             </Link>
@@ -89,7 +85,7 @@ export default async function ResetPasswordPage({
         )}
 
         <div className="mt-8 border-t border-line pt-6">
-          <Link href="/sign-in" className="text-[0.875rem] font-medium text-accent hover:underline">
+          <Link href="/sign-in" className="text-body font-medium text-accent hover:underline">
             {t('backToSignIn')}
           </Link>
         </div>

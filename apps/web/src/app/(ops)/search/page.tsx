@@ -99,7 +99,7 @@ export default async function SearchPage({
           autoFocus
           placeholder={tc('searchPlaceholder')}
           aria-label={tc('search')}
-          className={`h-10 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-[0.875rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
+          className={`h-10 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-body text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
         />
       </form>
 
@@ -113,7 +113,7 @@ export default async function SearchPage({
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
-          <p className="text-[0.8125rem] text-ink-subtle">{t('found', { count })}</p>
+          <p className="text-body-sm text-ink-subtle">{t('found', { count })}</p>
 
           {results.jobs.length > 0 ? (
             <Panel padding="none" icon="jobs" title={t('jobs')}>
@@ -137,7 +137,7 @@ export default async function SearchPage({
                         >
                           {job.reference}
                         </Link>
-                        <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
+                        <span className="mt-0.5 flex items-center gap-1 text-micro text-ink-subtle">
                           <Icon name={modeIcon(job.mode)} size={12} />
                           {tMode(job.mode)}
                           {/*
@@ -200,7 +200,7 @@ export default async function SearchPage({
                           {row.reference}
                         </Link>
                         {row.matchedValue ? (
-                          <span className="ref numeric mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                          <span className="ref numeric mt-0.5 block text-micro text-ink-subtle">
                             {t('fields.masterBill')} {row.matchedValue}
                           </span>
                         ) : null}

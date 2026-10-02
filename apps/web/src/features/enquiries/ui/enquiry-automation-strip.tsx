@@ -48,7 +48,7 @@ export async function EnquiryAutomationStrip({ enquiryId }: { readonly enquiryId
   if (segments.length === 0) return null
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-line bg-surface-sunken px-3 py-2 text-[0.8125rem] text-ink-muted">
+    <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-sm border border-line bg-surface-sunken px-3 py-2 text-body-sm text-ink-muted">
       <span className="inline-flex items-center gap-1.5 font-medium text-ink">
         <Icon name="assistant" size={15} />
         {t('label')}

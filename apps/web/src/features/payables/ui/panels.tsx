@@ -93,12 +93,14 @@ export async function SupplierInvoiceLinesCard({
             {bill.lines.map((line) => (
               <TR key={line.id}>
                 <TD>
-                  <span className="font-medium">{line.description}</span>
-                  <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                  <span dir="auto" className="font-medium">
+                    {line.description}
+                  </span>
+                  <span className="mt-0.5 block text-micro text-ink-subtle">
                     {line.chargeTypeName ?? t('unmapped')}
                     {line.jobReference ? ` · ${line.jobReference}` : ''}
                   </span>
-                  <span className="mt-0.5 block text-[0.75rem] text-ink-muted md:hidden">
+                  <span className="mt-0.5 block text-caption text-ink-muted md:hidden">
                     {t('billed')}{' '}
                     <span className="numeric whitespace-nowrap text-ink">
                       {display(line.amount, bill.currency, locale)}
@@ -113,7 +115,7 @@ export async function SupplierInvoiceLinesCard({
                   {line.matches.map((match) => (
                     <span
                       key={match.id}
-                      className="mt-1 flex flex-wrap items-center gap-x-2 text-[0.6875rem] text-ink-muted"
+                      className="mt-1 flex flex-wrap items-center gap-x-2 text-micro text-ink-muted"
                     >
                       <span aria-hidden>↳</span>
                       <span>
@@ -140,7 +142,7 @@ export async function SupplierInvoiceLinesCard({
                 <TD priority="low" align="end" className="tabular-nums">
                   {display(line.amount, bill.currency, locale)}
                   {bill.currency !== bill.baseCurrency ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                    <span className="mt-0.5 block text-micro text-ink-subtle">
                       {display(line.billedBase, bill.baseCurrency, locale)}
                     </span>
                   ) : null}
@@ -155,7 +157,7 @@ export async function SupplierInvoiceLinesCard({
                 >
                   {display(line.varianceBase, bill.baseCurrency, locale)}
                   {line.variancePercent ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                    <span className="mt-0.5 block text-micro text-ink-subtle">
                       {Number(line.variancePercent).toFixed(1)}%
                     </span>
                   ) : null}
@@ -165,7 +167,7 @@ export async function SupplierInvoiceLinesCard({
                     {t(`verdicts.${line.verdict}` as 'verdicts.exact')}
                   </Badge>
                   {line.needsReview ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                    <span className="mt-0.5 block text-micro text-ink-subtle">
                       {t('allowed', {
                         amount: display(line.allowedBase, bill.baseCurrency, locale),
                       })}
@@ -284,8 +286,8 @@ export async function PartnerAccountCard({
                         {formatDate(line.date, locale, timeZone)}
                       </TD>
                       <TD>
-                        <span className="font-mono text-[0.8125rem]">{line.reference}</span>
-                        <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                        <span className="font-mono text-body-sm">{line.reference}</span>
+                        <span className="mt-0.5 block text-micro text-ink-subtle">
                           {t(`kinds.${line.kind}` as 'kinds.invoice')}
                           <span className="md:hidden">
                             {' · '}

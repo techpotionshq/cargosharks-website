@@ -27,7 +27,7 @@ import {
   rateCardSummary,
 } from '@/features/rates/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { formatDate, formatNumber } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Lane } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
@@ -35,6 +35,7 @@ import { Panel } from '@/ui/panel'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { RenewalsPanel } from '@/features/rates/ui/renewals-panel'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -215,26 +216,30 @@ export default async function RatesPage({
                   {/* `numeric` arrives as a six-decimal string; rendering it
                       raw put "USD 1690.000000" in a money column. */}
                   <TD priority="low" align="end" numeric className="text-ink-muted">
-                    {row.buyTotal
-                      ? formatMoney(
-                          { amount: row.buyTotal, currency: row.currency ?? 'USD' },
-                          locale,
-                        )
-                      : '—'}
+                    <Money
+                      value={
+                        row.buyTotal
+                          ? { amount: row.buyTotal, currency: row.currency ?? 'USD' }
+                          : null
+                      }
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
-                    {row.sellTotal
-                      ? formatMoney(
-                          { amount: row.sellTotal, currency: row.currency ?? 'USD' },
-                          locale,
-                        )
-                      : '—'}
+                    <Money
+                      value={
+                        row.sellTotal
+                          ? { amount: row.sellTotal, currency: row.currency ?? 'USD' }
+                          : null
+                      }
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
                     {row.marginPct === null ? (
                       // Unknown, not zero. A missing sell card is a gap in the
                       // rate book, and showing it as 0% hides that.
-                      <span className="text-[0.75rem] text-ink-subtle">{t('noSellCard')}</span>
+                      <span className="text-caption text-ink-subtle">{t('noSellCard')}</span>
                     ) : (
                       <span
                         className={

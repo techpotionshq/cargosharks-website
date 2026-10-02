@@ -46,7 +46,7 @@ export function RequestRatesDialog({
         <button
           type="button"
           onClick={onClick}
-          className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-line bg-surface px-3 text-[0.8125rem] font-medium text-ink transition-colors hover:bg-surface-sunken"
+          className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-line bg-surface px-3 text-body-sm font-medium text-ink transition-colors hover:bg-surface-sunken"
         >
           <Icon name="partners" size={15} />
           {labels.trigger}
@@ -60,7 +60,7 @@ export function RequestRatesDialog({
       <form action={action} id="request-rates-form">
         <input type="hidden" name="enquiryId" value={enquiryId} />
         {agents.length === 0 ? (
-          <p className="py-4 text-[0.875rem] text-ink-muted">{labels.empty}</p>
+          <p className="py-4 text-body text-ink-muted">{labels.empty}</p>
         ) : (
           <ul className="divide-y divide-line">
             {agents.map((agent) => {
@@ -78,12 +78,12 @@ export function RequestRatesDialog({
                   />
                   <label
                     htmlFor={`agent-${agent.partnerId}`}
-                    className="min-w-0 flex-1 text-[0.875rem] text-ink"
+                    className="min-w-0 flex-1 text-body text-ink"
                     dir="auto"
                   >
                     {agent.name}
                     {agent.transitDays != null ? (
-                      <span className="ms-2 text-[0.75rem] text-ink-subtle">
+                      <span className="ms-2 text-caption text-ink-subtle">
                         {agent.transitDays} {labels.transit}
                       </span>
                     ) : null}
@@ -98,9 +98,7 @@ export function RequestRatesDialog({
             })}
           </ul>
         )}
-        {state.message ? (
-          <p className="mt-2 text-[0.8125rem] text-caution">{state.message}</p>
-        ) : null}
+        {state.message ? <p className="mt-2 text-body-sm text-caution">{state.message}</p> : null}
         <div className="mt-4 flex justify-end">
           <Button
             type="submit"

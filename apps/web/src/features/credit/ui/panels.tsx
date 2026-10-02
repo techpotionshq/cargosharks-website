@@ -20,11 +20,12 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { EmptyState, Field } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { CreditOverrideDialog } from './dialogs'
 import type { CreditView } from '../queries'
 
@@ -126,14 +127,14 @@ export async function CreditStandingCard({
         should not be.
       */}
       {view.unconvertible.length > 0 ? (
-        <p className="mt-3 text-[0.75rem] text-critical">
+        <p className="mt-3 text-caption text-critical">
           {t('unconvertible', {
             list: view.unconvertible.map((u) => `${u.amount} ${u.currency}`).join(', '),
           })}
         </p>
       ) : null}
 
-      <h3 className="mt-6 text-[0.8125rem] font-medium text-ink">{t('overridesTitle')}</h3>
+      <h3 className="mt-6 text-body-sm font-medium text-ink">{t('overridesTitle')}</h3>
 
       {view.overrides.length === 0 ? (
         <EmptyState className="mt-1.5" variant="inline" icon="check" title={t('noOverrides')} />
@@ -160,10 +161,10 @@ export async function CreditStandingCard({
                   <span className="md:whitespace-nowrap">
                     {formatDate(o.approvedAt, lang, timeZone)}
                   </span>
-                  <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                  <span className="block text-caption text-ink-muted md:hidden">
                     {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
                   </span>
-                  <span className="mt-0.5 block text-[0.75rem] break-words text-ink-subtle md:hidden">
+                  <span className="mt-0.5 block text-caption break-words text-ink-subtle md:hidden">
                     {o.reason}
                   </span>
                 </TD>
@@ -189,11 +190,11 @@ export async function CreditStandingCard({
                 */}
                 <TD align="end" numeric>
                   <span className="block md:inline">
-                    {formatMoney({ amount: o.exposure, currency: o.currency }, lang)}
+                    <Money value={{ amount: o.exposure, currency: o.currency }} locale={lang} />
                   </span>
                   <span className="block text-ink-muted md:inline">
                     <span className="hidden md:inline"> </span>/{' '}
-                    {formatMoney({ amount: o.creditLimit, currency: o.currency }, lang)}
+                    <Money value={{ amount: o.creditLimit, currency: o.currency }} locale={lang} />
                   </span>
                 </TD>
                 <TD priority="low" className="max-w-[22rem] whitespace-normal text-ink-muted">

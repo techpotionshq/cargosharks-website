@@ -18,6 +18,7 @@ import { formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, severityTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { RaiseExceptionDialog } from '@/features/operations/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -109,9 +110,14 @@ export default async function ExceptionsPage({
                   {row.description ? (
                     <span
                       dir="auto"
-                      // Two wrapped lines on a phone, where a one-line
-                      // truncation at this column's width shows four words.
-                      className="mt-0.5 line-clamp-2 text-[0.75rem] break-words text-ink-muted md:block md:max-w-md md:truncate"
+                      // Two wrapped lines at every width. A one-line
+                      // truncation shows four words on a phone, and on a
+                      // desktop it held the column at 374px — a truncated
+                      // cell still asks the table for its unbroken width —
+                      // which is what made the register scroll at 1280. The
+                      // title keeps the whole description a hover away.
+                      title={row.description}
+                      className="mt-0.5 line-clamp-2 max-w-md text-caption break-words text-ink-muted"
                     >
                       {row.description}
                     </span>
@@ -133,13 +139,25 @@ export default async function ExceptionsPage({
                 >
                   {row.dueAt ? formatRelative(row.dueAt, locale, now) : '—'}
                 </TD>
-                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {row.owner ?? t('unassigned')}
                 </TD>
                 <TD priority="low" align="end" numeric>
-                  {row.costImpact
-                    ? `${trimDecimal(row.costImpact)} ${row.costCurrency ?? ''}`.trim()
-                    : '—'}
+                  {/* At the currency's own places, through the column's money
+                      cell: trimmed, a dinar impact of 450.500 read "450.5 KWD"
+                      beside "1,420.500"-style figures everywhere else. */}
+                  {row.costImpact && !row.costCurrency ? (
+                    trimDecimal(row.costImpact)
+                  ) : (
+                    <Money
+                      value={
+                        row.costImpact && row.costCurrency
+                          ? { amount: row.costImpact, currency: row.costCurrency }
+                          : null
+                      }
+                      locale={locale}
+                    />
+                  )}
                 </TD>
               </TR>
             )

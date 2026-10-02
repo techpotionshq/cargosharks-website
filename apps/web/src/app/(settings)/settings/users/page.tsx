@@ -120,7 +120,7 @@ export default async function UsersPage() {
                 )
               const signIn =
                 person.type === 'system' ? (
-                  <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
+                  <span className="text-caption text-ink-subtle">{t('systemOnly')}</span>
                 ) : person.hasPassword ? (
                   <Icon name="check" size={16} className="text-positive" />
                 ) : (
@@ -131,7 +131,7 @@ export default async function UsersPage() {
                     what became of the mail.
                   */
                   <span className="flex flex-col items-start gap-1">
-                    <span className="text-[0.75rem] text-ink-subtle">
+                    <span className="text-caption text-ink-subtle">
                       {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
                     </span>
                     {person.isActive ? (
@@ -153,7 +153,7 @@ export default async function UsersPage() {
                   <TD className="font-medium text-ink">
                     {name}
                     <span className="md:hidden">
-                      <span className="ref mt-0.5 block text-[0.75rem] font-normal wrap-anywhere text-ink-muted">
+                      <span className="ref mt-0.5 block text-caption font-normal wrap-anywhere text-ink-muted">
                         {person.email}
                       </span>
                       <span className="mt-1.5 block font-normal">{assignments}</span>
@@ -162,8 +162,20 @@ export default async function UsersPage() {
                       ) : null}
                     </span>
                   </TD>
+                  {/* A break opportunity before the @: an address has no
+                      space to wrap at, and held whole it was 270px of a 966px
+                      card — the 8px by which this register scrolled at 1280.
+                      Mailbox over domain still reads as one address. */}
                   <TD priority="low" className="ref text-ink-muted">
-                    {person.email}
+                    {person.email.includes('@') ? (
+                      <>
+                        {person.email.slice(0, person.email.indexOf('@'))}
+                        <wbr />
+                        {person.email.slice(person.email.indexOf('@'))}
+                      </>
+                    ) : (
+                      person.email
+                    )}
                   </TD>
                   <TD priority="low">{assignments}</TD>
                   <TD priority="low">{signIn}</TD>
@@ -216,7 +228,7 @@ export default async function UsersPage() {
                     </span>
                     {/* Under the name on a phone; beside it the pair could
                         not break and was the table's whole overflow. */}
-                    <span className="ref block text-[0.75rem] text-ink-subtle md:ms-2 md:inline">
+                    <span className="ref block text-caption text-ink-subtle md:ms-2 md:inline">
                       {role.key}
                     </span>
                   </TD>
@@ -240,21 +252,21 @@ export default async function UsersPage() {
 
         <Card className="lg:col-span-5">
           <CardHeader icon="admin" eyebrow={t('eyebrow')} title={t('addTitle')} />
-          <p className="mt-4 text-[0.8125rem] text-ink-muted">{t('addBody')}</p>
+          <p className="mt-4 text-body-sm text-ink-muted">{t('addBody')}</p>
           {/*
             The domain comes from the brand for the same reason the sidebar
             does: this is a sample an administrator copies and edits, and one
             reading another company's domain is both wrong and a small leak of
             who else runs this product.
           */}
-          <pre className="ref mt-4 overflow-x-auto rounded-md bg-surface-sunken p-3 text-[0.75rem] leading-relaxed text-ink">
+          <pre className="ref mt-4 overflow-x-auto rounded-md bg-surface-sunken p-3 text-caption leading-relaxed text-ink">
             {`pnpm db:create-user \\
   --email person@${brandMailDomain(getBrand())} \\
   --name "Full Name" \\
   --role coordinator \\
   --branch KWI`}
           </pre>
-          <p className="mt-3 text-[0.75rem] text-ink-subtle">{t('addNote')}</p>
+          <p className="mt-3 text-caption text-ink-subtle">{t('addNote')}</p>
         </Card>
       </Grid>
     </Register>

@@ -69,12 +69,12 @@ export default async function SupportAccessPage() {
 
       {open.length > 0 && (
         <div className="mb-6 rounded-card border border-caution/25 bg-caution-soft p-4">
-          <h2 className="mb-3 text-sm font-semibold text-caution">{t('openHeading')}</h2>
+          <h2 className="mb-3 text-body font-semibold text-caution">{t('openHeading')}</h2>
           <ul className="flex flex-col gap-2">
             {open.map((grant) => (
               <li
                 key={grant.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem]"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm"
               >
                 <Badge tone={grant.scope === 'write' ? 'critical' : 'caution'}>
                   {grant.scope === 'write' ? t('scopeWrite') : t('scopeRead')}
@@ -93,7 +93,7 @@ export default async function SupportAccessPage() {
                   <input type="hidden" name="grantId" value={grant.id} />
                   <button
                     type="submit"
-                    className="rounded-sm px-2.5 py-1 text-[0.8125rem] font-medium text-caution underline-offset-2 hover:underline"
+                    className="rounded-sm px-2.5 py-1 text-body-sm font-medium text-caution underline-offset-2 hover:underline"
                   >
                     {t('revoke')}
                   </button>
@@ -161,7 +161,7 @@ export default async function SupportAccessPage() {
         </TableShell>
       )}
 
-      <p className="mt-4 text-[0.8125rem] text-ink-subtle">{tc('auditImmutable')}</p>
+      <p className="mt-4 text-body-sm text-ink-subtle">{tc('auditImmutable')}</p>
     </>
   )
 }

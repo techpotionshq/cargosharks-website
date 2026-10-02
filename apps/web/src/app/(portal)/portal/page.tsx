@@ -87,14 +87,14 @@ export default async function PortalHome() {
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="ref numeric text-[0.9375rem] font-semibold text-ink">
+                        <span className="ref numeric text-title font-semibold text-ink">
                           {shipment.reference}
                         </span>
                         <Badge tone={jobTone(shipment.status)} dot>
                           {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
                         </Badge>
                       </div>
-                      <p className="mt-1.5 flex items-center gap-2 text-[0.875rem] text-ink-muted">
+                      <p className="mt-1.5 flex items-center gap-2 text-body text-ink-muted">
                         <Icon
                           name={modeIcon(shipment.mode)}
                           size={16}
@@ -104,7 +104,7 @@ export default async function PortalHome() {
                         <span className="text-ink-subtle">· {tMode(shipment.mode)}</span>
                       </p>
                       {shipment.customerReference ? (
-                        <p className="mt-1 text-[0.75rem] text-ink-subtle">
+                        <p className="mt-1 text-caption text-ink-subtle">
                           {tJob('customerReference')}:{' '}
                           <span className="ref numeric">{shipment.customerReference}</span>
                         </p>
@@ -113,7 +113,7 @@ export default async function PortalHome() {
 
                     <div className="text-end">
                       <p className="eyebrow mb-1">{tJob('eta')}</p>
-                      <p className="numeric text-[0.9375rem] font-semibold text-ink">
+                      <p className="numeric text-title font-semibold text-ink">
                         {formatDay(shipment.eta, locale, timeZone)}
                       </p>
                       {late ? (
@@ -121,7 +121,7 @@ export default async function PortalHome() {
                           {t('etaPassed')}
                         </Badge>
                       ) : (
-                        <p className="numeric text-[0.6875rem] text-ink-subtle">
+                        <p className="numeric text-micro text-ink-subtle">
                           {formatRelative(shipment.eta, locale, now)}
                         </p>
                       )}
@@ -130,7 +130,7 @@ export default async function PortalHome() {
 
                   <div className="mt-4 border-t border-line pt-3">
                     <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-[0.75rem] text-ink-muted">
+                      <span className="text-caption text-ink-muted">
                         {shipment.nextMilestone ? (
                           <>
                             <span className="text-ink-subtle">{t('nextStep')}: </span>
@@ -141,7 +141,7 @@ export default async function PortalHome() {
                         )}
                       </span>
                       {/* Words, not "4/7 · 5": the second number had no unit at all. */}
-                      <span className="text-[0.75rem] text-ink-subtle">
+                      <span className="text-caption text-ink-subtle">
                         {t('progress', {
                           done: shipment.milestonesDone,
                           total: shipment.milestonesTotal,

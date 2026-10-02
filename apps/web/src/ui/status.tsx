@@ -56,7 +56,7 @@ export function Badge({ children, tone = 'muted', icon, dot = false, className }
       // A hook for `TD`, which lets a pill wrap on a phone — see table.tsx.
       data-badge=""
       className={[
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.75rem] font-medium ring-1 ring-inset whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium ring-1 ring-inset whitespace-nowrap',
         PILL_CLASS[tone],
         className,
       ]

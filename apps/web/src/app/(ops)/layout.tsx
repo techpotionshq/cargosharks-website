@@ -260,7 +260,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           <div className="flex flex-col gap-0.5 border-t border-chrome-line px-3 py-2">
             <Link
               href="/track"
-              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-body-sm font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
             >
               <Icon name="tracking" size={16} className="text-ink-subtle" />
               {t('tracking')}
@@ -275,7 +275,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             {canOpenSettings(session) ? (
               <Link
                 href="/settings"
-                className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+                className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-body-sm font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
               >
                 <Icon name="settings" size={16} className="text-ink-subtle" />
                 {t('settings')}
@@ -287,14 +287,14 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           {/* Who you are signed in as, and the way out. */}
           <div className="border-t border-chrome-line p-3">
             <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[0.75rem] font-semibold text-on-brand">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-caption font-semibold text-on-brand">
                 {initials}
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-[0.8125rem] font-medium text-chrome-ink">
+                <span className="truncate text-body-sm leading-tight font-medium text-chrome-ink">
                   {displayName}
                 </span>
-                <span className="truncate text-[0.6875rem] text-chrome-ink-muted">
+                <span className="truncate text-micro leading-tight text-chrome-ink-muted">
                   {t(`roles.${roleKey}`)} · {tc('branchCount', { count: branchCodes })}
                 </span>
               </span>
@@ -348,14 +348,14 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
               name="q"
               placeholder={tc('searchPlaceholder')}
               aria-label={tc('search')}
-              className={`h-9 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
+              className={`h-9 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-body-sm text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
             />
           </form>
 
           <div className="ms-auto flex items-center gap-1.5">
             {usePilotFixtures() ? (
               <span
-                className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-[0.6875rem] font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
+                className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-micro font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
                 title={tApp('pilotHint')}
               >
                 <Icon name="dot" size={9} />

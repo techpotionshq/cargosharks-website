@@ -127,7 +127,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <div className="border-b border-chrome-line px-3 py-2">
             <Link
               href="/dashboard"
-              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-body-sm font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
             >
               <Icon name="dashboard" size={16} className="text-ink-subtle" />
               {t('backToOperations')}
@@ -139,10 +139,10 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <div className="border-t border-chrome-line p-3">
             <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-[0.8125rem] font-medium text-chrome-ink">
+                <span className="truncate text-body-sm leading-tight font-medium text-chrome-ink">
                   {displayName}
                 </span>
-                <span className="truncate text-[0.6875rem] text-chrome-ink-muted">
+                <span className="truncate text-micro leading-tight text-chrome-ink-muted">
                   {t('signedInAs')}
                 </span>
               </span>
@@ -178,7 +178,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
             matters more here than in operations, because the two shells share
             a palette and differ only in what they contain.
           */}
-          <span className="flex items-center gap-2 text-[0.8125rem] font-semibold text-ink">
+          <span className="flex items-center gap-2 text-body-sm font-semibold text-ink">
             <Icon name="settings" size={16} className="text-ink-subtle" />
             {t('title')}
           </span>
@@ -186,7 +186,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <div className="ms-auto flex items-center gap-1.5">
             <Link
               href="/dashboard"
-              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:border-brand hover:text-accent sm:inline-flex"
+              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-caption font-medium text-ink-muted transition-colors hover:border-brand hover:text-accent sm:inline-flex"
             >
               <Icon name="dashboard" size={14} />
               {tc('operations')}

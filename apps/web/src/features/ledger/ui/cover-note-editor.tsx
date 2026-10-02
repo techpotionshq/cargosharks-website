@@ -93,7 +93,7 @@ function LocaleNote({
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[0.8125rem] font-medium text-ink">{heading}</span>
+        <span className="text-body-sm font-medium text-ink">{heading}</span>
         {/*
           A form of its own, not a button inside the save form — the two submit
           different actions, and a covering note is drafted or saved, never both
@@ -123,18 +123,16 @@ function LocaleNote({
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           rows={4}
           placeholder={locale === 'ar' ? labels.placeholderAr : labels.placeholder}
-          className={`w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
+          className={`w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-body leading-relaxed text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
         />
         {draftState.message ? (
-          <p className="mt-1 text-[0.8125rem] text-caution">{draftState.message}</p>
+          <p className="mt-1 text-body-sm text-caution">{draftState.message}</p>
         ) : null}
         {saveState.message ? (
-          <p className="mt-1 text-[0.8125rem] text-caution">{saveState.message}</p>
+          <p className="mt-1 text-body-sm text-caution">{saveState.message}</p>
         ) : null}
         <div className="mt-2 flex items-center justify-end gap-3">
-          {saveState.ok ? (
-            <span className="text-[0.75rem] text-positive">{labels.saved}</span>
-          ) : null}
+          {saveState.ok ? <span className="text-caption text-positive">{labels.saved}</span> : null}
           <Button type="submit" size="sm" variant="secondary" icon="check" disabled={saving}>
             {saving ? labels.saving : labels.save}
           </Button>

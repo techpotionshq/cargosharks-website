@@ -77,7 +77,7 @@ export function AssistantPage({
           <button
             type="button"
             onClick={assistant.startNew}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[0.75rem] font-medium text-ink shadow-card transition-colors hover:border-brand hover:text-accent"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-caption font-medium text-ink shadow-card transition-colors hover:border-brand hover:text-accent"
           >
             <Icon name="plus" size={13} />
             {labels.newThread}
@@ -121,14 +121,14 @@ export function AssistantPage({
               <span aria-hidden className="qb-skeleton block h-3.5 w-52 max-w-[60%]" />
             </div>
           ) : (
-            <h1 className="min-w-0 flex-1 truncate font-display text-[0.9375rem] font-semibold tracking-tight text-ink">
+            <h1 className="min-w-0 flex-1 truncate font-display text-title font-semibold tracking-tight text-ink">
               {current?.title ?? labels.title}
             </h1>
           )}
           <button
             type="button"
             onClick={assistant.startNew}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink lg:hidden"
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-caption font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink lg:hidden"
           >
             <Icon name="plus" size={13} />
             {labels.newThread}

@@ -99,7 +99,7 @@ export function TableShell({
         status and SLA columns that `priority` exists to keep sat off-screen.
       */}
       <table
-        className={`w-full border-collapse text-[0.8125rem] ${
+        className={`w-full border-collapse text-body-sm ${
           minWidth === 'wide' ? 'md:min-w-208' : ''
         }`}
       >
@@ -146,12 +146,20 @@ export function TH({
     <th
       scope="col"
       className={[
-        // Below md the padding tightens and a header may wrap onto a second
-        // line. A phone has room for three or four columns, and 24px of
-        // padding per column plus a header held to one line ("CLEARANCE DUE")
-        // was exactly the margin by which the last of them fell off-screen.
-        // 12px between columns at phone width still reads as a gap.
-        'px-1.5 py-2.5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-3 md:whitespace-nowrap',
+        // Below md the padding tightens. A phone has room for three or four
+        // columns, and 24px of padding per column was most of the margin by
+        // which the last of them fell off-screen; 12px still reads as a gap.
+        // Below 2xl it is 20px rather than 24px: nine columns at 1280 have
+        // 966px between them, and the 36px that saves is a whole column of
+        // the enquiry queue no longer pushed out of its card.
+        //
+        // A header may wrap onto a second line at any width, and only does
+        // when its column is squeezed — the table gives every column its
+        // one-line width when there is room. Held to one line from md up,
+        // "WORKING CALENDAR" and "REVENUE / COST" were each the widest thing
+        // in their column, and the reason the branch and charge-type tables
+        // scrolled at 1280 with every cell beneath them already wrapping.
+        'px-1.5 py-2.5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-2.5 2xl:px-3',
         align === 'end' ? 'text-end' : 'text-start',
         PRIORITY_CLASS[priority],
         className,
@@ -226,7 +234,7 @@ export function TD({
         // figure beside it off a phone. Two lines of pill is still a pill.
         // Its leading dot goes too: the pill's own colour already carries the
         // tone, and the dot's 12px was the last few pixels of a phone row.
-        'px-1.5 py-2.5 align-middle text-ink sm:px-2 md:px-3 max-md:[&_[data-badge]]:whitespace-normal max-md:[&_[data-dot]]:hidden',
+        'px-1.5 py-2.5 align-middle text-ink sm:px-2 md:px-2.5 2xl:px-3 max-md:[&_[data-badge]]:whitespace-normal max-md:[&_[data-dot]]:hidden',
         align === 'end' ? 'text-end' : 'text-start',
         // A figure never wraps: "KWD 1,840.500" broken after the code is two
         // half-numbers, and a column of them stops aligning on the decimal.

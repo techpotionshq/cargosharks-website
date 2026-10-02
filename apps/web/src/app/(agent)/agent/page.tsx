@@ -60,14 +60,14 @@ export default async function AgentHome() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="ref numeric text-[0.9375rem] font-semibold text-ink">
+                      <span className="ref numeric text-title font-semibold text-ink">
                         {shipment.reference}
                       </span>
                       <Badge tone={jobTone(shipment.status)} dot>
                         {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
                       </Badge>
                     </div>
-                    <p className="mt-1.5 flex items-center gap-2 text-[0.875rem] text-ink-muted">
+                    <p className="mt-1.5 flex items-center gap-2 text-body text-ink-muted">
                       <Icon name={modeIcon(shipment.mode)} size={16} className="text-ink-subtle" />
                       <Lane origin={shipment.originName} destination={shipment.destinationName} />
                       <span className="text-ink-subtle">· {tMode(shipment.mode)}</span>
@@ -76,10 +76,10 @@ export default async function AgentHome() {
 
                   <div className="text-end">
                     <p className="eyebrow mb-1">{tJob('eta')}</p>
-                    <p className="numeric text-[0.9375rem] font-semibold text-ink">
+                    <p className="numeric text-title font-semibold text-ink">
                       {formatDay(shipment.eta, locale, timeZone)}
                     </p>
-                    <p className="numeric text-[0.6875rem] text-ink-subtle">
+                    <p className="numeric text-micro text-ink-subtle">
                       {formatRelative(shipment.eta, locale, now)}
                     </p>
                   </div>
@@ -87,7 +87,7 @@ export default async function AgentHome() {
 
                 <div className="mt-4 border-t border-line pt-3">
                   <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[0.75rem] text-ink-muted">
+                    <span className="text-caption text-ink-muted">
                       {shipment.nextMilestone ? (
                         <>
                           <span className="text-ink-subtle">{tPortal('nextStep')}: </span>
@@ -97,7 +97,7 @@ export default async function AgentHome() {
                         tJob('statuses.completed')
                       )}
                     </span>
-                    <span className="numeric text-[0.75rem] text-ink-subtle">
+                    <span className="numeric text-caption text-ink-subtle">
                       {shipment.milestonesDone}/{shipment.milestonesTotal}
                     </span>
                   </div>

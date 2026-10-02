@@ -42,8 +42,10 @@ import { formatMoney, formatNumber } from '@/lib/format'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Button, EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
+import { Card } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('reports')
@@ -169,7 +171,7 @@ export default async function ReportsPage({
             href={href({ dimension: option })}
             aria-current={option === dimension ? 'page' : undefined}
             className={[
-              'inline-flex h-8 items-center rounded-sm px-3 text-[0.8125rem] font-medium transition-colors',
+              'inline-flex h-8 items-center rounded-sm px-3 text-body-sm font-medium transition-colors',
               option === dimension
                 ? 'bg-brand text-on-brand'
                 : 'border border-line bg-surface text-ink hover:bg-surface-sunken',
@@ -182,27 +184,27 @@ export default async function ReportsPage({
 
       <form method="get" action="/reports" className="mb-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="dimension" value={dimension} />
-        <label className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+        <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('from')}
           <input
             type="date"
             name="from"
             defaultValue={period.from}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
-        <label className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+        <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('to')}
           <input
             type="date"
             name="to"
             defaultValue={period.to}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
         <button
           type="submit"
-          className="inline-flex h-9 items-center rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink hover:bg-surface-sunken"
+          className="inline-flex h-9 items-center rounded-sm border border-line bg-surface px-3.5 text-body font-medium text-ink hover:bg-surface-sunken"
         >
           {t('apply')}
         </button>
@@ -222,73 +224,83 @@ export default async function ReportsPage({
       {rows.length === 0 ? (
         <EmptyState icon="chart" title={t('empty')} description={t('emptyHint')} />
       ) : (
-        <TableShell>
-          <THead>
-            <TR>
-              <TH>{t(`dimension.${dimension}` as 'dimension.customer')}</TH>
-              {/* Profit and margin are the report's answer; volume, revenue
+        // In a card, like every other register: bare on the canvas the table
+        // had no edge, and its header row floated with nothing above it.
+        <Card padding="none" className="overflow-hidden">
+          <TableShell>
+            <THead>
+              <TR>
+                <TH>{t(`dimension.${dimension}` as 'dimension.customer')}</TH>
+                {/* Profit and margin are the report's answer; volume, revenue
                   and cost are how it got there, and wait for a wider screen. */}
-              <TH priority="low" className="text-end">
-                {t('jobs')}
-              </TH>
-              <TH priority="low" className="text-end">
-                {t('revenue')}
-              </TH>
-              <TH priority="low" className="text-end">
-                {t('cost')}
-              </TH>
-              <TH className="text-end">{t('grossProfit')}</TH>
-              <TH className="text-end">{t('marginPercent')}</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((row) => {
-              const summary = summariseMargin(
-                [
-                  { direction: 'revenue', amountInBase: money(row.revenue, row.currency) },
-                  { direction: 'cost', amountInBase: money(row.cost, row.currency) },
-                ],
-                row.currency,
-              )
-              const negative = Number(row.grossProfit) < 0
+                <TH priority="low" align="end">
+                  {t('jobs')}
+                </TH>
+                <TH priority="low" align="end">
+                  {t('revenue')}
+                </TH>
+                <TH priority="low" align="end">
+                  {t('cost')}
+                </TH>
+                <TH align="end">{t('grossProfit')}</TH>
+                <TH align="end">{t('marginPercent')}</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((row) => {
+                const summary = summariseMargin(
+                  [
+                    { direction: 'revenue', amountInBase: money(row.revenue, row.currency) },
+                    { direction: 'cost', amountInBase: money(row.cost, row.currency) },
+                  ],
+                  row.currency,
+                )
+                const negative = Number(row.grossProfit) < 0
 
-              return (
-                <TR key={`${row.key}:${row.currency}`}>
-                  <TD>{labelOf(row)}</TD>
-                  <TD priority="low" className="text-end tabular-nums">
-                    {formatNumber(row.jobCount, locale)}
-                  </TD>
-                  <TD priority="low" className="text-end tabular-nums">
-                    {formatMoney({ amount: row.revenue, currency: row.currency }, locale)}
-                  </TD>
-                  <TD priority="low" className="text-end tabular-nums">
-                    {formatMoney({ amount: row.cost, currency: row.currency }, locale)}
-                  </TD>
-                  <TD className="text-end tabular-nums">
-                    {/*
+                return (
+                  <TR key={`${row.key}:${row.currency}`}>
+                    <TD>{labelOf(row)}</TD>
+                    <TD priority="low" align="end" numeric>
+                      {formatNumber(row.jobCount, locale)}
+                    </TD>
+                    <TD priority="low" align="end" numeric>
+                      <Money
+                        value={{ amount: row.revenue, currency: row.currency }}
+                        locale={locale}
+                      />
+                    </TD>
+                    <TD priority="low" align="end" numeric>
+                      <Money value={{ amount: row.cost, currency: row.currency }} locale={locale} />
+                    </TD>
+                    <TD align="end" numeric>
+                      {/*
                       A loss is badged, not merely coloured. Colour alone fails
                       for the eight per cent of men who cannot distinguish it,
                       and a negative margin is the single most consequential
                       thing on this page.
                     */}
-                    {negative ? (
-                      <Badge tone="critical">
-                        {formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)}
-                      </Badge>
-                    ) : (
-                      formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)
-                    )}
-                  </TD>
-                  <TD className="text-end tabular-nums">
-                    {summary.grossPercent === null
-                      ? '—'
-                      : `${Number(summary.grossPercent).toFixed(1)}%`}
-                  </TD>
-                </TR>
-              )
-            })}
-          </TBody>
-        </TableShell>
+                      {negative ? (
+                        <Badge tone="critical">
+                          {formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)}
+                        </Badge>
+                      ) : (
+                        <Money
+                          value={{ amount: row.grossProfit, currency: row.currency }}
+                          locale={locale}
+                        />
+                      )}
+                    </TD>
+                    <TD align="end" numeric>
+                      {summary.grossPercent === null
+                        ? '—'
+                        : `${Number(summary.grossPercent).toFixed(1)}%`}
+                    </TD>
+                  </TR>
+                )
+              })}
+            </TBody>
+          </TableShell>
+        </Card>
       )}
     </>
   )

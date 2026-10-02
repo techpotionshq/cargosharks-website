@@ -120,8 +120,8 @@ export function EnquiryDialog({
           onClick={onClick}
           className={
             variant === 'primary'
-              ? 'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover'
-              : 'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken'
+              ? 'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-body font-semibold text-on-brand transition-colors hover:bg-brand-hover'
+              : 'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-body font-medium text-ink transition-colors hover:bg-surface-sunken'
           }
         >
           <Icon name="plus" size={16} weight="bold" />

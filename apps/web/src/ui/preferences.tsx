@@ -35,7 +35,7 @@ export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' |
         // shape and speak the label in the language it is written in.
         lang={next}
         aria-label={`${t('language')}`}
-        className={`inline-flex h-10 items-center gap-1.5 rounded-sm px-2 text-[0.8125rem] font-medium transition-colors md:h-8 ${
+        className={`inline-flex h-10 items-center gap-1.5 rounded-sm px-2 text-body-sm font-medium transition-colors md:h-8 ${
           tone === 'chrome'
             ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
             : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
@@ -181,7 +181,7 @@ export async function TimeZoneSwitch({
         id="preferences-time-zone"
         name="timeZone"
         defaultValue={current}
-        className={`h-8 rounded-sm border-0 bg-transparent px-1 text-[0.8125rem] font-medium hover:bg-surface-sunken ${
+        className={`h-8 rounded-sm border-0 bg-transparent px-1 text-body-sm font-medium hover:bg-surface-sunken ${
           tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'
         }`}
         options={options.map((zone) => ({
@@ -192,7 +192,7 @@ export async function TimeZoneSwitch({
       <noscript>
         <button
           type="submit"
-          className={`inline-flex h-8 items-center rounded-sm px-2 text-[0.8125rem] font-medium transition-colors ${
+          className={`inline-flex h-8 items-center rounded-sm px-2 text-body-sm font-medium transition-colors ${
             tone === 'chrome'
               ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
               : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'

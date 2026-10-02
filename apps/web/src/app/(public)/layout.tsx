@@ -49,7 +49,7 @@ export default async function PublicLayout({ children }: { children: React.React
           <nav className="ms-auto flex items-center gap-1">
             <Link
               href="/track"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="tracking" size={16} />
               <span className="hidden sm:inline">{t('tracking')}</span>
@@ -57,7 +57,7 @@ export default async function PublicLayout({ children }: { children: React.React
             <LanguageSwitch />
             <Link
               href="/sign-in"
-              className="ms-1 inline-flex h-9 items-center rounded-sm bg-brand px-3.5 text-[0.875rem] font-medium text-on-brand transition-colors hover:bg-brand-hover"
+              className="ms-1 inline-flex h-9 items-center rounded-sm bg-brand px-3.5 text-body font-medium text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('signIn')}
             </Link>
@@ -71,13 +71,13 @@ export default async function PublicLayout({ children }: { children: React.React
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 md:flex-row md:items-start md:justify-between">
           <div className="max-w-sm">
             <Logo brand={brand} locale={locale} size="sm" />
-            <p className="mt-3 text-[0.8125rem] text-ink-muted">{legalName}</p>
-            <p className="mt-1 text-[0.8125rem] text-ink-subtle">
+            <p className="mt-3 text-body-sm text-ink-muted">{legalName}</p>
+            <p className="mt-1 text-body-sm text-ink-subtle">
               {locale === 'ar' ? brand.contact.addressAr : brand.contact.addressEn}
             </p>
           </div>
 
-          <dl className="flex flex-col gap-2 text-[0.8125rem]">
+          <dl className="flex flex-col gap-2 text-body-sm">
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="enquiries" size={15} className="text-ink-subtle" />
               <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-accent">
@@ -104,7 +104,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
 
         <div className="border-t border-line">
-          <p className="mx-auto max-w-6xl px-4 py-4 text-[0.75rem] text-ink-subtle sm:px-6">
+          <p className="mx-auto max-w-6xl px-4 py-4 text-caption text-ink-subtle sm:px-6">
             © {year} {name}. {tp('footerRights')}
           </p>
         </div>

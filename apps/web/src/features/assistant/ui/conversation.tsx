@@ -313,10 +313,10 @@ export function Conversation({
             */
             <div className="my-auto flex flex-col gap-5">
               <div className="flex flex-col gap-2">
-                <h2 className="font-display text-lg font-semibold tracking-tight text-ink">
+                <h2 className="font-display text-heading font-semibold tracking-tight text-ink">
                   {labels.emptyTitle}
                 </h2>
-                <p className="max-w-prose text-[0.8125rem] leading-relaxed text-pretty text-ink-muted">
+                <p className="max-w-prose text-body-sm leading-relaxed text-pretty text-ink-muted">
                   {labels.emptyHint}
                 </p>
               </div>
@@ -335,7 +335,7 @@ export function Conversation({
                       <button
                         type="button"
                         onClick={() => send(suggestion)}
-                        className="inline-flex min-h-10 items-center rounded-full border border-line bg-surface px-3.5 py-2 text-start text-[0.8125rem] text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
+                        className="inline-flex min-h-10 items-center rounded-full border border-line bg-surface px-3.5 py-2 text-start text-body-sm text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
                       >
                         {suggestion}
                       </button>
@@ -380,13 +380,13 @@ export function Conversation({
                       the chat-app idiom coming back in through a side door.
                       The display face at a heavier weight says it already.
                     */
-                    <h3 className="font-display text-[1.0625rem] leading-snug font-semibold tracking-tight whitespace-pre-wrap text-ink">
+                    <h3 className="font-display text-heading leading-snug font-semibold tracking-tight whitespace-pre-wrap text-ink">
                       {turn.content}
                     </h3>
                   ) : (
                     <div className="flex flex-col gap-3 pb-7">
                       {turn.unavailable ? (
-                        <p className="flex items-start gap-2 text-[0.875rem] leading-relaxed text-ink-muted italic">
+                        <p className="flex items-start gap-2 text-body leading-relaxed text-ink-muted italic">
                           <Icon name="alert" size={14} className="mt-1 shrink-0 text-caution" />
                           {turn.failure ? labels.failures[turn.failure] : turn.content}
                         </p>
@@ -411,14 +411,14 @@ export function Conversation({
                         beneath it is noise.
                       */}
                       {turn.streaming && !turn.content && turn.step ? (
-                        <p className="flex items-center gap-2 text-[0.8125rem] text-ink-muted">
+                        <p className="flex items-center gap-2 text-body-sm text-ink-muted">
                           <Icon name="search" size={14} className="animate-pulse text-accent" />
                           {labels.checking.replace('%label%', toolLabel(turn.step))}
                         </p>
                       ) : null}
 
                       {turn.truncated ? (
-                        <p className="flex items-center gap-1.5 text-[0.75rem] text-caution">
+                        <p className="flex items-center gap-1.5 text-caption text-caution">
                           <Icon name="alert" size={13} />
                           {labels.truncated}
                         </p>
@@ -426,7 +426,7 @@ export function Conversation({
 
                       {turn.proposals && turn.proposals.length > 0 ? (
                         <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-sunken/60 p-3">
-                          <p className="text-[0.75rem] leading-snug text-ink-muted">
+                          <p className="text-caption leading-snug text-ink-muted">
                             {labels.proposalNote}
                           </p>
                           {turn.proposals.map((proposal) => (
@@ -434,7 +434,7 @@ export function Conversation({
                               key={`${proposal.entity}-${proposal.reference}-${proposal.to}`}
                               className="flex flex-wrap items-center justify-between gap-2"
                             >
-                              <span className="text-[0.8125rem] text-ink">
+                              <span className="text-body-sm text-ink">
                                 <span className="ref">{proposal.reference}</span>
                                 {' → '}
                                 <span className="font-medium">{proposal.label}</span>
@@ -454,7 +454,7 @@ export function Conversation({
                               */}
                               <a
                                 href={recordHref(proposal)}
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-[0.75rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-caption font-semibold text-on-brand transition-colors hover:bg-brand-hover"
                               >
                                 {labels.confirm}
                                 <Icon name="arrow-end" size={13} />
@@ -475,7 +475,7 @@ export function Conversation({
                           overdue register was read believes the figure. What is not
                           worth showing is the function that read it.
                         */
-                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-2.5 text-[0.6875rem] text-ink-subtle">
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-2.5 text-micro text-ink-subtle">
                           <Icon name="check" size={11} className="text-positive" />
                           <span>{labels.looked}</span>
                           <span className="text-ink-muted">
@@ -523,8 +523,8 @@ export function Conversation({
         <div className="flex shrink-0 items-start gap-2.5 border-t border-caution/25 bg-caution-soft px-4 py-2.5">
           <Icon name="alert" size={14} className="mt-0.5 shrink-0 text-caution" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-[0.75rem] font-semibold text-caution">{labels.serviceMissing}</p>
-            <p className="text-[0.75rem] text-ink-muted">{labels.serviceMissingHint}</p>
+            <p className="text-caption font-semibold text-caution">{labels.serviceMissing}</p>
+            <p className="text-caption text-ink-muted">{labels.serviceMissingHint}</p>
           </div>
         </div>
       ) : null}
@@ -538,8 +538,8 @@ export function Conversation({
         <div className="flex shrink-0 items-start gap-2.5 border-t border-caution/25 bg-caution-soft px-4 py-2.5">
           <Icon name="alert" size={14} className="mt-0.5 shrink-0 text-caution" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-[0.75rem] font-semibold text-caution">{labels.unreachable}</p>
-            <p className="text-[0.75rem] text-ink-muted">{labels.unreachableHint}</p>
+            <p className="text-caption font-semibold text-caution">{labels.unreachable}</p>
+            <p className="text-caption text-ink-muted">{labels.unreachableHint}</p>
           </div>
         </div>
       ) : null}
@@ -557,12 +557,12 @@ export function Conversation({
         <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-caution/25 bg-caution-soft px-4 py-3">
           <Icon name="alert" size={16} className="shrink-0 text-caution" />
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <p className="text-[0.8125rem] font-semibold text-caution">{labels.notConfigured}</p>
-            <p className="text-[0.75rem] text-ink-muted">{labels.notConfiguredHint}</p>
+            <p className="text-body-sm font-semibold text-caution">{labels.notConfigured}</p>
+            <p className="text-caption text-ink-muted">{labels.notConfiguredHint}</p>
           </div>
           <a
             href="/settings/integrations"
-            className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-[0.75rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+            className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-caption font-semibold text-on-brand transition-colors hover:bg-brand-hover"
           >
             {labels.openSettings}
           </a>
@@ -598,7 +598,7 @@ export function Conversation({
                 }}
                 placeholder={labels.placeholder}
                 aria-label={labels.placeholder}
-                className="max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle focus:outline-none"
+                className="max-h-40 min-h-8 flex-1 resize-none bg-transparent py-1 text-body leading-relaxed text-ink placeholder:text-ink-subtle focus:outline-none"
               />
               <button
                 type="submit"
@@ -621,9 +621,7 @@ export function Conversation({
               the half nobody guesses, and a person who does not know it sends
               half a question and then sends the rest as a second one.
             */}
-            <p className="mt-2 hidden text-[0.6875rem] text-ink-subtle sm:block">
-              {labels.composerHint}
-            </p>
+            <p className="mt-2 hidden text-micro text-ink-subtle sm:block">{labels.composerHint}</p>
           </div>
         </form>
       )}

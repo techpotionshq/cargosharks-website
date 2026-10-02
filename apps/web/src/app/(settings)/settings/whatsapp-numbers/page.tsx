@@ -95,7 +95,7 @@ export default async function WhatsappNumbersPage() {
               <TD>
                 {row.label ?? '—'}
                 {row.displayNumber ? (
-                  <span className="numeric block text-[0.75rem] whitespace-nowrap text-ink-muted md:hidden">
+                  <span className="numeric block text-caption whitespace-nowrap text-ink-muted md:hidden">
                     {row.displayNumber}
                   </span>
                 ) : null}
@@ -142,7 +142,7 @@ export default async function WhatsappNumbersPage() {
         which reads as a bug in the page rather than as a gap in their roles.
       */}
       {assignable.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">{t('noBranchRole')}</p>
+        <p className="mt-3 text-body text-muted">{t('noBranchRole')}</p>
       ) : null}
     </Register>
   )

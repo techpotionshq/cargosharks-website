@@ -61,7 +61,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
           {partnerName ? (
             <>
               <span className="hidden h-6 w-px bg-line sm:block" />
-              <span className="hidden truncate text-[0.8125rem] font-medium text-ink-muted sm:block">
+              <span className="hidden truncate text-body-sm font-medium text-ink-muted sm:block">
                 {partnerName}
               </span>
             </>
@@ -70,7 +70,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
           <nav className="ms-auto flex items-center gap-1">
             <Link
               href="/agent"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="jobs" size={16} />
               <span className="hidden sm:inline">{t('agent')}</span>
@@ -89,7 +89,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
                 type="submit"
                 title={tc('signOut')}
                 aria-label={tc('signOut')}
-                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
+                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
               >
                 <Icon name="sign-out" size={16} />
                 <span className="hidden sm:inline">{tc('signOut')}</span>

@@ -19,6 +19,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
 import { dec } from '@qabandi/core'
@@ -159,12 +160,22 @@ export default async function InvoicesPage({
                     word in SQL.
                   */}
                   <RecordLink href={`/invoices/${row.id}`}>
-                    {row.seriesNo ?? t('statuses.draft')}
+                    {/* The word stands in for a number, so it is set as a
+                        word: in the reference face, monospaced Arabic pulled
+                        "مسودة" apart into separate letters. */}
+                    {row.seriesNo ?? (
+                      <span className="font-sans tracking-normal rtl:font-arabic">
+                        {t('statuses.draft')}
+                      </span>
+                    )}
                   </RecordLink>
+                  {/* Under the number on a phone: inline, it wrapped there
+                      anyway and carried its 8px start margin onto the new
+                      line, so the pill sat indented under the number. */}
                   {row.isCreditNote ? (
-                    <Badge tone="caution" className="ms-2">
-                      {t('creditNote')}
-                    </Badge>
+                    <span className="mt-1 block md:ms-2 md:mt-0 md:inline">
+                      <Badge tone="caution">{t('creditNote')}</Badge>
+                    </span>
                   ) : null}
                 </TD>
                 <TD priority="low" className="font-medium text-ink">
@@ -176,16 +187,20 @@ export default async function InvoicesPage({
                   </Badge>
                 </TD>
                 <TD align="end" numeric priority="low">
-                  {row.total
-                    ? formatMoney({ amount: row.total, currency: row.currency }, locale)
-                    : '—'}
+                  <Money
+                    value={row.total ? { amount: row.total, currency: row.currency } : null}
+                    locale={locale}
+                  />
                 </TD>
                 <TD
                   align="end"
                   numeric
                   className={balance.gt(0) ? 'font-semibold text-ink' : 'text-ink-subtle'}
                 >
-                  {formatMoney({ amount: balance.toFixed(), currency: row.currency }, locale)}
+                  <Money
+                    value={{ amount: balance.toFixed(), currency: row.currency }}
+                    locale={locale}
+                  />
                 </TD>
                 <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}

@@ -96,7 +96,7 @@ export async function ProofOfDeliveryCard({
                   </Badge>
                   {superseded ? <Badge tone="muted">{t('superseded')}</Badge> : null}
                   {pod.containerNo ? (
-                    <span className="ref text-[0.75rem] text-ink-muted">{pod.containerNo}</span>
+                    <span className="ref text-caption text-ink-muted">{pod.containerNo}</span>
                   ) : null}
                 </div>
 
@@ -118,13 +118,13 @@ export async function ProofOfDeliveryCard({
                 </div>
 
                 {pod.hasException && pod.exceptionNotes ? (
-                  <p className="mt-3 rounded-sm border border-critical/40 bg-critical/5 p-2.5 text-[0.8125rem] text-critical">
+                  <p className="mt-3 rounded-sm border border-critical/40 bg-critical/5 p-2.5 text-body-sm text-critical">
                     {pod.exceptionNotes}
                   </p>
                 ) : null}
 
                 {pod.notes ? (
-                  <p dir="auto" className="mt-2 text-[0.8125rem] text-ink-muted">
+                  <p dir="auto" className="mt-2 text-body-sm text-ink-muted">
                     {pod.notes}
                   </p>
                 ) : null}
@@ -136,7 +136,7 @@ export async function ProofOfDeliveryCard({
                   question here is only ever "was this near the consignee".
                 */}
                 {pod.latitude && pod.longitude ? (
-                  <p className="mt-2 text-[0.75rem] text-ink-subtle">
+                  <p className="mt-2 text-caption text-ink-subtle">
                     <a
                       className="underline underline-offset-2 hover:text-ink"
                       href={`https://www.openstreetmap.org/?mlat=${pod.latitude}&mlon=${pod.longitude}#map=17/${pod.latitude}/${pod.longitude}`}
@@ -199,7 +199,7 @@ function Attachment({
       href={`/api/assets/${assetId}`}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:bg-surface-sunken"
+      className="inline-flex items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1.5 text-caption font-medium text-ink transition-colors hover:bg-surface-sunken"
     >
       <span aria-hidden>{tone === 'signature' ? '✎' : '▣'}</span>
       {label}
