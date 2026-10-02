@@ -3709,7 +3709,8 @@
     "goodsValueNumber": "The goods value must be a number",
     "checkFigures": "Check the figures.",
     "noCargoToClassify": "This shipment has no cargo lines yet, so there is nothing to classify. Add them under Cargo.",
-    "estimateUnmatched": "Estimated {duty} {currency}, but {count, plural, one {# line had} other {# lines had}} no tariff row. Add the HS codes, or add the rates under Reference data → Tariff."
+    "estimateUnmatched": "Estimated {duty} {currency}, but {count, plural, one {# line had} other {# lines had}} no tariff row. Add the HS codes, or add the rates under Reference data → Tariff.",
+    "containerNeedsNumberOrType": "Enter the container number, or at least its type if the number is not known yet."
   },
   "payablesValidation": {
     "enterDate": "Enter a date",

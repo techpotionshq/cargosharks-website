@@ -514,38 +514,50 @@ export async function completeMilestone(
 // --- equipment -------------------------------------------------------------
 
 const containerSchema = (tv: Translate) =>
-  z.object({
-    jobId: z.uuid(),
-    /**
-     * ISO 6346: four letters then seven digits, the last of which is a check
-     * digit. Validated for *shape* only — the check digit is not verified here
-     * because a container number typed off a photograph of a rusty door is
-     * routinely one character out, and refusing it would mean the operator
-     * cannot record the box that is physically in front of them.
-     */
-    containerNo: z
-      .string()
-      .trim()
-      .optional()
-      .transform((v) => (v ? v.toUpperCase().replace(/\s+/g, '') : null))
-      .refine((v) => v === null || /^[A-Z]{4}\d{6,7}$/.test(v), {
-        message: tv('containerNoFormat'),
-      }),
-    containerType: z
-      .string()
-      .trim()
-      .max(20)
-      .optional()
-      .transform((v) => v || null),
-    sealNo: z
-      .string()
-      .trim()
-      .max(40)
-      .optional()
-      .transform((v) => v || null),
-    grossWeightKg: optionalAmount(tv('numbersOnly')),
-    tareWeightKg: optionalAmount(tv('numbersOnly')),
-  })
+  z
+    .object({
+      jobId: z.uuid(),
+      /**
+       * ISO 6346: four letters then seven digits, the last of which is a check
+       * digit. Validated for *shape* only — the check digit is not verified here
+       * because a container number typed off a photograph of a rusty door is
+       * routinely one character out, and refusing it would mean the operator
+       * cannot record the box that is physically in front of them.
+       */
+      containerNo: z
+        .string()
+        .trim()
+        .optional()
+        .transform((v) => (v ? v.toUpperCase().replace(/\s+/g, '') : null))
+        .refine((v) => v === null || /^[A-Z]{4}\d{6,7}$/.test(v), {
+          message: tv('containerNoFormat'),
+        }),
+      containerType: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .transform((v) => v || null),
+      sealNo: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .transform((v) => v || null),
+      grossWeightKg: optionalAmount(tv('numbersOnly')),
+      tareWeightKg: optionalAmount(tv('numbersOnly')),
+    })
+    /*
+      Something that identifies the box (QA P3). Every field was optional, so
+      "Add a container" with nothing typed saved a blank equipment row: a box
+      the job counts, the free-time clock can attach to, and nobody can name.
+      A number, or at least a type for a box booked before its number is
+      known.
+    */
+    .refine((v) => v.containerNo !== null || v.containerType !== null, {
+      message: tv('containerNeedsNumberOrType'),
+      path: ['containerNo'],
+    })
 
 export async function addContainer(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
