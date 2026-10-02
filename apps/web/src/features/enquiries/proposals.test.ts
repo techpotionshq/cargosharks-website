@@ -39,7 +39,7 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { aiInvocations, enquiries, extractionProposals, locations, withActor } =
+const { aiInvocations, enquiries, extractionProposals, locationCodes, locations, withActor } =
   await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, ORIGIN, PRINCIPAL, bothBranchesActor, world } =
@@ -371,6 +371,14 @@ describe.skipIf(!enabled)('a place written with its country', () => {
           // One name in two countries: the country is what tells them apart.
           { kind: 'seaport', nameEn: twin, countryCode: 'KW' },
           { kind: 'seaport', nameEn: twin, countryCode: 'CN' },
+          // An Emirati port with a code, for the short forms and the lane check.
+          {
+            kind: 'seaport',
+            nameEn: `Emquay${tag}`,
+            nameAr: `ميناء إم${tag}`,
+            countryCode: 'AE',
+            unlocode: `AE${tag.slice(0, 3).toUpperCase()}`,
+          },
         ])
         .returning({ id: locations.id, nameEn: locations.nameEn, country: locations.countryCode })
       for (const r of rows) ids.set(`${r.nameEn}|${r.country}`, r.id)
@@ -424,5 +432,37 @@ describe.skipIf(!enabled)('a place written with its country', () => {
       ok: false,
       failure: { kind: 'ambiguous', value: twin, count: 2 },
     })
+  })
+
+  /*
+    ai-17: "Jebel Ali, UAE" — the trade's short form for the country matched
+    neither the code nor the name in `countries`, so the route stayed
+    incomplete. ai-4: the same matching answers the rate-reply lane check, and
+    an Arabic email names a port without its ميناء as often as with it.
+  */
+  it.each([
+    ['UAE', (n: string) => `${n}, UAE`],
+    ['U.A.E.', (n: string) => `${n}, U.A.E.`],
+    ['Arabic short form', (n: string) => `${n}، الامارات`],
+    ['Port of …', (n: string) => `Port of ${n}`],
+  ])('understands the country or port written as %s', async (_label, write) => {
+    expect(await resolve(write(`Emquay${tag}`))).toMatchObject({ ok: true })
+  })
+
+  it('matches an Arabic port name written without ميناء', async () => {
+    expect(await resolve(`إم${tag}`)).toMatchObject({ ok: true })
+  })
+
+  it('still refuses a short form for a country the place is not in', async () => {
+    expect(await resolve(`Emquay${tag}, KSA`)).toMatchObject({ ok: false })
+  })
+
+  it('gives the lane check every code a name stands for', async () => {
+    const code = `AE${tag.slice(0, 3).toUpperCase()}`
+    const codes = (value: string) => withActor(bothBranchesActor, (tx) => locationCodes(tx, value))
+    expect(await codes(`Emquay${tag}`)).toEqual([code])
+    expect(await codes(`إم${tag}`)).toEqual([code])
+    expect(await codes(code.toLowerCase())).toEqual([code])
+    expect(await codes(`Nowhere${tag}`)).toEqual([])
   })
 })

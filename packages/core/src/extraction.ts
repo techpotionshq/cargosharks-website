@@ -1157,6 +1157,120 @@ export interface RateReplyLane {
   readonly mode: string
   readonly originCode: string
   readonly destinationCode: string
+  /**
+   * What the reply's own place names resolve to, read from `locations` by the
+   * caller: the name as the model wrote it, lower-cased, to the UN/LOCODEs of
+   * every place it matches (by code, English or Arabic name, with the port
+   * suffix and a trailing country forgiven — `locationCodes` in `@qabandi/db`).
+   *
+   * Core does no I/O, so the caller resolves and hands the answers in. Absent
+   * or missing a name, that name is simply unresolved — see `compareLane`.
+   */
+  readonly places?: Readonly<Record<string, readonly string[]>>
+}
+
+/**
+ * What people write for a country instead of its name (ai-17).
+ *
+ * "Jebel Ali, UAE" is how an enquiry names the port, and `countries` holds
+ * "United Arab Emirates" and "AE" — so the trailing country matched nothing and
+ * the route stayed incomplete. These are the abbreviations and short forms of
+ * the trade, keyed lower-case to the ISO code; the code is then checked
+ * against `countries` like any other, so an alias for a country this
+ * deployment does not hold resolves to nothing rather than to a guess.
+ *
+ * In code rather than rows because they are not configuration: nobody's
+ * deployment calls the Emirates something else, and an administrator adding a
+ * country adds its name and code, which already match.
+ */
+export const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
+  uae: 'AE',
+  'u.a.e.': 'AE',
+  'u.a.e': 'AE',
+  emirates: 'AE',
+  'the emirates': 'AE',
+  الامارات: 'AE',
+  'الإمارات العربية المتحدة': 'AE',
+  ksa: 'SA',
+  'k.s.a.': 'SA',
+  saudi: 'SA',
+  'المملكة العربية السعودية': 'SA',
+  uk: 'GB',
+  'u.k.': 'GB',
+  'great britain': 'GB',
+  britain: 'GB',
+  england: 'GB',
+  usa: 'US',
+  'u.s.a.': 'US',
+  us: 'US',
+  'u.s.': 'US',
+  america: 'US',
+  prc: 'CN',
+  turkey: 'TR',
+  holland: 'NL',
+  'the netherlands': 'NL',
+}
+
+/** The ISO code a written country stands for, where it is a known short form. */
+export function countryAliasCode(written: string): string | undefined {
+  return COUNTRY_ALIASES[written.trim().toLowerCase()]
+}
+
+/**
+ * A UN/LOCODE as people write it: country, optional space, three characters.
+ *
+ * Capitals only. Case-insensitive, "Dubai" and "Basra" are LOCODE-shaped, and
+ * an unresolved five-letter city would be read as a code we did not ask for.
+ */
+const LOCODE = /^[A-Z]{2}\s?[A-Z2-9]{3}$/
+
+const asLocode = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+
+/**
+ * Whether the lane a reply names is the lane we asked about (ai-4).
+ *
+ * This compared the model's free text with our code, so a reply that said
+ * "Shanghai → Shuwaikh" for an RFQ on CNSHA → KWSWK was flagged "different
+ * lane" — and a flagged reply is excluded from ranking and from auto-award, so
+ * correct quotes were thrown away for spelling the port as a person would.
+ *
+ * Now each side is a mismatch only when we can *show* it is one:
+ *
+ *   - the text is the code (any case, a space allowed) — the same place;
+ *   - the text resolves through `locations` — the same place if any of the
+ *     places it names is ours, a different one if none is;
+ *   - the text is LOCODE-shaped and not ours — a different place;
+ *   - anything else is unresolved, and reported as such rather than called a
+ *     mismatch. A name we do not hold is not evidence the agent priced
+ *     elsewhere, and treating it as evidence is what discarded good replies.
+ */
+export function compareLane(
+  claimed: { readonly origin?: string; readonly destination?: string },
+  lane: RateReplyLane,
+): { readonly mismatch?: string; readonly unresolved: readonly string[] } {
+  const unresolved: string[] = []
+
+  const differs = (text: string | undefined, code: string, side: string): boolean => {
+    if (!text) return false
+    if (asLocode(text) === asLocode(code)) return false
+    const codes = lane.places?.[text.trim().toLowerCase()]
+    if (codes && codes.length > 0) return !codes.some((c) => asLocode(c) === asLocode(code))
+    if (LOCODE.test(text.trim())) return true
+    unresolved.push(`${side} "${text}" is not a place we hold; check it is ${code}`)
+    return false
+  }
+
+  const originDiffers = differs(claimed.origin, lane.originCode, 'Origin')
+  const destinationDiffers = differs(claimed.destination, lane.destinationCode, 'Destination')
+
+  return {
+    ...(originDiffers || destinationDiffers
+      ? {
+          mismatch: `reply reads ${claimed.origin ?? '?'}→${claimed.destination ?? '?'}, we asked ${lane.originCode}→${lane.destinationCode}`,
+        }
+      : {}),
+    unresolved,
+  }
 }
 
 /**
@@ -1308,15 +1422,14 @@ export function readExtractedRateReply(
   // A lane the model read that is not the one we asked about — surfaced, never
   // acted on. "We asked JEA→KWI and the reply prices NSA→KWI" is a sentence a
   // coordinator wants; silently pricing the wrong lane is the trap.
-  const claimedOrigin = asCode(raw.origin)
-  const claimedDestination = asCode(raw.destination)
-  let laneMismatch: string | undefined
-  if (
-    (claimedOrigin && claimedOrigin.toUpperCase() !== lane.originCode.toUpperCase()) ||
-    (claimedDestination && claimedDestination.toUpperCase() !== lane.destinationCode.toUpperCase())
-  ) {
-    laneMismatch = `reply reads ${claimedOrigin ?? '?'}→${claimedDestination ?? '?'}, we asked ${lane.originCode}→${lane.destinationCode}`
-  }
+  // Names are resolved through `locations` by the caller first (ai-4) — see
+  // `compareLane` for why free text is never compared with a code directly.
+  const compared = compareLane(
+    { origin: asCode(raw.origin), destination: asCode(raw.destination) },
+    lane,
+  )
+  const laneMismatch = compared.mismatch
+  headerIssues.push(...compared.unresolved)
 
   const rawLines = Array.isArray(raw.lines) ? (raw.lines as RawRateLine[]) : []
   if (!declined && rawLines.length === 0) {

@@ -31,6 +31,7 @@ import {
   assets,
   enquiries,
   inSeries,
+  locationCodes,
   locations,
   messageAttachments,
   messages,
@@ -52,6 +53,7 @@ import {
   RATE_EXTRACTION_SCHEMA,
   type ChargeContext,
   type RateReplyLane,
+  type RawExtractedRateReply,
 } from '@qabandi/core'
 import type { ImportLookups } from '@qabandi/core/import'
 import { invoke } from '../ai/ledger'
@@ -154,10 +156,11 @@ export async function extractRateReply(
   // An unstated start date falls back to the reply's own date — an agent quotes
   // a rate "from now", not from a date they rarely bother to write.
   const replyDay = (context.respondedAt ?? new Date()).toISOString().slice(0, 10)
+  const raw = parseModelJson<RawExtractedRateReply>(response.text)
   const extracted = readExtractedRateReply(
-    parseModelJson(response.text),
+    raw,
     context.lookups,
-    lane,
+    { ...lane, places: await resolvePlaces(actor, raw) },
     replyDay,
   )
 
@@ -495,4 +498,30 @@ function bodyFor(subject: string | null, body: string): string {
   const trimmed =
     body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
   return subject ? `Subject: ${subject}\n\n${trimmed}` : trimmed
+}
+
+/**
+ * The reply's own place names, resolved through `locations` (ai-4).
+ *
+ * Core compares the lane and does no I/O, so the names the model read —
+ * "Shanghai", "ميناء الشويخ", "Jebel Ali, UAE" — are looked up here and handed
+ * in as the codes they stand for. Without this, free text was compared with a
+ * UN/LOCODE and every reply that spelled a port as a person would was flagged
+ * "different lane" and excluded from ranking and auto-award.
+ */
+async function resolvePlaces(
+  actor: Actor,
+  raw: unknown,
+): Promise<Record<string, readonly string[]>> {
+  const reply = (raw ?? {}) as { origin?: unknown; destination?: unknown }
+  const names = [reply.origin, reply.destination].filter(
+    (value): value is string => typeof value === 'string' && value.trim() !== '',
+  )
+  if (names.length === 0) return {}
+
+  return withActor(actor, async (tx: Tx) => {
+    const places: Record<string, readonly string[]> = {}
+    for (const name of names) places[name.trim().toLowerCase()] = await locationCodes(tx, name)
+    return places
+  })
 }

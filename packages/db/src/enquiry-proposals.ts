@@ -22,7 +22,8 @@
  * the queue for them.
  */
 
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { countryAliasCode } from '@qabandi/core'
 import { commodities, countries, enquiries, locations } from './schema/index'
 import type { Tx } from './actor'
 
@@ -172,6 +173,28 @@ async function matchLocation(tx: Tx, value: string): Promise<{ id: string }[]> {
     .limit(5)
 }
 
+/**
+ * The UN/LOCODEs a place name stands for, by the same rules as a proposal.
+ *
+ * For the rate-reply lane check (ai-4): an agent writes "Shanghai" and we
+ * asked about CNSHA, and the only honest way to say whether those are the same
+ * place is to ask the table a person would have picked from. Every match is
+ * returned rather than one — the question here is "is ours among them", not
+ * "which one is it", so a name two places share is not refused, only checked.
+ */
+export async function locationCodes(tx: Tx, value: string): Promise<string[]> {
+  const needle = value.trim().toLowerCase()
+  if (!needle) return []
+
+  const rows = await tx
+    .select({ code: locations.unlocode })
+    .from(locations)
+    .where(and(eq(locations.isActive, true), isNotNull(locations.unlocode), sqlAnyMatch(needle)))
+    .limit(10)
+
+  return rows.map((row) => row.code!).filter(Boolean)
+}
+
 async function matchCommodity(tx: Tx, value: string): Promise<{ id: string }[]> {
   const needle = value.trim().toLowerCase()
 
@@ -190,11 +213,23 @@ async function matchCommodity(tx: Tx, value: string): Promise<{ id: string }[]> 
   "shuaiba", never "shuwaikh" — and the one-match rule in `resolveProposal`
   still refuses a name two places share.
 */
-const sqlPlaceMatch = (needle: string) =>
-  sql`(lower(${locations.unlocode}) = ${needle}
+/*
+  The same forgiveness for the forms written the other way round: "Port of
+  Shanghai" in English, and the Arabic name with or without its leading ميناء
+  ("الشويخ" for "ميناء الشويخ"), which is how an Arabic email names a port as
+  often as not (ai-4). A LOCODE written with a space ("KW SWK") is the code.
+*/
+const placeNeedle = (needle: string): string =>
+  needle.replace(/^(the\s+)?port\s+of\s+/, '').replace(/^ميناء\s+/, '')
+
+const sqlPlaceMatch = (raw: string) => {
+  const needle = placeNeedle(raw)
+  return sql`(lower(${locations.unlocode}) = ${needle.replace(/\s+/g, '')}
        or lower(${locations.nameEn}) = ${needle}
        or lower(regexp_replace(${locations.nameEn}, '\\s+(port|seaport|sea port|harbour|harbor)$', '', 'i')) = ${needle}
-       or lower(${locations.nameAr}) = ${needle})`
+       or lower(${locations.nameAr}) = ${needle}
+       or regexp_replace(${locations.nameAr}, '^ميناء\\s+', '') = ${needle})`
+}
 
 /*
   F60: the model writes a place the way an address is written — "Shuwaikh Port,
@@ -217,11 +252,15 @@ const sqlAnyMatch = (needle: string) => {
   const country = needle.slice(comma + 1).trim()
   if (!place || !country) return sqlPlaceMatch(needle)
 
+  // "UAE", "KSA" — the short forms the trade writes (ai-17).
+  const alias = countryAliasCode(country) ?? ''
+
   return sql`(${sqlPlaceMatch(needle)}
        or (${sqlPlaceMatch(place)}
            and exists (select 1 from ${countries}
                         where ${countries.code} = ${locations.countryCode}
                           and (lower(${countries.code}) = ${country}
+                               or ${countries.code} = ${alias}
                                or lower(${countries.nameEn}) = ${country}
                                or lower(${countries.nameAr}) = ${country}))))`
 }
