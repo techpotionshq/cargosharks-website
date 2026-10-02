@@ -910,6 +910,67 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     expect(model.calls).toHaveLength(0)
   })
 
+  it('counts replies the provider refused toward the caps, and records each failure', async () => {
+    const sender = newSender()
+    let attempts = 0
+    // Kapso refusing every message, as Meta does outside the 24-hour window.
+    const refusing = async () => ({
+      key: 'whatsapp' as const,
+      async send() {
+        attempts += 1
+        return { accepted: false, error: 'Kapso 422: outside the 24h window' }
+      },
+    })
+    const deps = { resolveWhatsApp: refusing, sendDelays: [] }
+
+    // One enquiry: asked, refused; asked again after the cooldown, refused; then a person.
+    const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
+    const { id } = await conversationFor(first.enquiryId!)
+    const one = await runIntakeTurn(id, at(130), deps)
+    expect(one.decision?.action).toBe('clarify')
+    expect(one.sendError).toContain('422')
+    await say(sender, 'Still need that rate please', 7 * HOUR)
+    expect((await runIntakeTurn(id, at(7 * HOUR + 130), deps)).decision?.action).toBe('clarify')
+    await say(sender, 'Hello? Any rate for the Ningbo boxes', 14 * HOUR)
+    expect((await runIntakeTurn(id, at(14 * HOUR + 130), deps)).decision?.action).toBe('handoff')
+    const turns = await turnsFor(id)
+    // Each refused reply is on its turn for the desk to see, with no message filed.
+    expect(turns.filter((t) => t.sendError?.includes('422'))).toHaveLength(2)
+    expect(turns.every((t) => t.replyMessageId === null)).toBe(true)
+
+    /*
+      Two more enquiries from the same sender, each asked and refused: four in a
+      day. WhatsApp threads a sender onto their open enquiry, so each is closed
+      before the next opens.
+    */
+    const close = (enquiryId: string) =>
+      withActor(sys, (tx) =>
+        tx
+          .update(enquiries)
+          .set({ status: 'cancelled', closedAt: new Date() })
+          .where(eq(enquiries.id, enquiryId)),
+      )
+    let previous = first.enquiryId!
+    for (const [i, lane] of ['Busan to Kuwait', 'Qingdao to Kuwait'].entries()) {
+      await close(previous)
+      const start = 15 * HOUR + i * HOUR
+      const next = await say(sender, `Also 3 containers ${lane}`, start)
+      expect(next.enquiryId).not.toBe(previous)
+      previous = next.enquiryId!
+      const c = await conversationFor(previous)
+      expect((await runIntakeTurn(c.id, at(start + 130), deps)).decision?.action).toBe('clarify')
+    }
+    await close(previous)
+    expect(attempts).toBe(4)
+
+    // The fifth is stopped by the daily cap, although nothing was ever delivered.
+    const fifth = await say(sender, 'And 1 container Xiamen to Kuwait', 18 * HOUR)
+    const c5 = await conversationFor(fifth.enquiryId!)
+    const capped = await runIntakeTurn(c5.id, at(18 * HOUR + 130), deps)
+    expect(capped.decision?.reason).toBe('loop_guard')
+    expect(attempts).toBe(4)
+  })
+
   it('spends no model call on a sender writing in a burst', async () => {
     const sender = newSender()
     const wa = recorder('whatsapp')

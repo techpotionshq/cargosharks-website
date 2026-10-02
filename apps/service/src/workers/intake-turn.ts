@@ -48,7 +48,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm'
 import {
   assets,
   branches,
@@ -621,8 +621,33 @@ async function senderGuardFor(
         gte(messages.sentAt, daySince),
       ),
     )
-  if ((ours?.count ?? 0) >= SENDER_DAILY_CAP) {
-    return `${SENDER_DAILY_CAP} agent messages to this sender in 24h`
+  /*
+    Replies that did not go count as well as replies that did.
+
+    A failed send stores no outbound message (there is nothing on the thread to
+    show), so counting messages alone let an agent whose every reply bounced off
+    the provider, a WhatsApp 422 outside the 24-hour window, try again on every
+    turn of every enquiry this sender opened: a loop the cap exists to stop,
+    invisible to it. The attempt is on the turn instead, with its `send_error`,
+    and stamped with the turn's clock so the window reads the same time the
+    messages above do.
+  */
+  const [failedSends] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(intakeTurns)
+    .innerJoin(intakeConversations, eq(intakeConversations.id, intakeTurns.conversationId))
+    .where(
+      and(
+        eq(intakeConversations.branchId, conversation.branchId),
+        eq(intakeConversations.customerAddress, conversation.customerAddress),
+        inArray(intakeTurns.action, ['confirm', 'clarify']),
+        isNull(intakeTurns.replyMessageId),
+        isNotNull(intakeTurns.sendError),
+        gte(intakeTurns.createdAt, daySince),
+      ),
+    )
+  if ((ours?.count ?? 0) + (failedSends?.count ?? 0) >= SENDER_DAILY_CAP) {
+    return `${SENDER_DAILY_CAP} agent messages or failed attempts to this sender in 24h`
   }
 
   const burstSince = new Date(asOf.getTime() - BURST_MINUTES * 60 * 1000)
@@ -796,6 +821,8 @@ async function finalise(input: {
         messageIds: input.unseen.map((m) => m.id),
         locale: input.locale,
         invocationId: input.invocationId,
+        // On the turn's clock, which the sender cap's 24-hour window reads.
+        createdAt: asOf,
       })
       .returning({ id: intakeTurns.id })
 
@@ -943,6 +970,8 @@ async function recordRetry(
       action: 'none',
       reason: 'model_retry',
       messageIds: [],
+      // The same clock as a decided turn, so the two order correctly.
+      createdAt: asOf,
       sendError: error instanceof Error ? error.message.slice(0, 500) : String(error),
     })
   })
@@ -956,7 +985,9 @@ async function recordRetry(
  * Best-effort in the way the acknowledgement always was: the turn is already
  * recorded, so a failed send is written on the turn (`send_error`) for the
  * screen, and is not retried — a clarification that arrives an hour late,
- * after the customer has written again, is a worse message than none.
+ * after the customer has written again, is a worse message than none. It still
+ * spends the caps: the turn already counted the clarification or raised the
+ * ready flag, and `senderGuardFor` counts the failed attempt as a message.
  */
 async function sendReply(input: {
   conversation: typeof intakeConversations.$inferSelect
