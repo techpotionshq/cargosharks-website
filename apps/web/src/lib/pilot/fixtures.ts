@@ -108,6 +108,7 @@ import type {
   WhatsappNumberRowLike,
   EnquiryIntakeLike,
   IntakeSettingsRowLike,
+  PartnerMailLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -9311,4 +9312,35 @@ export function pilotIntakeSettings(): IntakeSettingsRowLike[] {
     ownRequirements: false,
     requirements,
   }))
+}
+
+/**
+ * Mail from the demo agent that was filed on no record — a supplier is not a
+ * customer, so its mail does not open an enquiry. One revised-schedule notice
+ * waiting for a person, and one invoice already read into a bill.
+ */
+export function pilotPartnerMail(partnerId: string, now = Date.now()): PartnerMailLike[] {
+  if (partnerId !== 'everbright') return []
+  return [
+    {
+      id: 'partner-mail-1',
+      branchId: BRANCHES[0]!.id,
+      receivedAt: new Date(now - 1000 * 60 * 60 * 3),
+      fromAddress: 'ops@everbright.example',
+      subject: 'Revised cut-off, Qingdao sailings next week',
+      excerpt: 'Please note the CY cut-off for next week moves to Thursday 18:00.',
+      attachments: [],
+    },
+    {
+      id: 'partner-mail-2',
+      branchId: BRANCHES[0]!.id,
+      receivedAt: new Date(now - 1000 * 60 * 60 * 26),
+      fromAddress: 'accounts@everbright.example',
+      subject: 'Invoice EB-2026-0915',
+      excerpt: 'Please find our invoice attached.',
+      attachments: [
+        { assetId: 'asset-eb-0915', fileName: 'EB-2026-0915.pdf', readable: true, billId: null },
+      ],
+    },
+  ]
 }

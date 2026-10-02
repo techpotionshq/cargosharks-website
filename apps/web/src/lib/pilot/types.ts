@@ -2065,3 +2065,21 @@ export interface IntakeSettingsRowLike {
     readonly fields: readonly string[]
   }[]
 }
+
+/** A supplier's mail filed on no record, for the partner page's list. */
+export interface PartnerMailLike {
+  readonly id: string
+  readonly branchId: string
+  readonly receivedAt: Date
+  readonly fromAddress: string | null
+  readonly subject: string | null
+  readonly excerpt: string
+  readonly attachments: readonly {
+    readonly assetId: string
+    readonly fileName: string
+    /** A PDF or an image — something "Read as a bill" can send to the model. */
+    readonly readable: boolean
+    /** The bill already captured from this file, where one was. */
+    readonly billId: string | null
+  }[]
+}

@@ -4305,5 +4305,27 @@
     "waitShorterThanQuiet": "Make the longest wait at least the quiet window.",
     "noRequirements": "Choose at least one required detail.",
     "noBranch": "Choose a branch."
+  },
+  "partnerMail": {
+    "title": "Mail waiting for a person",
+    "explain": "Mail from this supplier that opened no enquiry and had no bill to read.",
+    "noSubject": "No subject",
+    "openBill": "Open the bill",
+    "readAsBill": "Read as a bill",
+    "readAsBillHint": "The assistant reads the file into a bill in Received. Finance approves it before any payment.",
+    "reading": "Reading…",
+    "attachToJob": "Attach to a job",
+    "attach": "Attach",
+    "jobReference": "Job reference",
+    "jobReferenceHint": "The job in the same branch that this mail is about.",
+    "jobReferenceRequired": "Enter the job reference.",
+    "jobNotFound": "No job {reference} in this branch.",
+    "markHandled": "Mark as handled",
+    "handledHint": "The mail stays on record and leaves this list.",
+    "notFound": "This mail is no longer waiting.",
+    "serviceNotConfigured": "The background service is not configured, so the file cannot be read.",
+    "noModel": "No model is configured to read the file.",
+    "notABill": "The file did not read as a bill. Enter it on the payables screen.",
+    "readTimedOut": "Reading the file took too long. Try again."
   }
 }

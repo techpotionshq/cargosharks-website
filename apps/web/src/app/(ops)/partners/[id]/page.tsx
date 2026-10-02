@@ -28,6 +28,7 @@ import {
 } from '@/features/network/ui/dialogs'
 import { getPartnerAccount } from '@/features/payables/queries'
 import { PartnerAccountCard } from '@/features/payables/ui/panels'
+import { PartnerMailPanel } from '@/features/network/ui/partner-mail-panel'
 import { PartnerAccountDialog, PartnerToleranceDialog } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatNumber } from '@/lib/format'
@@ -415,6 +416,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           runs an account with says so instead of showing a zero.
         */}
         {account ? <PartnerAccountCard account={account} className="lg:col-span-12" /> : null}
+
+        {/*
+          This supplier's mail that the intake filed on no record — not a
+          customer enquiry, and not a bill it could read — waiting for a person.
+        */}
+        <PartnerMailPanel partnerId={id} className="lg:col-span-12" />
       </Grid>
     </>
   )
