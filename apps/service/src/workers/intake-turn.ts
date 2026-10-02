@@ -309,16 +309,17 @@ export async function runIntakeTurn(
   const enquiryOpen = OPEN_STATUSES.has(enquiry.status)
 
   /*
-    The one model call, unless reading is worthless or abuse: a closed enquiry,
-    nothing substantive (chit-chat, an auto-responder), or a sender tripping a
-    loop breaker cost nothing; `silencedBeforeReading` holds the list. A
-    switched-off agent and an operator who took over still read: the reply is
+    The one model call, unless reading is worthless or abuse: a switched-off
+    agent, a closed enquiry, nothing substantive (chit-chat, an auto-responder),
+    or a sender tripping a loop breaker cost nothing; `silencedBeforeReading`
+    holds the list. An operator who took over still reads: the reply is
     silenced below, but the coordinator fills the enquiry from the proposals.
   */
   let invocationId: string | null = null
   let modelCalled = false
   let modelFailure: IntakeReason | null = null
   const silenced = silencedBeforeReading({
+    agentEnabled,
     enquiryOpen,
     newContent,
     senderGuard: loaded.senderGuard,

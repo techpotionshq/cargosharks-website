@@ -698,7 +698,7 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     )
   })
 
-  it('stays quiet once an operator takes over, but still proposes what the customer said', async () => {
+  it('stays quiet once an operator takes over, without spending a model call', async () => {
     const sender = newSender()
     const wa = recorder('whatsapp')
     const first = await say(sender, 'Rate for 1x20GP Jebel to Kuwait', 0)
@@ -713,11 +713,7 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     model.calls.length = 0
     const turn = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
     expect(turn.decision?.reason).toBe('agent_off')
-    // The coordinator who switched it off fills the enquiry from these.
-    expect(model.calls).toHaveLength(1)
-    expect(await openProposalFields(enquiryId)).toEqual(
-      expect.arrayContaining(['containerCount', 'containerType']),
-    )
+    expect(model.calls).toHaveLength(0)
     expect(wa.sent).toHaveLength(0)
     // An operator who took over owns the pipeline too.
     expect(await isHeld(enquiryId)).toBe(false)

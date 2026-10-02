@@ -745,20 +745,23 @@ function isHumanActive(
  * read it.
  *
  * Run before the model call, so a turn that can neither change the enquiry nor
- * deserves the spend does not pay for one: a closed enquiry, a message with
+ * deserves the spend does not pay for one: a switched-off agent, whose turns
+ * never read (a branch with the agent off must not pay per message), a closed
+ * enquiry, a message with
  * nothing substantive in it (chit-chat, an auto-responder, an instant machine
  * reply), and a sender tripping the daily cap or the burst rule, where a model
  * call per message *is* the incident.
  *
- * A takeover is deliberately not here, whether a person is on the conversation
- * or the agent is switched off. The reply stays silent, `decideIntakeReply`
+ * A person on the conversation is deliberately not here. The reply stays
+ * silent, `decideIntakeReply`
  * sees to that, but the read still happens: the coordinator who took over fills
  * the enquiry from the proposals it leaves, and a completing read still raises
  * the ready flag. That read is cheap and it is the useful part of the turn.
  */
 export function silencedBeforeReading(
-  input: Pick<IntakeDecisionInput, 'enquiryOpen' | 'newContent' | 'senderGuard'>,
+  input: Pick<IntakeDecisionInput, 'agentEnabled' | 'enquiryOpen' | 'newContent' | 'senderGuard'>,
 ): IntakeReason | null {
+  if (!input.agentEnabled) return 'agent_off'
   if (!input.enquiryOpen) return 'closed'
   if (input.newContent === 'none') return 'no_new_content'
   if (input.newContent === 'automatic') return 'automatic'
