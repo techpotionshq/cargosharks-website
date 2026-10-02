@@ -106,6 +106,8 @@ import type {
   MapData,
   MailboxRowLike,
   WhatsappNumberRowLike,
+  EnquiryIntakeLike,
+  IntakeSettingsRowLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -9227,4 +9229,86 @@ export function pilotRenewals(): RenewalView[] {
       canPromote: false,
     },
   ]
+}
+
+/**
+ * The intake agent on the demo enquiry — FR-EQ-02.
+ *
+ * Mid-conversation, because that is the state worth showing: the customer wrote
+ * four WhatsApp messages, the agent read them in one turn and asked once for
+ * the container type, and is waiting. The earlier turn — a greeting it did not
+ * answer — is on the list too, so the panel shows silence as a decision with a
+ * reason rather than as nothing.
+ */
+export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
+  return {
+    conversationId: 'intake-demo',
+    branchId: BRANCHES[0]!.id,
+    channel: 'whatsapp',
+    state: 'awaiting_customer',
+    agentEnabled: true,
+    locale: 'en',
+    missing: ['containerType'],
+    turnDueAt: null,
+    turns: 2,
+    modelCalls: 1,
+    clarifications: 1,
+    readyAt: null,
+    recent: [
+      {
+        id: 'intake-turn-2',
+        at: new Date(now - 1000 * 60 * 14),
+        action: 'clarify',
+        reason: 'clarified',
+        missing: ['containerType'],
+        messagesRead: 3,
+        modelCalled: true,
+        replyBody: `Thank you — to prepare your quotation (KWI-ENQ-2026-00418) we still need the container type (20', 40' or 40' high cube). — ${BRANCHES[0]!.en}`,
+        sendError: null,
+      },
+      {
+        id: 'intake-turn-1',
+        at: new Date(now - 1000 * 60 * 19),
+        action: 'none',
+        reason: 'chit_chat',
+        missing: ['mode', 'origin', 'destination', 'commodity'],
+        messagesRead: 1,
+        modelCalled: false,
+        replyBody: null,
+        sendError: null,
+      },
+    ],
+  }
+}
+
+/**
+ * Settings › Intake agent for the demo: the first office has the agent on with
+ * a shorter WhatsApp window of its own; the second inherits the defaults.
+ */
+export function pilotIntakeSettings(): IntakeSettingsRowLike[] {
+  const requirements = [
+    { mode: null, key: 'mode', fields: ['mode'] },
+    { mode: null, key: 'origin', fields: ['origin'] },
+    { mode: null, key: 'destination', fields: ['destination'] },
+    { mode: null, key: 'commodity', fields: ['commodity'] },
+    { mode: 'sea_fcl', key: 'containerCount', fields: ['containerCount'] },
+    { mode: 'sea_fcl', key: 'containerType', fields: ['containerType'] },
+    { mode: 'sea_lcl', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
+    { mode: 'air', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
+  ]
+  return BRANCHES.slice(0, 2).map((home, index) => ({
+    branchId: home.id,
+    branchCode: home.code,
+    inherited: index !== 0,
+    enabled: index === 0,
+    whatsappQuietSeconds: index === 0 ? 90 : 120,
+    whatsappMaxWaitSeconds: 600,
+    emailQuietSeconds: 60,
+    emailMaxWaitSeconds: 600,
+    clarifyCooldownHours: 6,
+    clarifyCap: 2,
+    humanTakeoverHours: 12,
+    ownRequirements: false,
+    requirements,
+  }))
 }

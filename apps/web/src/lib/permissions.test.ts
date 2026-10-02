@@ -167,6 +167,7 @@ describe('settings areas', () => {
       'apiKeys',
       'mailboxes',
       'whatsappNumbers',
+      'intakeAgent',
       'integrations',
       'brand',
     ])
