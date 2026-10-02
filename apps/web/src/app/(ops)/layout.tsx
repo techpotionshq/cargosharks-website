@@ -432,7 +432,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         that reached for translations would pull the whole message catalogue
         across the boundary.
       */}
-      <AssistantDock labels={assistantLabels(ta)} configured={aiConfigured} />
+      <AssistantDock labels={assistantLabels(ta, usePilotFixtures())} configured={aiConfigured} />
 
       {/* "Done", said once, after a dialog's save — see `ui/toast.tsx`. */}
       <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />

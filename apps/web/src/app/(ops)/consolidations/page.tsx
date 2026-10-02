@@ -7,6 +7,7 @@
  * three unallocated costs is a groupage margin nobody can state.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -19,6 +20,12 @@ import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('consolidations') }
+}
 
 export default async function ConsolidationsPage() {
   const timeZone = await getTimeZone()

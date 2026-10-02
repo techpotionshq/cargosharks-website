@@ -86,7 +86,12 @@ export async function ProofOfDeliveryCard({
             return (
               <li
                 key={pod.id}
-                className={['rounded-sm border border-line p-4', superseded ? 'opacity-60' : '']
+                // Sunken rather than faded, as on the document register: a
+                // 60%-opacity record took its own badge and text below AA.
+                className={[
+                  'rounded-sm border border-line p-4',
+                  superseded ? 'bg-surface-sunken/60' : '',
+                ]
                   .filter(Boolean)
                   .join(' ')}
               >

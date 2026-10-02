@@ -72,7 +72,17 @@ export default async function DocumentsPage() {
         </THead>
         <TBody>
           {rows.map((row) => (
-            <TR key={row.id} className={row.isSuperseded ? 'opacity-55' : undefined}>
+            /*
+              A superseded version is set back by a sunken row and muted ink,
+              and says so in its status pill — not by fading the whole row to
+              55% opacity, which took every badge in it to 2.2:1.
+            */
+            <TR
+              key={row.id}
+              className={
+                row.isSuperseded ? 'bg-surface-sunken/60 [&_td]:text-ink-muted' : undefined
+              }
+            >
               <TD>
                 <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
               </TD>
@@ -95,7 +105,9 @@ export default async function DocumentsPage() {
               </TD>
               <TD>
                 {row.isSuperseded ? (
-                  <Badge tone="muted">{t('superseded')}</Badge>
+                  <Badge tone="muted" icon="clock">
+                    {t('superseded')}
+                  </Badge>
                 ) : row.releasedAt ? (
                   <Badge tone="positive" icon="check">
                     {t('released')}

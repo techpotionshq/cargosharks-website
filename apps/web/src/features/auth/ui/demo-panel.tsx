@@ -3,12 +3,10 @@
 /**
  * The demo credentials, on the screen — the public demo only.
  *
- * One compact strip, not a section: the "demo" eyebrow and the shared password
- * on the lead edge, three small icon buttons for the three views pushed to the
- * trailing edge. A prospect picks a view by its icon (its name is the tooltip
- * and the `aria-label`); clicking one fills the form's own email and password
- * fields below, so the form's single "Sign in" button is the only one on the
- * screen. The addresses never show.
+ * One compact card, not a section: the "demo" eyebrow and the shared password
+ * on the first line, a labelled button per view on the second. Clicking one
+ * fills the form's own email and password fields below, so the form's single
+ * "Sign in" button is the only submit on the screen. The addresses never show.
  *
  * A client component because the fields belong to `SignInForm`, a sibling.
  * Their values are set by id — assigning `.value` on an uncontrolled input is
@@ -57,47 +55,39 @@ export function DemoPanel({
   }
 
   return (
-    <div className="mt-4 flex items-center gap-2 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5">
-      <span className="eyebrow flex items-center gap-1 text-accent">
-        <Icon name="live" size={11} />
-        {labels.title}
-      </span>
-      <code
-        dir="ltr"
-        className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-micro text-ink-muted ring-1 ring-line ring-inset"
-      >
-        {password}
-      </code>
+    <div className="mt-4 rounded-md border border-line bg-surface-sunken px-2.5 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="eyebrow flex items-center gap-1 text-accent">
+          <Icon name="live" size={11} />
+          {labels.title}
+        </span>
+        {/* One line always: the password broke across two at 390. */}
+        <code
+          dir="ltr"
+          className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-micro whitespace-nowrap text-ink-muted ring-1 ring-line ring-inset"
+        >
+          {password}
+        </code>
+      </div>
 
-      {/* The three views, small and pushed to the trailing edge. */}
-      <div className="ms-auto flex items-center gap-1">
+      {/*
+        The three views, each with its name on it. They were three icons with
+        the name in a tooltip, and a tooltip is nothing on a phone and a guess
+        everywhere else: which view a round "user" glyph opens is the one thing
+        a prospect arriving here cannot know.
+      */}
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {personas.map((persona) => (
-          <div key={persona.email} className="group relative">
-            <button
-              type="button"
-              onClick={() => fill(persona.email)}
-              aria-label={`${persona.role} — ${persona.name}`}
-              className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-accent transition-colors hover:bg-accent hover:text-on-brand"
-            >
-              <Icon name={persona.icon} size={13} />
-            </button>
-            {/*
-              The view's name, revealed by pointer or keyboard
-              (`group-focus-within`) and stated on `aria-label` besides — a
-              tooltip a screen reader cannot announce is decoration.
-
-              Anchored to the button's inline end rather than centred on it:
-              these sit at the trailing edge of the card, and a centred label
-              on the last one hung past the edge of a phone. `end-0` keeps it
-              inside in both directions.
-            */}
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute end-0 bottom-full z-10 mb-1.5 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-micro font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-            >
-              {persona.role}
-            </span>
-          </div>
+          <button
+            key={persona.email}
+            type="button"
+            onClick={() => fill(persona.email)}
+            title={persona.name}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-caption font-medium text-accent transition-colors hover:bg-accent hover:text-on-brand"
+          >
+            <Icon name={persona.icon} size={13} className="shrink-0" />
+            {persona.role}
+          </button>
         ))}
       </div>
     </div>

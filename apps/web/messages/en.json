@@ -1918,8 +1918,8 @@
   "partnerDetail": {
     "openJobs": "Shipments with them now",
     "openJobsHint": "Currently moving",
-    "totalJobs": "Shipments ever",
-    "totalJobsHint": "How long you have worked together",
+    "totalJobs": "Shipments to date",
+    "totalJobsHint": "Every shipment they have worked on with us, open or closed",
     "openExceptions": "Open problems",
     "openExceptionsHint": "On shipments they are on — a conversation, not a verdict",
     "terms": "Payment terms",
@@ -2261,7 +2261,7 @@
     "eta": "ETA",
     "volume": "Volume",
     "houses": "Houses",
-    "housesTitle": "{n} house bills",
+    "housesTitle": "{n, plural, one {# house bill} other {# house bills}}",
     "house": "House",
     "packages": "Packages",
     "attach": "Attach",
@@ -3528,7 +3528,9 @@
       "notAvailable": "The assistant is not available on this deployment.",
       "aiNotConfigured": "No model is configured for this deployment.",
       "aiBudgetExhausted": "This month's model budget has been spent. The assistant is back next month, or when an administrator raises the ceiling."
-    }
+    },
+    "demoUnavailable": "The assistant is not part of the demo",
+    "demoUnavailableHint": "It answers from your own records on your own instance. Everything else on these screens works as it would there."
   },
   "proposals": {
     "title": "Read from the message",
