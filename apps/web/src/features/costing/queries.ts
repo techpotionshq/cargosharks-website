@@ -294,6 +294,32 @@ export async function listMatchCandidates(
             ? sql`(${chargeLines.counterpartyPartnerId} = ${filters.partnerId}
                    or ${chargeLines.counterpartyPartnerId} is null)`
             : undefined,
+          /*
+            Only costs a bill can actually be for (QA P2-9).
+
+            Reversing a consolidation allocation posts a negative copy of each
+            share and leaves the original where it is — nothing is deleted —
+            so the picker offered both: "Ocean Freight — US$150.00" and
+            "Ocean Freight — -US$150.00", neither saying which shipment or
+            that the pair cancels out. A negative line is never what a
+            supplier billed, and a share an existing reversal has undone is no
+            longer a cost. The pairing is the one `reverseAllocation` uses: per
+            house and master line, the oldest k shares are undone, where k is
+            that house's reversal count.
+          */
+          sql`${chargeLines.amount} > 0`,
+          sql`not (
+            coalesce("charge_lines"."source_kind", '') = 'consol_allocation'
+            and (select count(*) from charge_lines a
+                  where a.source_kind = 'consol_allocation'
+                    and a.source_id = "charge_lines"."source_id"
+                    and a.job_id = "charge_lines"."job_id"
+                    and (a.created_at, a.id) <= ("charge_lines"."created_at", "charge_lines"."id"))
+                <= (select count(*) from charge_lines r
+                     where r.source_kind = 'consol_allocation_reversal'
+                       and r.source_id = "charge_lines"."source_id"
+                       and r.job_id = "charge_lines"."job_id")
+          )`,
         ),
       )
       .orderBy(asc(chargeTypes.sortOrder), asc(chargeLines.createdAt))

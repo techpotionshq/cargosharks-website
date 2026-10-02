@@ -70,10 +70,15 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const money = (amount: string, currency: string) =>
     formatMoney({ amount: amount, currency }, locale)
 
+  /*
+    The shipment in the label as well as the group heading (QA P2-9): a
+    native picker shows only the chosen option's own text once closed, so
+    "Ocean Freight — US$150.00" alone did not say which of thirty jobs it was.
+  */
   const candidates: MatchCandidateOption[] = candidateRows.map((c) => ({
     id: c.id,
     group: c.jobReference,
-    label: `${c.chargeTypeName} — ${money(c.amount, c.currency)}${
+    label: `${c.jobReference} · ${c.chargeTypeName} — ${money(c.amount, c.currency)}${
       Number(c.matchedAmount) > 0 ? ` (${t('alreadyMatched')})` : ''
     }`,
   }))
