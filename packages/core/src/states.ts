@@ -451,6 +451,27 @@ export const ADMIN_PERMISSIONS = [
   'payable.approve',
   'payable.pay',
   /*
+    Reading the ledgers — QA P2-11.
+
+    Every internal role could open /finance, /invoices, /payments, /payables
+    and /settlements, because those pages asked only for a session: a customs
+    broker or a read-only login saw every customer's balance and every agent's
+    bill. The write keys above never covered reading, so reading gets keys of
+    its own, one per ledger:
+
+      `receivable.read`  what customers owe — the finance overview, invoices,
+                         receipts.
+      `payable.read`     what we owe — supplier bills and agent settlements.
+
+    Two rather than one because the coordinator captures supplier bills (they
+    hold `payable.record`) and has no business in the customers' balances.
+    `read_only` holds neither: it is the operational viewer, its money view is
+    `report.read`'s margin report, and the SRS gives ledger reading to Finance
+    and branch management. Granted in `db/seed.ts`.
+  */
+  'receivable.read',
+  'payable.read',
+  /*
     Consolidation, split in two — FR-CN.
 
     `consol.write` builds the master: open it, attach and detach houses, close

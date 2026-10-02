@@ -46,6 +46,10 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'payable.read')) notFound()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const id = recordId((await params).id)

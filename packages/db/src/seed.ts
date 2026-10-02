@@ -411,6 +411,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'credit.override',
     'report.read',
     'job.read',
+    // Both ledgers, read — the ones this role writes to (QA P2-11).
+    'receivable.read',
+    'payable.read',
   ],
   operations_manager: [
     /*
@@ -458,6 +461,13 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'customer.write',
     'partner.write',
     'report.read',
+    /*
+      The branch manager reads both ledgers (SRS §5: "everything in their
+      branch"): they run set-offs, hold the credit exception, and cannot do
+      either without seeing what is owed each way.
+    */
+    'receivable.read',
+    'payable.read',
   ],
   coordinator: [
     'enquiry.assign',
@@ -502,6 +512,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       agent invoice each line belongs to. Nothing they do here releases money.
     */
     'payable.record',
+    // The register they capture bills into. Not the receivables side: a
+    // coordinator has no business in what customers owe (QA P2-11).
+    'payable.read',
     'customer.write',
   ],
   sales: [
@@ -518,6 +531,13 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'report.read',
   ],
   customs_broker: ['customs.file', 'customs.update', 'customs.pay', 'job.read', 'job.update'],
+  /*
+    No ledger reads (`receivable.read`, `payable.read`), deliberately. This is
+    the operational viewer, and the SRS gives reading the books to Finance and
+    branch management; the money a read-only login sees is the margin report
+    `report.read` opens. Before QA P2-11 it could open every invoice and bill
+    only because those pages checked for a session and nothing else.
+  */
   read_only: ['job.read', 'report.read'],
 }
 

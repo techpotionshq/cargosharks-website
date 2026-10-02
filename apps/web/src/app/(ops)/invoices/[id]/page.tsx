@@ -24,6 +24,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import {
@@ -59,6 +60,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'receivable.read')) notFound()
   const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE

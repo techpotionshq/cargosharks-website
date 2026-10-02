@@ -23,7 +23,7 @@ Section 6 lists what is missing, deliberately and in full.
 | Safe under connection pooling | `set_config(..., true)` makes each setting transaction-local, so a pooled connection cannot carry one tenant's identity into the next request. | `actor.ts` |
 | Least privilege at the role level | The application connects as `app_user`: `NOBYPASSRLS`, owns nothing, and `DELETE` is revoked. Migrations run as a separate `app_migrator`. | `migrations/01-roles.sql` |
 | Unauthorised access returns *not found* | The row is not visible to the query, so there is no "forbidden" to probe. | FR-ID-04 |
-| Permission checks in the application as well | Defence in depth: 38 enforced permission keys, checked **per branch** — the session carries each branch's permissions separately, and an action on a record asks for the permission in that record's branch (`assertCanIn`), so a finance grant in one branch does not reach another's invoices. Neither layer is trusted alone. | `apps/web/src/lib/permissions.ts`, `scripts/check-permissions.mjs` |
+| Permission checks in the application as well | Defence in depth: 39 enforced permission keys, checked **per branch** — the session carries each branch's permissions separately, and an action on a record asks for the permission in that record's branch (`assertCanIn`), so a finance grant in one branch does not reach another's invoices. Neither layer is trusted alone. | `apps/web/src/lib/permissions.ts`, `scripts/check-permissions.mjs` |
 
 The six tables without row-level security are the five `auth_*` credential
 tables and `inbound_webhook_events`, which holds provider delivery receipts for

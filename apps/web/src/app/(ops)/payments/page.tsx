@@ -8,8 +8,10 @@
  */
 
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { listPayments, paymentSummary } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
@@ -34,6 +36,10 @@ export default async function PaymentsPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'receivable.read')) notFound()
   const t = await getTranslations('payments')
   const tc = await getTranslations('common')
   const view = (await searchParams).view === 'unallocated' ? 'unallocated' : 'all'
