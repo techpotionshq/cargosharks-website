@@ -1,6 +1,95 @@
--- Pending SQL for the access-and-security fixes (A3). Applied in order, as
--- app_migrator, after 0048. The coordinator turns this into a numbered custom
--- migration (`pnpm db:generate:custom`) once the branches are merged.
+-- The hand-written half of the fix pass on PR #3: constraints, policies, a
+-- trigger and two backfills that `drizzle-kit generate` cannot express. The
+-- column and index DDL is 0049. Item IDs refer to the fix tracker on the PR.
+--
+-- Several statements below write rows in tables under `force row level
+-- security`, and `app_migrator` holds no BYPASSRLS — the same reason 0006
+-- runs as the system principal. Transaction-local, so it cannot leak into a
+-- pooled connection.
+
+select set_config('app.principal_id', '00000000-0000-7000-8000-000000000000', true),
+       set_config('app.principal_type', 'system', true),
+       set_config('app.branch_ids', '', true),
+       set_config('app.customer_id', '', true),
+       set_config('app.partner_id', '', true),
+       set_config('app.ip', '', true);
+
+-- ===========================================================================
+-- Finance (F11)
+-- ===========================================================================
+
+-- F11: voiding a draft (or an approved invoice) has always failed. The machine
+-- allows draft -> void and approved -> void, and neither state has a series
+-- number, but 0015's constraint demanded one of every status past approved —
+-- so the void was refused with 23514 and a draft billed from a job could never
+-- be withdrawn. A void may now be unnumbered; an issued invoice is still never
+-- voided (it is credited), so no numbered document loses its number this way.
+alter table invoices drop constraint invoices_series_when_issued;
+
+alter table invoices add constraint invoices_series_when_issued check (
+  (status in ('draft', 'approved') and series_no is null)
+  or status = 'void'
+  or (status not in ('draft', 'approved', 'void') and series_no is not null)
+);
+
+-- ===========================================================================
+-- Sales (S15, S3)
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- S15 — the rate-card no-overlap key carries the branch
+-- ---------------------------------------------------------------------------
+--
+-- `rate_cards_no_overlap` was unique over (direction, partner, customer, mode,
+-- origin, destination, validity) with no `branch_id`. Rate cards are
+-- branch-scoped under RLS, so when Kuwait and Dubai both bought from the same
+-- agent on the same lane, the second branch's card was refused with 23P01 over
+-- a card its own policy hides from it — an error about something it cannot
+-- see, with no way to fix it. Two branches' cards for one lane are two
+-- separate commercial facts; one branch still cannot hold two overlapping
+-- cards for the same counterparty and lane, which is what keeps "the valid
+-- rate" unambiguous (and what `promoteRateReply` now ends or refuses, S5).
+--
+-- Dropped and re-added in one statement each; the new key is strictly looser
+-- than the old one, so every existing row satisfies it.
+
+alter table rate_cards drop constraint if exists rate_cards_no_overlap;
+
+alter table rate_cards
+  add constraint rate_cards_no_overlap
+  unique nulls not distinct (branch_id, direction, partner_id, customer_id, mode, origin_id,
+                             destination_id, validity without overlaps);
+
+-- ---------------------------------------------------------------------------
+-- S3 — backfill `quotes.superseded_by_id`
+-- ---------------------------------------------------------------------------
+--
+-- Nothing ever wrote it, and every "current quotation" read filters on it: an
+-- enquiry priced seven times appeared seven times in the enquiry queue, and
+-- withdrawn versions were offered as options on the comparison page. New
+-- versions now set it (`retireQuoteVersion`); this points every older version
+-- at the version that came straight after it, so existing enquiries read right
+-- too. Status is left alone — the old rows already say `superseded` where a
+-- revision retired them, and a rejected or expired one stays what it was.
+--
+-- Runs as the system principal set at the top of this file: `quotes` inherits
+-- the enquiry's policy under FORCE row-level security even for the owner.
+
+update quotes q
+   set superseded_by_id = n.id
+  from quotes n
+ where q.superseded_by_id is null
+   and n.enquiry_id = q.enquiry_id
+   and n.version = (
+         select min(v.version)
+           from quotes v
+          where v.enquiry_id = q.enquiry_id
+            and v.version > q.version
+       );
+
+-- ===========================================================================
+-- Access (A3, A4, U1)
+-- ===========================================================================
 
 -- --------------------------------------------------------------------------
 -- 1. A permission check that knows which branch it is asking about — A2, A3
