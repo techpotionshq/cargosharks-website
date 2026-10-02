@@ -60,6 +60,7 @@ import {
   type IssueValues,
   type RateRowValues,
 } from './import'
+import { containerTypeCode } from './intake'
 import {
   abs,
   add,
@@ -766,6 +767,14 @@ export const ENQUIRY_FIELDS = [
     side in the prompt the model reads, which is where they get confused.
   */
   'containerCount',
+  /*
+    Which box — 20GP, 40HC. The count alone does not price a FCL lane: a 40'
+    high cube and a 20' general purpose are different rates on the same card,
+    and the intake agent cannot call an FCL enquiry complete without it.
+    Proposed as our code (`containerTypeCode` in `intake.ts`), never the
+    customer's wording, so the accept path only has to check the row exists.
+  */
+  'containerType',
   'dimensions',
   'isDangerous',
 ] as const
@@ -878,7 +887,11 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
       the accept path to refuse with a sentence if it must.
     */
     const trimmed = typeof cell.value === 'string' ? cell.value.trim() : ''
-    const value = QUANTITY_FIELDS.has(field) ? proposedQuantity(field, trimmed) : trimmed
+    const value = QUANTITY_FIELDS.has(field)
+      ? proposedQuantity(field, trimmed)
+      : field === 'containerType'
+        ? containerTypeCode(trimmed)
+        : trimmed
     if (value === null || value === '') continue
 
     let scored: Confidence
@@ -1014,7 +1027,10 @@ export function withoutStrayContainerCount(
   mode: string | null | undefined,
 ): FieldProposal[] {
   if (containerCountFitsMode(mode)) return [...fields]
-  return fields.filter((proposal) => proposal.field !== 'containerCount')
+  // The box goes with the count: neither means anything off a FCL shipment.
+  return fields.filter(
+    (proposal) => proposal.field !== 'containerCount' && proposal.field !== 'containerType',
+  )
 }
 
 /* -------------------------------------------------------------------------
