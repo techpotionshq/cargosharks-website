@@ -68,6 +68,8 @@ const {
 const { ADMIN_PRINCIPAL, AWAY_BRANCH, CUSTOMER, HOME_BRANCH, adminActor, world } =
   await import('@/lib/testing/fixtures')
 
+const { listReferenceRecords } = await import('./queries')
+
 const {
   saveUser,
   setUserActive,
@@ -920,6 +922,37 @@ describe.skipIf(!enabled)('administration', () => {
       await saveReferenceRecord({}, withoutFlag)
 
       expect((await rowByCode('commodity', code))?.isActive).toBe(false)
+    })
+
+    /**
+     * QA P2-13. The screen's lists skipped inactive rows and never showed
+     * commodities, so a retired row could not be found to bring back. The
+     * editable list carries every row, active or not, with what the edit
+     * dialog needs.
+     */
+    it('lists a retired record for editing, flagged inactive', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+      await saveReferenceRecord({}, reference({ table: 'commodity', code, hsCode: '0901' }))
+      const created = await rowByCode('commodity', code)
+      await saveReferenceRecord(
+        {},
+        form({
+          table: 'commodity',
+          recordId: created!.id as string,
+          code,
+          nameEn: 'Fixture',
+          nameAr: 'نموذج',
+          hsCode: '0901',
+        }),
+      )
+
+      const listed = (await listReferenceRecords(adminActor)).find((row) => row.code === code)
+      expect(listed).toMatchObject({
+        table: 'commodity',
+        id: created!.id,
+        hsCode: '0901',
+        isActive: false,
+      })
     })
 
     /**

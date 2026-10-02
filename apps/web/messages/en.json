@@ -1097,7 +1097,9 @@
     "fxEffective": "From",
     "fxManual": "Entered by hand",
     "fxSource": "Where from",
-    "calendarsGlance": "Calendars at a glance"
+    "calendarsGlance": "Calendars at a glance",
+    "editCatalogues": "Edit the catalogues",
+    "editCataloguesHint": "Correct a name, change a mapping, or retire a row nobody uses. Nothing is deleted: a retired row stays on the records that used it and can be switched back on."
   },
   "audit": {
     "eyebrow": "Administration",

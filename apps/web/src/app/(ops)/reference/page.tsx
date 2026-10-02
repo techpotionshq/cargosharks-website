@@ -22,6 +22,7 @@ import {
   listFxRates,
   listEngineRules,
   listMilestoneTemplates,
+  listReferenceRecords,
   listReferenceSample,
   referenceCounts,
 } from '@/features/admin/queries'
@@ -84,9 +85,18 @@ const CATEGORIES = [
   'partner_compliance',
 ] as const
 
+/** The key each editable catalogue's name is filed under in `reference.tables`. */
+const CATALOGUE_KEYS = {
+  charge_type: 'charge_types',
+  commodity: 'commodities',
+  document_type: 'document_types',
+  exception_code: 'exception_codes',
+} as const
+
 export default async function ReferencePage() {
   const session = await requireSession()
   const t = await getTranslations('reference')
+  const tc = await getTranslations('common')
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
@@ -103,16 +113,18 @@ export default async function ReferencePage() {
       ? t(`categories.${category}` as 'categories.other')
       : category
 
-  const [counts, charges, sample, milestones, calendars, duties, rules, fx] = await Promise.all([
-    referenceCounts(session.actor),
-    listChargeTypes(session.actor),
-    listReferenceSample(session.actor, locale),
-    listMilestoneTemplates(session.actor),
-    listCalendars(session.actor),
-    listDutyRates(session.actor),
-    listEngineRules(session.actor),
-    listFxRates(session.actor),
-  ])
+  const [counts, charges, sample, milestones, calendars, duties, rules, fx, records] =
+    await Promise.all([
+      referenceCounts(session.actor),
+      listChargeTypes(session.actor),
+      listReferenceSample(session.actor, locale),
+      listMilestoneTemplates(session.actor),
+      listCalendars(session.actor),
+      listDutyRates(session.actor),
+      listEngineRules(session.actor),
+      listFxRates(session.actor),
+      listReferenceRecords(session.actor),
+    ])
 
   /** `480` reads as `08:00` — the column is minutes from local midnight. */
   const clock = (minutes: number) =>
@@ -347,6 +359,70 @@ export default async function ReferencePage() {
           </ul>
         </Card>
       </Grid>
+
+      {/*
+        Every row of the four catalogues, editable — QA P2-13.
+
+        The screen could add to these and change nothing: the lists above
+        carry no ids and leave inactive rows out, and commodities were not
+        listed at all. Retiring is the edit dialog's Active switch, because
+        nothing here is deleted and a retired row must be findable to bring
+        back. Offline the list is empty — the pilot writes nothing.
+      */}
+      {records.length > 0 ? (
+        <section className="mt-4">
+          <div className="mb-3">
+            <h2 className="text-title font-semibold text-ink">{t('editCatalogues')}</h2>
+            <p className="mt-0.5 text-body-sm text-ink-muted">{t('editCataloguesHint')}</p>
+          </div>
+          <Grid>
+            {(['charge_type', 'commodity', 'document_type', 'exception_code'] as const).map(
+              (table) => (
+                <Card key={table} className={`${PANEL} lg:col-span-6`} padding="none">
+                  <div className="p-5 pb-3">
+                    <CardHeader
+                      icon="reference"
+                      eyebrow={t('eyebrow')}
+                      title={t(`tables.${CATALOGUE_KEYS[table]}`)}
+                    />
+                  </div>
+                  <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+                    <TBody>
+                      {records
+                        .filter((row) => row.table === table)
+                        .map((row) => (
+                          <TR key={row.id}>
+                            <TD>
+                              <span className={row.isActive ? 'text-ink' : 'text-ink-subtle'}>
+                                {locale === 'ar' && row.nameAr ? row.nameAr : row.nameEn}
+                              </span>
+                              <span className="ref block text-micro text-ink-subtle wrap-anywhere">
+                                {row.code}
+                              </span>
+                            </TD>
+                            <TD>
+                              <Badge tone={row.isActive ? 'positive' : 'muted'}>
+                                {row.isActive ? tc('active') : tc('inactive')}
+                              </Badge>
+                            </TD>
+                            <TD align="end">
+                              <ReferenceDialog
+                                table={table}
+                                variant="ghost"
+                                iconOnly
+                                defaults={row}
+                              />
+                            </TD>
+                          </TR>
+                        ))}
+                    </TBody>
+                  </TableShell>
+                </Card>
+              ),
+            )}
+          </Grid>
+        </section>
+      ) : null}
 
       {/*
         The three the engines read, and the three CLAUDE.md named as an

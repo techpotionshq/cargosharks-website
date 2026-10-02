@@ -22,6 +22,7 @@ import {
   auditLog,
   branches,
   chargeTypes,
+  commodities,
   containerTypes,
   countries,
   currencies,
@@ -873,5 +874,98 @@ export async function listEngineRules(actor: Actor): Promise<{
         raw: row,
       })),
     }
+  })
+}
+
+/**
+ * The four catalogues an administrator edits, in full — QA P2-13.
+ *
+ * The reference screen could add a charge type, commodity, document type or
+ * exception code and change none of them: its lists carried no ids, skipped
+ * inactive rows, and never showed commodities at all. A row that is wrong, or
+ * no longer used, could only be lived with. Nothing is deleted — a retired row
+ * is `is_active = false` — so this returns inactive rows too: they are the ones
+ * somebody will want back. Empty offline; the pilot does not write.
+ */
+export interface ReferenceRecord {
+  readonly table: 'charge_type' | 'commodity' | 'document_type' | 'exception_code'
+  readonly id: string
+  readonly code: string
+  readonly nameEn: string
+  readonly nameAr: string
+  readonly category: string | null
+  readonly defaultBasis?: string
+  readonly defaultSeverity?: string
+  readonly hsCode: string | null
+  readonly revenueAccountCode: string | null
+  readonly costAccountCode: string | null
+  readonly isActive: boolean
+}
+
+export async function listReferenceRecords(actor: Actor): Promise<ReferenceRecord[]> {
+  if (usePilotFixtures()) return []
+
+  return withActor(actor, async (tx) => {
+    const charges = await tx
+      .select({
+        id: chargeTypes.id,
+        code: chargeTypes.key,
+        nameEn: chargeTypes.nameEn,
+        nameAr: chargeTypes.nameAr,
+        category: chargeTypes.category,
+        defaultBasis: chargeTypes.defaultBasis,
+        revenueAccountCode: chargeTypes.revenueAccountCode,
+        costAccountCode: chargeTypes.costAccountCode,
+        isActive: chargeTypes.isActive,
+      })
+      .from(chargeTypes)
+      .orderBy(asc(chargeTypes.sortOrder), asc(chargeTypes.key))
+    const goods = await tx
+      .select({
+        id: commodities.id,
+        code: commodities.code,
+        nameEn: commodities.nameEn,
+        nameAr: commodities.nameAr,
+        hsCode: commodities.hsCode,
+        isActive: commodities.isActive,
+      })
+      .from(commodities)
+      .orderBy(asc(commodities.code))
+      .limit(500)
+    const papers = await tx
+      .select({
+        id: documentTypes.id,
+        code: documentTypes.code,
+        nameEn: documentTypes.nameEn,
+        nameAr: documentTypes.nameAr,
+        category: documentTypes.category,
+        isActive: documentTypes.isActive,
+      })
+      .from(documentTypes)
+      .orderBy(asc(documentTypes.code))
+    const problems = await tx
+      .select({
+        id: exceptionCodes.id,
+        code: exceptionCodes.code,
+        nameEn: exceptionCodes.nameEn,
+        nameAr: exceptionCodes.nameAr,
+        defaultSeverity: exceptionCodes.defaultSeverity,
+        isActive: exceptionCodes.isActive,
+      })
+      .from(exceptionCodes)
+      .orderBy(asc(exceptionCodes.code))
+
+    const blank = { category: null, hsCode: null, revenueAccountCode: null, costAccountCode: null }
+    return [
+      ...charges.map((row) => ({ ...blank, ...row, table: 'charge_type' as const })),
+      ...goods.map((row) => ({
+        ...blank,
+        ...row,
+        nameAr: row.nameAr ?? '',
+        table: 'commodity' as const,
+      })),
+      ...papers.map((row) => ({ ...blank, ...row, table: 'document_type' as const })),
+      ...problems.map((row) => ({ ...blank, ...row, table: 'exception_code' as const })),
+    ]
   })
 }
