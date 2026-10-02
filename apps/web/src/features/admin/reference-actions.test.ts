@@ -886,7 +886,8 @@ describe.skipIf(!enabled)('reference configuration — FR-AD-03', () => {
       expect((await entry('0.04400000')).errors).toBeUndefined()
       expect((await entry('0.04410000')).errors).toBeUndefined()
 
-      expect(await ratesFor(day)).toEqual([{ rate: '0.04410000', source: 'manual' }])
+      // fx_rates.rate holds 14 places since R7, so the stored text carries them.
+      expect(await ratesFor(day)).toEqual([{ rate: '0.04410000000000', source: 'manual' }])
     })
 
     it('refuses a rate of zero and a pair of one currency', async () => {

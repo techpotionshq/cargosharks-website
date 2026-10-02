@@ -528,7 +528,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
     it('never renumbers a bill that already has a number', async () => {
       const jobId = await freshJob(AWAY_BRANCH)
       await withActor(systemActor, (tx) =>
-        tx.update(jobs).set({ houseBillNumber: 'AGENT-ISSUED-118' }).where(eq(jobs.id, jobId)),
+        tx
+          .update(jobs)
+          .set({ houseBillNumber: `AGENT-ISSUED-118-${RUN}` })
+          .where(eq(jobs.id, jobId)),
       )
       fetchMock.mockResolvedValue(ok())
 
@@ -537,7 +540,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       const [row] = await withActor(bothBranchesActor, (tx) =>
         tx.select({ number: jobs.houseBillNumber }).from(jobs).where(eq(jobs.id, jobId)),
       )
-      expect(row?.number).toBe('AGENT-ISSUED-118')
+      expect(row?.number).toBe(`AGENT-ISSUED-118-${RUN}`)
     })
 
     it('refuses a document kind it does not produce', async () => {
@@ -672,7 +675,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
     it('refuses an air waybill, which has no originals to hand back', async () => {
       const jobId = await freshJob()
       await withActor(systemActor, (tx) =>
-        tx.update(jobs).set({ mode: 'air', houseBillNumber: 'AWB-118' }).where(eq(jobs.id, jobId)),
+        tx
+          .update(jobs)
+          .set({ mode: 'air', houseBillNumber: `AWB-118-${RUN}` })
+          .where(eq(jobs.id, jobId)),
       )
 
       const state = await surrenderHouseBill({}, form({ jobId }))
@@ -687,7 +693,10 @@ describe.skipIf(!enabled)('shipment documents', () => {
     it('records a numbered sea bill as surrendered', async () => {
       const jobId = await freshJob()
       await withActor(systemActor, (tx) =>
-        tx.update(jobs).set({ houseBillNumber: 'HBL-118' }).where(eq(jobs.id, jobId)),
+        tx
+          .update(jobs)
+          .set({ houseBillNumber: `HBL-118-${RUN}` })
+          .where(eq(jobs.id, jobId)),
       )
 
       const state = await surrenderHouseBill({}, form({ jobId }))

@@ -61,7 +61,7 @@ async function documentWith(over: {
         isCustomerVisible: over.visibleType ?? true,
       })
       .returning({ id: documentTypes.id })
-    const insertDocument = async (suffix: string, released: boolean) => {
+    const insertDocument = async (suffix: string, released: boolean, version = 1) => {
       const [asset] = await tx
         .insert(assets)
         .values({
@@ -78,6 +78,9 @@ async function documentWith(over: {
           jobId: HOME_JOB,
           documentTypeId: type!.id,
           assetId: asset!.id,
+          // Explicit: a successor is the next version, and (job, type, locale,
+          // version) is unique since O13.
+          version,
           releasedAt: released ? new Date() : null,
         })
         .returning({ id: documents.id })
@@ -86,7 +89,7 @@ async function documentWith(over: {
 
     const id = await insertDocument('', over.released !== false)
     if (over.superseded) {
-      const successor = await insertDocument('-v2', true)
+      const successor = await insertDocument('-v2', true, 2)
       await tx.update(documents).set({ supersededById: successor }).where(eq(documents.id, id))
     }
     return id

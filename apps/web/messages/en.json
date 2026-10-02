@@ -2758,6 +2758,9 @@
       },
       "supplier_invoice": {
         "variance_flagged": "A supplier invoice was read with a line billed over what the job accrued."
+      },
+      "rate_request": {
+        "late_reply": "An agent replied to a rate request that was already decided; the reply is filed for a person to read."
       }
     }
   },

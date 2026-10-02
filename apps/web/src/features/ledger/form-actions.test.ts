@@ -96,7 +96,9 @@ const BRANCH = '00000000-0000-7000-8000-00000000f001'
  * ISO 4217's code reserved for testing — so "no rate on file" stays true
  * whatever ran before.
  */
-const UNRATED = 'XTS'
+// ISO 4217's "no currency": never given a rate by any suite. XTS is the
+// costing suite's *rated* test currency, so it cannot double as unrated here.
+const UNRATED = 'XXX'
 const CUSTOMER = '00000000-0000-7000-8000-00000000f002'
 const PRINCIPAL = '00000000-0000-7000-8000-00000000f003'
 
@@ -259,7 +261,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
 
       await tx
         .insert(currencies)
-        .values({ code: UNRATED, nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 })
+        .values({ code: UNRATED, nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 })
         .onConflictDoNothing()
 
       const [freight] = await tx
