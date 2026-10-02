@@ -141,7 +141,9 @@ export async function EnquiryTable({
 
               {showMargin ? (
                 <TD priority="low" align="end" numeric className="text-ink-muted">
-                  <Money value={row.quotedSell} locale={locale} showCurrency={false} />
+                  {/* With its currency (QA P3): one queue carries AED and KWD
+                      quotes, and a bare 1,250 read the same in both. */}
+                  <Money value={row.quotedSell} locale={locale} />
                 </TD>
               ) : null}
 

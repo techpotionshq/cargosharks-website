@@ -294,7 +294,9 @@
     "priceIt": "Price it",
     "pricing": "Pricing…",
     "awaitingTitle": "Enquiry",
-    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in."
+    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in.",
+    "subtitleManual": "Priced by hand, buy and sell side by side.",
+    "subtitleMixed": "Priced from the rate card and by hand, buy and sell side by side."
   },
   "job": {
     "title": "Operations board",

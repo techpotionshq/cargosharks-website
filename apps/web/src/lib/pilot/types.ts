@@ -300,6 +300,12 @@ interface QuoteLineView {
 export interface QuoteComparison {
   /** The enquiry's own status — decides which transitions are offered. */
   readonly status?: string
+  /**
+   * Where the options' prices came from — a rate card, typed by hand, or both
+   * (QA P3). The page's subtitle said "priced from the imported rate card" for
+   * a quotation somebody typed. Absent reads as the rate card, the pilot's case.
+   */
+  readonly pricedFrom?: 'rate_card' | 'manual' | 'mixed'
   readonly enquiryReference: string
   /** Null for an enquiry nobody has matched to a customer yet — a WhatsApp number, an unknown sender. */
   readonly customerName: string | null

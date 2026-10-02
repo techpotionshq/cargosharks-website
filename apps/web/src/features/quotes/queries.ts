@@ -158,6 +158,7 @@ export async function getQuoteComparison(
         */
         cardPartner: partners.legalNameEn,
         cardPartnerAr: partners.legalNameAr,
+        rateCardVersionId: quotes.rateCardVersionId,
       })
       .from(quotes)
       .leftJoin(rateCards, eq(rateCards.id, quotes.rateCardVersionId))
@@ -273,6 +274,11 @@ export async function getQuoteComparison(
       branchId: header.branchId,
       baseCurrency: header.baseCurrency,
       hasAccepted: header.hasAccepted,
+      pricedFrom: optionRows.every((row) => row.rateCardVersionId)
+        ? ('rate_card' as const)
+        : optionRows.some((row) => row.rateCardVersionId)
+          ? ('mixed' as const)
+          : ('manual' as const),
       options,
     }
   })

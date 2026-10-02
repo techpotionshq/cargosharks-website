@@ -125,7 +125,15 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           </span>
         }
         title={hasOptions ? t('title') : t('awaitingTitle')}
-        description={hasOptions ? t('subtitle') : t('awaitingSubtitle')}
+        description={
+          !hasOptions
+            ? t('awaitingSubtitle')
+            : comparison.pricedFrom === 'manual'
+              ? t('subtitleManual')
+              : comparison.pricedFrom === 'mixed'
+                ? t('subtitleMixed')
+                : t('subtitle')
+        }
         /*
           One primary action — Price it — and everything else behind More.
 
