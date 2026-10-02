@@ -1713,7 +1713,8 @@
       "sent": "Quotation sent.",
       "accepted": "Quotation marked accepted.",
       "rejected": "Quotation marked rejected."
-    }
+    },
+    "bookedAs": "Booked as shipment"
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
