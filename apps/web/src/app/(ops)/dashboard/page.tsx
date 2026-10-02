@@ -26,6 +26,7 @@
  * own: RLS applies it (§5.3).
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -62,11 +63,21 @@ function partOfDay(now: Date, timeZone: string): 'morning' | 'afternoon' | 'even
   return 'evening'
 }
 
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('dashboard') }
+}
+
 export default async function DashboardPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const overview = await getOpsOverview(session.actor)
+  const resolvedLocale = await getLocale()
+  const overview = await getOpsOverview(
+    session.actor,
+    isLocale(resolvedLocale) ? resolvedLocale : DEFAULT_LOCALE,
+  )
   const setup = await getSetupState(session.actor)
   const map = await getMapData(session.actor)
 

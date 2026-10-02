@@ -388,7 +388,9 @@
     "noClocks": "No free time running",
     "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves.",
     "clockStopped": "Stopped {on}",
-    "documentVault": "Shipment files"
+    "documentVault": "Shipment files",
+    "weightValue": "{weight} kg",
+    "volumeValue": "{volume} cbm"
   },
   "mode": {
     "sea_fcl": "Sea FCL",

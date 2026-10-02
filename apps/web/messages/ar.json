@@ -388,7 +388,9 @@
     "noClocks": "لا يوجد احتساب جارٍ",
     "noClocksHint": "ابدأ الاحتساب عند تفريغ حاوية أو استلامها — ويتبع ذلك الاحتساب اليومي وقيد التكلفة تلقائياً.",
     "clockStopped": "توقف في {on}",
-    "documentVault": "ملفات الشحنة"
+    "documentVault": "ملفات الشحنة",
+    "weightValue": "{weight} كغم",
+    "volumeValue": "{volume} م³"
   },
   "mode": {
     "sea_fcl": "بحري حاوية كاملة",

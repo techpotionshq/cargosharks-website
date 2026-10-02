@@ -87,7 +87,7 @@ export default async function FinancePage({
     invoiceSummary(session.actor),
     paymentSummary(session.actor),
     topDebtors(session.actor, undefined, locale),
-    listAccountingExports(session.actor),
+    listAccountingExports(session.actor, undefined, locale),
   ])
 
   const t = await getTranslations('finance')

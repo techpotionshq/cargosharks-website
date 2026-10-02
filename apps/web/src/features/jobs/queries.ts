@@ -51,7 +51,7 @@ import type {
 } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotExceptions, pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
-import { pickName } from '@/lib/named'
+import { named, pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -63,6 +63,8 @@ export interface JobListFilters {
   /** Only jobs carrying an open exception or a customs hold. */
   readonly exceptionsOnly?: boolean
   readonly limit?: number
+  /** Names the owner as they write it — `principals.name_ar` on an Arabic screen. */
+  readonly locale?: 'en' | 'ar'
 }
 
 /** Statuses that put a job on the live board — everything else is history. */
@@ -113,7 +115,7 @@ const accruingAmount = sql<{ amount: string; currency: string } | null>`(
 
 export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
   if (usePilotFixtures()) {
-    let rows = pilotJobs()
+    let rows = pilotJobs(Date.now(), filters.locale)
     if (filters.status === 'live') {
       rows = rows.filter((r) => (LIVE_STATUSES as readonly string[]).includes(r.status))
     } else if (filters.status) {
@@ -164,7 +166,7 @@ export async function listJobs(actor: Actor, filters: JobListFilters = {}): Prom
         destinationName: destination.nameEn,
         destinationNameAr: destination.nameAr,
         destinationCode: destination.unlocode,
-        owner: principals.nameEn,
+        owner: named(filters.locale ?? 'en', principals.nameEn, principals.nameAr),
         customsStatus: customsStages.status,
         containerCount,
         milestonesTotal,
@@ -297,8 +299,12 @@ function toJobSummary(row: JobRow): JobSummary {
  * because the row is invisible to the query. `FR-ID-04` satisfied literally:
  * not-found rather than forbidden, with no enumeration signal.
  */
-export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail | undefined> {
-  if (usePilotFixtures()) return pilotJob(id)
+export async function getJobDetail(
+  actor: Actor,
+  id: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<JobDetail | undefined> {
+  if (usePilotFixtures()) return pilotJob(id, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -346,7 +352,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         destinationName: destination.nameEn,
         destinationNameAr: destination.nameAr,
         destinationCode: destination.unlocode,
-        owner: principals.nameEn,
+        owner: named(locale, principals.nameEn, principals.nameAr),
         customsStatus: customsStages.status,
         customsNote: customsStages.notes,
         containerCount,
@@ -397,7 +403,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
             .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
             .innerJoin(assets, eq(assets.id, documents.assetId))
             .where(and(eq(documents.jobId, id), isNull(documents.supersededById))),
-        () => listExceptionRows(tx, id),
+        () => listExceptionRows(tx, id, locale),
         /*
           Who we engaged, as against who is named on the bill.
 
@@ -579,7 +585,11 @@ function toClockView(
   }
 }
 
-async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[]> {
+async function listExceptionRows(
+  tx: Tx,
+  jobId?: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<ExceptionView[]> {
   const rows = await tx
     .select({
       id: exceptions.id,
@@ -592,7 +602,7 @@ async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[
       code: exceptionCodes.code,
       nameEn: exceptionCodes.nameEn,
       nameAr: exceptionCodes.nameAr,
-      owner: principals.nameEn,
+      owner: named(locale, principals.nameEn, principals.nameAr),
       customerName: customers.legalNameEn,
       customerNameAr: customers.legalNameAr,
     })

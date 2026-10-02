@@ -42,7 +42,7 @@ export default async function ApiKeysPage() {
   assertCan(session, 'admin.api_keys.write')
 
   const [keys, endpoints, options, t, tc] = await Promise.all([
-    listApiKeys(),
+    getLocale().then((locale) => listApiKeys(locale === 'ar' ? 'ar' : 'en')),
     listWebhookEndpoints(),
     getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('apiKeys'),

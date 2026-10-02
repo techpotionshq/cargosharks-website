@@ -34,6 +34,7 @@ import { apiKeys, branches, customers, principals, webhookEndpoints, withActor }
 import { requireSession, type Session } from '@/lib/session'
 import { assertCan, assertCanIn, canIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { named } from '@/lib/named'
 import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
 import {
   echo,
@@ -63,11 +64,11 @@ export interface ApiKeyRow {
 }
 
 /** Live keys first, then revoked ones — the revoked stay visible (§5.5). */
-export async function listApiKeys(): Promise<ApiKeyRow[]> {
+export async function listApiKeys(locale: 'en' | 'ar' = 'en'): Promise<ApiKeyRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
-  if (usePilotFixtures()) return pilotApiKeys()
+  if (usePilotFixtures()) return pilotApiKeys(Date.now(), locale)
 
   return withActor(session.actor, (tx) =>
     tx
@@ -79,7 +80,7 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
         customerNameAr: customers.legalNameAr,
         branchId: apiKeys.branchId,
         scopes: apiKeys.scopes,
-        createdBy: principals.nameEn,
+        createdBy: named(locale, principals.nameEn, principals.nameAr),
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
         expiresAt: apiKeys.expiresAt,

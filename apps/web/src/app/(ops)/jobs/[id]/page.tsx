@@ -11,6 +11,7 @@
  * itself, and the release control on the document vault.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -56,17 +57,28 @@ import { pickName } from '@/lib/named'
 import { localInputValue } from '@qabandi/core'
 import { MoreMenu } from '@/ui/menu'
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const job = await getJobDetail(session.actor, recordId((await params).id))
+  const t = await getTranslations('job')
+  return { title: job?.reference ?? t('title') }
+}
+
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const id = recordId((await params).id)
-  const job = await getJobDetail(session.actor, id)
-  if (!job) notFound()
-
-  // Resolved before the reads below: the ledger names its charges in it.
+  // Resolved before the reads below: the ledger names its charges in it, and
+  // the file names its owner and its free-text fields in it.
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const job = await getJobDetail(session.actor, id, locale)
+  if (!job) notFound()
 
   // Resolved once rather than per row — the document list can be long and the
   // answer cannot change halfway down it.
@@ -331,19 +343,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <Field label={t('incoterm')}>{job.incoterm ?? '—'}</Field>
               <Field label={t('commodity')}>{job.commodity}</Field>
               <Field label={t('weight')}>
-                {/* <bdi>: "30,992 kg" is one Latin unit; in Arabic, unisolated, the
-                    unit drifted to the start of the figure. */}
+                {/* <bdi> keeps the figure and its unit together in either
+                    direction; the unit itself is the reader's — "كغم", not "kg". */}
                 {job.grossWeightKg === null ? (
                   '—'
                 ) : (
-                  <bdi>{`${formatNumber(job.grossWeightKg, locale)} kg`}</bdi>
+                  <bdi>{t('weightValue', { weight: formatNumber(job.grossWeightKg, locale) })}</bdi>
                 )}
               </Field>
               <Field label={t('volume')}>
                 {job.volumeCbm === null ? (
                   '—'
                 ) : (
-                  <bdi>{`${formatNumber(job.volumeCbm, locale)} cbm`}</bdi>
+                  <bdi>{t('volumeValue', { volume: formatNumber(job.volumeCbm, locale) })}</bdi>
                 )}
               </Field>
               <Field label={t('pieces')}>

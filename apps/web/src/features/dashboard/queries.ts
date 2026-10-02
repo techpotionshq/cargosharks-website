@@ -33,7 +33,7 @@ import {
 import type { Direction, EnquirySummary, JobSummary, Mode, OpsOverview } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMapData, pilotOverview } from '@/lib/pilot/fixtures'
-import { pickName } from '@/lib/named'
+import { named, pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -41,8 +41,11 @@ const destination = alias(locations, 'destination')
 const LIVE = sql`${jobs.status} in ('booked','in_transit','arrived','customs','on_hold')`
 const OPEN_ENQUIRY = sql`${enquiries.status} in ('new','assigned','rating','quoted')`
 
-export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
-  if (usePilotFixtures()) return pilotOverview()
+export async function getOpsOverview(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<OpsOverview> {
+  if (usePilotFixtures()) return pilotOverview(Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const now = new Date()
@@ -202,7 +205,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             code: exceptionCodes.code,
             nameEn: exceptionCodes.nameEn,
             nameAr: exceptionCodes.nameAr,
-            owner: principals.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
             customerName: customers.legalNameEn,
             customerNameAr: customers.legalNameAr,
           })
@@ -230,9 +233,9 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             customerNameAr: customers.legalNameAr,
             contactName: enquiries.contactName,
             contactEmail: enquiries.contactEmail,
-            owner: principals.nameEn,
-            originName: origin.nameEn,
-            destinationName: destination.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
+            originName: named(locale, origin.nameEn, origin.nameAr),
+            destinationName: named(locale, destination.nameEn, destination.nameAr),
           })
           .from(enquiries)
           .leftJoin(customers, eq(customers.id, enquiries.customerId))
@@ -266,7 +269,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             destinationName: destination.nameEn,
             destinationNameAr: destination.nameAr,
             destinationCode: destination.unlocode,
-            owner: principals.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
             customsStatus: customsStages.status,
           })
           .from(jobs)

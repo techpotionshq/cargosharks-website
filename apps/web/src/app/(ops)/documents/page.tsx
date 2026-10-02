@@ -39,7 +39,7 @@ export default async function DocumentsPage() {
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [rows, counts] = await Promise.all([
-    listDocuments(session.actor),
+    listDocuments(session.actor, locale),
     documentCounts(session.actor),
   ])
 

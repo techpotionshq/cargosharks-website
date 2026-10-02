@@ -42,7 +42,7 @@ export async function getEnquiryRateRequests(
   enquiryId: string,
   locale: 'en' | 'ar' = 'en',
 ): Promise<RateRequestsView | null> {
-  if (usePilotFixtures()) return pilotRateRequests()
+  if (usePilotFixtures()) return pilotRateRequests(enquiryId)
   if (!enquiryId) return null
 
   return withActor(actor, async (tx) => {

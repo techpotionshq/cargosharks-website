@@ -178,6 +178,8 @@ export interface PartnerDetail {
   readonly contacts: readonly {
     id: string
     nameEn: string
+    /** `partner_contacts.name_ar` — shown on an Arabic screen where set. */
+    nameAr: string | null
     email: string | null
     phone: string | null
     role: string | null
@@ -238,7 +240,7 @@ export async function getPartnerDetail(
                where jp.partner_id = p.id and e.closed_at is null) as "openExceptions",
              coalesce((
                select json_agg(json_build_object(
-                        'id', pc.id, 'nameEn', pc.name_en, 'email', pc.email,
+                        'id', pc.id, 'nameEn', pc.name_en, 'nameAr', pc.name_ar, 'email', pc.email,
                         'phone', pc.phone, 'role', pc.role) order by pc.name_en)
                  from partner_contacts pc
                 where pc.partner_id = p.id and pc.is_active), '[]'::json) as contacts,

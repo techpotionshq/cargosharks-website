@@ -61,6 +61,7 @@ export default async function JobsPage({
       status: params.status ?? (filter === 'all' ? undefined : 'live'),
       exceptionsOnly: filter === 'exceptions',
       limit: 100,
+      locale,
     }),
     listRunningClocks(session.actor),
   ])

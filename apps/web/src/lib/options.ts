@@ -199,10 +199,13 @@ export const loadOptions = cache(
            * nobody able to move it. "Can act" is read off the role's grants
            * rather than its name, so a branch's own role with these keys
            * qualifies and a renamed read-only one does not.
+           *
+           * Named as the person writes it in the reader's language —
+           * principals.name_ar on an Arabic screen, as every other list here.
            */
           pe as (
-            select json_agg(json_build_object('value', id, 'label', name_en) order by name_en) v
-              from (select pr.id, pr.name_en from principals pr
+            select json_agg(json_build_object('value', id, 'label', ${name}) order by ${name}) v
+              from (select pr.id, pr.name_en, pr.name_ar from principals pr
                      where pr.type = 'internal' and pr.is_active
                        and pr.email not like '%@qabandi.internal'
                        and exists (

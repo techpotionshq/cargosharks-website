@@ -701,6 +701,8 @@ export interface PartnerDetail {
   readonly contacts: readonly {
     id: string
     nameEn: string
+    /** `partner_contacts.name_ar` — shown on an Arabic screen where set. */
+    nameAr: string | null
     email: string | null
     phone: string | null
     role: string | null
@@ -1369,14 +1371,15 @@ export interface InvoiceDetail {
   /**
    * `invoice_lines`, in `sort_order`.
    *
-   * English only, because that is what the read selects. The table carries a
-   * `description_ar` the PDF uses; the screen does not ask for it, and a
-   * fixture returning a column the query does not would be inventing a shape
-   * the database cannot produce.
+   * Both descriptions. This read only the English one, so an Arabic screen
+   * listed "Customs clearance" under Arabic headings while the table carried
+   * the `description_ar` the PDF prints; the screen now shows it where it
+   * exists and falls back to English where an operator left it blank.
    */
   readonly lines: readonly {
     id: string
     descriptionEn: string
+    descriptionAr: string | null
     quantity: string
     unitPrice: string
     amount: string

@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { pickName } from '@/lib/named'
 import { recordId } from '@/lib/ids'
 import { getPartnerDetail, listPartnerCredentials } from '@/features/network/queries'
 import {
@@ -271,7 +272,9 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 {partner.contacts.map((contact) => (
                   <li key={contact.id} className="px-5 py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-body font-medium text-ink">{contact.nameEn}</p>
+                      <p className="text-body font-medium text-ink">
+                        {pickName(locale, contact.nameEn, contact.nameAr)}
+                      </p>
                       <PartnerContactDialog partnerId={id} defaults={contact} />
                     </div>
                     {contact.role ? (

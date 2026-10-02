@@ -24,6 +24,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { pickName } from '@/lib/named'
 import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import {
@@ -235,7 +236,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <TBody>
                   {invoice.lines.map((line) => (
                     <TR key={line.id}>
-                      <TD className="font-medium text-ink">{line.descriptionEn}</TD>
+                      <TD className="font-medium text-ink">
+                        {pickName(locale, line.descriptionEn, line.descriptionAr)}
+                      </TD>
                       <TD priority="low" align="end" numeric className="text-ink-muted">
                         {Number(line.quantity)}
                       </TD>

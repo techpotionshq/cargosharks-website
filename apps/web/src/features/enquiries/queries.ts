@@ -91,7 +91,7 @@ export async function listEnquiries(
         customerNameAr: customers.legalNameAr,
         contactName: enquiries.contactName,
         contactEmail: enquiries.contactEmail,
-        owner: principals.nameEn,
+        owner: named(locale, principals.nameEn, principals.nameAr),
         originName: named(locale, origin.nameEn, origin.nameAr),
         destinationName: named(locale, destination.nameEn, destination.nameAr),
         quotedSell: quotes.totalSell,

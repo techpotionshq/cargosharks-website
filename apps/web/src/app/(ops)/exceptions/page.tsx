@@ -42,7 +42,7 @@ export default async function ExceptionsPage({
   const now = Date.now()
 
   const [rows, counts] = await Promise.all([
-    listExceptions(session.actor, view),
+    listExceptions(session.actor, view, locale),
     exceptionCounts(session.actor),
   ])
 
