@@ -827,3 +827,18 @@ export function containerTypeCode(raw: string): string | null {
   if (!kind) return null
   return `${size}${kind}`
 }
+
+/**
+ * Whether text names a container *kind* — high cube, reefer, general purpose —
+ * as opposed to a size alone. "40ft" does not; "40HC", "dry", "عادية" do.
+ */
+export function statesContainerKind(text: string): boolean {
+  const folded = foldArabic(text.toUpperCase())
+  return (
+    /\d\s*['’]?\s*(HC|HQ|GP|DV|DC|RF|RH|OT|FR)\b/.test(folded) ||
+    /\b(HC|HQ|HIGH ?CUBE|REEFER|DRY|STANDARD|GENERAL PURPOSE|OPEN ?TOP|FLAT ?RACK)\b/.test(
+      folded,
+    ) ||
+    /عالي|مبرد|عادي|هاي ?كيوب/.test(folded)
+  )
+}

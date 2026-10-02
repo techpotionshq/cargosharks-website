@@ -60,7 +60,7 @@ import {
   type IssueValues,
   type RateRowValues,
 } from './import'
-import { containerTypeCode } from './intake'
+import { containerTypeCode, statesContainerKind } from './intake'
 import {
   abs,
   add,
@@ -903,6 +903,17 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     }
 
     const evidence = typeof cell.evidence === 'string' ? cell.evidence.trim() : ''
+    /*
+      A box the quoted words do not name is a guess. Read live: "حاويتين ٤٠ قدم"
+      ("two 40-foot containers") came back as 40GP with exactly that evidence —
+      a forty-footer is general purpose or high cube and the price differs, so
+      the agent must ask rather than the model choose. Where the evidence can be
+      checked and states no kind, the proposal is dropped. Only the kind: the
+      size is often in an earlier message ("normal ones, not high cube").
+    */
+    if (field === 'containerType' && evidence !== '' && !statesContainerKind(evidence)) {
+      continue
+    }
     fields.push({ field, value, confidence: scored, ...(evidence === '' ? {} : { evidence }) })
   }
 

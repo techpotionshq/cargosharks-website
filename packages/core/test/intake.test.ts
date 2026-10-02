@@ -24,6 +24,7 @@ import {
   turnDueAt,
   withoutStrayContainerCount,
   readExtractedEnquiry,
+  statesContainerKind,
   type IntakeDecisionInput,
 } from '../src/index'
 
@@ -344,6 +345,25 @@ describe('container types as people write them', () => {
       confidence: 0.9,
     })
     expect(read.fields).toEqual([{ field: 'containerType', value: '40HC', confidence: 0.9 }])
+
+    // Evidence that names only a size is a guessed kind, and is dropped.
+    const guessed = readExtractedEnquiry({
+      fields: [
+        { field: 'containerType', value: '40GP', confidence: 0.8, evidence: 'حاويتين ٤٠ قدم' },
+      ],
+      confidence: 0.8,
+    })
+    expect(guessed.fields).toEqual([])
+    const stated = readExtractedEnquiry({
+      fields: [
+        { field: 'containerType', value: '40HC', confidence: 0.8, evidence: '2 x 40ft high cube' },
+      ],
+      confidence: 0.8,
+    })
+    expect(stated.fields.map((f) => f.value)).toEqual(['40HC'])
+    // The kind alone, with the size from an earlier message, still counts.
+    expect(statesContainerKind('حاويات عادية مو هاي كيوب')).toBe(true)
+    expect(statesContainerKind('2 x 40ft')).toBe(false)
     expect(withoutStrayContainerCount(read.fields, 'air')).toEqual([])
   })
 })

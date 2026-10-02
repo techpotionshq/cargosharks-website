@@ -317,6 +317,10 @@ Open the enquiry to read it and decide whether it changes anything.
   /*
     The intake agent — FR-EQ-02.
 
+    One sentence per line, unlike the letters above: `{{missing}}` grows with
+    what is missing, and a hand-wrapped line that breaks just before it leaves
+    the list dangling on a line of its own in a plain-text mail client.
+
     `intake.clarify` and `intake.confirm` go to whoever wrote in, on the channel
     they wrote on, at most once each per window — the turn worker owns those
     rules (`intake-turn.ts`) and the loop breakers with them. The wording asks
@@ -330,8 +334,9 @@ Open the enquiry to read it and decide whether it changes anything.
     `
 Hello {{recipientName}}
 
-Thank you for your enquiry, which we have logged as {{reference}}. To prepare
-your quotation we still need {{missing}}.
+Thank you for your enquiry, which we have logged as {{reference}}.
+
+To prepare your quotation we still need {{missing}}.
 
 A short reply with these is all we need.
 
@@ -345,8 +350,9 @@ A short reply with these is all we need.
     `
 مرحباً {{recipientName}}
 
-شكراً لاستفسارك، وقد سجّلناه برقم {{reference}}. لإعداد عرض السعر نحتاج أيضاً إلى
-{{missing}}.
+شكراً لاستفسارك، وقد سجّلناه برقم {{reference}}.
+
+لإعداد عرض السعر نحتاج أيضاً إلى {{missing}}.
 
 يكفينا ردّ قصير بهذه التفاصيل.
 
@@ -372,8 +378,9 @@ A short reply with these is all we need.
     `
 Hello {{recipientName}}
 
-Thank you — we have everything we need for your enquiry {{reference}}. Our team
-will come back to you with a quotation. Please quote this reference in any reply.
+Thank you — we have everything we need for your enquiry {{reference}}.
+
+Our team will come back to you with a quotation. Please quote this reference in any reply.
 
 {{senderName}}
 `,
@@ -385,8 +392,9 @@ will come back to you with a quotation. Please quote this reference in any reply
     `
 مرحباً {{recipientName}}
 
-شكراً لك، وصلتنا كل التفاصيل اللازمة لاستفسارك {{reference}}. سيعود إليك فريقنا
-بعرض السعر. يُرجى ذكر هذا الرقم في أي مراسلة.
+شكراً لك، وصلتنا كل التفاصيل اللازمة لاستفسارك {{reference}}.
+
+سيعود إليك فريقنا بعرض السعر. يُرجى ذكر هذا الرقم في أي مراسلة.
 
 {{senderName}}
 `,
