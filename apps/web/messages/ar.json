@@ -1814,7 +1814,9 @@
     "credited": "الإشعارات الدائنة",
     "creditNotes": "الإشعارات الدائنة",
     "creditNotesExplain": "كل إشعار مستند مرقّم مستقل، وما يُشعَر به يُخصم من الرصيد كما يُخصم المقبوض.",
-    "creditsInvoice": "إشعار دائن للفاتورة"
+    "creditsInvoice": "إشعار دائن للفاتورة",
+    "pdf": "PDF (إنجليزي)",
+    "pdfAr": "PDF (عربي)"
   },
   "partnerDetail": {
     "openJobs": "شحنات معهم الآن",

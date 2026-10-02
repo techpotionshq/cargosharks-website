@@ -1814,7 +1814,9 @@
     "credited": "Credited",
     "creditNotes": "Credit notes",
     "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
-    "creditsInvoice": "Credits invoice"
+    "creditsInvoice": "Credits invoice",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
