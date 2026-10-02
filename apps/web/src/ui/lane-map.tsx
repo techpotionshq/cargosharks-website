@@ -401,7 +401,25 @@ export function LaneMap({
         event and nowhere else — without a handler, a basemap that never loads
         renders as a plain coloured rectangle and looks like a styling mistake.
       */
+      /*
+        Except the ones we cause by leaving. A navigation tears the page down
+        while tiles are still in flight, and Chromium reports each cancelled
+        fetch as "Failed to fetch (0)" — an error about a map nobody is looking
+        at any more, which buried real failures and failed the e2e console
+        check whenever the tile server was a little slow.
+      */
+      let leaving = false
+      const markLeaving = () => {
+        leaving = true
+      }
+      window.addEventListener('pagehide', markLeaving)
+      window.addEventListener('beforeunload', markLeaving)
+      cleanups.push(() => {
+        window.removeEventListener('pagehide', markLeaving)
+        window.removeEventListener('beforeunload', markLeaving)
+      })
       instance.on('error', (event) => {
+        if (disposed || leaving) return
         console.error('[lane-map]', event?.error?.message ?? event)
       })
 
