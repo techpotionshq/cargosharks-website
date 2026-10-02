@@ -76,6 +76,14 @@ export interface SendRateRequestsResult {
 export interface SendRateRequestsDeps {
   /** Injected in tests; resolved from the deployment's SMTP settings otherwise. */
   readonly channel?: NotificationChannel
+  /**
+   * Where the log mail driver writes what it did not send (ai-21).
+   *
+   * This was a no-op, so under `MAIL_DRIVER=log` an RFQ was stamped sent and
+   * left no trace anywhere — the one driver whose whole job is to show what
+   * would have gone out showed nothing. The worker passes its logger.
+   */
+  readonly log?: (o: unknown, m: string) => void
 }
 
 /**
@@ -94,7 +102,9 @@ export async function sendRateRequests(
   const rows = await loadPending(actor)
   if (rows.length === 0) return { sent: 0, skipped: 0, failed: 0 }
 
-  const channel = deps.channel ?? (await resolveEmailChannel(() => {}))
+  const channel =
+    deps.channel ??
+    (await resolveEmailChannel(deps.log ?? ((o, m) => console.info(m, JSON.stringify(o)))))
 
   let sent = 0
   let skipped = 0

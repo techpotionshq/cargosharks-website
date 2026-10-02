@@ -522,7 +522,7 @@ export async function registerWorkers(log: {
     skipped inside, not thrown, so one missing address never fails the sweep.
   */
   await work(JOBS.rateRequestSend, async () => {
-    const result = await sendRateRequests()
+    const result = await sendRateRequests({ log: log.info.bind(log) })
     if (result.sent + result.skipped + result.failed > 0) log.info(result, 'rate requests sent')
   })
 
