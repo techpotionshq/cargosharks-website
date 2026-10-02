@@ -230,9 +230,9 @@ describe.skipIf(!enabled)('mailboxes', () => {
     it('refuses a branch the administrator does not hold', async () => {
       harness.session = homeOnly
       try {
-        await expect(saveMailbox({}, mailbox({ branchId: AWAY_BRANCH }))).rejects.toThrow(
-          `branch:${AWAY_BRANCH}`,
-        )
+        await expect(saveMailbox({}, mailbox({ branchId: AWAY_BRANCH }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = session
       }
@@ -241,12 +241,14 @@ describe.skipIf(!enabled)('mailboxes', () => {
     it('refuses a caller without the mailbox key', async () => {
       harness.session = { ...session, permissions: new Set(['admin.users.write']) }
       try {
-        await expect(saveMailbox({}, mailbox())).rejects.toThrow('admin.mailboxes.write')
+        await expect(saveMailbox({}, mailbox())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
         await expect(listMailboxes()).rejects.toThrow('admin.mailboxes.write')
         await expect(mailboxKeyConfigured()).rejects.toThrow('admin.mailboxes.write')
-        await expect(setMailboxActive({}, form({ mailboxId: 'x' }))).rejects.toThrow(
-          'admin.mailboxes.write',
-        )
+        await expect(setMailboxActive({}, form({ mailboxId: 'x' }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = session
       }

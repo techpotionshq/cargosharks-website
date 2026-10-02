@@ -42,6 +42,7 @@ import {
 } from '@/lib/form-state'
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -101,7 +102,10 @@ const chargeLineSchema = (tv: Translate) =>
     counterpartyCustomerId: optionalUuid,
   })
 
-export async function saveChargeLine(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveChargeLine = refuseForbidden(async function saveChargeLine(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('costingValidation')
@@ -249,4 +253,4 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/jobs/${data.jobId}`)
   revalidatePath('/finance')
   return succeed(data.jobId)
-}
+})

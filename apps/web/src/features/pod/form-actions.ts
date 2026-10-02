@@ -42,6 +42,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /** A correction naming a record it may not retire — thrown to roll back. */
 class PodRefusal extends Error {}
@@ -120,7 +121,7 @@ const podSchema = (tv: Translate) =>
       path: ['latitude'],
     })
 
-export async function captureProofOfDelivery(
+export const captureProofOfDelivery = refuseForbidden(async function captureProofOfDelivery(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -274,7 +275,7 @@ export async function captureProofOfDelivery(
   }
 
   return succeed(data.jobId)
-}
+})
 
 /**
  * Sends bytes to the service, which owns the storage credentials.

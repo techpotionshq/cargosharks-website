@@ -73,6 +73,7 @@ import {
 } from '@/lib/form-state'
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -127,7 +128,7 @@ const billSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
-export async function saveSupplierInvoice(
+export const saveSupplierInvoice = refuseForbidden(async function saveSupplierInvoice(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -246,7 +247,7 @@ export async function saveSupplierInvoice(
     }
     throw error
   }
-}
+})
 
 const lineSchema = (tv: Translate) =>
   z.object({
@@ -259,7 +260,7 @@ const lineSchema = (tv: Translate) =>
     taxAmount: decimalString(tv('enterTaxOrZero')),
   })
 
-export async function addSupplierInvoiceLine(
+export const addSupplierInvoiceLine = refuseForbidden(async function addSupplierInvoiceLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -320,7 +321,7 @@ export async function addSupplierInvoiceLine(
 
   revalidatePath(`/payables/${data.supplierInvoiceId}`)
   return succeed(data.supplierInvoiceId)
-}
+})
 
 /**
  * Totals derived from the lines, in one statement, so they cannot drift.
@@ -359,7 +360,7 @@ const lineTax = (billId: string) =>
 
 // --- matching --------------------------------------------------------------
 
-export async function matchSupplierLine(
+export const matchSupplierLine = refuseForbidden(async function matchSupplierLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -465,7 +466,7 @@ export async function matchSupplierLine(
 
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 export async function unmatchSupplierLine(form: FormData): Promise<void> {
   const session = await requireSession()
@@ -506,7 +507,7 @@ export async function unmatchSupplierLine(form: FormData): Promise<void> {
 
 // --- approval --------------------------------------------------------------
 
-export async function setSupplierInvoiceStatus(
+export const setSupplierInvoiceStatus = refuseForbidden(async function setSupplierInvoiceStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -694,7 +695,7 @@ export async function setSupplierInvoiceStatus(
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- paying ----------------------------------------------------------------
 
@@ -719,7 +720,7 @@ const supplierPaymentSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
-export async function recordSupplierPayment(
+export const recordSupplierPayment = refuseForbidden(async function recordSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -775,7 +776,7 @@ export async function recordSupplierPayment(
 
   revalidatePath('/payables')
   return succeed(data.partnerId)
-}
+})
 
 /**
  * Allocating a payment across their bills — both ceilings, in one transaction.
@@ -786,7 +787,7 @@ export async function recordSupplierPayment(
  * of two-ceiling arithmetic would mean two places to get three-decimal
  * subtraction wrong, and the first version of that arithmetic was wrong.
  */
-export async function allocateSupplierPayment(
+export const allocateSupplierPayment = refuseForbidden(async function allocateSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -932,7 +933,7 @@ export async function allocateSupplierPayment(
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- netting ---------------------------------------------------------------
 
@@ -954,7 +955,7 @@ const settlementSchema = (tv: Translate) =>
  * re-derives it shows a different figure the moment a late invoice is captured
  * into the period.
  */
-export async function draftSettlement(
+export const draftSettlement = refuseForbidden(async function draftSettlement(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1137,7 +1138,7 @@ export async function draftSettlement(
 
   revalidatePath('/settlements')
   return succeed(outcome.id!)
-}
+})
 
 /**
  * Agreeing, settling, voiding.
@@ -1147,7 +1148,7 @@ export async function draftSettlement(
  * the same invoice out of next month's statement. `settle` records that the
  * residual actually moved.
  */
-export async function setSettlementStatus(
+export const setSettlementStatus = refuseForbidden(async function setSettlementStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1310,7 +1311,7 @@ export async function setSettlementStatus(
   revalidatePath('/payables')
   revalidatePath(`/settlements/${settlementId}`)
   return succeed(settlementId)
-}
+})
 
 /** A settlement whose documents moved under it; caught into a sentence. */
 class SettlementChanged extends Error {
@@ -1356,7 +1357,7 @@ export async function advanceSettlement(form: FormData): Promise<void> {
 }
 
 /** Linking a partner to the customer record they invoice us as — enables netting. */
-export async function linkPartnerAccount(
+export const linkPartnerAccount = refuseForbidden(async function linkPartnerAccount(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1382,10 +1383,10 @@ export async function linkPartnerAccount(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 /** Tolerances live on the partner and on the charge type — this is the partner half. */
-export async function setPartnerTolerance(
+export const setPartnerTolerance = refuseForbidden(async function setPartnerTolerance(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1415,7 +1416,7 @@ export async function setPartnerTolerance(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 // --- reading a bill --------------------------------------------------------
 
@@ -1452,7 +1453,7 @@ export async function setPartnerTolerance(
  * captures it by hand, which is exactly where they were before this existed.
  * The upload still happened, so the scan is on file either way.
  */
-export async function readSupplierBill(
+export const readSupplierBill = refuseForbidden(async function readSupplierBill(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1544,7 +1545,7 @@ export async function readSupplierBill(
   } catch {
     return failWith(tv('readTimedOut'), echo(form))
   }
-}
+})
 
 /** The part of the service's reply this action reads. */
 interface BillReading {

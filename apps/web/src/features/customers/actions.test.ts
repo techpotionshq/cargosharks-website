@@ -229,13 +229,15 @@ describe.skipIf(!enabled)('customers', () => {
           {},
           customerForm({ primaryBranchId: '00000000-0000-7000-8000-0000000000cb' }),
         ),
-      ).rejects.toThrow('branch:')
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('refuses a caller who may not write customers', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(createCustomer({}, customerForm())).rejects.toThrow('customer.write')
+        await expect(createCustomer({}, customerForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['customer.write'])
       }
@@ -361,9 +363,9 @@ describe.skipIf(!enabled)('customers', () => {
     it('refuses a caller who may not write customers', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(retire('00000000-0000-7000-8000-0000000000cd')).rejects.toThrow(
-          'customer.write',
-        )
+        await expect(retire('00000000-0000-7000-8000-0000000000cd')).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['customer.write'])
       }

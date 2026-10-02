@@ -351,7 +351,9 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       const jobId = await freshJob()
       harness.session = sessionWith([])
       try {
-        await expect(saveChargeLine({}, lineForm(jobId))).rejects.toThrow('job.update')
+        await expect(saveChargeLine({}, lineForm(jobId))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['job.update'])
       }
@@ -366,7 +368,9 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       const jobId = await freshJob(AWAY_BRANCH)
       harness.session = sessionWith(['job.update'], [HOME_BRANCH])
       try {
-        await expect(saveChargeLine({}, lineForm(jobId))).rejects.toThrow(`branch:${AWAY_BRANCH}`)
+        await expect(saveChargeLine({}, lineForm(jobId))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['job.update'])
       }

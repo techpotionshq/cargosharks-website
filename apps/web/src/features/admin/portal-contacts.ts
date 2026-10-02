@@ -38,6 +38,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { sendSignInLink } from './sign-in-link'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 const contactSchema = (tv: Translate) =>
   z.object({
@@ -60,7 +61,7 @@ const contactSchema = (tv: Translate) =>
  * notification dispatcher — which reads contacts — and the portal agree on
  * who this person is.
  */
-export async function inviteCustomerContact(
+export const inviteCustomerContact = refuseForbidden(async function inviteCustomerContact(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -151,4 +152,4 @@ export async function inviteCustomerContact(
 
   revalidatePath(`/customers/${data.customerId}`)
   return succeed(data.email)
-}
+})

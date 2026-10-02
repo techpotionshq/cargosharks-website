@@ -413,10 +413,12 @@ describe.skipIf(!enabled)('integrations', () => {
       try {
         await expect(listIntegrations()).rejects.toThrow()
         await expect(integrationKeyProblem()).rejects.toThrow()
-        await expect(saveIntegration({}, form({ key: 'einvoice' }))).rejects.toThrow()
+        await expect(saveIntegration({}, form({ key: 'einvoice' }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
         await expect(
           setIntegrationActive({}, form({ key: 'einvoice', isActive: 'false' })),
-        ).rejects.toThrow()
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }

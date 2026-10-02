@@ -61,7 +61,6 @@ const {
 } = await import('@qabandi/db')
 
 const { recordCreditOverride } = await import('./form-actions')
-const { ForbiddenError } = await import('@/lib/permissions')
 
 const BRANCH = '00000000-0000-7000-8000-00000000cf01'
 const OTHER_BRANCH = '00000000-0000-7000-8000-00000000cf02'
@@ -246,7 +245,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
           {},
           form({ customerId: await customer(), branchId: BRANCH, reason: REASON }),
         ),
-      ).rejects.toBeInstanceOf(ForbiddenError)
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
 
       harness.session = sessionWith(['credit.override'])
     })
@@ -262,7 +261,7 @@ describe.skipIf(!enabled)('recording a credit override', () => {
           {},
           form({ customerId: await customer(), branchId: OTHER_BRANCH, reason: REASON }),
         ),
-      ).rejects.toBeInstanceOf(ForbiddenError)
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
   })
 

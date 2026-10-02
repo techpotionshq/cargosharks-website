@@ -458,7 +458,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
             method: 'cash',
           }),
         ),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {
@@ -818,7 +818,9 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
         branchRoles: new Map([['00000000-0000-7000-8000-0000000000ff', 'finance']]),
       }
       try {
-        await expect(creditInvoice({}, form({ invoiceId, amount: '1.000' }))).rejects.toThrow()
+        await expect(
+          creditInvoice({}, form({ invoiceId, amount: '1.000' })),
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }
@@ -1220,7 +1222,7 @@ describe.skipIf(!enabled)('quotations', () => {
 
       await expect(
         createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() })),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       harness.session = session
 
       expect((await quotesFor(id)).map((r) => r.status)).toEqual(['draft'])
@@ -1697,8 +1699,12 @@ describe.skipIf(!enabled)('quotations', () => {
       await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
       harness.session = { ...session, permissions: new Set(['quote.send']) }
 
-      await expect(setQuoteStatus({}, form({ quoteId, status: 'accepted' }))).rejects.toThrow()
-      await expect(setQuoteStatus({}, form({ quoteId, status: 'rejected' }))).rejects.toThrow()
+      await expect(
+        setQuoteStatus({}, form({ quoteId, status: 'accepted' })),
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
+      await expect(
+        setQuoteStatus({}, form({ quoteId, status: 'rejected' })),
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
 
       harness.session = session
     })
@@ -1840,7 +1846,7 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
   it('refuses a branch the clerk does not sit in', async () => {
     await expect(
       createInvoice({}, draft({ branchId: '00000000-0000-7000-8000-0000000000b2' })),
-    ).rejects.toThrow()
+    ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
   })
 
   describe('its lines', () => {

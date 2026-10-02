@@ -43,6 +43,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 export interface WhatsappNumberRow {
   readonly id: string
@@ -101,7 +102,7 @@ const numberSchema = (tv: Translate) =>
   })
 
 /** Create or update a number → branch mapping. */
-export async function saveWhatsappNumber(
+export const saveWhatsappNumber = refuseForbidden(async function saveWhatsappNumber(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -161,7 +162,7 @@ export async function saveWhatsappNumber(
 
   revalidatePath('/settings/whatsapp-numbers')
   return succeed(data.label ?? data.phoneNumberId)
-}
+})
 
 /**
  * Stop answering on a number, or start again.
@@ -169,7 +170,7 @@ export async function saveWhatsappNumber(
  * Deactivating is how a number is removed: the inbound worker skips inactive
  * rows, and the row stays as the record of what was being answered and when.
  */
-export async function setWhatsappNumberActive(
+export const setWhatsappNumberActive = refuseForbidden(async function setWhatsappNumberActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -202,4 +203,4 @@ export async function setWhatsappNumberActive(
 
   revalidatePath('/settings/whatsapp-numbers')
   return succeed(numberId)
-}
+})

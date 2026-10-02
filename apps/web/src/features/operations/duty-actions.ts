@@ -43,6 +43,7 @@ import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -89,7 +90,7 @@ const schema = (tv: Translate) =>
     useGeneralRate: z.coerce.boolean().optional(),
   })
 
-export async function estimateJobDuty(
+export const estimateJobDuty = refuseForbidden(async function estimateJobDuty(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -297,4 +298,4 @@ export async function estimateJobDuty(
   }
 
   return succeed(outcome.duty)
-}
+})

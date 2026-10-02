@@ -532,7 +532,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
       const who = await agent()
       harness.session = sessionWith(['partner.write'])
       try {
-        await expect(draft(who)).rejects.toThrow('settlement.run')
+        await expect(draft(who)).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(ALL)
       }
@@ -910,9 +912,9 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
     it('refuses a caller who may not write partners', async () => {
       harness.session = sessionWith(['settlement.run'])
       try {
-        await expect(setPartnerTolerance({}, form({ partnerId: PARTNER }))).rejects.toThrow(
-          'partner.write',
-        )
+        await expect(setPartnerTolerance({}, form({ partnerId: PARTNER }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(ALL)
       }

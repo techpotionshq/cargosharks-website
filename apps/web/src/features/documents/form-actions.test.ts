@@ -284,7 +284,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       try {
         await expect(
           saveJobParty({}, form({ jobId: await freshJob(), role: 'shipper', nameEn: 'X' })),
-        ).rejects.toThrow('job.update')
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = sessionWith(ALL)
       }
@@ -646,7 +646,7 @@ describe.skipIf(!enabled)('shipment documents', () => {
       try {
         await expect(
           issueDocument({}, form({ jobId: await freshJob(), kind: 'packing_list' })),
-        ).rejects.toThrow('document.generate')
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = sessionWith(ALL)
       }

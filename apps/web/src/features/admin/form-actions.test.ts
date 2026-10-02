@@ -992,7 +992,7 @@ describe.skipIf(!enabled)('administration', () => {
 
       await expect(
         saveReferenceRecord({}, reference({ table: 'commodity', code: `REF-COM-${RUN}-Y` })),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
 
       harness.session = session
     })

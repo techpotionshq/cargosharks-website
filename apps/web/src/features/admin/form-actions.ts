@@ -54,6 +54,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -128,7 +129,10 @@ function userFieldErrors(error: Parameters<typeof fieldErrors>[0]): Record<strin
   return errors
 }
 
-export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveUser = refuseForbidden(async function saveUser(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
   const tv = await getTranslations('adminValidation')
@@ -290,7 +294,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
 
   revalidatePath('/settings/users')
   return succeed(data.email)
-}
+})
 
 /**
  * The login behind a new principal — A7.
@@ -396,7 +400,10 @@ async function personChanged(
  * `admin.users.write` in every branch they hold a role in (A2). An
  * administrator of one branch can still take away the grant in theirs.
  */
-export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setUserActive = refuseForbidden(async function setUserActive(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
   const tv = await getTranslations('adminValidation')
@@ -425,7 +432,7 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
 
   revalidatePath('/settings/users')
   return succeed(principalId)
-}
+})
 
 /**
  * Send a person the link that sets their password — A7.
@@ -435,7 +442,7 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
  * invited before invitations created a login at all: those get their
  * `auth_user` here. The message says what actually happened to the mail.
  */
-export async function sendUserSignInLink(
+export const sendUserSignInLink = refuseForbidden(async function sendUserSignInLink(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -494,7 +501,7 @@ export async function sendUserSignInLink(
   }
 
   return signInLinkState(tv, await sendSignInLink(target.email), target.email)
-}
+})
 
 /** The sentence for what became of a link, as an `ActionState`. */
 function signInLinkState(tv: Translate, outcome: SignInLinkOutcome, email: string): ActionState {
@@ -611,7 +618,10 @@ const branchSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveBranch = refuseForbidden(async function saveBranch(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   /*
     Not `admin.reference.write`, which is what this used to be.
@@ -751,7 +761,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
 
   revalidatePath('/settings/branches')
   return succeed(data.code)
-}
+})
 
 // --- reference tables ------------------------------------------------------
 
@@ -796,7 +806,7 @@ const referenceSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function saveReferenceRecord(
+export const saveReferenceRecord = refuseForbidden(async function saveReferenceRecord(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -877,7 +887,7 @@ export async function saveReferenceRecord(
 
   revalidatePath('/reference')
   return succeed(data.code)
-}
+})
 
 /** The roles a user can be given, for the invite form's select. */
 export async function listAssignableRoles(): Promise<{ id: string; key: string; name: string }[]> {
@@ -955,7 +965,7 @@ const templateSchema = (tv: Translate) =>
  * updates that branch's own copy and leaves the default alone, which is what
  * makes "Dubai says it differently" a row rather than a release.
  */
-export async function saveNotificationTemplate(
+export const saveNotificationTemplate = refuseForbidden(async function saveNotificationTemplate(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1045,7 +1055,7 @@ export async function saveNotificationTemplate(
 
   revalidatePath('/settings/notifications')
   return succeed(`${data.eventKey}:${data.locale}`)
-}
+})
 
 // --- which notifications send at all ---------------------------------------
 

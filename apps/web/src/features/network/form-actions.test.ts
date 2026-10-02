@@ -226,7 +226,9 @@ describe.skipIf(!enabled)('the network', () => {
     it('refuses a caller who may not write partners', async () => {
       harness.session = sessionWith(['admin.reference.write'])
       try {
-        await expect(savePartner({}, partnerForm())).rejects.toThrow('partner.write')
+        await expect(savePartner({}, partnerForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(ALL)
       }
@@ -337,7 +339,9 @@ describe.skipIf(!enabled)('the network', () => {
     it('refuses a caller without the reference permission', async () => {
       harness.session = sessionWith(['partner.write'])
       try {
-        await expect(saveLocation({}, placeForm())).rejects.toThrow('admin.reference.write')
+        await expect(saveLocation({}, placeForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(ALL)
       }
@@ -412,7 +416,7 @@ describe.skipIf(!enabled)('the network', () => {
       try {
         await expect(
           setNetworkActive({}, form({ kind: 'partner', id: existing!.id })),
-        ).rejects.toThrow('partner.write')
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = sessionWith(ALL)
       }

@@ -31,6 +31,7 @@ import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -180,7 +181,7 @@ function service(): { url: string; secret: string } | null {
   return url && secret ? { url: url.replace(/\/$/, ''), secret } : null
 }
 
-export async function createAccountingExport(
+export const createAccountingExport = refuseForbidden(async function createAccountingExport(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -239,7 +240,7 @@ export async function createAccountingExport(
   if (result.rowCount === 0) return failWith(tv('nothingToPost'))
 
   return succeed(result.exportId)
-}
+})
 
 /**
  * Unwind a posted period, with a reason.
@@ -251,7 +252,7 @@ export async function createAccountingExport(
  * voided" and "a void needs a reason" belong on the form beside the field, not
  * on an error boundary that loses what they typed.
  */
-export async function voidAccountingExportAction(
+export const voidAccountingExportAction = refuseForbidden(async function voidAccountingExportAction(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -287,4 +288,4 @@ export async function voidAccountingExportAction(
 
   revalidatePath('/finance')
   return succeed(exportId)
-}
+})

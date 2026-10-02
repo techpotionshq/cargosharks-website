@@ -375,7 +375,9 @@ describe.skipIf(!enabled)('estimating duty', () => {
       const jobId = await freshJob()
       harness.session = sessionWith(['job.update'])
       try {
-        await expect(estimate(jobId)).rejects.toThrow('customs.update')
+        await expect(estimate(jobId)).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['customs.update'])
       }

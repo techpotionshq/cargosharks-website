@@ -190,13 +190,15 @@ describe('closing a period', () => {
     it('refuses a branch the manager does not hold', async () => {
       await expect(
         createAccountingExport({}, period({ branchId: '00000000-0000-7000-8000-0000000000e9' })),
-      ).rejects.toThrow('branch:')
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('refuses a caller without the export permission', async () => {
       harness.session = sessionWith(['invoice.approve'])
       try {
-        await expect(createAccountingExport({}, period())).rejects.toThrow('finance.export')
+        await expect(createAccountingExport({}, period())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['finance.export'])
       }
@@ -399,7 +401,9 @@ describe('closing a period', () => {
     it('refuses a caller without the export permission', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(voidAccountingExportAction({}, voidForm())).rejects.toThrow('finance.export')
+        await expect(voidAccountingExportAction({}, voidForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['finance.export'])
       }

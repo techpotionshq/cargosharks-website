@@ -47,6 +47,7 @@ import {
 } from '@/lib/form-state'
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -110,7 +111,7 @@ const milestoneSchema = (tv: Translate) =>
  * change to appear on yesterday's shipment will not find it, and rewriting
  * live plans would move dates a customer has already been told.
  */
-export async function saveMilestoneTemplate(
+export const saveMilestoneTemplate = refuseForbidden(async function saveMilestoneTemplate(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -166,7 +167,7 @@ export async function saveMilestoneTemplate(
 
   revalidatePath('/reference')
   return succeed(data.code)
-}
+})
 
 /* ------------------------------------------------------- working calendars */
 
@@ -202,7 +203,7 @@ const calendarSchema = (tv: Translate) =>
  * minutes. `core/clocks.ts` does the arithmetic and takes the calendar as an
  * argument precisely so this can be a row.
  */
-export async function saveWorkingCalendar(
+export const saveWorkingCalendar = refuseForbidden(async function saveWorkingCalendar(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -269,7 +270,7 @@ export async function saveWorkingCalendar(
   revalidatePath('/reference')
   revalidatePath('/settings/branches')
   return succeed(data.key)
-}
+})
 
 const holidaySchema = (tv: Translate) =>
   z.object({
@@ -288,7 +289,10 @@ const holidaySchema = (tv: Translate) =>
  * system. Somebody enters next year's dates once a year, which is what every
  * office in the region already does.
  */
-export async function saveHoliday(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveHoliday = refuseForbidden(async function saveHoliday(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
   const tv = await getTranslations('adminValidation')
@@ -313,7 +317,7 @@ export async function saveHoliday(_previous: ActionState, form: FormData): Promi
 
   revalidatePath('/reference')
   return succeed(data.onDate)
-}
+})
 
 /* -------------------------------------------------------------- duty rates */
 
@@ -352,7 +356,10 @@ const dutySchema = (tv: Translate) =>
  * March has to keep applying to last March's declaration, which is what
  * `effective_from` is for.
  */
-export async function saveDutyRate(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveDutyRate = refuseForbidden(async function saveDutyRate(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
   const tv = await getTranslations('adminValidation')
@@ -403,7 +410,7 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
   revalidatePath('/reference')
   revalidatePath('/customs')
   return succeed(data.hsPrefix)
-}
+})
 
 /* ----------------------------------------------- what the engines measure */
 
@@ -449,7 +456,7 @@ const chargeableSchema = (tv: Translate) =>
  * divisor with its carrier is a row, not a release. `chargeableRuleFor` sorts
  * the branch's own above the default.
  */
-export async function saveChargeableRule(
+export const saveChargeableRule = refuseForbidden(async function saveChargeableRule(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -497,7 +504,7 @@ export async function saveChargeableRule(
 
   revalidatePath('/reference')
   return succeed(data.mode)
-}
+})
 
 const freeTimeSchema = (tv: Translate) =>
   z.object({
@@ -534,7 +541,7 @@ const freeTimeSchema = (tv: Translate) =>
  * `freeTimeTermsFor` sorts the most specific first, so the general row is a
  * fallback rather than a competitor.
  */
-export async function saveFreeTimeRule(
+export const saveFreeTimeRule = refuseForbidden(async function saveFreeTimeRule(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -606,7 +613,7 @@ export async function saveFreeTimeRule(
 
   revalidatePath('/reference')
   return succeed(data.kind)
-}
+})
 
 /* ------------------------------------------------------- exchange rates */
 
@@ -649,7 +656,10 @@ const fxSchema = (tv: Translate) =>
  * take the newest rate on or before the pricing date, so a new day's rate
  * takes over from yesterday's without anything being deleted.
  */
-export async function saveFxRate(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveFxRate = refuseForbidden(async function saveFxRate(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
   const tv = await getTranslations('adminValidation')
@@ -687,4 +697,4 @@ export async function saveFxRate(_previous: ActionState, form: FormData): Promis
 
   revalidatePath('/reference')
   return succeed(`${data.fromCurrency}${data.toCurrency}`)
-}
+})

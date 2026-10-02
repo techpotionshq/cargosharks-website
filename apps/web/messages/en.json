@@ -113,7 +113,8 @@
     "themeSystem": "Match the device",
     "more": "More",
     "loading": "Loading…",
-    "home": "Home"
+    "home": "Home",
+    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch."
   },
   "search": {
     "title": "Search",

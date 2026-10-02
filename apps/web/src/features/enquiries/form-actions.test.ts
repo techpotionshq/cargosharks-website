@@ -425,7 +425,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     it('refuses a branch the desk does not hold', async () => {
       await expect(
         submitEnquiry({}, enquiryForm({ branchId: '00000000-0000-7000-8000-0000000000fb' })),
-      ).rejects.toThrow('branch:')
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {

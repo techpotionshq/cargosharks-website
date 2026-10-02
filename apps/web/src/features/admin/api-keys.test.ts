@@ -169,7 +169,7 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
           {},
           form({ name: nextName(), customerId: CUSTOMER, branchId: FOREIGN_BRANCH }),
         ),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
   })
 
@@ -297,7 +297,7 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
         expect(state.errors?.branchId).toBe('adminValidation.apiAccessNotAdministered')
         await expect(
           createApiKey({}, form({ name: nextName(), customerId: CUSTOMER, branchId: AWAY_BRANCH })),
-        ).rejects.toThrow()
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }
@@ -388,10 +388,16 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
         await expect(listWebhookEndpoints()).rejects.toThrow()
         await expect(
           createApiKey({}, form({ name: nextName(), customerId: CUSTOMER, branchId: HOME_BRANCH })),
-        ).rejects.toThrow()
-        await expect(revokeApiKey({}, form({ keyId: CUSTOMER }))).rejects.toThrow()
-        await expect(createWebhookEndpoint({}, form({ url: nextUrl() }))).rejects.toThrow()
-        await expect(setWebhookEndpointActive({}, form({ endpointId: CUSTOMER }))).rejects.toThrow()
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
+        await expect(revokeApiKey({}, form({ keyId: CUSTOMER }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
+        await expect(createWebhookEndpoint({}, form({ url: nextUrl() }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
+        await expect(
+          setWebhookEndpointActive({}, form({ endpointId: CUSTOMER })),
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }

@@ -435,7 +435,7 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await withoutKey('customs.file', async () => {
           await expect(
             saveCustomsStage({}, form({ jobId, status: 'declaration_filed' })),
-          ).rejects.toThrow('customs.file')
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -446,9 +446,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await saveCustomsStage({}, form({ jobId, status: 'assessed' }))
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -474,9 +474,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         const jobId = await job()
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
     })

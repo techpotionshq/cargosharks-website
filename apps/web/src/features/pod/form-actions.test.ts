@@ -275,9 +275,9 @@ describe.skipIf(!enabled)('capturing a delivery', () => {
     it('refuses a caller who may not touch the shipment', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(captureProofOfDelivery({}, capture(await freshJob()))).rejects.toThrow(
-          'job.update',
-        )
+        await expect(captureProofOfDelivery({}, capture(await freshJob()))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['job.update'])
       }
