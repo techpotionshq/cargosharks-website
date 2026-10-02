@@ -32,6 +32,7 @@ import { EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 const STATUS_TONE: Record<string, Tone> = {
   received: 'info',
@@ -191,7 +192,10 @@ export default async function PayablesPage({
                         {row.partnerName}
                       </TD>
                       <TD align="end" numeric>
-                        {money(row.total, row.currency)}
+                        <Money
+                          value={{ amount: row.total, currency: row.currency }}
+                          locale={locale}
+                        />
                         {row.dueOn ? (
                           <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
                             {t('due')} {formatDate(row.dueOn, locale, timeZone)}
@@ -210,7 +214,10 @@ export default async function PayablesPage({
                         numeric
                         className={variance > 0 ? 'font-semibold text-critical' : 'text-ink-muted'}
                       >
-                        {money(row.varianceBase, row.baseCurrency)}
+                        <Money
+                          value={{ amount: row.varianceBase, currency: row.baseCurrency }}
+                          locale={locale}
+                        />
                       </TD>
                       <TD priority="low" align="end" numeric className="text-ink-muted">
                         {row.dueOn ? formatDate(row.dueOn, locale, timeZone) : '—'}
@@ -293,10 +300,16 @@ export default async function PayablesPage({
                       {payment.reference ?? '—'}
                     </TD>
                     <TD priority="low" align="end" numeric>
-                      {money(payment.amount, payment.currency)}
+                      <Money
+                        value={{ amount: payment.amount, currency: payment.currency }}
+                        locale={locale}
+                      />
                     </TD>
                     <TD align="end" numeric className="font-semibold text-caution">
-                      {money(unallocated, payment.currency)}
+                      <Money
+                        value={{ amount: unallocated, currency: payment.currency }}
+                        locale={locale}
+                      />
                     </TD>
                     <TD align="end">
                       {/*

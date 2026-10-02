@@ -13,11 +13,12 @@ import { requireSession } from '@/lib/session'
 import { listSettlements, listSettleablePartners } from '@/features/payables/queries'
 import { SettlementDialog } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 const STATUS_TONE: Record<string, Tone> = {
   draft: 'info',
@@ -50,9 +51,6 @@ export default async function SettlementsPage({
     getTranslations('settlements'),
     getTranslations('common'),
   ])
-
-  const money = (amount: string, currency: string) =>
-    formatMoney({ amount: amount, currency }, locale)
 
   return (
     <>
@@ -112,14 +110,23 @@ export default async function SettlementsPage({
                     {formatDate(row.periodTo, locale, timeZone)}
                   </TD>
                   <TD priority="low" align="end" numeric>
-                    {money(row.receivableTotal, row.currency)}
+                    <Money
+                      value={{ amount: row.receivableTotal, currency: row.currency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD priority="low" align="end" numeric>
-                    {money(row.payableTotal, row.currency)}
+                    <Money
+                      value={{ amount: row.payableTotal, currency: row.currency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
                     <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                      {money(row.residualAmount, row.currency)}
+                      <Money
+                        value={{ amount: row.residualAmount, currency: row.currency }}
+                        locale={locale}
+                      />
                       <Badge tone={DIRECTION_TONE[row.residualDirection] ?? 'muted'}>
                         {t(`directions.${row.residualDirection}` as 'directions.square')}
                       </Badge>

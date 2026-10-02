@@ -17,6 +17,7 @@ import { formatByCurrency } from '@/lib/by-currency'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { dec, fromDb, toScale } from '@qabandi/core'
 import { AllocateReceiptDialog, PaymentDialog } from '@/features/ledger/ui/dialogs'
 
@@ -133,7 +134,7 @@ export default async function PaymentsPage({
                   )}
                 </TD>
                 <TD align="end" numeric>
-                  {formatMoney({ amount: row.amount, currency: row.currency }, locale)}
+                  <Money value={{ amount: row.amount, currency: row.currency }} locale={locale} />
                   <span
                     // May wrap after the figure: on one line this second line
                     // was wider than the amount it sits under.

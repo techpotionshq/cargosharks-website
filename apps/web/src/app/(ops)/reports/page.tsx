@@ -44,6 +44,7 @@ import { Button, EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('reports')
@@ -259,10 +260,13 @@ export default async function ReportsPage({
                     {formatNumber(row.jobCount, locale)}
                   </TD>
                   <TD priority="low" className="text-end tabular-nums">
-                    {formatMoney({ amount: row.revenue, currency: row.currency }, locale)}
+                    <Money
+                      value={{ amount: row.revenue, currency: row.currency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD priority="low" className="text-end tabular-nums">
-                    {formatMoney({ amount: row.cost, currency: row.currency }, locale)}
+                    <Money value={{ amount: row.cost, currency: row.currency }} locale={locale} />
                   </TD>
                   <TD className="text-end tabular-nums">
                     {/*
@@ -276,7 +280,10 @@ export default async function ReportsPage({
                         {formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)}
                       </Badge>
                     ) : (
-                      formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)
+                      <Money
+                        value={{ amount: row.grossProfit, currency: row.currency }}
+                        locale={locale}
+                      />
                     )}
                   </TD>
                   <TD className="text-end tabular-nums">

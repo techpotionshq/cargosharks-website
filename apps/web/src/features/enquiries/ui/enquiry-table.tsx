@@ -17,10 +17,11 @@
 import Link from 'next/link'
 import { getTimeZone, getTranslations } from 'next-intl/server'
 import type { EnquirySummary } from '@/lib/pilot/types'
-import { formatDateTime, formatMoney, formatRelative } from '@/lib/format'
+import { formatDateTime, formatRelative } from '@/lib/format'
 import { Badge, enquiryTone, slaTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { EmptyState, Lane } from '@/ui/layout'
 
 export async function EnquiryTable({
@@ -140,7 +141,7 @@ export async function EnquiryTable({
 
               {showMargin ? (
                 <TD priority="low" align="end" numeric className="text-ink-muted">
-                  {formatMoney(row.quotedSell, locale, { showCurrency: false })}
+                  <Money value={row.quotedSell} locale={locale} showCurrency={false} />
                 </TD>
               ) : null}
 

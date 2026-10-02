@@ -19,6 +19,7 @@ import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
 import { dec } from '@qabandi/core'
@@ -173,16 +174,20 @@ export default async function InvoicesPage({
                   </Badge>
                 </TD>
                 <TD align="end" numeric priority="low">
-                  {row.total
-                    ? formatMoney({ amount: row.total, currency: row.currency }, locale)
-                    : '—'}
+                  <Money
+                    value={row.total ? { amount: row.total, currency: row.currency } : null}
+                    locale={locale}
+                  />
                 </TD>
                 <TD
                   align="end"
                   numeric
                   className={balance.gt(0) ? 'font-semibold text-ink' : 'text-ink-subtle'}
                 >
-                  {formatMoney({ amount: balance.toFixed(), currency: row.currency }, locale)}
+                  <Money
+                    value={{ amount: balance.toFixed(), currency: row.currency }}
+                    locale={locale}
+                  />
                 </TD>
                 <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}

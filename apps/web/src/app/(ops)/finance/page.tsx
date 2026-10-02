@@ -39,6 +39,7 @@ import { Metric } from '@/ui/metric'
 import { Panel, Readout } from '@/ui/panel'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { Term } from '@/ui/term'
 import { UnbilledPanel } from '@/features/ledger/ui/unbilled-panel'
 
@@ -326,7 +327,10 @@ export default async function FinancePage({
                     </TD>
                     <TD align="end" numeric className="font-semibold">
                       {/* With its code: two rows may be two currencies. */}
-                      {formatMoney({ amount: debtor.balance, currency: debtor.currency }, locale)}
+                      <Money
+                        value={{ amount: debtor.balance, currency: debtor.currency }}
+                        locale={locale}
+                      />
                     </TD>
                     <TD align="end">
                       {debtor.daysOverdue > 0 ? (

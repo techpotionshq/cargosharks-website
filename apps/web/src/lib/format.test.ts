@@ -20,12 +20,53 @@ import {
   formatDay,
   formatLane,
   formatMoney,
+  formatMoneyParts,
   formatNumber,
   formatPercent,
   formatRelative,
   formatTime,
   trimDecimal,
 } from './format'
+
+describe('formatMoneyParts', () => {
+  /**
+   * The pieces a money column needs, and the figure in them is the very one
+   * `formatMoney` prints — only the code and its space are lifted out.
+   */
+  it('splits the code from the figure without changing either', () => {
+    expect(formatMoneyParts({ amount: '980.250000', currency: 'KWD' }, 'en')).toEqual({
+      currency: 'KWD',
+      amount: '980.250',
+      pad: '',
+    })
+    expect(formatMoneyParts({ amount: '-1500', currency: 'KWD' }, 'en')?.amount).toBe('-1,500.000')
+  })
+
+  /**
+   * "AED 5,502.00" above "KWD 980.250" ends a digit short; the pad is one
+   * figure space, the width of a tabular digit, so both end on the same place.
+   */
+  it('pads a short minor unit to the three-place width', () => {
+    expect(formatMoneyParts({ amount: '5502', currency: 'AED' }, 'en')?.pad).toBe('\u2007')
+    expect(formatMoneyParts({ amount: '5502', currency: 'JPY' }, 'en')?.pad).toBe(
+      '\u2008\u2007\u2007\u2007',
+    )
+    expect(
+      formatMoneyParts({ amount: '25000', currency: 'AED' }, 'en', { compact: true })?.pad,
+    ).toBe('')
+  })
+
+  /** Arabic: the localised symbol, and the figure without ICU's bidi marks. */
+  it('keeps the Arabic symbol and drops the marks around the figure', () => {
+    const parts = formatMoneyParts({ amount: '1500.5', currency: 'KWD' }, 'ar')
+    expect(parts?.currency).toBe('د.ك.')
+    expect(parts?.amount).toBe('1,500.500')
+  })
+
+  it('returns null for no value, where formatMoney prints a dash', () => {
+    expect(formatMoneyParts(null, 'en')).toBeNull()
+  })
+})
 
 describe('formatMoney', () => {
   /**

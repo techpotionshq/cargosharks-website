@@ -38,6 +38,7 @@ import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
 import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
@@ -247,14 +248,18 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       {Number(line.quantity)}
                     </TD>
                     <TD priority="low" align="end" numeric className="text-ink-muted">
-                      {formatMoney({ amount: line.rate, currency: line.currency }, locale, {
-                        showCurrency: false,
-                      })}
+                      <Money
+                        value={{ amount: line.rate, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {formatMoney({ amount: line.amount, currency: line.currency }, locale, {
-                        showCurrency: false,
-                      })}
+                      <Money
+                        value={{ amount: line.amount, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                   </TR>
                 ))}

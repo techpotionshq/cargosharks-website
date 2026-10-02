@@ -15,10 +15,11 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listQuotes, quoteStatusCounts } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 
 /** Margin from the two frozen totals. Null where either is missing. */
@@ -136,9 +137,10 @@ export default async function QuotesPage({
                   </Badge>
                 </TD>
                 <TD align="end" numeric>
-                  {row.totalSell
-                    ? formatMoney({ amount: row.totalSell, currency: row.currency }, locale)
-                    : '—'}
+                  <Money
+                    value={row.totalSell ? { amount: row.totalSell, currency: row.currency } : null}
+                    locale={locale}
+                  />
                   {/* A quote's sell figure without its margin is half the
                       answer, so a phone gets the margin as a second line
                       rather than a column it would have to scroll to. */}

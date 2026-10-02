@@ -12,11 +12,12 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { customsCounts, listCustoms } from '@/features/operations/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDateTime, formatMoney, formatRelative, trimDecimal } from '@/lib/format'
+import { formatDateTime, formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, customsTone } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('customs')
@@ -149,11 +150,18 @@ export default async function CustomsPage({
                 <TD priority="low" align="end" numeric>
                   {/* At the currency's own precision: trimmed, a KWD duty of
                       1840.500 read "1840.5 KWD". */}
-                  {row.dutyAmount
-                    ? row.dutyCurrency
-                      ? formatMoney({ amount: row.dutyAmount, currency: row.dutyCurrency }, locale)
-                      : trimDecimal(row.dutyAmount)
-                    : '—'}
+                  {row.dutyAmount && !row.dutyCurrency ? (
+                    trimDecimal(row.dutyAmount)
+                  ) : (
+                    <Money
+                      value={
+                        row.dutyAmount && row.dutyCurrency
+                          ? { amount: row.dutyAmount, currency: row.dutyCurrency }
+                          : null
+                      }
+                      locale={locale}
+                    />
+                  )}
                 </TD>
               </TR>
             )

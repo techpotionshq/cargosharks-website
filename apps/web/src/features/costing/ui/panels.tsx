@@ -25,6 +25,7 @@ import { Card, CardHeader } from '@/ui/card'
 import { EmptyState } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { ChargeLineDialog } from './dialogs'
 import type { ChargeLineRow, JobLedger } from '../queries'
 
@@ -198,10 +199,16 @@ export async function JobLedgerCard({
                     {line.counterpartyName ?? '—'}
                   </TD>
                   <TD align="end" numeric>
-                    {display(line.amount, line.currency, locale)}
+                    <Money
+                      value={{ amount: line.amount, currency: line.currency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD priority="low" align="end" numeric className="text-ink-muted">
-                    {display(line.amountBase, line.baseCurrency, locale)}
+                    <Money
+                      value={{ amount: line.amountBase, currency: line.baseCurrency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD>
                     <Badge tone={verdict.tone}>{t(`match.${verdict.key}` as 'match.agreed')}</Badge>

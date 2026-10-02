@@ -31,6 +31,7 @@ import { Badge } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
 import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automation-strip'
@@ -440,16 +441,22 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                         {line.quantity}
                       </TD>
                       <TD priority="low" align="end" numeric className="text-ink-muted">
-                        {line.buyRate === null
-                          ? tc('notRecorded')
-                          : formatMoney({ amount: line.buyRate, currency }, locale, {
-                              showCurrency: false,
-                            })}
+                        {line.buyRate === null ? (
+                          tc('notRecorded')
+                        ) : (
+                          <Money
+                            value={{ amount: line.buyRate, currency }}
+                            locale={locale}
+                            showCurrency={false}
+                          />
+                        )}
                       </TD>
                       <TD priority="low" align="end" numeric>
-                        {formatMoney({ amount: line.sellRate, currency }, locale, {
-                          showCurrency: false,
-                        })}
+                        <Money
+                          value={{ amount: line.sellRate, currency }}
+                          locale={locale}
+                          showCurrency={false}
+                        />
                       </TD>
                       <TD align="end" numeric>
                         {margin === null ? (
@@ -461,7 +468,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                         )}
                       </TD>
                       <TD align="end" numeric className="font-semibold">
-                        {formatMoney(line.amount, locale, { showCurrency: false })}
+                        <Money value={line.amount} locale={locale} showCurrency={false} />
                       </TD>
                     </TR>
                   )
@@ -473,16 +480,24 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                   <TD priority="low" />
                   <TD priority="low" />
                   <TD priority="low" align="end" numeric className="font-medium text-ink-muted">
-                    {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
+                    <Money
+                      value={comparison.options[0]?.buy}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
                   <TD priority="low" align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
+                    <Money
+                      value={comparison.options[0]?.sell}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
                   <TD align="end" numeric className="font-semibold text-positive">
                     {comparison.options[0]?.marginPct.toFixed(1)}%
                   </TD>
                   <TD align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale)}
+                    <Money value={comparison.options[0]?.sell} locale={locale} />
                   </TD>
                 </tr>
               </tfoot>
