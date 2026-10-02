@@ -147,6 +147,7 @@ const { kapsoMediaSource } = await import('../adapters/whatsapp')
 type WhatsAppMediaSource = import('../adapters/whatsapp').WhatsAppMediaSource
 const { ingestMessage } = await import('./inbound-mail')
 const { runIntakeTurn, transcript, withoutQuotedHistory } = await import('./intake-turn')
+const { extractEnquiry } = await import('./enquiry-extract')
 
 const BRANCH = '00000000-0000-7000-8000-0000000f1001'
 const STAFF = '00000000-0000-7000-8000-0000000f1003'
@@ -649,6 +650,51 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     expect(wa.sent).toHaveLength(0)
     // An operator who took over owns the pipeline too.
     expect(await isHeld(enquiryId)).toBe(false)
+  })
+
+  it('withdraws its reply when the agent is switched off while the model reads', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need a rate for 2 containers from Ningbo to Kuwait', 0)
+    const { id } = await conversationFor(first.enquiryId!)
+
+    // The coordinator's switch lands between the decision to read and the send.
+    const turn = await runIntakeTurn(id, at(130), {
+      resolveWhatsApp: wa.resolve,
+      extract: async (input) => {
+        await withActor(sys, (tx) =>
+          tx
+            .update(intakeConversations)
+            .set({ agentEnabled: false, agentToggledById: STAFF, agentToggledAt: at(131) })
+            .where(eq(intakeConversations.id, id)),
+        )
+        return extractEnquiry(input)
+      },
+    })
+    expect(turn.decision?.reason).toBe('agent_off')
+    expect(wa.sent).toHaveLength(0)
+  })
+
+  it('withdraws its reply when a person answers while the model reads', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need a rate for 2 containers from Ningbo to Kuwait', 0)
+    const { id } = await conversationFor(first.enquiryId!)
+
+    const turn = await runIntakeTurn(id, at(130), {
+      resolveWhatsApp: wa.resolve,
+      extract: async (input) => {
+        await withActor(sys, (tx) =>
+          tx
+            .update(intakeConversations)
+            .set({ lastStaffActivityAt: at(131) })
+            .where(eq(intakeConversations.id, id)),
+        )
+        return extractEnquiry(input)
+      },
+    })
+    expect(turn.decision?.reason).toBe('human_active')
+    expect(wa.sent).toHaveLength(0)
   })
 
   it('never holds a conversation with an auto-responder', async () => {

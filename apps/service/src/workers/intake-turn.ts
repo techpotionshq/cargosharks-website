@@ -168,9 +168,14 @@ export async function runIntakeTurns(
 
   let decided = 0
   let replies = 0
+  const started = Date.now()
   for (const { id } of due) {
     try {
-      const result = await runIntakeTurn(id, asOf, deps)
+      // Each turn on the clock as it is when the turn starts: a batch of slow
+      // model calls would otherwise hand the tenth conversation a lease that
+      // had already run out. Measured as time elapsed, so a test's fixed clock
+      // still drives it.
+      const result = await runIntakeTurn(id, advanced(asOf, started), deps)
       if (result.outcome === 'decided') decided += 1
       if (result.replyMessageId) replies += 1
     } catch (error) {
@@ -270,6 +275,7 @@ export async function runIntakeTurn(
   asOf = new Date(),
   deps: IntakeTurnDeps = {},
 ): Promise<IntakeTurnResult> {
+  const started = Date.now()
   const held = await claim(conversationId, asOf)
   if (!held) return { outcome: 'not_due' }
 
@@ -376,11 +382,12 @@ export async function runIntakeTurn(
       : decided
 
   const missingKeys = completeness.missing.map((r) => r.key)
-  const turnId = await finalise({
+  const finalised = await finalise({
     conversation,
     held,
     asOf,
     decision,
+    humanActiveAt: loaded.humanActiveAt,
     completeness,
     locale,
     unseen,
@@ -388,20 +395,24 @@ export async function runIntakeTurn(
     modelCalled,
     reference: enquiry.reference,
   })
-  if (!turnId) return { outcome: 'not_due' } // the lease was lost; another worker owns it
+  if (!finalised) return { outcome: 'not_due' } // the lease was lost; another worker owns it
+  const { turnId, decision: final } = finalised
 
   let replyMessageId: string | null = null
   let sendError: string | null = null
-  if (decision.action === 'confirm' || decision.action === 'clarify') {
+  if (final.action === 'confirm' || final.action === 'clarify') {
     const sent = await sendReply({
       conversation,
       enquiry,
       senderName: loaded.senderName,
       locale,
-      eventKey: decision.action === 'confirm' ? 'intake.confirm' : 'intake.clarify',
+      eventKey: final.action === 'confirm' ? 'intake.confirm' : 'intake.clarify',
       missing: missingPhrase(completeness.missing, locale),
       inReplyTo: [...customer].reverse().find((m) => m.externalRef)?.externalRef ?? null,
-      asOf,
+      // The reply is stamped when it goes, not when the turn began: the
+      // instant-reply loop breaker measures the customer's answer against it,
+      // and the model call in between is seconds long.
+      asOf: advanced(asOf, started),
       turnId,
       deps,
     })
@@ -411,7 +422,7 @@ export async function runIntakeTurn(
 
   return {
     outcome: 'decided',
-    decision,
+    decision: final,
     modelCalled,
     missing: missingKeys,
     replyMessageId,
@@ -544,24 +555,13 @@ async function load(conversationId: string, asOf: Date): Promise<Loaded | null> 
       outbound message a person wrote, or "Mark replied" on the enquiry — a
       coordinator saying they have answered by phone or from their own inbox.
     */
-    const [staffOutbound] = await tx
-      .select({ at: sql<Date | null>`max(${messages.sentAt})` })
-      .from(messages)
-      .where(
-        and(
-          eq(messages.enquiryId, conversation.enquiryId),
-          eq(messages.direction, 'outbound'),
-          // A person in the product (their own id), or outside it — their
-          // phone or the Kapso inbox, echoed back and marked `staff_authored`.
-          sql`(${messages.staffAuthored} or (${messages.authorId} is not null and ${messages.authorId} <> ${SYSTEM_PRINCIPAL_ID}))`,
-        ),
-      )
+    const staffOutboundAt = await staffOutboundAtFor(tx, conversation.enquiryId)
     const staffInbound = inbound
       .filter((m) => staff.has((m.fromAddress ?? '').toLowerCase()))
       .map((m) => m.sentAt ?? m.createdAt)
     const humanActiveAt = latest([
       conversation.lastStaffActivityAt,
-      staffOutbound?.at ? new Date(staffOutbound.at) : null,
+      staffOutboundAt,
       enquiry.firstRespondedAt,
       ...staffInbound,
     ])
@@ -733,25 +733,45 @@ async function finalise(input: {
   held: Claim
   asOf: Date
   decision: IntakeDecision
+  /** The latest sign of a person on the conversation when the turn loaded it. */
+  humanActiveAt: Date | null
   completeness: Completeness
   locale: IntakeLocale
   unseen: readonly CustomerMessage[]
   invocationId: string | null
   modelCalled: boolean
   reference: string
-}): Promise<string | null> {
-  const { conversation, held, asOf, decision, completeness } = input
+}): Promise<{ turnId: string; decision: IntakeDecision } | null> {
+  const { conversation, held, asOf, completeness } = input
   return withActor(systemActor(), async (tx) => {
     const [current] = await tx
       .select({
         claimToken: intakeConversations.claimToken,
         turnDueAt: intakeConversations.turnDueAt,
         pendingSince: intakeConversations.pendingSince,
+        agentEnabled: intakeConversations.agentEnabled,
+        lastStaffActivityAt: intakeConversations.lastStaffActivityAt,
       })
       .from(intakeConversations)
       .where(eq(intakeConversations.id, conversation.id))
       .for('update')
     if (!current || current.claimToken !== held.token) return null
+
+    /*
+      The decision was taken before the model call, which is seconds long. A
+      coordinator who switched the agent off, or answered the customer, in those
+      seconds has the last word: the reply is withdrawn and the turn records why.
+    */
+    let decision = input.decision
+    if (decision.action === 'confirm' || decision.action === 'clarify') {
+      const settings = await loadIntakeSettings(tx, conversation.branchId)
+      const humanNow = await latestStaffActivity(tx, conversation, current.lastStaffActivityAt)
+      if (!current.agentEnabled || !settings.enabled) {
+        decision = { action: 'none', reason: 'agent_off', markReady: decision.markReady }
+      } else if (humanNow && (!input.humanActiveAt || humanNow > input.humanActiveAt)) {
+        decision = { action: 'none', reason: 'human_active', markReady: decision.markReady }
+      }
+    }
 
     const [turn] = await tx
       .insert(intakeTurns)
@@ -825,8 +845,39 @@ async function finalise(input: {
       })
     }
 
-    return turn!.id
+    return { turnId: turn!.id, decision }
   })
+}
+
+/** The last message a person sent the customer on this enquiry, if any. */
+async function staffOutboundAtFor(tx: Tx, enquiryId: string): Promise<Date | null> {
+  const [row] = await tx
+    .select({ at: sql<Date | null>`max(${messages.sentAt})` })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.enquiryId, enquiryId),
+        eq(messages.direction, 'outbound'),
+        // A person in the product (their own id), or outside it — their
+        // phone or the Kapso inbox, echoed back and marked `staff_authored`.
+        sql`(${messages.staffAuthored} or (${messages.authorId} is not null and ${messages.authorId} <> ${SYSTEM_PRINCIPAL_ID}))`,
+      ),
+    )
+  return row?.at ? new Date(row.at) : null
+}
+
+/** A person's latest mark on the conversation, read again under the finalise lock. */
+async function latestStaffActivity(
+  tx: Tx,
+  conversation: typeof intakeConversations.$inferSelect,
+  lastStaffActivityAt: Date | null,
+): Promise<Date | null> {
+  return latest([lastStaffActivityAt, await staffOutboundAtFor(tx, conversation.enquiryId)])
+}
+
+/** The clock moved on by the real time spent since `started`. */
+function advanced(asOf: Date, started: number): Date {
+  return new Date(asOf.getTime() + Math.max(0, Date.now() - started))
 }
 
 /** Let go of a turn that had nothing to do — or reschedule one that will retry. */
