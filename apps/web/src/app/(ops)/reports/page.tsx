@@ -170,7 +170,7 @@ export default async function ReportsPage({
             href={href({ dimension: option })}
             aria-current={option === dimension ? 'page' : undefined}
             className={[
-              'inline-flex h-8 items-center rounded-sm px-3 text-[0.8125rem] font-medium transition-colors',
+              'inline-flex h-8 items-center rounded-sm px-3 text-body-sm font-medium transition-colors',
               option === dimension
                 ? 'bg-brand text-on-brand'
                 : 'border border-line bg-surface text-ink hover:bg-surface-sunken',
@@ -183,27 +183,27 @@ export default async function ReportsPage({
 
       <form method="get" action="/reports" className="mb-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="dimension" value={dimension} />
-        <label className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+        <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('from')}
           <input
             type="date"
             name="from"
             defaultValue={period.from}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
-        <label className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+        <label className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
           {t('to')}
           <input
             type="date"
             name="to"
             defaultValue={period.to}
-            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+            className="mt-1.5 block h-9 rounded-sm border border-line bg-surface px-3 text-body text-ink"
           />
         </label>
         <button
           type="submit"
-          className="inline-flex h-9 items-center rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink hover:bg-surface-sunken"
+          className="inline-flex h-9 items-center rounded-sm border border-line bg-surface px-3.5 text-body font-medium text-ink hover:bg-surface-sunken"
         >
           {t('apply')}
         </button>

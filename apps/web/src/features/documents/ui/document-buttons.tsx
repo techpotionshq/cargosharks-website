@@ -19,7 +19,7 @@ import { issueDocument, surrenderHouseBill } from '../form-actions'
 
 function Refusal({ message }: { readonly message?: string }) {
   return message ? (
-    <span role="alert" className="max-w-xs text-end text-[0.6875rem] text-caution">
+    <span role="alert" className="max-w-xs text-end text-micro text-caution">
       {message}
     </span>
   ) : null

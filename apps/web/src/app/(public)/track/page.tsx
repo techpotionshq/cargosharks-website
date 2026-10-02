@@ -92,10 +92,10 @@ export default async function TrackPage({
           <span className="mb-4 inline-flex size-12 items-center justify-center rounded-lg bg-accent-soft text-accent">
             <Icon name="tracking" size={24} />
           </span>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+          <h1 className="font-display text-display font-semibold tracking-tight text-ink sm:text-display-lg">
             {t('title')}
           </h1>
-          <p className="mx-auto mt-2 max-w-md text-[0.9375rem] text-ink-muted">{t('subtitle')}</p>
+          <p className="mx-auto mt-2 max-w-md text-title text-ink-muted">{t('subtitle')}</p>
         </header>
       ) : null}
 
@@ -114,7 +114,7 @@ export default async function TrackPage({
                 // References are Latin identifiers in both languages; forcing
                 // LTR stops the caret jumping around in an Arabic interface.
                 dir="ltr"
-                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
+                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
               />
             </label>
 
@@ -127,13 +127,13 @@ export default async function TrackPage({
                 placeholder={t('verifierPlaceholder')}
                 autoComplete="off"
                 dir="ltr"
-                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
+                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
               />
             </label>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-[0.75rem] text-ink-subtle">{t('verifierHint')}</p>
+            <p className="text-caption text-ink-subtle">{t('verifierHint')}</p>
             <Button type="submit" variant="primary" size="lg" iconEnd="arrow-end">
               {t('submit')}
             </Button>
@@ -162,7 +162,7 @@ export default async function TrackPage({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="eyebrow mb-1.5">{result.reference}</p>
-                <h1 className="font-display text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+                <h1 className="font-display text-headline font-semibold tracking-tight text-ink sm:text-display">
                   {nameOf(result.originName, result.originNameAr)}
                   <Icon
                     name="arrow-end"
@@ -179,10 +179,10 @@ export default async function TrackPage({
 
             <div className="mt-5">
               <div className="mb-2 flex items-baseline justify-between gap-3">
-                <span className="text-[0.8125rem] font-medium text-ink">
+                <span className="text-body-sm font-medium text-ink">
                   {t('progress', { done, total })}
                 </span>
-                <span className="numeric text-[0.8125rem] text-ink-muted">
+                <span className="numeric text-body-sm text-ink-muted">
                   {result.ata ? t('arrived') : t('eta')}{' '}
                   <span className="font-semibold text-ink">
                     {formatDate(result.ata ?? result.eta, locale, timeZone)}
@@ -218,7 +218,7 @@ export default async function TrackPage({
                 {result.notices.map((notice) => (
                   <li
                     key={notice.code}
-                    className="flex items-center gap-2 rounded-sm bg-caution-soft px-3 py-2 text-[0.8125rem] text-caution"
+                    className="flex items-center gap-2 rounded-sm bg-caution-soft px-3 py-2 text-body-sm text-caution"
                   >
                     <Icon name="alert" size={15} strokeWidth={2} />
                     <span className="font-medium">{nameOf(notice.nameEn, notice.nameAr)}</span>
@@ -262,10 +262,10 @@ export default async function TrackPage({
                       key={container.containerNo}
                       className="flex items-center justify-between gap-3 rounded-sm bg-surface-sunken px-3 py-2"
                     >
-                      <span className="ref numeric text-[0.8125rem] font-medium text-ink">
+                      <span className="ref numeric text-body-sm font-medium text-ink">
                         {container.containerNo}
                       </span>
-                      <span className="text-[0.75rem] text-ink-muted">{container.type}</span>
+                      <span className="text-caption text-ink-muted">{container.type}</span>
                     </li>
                   ))}
                 </ul>
@@ -277,7 +277,7 @@ export default async function TrackPage({
             <Card>
               <CardHeader icon="document" title={t('documents')} />
               {result.documents.length === 0 ? (
-                <p className="mt-4 text-[0.8125rem] text-ink-muted">{t('noDocuments')}</p>
+                <p className="mt-4 text-body-sm text-ink-muted">{t('noDocuments')}</p>
               ) : (
                 <>
                   {/*
@@ -298,17 +298,17 @@ export default async function TrackPage({
                         className="flex items-center gap-3 rounded-sm px-2 py-2"
                       >
                         <Icon name="document" size={16} className="shrink-0 text-ink-subtle" />
-                        <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-ink">
+                        <span className="min-w-0 flex-1 truncate text-body-sm text-ink">
                           {nameOf(document.nameEn, document.nameAr)}
                         </span>
-                        <span className="numeric shrink-0 text-[0.6875rem] text-ink-subtle">
+                        <span className="numeric shrink-0 text-micro text-ink-subtle">
                           {formatNumber(document.sizeKb, locale)} KB
                         </span>
                         <Icon name="check" size={15} className="shrink-0 text-positive" />
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-3 border-t border-line pt-3 text-[0.75rem] text-ink-subtle">
+                  <p className="mt-3 border-t border-line pt-3 text-caption text-ink-subtle">
                     {t('documentsPortalHint')}
                   </p>
                 </>
@@ -319,8 +319,8 @@ export default async function TrackPage({
           <Card tone="brand">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-[0.9375rem] font-semibold text-ink">{t('helpTitle')}</p>
-                <p className="mt-1 text-[0.8125rem] text-ink-muted">
+                <p className="text-title font-semibold text-ink">{t('helpTitle')}</p>
+                <p className="mt-1 text-body-sm text-ink-muted">
                   {t.rich('helpBody', {
                     phone: () => (
                       <a
@@ -351,7 +351,7 @@ export default async function TrackPage({
       ) : null}
 
       {!submitted ? (
-        <p className="mt-6 text-center text-[0.75rem] text-ink-subtle">
+        <p className="mt-6 text-center text-caption text-ink-subtle">
           {tc('search')} · {brand.contact.trackingUrl.replace('https://', '')}
         </p>
       ) : null}

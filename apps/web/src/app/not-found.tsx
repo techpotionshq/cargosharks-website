@@ -32,10 +32,10 @@ export default async function NotFound() {
         <Logo brand={brand} locale={locale} size="sm" />
 
         <p className="eyebrow mt-10 text-ink-subtle">{t('eyebrow')}</p>
-        <h1 className="font-display mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        <h1 className="font-display mt-2 text-display font-semibold tracking-tight text-ink sm:text-display-lg">
           {t('title')}
         </h1>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-muted">{t('description')}</p>
+        <p className="mt-3 text-title leading-relaxed text-ink-muted">{t('description')}</p>
 
         <div className="mt-8 flex flex-wrap gap-3">
           {/*
@@ -48,19 +48,19 @@ export default async function NotFound() {
           */}
           <Link
             href="/dashboard"
-            className="inline-flex h-10 items-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+            className="inline-flex h-10 items-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover"
           >
             {t('backToBoard')}
           </Link>
           <Link
             href="/track"
-            className="inline-flex h-10 items-center rounded-sm border border-line px-4 text-[0.9375rem] font-medium text-ink transition-colors hover:bg-surface-sunken"
+            className="inline-flex h-10 items-center rounded-sm border border-line px-4 text-title font-medium text-ink transition-colors hover:bg-surface-sunken"
           >
             {t('backToTracking')}
           </Link>
         </div>
 
-        <p className="mt-10 text-[0.8125rem] text-ink-subtle">{tc('notFound')}</p>
+        <p className="mt-10 text-body-sm text-ink-subtle">{tc('notFound')}</p>
       </div>
     </main>
   )

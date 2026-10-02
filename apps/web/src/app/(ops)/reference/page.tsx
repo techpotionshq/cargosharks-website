@@ -149,7 +149,7 @@ export default async function ReferencePage() {
       />
 
       {empty.length ? (
-        <p className="mb-4 flex items-center gap-2 rounded-md bg-caution-soft px-3 py-2 text-[0.8125rem] font-medium text-caution ring-1 ring-caution/25 ring-inset">
+        <p className="mb-4 flex items-center gap-2 rounded-md bg-caution-soft px-3 py-2 text-body-sm font-medium text-caution ring-1 ring-caution/25 ring-inset">
           <Icon name="alert" size={16} />
           {t('emptyWarning', { tables: empty.map((row) => t(`tables.${row.key}`)).join(', ') })}
         </p>
@@ -171,7 +171,7 @@ export default async function ReferencePage() {
           <div key={row.key} className="bg-surface px-4 py-3">
             <p className="eyebrow truncate">{t(`tables.${row.key}`)}</p>
             <p
-              className={`numeric mt-1 text-[1.375rem] font-semibold ${
+              className={`numeric mt-1 text-headline font-semibold ${
                 row.count === 0 ? 'text-caution' : 'text-ink'
               }`}
             >
@@ -265,15 +265,15 @@ export default async function ReferencePage() {
           */}
           <Card className="shrink-0">
             <CardHeader icon="calendar" eyebrow={t('eyebrow')} title={t('calendars')} />
-            <p className="mt-1 mb-4 text-[0.8125rem] text-ink-muted">{t('calendarsHint')}</p>
+            <p className="mt-1 mb-4 text-body-sm text-ink-muted">{t('calendarsHint')}</p>
             <ul className="flex flex-col gap-2">
               {sample.calendars.map((calendar) => (
                 <li
                   key={calendar.key}
                   className="flex items-center justify-between border-b border-line pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="text-[0.875rem] text-ink">{calendar.name}</span>
-                  <span className="ref text-[0.75rem] text-ink-subtle">{calendar.timeZone}</span>
+                  <span className="text-body text-ink">{calendar.name}</span>
+                  <span className="ref text-caption text-ink-subtle">{calendar.timeZone}</span>
                 </li>
               ))}
             </ul>
@@ -294,11 +294,11 @@ export default async function ReferencePage() {
                   key={code.code}
                   className="flex items-center justify-between gap-3 border-b border-line pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="min-w-0 text-[0.875rem] text-ink">
+                  <span className="min-w-0 text-body text-ink">
                     {code.name}
-                    <span className="ref ms-2 text-[0.75rem] text-ink-subtle">{code.code}</span>
+                    <span className="ref ms-2 text-caption text-ink-subtle">{code.code}</span>
                   </span>
-                  <span className="numeric shrink-0 text-[0.75rem] text-ink-muted">
+                  <span className="numeric shrink-0 text-caption text-ink-muted">
                     {code.slaHours === null ? '—' : t('slaHours', { hours: code.slaHours })}
                   </span>
                 </li>
@@ -313,7 +313,7 @@ export default async function ReferencePage() {
           <CardHeader icon="jobs" eyebrow={t('eyebrow')} title={t('containers')} />
           <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.containers.map((row) => (
-              <li key={row.code} className="flex items-center justify-between text-[0.875rem]">
+              <li key={row.code} className="flex items-center justify-between text-body">
                 <span className="ref text-ink">{row.code}</span>
                 <span className="text-ink-muted">{row.name}</span>
               </li>
@@ -327,9 +327,9 @@ export default async function ReferencePage() {
               rows down it, which would undo the point of the fill. */}
           <ul className="qb-scroll mt-4 grid min-h-0 flex-1 auto-rows-min grid-cols-2 content-start gap-1.5 overflow-y-auto">
             {sample.incoterms.map((row) => (
-              <li key={row.code} className="flex flex-col text-[0.8125rem]">
+              <li key={row.code} className="flex flex-col text-body-sm">
                 <span className="ref text-ink">{row.code}</span>
-                <span className="truncate text-[0.75rem] text-ink-subtle">{row.name}</span>
+                <span className="truncate text-caption text-ink-subtle">{row.name}</span>
               </li>
             ))}
           </ul>
@@ -339,7 +339,7 @@ export default async function ReferencePage() {
           <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('documentTypes')} />
           <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.documents.map((row) => (
-              <li key={row.code} className="flex items-center justify-between text-[0.8125rem]">
+              <li key={row.code} className="flex items-center justify-between text-body-sm">
                 <span className="text-ink">{row.name}</span>
                 <Badge tone="muted">{categoryLabel(row.category)}</Badge>
               </li>
@@ -387,7 +387,7 @@ export default async function ReferencePage() {
                   <TR key={row.id}>
                     <TD className="md:whitespace-nowrap">
                       <Badge tone="muted">{row.mode}</Badge>
-                      <span className="block text-[0.75rem] text-ink-subtle md:ms-1.5 md:inline">
+                      <span className="block text-caption text-ink-subtle md:ms-1.5 md:inline">
                         {row.direction}
                       </span>
                     </TD>
@@ -400,7 +400,7 @@ export default async function ReferencePage() {
                       </span>
                       {/* Its own line on a phone: beside the name the pair had
                           no break opportunity and set the column's width. */}
-                      <span className="ref block text-[0.6875rem] text-ink-subtle wrap-anywhere md:ms-2 md:inline">
+                      <span className="ref block text-micro text-ink-subtle wrap-anywhere md:ms-2 md:inline">
                         {row.code}
                       </span>
                       {row.customerVisible ? null : (
@@ -475,9 +475,7 @@ export default async function ReferencePage() {
                     {/* Under the name at every width: beside it, "Kuwait
                         Asia/Kuwait" made the column wider than this
                         half-width card could give it. */}
-                    <span className="ref block text-[0.6875rem] text-ink-subtle">
-                      {row.timeZone}
-                    </span>
+                    <span className="ref block text-micro text-ink-subtle">{row.timeZone}</span>
                   </TD>
                   <TD priority="low" className="text-ink-muted">
                     {row.weekend.map((day) => t(`weekdays.${day}` as 'weekdays.0')).join(', ')}
@@ -533,7 +531,7 @@ export default async function ReferencePage() {
                   <TR key={row.id}>
                     <TD className="ref whitespace-nowrap">
                       {row.hsPrefix}
-                      <span className="ms-1.5 text-[0.6875rem] text-ink-subtle">{row.country}</span>
+                      <span className="ms-1.5 text-micro text-ink-subtle">{row.country}</span>
                     </TD>
                     <TD className="text-ink">
                       {locale === 'ar' && row.descriptionAr ? row.descriptionAr : row.descriptionEn}
@@ -585,7 +583,7 @@ export default async function ReferencePage() {
                 <TR key={row.id}>
                   <TD className="font-medium text-ink">{row.label}</TD>
                   <TD className="ref text-ink-muted">{row.scope}</TD>
-                  <TD className="numeric text-[0.8125rem] text-ink-muted">{row.detail}</TD>
+                  <TD className="numeric text-body-sm text-ink-muted">{row.detail}</TD>
                   <TD align="end">
                     <ChargeableRuleDialog defaults={row.raw as never} />
                   </TD>
@@ -626,7 +624,7 @@ export default async function ReferencePage() {
                   <TR key={row.id}>
                     <TD className="font-medium text-ink">{row.label}</TD>
                     <TD className="ref text-ink-muted">{row.scope}</TD>
-                    <TD className="numeric text-[0.8125rem] text-ink-muted">{row.detail}</TD>
+                    <TD className="numeric text-body-sm text-ink-muted">{row.detail}</TD>
                     <TD align="end">
                       <FreeTimeRuleDialog defaults={row.raw as never} />
                     </TD>

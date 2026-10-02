@@ -222,7 +222,7 @@ export default async function FinancePage({
               {ageing.byCurrency.map((entry, index) => (
                 <section key={entry.currency} className={index > 0 ? 'mt-6' : undefined}>
                   {ageing.byCurrency.length > 1 ? (
-                    <p className="ref mb-2 text-[0.75rem] text-ink-subtle">
+                    <p className="ref mb-2 text-caption text-ink-subtle">
                       {entry.currency} · {money(entry.total, entry.currency)}
                     </p>
                   ) : null}
@@ -321,7 +321,7 @@ export default async function FinancePage({
                   <TR key={`${debtor.customerId}-${debtor.currency}`}>
                     <TD className="font-medium text-ink">
                       {debtor.customerName}
-                      <span className="ms-2 text-[0.6875rem] font-normal text-ink-subtle">
+                      <span className="ms-2 text-micro font-normal text-ink-subtle">
                         {t('invoiceCount', { count: debtor.invoiceCount })}
                       </span>
                     </TD>
@@ -339,7 +339,7 @@ export default async function FinancePage({
                         </Badge>
                       ) : (
                         <span
-                          className="text-[0.75rem] whitespace-nowrap text-ink-subtle"
+                          className="text-caption whitespace-nowrap text-ink-subtle"
                           title={debtor.oldestDueOn ?? undefined}
                         >
                           {debtor.oldestDueOn
@@ -397,7 +397,7 @@ export default async function FinancePage({
             ]}
           />
           {payments.unallocated > 0 ? (
-            <p className="mt-4 flex items-start gap-2 rounded-sm bg-caution-soft/60 px-3 py-2 text-[0.8125rem] text-caution">
+            <p className="mt-4 flex items-start gap-2 rounded-sm bg-caution-soft/60 px-3 py-2 text-body-sm text-caution">
               <Icon name="alert" size={14} className="mt-px shrink-0" />
               {t('unallocatedWarning', { count: payments.unallocated })}
             </p>
@@ -467,9 +467,7 @@ export default async function FinancePage({
                         {t(`exportStatuses.${row.status}` as 'exportStatuses.posted')}
                       </Badge>
                       {row.voidReason ? (
-                        <span className="ms-2 text-[0.6875rem] text-ink-subtle">
-                          {row.voidReason}
-                        </span>
+                        <span className="ms-2 text-micro text-ink-subtle">{row.voidReason}</span>
                       ) : null}
                     </TD>
                     <TD align="end">

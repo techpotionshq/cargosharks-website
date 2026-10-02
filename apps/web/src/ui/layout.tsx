@@ -43,13 +43,13 @@ export function PageHeader({
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+          <h1 className="font-display text-display leading-tight font-semibold tracking-tight text-ink">
             {title}
           </h1>
           {status ? <div className="flex flex-wrap items-center gap-1.5">{status}</div> : null}
         </div>
         {description ? (
-          <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-body text-ink-muted">{description}</p>
         ) : null}
       </div>
       {/*
@@ -207,7 +207,7 @@ export function EmptyState({
   if (variant === 'inline') {
     return (
       <div
-        className={['flex items-start gap-2 text-[0.8125rem] text-ink-muted', className]
+        className={['flex items-start gap-2 text-body-sm text-ink-muted', className]
           .filter(Boolean)
           .join(' ')}
       >
@@ -230,9 +230,9 @@ export function EmptyState({
       <span className="mb-3 flex size-11 items-center justify-center rounded-full bg-surface-sunken text-ink-subtle">
         <Icon name={icon} size={20} />
       </span>
-      <p className="text-[0.9375rem] font-medium text-ink">{title}</p>
+      <p className="text-title font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[0.8125rem] text-ink-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-body-sm text-ink-muted">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -268,7 +268,7 @@ export function Field({
         still carries the whole value for anything longer.
       */}
       <dd
-        className={`line-clamp-2 text-[0.875rem] break-words text-ink ${mono ? 'ref numeric' : ''}`}
+        className={`line-clamp-2 text-body break-words text-ink ${mono ? 'ref numeric' : ''}`}
         title={typeof children === 'string' ? children : undefined}
       >
         {children}

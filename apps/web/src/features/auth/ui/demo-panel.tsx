@@ -64,7 +64,7 @@ export function DemoPanel({
       </span>
       <code
         dir="ltr"
-        className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-[0.6875rem] text-ink-muted ring-1 ring-line ring-inset"
+        className="numeric rounded-sm bg-surface px-1.5 py-0.5 text-micro text-ink-muted ring-1 ring-line ring-inset"
       >
         {password}
       </code>
@@ -93,7 +93,7 @@ export function DemoPanel({
             */}
             <span
               role="tooltip"
-              className="pointer-events-none absolute end-0 bottom-full z-10 mb-1.5 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-[0.6875rem] font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="pointer-events-none absolute end-0 bottom-full z-10 mb-1.5 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-micro font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               {persona.role}
             </span>

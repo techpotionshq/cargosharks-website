@@ -224,7 +224,7 @@ export default async function ConsolidationDetailPage({
                       >
                         {house.houseBillNumber ?? house.reference}
                       </Link>
-                      <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                      <span className="block text-caption text-ink-muted md:hidden">
                         {house.customerName}
                       </span>
                     </TD>
@@ -288,10 +288,10 @@ export default async function ConsolidationDetailPage({
                   <li key={charge.id} className="border-b border-line p-4 last:border-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="block text-[0.875rem] font-medium text-ink">
+                        <span className="block text-body font-medium text-ink">
                           {charge.chargeTypeName}
                         </span>
-                        <span className="block text-[0.6875rem] text-ink-subtle">
+                        <span className="block text-micro text-ink-subtle">
                           {charge.counterpartyName ?? t('noCounterparty')} ·{' '}
                           {t(`bases.${charge.allocationBasis}` as 'bases.volume')}
                         </span>
@@ -308,7 +308,7 @@ export default async function ConsolidationDetailPage({
                       what rounds per currency: three places for the dinar, two
                       for the dirham.
                     */}
-                      <span className="numeric shrink-0 text-[0.875rem] font-medium">
+                      <span className="numeric shrink-0 text-body font-medium">
                         {formatMoney({ amount: charge.amount, currency: charge.currency }, locale)}
                       </span>
                     </div>
@@ -402,7 +402,7 @@ export default async function ConsolidationDetailPage({
                   */}
                     {chargeShares.length > 0 ? (
                       <details className="group mt-2.5">
-                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[0.6875rem] text-ink-muted [&::-webkit-details-marker]:hidden">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-micro text-ink-muted [&::-webkit-details-marker]:hidden">
                           <Icon
                             name="chevron-end"
                             size={12}
@@ -415,7 +415,7 @@ export default async function ConsolidationDetailPage({
                           {chargeShares.map((share) => (
                             <li
                               key={share.jobId}
-                              className="flex items-baseline justify-between gap-3 text-[0.75rem]"
+                              className="flex items-baseline justify-between gap-3 text-caption"
                             >
                               <Link
                                 href={`/jobs/${share.jobId}`}
@@ -445,7 +445,7 @@ export default async function ConsolidationDetailPage({
             </ul>
           )}
 
-          <p className="p-4 pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+          <p className="p-4 pt-3 text-micro leading-relaxed text-ink-subtle">
             {t('allocationNote')}
           </p>
         </Card>

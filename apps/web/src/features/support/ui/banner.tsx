@@ -67,7 +67,7 @@ export async function SupportAccessBanner({ session }: { session: Session }) {
   const row = (grant: (typeof open)[number]) => (
     <div
       key={grant.id}
-      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-[0.8125rem] text-caution"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-body-sm text-caution"
     >
       <Icon name="audit" size={15} className="shrink-0" />
 
@@ -136,7 +136,7 @@ export async function SupportAccessBanner({ session }: { session: Session }) {
 
   return (
     <details className="group border-b border-caution/25 bg-caution-soft">
-      <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-2.5 text-[0.8125rem] font-medium text-caution [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-x-3 px-4 py-2.5 text-body-sm font-medium text-caution [&::-webkit-details-marker]:hidden">
         <Icon name="audit" size={15} className="shrink-0" />
         <span>{t('bannerMany', { count: open.length })}</span>
         <span className="ms-auto inline-flex items-center gap-1.5 text-ink-muted">

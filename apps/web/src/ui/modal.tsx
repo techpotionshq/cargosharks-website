@@ -202,11 +202,11 @@ export function Modal({
               </span>
             ) : null}
             <div className="min-w-0 flex-1">
-              <h2 id={titleId} className="text-[1.0625rem] font-semibold text-ink">
+              <h2 id={titleId} className="text-heading font-semibold text-ink">
                 {title}
               </h2>
               {description ? (
-                <p className="mt-0.5 text-[0.8125rem] text-ink-muted">{description}</p>
+                <p className="mt-0.5 text-body-sm text-ink-muted">{description}</p>
               ) : null}
             </div>
             <button

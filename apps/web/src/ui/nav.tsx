@@ -46,7 +46,7 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
       {sections.map((section) => (
         <div key={section.label}>
           {/* Full-strength muted ink: at /70 the group names measured 2.6:1. */}
-          <p className="mb-1.5 px-3 text-[0.625rem] font-semibold tracking-[0.14em] text-chrome-ink-muted uppercase">
+          <p className="mb-1.5 px-3 text-micro font-semibold tracking-[0.14em] text-chrome-ink-muted uppercase">
             {section.label}
           </p>
           <ul className="flex flex-col gap-0.5">
@@ -59,7 +59,7 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                     href={item.href as Route}
                     aria-current={active ? 'page' : undefined}
                     className={[
-                      'group relative flex items-center gap-2.5 rounded-sm py-[0.44rem] ps-3 pe-2 text-[0.8125rem] transition-colors',
+                      'group relative flex items-center gap-2.5 rounded-sm py-[0.44rem] ps-3 pe-2 text-body-sm transition-colors',
                       active
                         ? 'bg-accent-soft font-semibold text-accent'
                         : 'font-medium text-chrome-ink-muted hover:bg-surface-sunken hover:text-chrome-ink',
@@ -93,7 +93,7 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                     {item.badge ? (
                       <span
                         className={[
-                          'numeric ms-auto min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-[0.6875rem] font-semibold',
+                          'numeric ms-auto min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-micro font-semibold',
                           critical
                             ? 'bg-critical text-on-brand'
                             : 'bg-surface-sunken text-ink-muted',
@@ -130,7 +130,7 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
             // 40px tall: this strip is the only navigation a phone has, and
             // at 32px its pills were the most-missed targets in the product.
             className={[
-              'flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] transition-colors',
+              'flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-body-sm transition-colors',
               active
                 ? 'bg-accent-soft font-semibold text-accent'
                 : 'font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
@@ -139,7 +139,7 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
             <Icon name={item.icon} size={15} weight={active ? 'fill' : 'regular'} />
             {item.label}
             {item.badge ? (
-              <span className="numeric rounded-full bg-critical px-1.5 text-[0.625rem] font-semibold text-on-brand">
+              <span className="numeric rounded-full bg-critical px-1.5 text-micro font-semibold text-on-brand">
                 {item.badge > 99 ? '99+' : item.badge}
               </span>
             ) : null}

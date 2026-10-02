@@ -218,7 +218,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                         {job.reference}
                       </Link>
                       {job.lane ? (
-                        <span className="block text-[0.75rem] text-ink-subtle">{job.lane}</span>
+                        <span className="block text-caption text-ink-subtle">{job.lane}</span>
                       ) : null}
                     </TD>
                     <TD priority="low" className="text-ink-muted">
@@ -271,13 +271,13 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 {partner.contacts.map((contact) => (
                   <li key={contact.id} className="px-5 py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-[0.875rem] font-medium text-ink">{contact.nameEn}</p>
+                      <p className="text-body font-medium text-ink">{contact.nameEn}</p>
                       <PartnerContactDialog partnerId={id} defaults={contact} />
                     </div>
                     {contact.role ? (
-                      <p className="text-[0.75rem] text-ink-subtle">{contact.role}</p>
+                      <p className="text-caption text-ink-subtle">{contact.role}</p>
                     ) : null}
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-ink-muted">
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-muted">
                       {contact.email ? (
                         <a href={`mailto:${contact.email}`} className="hover:text-accent">
                           <bdi>{contact.email}</bdi>

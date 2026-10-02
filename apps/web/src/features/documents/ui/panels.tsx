@@ -66,12 +66,10 @@ export async function PartiesCard({
                 <TD>
                   <span className="font-medium">{party.nameEn}</span>
                   {party.nameAr ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
-                      {party.nameAr}
-                    </span>
+                    <span className="mt-0.5 block text-micro text-ink-subtle">{party.nameAr}</span>
                   ) : null}
                   {party.city || party.country ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-muted md:hidden">
+                    <span className="mt-0.5 block text-micro text-ink-muted md:hidden">
                       {[party.city, party.country].filter(Boolean).join(', ')}
                     </span>
                   ) : null}
@@ -160,12 +158,12 @@ export async function CargoCard({
               <TR key={line.id}>
                 <TD>
                   <span className="font-medium">{line.descriptionEn}</span>
-                  <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                  <span className="mt-0.5 block text-micro text-ink-subtle">
                     {[line.hsCode, line.containerNo].filter(Boolean).join(' · ') ||
                       t('unclassified')}
                   </span>
                   {line.packageCount ? (
-                    <span className="numeric block text-[0.6875rem] text-ink-muted md:hidden">
+                    <span className="numeric block text-micro text-ink-muted md:hidden">
                       {line.packageCount} {line.packageType ?? ''}
                     </span>
                   ) : null}
@@ -279,7 +277,7 @@ export async function DocumentActionsCard({
       <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('title')} />
 
       {!hasCargo ? (
-        <p className="mt-3 rounded-sm bg-surface-sunken px-3 py-2 text-[0.8125rem] text-ink-muted">
+        <p className="mt-3 rounded-sm bg-surface-sunken px-3 py-2 text-body-sm text-ink-muted">
           {t('needsCargo')}
         </p>
       ) : null}
@@ -300,10 +298,10 @@ export async function DocumentActionsCard({
               className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5 last:border-0"
             >
               <div className="min-w-0">
-                <span className="block text-[0.875rem] font-medium text-ink">
+                <span className="block text-body font-medium text-ink">
                   {t(`kinds.${label}` as 'kinds.house_bill')}
                 </span>
-                <span className="block text-[0.6875rem] text-ink-subtle">
+                <span className="block text-micro text-ink-subtle">
                   {t(`hints.${label}` as 'hints.house_bill')}
                 </span>
               </div>
@@ -358,7 +356,7 @@ export async function DocumentActionsCard({
               */}
               {kind === 'house_bill' && surrenderable ? (
                 <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-1.5">
-                  <span className="text-[0.75rem] text-ink-muted">
+                  <span className="text-caption text-ink-muted">
                     {houseBillSurrenderedAt
                       ? t('surrenderedOn', {
                           date: formatDate(houseBillSurrenderedAt, lang, timeZone),
@@ -386,12 +384,12 @@ export async function DocumentActionsCard({
       */}
       {dutyAction ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-2">
-          <span className="text-[0.8125rem] text-ink-muted">{t('dutyPrompt')}</span>
+          <span className="text-body-sm text-ink-muted">{t('dutyPrompt')}</span>
           {dutyAction}
         </div>
       ) : null}
 
-      <p className="mt-4 border-t border-line pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+      <p className="mt-4 border-t border-line pt-3 text-micro leading-relaxed text-ink-subtle">
         {t('issueNote')}
       </p>
     </Card>

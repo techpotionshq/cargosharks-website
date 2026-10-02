@@ -161,13 +161,13 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
           </dl>
 
           {bill.varianceAcceptedReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-ink-muted">
               <span className="font-medium text-ink">{t('varianceAccepted')}</span>{' '}
               {bill.varianceAcceptedReason}
             </p>
           ) : null}
           {bill.disputeReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-critical">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-critical">
               <span className="font-medium">{t('disputed')}</span> {bill.disputeReason}
             </p>
           ) : null}

@@ -99,7 +99,7 @@ export function TableShell({
         status and SLA columns that `priority` exists to keep sat off-screen.
       */}
       <table
-        className={`w-full border-collapse text-[0.8125rem] ${
+        className={`w-full border-collapse text-body-sm ${
           minWidth === 'wide' ? 'md:min-w-208' : ''
         }`}
       >
@@ -159,7 +159,7 @@ export function TH({
         // "WORKING CALENDAR" and "REVENUE / COST" were each the widest thing
         // in their column, and the reason the branch and charge-type tables
         // scrolled at 1280 with every cell beneath them already wrapping.
-        'px-1.5 py-2.5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-2.5 2xl:px-3',
+        'px-1.5 py-2.5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-2.5 2xl:px-3',
         align === 'end' ? 'text-end' : 'text-start',
         PRIORITY_CLASS[priority],
         className,

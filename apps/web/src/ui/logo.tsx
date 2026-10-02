@@ -25,9 +25,9 @@ export interface LogoProps {
 
 const MARK_PX = { sm: 28, md: 36, lg: 48 } as const
 const NAME_CLASS = {
-  sm: 'text-[0.875rem] leading-tight',
-  md: 'text-[1.0625rem] leading-tight',
-  lg: 'text-2xl leading-tight',
+  sm: 'text-body leading-tight',
+  md: 'text-heading leading-tight',
+  lg: 'text-display leading-tight',
 } as const
 
 export function Logo({
@@ -101,9 +101,7 @@ export function Logo({
             {name}
           </span>
           {showTagline ? (
-            <span className={`truncate text-[0.6875rem] font-medium ${taglineTone}`}>
-              {tagline}
-            </span>
+            <span className={`truncate text-micro font-medium ${taglineTone}`}>{tagline}</span>
           ) : null}
         </span>
       )}

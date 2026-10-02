@@ -23,7 +23,7 @@ import { FOCUS_RING } from '@/ui/control'
 
 function Refusal({ message }: { readonly message?: string }) {
   return message ? (
-    <span role="alert" className="max-w-xs text-end text-[0.6875rem] text-caution">
+    <span role="alert" className="max-w-xs text-end text-micro text-caution">
       {message}
     </span>
   ) : null
@@ -51,7 +51,7 @@ export function AttachHouseForm({
           required
           aria-label={label}
           aria-invalid={state.errors?.jobId ? true : undefined}
-          className="h-8 max-w-56 rounded-sm border border-line bg-surface px-2 text-[0.8125rem] text-ink"
+          className="h-8 max-w-56 rounded-sm border border-line bg-surface px-2 text-body-sm text-ink"
         >
           <option value="">{choose}</option>
           {jobs.map((job) => (
@@ -136,7 +136,7 @@ export function AllocateButton({
             const error = state.errors?.[`share_${house.jobId}`]
             return (
               <span key={house.jobId} className="flex flex-col items-end gap-0.5">
-                <label className="flex items-center gap-2 text-[0.75rem] text-ink-muted">
+                <label className="flex items-center gap-2 text-caption text-ink-muted">
                   <span className="ref numeric">{house.label}</span>
                   <input
                     name={`share_${house.jobId}`}
@@ -146,7 +146,7 @@ export function AllocateButton({
                     placeholder={manual.currency}
                     aria-invalid={error ? true : undefined}
                     defaultValue={state.values?.[`share_${house.jobId}`] ?? ''}
-                    className={`h-8 w-28 rounded-sm border border-line-strong bg-surface-sunken px-2 text-end text-[0.8125rem] text-ink focus:bg-surface ${FOCUS_RING}`}
+                    className={`h-8 w-28 rounded-sm border border-line-strong bg-surface-sunken px-2 text-end text-body-sm text-ink focus:bg-surface ${FOCUS_RING}`}
                   />
                 </label>
                 <Refusal message={error} />

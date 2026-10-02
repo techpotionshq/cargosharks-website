@@ -86,9 +86,7 @@ export async function PortalContactsCard({
         />
       </div>
       {contacts.length === 0 ? (
-        <p className="border-t border-line px-5 py-4 text-[0.8125rem] text-ink-muted">
-          {t('none')}
-        </p>
+        <p className="border-t border-line px-5 py-4 text-body-sm text-ink-muted">{t('none')}</p>
       ) : (
         <TableShell minWidth="none" className="border-t border-line">
           <THead>
@@ -106,9 +104,7 @@ export async function PortalContactsCard({
                 <Icon name="check" size={16} className="text-positive" />
               ) : (
                 <span className="flex flex-col items-start gap-1">
-                  <span className="text-[0.75rem] text-ink-subtle">
-                    {tUsers('awaitingPassword')}
-                  </span>
+                  <span className="text-caption text-ink-subtle">{tUsers('awaitingPassword')}</span>
                   {contact.isActive ? (
                     <SignInLinkButton principalId={contact.id} label={tUsers('sendSignInLink')} />
                   ) : null}
@@ -122,7 +118,7 @@ export async function PortalContactsCard({
                   <TD className="font-medium text-ink">
                     {locale === 'ar' && contact.nameAr ? contact.nameAr : contact.nameEn}
                     <span className="md:hidden">
-                      <span className="ref mt-0.5 block text-[0.75rem] font-normal wrap-anywhere text-ink-muted">
+                      <span className="ref mt-0.5 block text-caption font-normal wrap-anywhere text-ink-muted">
                         {contact.email}
                       </span>
                       {contact.hasPassword ? null : (

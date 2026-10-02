@@ -82,7 +82,7 @@ export default async function ConsolidationsPage() {
                     >
                       {row.reference}
                     </Link>
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                    <span className="mt-0.5 block text-micro text-ink-subtle">
                       {tMode(row.mode as 'sea_lcl')}
                     </span>
                   </TD>

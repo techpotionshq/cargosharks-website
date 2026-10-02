@@ -75,7 +75,7 @@ export interface CustomerDefaults {
   readonly defaultIncoterm?: string | null
 }
 
-const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink transition-colors focus:bg-surface ${FOCUS_RING}`
+const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink transition-colors focus:bg-surface ${FOCUS_RING}`
 const FIELD_ERROR = 'border-critical bg-critical-soft/40'
 
 function Field({
@@ -109,11 +109,11 @@ function Field({
       </label>
       {children}
       {error ? (
-        <p role="alert" className="mt-1 text-[0.75rem] font-medium text-critical">
+        <p role="alert" className="mt-1 text-caption font-medium text-critical">
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-1 text-[0.75rem] text-ink-subtle">{hint}</p>
+        <p className="mt-1 text-caption text-ink-subtle">{hint}</p>
       ) : null}
     </div>
   )
@@ -125,7 +125,7 @@ function Submit({ labels }: { readonly labels: CustomerFormLabels }) {
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex h-10 items-center justify-center rounded-sm bg-brand px-5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
+      className="inline-flex h-10 items-center justify-center rounded-sm bg-brand px-5 text-body font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
     >
       {pending ? labels.submitting : labels.submit}
     </button>
@@ -167,16 +167,14 @@ export function CustomerForm({
       {state.message === 'saved' ? (
         <p
           role="status"
-          className="rounded-sm bg-positive-soft px-3 py-2 text-[0.8125rem] font-medium text-positive ring-1 ring-positive/25 ring-inset"
+          className="rounded-sm bg-positive-soft px-3 py-2 text-body-sm font-medium text-positive ring-1 ring-positive/25 ring-inset"
         >
           {labels.saved}
         </p>
       ) : null}
 
       <section className="rounded-card border border-line bg-surface p-5 shadow-card">
-        <h2 className="mb-4 font-display text-[0.9375rem] font-semibold text-ink">
-          {labels.identity}
-        </h2>
+        <h2 className="mb-4 font-display text-title font-semibold text-ink">{labels.identity}</h2>
 
         <div className="grid grid-cols-12 gap-4">
           <Field
@@ -305,7 +303,7 @@ export function CustomerForm({
               }
               className="size-4 rounded-sm accent-[var(--qb-brand)]"
             />
-            <label htmlFor="isActive" className="text-[0.875rem] text-ink">
+            <label htmlFor="isActive" className="text-body text-ink">
               {labels.isActive}
             </label>
           </div>
@@ -313,8 +311,8 @@ export function CustomerForm({
       </section>
 
       <section className="rounded-card border border-line bg-surface p-5 shadow-card">
-        <h2 className="font-display text-[0.9375rem] font-semibold text-ink">{labels.terms}</h2>
-        <p className="mt-1 mb-4 text-[0.8125rem] text-ink-muted">{labels.termsHint}</p>
+        <h2 className="font-display text-title font-semibold text-ink">{labels.terms}</h2>
+        <p className="mt-1 mb-4 text-body-sm text-ink-muted">{labels.termsHint}</p>
 
         <div className="grid grid-cols-12 gap-4">
           <Field

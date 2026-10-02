@@ -61,22 +61,22 @@ export default function Error({
     <main className="flex min-h-dvh flex-col items-center justify-center bg-canvas px-6 py-16">
       <div className="w-full max-w-lg">
         <p className="eyebrow text-critical">{t('eyebrow')}</p>
-        <h1 className="font-display mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
+        <h1 className="font-display mt-2 text-display font-semibold tracking-tight text-ink sm:text-display-lg">
           {t('title')}
         </h1>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-muted">{t('description')}</p>
+        <p className="mt-3 text-title leading-relaxed text-ink-muted">{t('description')}</p>
 
         <div className="mt-8 flex flex-wrap gap-3">
           <button
             type="button"
             onClick={reset}
-            className="inline-flex h-10 items-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+            className="inline-flex h-10 items-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover"
           >
             {t('retry')}
           </button>
           <Link
             href="/dashboard"
-            className="inline-flex h-10 items-center rounded-sm border border-line px-4 text-[0.9375rem] font-medium text-ink transition-colors hover:bg-surface-sunken"
+            className="inline-flex h-10 items-center rounded-sm border border-line px-4 text-title font-medium text-ink transition-colors hover:bg-surface-sunken"
           >
             {t('backToBoard')}
           </Link>
@@ -87,10 +87,10 @@ export default function Error({
             <p className="eyebrow text-ink-subtle">{t('reference')}</p>
             {/* `dir=ltr` and monospace: a digest is an identifier, not prose, and
                 must not be reordered by the bidirectional algorithm in Arabic. */}
-            <p dir="ltr" className="mt-1 font-mono text-[0.8125rem] text-ink">
+            <p dir="ltr" className="mt-1 font-mono text-body-sm text-ink">
               {error.digest}
             </p>
-            <p className="mt-2 text-[0.8125rem] text-ink-subtle">{t('referenceHint')}</p>
+            <p className="mt-2 text-body-sm text-ink-subtle">{t('referenceHint')}</p>
           </div>
         ) : null}
       </div>

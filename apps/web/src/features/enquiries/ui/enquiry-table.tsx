@@ -90,7 +90,7 @@ export async function EnquiryTable({
                 >
                   {row.reference}
                 </Link>
-                <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                <span className="mt-0.5 block text-micro text-ink-subtle">
                   {t(`channels.${row.channel}` as 'channels.email')}
                 </span>
               </TD>

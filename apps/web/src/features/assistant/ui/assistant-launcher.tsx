@@ -44,7 +44,7 @@ export function AssistantLauncher({ label }: { readonly label: string }) {
       type="button"
       onClick={() => window.dispatchEvent(new CustomEvent(ASSISTANT_TOGGLE_EVENT))}
       aria-expanded={open}
-      className={`hidden h-8 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] font-medium transition-colors md:inline-flex ${
+      className={`hidden h-8 items-center gap-1.5 rounded-full border px-3 text-body-sm font-medium transition-colors md:inline-flex ${
         open
           ? 'border-accent/30 bg-accent-soft text-accent'
           : 'border-line bg-surface text-ink-muted hover:bg-surface-sunken hover:text-ink'
@@ -52,7 +52,7 @@ export function AssistantLauncher({ label }: { readonly label: string }) {
     >
       <Icon name="assistant" size={15} />
       {label}
-      <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-[0.6875rem] font-medium text-ink-subtle lg:inline">
+      <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-micro font-medium text-ink-subtle lg:inline">
         ⌘K
       </kbd>
     </button>

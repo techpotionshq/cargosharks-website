@@ -88,10 +88,10 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
           <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+                <span className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
                   {label(t, row.field)}
                 </span>
-                <span className="text-[0.9375rem] font-medium text-ink" dir="auto">
+                <span className="text-title font-medium text-ink" dir="auto">
                   {row.value}
                 </span>
                 {row.targetWasEmpty ? null : (
@@ -107,15 +107,15 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
               </div>
               {row.evidence ? (
                 <p
-                  className="mt-1 border-s-2 border-line ps-2 text-[0.8125rem] text-ink-muted"
+                  className="mt-1 border-s-2 border-line ps-2 text-body-sm text-ink-muted"
                   dir="auto"
                 >
                   {row.evidence}
                 </p>
               ) : (
-                <p className="mt-1 text-[0.8125rem] text-ink-subtle">{t('noEvidence')}</p>
+                <p className="mt-1 text-body-sm text-ink-subtle">{t('noEvidence')}</p>
               )}
-              <p className="mt-1 text-[0.6875rem] text-ink-subtle">
+              <p className="mt-1 text-micro text-ink-subtle">
                 {t('provenance', {
                   model: row.model ?? '—',
                   prompt: row.promptVersion ?? '—',

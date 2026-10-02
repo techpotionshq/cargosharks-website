@@ -80,7 +80,7 @@ export function Metric({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[0.8125rem] leading-tight font-medium text-ink-muted">{label}</p>
+        <p className="text-body-sm leading-tight font-medium text-ink-muted">{label}</p>
         {icon ? (
           <span
             className={`flex size-8 shrink-0 items-center justify-center rounded-full ${CHIP_TONE[tone]}`}
@@ -97,22 +97,22 @@ export function Metric({
       */}
       <p className="mt-3 flex flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric font-display text-[1.375rem] leading-none font-semibold tracking-tight text-ink sm:text-[1.875rem] ${
+          className={`numeric font-display text-headline leading-none font-semibold tracking-tight text-ink sm:text-display-lg ${
             live ? 'accruing' : ''
           }`}
         >
           {value}
         </span>
-        {of ? <span className="numeric text-[0.9375rem] text-ink-subtle">/{of}</span> : null}
+        {of ? <span className="numeric text-title text-ink-subtle">/{of}</span> : null}
         {unit ? (
-          <span className="text-[0.75rem] font-medium tracking-wide text-ink-subtle uppercase">
+          <span className="text-caption font-medium tracking-wide text-ink-subtle uppercase">
             {unit}
           </span>
         ) : null}
       </p>
 
       {children ? <div className="mt-3">{children}</div> : null}
-      {hint ? <p className="mt-2 text-[0.75rem] leading-snug text-ink-subtle">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-caption leading-snug text-ink-subtle">{hint}</p> : null}
     </>
   )
 
@@ -187,7 +187,7 @@ export function Delta({
   return (
     <p className="flex items-center gap-2">
       <span
-        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[0.75rem] font-semibold ${tone}`}
+        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-caption font-semibold ${tone}`}
       >
         {flat ? null : (
           <Icon name={up ? 'arrow-up-end' : 'arrow-down-end'} size={12} weight="bold" />
@@ -198,7 +198,7 @@ export function Delta({
           {suffix}
         </span>
       </span>
-      {caption ? <span className="truncate text-[0.75rem] text-ink-subtle">{caption}</span> : null}
+      {caption ? <span className="truncate text-caption text-ink-subtle">{caption}</span> : null}
     </p>
   )
 }
@@ -362,7 +362,7 @@ export function TickMeter({
           )
         })}
       </div>
-      {label ? <p className="mt-1.5 text-[0.75rem] text-ink-subtle">{label}</p> : null}
+      {label ? <p className="mt-1.5 text-caption text-ink-subtle">{label}</p> : null}
     </div>
   )
 }

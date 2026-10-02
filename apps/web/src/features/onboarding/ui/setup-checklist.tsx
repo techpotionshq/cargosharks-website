@@ -36,10 +36,10 @@ export function SetupChecklist({
           <Icon name="check" size={18} strokeWidth={2.4} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-[1rem] font-semibold text-ink">{labels.title}</h2>
-          <p className="mt-0.5 text-[0.8125rem] text-ink-muted">{labels.subtitle}</p>
+          <h2 className="font-display text-title font-semibold text-ink">{labels.title}</h2>
+          <p className="mt-0.5 text-body-sm text-ink-muted">{labels.subtitle}</p>
         </div>
-        <span className="numeric shrink-0 rounded-full bg-surface px-2.5 py-1 text-[0.75rem] font-semibold text-ink-muted ring-1 ring-line ring-inset">
+        <span className="numeric shrink-0 rounded-full bg-surface px-2.5 py-1 text-caption font-semibold text-ink-muted ring-1 ring-line ring-inset">
           {labels.progress}
         </span>
       </div>
@@ -68,14 +68,14 @@ export function SetupChecklist({
 
               <div className="min-w-0 flex-1">
                 <p
-                  className={`text-[0.875rem] font-medium ${
+                  className={`text-body font-medium ${
                     step.done ? 'text-ink-subtle line-through' : 'text-ink'
                   }`}
                 >
                   {copy.title}
                 </p>
                 {!step.done ? (
-                  <p className="mt-0.5 text-[0.8125rem] text-ink-muted">{copy.description}</p>
+                  <p className="mt-0.5 text-body-sm text-ink-muted">{copy.description}</p>
                 ) : null}
               </div>
 

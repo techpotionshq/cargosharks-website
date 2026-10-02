@@ -14,7 +14,7 @@ import { beginEnrolment, completeEnrolment, verifyChallenge } from '../two-facto
 import type { ChallengeState, EnrolState } from '../two-factor'
 import { FOCUS_RING } from '@/ui/control'
 
-const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:bg-surface ${FOCUS_RING}`
+const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink focus:bg-surface ${FOCUS_RING}`
 
 /**
  * The code field.
@@ -27,7 +27,7 @@ const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 
  * Deliberately not `type="number"`: it strips leading zeros in some browsers,
  * and a TOTP code beginning `0` is one code in ten.
  */
-const CODE_FIELD = `${FIELD} text-center font-mono text-xl tracking-[0.4em]`
+const CODE_FIELD = `${FIELD} text-center font-mono text-headline tracking-[0.4em]`
 
 function Submit({
   label,
@@ -41,7 +41,7 @@ function Submit({
     <button
       type="submit"
       disabled={pending}
-      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
+      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
     >
       {pending ? pendingLabel : label}
     </button>
@@ -52,7 +52,7 @@ function Alert({ children }: { readonly children: string }) {
   return (
     <p
       role="alert"
-      className="rounded-sm bg-critical-soft px-3 py-2.5 text-[0.8125rem] leading-snug font-medium text-critical ring-1 ring-critical/25 ring-inset"
+      className="rounded-sm bg-critical-soft px-3 py-2.5 text-body-sm leading-snug font-medium text-critical ring-1 ring-critical/25 ring-inset"
     >
       {children}
     </p>
@@ -163,7 +163,7 @@ export function EnrolForm({ labels }: { readonly labels: EnrolLabels }) {
           />
         </label>
 
-        <p className="text-[0.8125rem] leading-snug text-ink-muted">{labels.passwordHint}</p>
+        <p className="text-body-sm leading-snug text-ink-muted">{labels.passwordHint}</p>
         <Submit label={labels.begin} pendingLabel={labels.beginning} />
       </form>
     )
@@ -171,7 +171,7 @@ export function EnrolForm({ labels }: { readonly labels: EnrolLabels }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[0.8125rem] leading-snug text-ink-muted">{labels.scan}</p>
+      <p className="text-body-sm leading-snug text-ink-muted">{labels.scan}</p>
 
       {/*
         The QR, rendered to SVG on the server and inlined.
@@ -199,11 +199,11 @@ export function EnrolForm({ labels }: { readonly labels: EnrolLabels }) {
         `break-all` because it is a long unbroken base32 string and it must wrap
         inside the card rather than push the layout wider than the viewport.
       */}
-      <details className="text-[0.8125rem] text-ink-muted">
+      <details className="text-body-sm text-ink-muted">
         <summary className="cursor-pointer select-none">{labels.manual}</summary>
         <code
           dir="ltr"
-          className="mt-2 block break-all rounded-sm bg-surface-sunken p-2 font-mono text-[0.75rem] text-ink"
+          className="mt-2 block break-all rounded-sm bg-surface-sunken p-2 font-mono text-caption text-ink"
         >
           {secretFrom(begun.totpUri)}
         </code>
@@ -211,9 +211,9 @@ export function EnrolForm({ labels }: { readonly labels: EnrolLabels }) {
 
       {begun.backupCodes?.length ? (
         <div className="rounded-sm border border-caution/30 bg-caution-soft p-3">
-          <p className="text-[0.8125rem] font-semibold text-caution">{labels.backupTitle}</p>
-          <p className="mt-1 text-[0.8125rem] leading-snug text-ink-muted">{labels.backupHint}</p>
-          <ul dir="ltr" className="mt-2 grid grid-cols-2 gap-1 font-mono text-[0.8125rem] text-ink">
+          <p className="text-body-sm font-semibold text-caution">{labels.backupTitle}</p>
+          <p className="mt-1 text-body-sm leading-snug text-ink-muted">{labels.backupHint}</p>
+          <ul dir="ltr" className="mt-2 grid grid-cols-2 gap-1 font-mono text-body-sm text-ink">
             {begun.backupCodes.map((code) => (
               <li key={code}>{code}</li>
             ))}

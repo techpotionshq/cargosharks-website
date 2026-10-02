@@ -123,7 +123,7 @@ export default async function QuotesPage({
                   {row.version > 1 ? (
                     // Under the reference on a phone: beside it, the pair
                     // could not break and set the column's floor.
-                    <span className="numeric block text-[0.75rem] text-ink-subtle md:ms-1.5 md:inline">
+                    <span className="numeric block text-caption text-ink-subtle md:ms-1.5 md:inline">
                       v{row.version}
                     </span>
                   ) : null}
@@ -144,9 +144,7 @@ export default async function QuotesPage({
                   {/* A quote's sell figure without its margin is half the
                       answer, so a phone gets the margin as a second line
                       rather than a column it would have to scroll to. */}
-                  <span className={`block text-[0.6875rem] md:hidden ${marginClass}`}>
-                    {marginText}
-                  </span>
+                  <span className={`block text-micro md:hidden ${marginClass}`}>{marginText}</span>
                 </TD>
                 <TD priority="low" align="end" numeric className={marginClass}>
                   {marginText}

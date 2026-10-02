@@ -117,7 +117,7 @@ export default async function ExceptionsPage({
                       // which is what made the register scroll at 1280. The
                       // title keeps the whole description a hover away.
                       title={row.description}
-                      className="mt-0.5 line-clamp-2 max-w-md text-[0.75rem] break-words text-ink-muted"
+                      className="mt-0.5 line-clamp-2 max-w-md text-caption break-words text-ink-muted"
                     >
                       {row.description}
                     </span>

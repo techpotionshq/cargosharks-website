@@ -127,14 +127,14 @@ export async function CreditStandingCard({
         should not be.
       */}
       {view.unconvertible.length > 0 ? (
-        <p className="mt-3 text-[0.75rem] text-critical">
+        <p className="mt-3 text-caption text-critical">
           {t('unconvertible', {
             list: view.unconvertible.map((u) => `${u.amount} ${u.currency}`).join(', '),
           })}
         </p>
       ) : null}
 
-      <h3 className="mt-6 text-[0.8125rem] font-medium text-ink">{t('overridesTitle')}</h3>
+      <h3 className="mt-6 text-body-sm font-medium text-ink">{t('overridesTitle')}</h3>
 
       {view.overrides.length === 0 ? (
         <EmptyState className="mt-1.5" variant="inline" icon="check" title={t('noOverrides')} />
@@ -161,10 +161,10 @@ export async function CreditStandingCard({
                   <span className="md:whitespace-nowrap">
                     {formatDate(o.approvedAt, lang, timeZone)}
                   </span>
-                  <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                  <span className="block text-caption text-ink-muted md:hidden">
                     {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
                   </span>
-                  <span className="mt-0.5 block text-[0.75rem] break-words text-ink-subtle md:hidden">
+                  <span className="mt-0.5 block text-caption break-words text-ink-subtle md:hidden">
                     {o.reason}
                   </span>
                 </TD>

@@ -35,7 +35,7 @@ export function SignInLinkButton({
       {state.message ? (
         <span
           role="status"
-          className={`max-w-xs text-[0.6875rem] ${state.ok ? 'text-positive' : 'text-caution'}`}
+          className={`max-w-xs text-micro ${state.ok ? 'text-positive' : 'text-caution'}`}
         >
           {state.message}
         </span>

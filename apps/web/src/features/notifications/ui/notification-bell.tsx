@@ -43,7 +43,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
             which reads as a broken counter rather than an empty inbox.
           */}
           {unread > 0 ? (
-            <span className="absolute -end-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[0.625rem] font-semibold leading-none text-white">
+            <span className="absolute -end-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-micro font-semibold leading-none text-white">
               {unread > 9 ? '9+' : unread}
             </span>
           ) : null}
@@ -58,12 +58,12 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
       */}
       <div className="absolute end-0 top-full z-30 mt-2 hidden w-80 overflow-hidden rounded-lg border border-line bg-surface shadow-card group-open:block max-sm:fixed max-sm:inset-x-4 max-sm:top-14 max-sm:w-auto">
         <div className="flex items-center justify-between border-b border-line px-3 py-2">
-          <span className="text-[0.8125rem] font-semibold text-ink">{t('title')}</span>
+          <span className="text-body-sm font-semibold text-ink">{t('title')}</span>
           {unread > 0 ? (
             <form action={clearNotifications}>
               <button
                 type="submit"
-                className="text-[0.75rem] font-medium text-accent hover:underline"
+                className="text-caption font-medium text-accent hover:underline"
               >
                 {t('markAllRead')}
               </button>
@@ -72,7 +72,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
         </div>
 
         {items.length === 0 ? (
-          <p className="px-3 py-6 text-center text-[0.8125rem] text-ink-subtle">{t('empty')}</p>
+          <p className="px-3 py-6 text-center text-body-sm text-ink-subtle">{t('empty')}</p>
         ) : (
           <ul className="max-h-96 divide-y divide-line overflow-y-auto">
             {items.map((item) => (
@@ -95,18 +95,18 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span
-                        className={`block truncate text-[0.8125rem] ${
+                        className={`block truncate text-body-sm ${
                           item.read ? 'text-ink-muted' : 'font-semibold text-ink'
                         }`}
                       >
                         {item.title}
                       </span>
                       {item.body ? (
-                        <span className="mt-0.5 line-clamp-2 block text-[0.75rem] text-ink-subtle">
+                        <span className="mt-0.5 line-clamp-2 block text-caption text-ink-subtle">
                           {item.body}
                         </span>
                       ) : null}
-                      <span className="mt-1 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-1 block text-micro text-ink-subtle">
                         {formatRelative(item.createdAt, locale)}
                       </span>
                     </span>

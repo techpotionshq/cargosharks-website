@@ -59,14 +59,14 @@ export default async function PortalLayout({ children }: { children: React.React
           <nav className="ms-auto flex items-center gap-1">
             <Link
               href="/portal"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="jobs" size={16} />
               <span className="hidden sm:inline">{t('portal')}</span>
             </Link>
             <Link
               href="/track"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="tracking" size={16} />
               <span className="hidden sm:inline">{t('tracking')}</span>
@@ -88,7 +88,7 @@ export default async function PortalLayout({ children }: { children: React.React
                 type="submit"
                 title={tc('signOut')}
                 aria-label={tc('signOut')}
-                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
+                className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-critical"
               >
                 <Icon name="sign-out" size={16} />
                 <span className="hidden sm:inline">{tc('signOut')}</span>

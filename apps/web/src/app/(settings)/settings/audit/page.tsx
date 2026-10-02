@@ -199,7 +199,7 @@ export default async function AuditPage({
                   <a
                     key={value}
                     href={href({ op: op === value ? undefined : value })}
-                    className={`rounded-sm px-1 text-[0.6875rem] ${
+                    className={`rounded-sm px-1 text-micro ${
                       op === value ? 'bg-brand text-on-brand' : 'text-ink-subtle hover:text-ink'
                     }`}
                   >
@@ -222,7 +222,7 @@ export default async function AuditPage({
             <TR key={row.id}>
               <TD className="whitespace-nowrap">
                 <span className="text-ink">{formatRelative(row.at, locale, now)}</span>
-                <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
+                <span className="mt-0.5 block text-caption text-ink-subtle">
                   {formatDateTime(row.at, locale, timeZone)}
                 </span>
               </TD>
@@ -231,7 +231,7 @@ export default async function AuditPage({
               </TD>
               <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
                 {row.tableName}
-                <span className="block font-sans text-[0.75rem] text-ink-muted md:hidden">
+                <span className="block font-sans text-caption text-ink-muted md:hidden">
                   {(locale === 'ar' && row.principalNameAr
                     ? row.principalNameAr
                     : row.principalName) ?? t('system')}
@@ -243,14 +243,14 @@ export default async function AuditPage({
                     ? row.principalNameAr
                     : row.principalName) ?? t('system')}
                 </span>
-                <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
+                <span className="mt-0.5 block text-caption text-ink-subtle">
                   {row.principalType}
                 </span>
               </TD>
               <TD priority="low" className="ref whitespace-nowrap text-ink-muted">
                 {row.branchCode ?? '—'}
               </TD>
-              <TD priority="low" className="ref max-w-40 truncate text-[0.75rem] text-ink-subtle">
+              <TD priority="low" className="ref max-w-40 truncate text-caption text-ink-subtle">
                 {row.rowId ?? '—'}
               </TD>
               <TD priority="low" className="ref whitespace-nowrap text-ink-subtle">

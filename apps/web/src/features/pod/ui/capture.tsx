@@ -241,7 +241,7 @@ export function PodCaptureForm({
         <button
           type="button"
           onClick={clear}
-          className="mt-1.5 inline-flex items-center gap-1 text-[0.75rem] font-medium text-ink-muted hover:text-ink"
+          className="mt-1.5 inline-flex items-center gap-1 text-caption font-medium text-ink-muted hover:text-ink"
         >
           <Icon name="close" size={12} />
           {t('clearSignature')}
@@ -260,11 +260,11 @@ export function PodCaptureForm({
           multiple
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
-          className="block w-full rounded-sm border border-line bg-surface px-3 py-2 text-[0.875rem] text-ink file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken file:px-3 file:py-1.5 file:text-[0.8125rem] file:font-medium file:text-ink"
+          className="block w-full rounded-sm border border-line bg-surface px-3 py-2 text-body text-ink file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken file:px-3 file:py-1.5 file:text-body-sm file:font-medium file:text-ink"
         />
       </Field>
 
-      <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+      <label className="flex items-center gap-2 text-body text-ink">
         <input
           type="checkbox"
           name="hasException"
@@ -297,7 +297,7 @@ export function PodCaptureForm({
         error={state.errors?.notes}
       />
 
-      <p className="text-[0.75rem] text-ink-subtle">
+      <p className="text-caption text-ink-subtle">
         {locationState === 'got'
           ? t('locationCaptured', { accuracy: position?.acc ?? '' })
           : locationState === 'denied'

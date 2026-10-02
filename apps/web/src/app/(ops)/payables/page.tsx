@@ -181,10 +181,10 @@ export default async function PayablesPage({
                         >
                           {row.reference}
                         </Link>
-                        <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                        <span className="mt-0.5 block text-micro text-ink-subtle">
                           {formatDate(row.invoiceDate, locale, timeZone)}
                         </span>
-                        <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                        <span className="block text-caption text-ink-muted md:hidden">
                           {row.partnerName}
                         </span>
                       </TD>
@@ -197,7 +197,7 @@ export default async function PayablesPage({
                           locale={locale}
                         />
                         {row.dueOn ? (
-                          <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
+                          <span className="block text-micro text-ink-subtle md:hidden">
                             {t('due')} {formatDate(row.dueOn, locale, timeZone)}
                           </span>
                         ) : null}
@@ -255,8 +255,8 @@ export default async function PayablesPage({
       */}
       <Card className="mt-4" padding="none">
         <div className="p-5 pb-3">
-          <h2 className="text-[0.9375rem] font-semibold text-ink">{t('paymentsTitle')}</h2>
-          <p className="mt-1 text-[0.8125rem] text-ink-muted">{t('paymentsHint')}</p>
+          <h2 className="text-title font-semibold text-ink">{t('paymentsTitle')}</h2>
+          <p className="mt-1 text-body-sm text-ink-muted">{t('paymentsHint')}</p>
         </div>
 
         {openPayments.length === 0 ? (
@@ -286,7 +286,7 @@ export default async function PayablesPage({
                     <TD className="font-medium text-ink">
                       {payment.partnerName}
                       {payment.paidOn ? (
-                        <span className="block text-[0.6875rem] font-normal text-ink-subtle md:hidden">
+                        <span className="block text-micro font-normal text-ink-subtle md:hidden">
                           {formatDate(new Date(payment.paidOn), locale, timeZone)}
                         </span>
                       ) : null}
@@ -317,7 +317,7 @@ export default async function PayablesPage({
                         dialog whose only select is empty is worse than none.
                       */}
                       {bills.length === 0 ? (
-                        <span className="text-[0.75rem] text-ink-subtle">{t('noOpenBills')}</span>
+                        <span className="text-caption text-ink-subtle">{t('noOpenBills')}</span>
                       ) : (
                         <AllocatePaymentDialog
                           paymentId={payment.id}

@@ -240,17 +240,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {/* The totals, derived from the lines rather than stored beside
                   them — so the header cannot drift from what it sums. */}
               <dl className="flex flex-col gap-2 border-t border-line px-5 py-4">
-                <div className="flex justify-between text-[0.875rem]">
+                <div className="flex justify-between text-body">
                   <dt className="text-ink-muted">{t('subtotal')}</dt>
                   <dd className="numeric text-ink">{money(invoice.subtotal)}</dd>
                 </div>
-                <div className="flex justify-between text-[0.875rem]">
+                <div className="flex justify-between text-body">
                   <dt className="text-ink-muted">
                     {t('taxAt', { rate: Number(invoice.taxRatePercent) })}
                   </dt>
                   <dd className="numeric text-ink">{money(invoice.taxAmount)}</dd>
                 </div>
-                <div className="flex justify-between border-t border-line pt-2 text-[0.9375rem] font-semibold">
+                <div className="flex justify-between border-t border-line pt-2 text-title font-semibold">
                   <dt className="text-ink">{t('total')}</dt>
                   <dd className="numeric text-ink">{money(invoice.total)}</dd>
                 </div>
@@ -278,10 +278,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </dl>
             {invoice.notes ? (
               // Free text, in whatever language it was typed: its own direction.
-              <p
-                dir="auto"
-                className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted"
-              >
+              <p dir="auto" className="mt-4 border-t border-line pt-4 text-body-sm text-ink-muted">
                 {invoice.notes}
               </p>
             ) : null}
@@ -305,15 +302,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     className="flex items-center justify-between gap-3 px-5 py-3"
                   >
                     <div className="min-w-0">
-                      <p className="ref numeric truncate text-[0.8125rem] text-ink">
+                      <p className="ref numeric truncate text-body-sm text-ink">
                         {allocation.reference ?? t('noReference')}
                       </p>
-                      <p className="text-[0.75rem] text-ink-subtle">
+                      <p className="text-caption text-ink-subtle">
                         {formatDate(new Date(allocation.receivedOn), locale, timeZone)} ·{' '}
                         {tp(`methods.${allocation.method}` as 'methods.cash')}
                       </p>
                     </div>
-                    <span className="numeric shrink-0 text-[0.875rem] font-semibold text-positive">
+                    <span className="numeric shrink-0 text-body font-semibold text-positive">
                       {money(allocation.amount)}
                     </span>
                   </li>

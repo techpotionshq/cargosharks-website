@@ -91,7 +91,7 @@ export function Register({
           {summary.map((item) => (
             <div key={item.label} className="flex items-baseline gap-2">
               <dt className="eyebrow">{item.label}</dt>
-              <dd className="numeric text-[1.0625rem] font-semibold text-ink">{item.value}</dd>
+              <dd className="numeric text-heading font-semibold text-ink">{item.value}</dd>
             </div>
           ))}
         </dl>
@@ -138,7 +138,7 @@ export function Register({
                     idea. 40px tall on a phone, where these are thumb targets.
                   */
                   className={[
-                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] transition-colors max-md:h-10',
+                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-body-sm transition-colors max-md:h-10',
                     filter.active
                       ? 'border-accent/30 bg-accent-soft font-semibold text-accent'
                       : 'border-line bg-surface font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
@@ -147,7 +147,7 @@ export function Register({
                   {filter.label}
                   {filter.count !== undefined ? (
                     <span
-                      className={`numeric text-[0.75rem] ${
+                      className={`numeric text-caption ${
                         filter.active ? 'text-accent' : 'text-ink-subtle'
                       }`}
                     >

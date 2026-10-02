@@ -113,7 +113,7 @@ export async function JobLedgerCard({
             the browser's search, the two ran together as "KWD 0.000not priced
             yet" (U6).
           */}{' '}
-          <span className="ms-1 text-[0.75rem] font-normal text-ink-subtle">
+          <span className="ms-1 text-caption font-normal text-ink-subtle">
             {margin.grossPercent === null
               ? t('unpriced')
               : formatPercent(Number(margin.grossPercent.toString()), locale)}
@@ -125,7 +125,7 @@ export async function JobLedgerCard({
       </dl>
 
       {under ? (
-        <p className="border-b border-line bg-critical-soft px-5 py-2.5 text-[0.8125rem] text-critical">
+        <p className="border-b border-line bg-critical-soft px-5 py-2.5 text-body-sm text-critical">
           {t('belowFloor', { floor: trimDecimal(ledger.marginFloorPercent) ?? '0' })}
         </p>
       ) : null}
@@ -178,7 +178,7 @@ export async function JobLedgerCard({
                     </span>
                     <span className="font-medium">{line.chargeTypeName}</span>
                     {line.description ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-0.5 block text-micro text-ink-subtle">
                         {line.description}
                       </span>
                     ) : null}
@@ -188,7 +188,7 @@ export async function JobLedgerCard({
                       rather than by a join somebody has to think of.
                     */}
                     {line.sourceKind ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-0.5 block text-micro text-ink-subtle">
                         {isKnownSource(line.sourceKind)
                           ? t(`source.${line.sourceKind}`)
                           : line.sourceKind}
@@ -213,7 +213,7 @@ export async function JobLedgerCard({
                   <TD>
                     <Badge tone={verdict.tone}>{t(`match.${verdict.key}` as 'match.agreed')}</Badge>
                     {line.matchCount > 0 ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle tabular-nums">
+                      <span className="mt-0.5 block text-micro text-ink-subtle tabular-nums">
                         {display(line.matchedAmount, line.currency, locale)}
                       </span>
                     ) : null}
@@ -221,7 +221,7 @@ export async function JobLedgerCard({
                   {mayWrite ? (
                     <TD priority="low" align="end">
                       {frozen ? (
-                        <span className="text-[0.6875rem] text-ink-subtle">
+                        <span className="text-micro text-ink-subtle">
                           {t(line.isBilled ? 'frozenBilled' : 'frozenMatched')}
                         </span>
                       ) : (
@@ -273,9 +273,9 @@ function Figure({
 
   return (
     <div className="bg-surface px-5 py-3.5">
-      <dt className="text-[0.75rem] font-medium text-ink-muted">{label}</dt>
-      <dd className={`mt-1 text-[1.0625rem] font-semibold tabular-nums ${colour}`}>{children}</dd>
-      {hint ? <p className="mt-0.5 text-[0.6875rem] text-ink-subtle">{hint}</p> : null}
+      <dt className="text-caption font-medium text-ink-muted">{label}</dt>
+      <dd className={`mt-1 text-heading font-semibold tabular-nums ${colour}`}>{children}</dd>
+      {hint ? <p className="mt-0.5 text-micro text-ink-subtle">{hint}</p> : null}
     </div>
   )
 }

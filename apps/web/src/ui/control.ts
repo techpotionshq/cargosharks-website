@@ -49,15 +49,15 @@ export const CONTROL_REST = `border-line-strong hover:border-ink-subtle ${FOCUS_
 export const CONTROL_BAD = `border-critical bg-critical-soft/30 ${FOCUS_OUTLINE}`
 
 /** The standard field: 40px, which is also the smallest comfortable tap target. */
-export const CONTROL = `${CONTROL_BASE} h-10 px-3 text-[0.875rem] ${CONTROL_REST}`
+export const CONTROL = `${CONTROL_BASE} h-10 px-3 text-body ${CONTROL_REST}`
 
-export const CONTROL_INVALID = `${CONTROL_BASE} h-10 px-3 text-[0.875rem] ${CONTROL_BAD}`
+export const CONTROL_INVALID = `${CONTROL_BASE} h-10 px-3 text-body ${CONTROL_BAD}`
 
 /**
  * The search box a register or the top bar carries — a step quieter than a
  * form field, with room at the inline start for the magnifier.
  */
-export const SEARCH_CONTROL = `${CONTROL_BASE} h-10 ps-8 pe-3 text-[0.8125rem] ${CONTROL_REST}`
+export const SEARCH_CONTROL = `${CONTROL_BASE} h-10 ps-8 pe-3 text-body-sm ${CONTROL_REST}`
 
 // --- buttons ----------------------------------------------------------------
 
@@ -88,9 +88,9 @@ export const BUTTON_VARIANT = {
   floor to 40px without changing the desktop rhythm at all.
 */
 export const BUTTON_SIZE = {
-  sm: 'h-8 max-md:h-10 px-2.5 text-[0.8125rem] gap-1.5',
-  md: 'h-9 max-md:h-10 px-3.5 text-[0.875rem] gap-2',
-  lg: 'h-11 px-5 text-[0.9375rem] gap-2',
+  sm: 'h-8 max-md:h-10 px-2.5 text-body-sm gap-1.5',
+  md: 'h-9 max-md:h-10 px-3.5 text-body gap-2',
+  lg: 'h-11 px-5 text-title gap-2',
 } as const
 
 export type ButtonVariant = keyof typeof BUTTON_VARIANT
@@ -120,8 +120,8 @@ export function buttonClass(
  * a server component, and it needs the string, not a client reference to it.
  */
 export const MENU_ITEM =
-  'flex h-10 w-full items-center gap-2.5 rounded-sm px-3 text-start text-[0.875rem] font-medium whitespace-nowrap text-ink transition-colors hover:bg-surface-sunken focus-visible:bg-surface-sunken'
+  'flex h-10 w-full items-center gap-2.5 rounded-sm px-3 text-start text-body font-medium whitespace-nowrap text-ink transition-colors hover:bg-surface-sunken focus-visible:bg-surface-sunken'
 
 /** The same row for a destructive move — cancel, void. */
 export const MENU_ITEM_DANGER =
-  'flex h-10 w-full items-center gap-2.5 rounded-sm px-3 text-start text-[0.875rem] font-medium whitespace-nowrap text-critical transition-colors hover:bg-critical-soft focus-visible:bg-critical-soft'
+  'flex h-10 w-full items-center gap-2.5 rounded-sm px-3 text-start text-body font-medium whitespace-nowrap text-critical transition-colors hover:bg-critical-soft focus-visible:bg-critical-soft'

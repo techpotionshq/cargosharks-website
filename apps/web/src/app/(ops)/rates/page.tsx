@@ -239,7 +239,7 @@ export default async function RatesPage({
                     {row.marginPct === null ? (
                       // Unknown, not zero. A missing sell card is a gap in the
                       // rate book, and showing it as 0% hides that.
-                      <span className="text-[0.75rem] text-ink-subtle">{t('noSellCard')}</span>
+                      <span className="text-caption text-ink-subtle">{t('noSellCard')}</span>
                     ) : (
                       <span
                         className={

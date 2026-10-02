@@ -98,7 +98,7 @@ export default async function SettlementsPage({
                     >
                       {row.reference}
                     </Link>
-                    <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                    <span className="block text-caption text-ink-muted md:hidden">
                       {row.partnerName}
                     </span>
                   </TD>

@@ -53,7 +53,7 @@ function Swatch({ color, label }: { readonly color: string; readonly label: stri
         style={{ backgroundColor: color }}
         title={color}
       />
-      <p className="numeric mt-1 truncate text-[0.625rem] text-ink-subtle">{label}</p>
+      <p className="numeric mt-1 truncate text-micro text-ink-subtle">{label}</p>
     </div>
   )
 }
@@ -198,7 +198,7 @@ export default async function BrandPage() {
               />
             ))}
           </div>
-          <p className="mt-4 text-[0.75rem] text-ink-muted">
+          <p className="mt-4 text-caption text-ink-muted">
             Reserved for state. A chart series never wears one of these.
           </p>
         </Card>
@@ -214,7 +214,7 @@ export default async function BrandPage() {
               />
             ))}
           </div>
-          <p className="mt-4 text-[0.75rem] text-ink-muted">
+          <p className="mt-4 text-caption text-ink-muted">
             Assigned in order, never cycled. Validated for colour-blind separation and surface
             contrast in both themes.
           </p>
@@ -232,13 +232,13 @@ export default async function BrandPage() {
             />
           </div>
           <div className="w-full overflow-x-auto border-t border-line">
-            <table className="w-full border-collapse text-[0.8125rem]">
+            <table className="w-full border-collapse text-body-sm">
               <thead>
                 <tr className="border-b border-line">
-                  <th className="px-3 py-2.5 text-start md:px-5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('variable')}
                   </th>
-                  <th className="px-3 py-2.5 text-start md:px-5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('value')}
                   </th>
                 </tr>
@@ -265,25 +265,25 @@ export default async function BrandPage() {
           <dl className="mt-5 flex flex-col gap-4">
             <div>
               <dt className="eyebrow mb-1">sans</dt>
-              <dd className="font-sans text-[1.125rem] text-ink">
+              <dd className="font-sans text-heading text-ink">
                 Shuwaikh → Jebel Ali · 1,284.500 KWD
               </dd>
             </div>
             <div>
               <dt className="eyebrow mb-1">arabic</dt>
-              <dd className="font-arabic text-[1.125rem] text-ink" lang="ar" dir="rtl">
+              <dd className="font-arabic text-heading text-ink" lang="ar" dir="rtl">
                 الشويخ ← جبل علي · التخليص الجمركي
               </dd>
             </div>
             <div>
               <dt className="eyebrow mb-1">mono</dt>
-              <dd className="ref numeric text-[1.125rem] text-ink">ONEU0413471 · KWI-2026-01041</dd>
+              <dd className="ref numeric text-heading text-ink">ONEU0413471 · KWI-2026-01041</dd>
             </div>
           </dl>
 
           <div className="mt-5 border-t border-line pt-4">
             <p className="eyebrow mb-2">{t('referenceData')}</p>
-            <p className="text-[0.8125rem] text-ink-muted">{t('referenceDataHint')}</p>
+            <p className="text-body-sm text-ink-muted">{t('referenceDataHint')}</p>
           </div>
         </Card>
       </Grid>

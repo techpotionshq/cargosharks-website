@@ -196,7 +196,7 @@ export function AssistantDock({
           <Icon name="menu" className="h-4 w-4" />
         </button>
 
-        <h2 className="me-auto truncate text-[0.875rem] font-semibold text-ink">{labels.title}</h2>
+        <h2 className="me-auto truncate text-body font-semibold text-ink">{labels.title}</h2>
 
         <button
           type="button"
@@ -336,9 +336,7 @@ export function ThreadList({
           ))}
         </ul>
       ) : threads.length === 0 ? (
-        <p className="px-4 py-4 text-[0.8125rem] leading-relaxed text-ink-muted">
-          {labels.noThreads}
-        </p>
+        <p className="px-4 py-4 text-body-sm leading-relaxed text-ink-muted">{labels.noThreads}</p>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {threads.map((thread) => {
@@ -364,10 +362,8 @@ export function ThreadList({
                       : 'text-ink-muted hover:bg-surface/70 hover:text-ink',
                   ].join(' ')}
                 >
-                  <span className="min-w-0 truncate text-[0.8125rem] font-medium">
-                    {thread.title}
-                  </span>
-                  <span className="numeric ps-0 text-[0.6875rem] text-ink-subtle">
+                  <span className="min-w-0 truncate text-body-sm font-medium">{thread.title}</span>
+                  <span className="numeric ps-0 text-micro text-ink-subtle">
                     {when(thread.lastMessageAt, locale)}
                   </span>
                 </button>

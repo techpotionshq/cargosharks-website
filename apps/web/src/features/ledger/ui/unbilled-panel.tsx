@@ -92,7 +92,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
               <TR key={row.jobId}>
                 <TD className="ref">
                   {row.reference}
-                  <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
+                  <span className="block text-micro text-ink-subtle md:hidden">
                     {formatDate(row.oldestAt, lang, timeZone)}
                   </span>
                 </TD>
@@ -118,7 +118,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
                   {billable && !mixed ? (
                     <BillJobButton jobId={row.jobId} label={t('bill')} />
                   ) : mixed ? (
-                    <span className="text-[0.75rem] text-ink-subtle">{t('mixedCurrency')}</span>
+                    <span className="text-caption text-ink-subtle">{t('mixedCurrency')}</span>
                   ) : null}
                 </TD>
               </TR>

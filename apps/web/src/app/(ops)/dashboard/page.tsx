@@ -122,13 +122,13 @@ export default async function DashboardPage() {
           wrong?" before they have read a single figure. */}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+          <h1 className="font-display text-display leading-tight font-semibold tracking-tight text-ink">
             {t(`greeting.${partOfDay(nowDate, 'Asia/Kuwait')}`, { name: firstName })}
           </h1>
-          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.9375rem] text-ink-muted">
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-title text-ink-muted">
             {needsAction > 0 ? (
               <>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-critical-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-critical">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-critical-soft px-2.5 py-1 text-body-sm font-semibold text-critical">
                   <Icon name="alert" size={13} weight="fill" />
                   {t('needsYou', { count: needsAction })}
                 </span>
@@ -192,7 +192,7 @@ export default async function DashboardPage() {
             </>
           }
         >
-          <p className="text-[0.8125rem] text-ink-muted">
+          <p className="text-body-sm text-ink-muted">
             <span className="numeric font-semibold text-ink">{overview.enquiries.dueToday}</span>{' '}
             {t('dueTodayCaption')}
           </p>
@@ -316,10 +316,10 @@ export default async function DashboardPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="text-[0.875rem] font-medium text-ink">
+                          <span className="text-body font-medium text-ink">
                             {nameOf(exception.nameEn, exception.nameAr)}
                           </span>
-                          <span className="ref numeric text-[0.75rem] font-medium text-ink">
+                          <span className="ref numeric text-caption font-medium text-ink">
                             {exception.jobReference}
                           </span>
                         </div>
@@ -327,7 +327,7 @@ export default async function DashboardPage() {
                             held for inspection, broker notified". Falling back
                             to the customer name keeps the row informative when
                             nobody has written one. */}
-                        <p className="mt-0.5 truncate text-[0.8125rem] text-ink-muted">
+                        <p className="mt-0.5 truncate text-body-sm text-ink-muted">
                           {exception.description ??
                             nameOf(exception.customerName, exception.customerNameAr)}
                         </p>
@@ -337,7 +337,7 @@ export default async function DashboardPage() {
                           {tJob(`severities.${exception.severity}` as 'severities.high')}
                         </Badge>
                         <span
-                          className={`numeric text-[0.6875rem] ${
+                          className={`numeric text-micro ${
                             overdue ? 'font-medium text-critical' : 'text-ink-subtle'
                           }`}
                         >
@@ -374,16 +374,16 @@ export default async function DashboardPage() {
                   <Icon name={modeIcon(nextArrival.mode)} size={18} />
                 </span>
                 <div className="min-w-0">
-                  <p className="ref numeric truncate text-[0.875rem] font-semibold text-ink">
+                  <p className="ref numeric truncate text-body font-semibold text-ink">
                     {nextArrival.reference}
                   </p>
-                  <p className="truncate text-[0.75rem] text-ink-muted">
+                  <p className="truncate text-caption text-ink-muted">
                     {nameOf(nextArrival.customerName, nextArrival.customerNameAr)}
                   </p>
                 </div>
               </div>
 
-              <p className="mt-3 text-[0.8125rem] text-ink-muted">
+              <p className="mt-3 text-body-sm text-ink-muted">
                 <Lane
                   origin={nameOf(nextArrival.originName, nextArrival.originNameAr)}
                   destination={nameOf(nextArrival.destinationName, nextArrival.destinationNameAr)}
@@ -454,7 +454,7 @@ export default async function DashboardPage() {
                 superlative off a bar chart is a skill; stating it is free. */}
             <div className="lg:border-s lg:border-line lg:ps-6">
               {intakeDelta === null ? (
-                <p className="text-[0.8125rem] text-ink-subtle">{t('noBaseline')}</p>
+                <p className="text-body-sm text-ink-subtle">{t('noBaseline')}</p>
               ) : (
                 <Delta value={intakeDelta} goodWhen="up" caption={t('vsLastWeek')} />
               )}
@@ -521,15 +521,15 @@ export default async function DashboardPage() {
                     >
                       <ToneDot tone={tone} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.8125rem] font-medium text-ink">
+                        <p className="truncate text-body-sm font-medium text-ink">
                           {nameOf(enquiry.customerName, enquiry.customerNameAr)}
                         </p>
-                        <p className="truncate text-[0.6875rem] text-ink-subtle">
+                        <p className="truncate text-micro text-ink-subtle">
                           {enquiry.owner ?? tc('unassigned')}
                         </p>
                       </div>
                       <span
-                        className={`numeric shrink-0 text-[0.75rem] font-medium ${
+                        className={`numeric shrink-0 text-caption font-medium ${
                           tone === 'critical' ? 'text-critical' : 'text-ink-muted'
                         }`}
                       >
@@ -552,9 +552,9 @@ export default async function DashboardPage() {
           title={t('avgMargin')}
           explain={t('avgMarginExplain')}
         >
-          <p className="numeric font-display text-[2.5rem] leading-none font-semibold tracking-tight text-ink">
+          <p className="numeric font-display text-hero leading-none font-semibold tracking-tight text-ink">
             {overview.quotes.averageMarginPct.toFixed(1)}
-            <span className="text-[1.25rem] text-ink-subtle">%</span>
+            <span className="text-headline leading-none text-ink-subtle">%</span>
           </p>
           <Readout
             className="mt-4 border-t border-line pt-4"
@@ -586,7 +586,7 @@ export default async function DashboardPage() {
             }))}
           />
           {biggestMode ? (
-            <p className="mt-4 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 text-body-sm text-ink-muted">
               {t('modeReadout', {
                 mode: tMode(biggestMode.mode),
                 share: Math.round((biggestMode.count / Math.max(overview.jobs.live, 1)) * 100),

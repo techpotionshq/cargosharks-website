@@ -119,8 +119,8 @@ export default async function ApiKeysPage() {
                     <span className="block font-medium text-ink">{key.name}</span>
                     {/* The prefix is stored in clear precisely so a key is
                         identifiable in a list without being usable from one. */}
-                    <span className="ref text-[0.6875rem] text-ink-subtle">{key.prefix}…</span>
-                    <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                    <span className="ref text-micro text-ink-subtle">{key.prefix}…</span>
+                    <span className="block text-caption text-ink-muted md:hidden">
                       {(locale === 'ar' && key.customerNameAr) || key.customerName || '—'}
                     </span>
                   </TD>
@@ -156,7 +156,7 @@ export default async function ApiKeysPage() {
         </TableShell>
       )}
 
-      <p className="mt-4 text-[0.75rem] text-ink-subtle">{t('footnote')}</p>
+      <p className="mt-4 text-caption text-ink-subtle">{t('footnote')}</p>
 
       {/*
         The other half of integration — FR-AD-06.
@@ -171,8 +171,8 @@ export default async function ApiKeysPage() {
         landed nothing for a week — this is where somebody sees why.
       */}
       <div className="mt-8">
-        <h2 className="text-[1.0625rem] font-semibold text-ink">{t('webhooks')}</h2>
-        <p className="mt-1 mb-4 text-[0.8125rem] text-ink-muted">{t('webhooksHint')}</p>
+        <h2 className="text-heading font-semibold text-ink">{t('webhooks')}</h2>
+        <p className="mt-1 mb-4 text-body-sm text-ink-muted">{t('webhooksHint')}</p>
 
         <div className="mb-5">
           <CreateWebhookForm
@@ -220,7 +220,7 @@ export default async function ApiKeysPage() {
                       endpoint.customerName ||
                       t('everyCustomer')}
                   </TD>
-                  <TD priority="low" className="text-[0.75rem] text-ink-muted">
+                  <TD priority="low" className="text-caption text-ink-muted">
                     {endpoint.events.length === 0 ? t('allEvents') : endpoint.events.join(', ')}
                   </TD>
                   <TD align="end" numeric className="whitespace-nowrap">
@@ -245,7 +245,7 @@ export default async function ApiKeysPage() {
                       <span className="flex flex-col gap-0.5">
                         <Badge tone="muted">{t('off')}</Badge>
                         {endpoint.disabledReason ? (
-                          <span className="text-[0.6875rem] text-ink-subtle">
+                          <span className="text-micro text-ink-subtle">
                             {disabledReasonText(endpoint.disabledReason)}
                           </span>
                         ) : null}

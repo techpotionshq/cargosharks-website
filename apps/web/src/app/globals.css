@@ -98,6 +98,41 @@
   --font-mono: var(--qb-font-mono);
   --font-display: var(--qb-font-display);
 
+  /*
+   * The type scale. Ten named steps where there were fourteen arbitrary
+   * `text-[…rem]` sizes and a handful of Tailwind's own names, so a size is
+   * now a decision (a caption, a card title) rather than a number typed in
+   * that a neighbouring screen typed slightly differently. Each step sits
+   * where the arbitrary sizes clustered: every old size is within 1px of the
+   * step it became, which is why `headline` and `display-lg` are 21px and
+   * 29px — the midpoints of the 20/22 and 28/30 pairs they replaced.
+   *
+   * Line heights: the text steps keep 1.5, the height they inherited from the
+   * root before they were named, so naming them moved nothing; the display
+   * steps tighten, matching the `text-2xl`/`text-3xl` they replaced. An
+   * explicit `leading-*` still wins over all of them.
+   */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.5;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.5;
+  --text-body-sm: 0.8125rem;
+  --text-body-sm--line-height: 1.5;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.5;
+  --text-title: 0.9375rem;
+  --text-title--line-height: 1.5;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.5;
+  --text-headline: 1.3125rem;
+  --text-headline--line-height: 1.5;
+  --text-display: 1.5rem;
+  --text-display--line-height: calc(2 / 1.5);
+  --text-display-lg: 1.8125rem;
+  --text-display-lg--line-height: 1.25;
+  --text-hero: 2.5rem;
+  --text-hero--line-height: 1.1;
+
   --radius-card: var(--qb-radius);
   --radius-sm: var(--qb-radius-sm);
   --radius-lg: var(--qb-radius-lg);
@@ -257,7 +292,7 @@
    * the dashboard reads as one system rather than a pile of panels.
    */
   .eyebrow {
-    font-size: 0.6875rem;
+    font-size: var(--text-micro);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -525,8 +560,8 @@
   letter-spacing: 0;
 }
 
-[lang='ar'] .uppercase:is(.text-\[0\.625rem\], .text-\[0\.6875rem\]) {
-  font-size: 0.75rem;
+[lang='ar'] .uppercase.text-micro {
+  font-size: var(--text-caption);
 }
 
 /*
@@ -624,7 +659,7 @@ main:has(.qb-viewport-page) {
 .qb-map .maplibregl-ctrl-attrib {
   background-color: color-mix(in oklab, var(--qb-surface) 82%, transparent);
   color: var(--qb-ink-subtle);
-  font-size: 0.6875rem;
+  font-size: var(--text-micro);
 }
 
 .qb-map .maplibregl-ctrl-attrib a {
@@ -636,7 +671,7 @@ main:has(.qb-viewport-page) {
   color: var(--qb-surface);
   border-radius: var(--radius-sm);
   padding: 0.375rem 0.625rem;
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
   font-weight: 500;
   box-shadow: var(--shadow-pop);
 }

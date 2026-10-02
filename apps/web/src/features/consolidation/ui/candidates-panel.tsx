@@ -66,7 +66,7 @@ export async function CandidatesPanel() {
           <li key={cluster.key} className="flex flex-wrap items-start gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[0.9375rem] font-semibold text-ink">
+                <span className="text-title font-semibold text-ink">
                   {/* The drawn arrow mirrors; a typed U+2192 points back at the
                       origin in Arabic. */}
                   <Lane
@@ -86,13 +86,13 @@ export async function CandidatesPanel() {
                   <Badge tone="caution">{t('overflows')}</Badge>
                 )}
                 {cluster.fit ? (
-                  <span className="text-[0.75rem] text-ink-subtle">
+                  <span className="text-caption text-ink-subtle">
                     {t(`limitedBy.${cluster.fit.limitedBy}`)}
                   </span>
                 ) : null}
               </div>
 
-              <p className="mt-1 text-[0.8125rem] text-ink-muted">
+              <p className="mt-1 text-body-sm text-ink-muted">
                 {t('summary', {
                   shipments: cluster.shipments.length,
                   customers: cluster.customerCount,
@@ -115,7 +115,7 @@ export async function CandidatesPanel() {
                 )}
               </p>
 
-              <p className="mt-1 text-[0.75rem] text-ink-subtle" dir="auto">
+              <p className="mt-1 text-caption text-ink-subtle" dir="auto">
                 {cluster.shipments
                   .map((s) => `${s.reference}${s.customerName ? ` (${s.customerName})` : ''}`)
                   .join(' · ')}

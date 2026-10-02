@@ -67,7 +67,7 @@ export function Notice({
         block instead of marking where it begins.
       */
       className={[
-        'flex items-start gap-2 rounded-card border px-4 py-3 text-[0.875rem]',
+        'flex items-start gap-2 rounded-card border px-4 py-3 text-body',
         TONE_CLASS[tone],
         className,
       ]

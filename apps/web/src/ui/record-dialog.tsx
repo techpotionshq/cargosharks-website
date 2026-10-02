@@ -341,7 +341,7 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
     return (
       <p
         className={[
-          'col-span-12 flex items-start gap-2 rounded-sm px-3 py-2 text-[0.8125rem]',
+          'col-span-12 flex items-start gap-2 rounded-sm px-3 py-2 text-body-sm',
           field.tone === 'caution'
             ? 'bg-caution-soft/60 text-caution'
             : 'bg-surface-sunken text-ink-muted',

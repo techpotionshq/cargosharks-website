@@ -78,9 +78,9 @@ export function FormSection({
   return (
     <section className="col-span-12">
       <div className="rule-title mb-3">
-        <h3 className="text-[0.8125rem] font-semibold tracking-wide text-ink uppercase">{title}</h3>
+        <h3 className="text-body-sm font-semibold tracking-wide text-ink uppercase">{title}</h3>
       </div>
-      {hint ? <p className="-mt-1 mb-3 text-[0.8125rem] text-ink-muted">{hint}</p> : null}
+      {hint ? <p className="-mt-1 mb-3 text-body-sm text-ink-muted">{hint}</p> : null}
       <FormGrid>{children}</FormGrid>
     </section>
   )
@@ -163,7 +163,7 @@ export function Field({ label, name, span = 6, hint, error, required, children }
     <div className={`${SPAN[span]} ${FIELD_BAND}`}>
       <label
         htmlFor={name}
-        className="mb-1.5 block text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase"
+        className="mb-1.5 block text-caption font-semibold tracking-wide text-ink-muted uppercase"
       >
         {label}
         {required ? (
@@ -177,13 +177,13 @@ export function Field({ label, name, span = 6, hint, error, required, children }
         <p
           id={describedBy}
           role="alert"
-          className="mt-1.5 flex items-center gap-1 text-[0.75rem] font-medium text-critical"
+          className="mt-1.5 flex items-center gap-1 text-caption font-medium text-critical"
         >
           <Icon name="alert" size={12} weight="fill" />
           {error}
         </p>
       ) : hint ? (
-        <p id={describedBy} className="mt-1.5 text-[0.75rem] text-ink-subtle">
+        <p id={describedBy} className="mt-1.5 text-caption text-ink-subtle">
           {hint}
         </p>
       ) : null}
@@ -274,7 +274,7 @@ export function Input({
       {suffix ? (
         <div className="relative">
           {control}
-          <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[0.75rem] font-medium text-ink-subtle">
+          <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-caption font-medium text-ink-subtle">
             {suffix}
           </span>
         </div>
@@ -368,7 +368,7 @@ export function Textarea({
         aria-describedby={describedBy(field)}
         className={[
           CONTROL_BASE,
-          'resize-y px-3 py-2 text-[0.875rem] leading-relaxed',
+          'resize-y px-3 py-2 text-body leading-relaxed',
           invalid ? CONTROL_BAD : CONTROL_REST,
         ].join(' ')}
       />
@@ -444,10 +444,8 @@ export function Switch({
           <span className="size-4 rounded-full bg-surface shadow-card transition-transform" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[0.875rem] font-medium text-ink">{label}</span>
-          {hint ? (
-            <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">{hint}</span>
-          ) : null}
+          <span className="block text-body font-medium text-ink">{label}</span>
+          {hint ? <span className="mt-0.5 block text-caption text-ink-subtle">{hint}</span> : null}
         </span>
       </label>
     </div>
@@ -493,10 +491,8 @@ export function ChoiceCards({
               className="sr-only"
             />
             {option.icon ? <Icon name={option.icon} size={18} className="text-ink-muted" /> : null}
-            <span className="text-[0.8125rem] font-medium text-ink">{option.label}</span>
-            {option.hint ? (
-              <span className="text-[0.6875rem] text-ink-subtle">{option.hint}</span>
-            ) : null}
+            <span className="text-body-sm font-medium text-ink">{option.label}</span>
+            {option.hint ? <span className="text-micro text-ink-subtle">{option.hint}</span> : null}
           </label>
         ))}
       </div>
@@ -512,7 +508,7 @@ export function FormError({ message }: { readonly message?: string }) {
   return (
     <div
       role="alert"
-      className="col-span-12 flex items-start gap-2 rounded-sm border border-critical/40 bg-critical-soft/60 px-3 py-2.5 text-[0.8125rem] text-critical"
+      className="col-span-12 flex items-start gap-2 rounded-sm border border-critical/40 bg-critical-soft/60 px-3 py-2.5 text-body-sm text-critical"
     >
       <Icon name="alert" size={15} className="mt-px shrink-0" />
       <span>{message}</span>
@@ -601,7 +597,7 @@ export function FileInput({
         className={controlClass(
           invalid,
           'py-1.5 file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken ' +
-            'file:px-3 file:py-1.5 file:text-[0.75rem] file:font-semibold file:text-ink-muted ' +
+            'file:px-3 file:py-1.5 file:text-caption file:font-semibold file:text-ink-muted ' +
             'hover:file:bg-line file:cursor-pointer',
         )}
       />
