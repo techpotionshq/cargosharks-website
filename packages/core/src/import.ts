@@ -525,6 +525,58 @@ export const phone: CellParser<string> = (raw) => {
   return cellOk(value)
 }
 
+/**
+ * A contact's phone number as it is stored: ASCII digits with an optional
+ * leading `+`, or null when it is not a number WhatsApp could match.
+ *
+ * The inbound matcher (`matchCustomerByPhone` in the service) compares numbers
+ * digits-only after dropping a `00` or `0` prefix, so punctuation never stopped
+ * a match, but two things did: Arabic-Indic digits, which a digits-only regex
+ * strips to nothing, and numbers shorter than the seven digits it refuses to
+ * match on. Both are settled here, at the door, so a number saved from the
+ * customer's page is one the matcher will find. A `00` international prefix
+ * becomes `+`, the same number written the way a person reads it.
+ */
+export function normalisePhone(raw: string): string | null {
+  const value = normaliseDigits(raw).trim()
+  if (!/^[+()\d][\d\s()+.-]{4,30}$/.test(value)) return null
+  const international = value.startsWith('+') || /^00/.test(value.replace(/[^\d]/g, ''))
+  let digits = value.replace(/[^\d]/g, '')
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  // Seven is the matcher's floor; fifteen is the longest E.164 number.
+  if (digits.length < 7 || digits.length > 15) return null
+  return international ? `+${digits}` : digits
+}
+
+/**
+ * The digits the inbound matcher compares a stored number on: every non-digit
+ * dropped, then a leading `00` or `0`. Mirrors the SQL in
+ * `matchCustomerByPhone`, so a screen can say "this number already belongs to
+ * another customer" by the same rule that would otherwise file their messages
+ * under nobody.
+ */
+export function phoneMatchKey(stored: string): string {
+  return normaliseDigits(stored)
+    .replace(/[^\d]/g, '')
+    .replace(/^0{1,2}/, '')
+}
+
+/**
+ * Whether one sender could match both stored numbers, by the matcher's rule:
+ * equal keys, or one at least seven digits long and the other the same number
+ * with a one-to-three digit country code in front. The matcher refuses a
+ * sender two customers share, so a clash is a number that matches nobody.
+ */
+export function phonesCollide(a: string, b: string): boolean {
+  const x = phoneMatchKey(a)
+  const y = phoneMatchKey(b)
+  if (x === '' || y === '') return false
+  if (x === y) return true
+  const [short, long] = x.length < y.length ? [x, y] : [y, x]
+  const gap = long.length - short.length
+  return short.length >= 7 && gap >= 1 && gap <= 3 && long.endsWith(short)
+}
+
 /** `optional(text())` — blank yields null instead of an error. */
 export const optional =
   <T>(parser: CellParser<T>): CellParser<T | null> =>

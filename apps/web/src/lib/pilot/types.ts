@@ -659,6 +659,19 @@ export interface CustomerDetail extends CustomerRow {
   }[]
 }
 
+/** Mirrors `CustomerContactRow` in `features/customers/queries.ts`. */
+export interface CustomerContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly role: string | null
+  readonly isActive: boolean
+  /** Joined to a portal login, whose address is changed on the login. */
+  readonly hasLogin: boolean
+}
+
 /** Mirrors `FormReference`. */
 export interface FormReference {
   readonly branches: { id: string; code: string; name: string; currency: string }[]

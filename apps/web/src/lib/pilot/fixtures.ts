@@ -75,6 +75,7 @@ import type {
   ConsolidationHouseRow,
   ConsolidationSummary,
   CreditOverrideRowLike,
+  CustomerContactRow,
   CustomerDetail,
   CustomerRow,
   CustomsRow,
@@ -3604,6 +3605,34 @@ export function pilotCustomer(id: string): CustomerDetail | null {
       },
     ],
   }
+}
+
+/**
+ * Serves `listCustomerContacts`.
+ *
+ * One buyer per customer with a Kuwaiti or Emirati mobile, written the way
+ * people type them, so the card shows what WhatsApp matching keys on.
+ */
+export function pilotCustomerContacts(id: string): CustomerContactRow[] {
+  const index = CUSTOMERS.findIndex((_, i) => customerId(i) === id)
+  if (index === -1) return []
+  const customer = CUSTOMERS[index]!
+  const domain = `${customer.code.toLowerCase()}.example`
+  return [
+    {
+      id: `contact-${String(index).padStart(2, '0')}-1`,
+      nameEn: 'Purchasing desk',
+      nameAr: 'قسم المشتريات',
+      email: `purchasing@${domain}`,
+      phone:
+        customer.country === 'AE'
+          ? `+97150${1000000 + index * 7919}`
+          : `+9655${1000000 + index * 7919}`,
+      role: 'Buyer',
+      isActive: true,
+      hasLogin: false,
+    },
+  ]
 }
 
 /** Serves `loadFormReference` — the branch and country lists a form needs. */

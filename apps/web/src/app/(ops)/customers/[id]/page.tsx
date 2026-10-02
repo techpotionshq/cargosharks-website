@@ -16,6 +16,7 @@ import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
 import { CustomerForm } from '@/features/customers/ui/customer-form'
 import { RetireCustomerDialog } from '@/features/customers/ui/dialogs'
+import { CustomerContactsCard } from '@/features/customers/ui/contacts-card'
 import { creditView } from '@/features/credit/queries'
 import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
@@ -181,6 +182,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </TableShell>
         </Card>
       ) : null}
+
+      {/* Who speaks for the customer, and the phone number WhatsApp matching
+          keys on (D3). */}
+      <CustomerContactsCard
+        customerId={id}
+        primaryBranchId={customer.primaryBranchId}
+        className="mb-4"
+      />
 
       {/* Who at this customer can sign in to the portal (A7). Renders only
           for somebody who may grant a login. */}
