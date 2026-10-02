@@ -241,7 +241,13 @@ export const RATE_EXTRACT_USER_PROMPT =
  * comparison *within* one deployment, which is the one the version exists to
  * make valid, is unaffected.
  */
-export const ASSISTANT_PROMPT_VERSION = 'assistant@3'
+/*
+  `assistant@4` (F77): quotations are readable — `search` covers them and
+  `get_quote` reports one with its margin — and rule 2 now forbids describing
+  a reference format. Asked about a quotation it could not see, the model had
+  explained the silence with a format it made up ("usually KWI-QUO-…").
+*/
+export const ASSISTANT_PROMPT_VERSION = 'assistant@4'
 
 /**
  * Resolved on first use, not at import.
@@ -289,7 +295,9 @@ export function assistantSystemPrompt(language: 'en' | 'ar'): string {
     '2. Answer from what the tools returned and nothing else. If a tool returned',
     '   nothing, say so plainly: "no shipments are in clearance" is a good answer.',
     '   Do not fill a gap with what is usually true of freight. Never write a',
-    '   reference, date or amount that does not appear in a tool result.',
+    '   reference, date or amount that does not appear in a tool result, and never',
+    '   say what a reference "usually looks like": if a search finds nothing, say',
+    '   you could not find that reference.',
     '',
     '   Earlier lookups in this conversation are shown with `retrievedAt`. Use them',
     '   for follow-ups about the same records; look again when the question needs',

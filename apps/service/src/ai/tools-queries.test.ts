@@ -588,4 +588,58 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       expect(listed.total).toBe(listed.rows.length)
     })
   })
+
+  /*
+    F77: asked for the margin on a quotation, the assistant searched, found
+    nothing — `search` never looked at quotes, whatever its description said —
+    and explained the silence with a reference format it made up.
+  */
+  describe('quotations', () => {
+    it('finds a quotation by its reference', async () => {
+      const reference = await quote('sent', day(10))
+
+      const result = (await runTool(actor, 'search', { query: reference })) as {
+        quotes: { reference: string }[]
+      }
+
+      expect(result.quotes.map((q) => q.reference)).toContain(reference)
+    })
+
+    it('reports a quotation with its margin, worked out on the stored decimals', async () => {
+      const reference = await quote('sent', day(10))
+
+      const result = (await runTool(actor, 'get_quote', { reference })) as {
+        found: boolean
+        quote: { totalSell: string; marginAmount: string; marginPercent: string }
+      }
+
+      expect(result.found).toBe(true)
+      expect(Number(result.quote.totalSell)).toBe(600)
+      expect(Number(result.quote.marginAmount)).toBe(200)
+      // 200 / 600, to one place — a string from SQL, never a float from here.
+      expect(result.quote.marginPercent).toBe('33.3')
+    })
+
+    it('says which quotations a fragment could mean rather than picking one', async () => {
+      await quote('sent', day(10))
+      await quote('sent', day(10))
+
+      const result = (await runTool(actor, 'get_quote', { reference: `${CODE}-Q` })) as {
+        found: boolean
+        ambiguous?: boolean
+        candidates?: string[]
+      }
+
+      expect(result.found).toBe(false)
+      expect(result.ambiguous).toBe(true)
+      expect(result.candidates!.length).toBeGreaterThan(1)
+    })
+
+    it('does not distinguish a missing quotation from one it cannot see', async () => {
+      const result = (await runTool(actor, 'get_quote', { reference: 'NO-SUCH-QUOTE' })) as {
+        found: boolean
+      }
+      expect(result.found).toBe(false)
+    })
+  })
 })

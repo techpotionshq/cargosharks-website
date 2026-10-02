@@ -300,6 +300,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
       'shipments.status': 'jobStatus',
       'shipments.mode': 'mode',
       'enquiries.status': 'enquiryStatus',
+      'quotes.status': 'quoteStatus',
       'invoices.status': 'invoiceStatus',
     },
     description:
@@ -415,6 +416,29 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
         },
       },
       ['number'],
+    ),
+  },
+  {
+    name: 'get_quote',
+    kind: 'read',
+    labels: { 'quote.status': 'quoteStatus' },
+    description:
+      'One quotation by its reference: status, version, the quoted total, the cost, the margin amount and percentage, the validity date, the customer and the enquiry it answers. Use for "what is the margin on this quote", "is this quote still valid" and any question about a named quotation.',
+    parameters: objectSchema(
+      {
+        reference: {
+          type: 'string',
+          /*
+            A real example, because the model copies the pattern of the ones it
+            is shown: with only KWI-JOB-… and KWI-INV-… in front of it, it told
+            a user that quotations "typically follow KWI-QUO-2026-XXXXX" — they
+            carry no branch prefix at all (F77).
+          */
+          description:
+            'The quotation reference, e.g. QUO-2026-00004 (quotations carry no branch prefix), exactly as the person or a tool gave it, or a distinctive part of it.',
+        },
+      },
+      ['reference'],
     ),
   },
   {
