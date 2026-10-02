@@ -137,8 +137,58 @@ export const DEFAULT_INTAKE_REQUIREMENTS: readonly IntakeRequirement[] = [
   { key: 'weightOrVolume', mode: 'sea_lcl', fields: ['grossWeightKg', 'volumeCbm'] },
   { key: 'weightOrVolume', mode: 'air', fields: ['grossWeightKg', 'volumeCbm'] },
   { key: 'weightOrVolume', mode: 'land', fields: ['grossWeightKg', 'volumeCbm'] },
-  { key: 'weight', mode: 'courier', fields: ['grossWeightKg'] },
+  // Keyed by the field, not 'weight': the settings form offers only the keys in
+  // INTAKE_REQUIREMENT_CHOICES, and a default it cannot show is one the first
+  // save of a branch's settings silently drops (live run, KWI lost courier).
+  { key: 'grossWeightKg', mode: 'courier', fields: ['grossWeightKg'] },
 ]
+
+/**
+ * The requirement choices the settings form offers, per mode, `all` meaning
+ * every mode.
+ *
+ * A fixed menu rather than free rows, because a requirement is only as good as
+ * the agent's ability to ask for it in a sentence: every key here has a phrase
+ * in both languages above. `weightOrVolume` is the one any-of choice, because
+ * "either figure" is how a shared-space rate is priced. It lives beside the
+ * defaults so a test can hold the two together: every default must be a
+ * choice, or saving a branch's settings drops it.
+ */
+export const INTAKE_REQUIREMENT_CHOICES: Readonly<Record<'all' | IntakeMode, readonly string[]>> = {
+  all: ['mode', 'origin', 'destination', 'commodity', 'readyOn', 'incoterm'],
+  sea_fcl: ['containerCount', 'containerType', 'pieces'],
+  sea_lcl: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
+  air: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
+  land: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
+  courier: ['weightOrVolume', 'grossWeightKg', 'pieces', 'dimensions'],
+}
+
+/** The fields a requirement choice stands for. */
+export function requirementChoiceFields(key: string): IntakeField[] {
+  if (key === 'weightOrVolume') return ['grossWeightKg', 'volumeCbm']
+  return (INTAKE_FIELDS as readonly string[]).includes(key) ? [key as IntakeField] : []
+}
+
+/**
+ * The form choice a stored requirement is shown as, or null if none fits.
+ *
+ * By key first, then by the fields it asks for, because rows written before a
+ * key was renamed (the courier default was 'weight' until the form and the
+ * defaults were made to agree) still exist in deployed databases, and a row
+ * the form cannot tick is one the next save retires without anyone choosing to.
+ */
+export function requirementChoiceFor(requirement: {
+  readonly key: string
+  readonly mode: string | null
+  readonly fields: readonly string[]
+}): string | null {
+  const scope = requirement.mode ?? 'all'
+  const choices: readonly string[] =
+    (INTAKE_REQUIREMENT_CHOICES as Record<string, readonly string[]>)[scope] ?? []
+  if (choices.includes(requirement.key)) return requirement.key
+  const wanted = [...requirement.fields].sort().join(',')
+  return choices.find((key) => requirementChoiceFields(key).sort().join(',') === wanted) ?? null
+}
 
 /**
  * The timing and patience settings, with the values a fresh deployment gets.

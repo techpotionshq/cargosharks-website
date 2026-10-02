@@ -16,6 +16,9 @@ import {
   DEFAULT_INTAKE_REQUIREMENTS,
   DEFAULT_INTAKE_SETTINGS,
   detectLanguage,
+  INTAKE_REQUIREMENT_CHOICES,
+  requirementChoiceFields,
+  requirementChoiceFor,
   evaluateCompleteness,
   isChitChat,
   listNaturally,
@@ -59,6 +62,24 @@ describe('completeness against the default requirements', () => {
     expect(keys({ ...base, mode: 'air' })).toEqual(['weightOrVolume'])
     expect(keys({ ...base, mode: 'air', volumeCbm: '1.2' })).toEqual([])
     expect(keys({ ...base, mode: 'sea_lcl', grossWeightKg: '800' })).toEqual([])
+  })
+
+  // The settings form saves only the choices it offers, so a default outside
+  // that menu is dropped the first time anyone saves a branch (live run: KWI
+  // lost the courier weight requirement).
+  it('offers every default requirement on the settings form, with the same fields', () => {
+    for (const requirement of DEFAULT_INTAKE_REQUIREMENTS) {
+      expect(INTAKE_REQUIREMENT_CHOICES[requirement.mode ?? 'all']).toContain(requirement.key)
+      expect(requirementChoiceFor(requirement)).toBe(requirement.key)
+      expect(requirementChoiceFields(requirement.key)).toEqual([...requirement.fields])
+    }
+  })
+
+  it('shows a row stored under the old courier key as its field choice', () => {
+    expect(
+      requirementChoiceFor({ key: 'weight', mode: 'courier', fields: ['grossWeightKg'] }),
+    ).toBe('grossWeightKg')
+    expect(requirementChoiceFor({ key: 'mystery', mode: 'courier', fields: ['origin'] })).toBe(null)
   })
 
   it('treats a blank value and an unknown mode as not stated', () => {

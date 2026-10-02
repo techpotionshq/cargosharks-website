@@ -11,7 +11,7 @@
  */
 
 import { getTranslations } from 'next-intl/server'
-import { INTAKE_SETTING_BOUNDS } from '@qabandi/core'
+import { INTAKE_SETTING_BOUNDS, requirementChoiceFor } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { canIn } from '@/lib/permissions'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
@@ -32,7 +32,14 @@ export async function IntakeSettingsDialog({ row }: { readonly row: IntakeSettin
     intakeFieldChoices(),
   ])
 
-  const required = new Set(row.requirements.map((r) => `${r.mode ?? 'all'}.${r.key}`))
+  // Matched to the menu by fields as well as key (`requirementChoiceFor`), so a
+  // row stored under an older key still shows ticked and survives the save.
+  const required = new Set(
+    row.requirements.flatMap((r) => {
+      const choice = requirementChoiceFor(r)
+      return choice ? [`${r.mode ?? 'all'}.${choice}`] : []
+    }),
+  )
 
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'branchId', value: row.branchId },

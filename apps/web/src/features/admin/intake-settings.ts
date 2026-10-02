@@ -44,11 +44,12 @@ import {
   withActor,
 } from '@qabandi/db'
 import {
-  INTAKE_FIELDS,
   INTAKE_MODES,
+  INTAKE_REQUIREMENT_CHOICES,
   INTAKE_SETTING_BOUNDS,
   type IntakeField,
   type IntakeMode,
+  requirementChoiceFields,
 } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn, branchesWhere } from '@/lib/permissions'
@@ -59,31 +60,12 @@ import { echo, fail, succeed, type ActionState } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
 import { demoReadOnly } from '@/lib/pilot/read-only'
 
-/**
- * The requirement choices the form offers, per mode — `all` meaning every mode.
- *
- * A fixed menu rather than free rows, because a requirement is only as good as
- * the agent's ability to ask for it in a sentence: every key here has a phrase
- * in both languages in `core/intake.ts`. `weightOrVolume` is the one any-of
- * choice, because "either figure" is how a shared-space rate is priced.
- */
-const FIELD_CHOICES: Readonly<Record<'all' | IntakeMode, readonly string[]>> = {
-  all: ['mode', 'origin', 'destination', 'commodity', 'readyOn', 'incoterm'],
-  sea_fcl: ['containerCount', 'containerType', 'pieces'],
-  sea_lcl: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
-  air: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
-  land: ['weightOrVolume', 'grossWeightKg', 'volumeCbm', 'pieces', 'dimensions'],
-  courier: ['weightOrVolume', 'grossWeightKg', 'pieces', 'dimensions'],
-}
+// The menu and the defaults live together in core, so a test holds them in
+// agreement: a default the form cannot show is dropped by the first save.
+const FIELD_CHOICES = INTAKE_REQUIREMENT_CHOICES
 
 export async function intakeFieldChoices(): Promise<Record<string, readonly string[]>> {
   return FIELD_CHOICES
-}
-
-/** The fields a requirement key stands for. */
-function fieldsFor(key: string): IntakeField[] {
-  if (key === 'weightOrVolume') return ['grossWeightKg', 'volumeCbm']
-  return (INTAKE_FIELDS as readonly string[]).includes(key) ? [key as IntakeField] : []
 }
 
 /** Every branch this administrator may configure the agent for, with what applies there now. */
@@ -192,7 +174,7 @@ export const saveIntakeSettings = refuseForbidden(async function saveIntakeSetti
               ? (scope as IntakeMode)
               : null,
         key,
-        fields: fieldsFor(key),
+        fields: requirementChoiceFields(key),
       })
     }
   }
