@@ -14,7 +14,7 @@ import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import { CandidatesPanel } from '@/features/consolidation/ui/candidates-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatLane } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
@@ -95,7 +95,9 @@ export default async function ConsolidationsPage() {
                       '—'}
                   </TD>
                   <TD priority="low" className="text-ink-muted">
-                    {[row.originName, row.destinationName].filter(Boolean).join(' → ') || '—'}
+                    {row.originName && row.destinationName
+                      ? formatLane(row.originName, row.destinationName, locale)
+                      : row.originName || row.destinationName || '—'}
                   </TD>
                   <TD align="end" numeric>
                     {row.houseCount}

@@ -36,12 +36,13 @@ import {
 } from '@/features/consolidation/form-actions'
 import { localInputValue } from '@qabandi/core'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate, formatMoney, formatLane } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Icon } from '@/ui/icon'
 import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { MoreMenu } from '@/ui/menu'
 
 export default async function ConsolidationDetailPage({
   params,
@@ -104,40 +105,46 @@ export default async function ConsolidationDetailPage({
             <Button href={manifestUrl} download icon="document" variant="secondary">
               {t('manifest')}
             </Button>
-            <Button href={`${manifestUrl}?locale=ar`} download variant="ghost">
-              AR
-            </Button>
-            {mayWrite ? (
-              <ConsolidationDialog
-                variant="secondary"
-                defaults={{
-                  id: consol.id,
-                  branchId: consol.branchId,
-                  mode: consol.mode,
-                  tradeDirection: consol.tradeDirection,
-                  masterBillNumber: consol.masterBillNumber,
-                  bookingNumber: consol.bookingNumber,
-                  vesselName: consol.vesselName,
-                  voyageNumber: consol.voyageNumber,
-                  flightNumber: consol.flightNumber,
-                  notes: consol.notes,
-                  carrierPartnerId: consol.carrierPartnerId,
-                  coloadPartnerId: consol.coloadPartnerId,
-                  originId: consol.originId,
-                  destinationId: consol.destinationId,
-                  etd: localInputValue(consol.etd, consol.branchTimeZone),
-                  eta: localInputValue(consol.eta, consol.branchTimeZone),
-                }}
-              />
-            ) : null}
-            {mayWrite && consol.status === 'open' ? (
-              <form action={closeConsolidation}>
-                <input type="hidden" name="consolidationId" value={id} />
-                <Button type="submit" variant="secondary" icon="sealed">
-                  {t('close')}
-                </Button>
-              </form>
-            ) : null}
+            {/*
+              The manifest stays in view — it is what this screen is opened to
+              print. The Arabic copy, editing and closing sit behind More.
+            */}
+            <MoreMenu label={tc('more')}>
+              <Button href={`${manifestUrl}?locale=ar`} download variant="menu" icon="document">
+                {t('manifest')} · AR
+              </Button>
+              {mayWrite ? (
+                <ConsolidationDialog
+                  variant="secondary"
+                  defaults={{
+                    id: consol.id,
+                    branchId: consol.branchId,
+                    mode: consol.mode,
+                    tradeDirection: consol.tradeDirection,
+                    masterBillNumber: consol.masterBillNumber,
+                    bookingNumber: consol.bookingNumber,
+                    vesselName: consol.vesselName,
+                    voyageNumber: consol.voyageNumber,
+                    flightNumber: consol.flightNumber,
+                    notes: consol.notes,
+                    carrierPartnerId: consol.carrierPartnerId,
+                    coloadPartnerId: consol.coloadPartnerId,
+                    originId: consol.originId,
+                    destinationId: consol.destinationId,
+                    etd: localInputValue(consol.etd, consol.branchTimeZone),
+                    eta: localInputValue(consol.eta, consol.branchTimeZone),
+                  }}
+                />
+              ) : null}
+              {mayWrite && consol.status === 'open' ? (
+                <form action={closeConsolidation}>
+                  <input type="hidden" name="consolidationId" value={id} />
+                  <Button type="submit" variant="menu" icon="sealed">
+                    {t('close')}
+                  </Button>
+                </form>
+              ) : null}
+            </MoreMenu>
           </span>
         }
       />
@@ -152,7 +159,9 @@ export default async function ConsolidationDetailPage({
                 '—'}
             </Field>
             <Field label={t('route')}>
-              {[consol.originName, consol.destinationName].filter(Boolean).join(' → ') || '—'}
+              {consol.originName && consol.destinationName
+                ? formatLane(consol.originName, consol.destinationName, locale)
+                : consol.originName || consol.destinationName || '—'}
             </Field>
             <Field label={t('etd')} mono>
               {formatDate(consol.etd, locale, timeZone)}

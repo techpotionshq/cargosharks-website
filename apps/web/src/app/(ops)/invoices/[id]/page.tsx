@@ -37,6 +37,8 @@ import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { MoreMenu } from '@/ui/menu'
+import { dec } from '@qabandi/core'
 
 export async function generateMetadata({
   params,
@@ -76,16 +78,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       showCurrency: false,
     })
 
-  const balance = Number(invoice.total) - Number(invoice.amountPaid)
+  // Decimal, then a string for display: money minus money is never a float.
+  const owed = dec(invoice.total ?? 0).minus(dec(invoice.amountPaid ?? 0))
+  const balance = owed.toFixed()
+  const owing = owed.gt(0)
   const isDraft = invoice.status === 'draft'
   // Owed by somebody: a credited or voided invoice keeps a balance on paper
   // and is overdue for nobody.
   const payable = invoice.status === 'issued' || invoice.status === 'part_paid'
   const overdue =
-    payable &&
-    balance > 0 &&
-    invoice.dueOn !== null &&
-    new Date(invoice.dueOn).getTime() < Date.now()
+    payable && owing && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
 
   return (
     <>
@@ -109,25 +111,36 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )
         }
         description={t('issuedTo', { customer: invoice.customerName ?? '—' })}
+        status={
+          <Badge tone={invoiceTone(invoice.status)} dot>
+            {ti(`statuses.${invoice.status}` as 'statuses.issued')}
+          </Badge>
+        }
+        /*
+          The next state is the one primary button — approve a draft, issue an
+          approved one — and the rest (add a line, record a receipt, void,
+          credit) sit behind More. An issued invoice has no forward move left,
+          so recording the receipt that pays it takes the primary slot.
+        */
         actions={
           <>
-            <Badge tone={invoiceTone(invoice.status)} dot>
-              {ti(`statuses.${invoice.status}` as 'statuses.issued')}
-            </Badge>
-            {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
-            {/* Only where a receipt can land: issued and still owed. A draft,
-                an approved-but-unnumbered, a credited or a voided invoice was
-                offered "Record a receipt" and every one failed with a 500. */}
-            {balance > 0 && payable ? (
+            <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} part="forward" />
+            {owing && payable ? (
               <PaymentDialog
                 customerId={invoice.customerId}
                 invoiceId={invoice.id}
                 branchId={invoice.branchId}
                 currency={invoice.currency}
-                variant="secondary"
+                variant="primary"
               />
             ) : null}
-            <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} />
+            <MoreMenu label={tc('more')}>
+              {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
+              {/* Only where a receipt can land: issued and still owed. A draft,
+                an approved-but-unnumbered, a credited or a voided invoice was
+                offered "Record a receipt" and every one failed with a 500. */}
+              <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} part="other" />
+            </MoreMenu>
           </>
         }
       />
@@ -157,8 +170,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           label={t('balance')}
           value={figure(balance)}
           unit={invoice.currency}
-          icon={balance > 0 ? 'alert' : 'check'}
-          tone={balance <= 0 ? 'positive' : overdue ? 'critical' : 'caution'}
+          icon={owing ? 'alert' : 'check'}
+          tone={!owing ? 'positive' : overdue ? 'critical' : 'caution'}
           hint={t('balanceHint')}
         />
         <Metric

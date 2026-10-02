@@ -96,13 +96,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         eyebrow={<span className="ref">{customer.code}</span>}
         title={displayName}
         description={t('detailSubtitle')}
+        status={
+          <Badge tone={customer.isActive ? 'positive' : 'muted'}>
+            {customer.isActive ? tc('active') : tc('inactive')}
+          </Badge>
+        }
         actions={
-          <>
-            <Badge tone={customer.isActive ? 'positive' : 'muted'}>
-              {customer.isActive ? tc('active') : tc('inactive')}
-            </Badge>
-            <RetireCustomerDialog customerId={id} name={displayName} isActive={customer.isActive} />
-          </>
+          <RetireCustomerDialog customerId={id} name={displayName} isActive={customer.isActive} />
         }
       />
 

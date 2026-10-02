@@ -317,5 +317,7 @@ describe('formatLane', () => {
   it('joins with a real arrow', () => {
     expect(formatLane('Shuwaikh', 'Jebel Ali')).toBe('Shuwaikh → Jebel Ali')
     expect(formatLane('Shuwaikh', 'Jebel Ali')).not.toContain('->')
+    // Arabic reorders the names, so the arrow has to point the other way.
+    expect(formatLane('الشويخ', 'جبل علي', 'ar')).toBe('الشويخ ← جبل علي')
   })
 })

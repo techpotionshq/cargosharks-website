@@ -519,6 +519,12 @@
   letter-spacing: 0;
 }
 
+/* Negative tracking is worse than positive in Arabic: it pushes the joined
+   letters of a heading into each other. */
+[lang='ar'] :is(.tracking-tight, .tracking-tighter) {
+  letter-spacing: 0;
+}
+
 [lang='ar'] .uppercase:is(.text-\[0\.625rem\], .text-\[0\.6875rem\]) {
   font-size: 0.75rem;
 }

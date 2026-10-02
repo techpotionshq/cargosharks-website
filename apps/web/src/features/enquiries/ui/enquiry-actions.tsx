@@ -93,6 +93,7 @@ export async function EnquiryActions({
             submit: t('respondSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('respondDone'),
           }}
         />
       ) : null}
@@ -123,6 +124,7 @@ export async function EnquiryActions({
             submit: t('assignSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('assignDone'),
           }}
         />
       ) : null}
@@ -163,7 +165,9 @@ export async function EnquiryActions({
           action={advanceEnquiry}
           icon="close"
           size="sm"
-          variant="ghost"
+          // Ends the enquiry: drawn as the menu's destructive row, and its
+          // confirm button is the filled red.
+          variant="danger"
           fields={[
             { kind: 'hidden', name: 'enquiryId', value: enquiryId },
             { kind: 'hidden', name: 'to', value: 'cancelled' },
@@ -226,6 +230,7 @@ export async function EnquiryActions({
             submit: t('closeSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('closeDone'),
           }}
         />
       ) : null}

@@ -15,12 +15,22 @@ export function PageHeader({
   title,
   eyebrow,
   description,
+  status,
   actions,
   className,
 }: {
   readonly title: ReactNode
   readonly eyebrow?: ReactNode
   readonly description?: ReactNode
+  /**
+   * The record's state, beside its name.
+   *
+   * Status pills used to ride in the actions row, where they read as one
+   * more button — "Issued" next to "Void", the same height and the same
+   * shape. Beside the title they read as what they are: a fact about the
+   * thing the page is about.
+   */
+  readonly status?: ReactNode
   readonly actions?: ReactNode
   readonly className?: string
 }) {
@@ -32,9 +42,12 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
-        <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
-          {title}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+            {title}
+          </h1>
+          {status ? <div className="flex flex-wrap items-center gap-1.5">{status}</div> : null}
+        </div>
         {description ? (
           <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
         ) : null}

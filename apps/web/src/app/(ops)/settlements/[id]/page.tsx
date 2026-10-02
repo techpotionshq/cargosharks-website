@@ -79,7 +79,8 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                 <form action={advanceSettlement}>
                   <input type="hidden" name="settlementId" value={id} />
                   <input type="hidden" name="action" value="agree" />
-                  <Button type="submit" icon="check">
+                  {/* The settlement's next step is its one primary action. */}
+                  <Button type="submit" variant="primary" icon="check">
                     {t('agree')}
                   </Button>
                 </form>
@@ -88,7 +89,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                 <form action={advanceSettlement}>
                   <input type="hidden" name="settlementId" value={id} />
                   <input type="hidden" name="action" value="settle" />
-                  <Button type="submit" icon="sealed">
+                  <Button type="submit" variant="primary" icon="sealed">
                     {t('markSettled')}
                   </Button>
                 </form>

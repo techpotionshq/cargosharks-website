@@ -34,19 +34,28 @@ const MOVES: Partial<
   credited: { permission: 'invoice.credit', variant: 'secondary', icon: 'close', grave: true },
 }
 
+/** The moves that take the record forward, as opposed to ending it. */
+const FORWARD: readonly InvoiceStatus[] = ['approved', 'issued']
+
 export async function InvoiceStatusActions({
   invoiceId,
   status,
+  part = 'all',
 }: {
   readonly invoiceId: string
   readonly status: string
+  /**
+   * Which half of the moves to render.
+   *
+   * A detail page header shows the move that takes the record *forward* as
+   * its one primary button and folds the rest — voiding, crediting,
+   * rejecting — into its More menu, so the page is split by the caller and
+   * each half asks for its own. `all` is the old behaviour.
+   */
+  readonly part?: 'forward' | 'other' | 'all'
 }) {
   const session = await requireSession()
-  const [t, tc, ti] = await Promise.all([
-    getTranslations('invoiceDetail'),
-    getTranslations('common'),
-    getTranslations('invoices'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('invoiceDetail'), getTranslations('common')])
 
   const allowed = nextStates(invoiceMachine, status as InvoiceStatus)
     .map((next) => ({ next, move: MOVES[next] }))
@@ -55,17 +64,30 @@ export async function InvoiceStatusActions({
         Boolean(entry.move) && can(session, entry.move!.permission),
     )
 
-  if (allowed.length === 0) return null
+  // One forward move at most: the first the machine offers. Anything after
+  // it is still offered, in the menu.
+  const lead = allowed.find(({ next }) => FORWARD.includes(next))
+  const shown =
+    part === 'all'
+      ? allowed
+      : part === 'forward'
+        ? lead
+          ? [lead]
+          : []
+        : allowed.filter((entry) => entry !== lead)
+
+  if (shown.length === 0) return null
 
   return (
     <>
-      {allowed.map(({ next, move }) => (
+      {shown.map(({ next, move }) => (
         <RecordDialog
           key={next}
           action={setInvoiceStatus}
           icon={move.icon}
           size="sm"
-          variant={move.variant}
+          // The forward move is the header's one primary button.
+          variant={part === 'forward' ? 'primary' : move.variant}
           submitIcon={move.icon}
           fields={[
             { kind: 'hidden', name: 'invoiceId', value: invoiceId },
@@ -77,12 +99,19 @@ export async function InvoiceStatusActions({
             },
           ]}
           labels={{
-            open: ti(`statuses.${next}` as 'statuses.issued'),
+            /*
+              A verb, not the status it leads to. The button read "Issued"
+              on a draft — which looks like a label saying it already is,
+              and nobody clicks a label. `moveOpen` says what pressing it
+              does; the status name stays on the pill.
+            */
+            open: t(`moveOpen.${next}` as 'moveOpen.issued'),
             title: t(`moveTitle.${next}` as 'moveTitle.issued'),
             description: t(`moveDescription.${next}` as 'moveDescription.issued'),
             submit: t(`moveSubmit.${next}` as 'moveSubmit.issued'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t(`moveDone.${next}` as 'moveDone.issued'),
           }}
         />
       ))}

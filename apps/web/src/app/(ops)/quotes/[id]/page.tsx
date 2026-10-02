@@ -41,6 +41,7 @@ import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
 import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
+import { MoreMenu } from '@/ui/menu'
 
 export async function generateMetadata({
   params,
@@ -107,7 +108,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </span>
           ) : undefined
         }
-        actions={
+        status={
           <>
             <Badge tone={quoteTone(quote.status)} dot>
               {tq(`statuses.${quote.status}` as 'statuses.sent')}
@@ -115,7 +116,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             {quote.version > 1 ? (
               <Badge tone="muted">{t('version', { version: quote.version })}</Badge>
             ) : null}
-            {/*
+          </>
+        }
+        /*
+          One primary: the move that takes the quotation forward (send a
+          draft, accept a sent one), or opening the shipment once it is
+          accepted. The PDFs and the moves that end it sit behind More.
+        */
+        actions={
+          <>
+            <QuoteStatusActions quoteId={quote.id} status={quote.status} part="forward" />
+            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
+            <MoreMenu label={tc('more')}>
+              {/*
               The document the customer receives — FR-EQ-08.
 
               Both languages, as plain links: a `GET` renders and streams and
@@ -124,14 +137,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               `check-links.mjs` reads an interpolated href by its literal
               prefix and cannot see past the first `${`.
             */}
-            <Button size="sm" variant="ghost" href={pdf} download icon="download">
-              {t('pdf')}
-            </Button>
-            <Button size="sm" variant="ghost" href={`${pdf}?locale=ar`} download>
-              {t('pdfAr')}
-            </Button>
-            <QuoteStatusActions quoteId={quote.id} status={quote.status} />
-            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
+              <Button variant="menu" href={pdf} download icon="download">
+                {t('pdf')}
+              </Button>
+              <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
+                {t('pdfAr')}
+              </Button>
+              <QuoteStatusActions quoteId={quote.id} status={quote.status} part="other" />
+            </MoreMenu>
           </>
         }
       />

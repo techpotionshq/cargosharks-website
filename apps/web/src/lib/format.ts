@@ -248,9 +248,21 @@ export function formatPercent(value: number | null | undefined, locale: Locale):
   }).format(value / 100)
 }
 
-/** A lane, in the reader's language and in the reader's direction. */
-export function formatLane(originName: string, destinationName: string): string {
-  // U+2192 renders correctly under RTL because the surrounding text direction
-  // carries it; an ASCII "->" does not.
-  return `${originName} → ${destinationName}`
+/**
+ * A lane, in the reader's language and in the reader's direction.
+ *
+ * The arrow is chosen by locale because it is not a mirrored character.
+ * Under RTL the two names reorder — origin on the right, destination on the
+ * left — while U+2192 kept pointing right, back at the origin: every Arabic
+ * lane read as travelling backwards. `←` in Arabic points at the destination,
+ * which is what the slice queries already do (`ledger`, `network`); this is the
+ * same rule for the string a page builds itself. The drawn `Lane` component
+ * is still preferred wherever markup is allowed.
+ */
+export function formatLane(
+  originName: string,
+  destinationName: string,
+  locale: Locale = 'en',
+): string {
+  return `${originName} ${locale === 'ar' ? '←' : '→'} ${destinationName}`
 }

@@ -54,6 +54,7 @@ import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
 import { pickName } from '@/lib/named'
 import { localInputValue } from '@qabandi/core'
+import { MoreMenu } from '@/ui/menu'
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
@@ -129,8 +130,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         description={formatLane(
           nameOf(job.originName, job.originNameAr),
           nameOf(job.destinationName, job.destinationNameAr),
+          locale,
         )}
-        actions={
+        status={
           <>
             <Badge tone={jobTone(job.status)} dot>
               {t(`statuses.${job.status}` as 'statuses.booked')}
@@ -143,56 +145,64 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {t(`customsStatuses.${job.customsStatus}` as 'customsStatuses.held')}
               </Badge>
             ) : null}
+          </>
+        }
+        actions={
+          <>
             {/*
-              The four things somebody actually does from a job file, in the
-              order they are needed: flag a problem, move customs on, move the
-              shipment on, correct the record. Each is permission-gated inside
-              its own component, so a coordinator sees only what they can act
-              on — and `job.hold`, `job.cancel` and `job.close` are separate
-              keys that the status dialog's own action checks per status.
+              The four things somebody actually does from a job file: move the
+              shipment on, flag a problem, move customs on, correct the record.
+              Moving it on is the one the file exists for, so it is the
+              header's single primary button; the other three wait behind More
+              in the order they are needed. Each is permission-gated inside its
+              own component, so a coordinator sees only what they can act on —
+              and `job.hold`, `job.cancel` and `job.close` are separate keys
+              that the status dialog's own action checks per status.
             */}
-            <RaiseExceptionDialog jobId={job.id} variant="secondary" />
-            <JobStatusDialog jobId={job.id} status={job.status} variant="secondary" />
-            <CustomsDialog
-              jobId={job.id}
-              variant="secondary"
-              defaults={{ status: job.customsStatus ?? 'not_started' }}
-            />
-            <JobDialog
-              variant="ghost"
-              defaults={{
-                id: job.id,
-                branchId: job.branchId,
-                customerId: job.customerId,
-                mode: job.mode,
-                tradeDirection: job.direction,
-                ownerId: job.ownerId,
-                quoteId: job.quoteId,
-                originId: job.originId,
-                destinationId: job.destinationId,
-                commodityId: job.commodityId,
-                incoterm: job.incoterm,
-                masterBillNumber: job.masterBillNumber,
-                houseBillNumber: job.houseBillNumber,
-                bookingNumber: job.bookingNumber,
-                // The raw columns, not `vesselOrFlight`: that is the vessel and
-                // voyage joined for display, and saving it back as the vessel
-                // name grew it by the voyage on every save.
-                vesselName: job.vesselName,
-                voyageNumber: job.voyageNumber,
-                flightNumber: job.flightNumber,
-                // In the branch's zone, the one `saveJob` reads them back in,
-                // so a form opened and saved untouched writes the same instant.
-                etd: localInputValue(job.etd, job.branchTimeZone),
-                eta: localInputValue(job.eta, job.branchTimeZone),
-                placeOfReceipt: job.placeOfReceipt,
-                placeOfDelivery: job.placeOfDelivery,
-                customerReference: job.customerReference,
-                grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
-                volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
-                pieces: job.pieces,
-              }}
-            />
+            <JobStatusDialog jobId={job.id} status={job.status} variant="primary" />
+            <MoreMenu label={tc('more')}>
+              <RaiseExceptionDialog jobId={job.id} variant="secondary" />
+              <CustomsDialog
+                jobId={job.id}
+                variant="secondary"
+                defaults={{ status: job.customsStatus ?? 'not_started' }}
+              />
+              <JobDialog
+                variant="ghost"
+                defaults={{
+                  id: job.id,
+                  branchId: job.branchId,
+                  customerId: job.customerId,
+                  mode: job.mode,
+                  tradeDirection: job.direction,
+                  ownerId: job.ownerId,
+                  quoteId: job.quoteId,
+                  originId: job.originId,
+                  destinationId: job.destinationId,
+                  commodityId: job.commodityId,
+                  incoterm: job.incoterm,
+                  masterBillNumber: job.masterBillNumber,
+                  houseBillNumber: job.houseBillNumber,
+                  bookingNumber: job.bookingNumber,
+                  // The raw columns, not `vesselOrFlight`: that is the vessel and
+                  // voyage joined for display, and saving it back as the vessel
+                  // name grew it by the voyage on every save.
+                  vesselName: job.vesselName,
+                  voyageNumber: job.voyageNumber,
+                  flightNumber: job.flightNumber,
+                  // In the branch's zone, the one `saveJob` reads them back in,
+                  // so a form opened and saved untouched writes the same instant.
+                  etd: localInputValue(job.etd, job.branchTimeZone),
+                  eta: localInputValue(job.eta, job.branchTimeZone),
+                  placeOfReceipt: job.placeOfReceipt,
+                  placeOfDelivery: job.placeOfDelivery,
+                  customerReference: job.customerReference,
+                  grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
+                  volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
+                  pieces: job.pieces,
+                }}
+              />
+            </MoreMenu>
           </>
         }
       />
