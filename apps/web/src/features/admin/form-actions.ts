@@ -22,9 +22,10 @@ import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
 import { NOTIFICATION_EVENTS, unknownMergeFields } from '@qabandi/core'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
+  authAccount,
   authUser,
   branches,
   chargeTypes,
@@ -294,7 +295,7 @@ export const saveUser = refuseForbidden(async function saveUser(
     became of the mail is shown on the people list, where the administrator
     can send it again.
   */
-  if (invitedEmail) await sendSignInLink(invitedEmail)
+  if (invitedEmail) await sendSignInLink(invitedEmail, 'invitation')
 
   revalidatePath('/settings/users')
   return succeed(data.email)
@@ -508,7 +509,33 @@ export const sendUserSignInLink = refuseForbidden(async function sendUserSignInL
     })
   }
 
-  return signInLinkState(tv, await sendSignInLink(target.email), target.email)
+  /*
+    Worded by whether a password already exists (D11): a link re-sent to an
+    invitation nobody followed is still an invitation, and one sent to a
+    person who has signed in before is a reset. Only the existence of the
+    credential is read, never the hash.
+  */
+  const hasPassword = target.authUserId
+    ? await withActor(session.actor, async (tx) => {
+        const [row] = await tx
+          .select({ id: authAccount.id })
+          .from(authAccount)
+          .where(
+            and(
+              eq(authAccount.userId, target.authUserId!),
+              eq(authAccount.providerId, 'credential'),
+              isNotNull(authAccount.password),
+            ),
+          )
+          .limit(1)
+        return Boolean(row)
+      })
+    : false
+  return signInLinkState(
+    tv,
+    await sendSignInLink(target.email, hasPassword ? 'reset' : 'invitation'),
+    target.email,
+  )
 })
 
 /** The sentence for what became of a link, as an `ActionState`. */

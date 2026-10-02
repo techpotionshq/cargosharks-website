@@ -705,6 +705,43 @@ describe('the internal API’s handlers', () => {
     })
 
     /**
+     * An administrator's first sign-in link is an invitation, not a reset
+     * (D11): a newly invited contact was told "your current password still
+     * works" about a password they never had.
+     */
+    it('words an invitation as an invitation, in the account’s language', async () => {
+      harness.principal = { locale: 'en', nameEn: 'Fahad', nameAr: 'فهد' }
+      await post('/mail/password-reset', {
+        email: 'someone@example.com',
+        url: 'https://app.test/reset?token=inv',
+        intent: 'invitation',
+      })
+      expect(harness.mailed[0]?.subject).toBe('You have been invited, set your password')
+      expect(harness.mailed[0]?.body).toContain('https://app.test/reset?token=inv')
+      expect(harness.mailed[0]?.body).not.toContain('reset the password')
+
+      harness.mailed.length = 0
+      harness.principal = { locale: 'ar', nameEn: 'Fahad', nameAr: 'فهد' }
+      await post('/mail/password-reset', {
+        email: 'someone@example.com',
+        url: 'https://app.test/reset?token=inv',
+        intent: 'invitation',
+      })
+      expect(harness.mailed[0]?.subject).toBe('دعوة لتعيين كلمة المرور')
+      expect(harness.mailed[0]?.body).toContain('تمت دعوتكم')
+    })
+
+    it('keeps the reset wording for anything that is not an invitation', async () => {
+      harness.principal = { locale: 'en', nameEn: 'Fahad', nameAr: 'فهد' }
+      await post('/mail/password-reset', {
+        email: 'someone@example.com',
+        url: 'https://app.test/reset',
+        intent: 'something-else',
+      })
+      expect(harness.mailed[0]?.subject).toBe('Reset your password')
+    })
+
+    /**
      * 202 regardless. Better Auth has already decided whether an account
      * exists; a 404 here would rebuild the enumeration oracle `signIn` is
      * careful not to be (FR-ID-04).

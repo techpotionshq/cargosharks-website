@@ -14,6 +14,10 @@ import 'server-only'
  * The administrator still never types a colleague's password: the link goes to
  * the mailbox, and only its owner can follow it.
  *
+ * The mail is worded as an invitation unless the person already has a
+ * password (D11): the reset wording told a newly invited contact their
+ * "current password still works".
+ *
  * ## The outcome is told, not assumed
  *
  * The public reset form must say the same sentence whatever happened (FR-ID-04).
@@ -22,16 +26,31 @@ import 'server-only'
  * `sendResetPassword` actually did.
  */
 
-import { auth, resetMailOutcome, type ResetMailOutcome } from '@/lib/auth'
+import {
+  auth,
+  resetMailIntent,
+  resetMailOutcome,
+  type ResetMailIntent,
+  type ResetMailOutcome,
+} from '@/lib/auth'
 import { AUTH_REFUSAL, refusalOf } from '@/lib/auth-guard'
 
 export type SignInLinkOutcome = ResetMailOutcome | 'throttled' | 'no_login'
 
-export async function sendSignInLink(email: string): Promise<SignInLinkOutcome> {
+/**
+ * `intent` words the mail: an invitation for somebody who has never had a
+ * password, a reset otherwise. The link is the same either way.
+ */
+export async function sendSignInLink(
+  email: string,
+  intent: ResetMailIntent = 'invitation',
+): Promise<SignInLinkOutcome> {
   const outcomes: ResetMailOutcome[] = []
   try {
-    await resetMailOutcome.run(outcomes, () =>
-      auth.api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } }),
+    await resetMailIntent.run(intent, () =>
+      resetMailOutcome.run(outcomes, () =>
+        auth.api.requestPasswordReset({ body: { email, redirectTo: '/reset-password' } }),
+      ),
     )
   } catch (error) {
     // The per-address reset budget applies to administrators too: three links
