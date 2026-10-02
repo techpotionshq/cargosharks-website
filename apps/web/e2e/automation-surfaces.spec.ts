@@ -64,6 +64,10 @@ test.describe('the enquiry the model read', () => {
     await expect(page.getByText('Automation', { exact: true })).toBeVisible()
     // The one-click fill accepts every open suggestion at once.
     await expect(page.getByRole('button', { name: /Accept all/ })).toBeVisible()
+    // A suggested mode reads as the board names it, not as the column's code (ai-16).
+    const modeRow = page.locator('li', { has: page.getByText('Mode', { exact: true }) })
+    await expect(modeRow).toContainText('Sea FCL')
+    await expect(modeRow).not.toContainText('sea_fcl')
 
     expect(errors, 'the enquiry logged browser errors').toEqual([])
   })

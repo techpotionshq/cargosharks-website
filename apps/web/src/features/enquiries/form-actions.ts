@@ -40,23 +40,11 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertInBranch, assertCanIn } from '@/lib/permissions'
-import {
-  echo,
-  fail,
-  failWith,
-  fieldErrors,
-  succeed,
-  type ActionState,
-  type Translate,
-} from '@/lib/form-state'
+import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { createEnquirySchema } from './schema'
-import {
-  enquiryColumn,
-  resolveProposal,
-  type ExpectedValue,
-  type ResolutionFailure,
-} from './proposals'
+import { enquiryColumn, resolveProposal } from './proposals'
+import { describeFailure } from './proposal-failures'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -705,56 +693,4 @@ export async function rejectProposal(_previous: ActionState, form: FormData): Pr
 function readField(form: FormData, key: string): string | undefined {
   const value = form.get(key)
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
-}
-
-/** A refusal, as a sentence the coordinator can act on. */
-function describeFailure(tv: Translate, failure: ResolutionFailure): string {
-  switch (failure.kind) {
-    case 'not_found':
-      return tv('suggestionNotOnFile', { value: failure.value })
-    case 'ambiguous':
-      return tv('suggestionAmbiguous', { value: failure.value, count: failure.count })
-    case 'invalid':
-      return tv('suggestionInvalid', {
-        value: failure.value,
-        expected: describeExpected(tv, failure.expected),
-      })
-    case 'unknown_field':
-      return tv('suggestionUnknownField')
-    default: {
-      const unhandled: never = failure
-      return unhandled
-    }
-  }
-}
-
-/**
- * What the field would have taken, in the reader's language.
- *
- * `@qabandi/db` says which kind and the words are chosen here, because the
- * catalogue lives here — an English phrase from the resolver was the one
- * untranslated hole in an otherwise Arabic sentence. A list of allowed values
- * stays as the stored codes (`sea_fcl, air`): those are what the proposal row
- * beside this refusal shows, and translating one side only would make the two
- * impossible to compare.
- */
-function describeExpected(tv: Translate, expected: ExpectedValue): string {
-  switch (expected.kind) {
-    case 'number':
-      return tv('expectedNumber')
-    case 'integer':
-      return tv('expectedInteger')
-    case 'positiveInteger':
-      return tv('expectedPositiveInteger')
-    case 'boolean':
-      return tv('expectedBoolean')
-    case 'date':
-      return tv('expectedDate')
-    case 'oneOf':
-      return tv('expectedOneOf', { values: expected.values.join(', ') })
-    default: {
-      const unhandled: never = expected
-      return unhandled
-    }
-  }
 }

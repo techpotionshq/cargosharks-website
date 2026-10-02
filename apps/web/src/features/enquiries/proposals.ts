@@ -28,7 +28,15 @@ import 'server-only'
  */
 
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { aiInvocations, extractionProposals, withActor, type Actor } from '@qabandi/db'
+import {
+  aiInvocations,
+  extractionProposals,
+  enquiryColumn,
+  resolveProposal,
+  withActor,
+  type Actor,
+  type ResolutionFailure,
+} from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotEnquiryProposals } from '@/lib/pilot/fixtures'
 
@@ -55,6 +63,14 @@ export interface EnquiryProposal {
   /** What answered, so a bad run is attributable to a model and a prompt. */
   readonly model: string | null
   readonly promptVersion: string | null
+  /**
+   * Why accepting this would be refused, if it would — read now, with the
+   * same resolver the accept path runs (ai-17). Shown on the row so a
+   * suggestion "Accept all" passed over says why it is still here.
+   */
+  readonly blocked?: ResolutionFailure
+  /** The column has been filled since the model read the mail; accepting is refused. */
+  readonly occupied?: boolean
 }
 
 /**
@@ -77,8 +93,8 @@ export async function enquiryProposals(
   */
   if (usePilotFixtures()) return pilotEnquiryProposals(enquiryId)
 
-  return withActor(actor, async (tx) =>
-    tx
+  return withActor(actor, async (tx) => {
+    const rows = await tx
       .select({
         id: extractionProposals.id,
         field: extractionProposals.field,
@@ -99,6 +115,23 @@ export async function enquiryProposals(
           isNull(extractionProposals.closedAt),
         ),
       )
-      .orderBy(asc(extractionProposals.createdAt)),
-  )
+      .orderBy(asc(extractionProposals.createdAt))
+
+    /*
+      Resolved in the same transaction, under the same actor, as the accept
+      would be — so the reason shown is the reason the click would give. A
+      handful of indexed lookups on a panel that holds a dozen rows at most.
+    */
+    const read: EnquiryProposal[] = []
+    for (const row of rows) {
+      const resolution = await resolveProposal(tx, row.field, row.value)
+      if (!resolution.ok) {
+        read.push({ ...row, blocked: resolution.failure })
+        continue
+      }
+      const current = await enquiryColumn(tx, enquiryId, resolution.column)
+      read.push(current === null ? row : { ...row, occupied: true })
+    }
+    return read
+  })
 }

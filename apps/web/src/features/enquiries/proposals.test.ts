@@ -45,7 +45,7 @@ const { aiInvocations, enquiries, extractionProposals, locationCodes, locations,
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, ORIGIN, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { acceptProposal, rejectProposal } = await import('./form-actions')
+const { acceptAllProposals, acceptProposal, rejectProposal } = await import('./form-actions')
 const { enquiryProposals, resolveProposal } = await import('./proposals')
 
 const session = {
@@ -331,6 +331,31 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
     expect(rows.map((r) => r.id)).toEqual([open])
     expect(rows[0]?.evidence).toBe('from line 3')
     expect(rows[0]?.promptVersion).toBe('enquiry-extract@1')
+  })
+
+  /*
+    ai-17: "Accept all" applied what it could and left the rest with no word of
+    why — the message lived in a button that disappeared once fewer than two
+    suggestions were left. The panel now reads each row's refusal in advance.
+  */
+  it('says, on the row, why a suggestion left after "Accept all" will not apply', async () => {
+    const enquiryId = await anEnquiry()
+    const unplaceable = await aProposal(enquiryId, 'destination', 'Port of Nowhere')
+    const filled = await aProposal(enquiryId, 'incoterm', 'FOB')
+    await aProposal(enquiryId, 'volumeCbm', '12.5')
+    await withActor(bothBranchesActor, (tx) =>
+      tx.update(enquiries).set({ incoterm: 'EXW' }).where(eq(enquiries.id, enquiryId)),
+    )
+
+    await acceptAllProposals({}, form({ enquiryId }))
+    const rows = await enquiryProposals(bothBranchesActor, enquiryId)
+
+    expect(rows.map((r) => r.id).sort()).toEqual([unplaceable, filled].sort())
+    expect(rows.find((r) => r.id === unplaceable)?.blocked).toEqual({
+      kind: 'not_found',
+      value: 'Port of Nowhere',
+    })
+    expect(rows.find((r) => r.id === filled)?.occupied).toBe(true)
   })
 
   /** A settled proposal cannot be applied twice — the second click says so. */
