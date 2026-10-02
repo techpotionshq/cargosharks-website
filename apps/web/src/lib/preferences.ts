@@ -17,6 +17,7 @@ import { isLocale, LOCALE_COOKIE, type Locale } from '@/i18n/request'
 import { THEME_COOKIE, type ThemeChoice } from '@/lib/theme'
 import { TIME_ZONE_COOKIE, resolveTimeZone } from '@/lib/time'
 import { getSession } from '@/lib/session'
+import { usePilotFixtures } from '@/lib/pilot/source'
 import { eq } from 'drizzle-orm'
 import { principals, withActor } from '@qabandi/db'
 
@@ -84,7 +85,9 @@ export async function setTimeZonePreference(formData: FormData): Promise<void> {
     httpOnly: false,
   })
 
-  const session = await getSession()
+  // The cookie is the whole preference in the demo: it has no `principals`
+  // row to keep a second copy in.
+  const session = usePilotFixtures() ? null : await getSession()
   if (session) {
     await withActor(session.actor, async (tx) => {
       await tx

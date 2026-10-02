@@ -27,6 +27,7 @@ import { can, canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
 import { SupportAccessBanner } from '@/features/support/ui/banner'
 import { AssistantDock } from '@/features/assistant/ui/assistant-dock'
+import { AssistantLauncher } from '@/features/assistant/ui/assistant-launcher'
 import { assistantLabels } from '@/features/assistant/labels'
 import { assistantConfigured } from '@/features/assistant/queries'
 import { signOut } from '@/features/auth/actions'
@@ -34,6 +35,8 @@ import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
+import { FOCUS_RING } from '@/ui/control'
+import { Toaster } from '@/ui/toast'
 import { getInbox } from '@/features/notifications/queries'
 import { NotificationBell } from '@/features/notifications/ui/notification-bell'
 
@@ -88,7 +91,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
    * screens get the permission gates they were missing: three of the five were
    * offered to every signed-in account, including `read_only`.
    */
-  const sections: NavSection[] = [
+  const allSections: NavSection[] = [
     {
       label: t('sections.commercial'),
       items: [
@@ -168,21 +171,33 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
     {
       label: t('sections.finance'),
       items: [
-        { href: '/finance', label: t('finance'), icon: 'finance' },
-        { href: '/invoices', label: t('invoices'), icon: 'invoices' },
-        { href: '/payments', label: t('payments'), icon: 'payments' },
+        /*
+          Each ledger behind its own read key, as the pages are (QA P2-11).
+          The links were drawn for everybody and the pages let everybody in.
+        */
+        ...(can(session, 'receivable.read')
+          ? [
+              { href: '/finance', label: t('finance'), icon: 'finance' as const },
+              { href: '/invoices', label: t('invoices'), icon: 'invoices' as const },
+              { href: '/payments', label: t('payments'), icon: 'payments' as const },
+            ]
+          : []),
         /*
           Payables sits under Payments rather than beside Invoices, and the
           order is what the finance day actually looks like: money in, money
           out, and then the agents where both directions meet.
         */
-        {
-          href: '/payables',
-          label: t('payables'),
-          icon: 'payments',
-          badge: counts.payablesToReview,
-        },
-        { href: '/settlements', label: t('settlements'), icon: 'finance' },
+        ...(can(session, 'payable.read')
+          ? [
+              {
+                href: '/payables',
+                label: t('payables'),
+                icon: 'payments' as const,
+                badge: counts.payablesToReview,
+              },
+              { href: '/settlements', label: t('settlements'), icon: 'finance' as const },
+            ]
+          : []),
         /*
           Last in the finance section, and gated.
 
@@ -198,6 +213,9 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       ],
     },
   ]
+  // A section whose every entry is gated away (a customs broker's Finance)
+  // would draw its heading over nothing.
+  const sections = allSections.filter((section) => section.items.length > 0)
 
   const displayName =
     locale === 'ar' && session.principal.nameAr
@@ -257,7 +275,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           <div className="flex flex-col gap-0.5 border-t border-chrome-line px-3 py-2">
             <Link
               href="/track"
-              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+              className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-body-sm font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
             >
               <Icon name="tracking" size={16} className="text-ink-subtle" />
               {t('tracking')}
@@ -272,7 +290,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
             {canOpenSettings(session) ? (
               <Link
                 href="/settings"
-                className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-[0.8125rem] font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
+                className="flex items-center gap-2.5 rounded-sm px-3 py-2 text-body-sm font-medium text-chrome-ink-muted transition-colors hover:bg-surface-sunken hover:text-chrome-ink"
               >
                 <Icon name="settings" size={16} className="text-ink-subtle" />
                 {t('settings')}
@@ -284,14 +302,14 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           {/* Who you are signed in as, and the way out. */}
           <div className="border-t border-chrome-line p-3">
             <div className="flex items-center gap-2.5 rounded-sm bg-surface-sunken/70 p-2">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-[0.75rem] font-semibold text-on-brand">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand text-caption font-semibold text-on-brand">
                 {initials}
               </span>
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-[0.8125rem] font-medium text-chrome-ink">
+                <span className="truncate text-body-sm leading-tight font-medium text-chrome-ink">
                   {displayName}
                 </span>
-                <span className="truncate text-[0.6875rem] text-chrome-ink-muted">
+                <span className="truncate text-micro leading-tight text-chrome-ink-muted">
                   {t(`roles.${roleKey}`)} · {tc('branchCount', { count: branchCodes })}
                 </span>
               </span>
@@ -300,7 +318,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                   type="submit"
                   title={t('signOut')}
                   aria-label={t('signOut')}
-                  className="flex size-7 items-center justify-center rounded-sm text-chrome-ink-muted transition-colors hover:bg-surface hover:text-critical"
+                  className="flex size-9 items-center justify-center rounded-sm text-chrome-ink-muted transition-colors hover:bg-surface hover:text-critical"
                 >
                   <Icon name="sign-out" size={15} />
                 </button>
@@ -313,7 +331,16 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
           {/* On a phone the sidebar collapses to the mark alone. */}
-          <Link href="/dashboard" className="md:hidden">
+          {/*
+            Named, because the mark alone is an image and the link had no text
+            a screen reader could announce — it was read as "link", twice per
+            screen. 40px square so it is a target and not a smudge.
+          */}
+          <Link
+            href="/dashboard"
+            aria-label={locale === 'ar' ? brand.identity.nameAr : brand.identity.nameEn}
+            className="-ms-2 flex size-10 items-center justify-center rounded-sm md:hidden"
+          >
             <Logo brand={brand} locale={locale} size="sm" markOnly />
           </Link>
 
@@ -336,20 +363,21 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
               name="q"
               placeholder={tc('searchPlaceholder')}
               aria-label={tc('search')}
-              className="h-9 w-full rounded-full border border-line bg-surface-sunken ps-9 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+              className={`h-9 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-body-sm text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
             />
           </form>
 
           <div className="ms-auto flex items-center gap-1.5">
             {usePilotFixtures() ? (
               <span
-                className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-[0.6875rem] font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
+                className="hidden items-center gap-1.5 rounded-full bg-caution-soft px-2.5 py-1 text-micro font-semibold text-caution ring-1 ring-caution/25 ring-inset lg:inline-flex"
                 title={tApp('pilotHint')}
               >
                 <Icon name="dot" size={9} />
                 {tApp('pilot')}
               </span>
             ) : null}
+            {aiConfigured ? <AssistantLauncher label={ta('title')} /> : null}
             <NotificationBell inbox={inbox} />
             <TimeZoneSwitch current={session.principal.timezone} />
             <ThemeSwitch current={theme} />
@@ -387,16 +415,22 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           `calc`, which is wrong the first time the header wraps.
         */}
         {/*
-          The block-end padding is the assistant's footprint, not taste.
+          The block-end padding is the assistant's footprint on a phone only.
 
-          The dock is `fixed bottom-5 end-5` at `h-11`, so it floats four rems
-          up from the viewport floor over whatever is beneath it — and what is
-          beneath it, on every register in the product, is the total row of a
-          table. A charge breakdown's margin and amount were sitting under it.
-          Six rems clears the button with a gap; page-level padding is enough
-          because nothing here scrolls in its own container.
+          From `md` up the launcher lives in the top bar and covers nothing, so
+          the page ends where its content does. On a phone it is still a 48px
+          button floating `bottom-4 end-4` over whatever is last on the
+          screen — on every register, the total row of a table — and five rems
+          clears it with a gap.
+
+          `@container`: the page's grids lay out against this box, not the
+          window. From `md` the sidebar takes 248px, so a window breakpoint
+          promised a 768px tablet room it did not have; `@3xl:grid-cols-4`
+          asks the question that was meant.
         */}
-        <main className="flex flex-1 flex-col px-4 pt-6 pb-24 md:px-6 lg:px-8">{children}</main>
+        <main className="@container flex flex-1 flex-col px-4 pt-6 pb-20 md:px-6 md:pb-10 lg:px-8">
+          {children}
+        </main>
       </div>
 
       {/*
@@ -413,7 +447,10 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         that reached for translations would pull the whole message catalogue
         across the boundary.
       */}
-      <AssistantDock labels={assistantLabels(ta)} configured={aiConfigured} />
+      <AssistantDock labels={assistantLabels(ta, usePilotFixtures())} configured={aiConfigured} />
+
+      {/* "Done", said once, after a dialog's save — see `ui/toast.tsx`. */}
+      <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />
     </div>
   )
 }

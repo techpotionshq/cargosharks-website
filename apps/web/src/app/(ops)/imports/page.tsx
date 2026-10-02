@@ -16,7 +16,8 @@
  */
 
 import type { Metadata } from 'next'
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import {
@@ -69,26 +70,28 @@ export default async function ImportsPage({
 
   /**
    * The pilot runs on fixtures with no database behind them, so there is
-   * nothing to import *into*. Saying so is better than offering a form whose
-   * submit button fails on a connection error.
+   * nothing to import *into*. The notice says so; "Check" still reads and
+   * validates a file against the pilot's own reference data, and only the
+   * import itself is refused, in words. The pickers are filled either way:
+   * a customer sheet with no branch to choose could not even be checked.
    */
   const fixtures = usePilotFixtures()
 
   let branches: Choice[] = []
   let partners: Choice[] = []
-  if (!fixtures) {
-    if (needsBranch) {
-      branches = (await importableBranches(session.actor)).map((branch) => ({
-        value: branch.id,
-        label: `${branch.code} — ${branch.nameEn}`,
-      }))
-    }
-    if (needsPartner) {
-      partners = (await ratePartners(session.actor)).map((partner) => ({
-        value: partner.id,
-        label: `${partner.code} — ${partner.nameEn}`,
-      }))
-    }
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  if (needsBranch) {
+    branches = (await importableBranches(session.actor, locale)).map((branch) => ({
+      value: branch.id,
+      label: `${branch.code} — ${branch.name}`,
+    }))
+  }
+  if (needsPartner) {
+    partners = (await ratePartners(session.actor, locale)).map((partner) => ({
+      value: partner.id,
+      label: `${partner.code} — ${partner.name}`,
+    }))
   }
 
   const kindLabel = (key: string): string => {
@@ -157,6 +160,7 @@ export default async function ImportsPage({
     error_unknown_reference: t('errorUnknownReference'),
     error_conflict: t('errorConflict'),
     error_unknown_kind: t('errorUnknownKind'),
+    error_needs_database: t('errorNeedsDatabase'),
     error_unknown: t('errorUnknown'),
   }
 
@@ -173,7 +177,7 @@ export default async function ImportsPage({
               href={`/imports?kind=${option.key}` as Route}
               aria-current={isActive ? 'page' : undefined}
               className={[
-                'inline-flex h-8 items-center rounded-full px-3.5 text-[0.8125rem] font-medium transition-colors',
+                'inline-flex h-8 items-center rounded-full px-3.5 text-body-sm font-medium transition-colors',
                 isActive
                   ? 'bg-brand text-on-brand'
                   : 'border border-line bg-surface text-ink-muted hover:text-ink',
@@ -188,7 +192,7 @@ export default async function ImportsPage({
       {fixtures ? (
         <div className="mb-5 flex items-start gap-2.5 rounded-sm border border-line bg-surface-sunken p-4">
           <Icon name="alert" size={16} className="mt-0.5 shrink-0 text-ink-muted" />
-          <p className="text-[0.8125rem] text-ink-muted">{t('fixturesHint')}</p>
+          <p className="text-body-sm text-ink-muted">{t('fixturesHint')}</p>
         </div>
       ) : null}
 

@@ -193,6 +193,69 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['asOf', 'count', 'horizonDays', 'soonest', 'lanes', 'lanesAr'],
   }),
 
+  /*
+    An agent wrote again about a rate request that was already read, decided
+    or replaced — a revised rate after the first was parsed, the real quote
+    after an auto-reply, a second answer to a renewal. The mail is filed and
+    the request is left as it was decided; whether the new figure changes
+    anything is the desk's call. Internal for `rate_card.expiring`'s reason.
+  */
+  event({
+    key: 'rate_request.late_reply',
+    audience: 'internal',
+    requirement: 'FR-RT-10',
+    summary: 'An agent replied again on a rate request that was already read or decided.',
+    fields: ['reference', 'partnerName'],
+  }),
+
+  /*
+    The intake agent's two messages to a customer, and its one to the desk.
+
+    Raised by the turn worker, not through the outbox: the agent answers the
+    *sender* of a conversation on the channel they wrote on, which the
+    dispatcher — built to reach a customer's on-file contacts by email — cannot
+    do. They are events here because the wording is a template row an
+    administrator edits (FR-NT-03) and these declarations are what keep a
+    template's merge fields honest. `missing` arrives pre-rendered in the
+    customer's language ("where it ships from and the container type"),
+    because a template cannot loop and should not learn how.
+  */
+  event({
+    key: 'intake.clarify',
+    audience: 'customer',
+    requirement: 'FR-EQ-02',
+    summary: 'The intake agent asks the customer, once, for what a quotation still needs.',
+    fields: ['reference', 'missing'],
+  }),
+  event({
+    key: 'intake.confirm',
+    audience: 'customer',
+    requirement: 'FR-EQ-02',
+    summary: 'The intake agent tells the customer their enquiry is complete.',
+    fields: ['reference'],
+  }),
+  event({
+    key: 'intake.handoff',
+    audience: 'internal',
+    requirement: 'FR-EQ-02',
+    summary: 'The intake agent has stopped asking and an enquiry needs a person.',
+    // Both languages, because the desk reads it in theirs and the payload is one.
+    fields: ['reference', 'missing', 'missingAr'],
+  }),
+
+  /*
+    Mail from a known supplier that carried no bill to read. It is filed on no
+    record — a supplier's mail is not a customer enquiry — so somebody has to be
+    told it arrived, or it is filed where nobody looks.
+  */
+  event({
+    key: 'partner.mail_filed',
+    audience: 'internal',
+    requirement: 'FR-EQ-02',
+    summary: 'A known supplier wrote in with nothing to read as a bill.',
+    fields: ['partnerName', 'subject'],
+  }),
+
   // --- exception -----------------------------------------------------------
   event({
     key: 'exception.opened',

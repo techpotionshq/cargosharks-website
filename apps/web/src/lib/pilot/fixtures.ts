@@ -54,6 +54,8 @@ import {
   // carry a `number` for display. Both are wanted here, so this one is named.
   type Money as CoreMoney,
 } from '@qabandi/core'
+import { pickName } from '@/lib/named'
+import { sumByCurrency } from '@/lib/by-currency'
 import type { ReferenceOptions } from '@/lib/options'
 import type {
   AccountingExportRow,
@@ -81,6 +83,7 @@ import type {
   DocumentView,
   DutyRateRow,
   EngineRuleRow,
+  FxRateRow,
   EnquiryProposalRow,
   EnquirySummary,
   ExceptionRow,
@@ -103,6 +106,9 @@ import type {
   MapData,
   MailboxRowLike,
   WhatsappNumberRowLike,
+  EnquiryIntakeLike,
+  IntakeSettingsRowLike,
+  PartnerMailLike,
   MatchCandidateRow,
   MilestoneTemplateRow,
   MilestoneView,
@@ -660,13 +666,21 @@ function partner(key: PartnerKey): (typeof PARTNERS)[number] {
   return PARTNERS.find((p) => p.id === key)!
 }
 
-const OWNERS = [
-  'Fahad Al-Rashid',
-  'Maryam Al-Otaibi',
-  'Yousef Haddad',
-  'Noura Al-Sabah',
-  'Rajesh Menon',
-] as const
+/**
+ * The people who own work on the board: the first five of `PEOPLE`, by index.
+ *
+ * This was a list of English names of its own, so an Arabic screen listed
+ * "Fahad Al-Rashid" as the owner of a shipment beside a users register that
+ * already called him فهد الرشيد. One list, read in the reader's language.
+ * A function rather than a slice of `PEOPLE` because that constant is
+ * declared further down and a top-level read of it here would run first.
+ */
+const OWNER_COUNT = 5
+
+function ownerName(index: number, locale: 'en' | 'ar' = 'en'): string {
+  const person = PEOPLE[index % OWNER_COUNT]!
+  return locale === 'ar' ? person.ar : person.en
+}
 
 const CARRIERS = ['ONE', 'CMA CGM', 'Hapag-Lloyd', 'MSC', 'Emirates SkyCargo', 'Maersk'] as const
 
@@ -893,7 +907,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'KWSWK',
     destination: 'SAJED',
     status: 'in_transit',
-    done: 4,
+    done: 5,
     etaOffset: 2,
     transitDays: 6,
     containers: 3,
@@ -909,7 +923,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'KWKWI',
     destination: 'DEHAM',
     status: 'in_transit',
-    done: 3,
+    done: 4,
     etaOffset: 1,
     transitDays: 2,
     containers: 0,
@@ -1024,7 +1038,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'AEJEA',
     destination: 'KWSWK',
     status: 'in_transit',
-    done: 4,
+    done: 5,
     etaOffset: 1,
     transitDays: 5,
     containers: 2,
@@ -1095,24 +1109,49 @@ function containerNumber(seq: number, index: number): string {
 function milestonesFor(seed: JobSeed, now: number): MilestoneView[] {
   const template = TEMPLATES[seed.template]!
   const arrivalIndex = template.findIndex(([code]) => code === 'arrived_destination')
+  const departureIndex = template.findIndex(
+    ([code]) => code === 'departed_origin' || code === 'uplifted',
+  )
   const etaDay = seed.etaOffset
+  const etdDay = seed.etaOffset - seed.transitDays
 
   return template.map(([code, nameEn, nameAr], index) => {
     /**
-     * Steps are spread backwards from the arrival milestone across the transit
-     * time, so a job with a 26-day sailing shows a 26-day gap where the
-     * sailing is — not six evenly spaced dots.
+     * Departure on the header's ETD and arrival on its ETA, the sailing in
+     * between, the paperwork a few days either side.
+     *
+     * Steps used to be spread backwards from arrival across the transit time,
+     * which put "departed origin" halfway through the voyage and "booking
+     * confirmed" on the ETD — so the job header and its own timeline gave two
+     * different sailing dates on the same screen, and the customer's portal
+     * repeated the disagreement.
      */
-    const fromArrival = index - arrivalIndex
     const offset =
-      fromArrival <= 0
-        ? etaDay - seed.transitDays * (Math.abs(fromArrival) / Math.max(arrivalIndex, 1))
-        : etaDay + fromArrival * 2
+      index <= departureIndex
+        ? etdDay - (departureIndex - index)
+        : index <= arrivalIndex
+          ? etdDay +
+            (seed.transitDays * (index - departureIndex)) /
+              Math.max(arrivalIndex - departureIndex, 1)
+          : etaDay + (index - arrivalIndex) * 2
 
-    const planned = at(now, Math.round(offset), 8 + (index % 6))
+    /**
+     * Actuals drift from plan by up to a day: real dates are never exact. Not
+     * the sailing and the arrival, though — those are the dates the header
+     * prints beside this timeline, at the header's own hours.
+     */
+    const anchor = index === departureIndex || index === arrivalIndex
+    const planned = anchor
+      ? at(now, Math.round(offset), index === arrivalIndex ? 14 : 6)
+      : at(now, Math.round(offset), 8 + (index % 6))
     const done = index < seed.done
-    /** Actuals drift from plan by up to a day: real dates are never exact. */
-    const actual = done ? at(now, Math.round(offset) + ((index % 3) - 1), 10 + (index % 5)) : null
+    const drifted = at(now, Math.round(offset) + (index % 3) - 1, 10 + (index % 5))
+    // …and never in the future: a step that is done happened already.
+    const actual = done
+      ? anchor
+        ? planned
+        : new Date(Math.min(drifted.getTime(), now - HOUR))
+      : null
     const slipped = !done && seed.customs === 'held' && index >= seed.done
 
     return {
@@ -1127,7 +1166,7 @@ function milestonesFor(seed: JobSeed, now: number): MilestoneView[] {
   })
 }
 
-function clocksFor(seed: JobSeed, now: number): ClockView[] {
+function clocksFor(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): ClockView[] {
   /**
    * One job carries the demurrage clock the demo turns on (Pilot §3.1 item
    * 12). It is deliberately past its free time and has already written a
@@ -1151,8 +1190,13 @@ function clocksFor(seed: JobSeed, now: number): ClockView[] {
       chargeableDays: chargeable,
       perDiem: { amount: perDiem, currency: 'KWD' },
       accrued: { amount: chargeable * perDiem * 3, currency: 'KWD' },
-      counterparty: 'ONE — Ocean Network Express',
+      counterparty: pickName(locale, partner('one').en, partner('one').ar),
       chargeLineWritten: true,
+      equipmentId: null,
+      counterpartyId: partnerId('one'),
+      startsOnDay: startsOn.toISOString().slice(0, 10),
+      endsOn: null,
+      perDiemText: String(perDiem),
     },
   ]
 }
@@ -1171,7 +1215,7 @@ function documentsFor(seed: JobSeed, now: number): DocumentView[] {
   }))
 }
 
-function jobSummary(seed: JobSeed, now: number): JobSummary {
+function jobSummary(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobSummary {
   const customer = CUSTOMERS[seed.customer]!
   const origin = PORTS[seed.origin]
   const destination = PORTS[seed.destination]
@@ -1203,7 +1247,7 @@ function jobSummary(seed: JobSeed, now: number): JobSummary {
     etd: at(now, seed.etaOffset - seed.transitDays, 6),
     eta: at(now, seed.etaOffset, 14),
     ata: seed.etaOffset < 0 ? at(now, seed.etaOffset, 14) : null,
-    owner: OWNERS[seed.owner]!,
+    owner: ownerName(seed.owner, locale),
     customsStatus: seed.customs ?? null,
     containerCount: seed.containers,
     milestonesTotal: template.length,
@@ -1214,27 +1258,41 @@ function jobSummary(seed: JobSeed, now: number): JobSummary {
   }
 }
 
-export function pilotJobs(now = Date.now()): JobSummary[] {
-  return JOB_SEEDS.map((seed) => jobSummary(seed, now))
+/**
+ * `locale` is for what an operator would have typed — the owner's name, the
+ * commodity, the customs note — which a real file holds in whichever language
+ * it was written, and which the demo writes in the reader's.
+ */
+export function pilotJobs(now = Date.now(), locale: 'en' | 'ar' = 'en'): JobSummary[] {
+  return JOB_SEEDS.map((seed) => jobSummary(seed, now, locale))
 }
 
-export function pilotJob(id: string, now = Date.now()): JobDetail | undefined {
+export function pilotJob(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): JobDetail | undefined {
   const seed = JOB_SEEDS.find((s) => `job-${s.seq}` === id || String(s.seq) === id)
   if (!seed) return undefined
-  return jobDetail(seed, now)
+  return jobDetail(seed, now, locale)
 }
 
-function pilotJobByReference(reference: string, now = Date.now()): JobDetail | undefined {
+function pilotJobByReference(
+  reference: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): JobDetail | undefined {
   const normalised = reference.trim().toUpperCase()
   const seed = JOB_SEEDS.find((s) => {
     const year = new Date(now).getFullYear()
     return `${s.branch}-${year}-${String(s.seq).padStart(5, '0')}` === normalised
   })
-  return seed ? jobDetail(seed, now) : undefined
+  return seed ? jobDetail(seed, now, locale) : undefined
 }
 
-function jobDetail(seed: JobSeed, now: number): JobDetail {
-  const summary = jobSummary(seed, now)
+function jobDetail(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobDetail {
+  const summary = jobSummary(seed, now, locale)
+  const ar = locale === 'ar'
   const containers = Array.from({ length: seed.containers }, (_, index) => ({
     containerNo: containerNumber(seed.seq, index),
     type: CONTAINER_TYPES[(seed.seq + index) % CONTAINER_TYPES.length]!,
@@ -1265,6 +1323,12 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
     originId: locationId(seed.origin),
     destinationId: locationId(seed.destination),
     commodityId: null,
+    ownerId: null,
+    quoteId: null,
+    branchTimeZone: branch(seed.branch).timeZone,
+    vesselName: summary.vesselOrFlight,
+    voyageNumber: null,
+    flightNumber: null,
     customerReference: `PO-${2026}-${String(seed.seq * 3).padStart(4, '0')}`,
     masterBillNumber:
       seed.mode === 'air'
@@ -1282,27 +1346,39 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
     incoterm: seed.direction === 'import' ? 'CFR' : 'FOB',
     commodity:
       seed.customer === 0
-        ? 'Steel coils'
+        ? ar
+          ? 'لفائف حديد'
+          : 'Steel coils'
         : seed.customer === 2
-          ? 'Foodstuffs — ambient'
+          ? ar
+            ? 'مواد غذائية — حرارة عادية'
+            : 'Foodstuffs — ambient'
           : seed.customer === 4
-            ? 'Consumer electronics'
-            : 'General cargo',
+            ? ar
+              ? 'إلكترونيات استهلاكية'
+              : 'Consumer electronics'
+            : ar
+              ? 'بضائع عامة'
+              : 'General cargo',
     grossWeightKg: seed.mode === 'air' ? 1850 + seed.seq : 18500 + seed.seq * 12,
     chargeableWeightKg: seed.mode === 'air' ? 2100 + seed.seq : null,
     volumeCbm: seed.mode === 'air' ? 11.4 : seed.containers * 62,
     pieces: seed.mode === 'air' ? 42 : seed.containers * 210,
     milestones: milestonesFor(seed, now),
     containers,
-    clocks: clocksFor(seed, now),
-    exceptions: pilotExceptions(now).filter((e) => e.jobId === summary.id),
+    clocks: clocksFor(seed, now, locale),
+    exceptions: pilotExceptions(now, locale).filter((e) => e.jobId === summary.id),
     documents: documentsFor(seed, now),
     partners: partnersFor(seed),
     customsNote:
       seed.customs === 'held'
-        ? 'Held by Kuwait General Administration of Customs pending origin certificate attestation.'
+        ? ar
+          ? 'محتجزة لدى الإدارة العامة للجمارك في الكويت بانتظار تصديق شهادة المنشأ.'
+          : 'Held by Kuwait General Administration of Customs pending origin certificate attestation.'
         : seed.customs === 'inspection'
-          ? 'Physical inspection scheduled — yard 4.'
+          ? ar
+            ? 'تفتيش فعلي مجدول — الساحة 4.'
+            : 'Physical inspection scheduled — yard 4.'
           : null,
   }
 }
@@ -1354,6 +1430,7 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
       id: `${stem}-carrier`,
       partnerId: partnerId(carrier),
       name: partner(carrier).en,
+      nameAr: partner(carrier).ar,
       role: 'carrier',
       reference: `BK-${seed.seq}9812`,
     },
@@ -1361,6 +1438,7 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
       id: `${stem}-agent`,
       partnerId: partnerId(agent),
       name: partner(agent).en,
+      nameAr: partner(agent).ar,
       role: seed.direction === 'import' ? 'origin_agent' : 'destination_agent',
       reference: null,
     },
@@ -1379,6 +1457,7 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
       id: `${stem}-broker`,
       partnerId: partnerId(broker),
       name: partner(broker).en,
+      nameAr: partner(broker).ar,
       role: 'customs_broker',
       reference: null,
     })
@@ -1391,6 +1470,7 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
       id: `${stem}-haulier`,
       partnerId: partnerId(haulier),
       name: partner(haulier).en,
+      nameAr: partner(haulier).ar,
       role: 'haulier',
       reference: null,
     })
@@ -1408,8 +1488,9 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
  * on a job that is otherwise unremarkable, which is the point: it is the sort
  * of thing that goes unnoticed for a week today.
  */
-export function pilotExceptions(now = Date.now()): ExceptionView[] {
+export function pilotExceptions(now = Date.now(), locale: 'en' | 'ar' = 'en'): ExceptionView[] {
   const year = new Date(now).getFullYear()
+  const pick = (en: string, ar: string): string => (locale === 'ar' ? ar : en)
   return [
     {
       id: 'exc-1',
@@ -1421,9 +1502,13 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'critical',
       openedAt: at(now, -4, 8),
       dueAt: at(now, -1, 12),
-      owner: OWNERS[0]!,
-      description: 'Origin certificate requires chamber attestation before release.',
+      owner: ownerName(0, locale),
+      description: pick(
+        'Origin certificate requires chamber attestation before release.',
+        'شهادة المنشأ تحتاج إلى تصديق غرفة التجارة قبل الإفراج.',
+      ),
       customerName: CUSTOMERS[0]!.en,
+      customerNameAr: CUSTOMERS[0]!.ar,
     },
     {
       id: 'exc-2',
@@ -1435,9 +1520,13 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'high',
       openedAt: at(now, -3, 10),
       dueAt: at(now, 1, 12),
-      owner: OWNERS[3]!,
-      description: 'Selected for physical inspection at yard 4.',
+      owner: ownerName(3, locale),
+      description: pick(
+        'Selected for physical inspection at yard 4.',
+        'اختيرت للتفتيش الفعلي في الساحة 4.',
+      ),
       customerName: CUSTOMERS[6]!.en,
+      customerNameAr: CUSTOMERS[6]!.ar,
     },
     {
       id: 'exc-3',
@@ -1449,9 +1538,13 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'medium',
       openedAt: at(now, -2, 9),
       dueAt: at(now, 0, 17),
-      owner: OWNERS[1]!,
-      description: 'Packing list not received from shipper.',
+      owner: ownerName(1, locale),
+      description: pick(
+        'Packing list not received from shipper.',
+        'لم تصل قائمة التعبئة من الشاحن.',
+      ),
       customerName: CUSTOMERS[2]!.en,
+      customerNameAr: CUSTOMERS[2]!.ar,
     },
     {
       id: 'exc-4',
@@ -1463,9 +1556,13 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'medium',
       openedAt: at(now, -1, 14),
       dueAt: at(now, 2, 12),
-      owner: OWNERS[4]!,
-      description: 'Berthing delayed 36 hours at Jebel Ali.',
+      owner: ownerName(4, locale),
+      description: pick(
+        'Berthing delayed 36 hours at Jebel Ali.',
+        'تأخر الرسو 36 ساعة في جبل علي.',
+      ),
       customerName: CUSTOMERS[8]!.en,
+      customerNameAr: CUSTOMERS[8]!.ar,
     },
   ]
 }
@@ -1500,10 +1597,7 @@ export function pilotNotifications(locale: 'en' | 'ar', now = Date.now()): Notif
     {
       id: 'ntf-1',
       eventKey: 'exception.opened',
-      title: pick(
-        `Customs hold on KWI-${year}-01041`,
-        `احتجاز جمركي على KWI-${year}-01041`,
-      ),
+      title: pick(`Customs hold on KWI-${year}-01041`, `احتجاز جمركي على KWI-${year}-01041`),
       body: pick(
         'Origin certificate needs chamber attestation before release — on the exception register, resolution clock running.',
         'تتطلب شهادة المنشأ تصديق الغرفة قبل الإفراج — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
@@ -1802,7 +1896,8 @@ const ENQUIRY_SEEDS: readonly EnquirySeed[] = [
   },
 ]
 
-export function pilotEnquiries(now = Date.now()): EnquirySummary[] {
+/** `locale` names the ports, as `listEnquiries` does (F27). */
+export function pilotEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): EnquirySummary[] {
   const year = new Date(now).getFullYear()
   return ENQUIRY_SEEDS.map((seed) => {
     const customer = CUSTOMERS[seed.customer]!
@@ -1816,9 +1911,9 @@ export function pilotEnquiries(now = Date.now()): EnquirySummary[] {
       mode: seed.mode,
       customerName: customer.en,
       customerNameAr: customer.ar,
-      originName: PORTS[seed.origin].en,
-      destinationName: PORTS[seed.destination].en,
-      owner: seed.owner === null ? null : OWNERS[seed.owner]!,
+      originName: pickName(locale, PORTS[seed.origin].en, PORTS[seed.origin].ar),
+      destinationName: pickName(locale, PORTS[seed.destination].en, PORTS[seed.destination].ar),
+      owner: seed.owner === null ? null : ownerName(seed.owner, locale),
       createdAt,
       slaDueAt: new Date(createdAt.getTime() + seed.sla * HOUR),
       firstRespondedAt:
@@ -1839,224 +1934,232 @@ export function pilotEnquiries(now = Date.now()): EnquirySummary[] {
  * `manualTurnaroundHours` is the punchline of Moment 2: the same enquiry,
  * answered by hand last month, took a day and a half. Pilot §5 item 7 asks the
  * client for that number specifically, with *"the honest turnaround time"*.
+ *
+ * Built from the enquiry's own seed. This used to return one hard-coded
+ * comparison whatever was asked, so every enquiry on the board opened as
+ * ENQ-KWI-0320 for Fintas Steel, Ningbo to Shuwaikh — a Hamburg air enquiry
+ * included. Now the header is the enquiry's, the recommended option's sell is
+ * the figure the register and the quotations list print for it, and an
+ * enquiry nobody has priced yet opens on the empty comparison with its
+ * "Price it" button, as it does on a database.
  */
-export function pilotQuote(now = Date.now()): QuoteComparison {
+export function pilotQuote(
+  enquiryId: string | undefined,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): QuoteComparison | undefined {
+  // The comparison is always reached from an enquiry; the demo's own is the
+  // won Ningbo sailing, the lane every other screen tells the story of.
+  const seed = ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === (enquiryId ?? 'enq-314'))
+  if (!seed) return undefined
+
   const year = new Date(now).getFullYear()
+  const ar = locale === 'ar'
+  const customer = CUSTOMERS[seed.customer]!
+  const origin = PORTS[seed.origin]
+  const destination = PORTS[seed.destination]
+  const createdAt = hours(now, -seed.age)
+  const priced = seed.sell !== undefined
+  const fcl = seed.mode === 'sea_fcl'
+  // An FCL enquiry that arrived by mail has no count until someone records one.
+  const containerCount = fcl && priced ? 1 : null
+  const importing = destination.country === 'KW' || destination.country === 'AE'
+
   return {
-    enquiryReference: `ENQ-KWI-${year}-0320`,
-    customerName: CUSTOMERS[0]!.en,
-    lane: 'Ningbo → Shuwaikh',
-    mode: 'sea_fcl',
-    containerType: '1 × 40HC',
-    incoterm: 'CFR Shuwaikh',
-    preparedBy: OWNERS[0]!,
-    pricedAt: hours(now, -1),
-    manualTurnaroundHours: 36,
-    pricingMs: 840,
-    hasResponded: false,
-    isClosed: false,
-    options: [
-      {
-        id: 'opt-1',
-        carrier: 'ONE — Ocean Network Express',
-        service: 'Direct · weekly',
-        transitDays: 24,
-        buy: { amount: 1284, currency: 'KWD' },
-        sell: { amount: 1580, currency: 'KWD' },
-        marginPct: 18.7,
-        validUntil: at(now, 21, 23),
-        isRecommended: true,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 980,
-            sellRate: 1180,
-            amount: { amount: 1180, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 118,
-            sellRate: 145,
-            amount: { amount: 145, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 22,
-            sellRate: 45,
-            amount: { amount: 45, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 42,
-            amount: { amount: 42, currency: 'KWD' },
-          },
-        ],
-      },
-      {
-        id: 'opt-2',
-        carrier: 'CMA CGM',
-        service: 'Direct · fortnightly',
-        transitDays: 21,
-        buy: { amount: 1362, currency: 'KWD' },
-        sell: { amount: 1690, currency: 'KWD' },
-        marginPct: 19.4,
-        validUntil: at(now, 14, 23),
-        isRecommended: false,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 1050,
-            sellRate: 1275,
-            amount: { amount: 1275, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 126,
-            sellRate: 155,
-            amount: { amount: 155, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 22,
-            sellRate: 45,
-            amount: { amount: 45, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 47,
-            amount: { amount: 47, currency: 'KWD' },
-          },
-        ],
-      },
-      {
-        id: 'opt-3',
-        carrier: 'Hapag-Lloyd',
-        service: 'Transhipment via Jebel Ali',
-        transitDays: 29,
-        buy: { amount: 1178, currency: 'KWD' },
-        sell: { amount: 1420, currency: 'KWD' },
-        marginPct: 17.0,
-        validUntil: at(now, 28, 23),
-        isRecommended: false,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 890,
-            sellRate: 1050,
-            amount: { amount: 1050, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 118,
-            sellRate: 145,
-            amount: { amount: 145, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 6,
-            sellRate: 15,
-            amount: { amount: 15, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 42,
-            amount: { amount: 42, currency: 'KWD' },
-          },
-        ],
-      },
-    ],
+    status: seed.status,
+    enquiryReference: `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
+    customerName: pickName(locale, customer.en, customer.ar),
+    // Read right to left in Arabic, so the origin ends up on the right.
+    lane: ar ? `${origin.ar} ← ${destination.ar}` : `${origin.en} → ${destination.en}`,
+    mode: seed.mode,
+    containerCount,
+    containerType: containerCount ? `${containerCount} × 40HC` : null,
+    // The term is international; the named place is a place, in the reader's language.
+    incoterm: importing
+      ? `CFR ${ar ? destination.ar : destination.en}`
+      : `FOB ${ar ? origin.ar : origin.en}`,
+    preparedBy: seed.owner === null ? null : ownerName(seed.owner, locale),
+    pricedAt: new Date(createdAt.getTime() + (seed.respondedAfter ?? 1) * HOUR),
+    // Measured on the showcase lane only; anywhere else it would be invented.
+    manualTurnaroundHours: priced && seed.seq === 314 ? 36 : null,
+    pricingMs: priced ? 640 + (seed.seq % 5) * 80 : null,
+    hasResponded: seed.respondedAfter !== undefined,
+    isClosed: seed.status === 'won' || seed.status === 'lost',
+    hasAccepted: seed.status === 'won',
+    branchId: branch(seed.branch).id,
+    // KWD on the Dubai enquiry as well — see `pilotQuotes` for why.
+    baseCurrency: 'KWD',
+    options: priced ? quoteOptions(seed, now, locale) : [],
   }
+}
+
+/**
+ * Who sails each kind of enquiry, and how — the comparison's columns.
+ *
+ * `share` is the option's sell against the recommended one and `marginDelta`
+ * its margin against the enquiry's; the recommended option is always first and
+ * always exactly the enquiry's quoted sell and margin.
+ */
+interface QuoteCarrier {
+  readonly partner: PartnerKey
+  readonly serviceEn: string
+  readonly serviceAr: string
+  readonly transitDelta: number
+  readonly share: string
+  readonly marginDelta: string
+}
+
+const QUOTE_CARRIERS: Partial<Record<Mode, readonly QuoteCarrier[]>> = {
+  sea_fcl: [
+    {
+      partner: 'one',
+      serviceEn: 'Direct · weekly',
+      serviceAr: 'مباشر · أسبوعي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+    {
+      partner: 'cmacgm',
+      serviceEn: 'Direct · fortnightly',
+      serviceAr: 'مباشر · كل أسبوعين',
+      transitDelta: -3,
+      share: '1.07',
+      marginDelta: '0.7',
+    },
+    {
+      partner: 'hapag',
+      serviceEn: 'Transhipment via Jebel Ali',
+      serviceAr: 'مسافنة عبر جبل علي',
+      transitDelta: 5,
+      share: '0.9',
+      marginDelta: '-1.7',
+    },
+  ],
+  sea_lcl: [
+    {
+      partner: 'cmacgm',
+      serviceEn: 'Consolidated · weekly',
+      serviceAr: 'شحن مجمّع · أسبوعي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+    {
+      partner: 'maersk',
+      serviceEn: 'Consolidated via Jebel Ali',
+      serviceAr: 'شحن مجمّع عبر جبل علي',
+      transitDelta: 4,
+      share: '0.92',
+      marginDelta: '-2.1',
+    },
+  ],
+  // One airline flies the demo's air lanes, so the comparison draws a single option.
+  air: [
+    {
+      partner: 'ek',
+      serviceEn: 'Via Dubai · daily',
+      serviceAr: 'عبر دبي · يومي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+  ],
+}
+
+/** Days port to port by the countries at either end; a rough but honest board. */
+const LANE_TRANSIT: Record<string, number> = {
+  'CN-KW': 24,
+  'CN-AE': 20,
+  'IN-KW': 9,
+  'IN-AE': 6,
+  'TR-KW': 18,
+  'DE-KW': 26,
+  'KW-IN': 8,
+  'AE-KW': 2,
+}
+
+/** How a quotation's sell divides into its charges, by mode — the last line absorbs rounding. */
+const QUOTE_SPLIT: Record<'sea' | 'air', readonly (readonly [ChargeKey, string, string])[]> = {
+  sea: [
+    ['ocean_freight', 'per_container', '0.74'],
+    ['thc_origin', 'per_container', '0.09'],
+    ['thc_destination', 'per_container', '0.10'],
+    ['documentation', 'flat', '0.03'],
+    ['delivery_order', 'flat', '0'],
+  ],
+  air: [
+    ['air_freight', 'per_kg', '0.82'],
+    ['documentation', 'flat', '0.04'],
+    ['delivery_order', 'flat', '0'],
+  ],
+}
+
+function quoteOptions(
+  seed: EnquirySeed,
+  now: number,
+  locale: 'en' | 'ar',
+): QuoteComparison['options'] {
+  const sell = new D(seed.sell!)
+  const margin = new D(seed.margin ?? 0)
+  const lane = `${PORTS[seed.origin].country}-${PORTS[seed.destination].country}`
+  const base = seed.mode === 'air' ? 2 : (LANE_TRANSIT[lane] ?? 20)
+  const split = QUOTE_SPLIT[seed.mode === 'air' ? 'air' : 'sea']
+  const carriers = QUOTE_CARRIERS[seed.mode] ?? []
+
+  return carriers.map((carrier, index) => {
+    const optionSell = sell.times(carrier.share).toDecimalPlaces(0)
+    const optionMargin = margin.plus(carrier.marginDelta)
+    const optionBuy = optionSell
+      .times(new D(100).minus(optionMargin))
+      .dividedBy(100)
+      .toDecimalPlaces(0)
+
+    let sellLeft = optionSell
+    let buyLeft = optionBuy
+    const lines = split.map(([code, basis, share], position) => {
+      const last = position === split.length - 1
+      const lineSell = last ? sellLeft : optionSell.times(share).toDecimalPlaces(0)
+      const lineBuy = last ? buyLeft : optionBuy.times(share).toDecimalPlaces(0)
+      sellLeft = sellLeft.minus(lineSell)
+      buyLeft = buyLeft.minus(lineBuy)
+      const charge = CHARGE_TYPE_ROWS.find((row) => row.key === code)
+      return {
+        chargeCode: code,
+        nameEn: charge?.en ?? code,
+        nameAr: charge?.ar ?? code,
+        basis,
+        quantity: 1,
+        buyRate: lineBuy.toNumber(),
+        sellRate: lineSell.toNumber(),
+        amount: { amount: lineSell.toNumber(), currency: 'KWD' },
+      }
+    })
+
+    const who = partner(carrier.partner)
+    return {
+      id: `enq-${seed.seq}-opt-${index + 1}`,
+      carrier: locale === 'ar' ? who.ar : who.en,
+      service: locale === 'ar' ? carrier.serviceAr : carrier.serviceEn,
+      transitDays: Math.max(1, base + carrier.transitDelta),
+      buy: { amount: optionBuy.toNumber(), currency: 'KWD' },
+      sell: { amount: optionSell.toNumber(), currency: 'KWD' },
+      marginPct: optionMargin.toNumber(),
+      validUntil: at(now, 14 + index * 7, 23),
+      isRecommended: index === 0,
+      lines,
+    }
+  })
 }
 
 // --- the dashboard ---------------------------------------------------------
 
 const LIVE_STATUSES = new Set(['booked', 'in_transit', 'arrived', 'customs', 'on_hold'])
 
-export function pilotOverview(now = Date.now()): OpsOverview {
-  const jobs = pilotJobs(now)
-  const enquiries = pilotEnquiries(now)
-  const exceptions = pilotExceptions(now)
+export function pilotOverview(now = Date.now(), locale: 'en' | 'ar' = 'en'): OpsOverview {
+  const jobs = pilotJobs(now, locale)
+  const enquiries = pilotEnquiries(now, locale)
+  const exceptions = pilotExceptions(now, locale)
   const live = jobs.filter((j) => LIVE_STATUSES.has(j.status))
   const openEnquiries = enquiries.filter(
     (e) => !['won', 'lost', 'cancelled', 'expired'].includes(e.status),
@@ -2071,17 +2174,17 @@ export function pilotOverview(now = Date.now()): OpsOverview {
   const byMode = new Map<Mode, number>()
   for (const job of live) byMode.set(job.mode, (byMode.get(job.mode) ?? 0) + 1)
 
-  const lanes = new Map<string, { count: number; value: number }>()
+  const lanes = new Map<string, { laneAr: string; count: number; value: number }>()
   for (const job of jobs) {
     const lane = `${job.originName} → ${job.destinationName}`
     const current = lanes.get(lane) ?? { count: 0, value: 0 }
     lanes.set(lane, {
+      laneAr: `${job.originNameAr} ← ${job.destinationNameAr}`,
       count: current.count + 1,
       value: current.value + 480 + job.containerCount * 640,
     })
   }
 
-  const accruing = jobs.reduce((sum, job) => sum + (job.accruing?.amount ?? 0), 0)
   const quoted = enquiries.filter((e) => e.quotedSell)
   const won = enquiries.filter((e) => e.status === 'won').length
   const decided = enquiries.filter((e) => e.status === 'won' || e.status === 'lost').length
@@ -2093,7 +2196,8 @@ export function pilotOverview(now = Date.now()): OpsOverview {
     /** Friday and Saturday are the Kuwaiti weekend — the trough is real. */
     const base = weekday === 5 ? 1 : weekday === 6 ? 2 : 4 + ((index * 7) % 5)
     return {
-      label: day.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      // The day, as the query returns it; the page words it per language.
+      label: day.toISOString().slice(0, 10),
       value: base,
     }
   })
@@ -2134,15 +2238,24 @@ export function pilotOverview(now = Date.now()): OpsOverview {
           : Math.round(
               (quoted.reduce((sum, e) => sum + (e.quotedMargin ?? 0), 0) / quoted.length) * 10,
             ) / 10,
-      quotedValue: {
-        amount: quoted.reduce((sum, e) => sum + (e.quotedSell?.amount ?? 0), 0),
-        currency: 'KWD',
-      },
+      quotedValue: sumByCurrency(
+        quoted.map((e) => ({
+          currency: e.quotedSell!.currency,
+          amount: String(e.quotedSell!.amount),
+        })),
+      ),
       medianResponseMinutes: 14,
     },
     clocks: {
       running: jobs.filter((j) => j.accruing !== null).length,
-      accruing: { amount: accruing, currency: 'KWD' },
+      accruing: sumByCurrency(
+        jobs
+          .filter((job) => job.accruing !== null)
+          .map((job) => ({
+            currency: job.accruing!.currency,
+            amount: String(job.accruing!.amount),
+          })),
+      ),
       containersAtRisk: 3,
     },
     exceptions,
@@ -2155,7 +2268,12 @@ export function pilotOverview(now = Date.now()): OpsOverview {
       .sort((a, b) => (a.eta?.getTime() ?? 0) - (b.eta?.getTime() ?? 0))
       .slice(0, 6),
     topLanes: [...lanes.entries()]
-      .map(([lane, v]) => ({ lane, count: v.count, value: { amount: v.value, currency: 'KWD' } }))
+      .map(([lane, v]) => ({
+        lane,
+        laneAr: v.laneAr,
+        count: v.count,
+        value: { amount: v.value, currency: 'KWD' },
+      }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5),
   }
@@ -2166,11 +2284,21 @@ export function pilotOverview(now = Date.now()): OpsOverview {
 /** The seeded portal customer — Pilot §3.1 item 10. */
 export const PILOT_PORTAL_CUSTOMER = CUSTOMERS[0]!
 
-export function pilotPortalShipments(now = Date.now()): PortalShipment[] {
-  return pilotJobs(now)
+/**
+ * The agency the demo's agent login works for: the origin agent on the China
+ * imports, under the id the job's partner panel names it by.
+ */
+export const PILOT_AGENT_PARTNER = { ...partner('everbright'), id: partnerId('everbright') }
+
+export function pilotPortalShipments(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalShipment[] {
+  const ar = locale === 'ar'
+  return pilotJobs(now, locale)
     .filter((job) => job.customerName === PILOT_PORTAL_CUSTOMER.en)
     .map((job) => {
-      const detail = pilotJob(job.id, now)
+      const detail = pilotJob(job.id, now, locale)
       const next = detail?.milestones.find((m) => m.actualAt === null)
       return {
         id: job.id,
@@ -2178,13 +2306,49 @@ export function pilotPortalShipments(now = Date.now()): PortalShipment[] {
         customerReference: detail?.customerReference ?? null,
         status: job.status,
         mode: job.mode,
-        originName: job.originName,
-        destinationName: job.destinationName,
+        originName: ar ? job.originNameAr : job.originName,
+        destinationName: ar ? job.destinationNameAr : job.destinationName,
         eta: job.eta,
         milestonesTotal: job.milestonesTotal,
         milestonesDone: job.milestonesDone,
         documentsReleased: detail?.documents.filter((d) => d.releasedAt !== null).length ?? 0,
-        nextMilestone: next?.nameEn ?? null,
+        nextMilestone: (ar ? next?.nameAr : next?.nameEn) ?? null,
+      }
+    })
+}
+
+/**
+ * The agent's own view — the jobs their partner is named on (A9).
+ *
+ * The same projection as the customer's, filtered the way the
+ * `agent_contact` RLS arm filters a real database: by the partner on the
+ * job's partner panel. The demo agent works for the origin agent on the
+ * imports, so that is what it sees.
+ */
+export function pilotAgentShipments(
+  partner: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PortalShipment[] {
+  const ar = locale === 'ar'
+  return pilotJobs(now, locale)
+    .map((job) => ({ job, detail: pilotJob(job.id, now, locale) }))
+    .filter(({ detail }) => detail?.partners.some((p) => p.partnerId === partner))
+    .map(({ job, detail }) => {
+      const next = detail?.milestones.find((m) => m.actualAt === null)
+      return {
+        id: job.id,
+        reference: job.reference,
+        customerReference: null,
+        status: job.status,
+        mode: job.mode,
+        originName: ar ? job.originNameAr : job.originName,
+        destinationName: ar ? job.destinationNameAr : job.destinationName,
+        eta: job.eta,
+        milestonesTotal: job.milestonesTotal,
+        milestonesDone: job.milestonesDone,
+        documentsReleased: 0,
+        nextMilestone: (ar ? next?.nameAr : next?.nameEn) ?? null,
       }
     })
 }
@@ -2231,7 +2395,12 @@ export function pilotTracking(
     eta: job.eta,
     ata: job.ata,
     containers: job.containers,
-    milestones: job.milestones.filter((m) => m.code !== 'empty_returned'),
+    /*
+      Every step, as the database's tracking read returns them. This hid the
+      empty return, so the portal said "4 of 7" and the tracking page "4 of 6"
+      about the same shipment.
+    */
+    milestones: job.milestones,
     /** Released only — a draft bill of lading is not a customer document. */
     documents: job.documents.filter((d) => d.releasedAt !== null),
     notices: job.exceptions
@@ -2262,13 +2431,14 @@ export function pilotDemoReference(now = Date.now()): { reference: string; verif
       that 500s, because it is the thing a prospect notices in the meeting and
       it cannot be explained away.
 
-   2. **Nothing sums two currencies.** KWI bills in KWD and DXB in AED, and
-      several of these queries add a column up and label the total with one
-      currency — true of the SQL, untrue of money. The dataset is arranged so
-      the question never arises: every *open* receivable is the Kuwait
-      entity's, every supplier bill is bought by the Kuwait entity and carries
-      its own `fxRate` back to KWD. Where a screen shows a foreign figure it is
-      per row, beside its own currency code.
+   2. **Nothing sums two currencies.** KWI bills in KWD and DXB in AED. The
+      finance summaries used to add a column up and label the total with one
+      currency; they now return one figure per currency (F45 and its
+      siblings), and the builders below group the same way. The dataset still
+      keeps every *open* receivable the Kuwait entity's and every supplier bill
+      bought by it with its own `fxRate` back to KWD, so the demo reads as one
+      ledger. Where a screen shows a foreign figure it is per row, beside its
+      own currency code.
    ======================================================================== */
 
 // --- quotations — features/ledger/queries.ts -------------------------------
@@ -2287,7 +2457,11 @@ export function pilotDemoReference(now = Date.now()): { reference: string; verif
  * `quotedSell` KWD; a quote register that priced the same enquiry in AED would
  * be the two screens disagreeing in the most literal way available.
  */
-export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
+export function pilotQuotes(
+  now = Date.now(),
+  status?: string,
+  locale: 'en' | 'ar' = 'en',
+): QuoteRow[] {
   const year = new Date(now).getFullYear()
 
   const priced = ENQUIRY_SEEDS.filter((seed) => seed.sell !== undefined)
@@ -2328,9 +2502,9 @@ export function pilotQuotes(now = Date.now(), status?: string): QuoteRow[] {
       validUntil: seed.status === 'lost' ? day(now, -2) : day(now, 14),
       sentAt,
       decidedAt: decided ? hours(now, -Math.round(seed.age / 3)) : null,
-      customerName: customer.en,
+      customerName: pickName(locale, customer.en, customer.ar),
       enquiryReference,
-      preparedBy: seed.owner === null ? null : OWNERS[seed.owner]!,
+      preparedBy: seed.owner === null ? null : ownerName(seed.owner, locale),
       branchCode: seed.branch,
     }
 
@@ -2415,11 +2589,11 @@ interface InvoiceSeed {
  * current, a tail that stops being collectable, and one name that is most of
  * the tail.
  *
- * Every Dubai invoice is settled. `receivablesAgeing` sums balances across
- * currencies and labels the total with whichever it finds first, so an open
- * AED invoice would put dirhams into a Kuwaiti dinar total. That is the
- * query's flaw and not this file's to fix, but it is this file's to avoid
- * demonstrating.
+ * Every Dubai invoice is settled, so the ageing chart is one dinar ledger.
+ * `receivablesAgeing` now ages each currency separately, so an open AED
+ * invoice would be a second chart rather than dirhams in a dinar total — but
+ * the demo tells one book's story, and a second chart of one row would not
+ * help it.
  */
 const INVOICE_SEEDS: readonly InvoiceSeed[] = [
   // Current — issued, inside terms.
@@ -2588,7 +2762,7 @@ function invoiceTotal(seed: InvoiceSeed): string {
   return sum([seed.subtotal, seed.tax])
 }
 
-function invoiceRow(seed: InvoiceSeed, now: number): InvoiceRow {
+function invoiceRow(seed: InvoiceSeed, now: number, locale: 'en' | 'ar' = 'en'): InvoiceRow {
   const customer = CUSTOMERS[seed.customer]!
   const home = branch(seed.branch)
   return {
@@ -2601,26 +2775,36 @@ function invoiceRow(seed: InvoiceSeed, now: number): InvoiceRow {
     taxAmount: numeric(seed.tax),
     total: invoiceTotal(seed),
     amountPaid: numeric(seed.paid),
+    /*
+      Zero throughout. The pilot's one credit note (4116) predates partial
+      credit and is told as a credit applied in its own `amountPaid`; the
+      figures every screen sums were agreed on that basis.
+    */
+    amountCredited: numeric('0'),
     issuedAt: seed.status === 'draft' ? null : at(now, -seed.issued, 11),
     dueOn: seed.status === 'draft' ? null : day(now, -seed.issued + seed.termsDays),
     isCreditNote: seed.isCreditNote ?? false,
-    customerName: customer.en,
+    customerName: pickName(locale, customer.en, customer.ar),
     branchCode: home.code,
   }
 }
 
 /** Serves `listInvoices`. Newest first, as `order by created_at desc` gives. */
-export function pilotInvoices(now = Date.now(), status?: string): InvoiceRow[] {
+export function pilotInvoices(
+  now = Date.now(),
+  status?: string,
+  locale: 'en' | 'ar' = 'en',
+): InvoiceRow[] {
   const rows = [...INVOICE_SEEDS]
     .sort((a, b) => a.issued - b.issued)
-    .map((seed) => invoiceRow(seed, now))
+    .map((seed) => invoiceRow(seed, now, locale))
   return status ? rows.filter((row) => row.status === status) : rows
 }
 
 /** Every invoice still owing something, with how far past due it is. */
 function openInvoices(now: number): { row: InvoiceRow; balance: string; daysOverdue: number }[] {
   return pilotInvoices(now)
-    .filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+    .filter((row) => ['issued', 'part_paid'].includes(row.status))
     .map((row) => ({
       row,
       balance: minus(row.total ?? '0', row.amountPaid ?? '0'),
@@ -2633,26 +2817,37 @@ function openInvoices(now: number): { row: InvoiceRow; balance: string; daysOver
  * Serves `invoiceSummary`.
  *
  * The counts mirror the statement's `filter` clauses exactly, including the
- * two that look wrong and are not: `issued` counts a credited invoice, and
- * `outstanding` includes drafts. Both follow from `status not in (…)` lists
- * that differ by one word, and a fixture that quietly tidied them up would
- * make the offline number disagree with the database's.
+ * one that looks wrong and is not: `issued` counts a credited invoice. A
+ * fixture that quietly tidied it up would make the offline number disagree
+ * with the database's.
+ *
+ * `outstanding` is grouped by currency and leaves drafts out, as the statement
+ * does. This side kept counting drafts after the query stopped (fix 3.37), so
+ * the demo's receivables figure was larger than the same rows in PostgreSQL.
  */
 export function pilotInvoiceSummary(now = Date.now()): InvoiceSummary {
   const rows = pilotInvoices(now)
-  const open = rows.filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+  const open = rows.filter((row) => ['issued', 'part_paid'].includes(row.status))
+
+  const byCurrency = new Map<string, string[]>()
+  for (const row of open) {
+    const balances = byCurrency.get(row.currency) ?? []
+    balances.push(minus(row.total ?? '0', row.amountPaid ?? '0'))
+    byCurrency.set(row.currency, balances)
+  }
 
   return {
     issued: open.length,
     paid: rows.filter((row) => row.status === 'paid').length,
     overdue: open.filter((row) => row.dueOn !== null && Date.parse(row.dueOn) < now).length,
-    outstanding: sum(
-      rows
-        .filter((row) => !['paid', 'void'].includes(row.status))
-        .map((row) => minus(row.total ?? '0', row.amountPaid ?? '0')),
-    ),
-    // `select currency from invoices order by created_at desc limit 1`.
-    currency: rows[0]?.currency ?? null,
+    // `group by currency having … <> 0 order by sum desc, currency`.
+    outstanding: [...byCurrency]
+      .map(([currency, balances]) => ({ currency, amount: sum(balances) }))
+      .filter((entry) => !new D(entry.amount).isZero())
+      .sort(
+        (a, b) =>
+          new D(b.amount).comparedTo(new D(a.amount)) || a.currency.localeCompare(b.currency),
+      ),
   }
 }
 
@@ -2664,8 +2859,26 @@ export function pilotInvoiceSummary(now = Date.now()): InvoiceSummary {
  * mean nobody could compare the screen to their bank's statement.
  */
 export function pilotReceivablesAgeing(now = Date.now()): ReceivablesAgeing {
-  const open = openInvoices(now)
+  // Grouped by currency as the statement is, largest book first.
+  const byCurrency = new Map<string, ReturnType<typeof openInvoices>>()
+  for (const entry of openInvoices(now)) {
+    byCurrency.set(entry.row.currency, [...(byCurrency.get(entry.row.currency) ?? []), entry])
+  }
 
+  return {
+    byCurrency: [...byCurrency]
+      .map(([currency, open]) => ageingOf(currency, open))
+      .sort(
+        (a, b) => new D(b.total).comparedTo(new D(a.total)) || a.currency.localeCompare(b.currency),
+      ),
+  }
+}
+
+/** One currency's buckets — the 30/60/90 filters of `receivablesAgeing`. */
+function ageingOf(
+  currency: string,
+  open: ReturnType<typeof openInvoices>,
+): ReceivablesAgeing['byCurrency'][number] {
   const inBucket = (key: AgeingBucket['key']) =>
     open.filter(({ daysOverdue }) => {
       if (key === 'current') return daysOverdue <= 0
@@ -2681,6 +2894,7 @@ export function pilotReceivablesAgeing(now = Date.now()): ReceivablesAgeing {
   }
 
   return {
+    currency,
     buckets: [
       bucket('current'),
       bucket('d1_30'),
@@ -2689,7 +2903,7 @@ export function pilotReceivablesAgeing(now = Date.now()): ReceivablesAgeing {
       bucket('d90_plus'),
     ],
     total: sum(open.map((entry) => entry.balance)),
-    currency: open[0]?.row.currency ?? null,
+    overdue: sum(open.filter((entry) => entry.daysOverdue > 0).map((entry) => entry.balance)),
   }
 }
 
@@ -2700,20 +2914,28 @@ export function pilotReceivablesAgeing(now = Date.now()): ReceivablesAgeing {
  * actually does: the oldest debt is frequently the smallest and the least
  * collectable, and chasing the largest exposure first is the job.
  */
-export function pilotTopDebtors(now = Date.now(), limit = 8): DebtorRow[] {
+export function pilotTopDebtors(
+  now = Date.now(),
+  limit = 8,
+  locale: 'en' | 'ar' = 'en',
+): DebtorRow[] {
+  // Keyed on customer *and* currency, as the statement groups: a customer
+  // owing in two currencies is two rows, never one mixed balance.
   const byCustomer = new Map<string, { row: InvoiceRow; balance: string; daysOverdue: number }[]>()
   for (const entry of openInvoices(now)) {
-    const name = entry.row.customerName!
-    byCustomer.set(name, [...(byCustomer.get(name) ?? []), entry])
+    const key = `${entry.row.customerName!}|${entry.row.currency}`
+    byCustomer.set(key, [...(byCustomer.get(key) ?? []), entry])
   }
 
-  return [...byCustomer.entries()]
-    .map(([customerName, entries]): DebtorRow => {
+  return [...byCustomer.values()]
+    .map((entries): DebtorRow => {
+      const customerName = entries[0]!.row.customerName!
+      // Grouped on the English name (`openInvoices` reads it), named on the way out.
       const index = CUSTOMERS.findIndex((c) => c.en === customerName)
       const oldest = entries.reduce((worst, e) => (e.daysOverdue > worst.daysOverdue ? e : worst))
       return {
         customerId: customerId(index),
-        customerName,
+        customerName: pickName(locale, customerName, CUSTOMERS[index]?.ar),
         balance: sum(entries.map((e) => e.balance)),
         currency: entries[0]!.row.currency,
         invoiceCount: entries.length,
@@ -2721,7 +2943,10 @@ export function pilotTopDebtors(now = Date.now(), limit = 8): DebtorRow[] {
         daysOverdue: Math.max(0, oldest.daysOverdue),
       }
     })
-    .sort((a, b) => (new D(b.balance).greaterThan(new D(a.balance)) ? 1 : -1))
+    .sort(
+      (a, b) =>
+        new D(b.balance).comparedTo(new D(a.balance)) || a.currency.localeCompare(b.currency),
+    )
     .slice(0, limit)
 }
 
@@ -2744,11 +2969,10 @@ interface PaymentSeed {
 /**
  * Receipts against the Kuwait ledger only.
  *
- * `paymentSummary` adds `amount` up across every row and labels the total with
- * one currency, so handing it dinars and dirhams would produce a figure that
- * is wrong in a way nobody can see. The Dubai invoices above are settled and
- * their receipts are simply not modelled — which is also what a register
- * scoped by RLS to a Kuwaiti coordinator would show.
+ * `paymentSummary` totals receipts per currency, so dirhams here would be a
+ * second figure rather than a wrong one — but the Dubai invoices above are
+ * settled and their receipts are simply not modelled in the register, which
+ * is also what a register scoped by RLS to a Kuwaiti coordinator would show.
  */
 const PAYMENT_SEEDS: readonly PaymentSeed[] = [
   {
@@ -2806,7 +3030,7 @@ const PAYMENT_SEEDS: readonly PaymentSeed[] = [
 ]
 
 /** Serves `listPayments`, newest receipt first. */
-export function pilotPayments(now = Date.now()): PaymentRow[] {
+export function pilotPayments(now = Date.now(), locale: 'en' | 'ar' = 'en'): PaymentRow[] {
   return [...PAYMENT_SEEDS]
     .sort((a, b) => a.received - b.received)
     .map((seed): PaymentRow => ({
@@ -2816,21 +3040,20 @@ export function pilotPayments(now = Date.now()): PaymentRow[] {
       receivedOn: day(now, -seed.received),
       method: seed.method,
       reference: seed.reference,
-      customerName: CUSTOMERS[seed.customer]!.en,
+      customerName: pickName(locale, CUSTOMERS[seed.customer]!.en, CUSTOMERS[seed.customer]!.ar),
       branchCode: seed.branch,
-      recordedBy: OWNERS[seed.recordedBy]!,
+      recordedBy: ownerName(seed.recordedBy, locale),
       allocated: numeric(seed.allocated),
     }))
 }
 
-/** Serves `paymentSummary`. */
+/** Serves `paymentSummary` — `received` per currency, as the statement groups. */
 export function pilotPaymentSummary(now = Date.now()): PaymentSummary {
   const rows = pilotPayments(now)
   return {
     count: rows.length,
-    received: sum(rows.map((row) => row.amount)),
+    received: sumByCurrency(rows),
     unallocated: rows.filter((row) => new D(row.allocated).isZero()).length,
-    currency: rows[0]?.currency ?? null,
   }
 }
 
@@ -2841,7 +3064,10 @@ export function pilotPaymentSummary(now = Date.now()): PaymentSummary {
  * than a delete: the reason somebody gives for unwinding a posted period is a
  * thing an auditor asks about (FR-FN-12).
  */
-export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] {
+export function pilotAccountingExports(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): AccountingExportRow[] {
   return [
     {
       id: 'exp-31',
@@ -2865,7 +3091,7 @@ export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] 
       rowCount: 508,
       status: 'posted',
       postedAt: at(now, -28, 16),
-      postedBy: OWNERS[3]!,
+      postedBy: ownerName(3, locale),
       voidedAt: null,
       voidReason: null,
     },
@@ -2878,9 +3104,12 @@ export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] 
       rowCount: 96,
       status: 'void',
       postedAt: at(now, -27, 10),
-      postedBy: OWNERS[4]!,
+      postedBy: ownerName(4, locale),
       voidedAt: at(now, -26, 9),
-      voidReason: 'Posted against the wrong period — reposted as the corrected month.',
+      voidReason:
+        locale === 'ar'
+          ? 'رُحّلت على فترة خاطئة، وأُعيد ترحيلها على الشهر الصحيح.'
+          : 'Posted against the wrong period — reposted as the corrected month.',
     },
   ]
 }
@@ -3116,7 +3345,11 @@ function isLiveCard(seed: RateCardSeed): boolean {
 }
 
 /** Serves `listRateCards`, newest validity first. */
-export function pilotRateCards(now = Date.now(), direction?: string): RateCardRow[] {
+export function pilotRateCards(
+  now = Date.now(),
+  direction?: string,
+  locale: 'en' | 'ar' = 'en',
+): RateCardRow[] {
   const rows = [...RATE_CARD_SEEDS]
     .sort((a, b) => b.from - a.from)
     .map((seed): RateCardRow => ({
@@ -3124,12 +3357,17 @@ export function pilotRateCards(now = Date.now(), direction?: string): RateCardRo
       direction: seed.direction,
       mode: seed.mode,
       tradeDirection: seed.tradeDirection,
-      originName: PORTS[seed.origin].en,
+      originName: pickName(locale, PORTS[seed.origin].en, PORTS[seed.origin].ar),
       originCode: seed.origin,
-      destinationName: PORTS[seed.destination].en,
+      destinationName: pickName(locale, PORTS[seed.destination].en, PORTS[seed.destination].ar),
       destinationCode: seed.destination,
-      partnerName: seed.partner ? partner(seed.partner).en : null,
-      customerName: seed.customer === undefined ? null : CUSTOMERS[seed.customer]!.en,
+      partnerName: seed.partner
+        ? pickName(locale, partner(seed.partner).en, partner(seed.partner).ar)
+        : null,
+      customerName:
+        seed.customer === undefined
+          ? null
+          : pickName(locale, CUSTOMERS[seed.customer]!.en, CUSTOMERS[seed.customer]!.ar),
       branchCode: seed.branch,
       currency: branch(seed.branch).currency,
       version: seed.version,
@@ -3189,7 +3427,7 @@ export function pilotRateCardSummary(): RateCardSummary {
  * the reason it is not a full outer join. Null margin is *unknown*, never
  * zero, and the register has to be able to tell the difference.
  */
-export function pilotLaneMargins(): LaneMarginRow[] {
+export function pilotLaneMargins(locale: 'en' | 'ar' = 'en'): LaneMarginRow[] {
   const live = RATE_CARD_SEEDS.filter(isLiveCard)
   const lanes = new Map<string, RateCardSeed[]>()
   for (const card of live) {
@@ -3215,7 +3453,10 @@ export function pilotLaneMargins(): LaneMarginRow[] {
             : null
 
         return {
-          lane: `${PORTS[first.origin].en} → ${PORTS[first.destination].en}`,
+          lane:
+            locale === 'ar'
+              ? `${PORTS[first.origin].ar} ← ${PORTS[first.destination].ar}`
+              : `${PORTS[first.origin].en} → ${PORTS[first.destination].en}`,
           mode: first.mode,
           buyTotal: buy ? numeric(buy.total) : null,
           sellTotal: sell ? numeric(sell.total) : null,
@@ -3358,10 +3599,16 @@ export function pilotCustomer(id: string): CustomerDetail | null {
 }
 
 /** Serves `loadFormReference` — the branch and country lists a form needs. */
-export function pilotFormReference(): FormReference {
+export function pilotFormReference(locale: 'en' | 'ar' = 'en'): FormReference {
+  const named = (row: { en: string; ar: string }) => (locale === 'ar' ? row.ar : row.en)
   return {
-    branches: BRANCHES.map((b) => ({ id: b.id, code: b.code, name: b.en, currency: b.currency })),
-    countries: COUNTRIES.map((c) => ({ code: c.code, name: c.en })),
+    branches: BRANCHES.map((b) => ({
+      id: b.id,
+      code: b.code,
+      name: named(b),
+      currency: b.currency,
+    })),
+    countries: COUNTRIES.map((c) => ({ code: c.code, name: named(c) })),
   }
 }
 
@@ -3479,7 +3726,11 @@ export function pilotNetworkCounts(): { partners: number; locations: number } {
  * blame — it is the number that tells you which agent to have a conversation
  * with.
  */
-export function pilotPartner(id: string, now = Date.now()): PartnerDetail | undefined {
+export function pilotPartner(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PartnerDetail | undefined {
   const seed = PARTNERS.find((p) => partnerId(p.id) === id)
   if (!seed) return undefined
 
@@ -3518,16 +3769,19 @@ export function pilotPartner(id: string, now = Date.now()): PartnerDetail | unde
       {
         id: `${id}-c1`,
         nameEn: seed.type === 'carrier' ? 'Bookings Desk' : 'Operations Desk',
+        nameAr: seed.type === 'carrier' ? 'مكتب الحجوزات' : 'مكتب العمليات',
         email: `ops@${seed.code.toLowerCase()}.example`,
         phone: '+965 2222 0000',
-        role: 'operations',
+        // Free text an operator typed, so the reader's language rather than a key.
+        role: locale === 'ar' ? 'العمليات' : 'Operations',
       },
       {
         id: `${id}-c2`,
         nameEn: 'Accounts',
+        nameAr: 'الحسابات',
         email: `accounts@${seed.code.toLowerCase()}.example`,
         phone: null,
-        role: 'finance',
+        role: locale === 'ar' ? 'المالية' : 'Finance',
       },
     ],
     jobs: open.map((job) => {
@@ -3537,8 +3791,12 @@ export function pilotPartner(id: string, now = Date.now()): PartnerDetail | unde
         reference: summary.reference,
         status: summary.status,
         role: partnersFor(job).find((row) => row.partnerId === id)!.role,
-        customerName: summary.customerName,
-        lane: `${summary.originName} → ${summary.destinationName}`,
+        // Named and drawn as `getPartnerDetail` does: RTL runs the arrow the other way.
+        customerName: pickName(locale, summary.customerName, summary.customerNameAr),
+        lane:
+          locale === 'ar'
+            ? `${summary.originNameAr} ← ${summary.destinationNameAr}`
+            : `${summary.originName} → ${summary.destinationName}`,
         eta: summary.eta,
       }
     }),
@@ -3557,17 +3815,24 @@ export function pilotPartner(id: string, now = Date.now()): PartnerDetail | unde
 export function pilotPartnerCredentials(
   id: string,
   now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
 ): { coverage: PartnerCoverageRow[]; compliance: PartnerComplianceRow[] } {
   const seed = PARTNERS.find((p) => partnerId(p.id) === id)
   if (!seed) return { coverage: [], compliance: [] }
 
   const lanes = RATE_CARD_SEEDS.filter((card) => card.partner === seed.id)
+  // Not in `DOCUMENT_TYPES`, which is the job-document set; seeded here in both.
+  const licence = locale === 'ar' ? 'الرخصة التجارية' : 'Trade Licence'
+  const insurance = locale === 'ar' ? 'شهادة التأمين' : 'Insurance Certificate'
 
   return {
     coverage: lanes.map((card, index) => ({
       id: `${id}-cov-${index}`,
       mode: card.mode,
-      lane: `${PORTS[card.origin].en} → ${PORTS[card.destination].en}`,
+      lane:
+        locale === 'ar'
+          ? `${PORTS[card.origin].ar} ← ${PORTS[card.destination].ar}`
+          : `${PORTS[card.origin].en} → ${PORTS[card.destination].en}`,
       transitDays:
         JOB_SEEDS.find((job) => job.origin === card.origin && job.destination === card.destination)
           ?.transitDays ?? null,
@@ -3576,7 +3841,7 @@ export function pilotPartnerCredentials(
     compliance: [
       {
         id: `${id}-comp-1`,
-        documentType: 'Trade Licence',
+        documentType: licence,
         reference: `TL-${seed.code}-2026`,
         issuedOn: day(now, -300),
         expiresOn: day(now, 65),
@@ -3585,7 +3850,7 @@ export function pilotPartnerCredentials(
       },
       {
         id: `${id}-comp-0`,
-        documentType: 'Trade Licence',
+        documentType: licence,
         reference: `TL-${seed.code}-2025`,
         issuedOn: day(now, -665),
         expiresOn: day(now, -300),
@@ -3595,7 +3860,7 @@ export function pilotPartnerCredentials(
       },
       {
         id: `${id}-comp-2`,
-        documentType: 'Insurance Certificate',
+        documentType: insurance,
         reference: `INS-${seed.code}-4471`,
         issuedOn: day(now, -354),
         expiresOn: day(now, 11),
@@ -3631,6 +3896,7 @@ const CLOSED_EXCEPTIONS = [
     closedAgo: 13,
     owner: 3,
     description: 'Rotterdam sailing put back two days by berth congestion.',
+    descriptionAr: 'تأجّل الإبحار من روتردام يومين بسبب ازدحام الأرصفة.',
     costImpact: null,
   },
   {
@@ -3645,6 +3911,7 @@ const CLOSED_EXCEPTIONS = [
     closedAgo: 9,
     owner: 2,
     description: 'Packing list weight disagreed with the bill; amended at origin.',
+    descriptionAr: 'اختلف الوزن في قائمة التعبئة عن البوليصة، وعُدّل في المنشأ.',
     costImpact: '48.000',
   },
 ] as const
@@ -3659,14 +3926,16 @@ const CLOSED_EXCEPTIONS = [
 export function pilotExceptionRows(
   now = Date.now(),
   scope: 'open' | 'closed' | 'all' = 'open',
+  locale: 'en' | 'ar' = 'en',
 ): ExceptionRow[] {
   const year = new Date(now).getFullYear()
 
-  const open: ExceptionRow[] = pilotExceptions(now).map((view) => ({
+  const open: ExceptionRow[] = pilotExceptions(now, locale).map((view) => ({
     id: view.id,
     jobId: view.jobId,
     jobReference: view.jobReference,
     customerName: view.customerName,
+    customerNameAr: view.customerNameAr,
     code: view.code,
     nameEn: view.nameEn,
     nameAr: view.nameAr,
@@ -3685,15 +3954,16 @@ export function pilotExceptionRows(
     jobId: `job-${seed.job}`,
     jobReference: `KWI-${year}-${String(seed.job).padStart(5, '0')}`,
     customerName: CUSTOMERS[seed.customer]!.en,
+    customerNameAr: CUSTOMERS[seed.customer]!.ar,
     code: seed.code,
     nameEn: seed.nameEn,
     nameAr: seed.nameAr,
     severity: seed.severity,
-    description: seed.description,
+    description: locale === 'ar' ? seed.descriptionAr : seed.description,
     openedAt: at(now, -seed.openedAgo, 9),
     dueAt: at(now, -seed.openedAgo + 1, 17),
     closedAt: at(now, -seed.closedAgo, 14),
-    owner: OWNERS[seed.owner]!,
+    owner: ownerName(seed.owner, locale),
     costImpact: seed.costImpact === null ? null : numeric(seed.costImpact),
     costCurrency: seed.costImpact === null ? null : 'KWD',
   }))
@@ -3752,6 +4022,7 @@ export function pilotCustomsRows(
       jobId: summary.id,
       jobReference: summary.reference,
       customerName: summary.customerName,
+      customerNameAr: summary.customerNameAr,
       status: seed.customs!,
       declarationType: seed.direction === 'import' ? 'import' : 'export',
       /*
@@ -3771,6 +4042,7 @@ export function pilotCustomsRows(
       dutyAmount: CUSTOMS_DUTY[seed.seq] ? numeric(CUSTOMS_DUTY[seed.seq]!) : null,
       dutyCurrency: CUSTOMS_DUTY[seed.seq] ? home.currency : null,
       brokerName: partner(isKuwait ? 'shamali' : 'gulfbridge').en,
+      brokerNameAr: partner(isKuwait ? 'shamali' : 'gulfbridge').ar,
     }
   })
 
@@ -3807,7 +4079,7 @@ export function pilotCustomsCounts(now = Date.now()): {
  * the thing somebody needs to find when the customer is holding the old one,
  * and the register is the only place that question gets asked.
  */
-export function pilotDocumentRows(now = Date.now()): DocumentRow[] {
+export function pilotDocumentRows(now = Date.now(), locale: 'en' | 'ar' = 'en'): DocumentRow[] {
   const rows = JOB_SEEDS.flatMap((seed) => {
     const summary = jobSummary(seed, now)
     const category = new Map<string, string>(DOCUMENT_TYPES.map(([code, , , cat]) => [code, cat]))
@@ -3817,11 +4089,12 @@ export function pilotDocumentRows(now = Date.now()): DocumentRow[] {
         jobId: summary.id,
         jobReference: summary.reference,
         customerName: summary.customerName,
+        customerNameAr: summary.customerNameAr,
         typeCode: document.code,
         typeNameEn: document.nameEn,
         typeNameAr: document.nameAr,
         category: category.get(document.code) ?? 'transport',
-        authorName: OWNERS[(seed.seq + index) % OWNERS.length]!,
+        authorName: ownerName(seed.seq + index, locale),
         createdAt: at(now, -4 - index, 10),
       }
 
@@ -4029,6 +4302,7 @@ const OPEN_BILL_STATUSES = ['received', 'approved', 'part_paid']
 export function pilotSupplierInvoices(
   now = Date.now(),
   filters: { readonly status?: string; readonly partnerId?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): SupplierInvoiceRow[] {
   return [...SUPPLIER_INVOICE_SEEDS]
     .sort((a, b) => a.dated - b.dated)
@@ -4038,7 +4312,7 @@ export function pilotSupplierInvoices(
       id: `sup-${seed.seq}`,
       reference: seed.reference,
       partnerId: partnerId(seed.partner),
-      partnerName: partner(seed.partner).en,
+      partnerName: pickName(locale, partner(seed.partner).en, partner(seed.partner).ar),
       status: seed.status,
       currency: seed.currency,
       total: numeric(seed.total),
@@ -4091,7 +4365,10 @@ export function pilotPayableAgeing(now = Date.now()): AgeableBill[] {
 }
 
 /** Serves `listSupplierPayments`. */
-export function pilotSupplierPayments(now = Date.now()): SupplierPaymentRow[] {
+export function pilotSupplierPayments(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): SupplierPaymentRow[] {
   return [
     {
       seq: 514,
@@ -4120,7 +4397,7 @@ export function pilotSupplierPayments(now = Date.now()): SupplierPaymentRow[] {
   ].map((seed): SupplierPaymentRow => ({
     id: `suppay-${seed.seq}`,
     partnerId: partnerId(seed.partner),
-    partnerName: partner(seed.partner).en,
+    partnerName: pickName(locale, partner(seed.partner).en, partner(seed.partner).ar),
     amount: numeric(seed.amount),
     currency: seed.currency,
     paidOn: day(now, -seed.paid),
@@ -4212,6 +4489,7 @@ const SETTLEMENT_SEEDS = [
 export function pilotSettlements(
   now = Date.now(),
   filters: { readonly partnerId?: string; readonly status?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): SettlementRow[] {
   const year = new Date(now).getFullYear()
 
@@ -4240,7 +4518,7 @@ export function pilotSettlements(
           id: `settle-${seed.seq}`,
           reference: `SET-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
           partnerId: partnerId(seed.partner),
-          partnerName: partner(seed.partner).en,
+          partnerName: pickName(locale, partner(seed.partner).en, partner(seed.partner).ar),
           status: seed.status,
           currency: seed.currency,
           periodFrom: day(now, -seed.from),
@@ -4274,7 +4552,7 @@ export function pilotSettlements(
 }
 
 /** Serves `listSettleablePartners` — those with a current account configured. */
-export function pilotSettleablePartners(): {
+export function pilotSettleablePartners(locale: 'en' | 'ar' = 'en'): {
   readonly id: string
   readonly name: string
   readonly currency: string
@@ -4282,10 +4560,10 @@ export function pilotSettleablePartners(): {
   return PARTNERS.filter((p) => 'settlementCustomer' in p)
     .map((p) => ({
       id: partnerId(p.id),
-      name: p.en,
+      name: pickName(locale, p.en, p.ar),
       currency: ('settlementCurrency' in p ? (p.settlementCurrency as string) : null) ?? p.currency,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name, locale))
 }
 
 // --- consolidation — features/consolidation/queries.ts ----------------------
@@ -4358,6 +4636,7 @@ const CONSOLIDATION_SEEDS = [
 export function pilotConsolidations(
   now = Date.now(),
   filters: { readonly status?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): ConsolidationSummary[] {
   const year = new Date(now).getFullYear()
 
@@ -4377,8 +4656,8 @@ export function pilotConsolidations(
         vesselName: seed.vessel,
         voyageNumber: seed.voyage,
         flightNumber: seed.flight,
-        originName: PORTS[seed.origin].en,
-        destinationName: PORTS[seed.destination].en,
+        originName: pickName(locale, PORTS[seed.origin].en, PORTS[seed.origin].ar),
+        destinationName: pickName(locale, PORTS[seed.destination].en, PORTS[seed.destination].ar),
         etd: at(now, seed.etd, 6),
         eta: at(now, seed.eta, 14),
         /*
@@ -4405,7 +4684,10 @@ export function pilotConsolidations(
  * only, nothing already consolidated, nothing closed or cancelled, and nothing
  * with neither a volume nor a weight to add up.
  */
-export function pilotGroupableShipments(now = Date.now()): GroupableShipmentRow[] {
+export function pilotGroupableShipments(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): GroupableShipmentRow[] {
   return JOB_SEEDS.filter(
     (seed) =>
       (seed.mode === 'sea_lcl' || seed.mode === 'air') &&
@@ -4419,12 +4701,12 @@ export function pilotGroupableShipments(now = Date.now()): GroupableShipmentRow[
       reference: summary.reference,
       branchId: branch(seed.branch).id,
       customerId: customerId(seed.customer),
-      customerName: summary.customerName,
+      customerName: pickName(locale, summary.customerName, summary.customerNameAr),
       mode: seed.mode,
       originId: locationId(seed.origin),
       destinationId: locationId(seed.destination),
-      originName: summary.originName,
-      destinationName: summary.destinationName,
+      originName: pickName(locale, summary.originName, summary.originNameAr),
+      destinationName: pickName(locale, summary.destinationName, summary.destinationNameAr),
       readyOn: summary.etd,
       volumeCbm: detail.volumeCbm,
       grossWeightKg: detail.grossWeightKg,
@@ -4475,8 +4757,8 @@ const ROLES = [
 /**
  * The people, and the branches they hold a role in.
  *
- * The first five are `OWNERS`, in order, so a job owned by Fahad Al-Rashid on
- * the board resolves to a person on this register. Two accounts are here for
+ * The first five are the owners (`ownerName`), in order, so a job owned by
+ * Fahad Al-Rashid on the board resolves to a person on this register. Two accounts are here for
  * states the screen has to be able to draw and a healthy team would not
  * volunteer: one invited and never signed in — `hasLogin` false, which is what
  * FR-ID-07's invitation-only model produces — and one suspended, which is the
@@ -4575,6 +4857,7 @@ export function pilotUsers(now = Date.now()): UserRow[] {
     isActive: person.active,
     lastSeenAt: person.lastSeen === null ? null : hours(now, -person.lastSeen),
     hasLogin: person.hasLogin,
+    hasPassword: person.hasLogin,
     assignments: person.roles.map(([branchCode, roleKey]) => ({
       branchCode,
       roleKey,
@@ -4642,6 +4925,7 @@ export function pilotBranches(): BranchRow[] {
       isActive: true,
       calendarId: `cal-${home.calendar}`,
       calendarName: isKuwait ? 'Kuwait' : 'United Arab Emirates',
+      calendarNameAr: isKuwait ? 'الكويت' : 'الإمارات',
       people: PEOPLE.filter((p) => p.roles.some(([code]) => code === home.code)).length,
       openJobs: JOB_SEEDS.filter(
         (job) => job.branch === home.code && OPEN_JOB_STATUSES.has(job.status),
@@ -4686,27 +4970,29 @@ const CALENDARS = [
 ] as const
 
 const INCOTERM_ROWS = [
-  { code: 'EXW', en: 'Ex Works' },
-  { code: 'FCA', en: 'Free Carrier' },
-  { code: 'FAS', en: 'Free Alongside Ship' },
-  { code: 'FOB', en: 'Free on Board' },
-  { code: 'CFR', en: 'Cost and Freight' },
-  { code: 'CIF', en: 'Cost, Insurance and Freight' },
-  { code: 'CPT', en: 'Carriage Paid To' },
-  { code: 'CIP', en: 'Carriage and Insurance Paid To' },
-  { code: 'DAP', en: 'Delivered at Place' },
-  { code: 'DPU', en: 'Delivered at Place Unloaded' },
-  { code: 'DDP', en: 'Delivered Duty Paid' },
+  // Arabic names as `seed.ts` writes them, so an Arabic screen reads the same
+  // on fixtures as on a seeded database — F27.
+  { code: 'EXW', en: 'Ex Works', ar: 'تسليم المصنع' },
+  { code: 'FCA', en: 'Free Carrier', ar: 'التسليم للناقل' },
+  { code: 'FAS', en: 'Free Alongside Ship', ar: 'التسليم بجانب السفينة' },
+  { code: 'FOB', en: 'Free on Board', ar: 'تسليم ظهر السفينة' },
+  { code: 'CFR', en: 'Cost and Freight', ar: 'التكلفة وأجرة الشحن' },
+  { code: 'CIF', en: 'Cost, Insurance and Freight', ar: 'التكلفة والتأمين والشحن' },
+  { code: 'CPT', en: 'Carriage Paid To', ar: 'أجرة النقل مدفوعة إلى' },
+  { code: 'CIP', en: 'Carriage and Insurance Paid To', ar: 'النقل والتأمين مدفوعان إلى' },
+  { code: 'DAP', en: 'Delivered at Place', ar: 'التسليم في المكان' },
+  { code: 'DPU', en: 'Delivered at Place Unloaded', ar: 'التسليم في المكان مفرغاً' },
+  { code: 'DDP', en: 'Delivered Duty Paid', ar: 'التسليم خالص الرسوم' },
 ] as const
 
 const CONTAINER_TYPE_ROWS = [
-  { code: '20GP', en: "20' General Purpose", teu: '1' },
-  { code: '40GP', en: "40' General Purpose", teu: '2' },
-  { code: '40HC', en: "40' High Cube", teu: '2' },
-  { code: '20RF', en: "20' Reefer", teu: '1' },
-  { code: '40RF', en: "40' Reefer", teu: '2' },
-  { code: '20FR', en: "20' Flat Rack", teu: '1' },
-  { code: '40OT', en: "40' Open Top", teu: '2' },
+  { code: '20GP', en: "20' General Purpose", ar: 'حاوية 20 قدم', teu: '1' },
+  { code: '40GP', en: "40' General Purpose", ar: 'حاوية 40 قدم', teu: '2' },
+  { code: '40HC', en: "40' High Cube", ar: 'حاوية 40 قدم عالية', teu: '2' },
+  { code: '20RF', en: "20' Reefer", ar: 'حاوية 20 قدم مبردة', teu: '1' },
+  { code: '40RF', en: "40' Reefer", ar: 'حاوية 40 قدم مبردة', teu: '2' },
+  { code: '20FR', en: "20' Flat Rack", ar: 'حاوية مسطحة 20 قدم', teu: '1' },
+  { code: '40OT', en: "40' Open Top", ar: 'حاوية مفتوحة 40 قدم', teu: '2' },
 ] as const
 
 const EXCEPTION_CODE_ROWS = [
@@ -4757,14 +5043,14 @@ const EXCEPTION_CODE_ROWS = [
 ] as const
 
 const CURRENCY_ROWS = [
-  { code: 'KWD', en: 'Kuwaiti Dinar' },
-  { code: 'AED', en: 'UAE Dirham' },
-  { code: 'SAR', en: 'Saudi Riyal' },
-  { code: 'USD', en: 'US Dollar' },
-  { code: 'EUR', en: 'Euro' },
-  { code: 'GBP', en: 'Pound Sterling' },
-  { code: 'INR', en: 'Indian Rupee' },
-  { code: 'CNY', en: 'Chinese Yuan' },
+  { code: 'KWD', en: 'Kuwaiti Dinar', ar: 'دينار كويتي' },
+  { code: 'AED', en: 'UAE Dirham', ar: 'درهم إماراتي' },
+  { code: 'SAR', en: 'Saudi Riyal', ar: 'ريال سعودي' },
+  { code: 'USD', en: 'US Dollar', ar: 'دولار أمريكي' },
+  { code: 'EUR', en: 'Euro', ar: 'يورو' },
+  { code: 'GBP', en: 'Pound Sterling', ar: 'جنيه إسترليني' },
+  { code: 'INR', en: 'Indian Rupee', ar: 'روبية هندية' },
+  { code: 'CNY', en: 'Chinese Yuan', ar: 'يوان صيني' },
 ] as const
 
 const COMMODITY_ROWS = [
@@ -4967,9 +5253,11 @@ export function pilotCalendars(): CalendarRow[] {
 }
 
 /** Serves `listCalendarOptions` — the branch form's picker. */
-export function pilotCalendarOptions(): { value: string; label: string }[] {
-  return CALENDARS.map((cal) => ({ value: `cal-${cal.key}`, label: cal.en })).sort((a, b) =>
-    a.label.localeCompare(b.label),
+export function pilotCalendarOptions(
+  locale: 'en' | 'ar' = 'en',
+): { value: string; label: string }[] {
+  return CALENDARS.map((cal) => ({ value: `cal-${cal.key}`, label: cal[locale] })).sort((a, b) =>
+    a.label.localeCompare(b.label, locale),
   )
 }
 
@@ -4988,7 +5276,7 @@ const DUTY_ROWS = [
     hs: '870323',
     rate: '5.000',
     en: 'Motor cars, 1500–3000 cc',
-    ar: 'سيارات ركوب ١٥٠٠-٣٠٠٠ سي سي',
+    ar: 'سيارات ركوب 1500–3000 سي سي',
   },
   { country: 'KW', hs: '2402', rate: '100.000', en: 'Tobacco products', ar: 'منتجات التبغ' },
   {
@@ -5039,6 +5327,29 @@ export function pilotDutyRates(now = Date.now()): DutyRateRow[] {
       notes: null,
       isActive: true,
     }))
+}
+
+/**
+ * Serves `listFxRates` — the rates the pilot's USD cards are priced through,
+ * at roughly the levels the demo's KWD totals were computed at.
+ */
+export function pilotFxRates(now = Date.now()): FxRateRow[] {
+  return [
+    {
+      fromCurrency: 'AED',
+      toCurrency: 'KWD',
+      rate: '0.08360000',
+      effectiveOn: day(now, 0),
+      source: 'manual',
+    },
+    {
+      fromCurrency: 'USD',
+      toCurrency: 'KWD',
+      rate: '0.30700000',
+      effectiveOn: day(now, 0),
+      source: 'manual',
+    },
+  ]
 }
 
 /**
@@ -5165,23 +5476,11 @@ export function pilotEngineRules(): { chargeable: EngineRuleRow[]; freeTime: Eng
   return {
     chargeable: chargeableRaw.map((row) => ({
       id: row.id,
-      label: row.mode,
-      scope: row.branchCode ?? '—',
-      // Stated as the trade states it: a divisor, an increment, a floor. A null
-      // divisor is FCL, billed per container and never by volume.
-      detail:
-        row.divisorCm3PerKg === null
-          ? 'per container'
-          : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),
     freeTime: freeTimeRaw.map((row) => ({
       id: row.id,
-      label: row.kind,
-      // Absence is how a rule widens, so an empty scope is "everything".
-      scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
-      detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),
@@ -5196,23 +5495,37 @@ export function pilotEngineRules(): { chargeable: EngineRuleRow[]; freeTime: Eng
  * reference table is a silent failure, and a count that disagreed with the
  * list beside it would be a louder one.
  */
-export function pilotReferenceSample(): ReferenceSample {
+export function pilotReferenceSample(locale: 'en' | 'ar' = 'en'): ReferenceSample {
   return {
-    incoterms: INCOTERM_ROWS.map((row) => ({ code: row.code, nameEn: row.en })),
+    incoterms: INCOTERM_ROWS.map((row) => ({
+      code: row.code,
+      name: pickName(locale, row.en, row.ar),
+    })),
     containers: CONTAINER_TYPE_ROWS.map((row) => ({
       code: row.code,
-      nameEn: row.en,
+      name: pickName(locale, row.en, row.ar),
       teu: row.teu,
     })),
     exceptions: EXCEPTION_CODE_ROWS.map((row) => ({
       code: row.code,
-      nameEn: row.en,
+      name: pickName(locale, row.en, row.ar),
       slaHours: row.slaHours,
     })),
-    documents: DOCUMENT_TYPES.map(([code, nameEn, , category]) => ({ code, nameEn, category })),
-    calendars: CALENDARS.map((cal) => ({ key: cal.key, nameEn: cal.en, timeZone: cal.timeZone })),
-    currencies: CURRENCY_ROWS.map((row) => ({ code: row.code, nameEn: row.en })),
-    countries: COUNTRIES.map((row) => ({ code: row.code, nameEn: row.en })),
+    documents: DOCUMENT_TYPES.map(([code, nameEn, nameAr, category]) => ({
+      code,
+      name: pickName(locale, nameEn, nameAr),
+      category,
+    })),
+    calendars: CALENDARS.map((cal) => ({
+      key: cal.key,
+      name: pickName(locale, cal.en, cal.ar),
+      timeZone: cal.timeZone,
+    })),
+    currencies: CURRENCY_ROWS.map((row) => ({
+      code: row.code,
+      name: pickName(locale, row.en, row.ar),
+    })),
+    countries: COUNTRIES.map((row) => ({ code: row.code, name: pickName(locale, row.en, row.ar) })),
     milestones: pilotMilestoneTemplates().length,
   }
 }
@@ -5866,56 +6179,73 @@ export function pilotMapData(): MapData {
  * text, so an operator who knows the code can type it and one who does not
  * reads the name. Putting the name first breaks the first case and helps the
  * second not at all.
+ *
+ * `locale` picks each name's language the way `named()` does in the query —
+ * Arabic where the row has it, English where it does not. People included:
+ * a name is not translated, but `principals.name_ar` is how the person writes
+ * it themselves, and an Arabic owner dropdown of Latin names beside Arabic
+ * customers read as a screen half-localised.
  */
-export function pilotOptions(): ReferenceOptions {
+export function pilotOptions(locale: 'en' | 'ar' = 'en'): ReferenceOptions {
+  const sortLabel = (a: { label: string }, b: { label: string }) =>
+    a.label.localeCompare(b.label, locale)
   return {
-    branches: BRANCHES.map((b) => ({ value: b.id, label: `${b.code} — ${b.en}` })),
+    branches: BRANCHES.map((b) => ({
+      value: b.id,
+      label: `${b.code} — ${pickName(locale, b.en, b.ar)}`,
+    })),
     customers: CUSTOMERS.map((c, index) => ({
       value: customerId(index),
-      label: `${c.code} — ${c.en}`,
-    })).sort((a, b) => a.label.localeCompare(b.label)),
+      label: `${c.code} — ${pickName(locale, c.en, c.ar)}`,
+    })).sort(sortLabel),
     partners: PARTNERS.map((p) => ({
       value: partnerId(p.id),
-      label: `${p.code} — ${p.en}`,
+      label: `${p.code} — ${pickName(locale, p.en, p.ar)}`,
       // `<optgroup>` by type, which is what makes a fifteen-row list readable.
       group: p.type,
-    })).sort((a, b) => a.label.localeCompare(b.label)),
+    })).sort(sortLabel),
     locations: PORT_CODES.map((code) => ({
       value: locationId(code),
-      label: `${code} — ${PORTS[code].en}`,
+      label: `${code} — ${pickName(locale, PORTS[code].en, PORTS[code].ar)}`,
       group: PORTS[code].country,
-    })).sort((a, b) => a.label.localeCompare(b.label)),
+    })).sort(sortLabel),
     commodities: COMMODITY_ROWS.map((c) => ({
       value: `commodity-${c.code}`,
-      label: `${c.code} — ${c.en}`,
+      label: `${c.code} — ${pickName(locale, c.en, c.ar)}`,
     })),
-    incoterms: INCOTERM_ROWS.map((i) => ({ value: i.code, label: `${i.code} — ${i.en}` })),
-    countries: COUNTRIES.map((c) => ({ value: c.code, label: c.en })),
-    currencies: CURRENCY_ROWS.map((c) => ({ value: c.code, label: `${c.code} — ${c.en}` })),
+    incoterms: INCOTERM_ROWS.map((i) => ({
+      value: i.code,
+      label: `${i.code} — ${pickName(locale, i.en, i.ar)}`,
+    })),
+    countries: COUNTRIES.map((c) => ({ value: c.code, label: pickName(locale, c.en, c.ar) })),
+    currencies: CURRENCY_ROWS.map((c) => ({
+      value: c.code,
+      label: `${c.code} — ${pickName(locale, c.en, c.ar)}`,
+    })),
     containerTypes: CONTAINER_TYPE_ROWS.map((c) => ({
       value: c.code,
-      label: `${c.code} — ${c.en}`,
+      label: `${c.code} — ${pickName(locale, c.en, c.ar)}`,
     })),
     chargeTypes: CHARGE_TYPE_ROWS.map((c) => ({
       value: `charge-${c.key}`,
-      label: `${c.key} — ${c.en}`,
+      label: `${c.key} — ${pickName(locale, c.en, c.ar)}`,
       group: c.category,
     })),
-    documentTypes: DOCUMENT_TYPES.map(([code, nameEn, , category]) => ({
+    documentTypes: DOCUMENT_TYPES.map(([code, nameEn, nameAr, category]) => ({
       value: `doctype-${code}`,
-      label: `${code} — ${nameEn}`,
+      label: `${code} — ${pickName(locale, nameEn, nameAr)}`,
       group: category,
     })),
     exceptionCodes: EXCEPTION_CODE_ROWS.map((e) => ({
       value: `exccode-${e.code}`,
-      label: `${e.code} — ${e.en}`,
+      label: `${e.code} — ${pickName(locale, e.en, e.ar)}`,
       group: e.severity,
     })),
     milestoneCodes: [
       ...new Map(
         pilotMilestoneTemplates().map((row) => [
           row.code,
-          { value: row.code, label: `${row.code} — ${row.nameEn}` },
+          { value: row.code, label: `${row.code} — ${pickName(locale, row.nameEn, row.nameAr)}` },
         ]),
       ).values(),
     ].sort((a, b) => a.value.localeCompare(b.value)),
@@ -5926,10 +6256,78 @@ export function pilotOptions(): ReferenceOptions {
     */
     people: PEOPLE.map((person, index) => ({
       value: `person-${String(index).padStart(2, '0')}`,
-      label: person.en,
-    })).sort((a, b) => a.label.localeCompare(b.label)),
-    roles: ROLES.map((role) => ({ value: `role-${role.key}`, label: role.en })),
+      label: pickName(locale, person.en, person.ar),
+    })).sort(sortLabel),
+    roles: ROLES.map((role) => ({
+      value: `role-${role.key}`,
+      label: pickName(locale, role.en, role.ar),
+    })),
   }
+}
+
+// --- bulk import — features/imports/queries.ts ------------------------------
+
+/**
+ * Serves `loadReference` — the code sets a sheet is checked against.
+ *
+ * So "Check" works on the pilot: a file is read, mapped and validated against
+ * the same ports, currencies and existing codes the screens show, and a
+ * customer code the pilot already has is refused as a duplicate exactly as it
+ * would be against a database. Only the commit needs one, and says so.
+ *
+ * Keyed by the sheet's name rather than its type, which lives in the slice;
+ * the sets mirror the query's, upper-cased as it upper-cases them.
+ */
+export function pilotImportReference(kind: string): {
+  lookups: Record<string, ReadonlySet<string>>
+  existing: Record<string, ReadonlySet<string>>
+} {
+  const upper = (values: readonly string[]) => new Set(values.map((v) => v.toUpperCase()))
+  const lookups: Record<string, ReadonlySet<string>> = {}
+  const existing: Record<string, ReadonlySet<string>> = {}
+  const isCutover = kind === 'open-jobs' || kind === 'open-receivables'
+
+  if (kind !== 'rate-cards' && kind !== 'customer-contacts' && !isCutover) {
+    lookups.countries = upper(COUNTRIES.map((c) => c.code))
+  }
+  if (['customers', 'partners', 'rate-cards', 'open-receivables'].includes(kind)) {
+    lookups.currencies = upper(CURRENCY_ROWS.map((c) => c.code))
+  }
+  if (kind === 'rate-cards' || kind === 'open-jobs') lookups.locations = upper([...PORT_CODES])
+  if (kind === 'rate-cards') lookups.chargeTypes = upper(CHARGE_TYPE_ROWS.map((c) => c.key))
+  if (kind === 'open-jobs') {
+    lookups.incoterms = upper(INCOTERM_ROWS.map((i) => i.code))
+    existing.reference = upper(pilotJobs().map((job) => job.reference))
+  }
+  if (kind === 'customers') existing.code = upper(CUSTOMERS.map((c) => c.code))
+  if (kind === 'partners') existing.code = upper(PARTNERS.map((p) => p.code))
+  if (kind === 'locations') existing.unlocode = upper([...PORT_CODES])
+  if (kind === 'open-receivables') {
+    existing.seriesNo = upper(
+      pilotInvoices()
+        .map((row) => row.seriesNo)
+        .filter((value): value is string => value !== null),
+    )
+  }
+  return { lookups, existing }
+}
+
+/** Serves `importableBranches` — the destination selector, in the reader's language. */
+export function pilotImportableBranches(
+  locale: 'en' | 'ar' = 'en',
+): { id: string; code: string; name: string }[] {
+  return BRANCHES.map((b) => ({ id: b.id, code: b.code, name: pickName(locale, b.en, b.ar) }))
+}
+
+/** Serves `ratePartners` — the agents and carriers a tariff can belong to. */
+export function pilotRatePartners(
+  locale: 'en' | 'ar' = 'en',
+): { id: string; code: string; name: string }[] {
+  return PARTNERS.map((p) => ({
+    id: partnerId(p.id),
+    code: p.code,
+    name: pickName(locale, p.en, p.ar),
+  }))
 }
 
 // --- proof of delivery — features/pod/queries.ts ----------------------------
@@ -5970,8 +6368,8 @@ export function pilotProofOfDelivery(jobId: string, now = Date.now()): PodRow[] 
     hasException: false,
     exceptionNotes: null,
     notes: 'Delivered to consignee warehouse, offloaded by receiver.',
-    capturedByEn: OWNERS[seed.owner]!,
-    capturedByAr: null,
+    capturedByEn: ownerName(seed.owner),
+    capturedByAr: ownerName(seed.owner, 'ar'),
     createdAt: deliveredAt,
     supersededById: null,
     photos: [
@@ -6120,17 +6518,21 @@ const ARABIC_INVOICE_CUSTOMERS: ReadonlySet<string> = new Set(['PWA'])
  */
 const INVOICE_ANCILLARIES: Record<
   string,
-  readonly { readonly description: string; readonly amount: string }[]
+  readonly {
+    readonly description: string
+    readonly descriptionAr: string
+    readonly amount: string
+  }[]
 > = {
   KWD: [
-    { description: 'Documentation', amount: '25.000' },
-    { description: 'Customs clearance', amount: '65.000' },
-    { description: 'Delivery order', amount: '42.000' },
+    { description: 'Documentation', descriptionAr: 'رسوم المستندات', amount: '25.000' },
+    { description: 'Customs clearance', descriptionAr: 'التخليص الجمركي', amount: '65.000' },
+    { description: 'Delivery order', descriptionAr: 'إذن التسليم', amount: '42.000' },
   ],
   AED: [
-    { description: 'Documentation', amount: '275.00' },
-    { description: 'Customs clearance', amount: '720.00' },
-    { description: 'Delivery order', amount: '460.00' },
+    { description: 'Documentation', descriptionAr: 'رسوم المستندات', amount: '275.00' },
+    { description: 'Customs clearance', descriptionAr: 'التخليص الجمركي', amount: '720.00' },
+    { description: 'Delivery order', descriptionAr: 'إذن التسليم', amount: '460.00' },
   ],
 }
 
@@ -6179,6 +6581,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
       {
         id: `invl-${seed.seq}-1`,
         descriptionEn: `Destination charges billed twice on invoice ${against} — credited`,
+        descriptionAr: `رسوم الوجهة محتسبة مرتين في الفاتورة ${against} — مستردّة`,
         quantity: numeric('1'),
         unitPrice: numeric(seed.subtotal),
         amount: numeric(seed.subtotal),
@@ -6191,6 +6594,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
   const lines = ancillaries.map((charge, index) => ({
     id: `invl-${seed.seq}-${index + 2}`,
     descriptionEn: charge.description,
+    descriptionAr: charge.descriptionAr,
     quantity: numeric('1'),
     unitPrice: numeric(charge.amount),
     amount: numeric(charge.amount),
@@ -6202,6 +6606,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
     {
       id: `invl-${seed.seq}-1`,
       descriptionEn: 'Freight and origin charges',
+      descriptionAr: 'أجور الشحن ورسوم المنشأ',
       quantity: numeric('1'),
       unitPrice: freight,
       amount: freight,
@@ -6217,9 +6622,8 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
 /**
  * The Dubai receipts, which happened and are not in `PAYMENT_SEEDS`.
  *
- * `paymentSummary` adds `amount` up across every row and labels the total with
- * one currency, so the payments register is deliberately dinars only — the
- * reasoning is on the seed list itself. But an invoice marked paid whose
+ * The payments register is deliberately dinars only — the reasoning is on the
+ * seed list itself. But an invoice marked paid whose
  * receipts panel is empty is the detail page contradicting its own header, so
  * the two settled AED invoices keep their receipts here: allocated against the
  * invoice they cleared, and absent from the register that cannot add them up.
@@ -6296,11 +6700,15 @@ function invoiceAllocations(seed: InvoiceSeed, now: number): InvoiceDetail['allo
  * the register renders from, so the two cannot disagree about a number, a
  * status or a customer. Only what the register has no column for is added.
  */
-export function pilotInvoiceDetail(id: string, now = Date.now()): InvoiceDetail | undefined {
+export function pilotInvoiceDetail(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): InvoiceDetail | undefined {
   const seed = INVOICE_SEEDS.find((candidate) => `inv-${candidate.seq}` === id)
   if (seed === undefined) return undefined
 
-  const row = invoiceRow(seed, now)
+  const row = invoiceRow(seed, now, locale)
   const customer = CUSTOMERS[seed.customer]!
   const home = branch(seed.branch)
 
@@ -6317,6 +6725,7 @@ export function pilotInvoiceDetail(id: string, now = Date.now()): InvoiceDetail 
     taxAmount: numeric(seed.tax),
     total: invoiceTotal(seed),
     amountPaid: numeric(seed.paid),
+    amountCredited: row.amountCredited ?? numeric('0'),
     taxTreatment: invoiceTaxTreatment(seed),
     taxRatePercent: numeric(invoiceTaxRate(seed)),
     language: ARABIC_INVOICE_CUSTOMERS.has(customer.code) ? 'ar' : 'en',
@@ -6324,10 +6733,13 @@ export function pilotInvoiceDetail(id: string, now = Date.now()): InvoiceDetail 
     dueOn: row.dueOn,
     // Nobody issued a draft, so nobody is named on one. The finance desk in
     // each entity is the same person the exports register credits.
-    issuedBy: seed.status === 'draft' ? null : OWNERS[seed.branch === 'KWI' ? 3 : 4]!,
+    issuedBy: seed.status === 'draft' ? null : ownerName(seed.branch === 'KWI' ? 3 : 4, locale)!,
     notes: invoiceNotes(seed),
     lines: invoiceLines(seed),
     allocations: invoiceAllocations(seed, now),
+    creditNotes: [],
+    isCreditNote: row.isCreditNote,
+    creditsInvoiceId: null,
   }
 }
 
@@ -6444,15 +6856,15 @@ const QUOTE_SHAPES: Record<Mode, QuoteShape> = {
   },
 }
 
-function chargeName(key: ChargeKey): string {
-  return CHARGE_TYPE_ROWS.find((row) => row.key === key)!.en
+function chargeName(key: ChargeKey, locale: 'en' | 'ar' = 'en'): string {
+  return CHARGE_TYPE_ROWS.find((row) => row.key === key)![locale]
 }
 
-function quoteLines(row: QuoteRow, mode: Mode): QuoteDetail['lines'] {
+function quoteLines(row: QuoteRow, mode: Mode, locale: 'en' | 'ar' = 'en'): QuoteDetail['lines'] {
   const shape = QUOTE_SHAPES[mode]
   const lines = shape.ancillaries.map((charge, index) => ({
     id: `qtl-${row.id}-${index + 2}`,
-    chargeName: chargeName(charge.charge),
+    chargeName: chargeName(charge.charge, locale),
     description: null,
     basis: charge.basis,
     quantity: numeric('1'),
@@ -6466,7 +6878,7 @@ function quoteLines(row: QuoteRow, mode: Mode): QuoteDetail['lines'] {
   return [
     {
       id: `qtl-${row.id}-1`,
-      chargeName: chargeName(shape.freight.charge),
+      chargeName: chargeName(shape.freight.charge, locale),
       description: shape.freight.description,
       basis: shape.freight.basis,
       quantity: numeric(shape.freight.quantity),
@@ -6485,12 +6897,17 @@ function quoteLines(row: QuoteRow, mode: Mode): QuoteDetail['lines'] {
  * for — which is the whole reason a second version exists rather than an edit,
  * and the thing somebody opening version 1 needs to be told.
  */
-function quoteNotes(id: string): string | null {
+function quoteNotes(id: string, locale: 'en' | 'ar' = 'en'): string | null {
+  const ar = locale === 'ar'
   if (id === 'quote-316') {
-    return 'Revised to CIF Nhava Sheva at the customer request. Version 1, quoted CFR, stands until they confirm which they want.'
+    return ar
+      ? 'عُدّلت إلى CIF نهافا شيفا بطلب من العميل. تبقى النسخة 1 بسعر CFR قائمة حتى يؤكد أيّهما يريد.'
+      : 'Revised to CIF Nhava Sheva at the customer request. Version 1, quoted CFR, stands until they confirm which they want.'
   }
   if (id === 'quote-316-v1') {
-    return 'Quoted CFR Nhava Sheva, 1 × 40HC, cargo ready within ten days.'
+    return ar
+      ? 'سعر CFR نهافا شيفا، 1 × 40HC، والبضاعة جاهزة خلال عشرة أيام.'
+      : 'Quoted CFR Nhava Sheva, 1 × 40HC, cargo ready within ten days.'
   }
   return null
 }
@@ -6508,8 +6925,12 @@ function quoteNotes(id: string): string | null {
  * Only enquiry 316 has one, and both of its rows list the other: a customer
  * holding a printed version 1 has to be able to find version 1 here.
  */
-export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | undefined {
-  const rows = pilotQuotes(now)
+export function pilotQuoteDetail(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): QuoteDetail | undefined {
+  const rows = pilotQuotes(now, undefined, locale)
   const row = rows.find((candidate) => candidate.id === id)
   if (row === undefined) return undefined
 
@@ -6531,7 +6952,7 @@ export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | un
     branchId: branch(seed.branch).id,
     branchCode: row.branchCode,
     customerId: customerId(seed.customer),
-    customerName: customer.en,
+    customerName: pickName(locale, customer.en, customer.ar),
     version: row.version,
     status: oneOf(QUOTE_STATUSES, row.status, 'quote status'),
     currency: row.currency,
@@ -6542,9 +6963,12 @@ export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | un
     sentAt: row.sentAt,
     decidedAt: row.decidedAt,
     createdAt,
-    lane: `${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}`,
+    lane:
+      locale === 'ar'
+        ? `${PORTS[seed.origin].ar} ← ${PORTS[seed.destination].ar}`
+        : `${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}`,
     mode: seed.mode,
-    notes: quoteNotes(row.id),
+    notes: quoteNotes(row.id, locale),
     /*
       A drafted covering note on the demo's draft quotations, so the note panel
       is shown mid-workflow — English written, Arabic still empty and inviting a
@@ -6559,7 +6983,7 @@ export function pilotQuoteDetail(id: string, now = Date.now()): QuoteDetail | un
           `reserve space on your confirmation.`
         : null,
     coverNoteAr: null,
-    lines: quoteLines(row, seed.mode),
+    lines: quoteLines(row, seed.mode, locale),
     history: rows
       .filter((other) => other.enquiryReference === row.enquiryReference && other.id !== row.id)
       .map((other) => ({
@@ -7264,7 +7688,11 @@ const MARGIN_FLOOR_PERCENT = '12.000000'
  * that flagged every cost as an accrual would make that column equal to the
  * cost column on every job, which says nothing.
  */
-export function pilotJobLedger(jobId: string, now = Date.now()): JobLedgerRows | undefined {
+export function pilotJobLedger(
+  jobId: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): JobLedgerRows | undefined {
   const seed = JOB_SEEDS.find((s) => `job-${s.seq}` === jobId || String(s.seq) === jobId)
   if (!seed) return undefined
 
@@ -7279,7 +7707,7 @@ export function pilotJobLedger(jobId: string, now = Date.now()): JobLedgerRows |
       id: chargeLineId(seed.seq, accrual.charge, 'cost'),
       direction: 'cost',
       chargeTypeId: `charge-${accrual.charge}`,
-      chargeTypeName: chargeName(accrual.charge),
+      chargeTypeName: chargeName(accrual.charge, locale),
       description: null,
       basis: chargeBasis(accrual.charge),
       quantity: accrual.quantity,
@@ -7289,7 +7717,9 @@ export function pilotJobLedger(jobId: string, now = Date.now()): JobLedgerRows |
       amountBase: accrual.amountBase,
       baseCurrency: home.currency,
       fxRate: accrual.fxRate,
-      counterpartyName: accrual.partner === null ? null : partner(accrual.partner).en,
+      counterpartyPartnerId: accrual.partner === null ? null : partnerId(accrual.partner),
+      counterpartyCustomerId: null,
+      counterpartyName: accrual.partner === null ? null : partner(accrual.partner)[locale],
       isAccrual: claims.length === 0,
       sourceKind: accrual.sourceKind,
       // A cost is never billed to a customer; only the revenue beside it is.
@@ -7306,7 +7736,7 @@ export function pilotJobLedger(jobId: string, now = Date.now()): JobLedgerRows |
       id: chargeLineId(seed.seq, accrual.charge, 'revenue'),
       direction: 'revenue',
       chargeTypeId: `charge-${accrual.charge}`,
-      chargeTypeName: chargeName(accrual.charge),
+      chargeTypeName: chargeName(accrual.charge, locale),
       description: null,
       basis: chargeBasis(accrual.charge),
       /*
@@ -7325,7 +7755,9 @@ export function pilotJobLedger(jobId: string, now = Date.now()): JobLedgerRows |
       amountBase: numeric(rate),
       baseCurrency: home.currency,
       fxRate: numeric('1'),
-      counterpartyName: customer.en,
+      counterpartyPartnerId: null,
+      counterpartyCustomerId: customerId(seed.customer),
+      counterpartyName: customer[locale],
       isAccrual: false,
       sourceKind: accrual.sourceKind,
       // Invoiced once the shipment has been delivered, which is when a
@@ -7363,6 +7795,7 @@ function chargeBasis(key: ChargeKey): ChargeBasis {
 export function pilotMatchCandidates(
   filters: { readonly jobId?: string; readonly partnerId?: string } = {},
   now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
 ): MatchCandidateRow[] {
   const rows: MatchCandidateRow[] = []
 
@@ -7380,12 +7813,12 @@ export function pilotMatchCandidates(
         jobId,
         jobReference: summary.reference,
         chargeTypeId: `charge-${accrual.charge}`,
-        chargeTypeName: chargeName(accrual.charge),
+        chargeTypeName: chargeName(accrual.charge, locale),
         description: null,
         amount: accrual.amount,
         currency: accrual.currency,
         matchedAmount: sum(matchesAgainst(seed.seq, accrual.charge).map((line) => line.billed)),
-        counterpartyName: accrual.partner === null ? null : partner(accrual.partner).en,
+        counterpartyName: accrual.partner === null ? null : partner(accrual.partner)[locale],
       })
     }
   }
@@ -7441,8 +7874,12 @@ const BILL_NOTES: Record<
  * to that job's own charge line — which is what lets `compareToAccrual` run
  * over the real pair rather than over a stated variance.
  */
-export function pilotSupplierInvoice(id: string, now = Date.now()): SupplierBillRows | undefined {
-  const row = pilotSupplierInvoices(now).find((candidate) => candidate.id === id)
+export function pilotSupplierInvoice(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): SupplierBillRows | undefined {
+  const row = pilotSupplierInvoices(now, {}, locale).find((candidate) => candidate.id === id)
   if (!row) return undefined
 
   const seq = Number(id.replace('sup-', ''))
@@ -7455,7 +7892,7 @@ export function pilotSupplierInvoice(id: string, now = Date.now()): SupplierBill
     id: `supl-${seq}-${index + 1}`,
     description: line.description,
     chargeTypeId: line.charge === null ? null : `charge-${line.charge}`,
-    chargeTypeName: line.charge === null ? null : chargeName(line.charge),
+    chargeTypeName: line.charge === null ? null : chargeName(line.charge, locale),
     /*
       No charge-type tolerance in the pilot, and that is not a gap.
 
@@ -7493,7 +7930,7 @@ export function pilotSupplierInvoice(id: string, now = Date.now()): SupplierBill
       claimed: numeric(line.billed),
       jobId: `job-${line.job}`,
       jobReference: jobSummary(seedJob, now).reference,
-      chargeTypeName: chargeName(line.charge),
+      chargeTypeName: chargeName(line.charge, locale),
       accruedBase: accrual.amountBase,
       accruedAmount: accrual.amount,
       accruedCurrency: accrual.currency,
@@ -7546,10 +7983,10 @@ function jobSeed(seq: number): JobSeed {
  * The invoices we raise *on* the two agents we also bill.
  *
  * Held apart from `INVOICE_SEEDS` on purpose, and the reason is that list's
- * own: it is the receivables *register's* dataset, `receivablesAgeing` sums
- * balances across currencies and labels the total with whichever it finds
- * first, and an open dollar invoice dropped into it would put dollars into a
- * Kuwaiti dinar total. These are raised in each agent's settlement currency —
+ * own: it is the receivables *register's* dataset, which is kept one dinar
+ * ledger (see there), and an open dollar invoice dropped into it would add a
+ * dollar ageing to a demo about one book. These are raised in each agent's
+ * settlement currency —
  * netting a dollar payable against a dinar receivable is not netting — so they
  * belong to the account screen and nowhere else.
  *
@@ -7618,7 +8055,11 @@ const ACCOUNT_BILL_STATUSES = ['received', 'approved', 'part_paid', 'disputed']
  * absent for the same reason they are excluded there — they have been dealt
  * with, and showing them again is how the same invoice gets netted twice.
  */
-export function pilotPartnerAccount(id: string, now = Date.now()): PartnerAccountRows | undefined {
+export function pilotPartnerAccount(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): PartnerAccountRows | undefined {
   const seed = PARTNERS.find((p) => partnerId(p.id) === id)
   if (!seed) return undefined
 
@@ -7657,7 +8098,7 @@ export function pilotPartnerAccount(id: string, now = Date.now()): PartnerAccoun
 
   return {
     partnerId: id,
-    partnerName: seed.en,
+    partnerName: pickName(locale, seed.en, seed.ar),
     currency,
     customerId: customerId_,
     entries: [...ours, ...theirs],
@@ -7718,8 +8159,12 @@ const SETTLEMENT_NOTES: Record<number, string | null> = {
  * the arithmetic that produced it — the offset, the residual and its direction
  * — ran once, in `pilotSettlements`, against `settlement.ts`'s own rules.
  */
-export function pilotSettlement(id: string, now = Date.now()): SettlementDetail | undefined {
-  const row = pilotSettlements(now).find((candidate) => candidate.id === id)
+export function pilotSettlement(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): SettlementDetail | undefined {
+  const row = pilotSettlements(now, {}, locale).find((candidate) => candidate.id === id)
   if (!row) return undefined
 
   const seq = Number(id.replace('settle-', ''))
@@ -7859,7 +8304,11 @@ const CONSOL_CHARGE_SEEDS: readonly ConsolChargeSeed[] = [
 ]
 
 /** The houses of one master, as `getConsolidation` reads them. */
-function consolidationHouses(seq: number, now: number): ConsolidationHouseRow[] {
+function consolidationHouses(
+  seq: number,
+  now: number,
+  locale: 'en' | 'ar' = 'en',
+): ConsolidationHouseRow[] {
   return CONSOLIDATION_HOUSE_SEEDS.filter((house) => house.consolidation === seq)
     .map((house): ConsolidationHouseRow => {
       const seed = jobSeed(house.job)
@@ -7868,7 +8317,7 @@ function consolidationHouses(seq: number, now: number): ConsolidationHouseRow[] 
         jobId: detail.id,
         reference: detail.reference,
         houseBillNumber: detail.houseBillNumber,
-        customerName: detail.customerName,
+        customerName: pickName(locale, detail.customerName, detail.customerNameAr),
         status: detail.status,
         packages: house.packages,
         grossWeightKg: numeric(house.grossWeightKg),
@@ -7881,7 +8330,11 @@ function consolidationHouses(seq: number, now: number): ConsolidationHouseRow[] 
 }
 
 /** The master costs on one consolidation, cost side first, as the query orders them. */
-function consolidationCharges(seq: number, now: number): ConsolidationChargeRow[] {
+function consolidationCharges(
+  seq: number,
+  now: number,
+  locale: 'en' | 'ar' = 'en',
+): ConsolidationChargeRow[] {
   const home = branch(CONSOLIDATION_SEEDS.find((row) => row.seq === seq)!.branch)
   return CONSOL_CHARGE_SEEDS.filter((charge) => charge.consolidation === seq).map(
     (charge, index): ConsolidationChargeRow => ({
@@ -7889,7 +8342,10 @@ function consolidationCharges(seq: number, now: number): ConsolidationChargeRow[
       // Every master line here is a cost. Revenue on a groupage master is
       // raised on the houses, which is what the allocation puts there.
       direction: 'cost',
-      chargeTypeName: chargeName(charge.charge),
+      chargeTypeId: `charge-${charge.charge}`,
+      counterpartyPartnerId: partnerId(charge.party),
+      fxRate: numeric('1'),
+      chargeTypeName: chargeName(charge.charge, locale),
       description: null,
       amount: numeric(charge.amount),
       currency: home.currency,
@@ -7897,7 +8353,8 @@ function consolidationCharges(seq: number, now: number): ConsolidationChargeRow[
       baseCurrency: home.currency,
       allocationBasis: charge.basis,
       allocatedAt: charge.allocated === null ? null : at(now, -charge.allocated, 10),
-      counterpartyName: partner(charge.party).en,
+      withdrawnAt: null,
+      counterpartyName: pickName(locale, partner(charge.party).en, partner(charge.party).ar),
       shareCount:
         charge.allocated === null
           ? 0
@@ -7980,8 +8437,9 @@ export function pilotAllocationShares(
 export function pilotConsolidation(
   id: string,
   now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
 ): ConsolidationDetailRows | undefined {
-  const row = pilotConsolidations(now, {}).find((candidate) => candidate.id === id)
+  const row = pilotConsolidations(now, {}, locale).find((candidate) => candidate.id === id)
   if (!row) return undefined
 
   const seq = Number(id.replace('consol-', ''))
@@ -7992,6 +8450,11 @@ export function pilotConsolidation(
     row: {
       id: row.id,
       branchId: branch(seed.branch).id,
+      branchTimeZone: branch(seed.branch).timeZone,
+      carrierPartnerId: partnerId(carrier),
+      coloadPartnerId: null,
+      originId: null,
+      destinationId: null,
       reference: row.reference,
       status: row.status,
       mode: row.mode,
@@ -8007,14 +8470,14 @@ export function pilotConsolidation(
       eta: row.eta,
       closedAt: seed.status === 'closed' ? at(now, seed.eta + 2, 15) : null,
       notes: null,
-      carrierName: partner(carrier).en,
+      carrierName: pickName(locale, partner(carrier).en, partner(carrier).ar),
       // Nobody is co-loading on this board. Modelled as absent rather than as
       // the carrier again: a co-loader is another forwarder's box on our
       // master, and saying so falsely is worse than saying nothing.
       coloadPartnerName: null,
     },
-    houses: consolidationHouses(seq, now),
-    charges: consolidationCharges(seq, now),
+    houses: consolidationHouses(seq, now, locale),
+    charges: consolidationCharges(seq, now, locale),
   }
 }
 
@@ -8029,6 +8492,7 @@ export function pilotConsolidation(
 export function pilotAttachableJobs(
   consolidationId: string,
   now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
 ): { readonly id: string; readonly label: string }[] {
   const seq = Number(consolidationId.replace('consol-', ''))
   const seed = CONSOLIDATION_SEEDS.find((candidate) => candidate.seq === seq)
@@ -8047,7 +8511,8 @@ export function pilotAttachableJobs(
   )
     .map((job) => {
       const summary = jobSummary(job, now)
-      return { id: summary.id, label: `${summary.reference} — ${summary.customerName}` }
+      const customer = pickName(locale, summary.customerName, summary.customerNameAr)
+      return { id: summary.id, label: `${summary.reference} — ${customer}` }
     })
     .sort((a, b) => b.label.localeCompare(a.label))
 }
@@ -8159,13 +8624,13 @@ export function pilotEnquiryProposals(enquiryId: string): EnquiryProposalRow[] {
  * chronological because the reference carries the sequence, and a coordinator
  * scanning for the enquiry they took this morning finds it at the bottom.
  */
-export function pilotOpenEnquiries(now = Date.now()): OpenEnquiryRow[] {
+export function pilotOpenEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): OpenEnquiryRow[] {
   return pilotEnquiries(now)
     .filter((row) => !['won', 'lost', 'cancelled', 'expired'].includes(row.status))
     .map((row) => ({
       id: row.id,
       reference: row.reference,
-      customer: row.customerName,
+      customer: locale === 'ar' ? row.customerNameAr : row.customerName,
       /*
         Null throughout, and that is the fixture being accurate rather than
         thin. `contact_name` is the person who wrote in when no customer record
@@ -8190,13 +8655,17 @@ export function pilotOpenEnquiries(now = Date.now()): OpenEnquiryRow[] {
  * Oldest due date first — the query's `order by due_on asc nulls last`, which
  * is the order a cheque is usually applied in.
  */
-export function pilotOutstandingInvoices(now = Date.now()): OutstandingInvoiceRow[] {
-  return pilotInvoices(now)
-    .filter((row) => ['issued', 'part_paid', 'approved'].includes(row.status))
+export function pilotOutstandingInvoices(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): OutstandingInvoiceRow[] {
+  // The query's filter: only what a receipt can settle — issued, so numbered.
+  return pilotInvoices(now, undefined, locale)
+    .filter((row) => ['issued', 'part_paid'].includes(row.status) && row.seriesNo)
     .filter((row) => new D(minus(row.total ?? '0', row.amountPaid ?? '0')).greaterThan(0))
     .map((row) => ({
       id: row.id,
-      label: row.seriesNo ?? '(draft)',
+      label: row.seriesNo ?? null,
       customer: row.customerName ?? '',
       balance: minus(row.total ?? '0', row.amountPaid ?? '0'),
       currency: row.currency,
@@ -8216,7 +8685,12 @@ export function pilotOutstandingInvoices(now = Date.now()): OutstandingInvoiceRo
 export function pilotOpenShipments(now = Date.now()): OpenShipmentRow[] {
   return pilotJobs(now)
     .filter((job) => !['closed', 'cancelled', 'completed'].includes(job.status))
-    .map((job) => ({ id: job.id, reference: job.reference, customer: job.customerName }))
+    .map((job) => ({
+      id: job.id,
+      reference: job.reference,
+      customer: job.customerName,
+      customerAr: job.customerNameAr,
+    }))
     .sort((a, b) => a.reference.localeCompare(b.reference))
 }
 
@@ -8236,10 +8710,10 @@ export function pilotOpenShipments(now = Date.now()): OpenShipmentRow[] {
  *     job sitting in clearance for five weeks with revenue on it is exactly
  *     the row worth seeing, and hiding it until delivery is how the leak
  *     survives.
- *   - **`totalBase` sums across branches.** Kuwait bills dinars and Dubai
- *     bills dirhams, and the summary labels the total with the first currency
- *     it finds. The register has that flaw against a real database too; a
- *     fixture that quietly totalled one branch would hide it.
+ *   - **Both branches' rows.** Kuwait bills dinars and Dubai bills dirhams,
+ *     and the summary totals each base currency separately — so the demo
+ *     shows the per-currency total the fix exists for, rather than a fixture
+ *     that quietly totalled one branch.
  *
  * What it cannot demonstrate is the multi-currency refusal — the row that says
  * a shipment cannot become one invoice. Revenue is priced in the branch's own
@@ -8247,7 +8721,11 @@ export function pilotOpenShipments(now = Date.now()): OpenShipmentRow[] {
  * entry per job here and the badge never draws. Faking it would mean seeding a
  * job the pricing rules cannot produce.
  */
-export function pilotUnbilledJobs(now = Date.now(), limit = 100): UnbilledJobRow[] {
+export function pilotUnbilledJobs(
+  now = Date.now(),
+  limit = 100,
+  locale: 'en' | 'ar' = 'en',
+): UnbilledJobRow[] {
   return JOB_SEEDS.map((seed): UnbilledJobRow | null => {
     const ledger = pilotJobLedger(`job-${seed.seq}`, now)
     if (ledger === undefined) return null
@@ -8263,7 +8741,7 @@ export function pilotUnbilledJobs(now = Date.now(), limit = 100): UnbilledJobRow
       reference: summary.reference,
       status: summary.status,
       customerId: customerId(seed.customer),
-      customerName: summary.customerName,
+      customerName: pickName(locale, summary.customerName, summary.customerNameAr),
       lines: unbilled.length,
       amountBase: sum(unbilled.map((line) => line.amountBase)),
       baseCurrency: ledger.baseCurrency,
@@ -8343,7 +8821,7 @@ export function pilotCreditStanding(
 
   const owed = pilotInvoices(now)
     .filter((row) => row.customerName === seed?.en)
-    .filter((row) => !['paid', 'void', 'draft'].includes(row.status))
+    .filter((row) => ['issued', 'part_paid'].includes(row.status))
     .map((row) => minus(row.total ?? '0', row.amountPaid ?? '0'))
 
   return {
@@ -8375,7 +8853,11 @@ export function pilotCreditStanding(
  * demonstrate a credit screen that has never had to make the interesting
  * decision, which is the one a forwarder asks about.
  */
-export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverrideRowLike[] {
+export function pilotCreditOverrides(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): CreditOverrideRowLike[] {
   // Customer 4 is the name that is most of the aged tail — see `INVOICE_SEEDS`.
   if (id !== customerId(4)) return []
 
@@ -8386,9 +8868,12 @@ export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverri
       jobId: null,
       invoiceId: null,
       expiresOn: day(now, 21),
-      reason: 'Payment plan agreed with the finance director. Review at quarter end.',
-      approvedByEn: OWNERS[3]!,
-      approvedByAr: 'نورة الصباح',
+      reason:
+        locale === 'ar'
+          ? 'خطة سداد متفق عليها مع المدير المالي. تُراجع في نهاية الربع.'
+          : 'Payment plan agreed with the finance director. Review at quarter end.',
+      approvedByEn: ownerName(3),
+      approvedByAr: ownerName(3, 'ar'),
       approvedAt: at(now, -9, 11),
       exposure: numeric(sum(['18400.000', '2150.000'])),
       creditLimit: CUSTOMERS[4]!.limit,
@@ -8479,8 +8964,8 @@ export function pilotMarginByDimension(
               ? { key: seed.mode, labelEn: seed.mode, labelAr: null as string | null }
               : {
                   key: `owner-${seed.owner}`,
-                  labelEn: OWNERS[seed.owner]!,
-                  labelAr: null as string | null,
+                  labelEn: ownerName(seed.owner),
+                  labelAr: ownerName(seed.owner, 'ar') as string | null,
                 }
 
     const group: MarginGroup = groups.get(cut.key) ?? {
@@ -8525,7 +9010,7 @@ export function pilotMarginByDimension(
  * is shown once at minting and stored as a hash; a fixture carrying one would
  * teach the wrong thing about how this works.
  */
-export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
+export function pilotApiKeys(now = Date.now(), locale: 'en' | 'ar' = 'en'): ApiKeyRowLike[] {
   const home = branch('KWI')
   return [
     {
@@ -8533,9 +9018,10 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       prefix: 'qbk_live_7f2a',
       name: 'Portal — shipment status',
       customerName: CUSTOMERS[0]!.en,
+      customerNameAr: CUSTOMERS[0]!.ar,
       branchId: home.id,
       scopes: ['shipments.read', 'documents.read'],
-      createdBy: OWNERS[0]!,
+      createdBy: ownerName(0, locale),
       createdAt: at(now, -84, 10),
       lastUsedAt: hours(now, -3),
       expiresAt: null,
@@ -8546,9 +9032,10 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       prefix: 'qbk_live_c419',
       name: 'ERP — invoice export',
       customerName: CUSTOMERS[4]!.en,
+      customerNameAr: CUSTOMERS[4]!.ar,
       branchId: home.id,
       scopes: ['invoices.read'],
-      createdBy: OWNERS[3]!,
+      createdBy: ownerName(3, locale),
       createdAt: at(now, -41, 9),
       lastUsedAt: hours(now, -26),
       expiresAt: at(now, 120, 0),
@@ -8564,9 +9051,10 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       prefix: 'qbk_live_08d6',
       name: 'Legacy tracking widget',
       customerName: CUSTOMERS[2]!.en,
+      customerNameAr: CUSTOMERS[2]!.ar,
       branchId: home.id,
       scopes: ['shipments.read'],
-      createdBy: OWNERS[0]!,
+      createdBy: ownerName(0, locale),
       createdAt: at(now, -300, 14),
       lastUsedAt: at(now, -158, 8),
       expiresAt: null,
@@ -8590,6 +9078,7 @@ export function pilotWebhookEndpoints(now = Date.now()): WebhookEndpointRowLike[
       id: 'hook-1',
       url: 'https://erp.example.kw/qabandi/events',
       customerName: CUSTOMERS[4]!.en,
+      customerNameAr: CUSTOMERS[4]!.ar,
       events: ['shipment.milestone', 'invoice.issued'],
       isActive: true,
       disabledAt: null,
@@ -8602,6 +9091,7 @@ export function pilotWebhookEndpoints(now = Date.now()): WebhookEndpointRowLike[
       id: 'hook-2',
       url: 'https://portal.example.kw/hooks/freight',
       customerName: CUSTOMERS[0]!.en,
+      customerNameAr: CUSTOMERS[0]!.ar,
       events: ['shipment.milestone'],
       isActive: true,
       disabledAt: null,
@@ -8614,6 +9104,7 @@ export function pilotWebhookEndpoints(now = Date.now()): WebhookEndpointRowLike[
       id: 'hook-3',
       url: 'https://old.example.ae/inbound',
       customerName: CUSTOMERS[5]!.en,
+      customerNameAr: CUSTOMERS[5]!.ar,
       events: ['shipment.milestone', 'document.released'],
       isActive: false,
       disabledAt: at(now, -6, 4),
@@ -8683,11 +9174,28 @@ export function pilotWhatsappNumbers(now = Date.now()): WhatsappNumberRowLike[] 
  * dinar — is one click from a buy card. Figures are the broker's own currency
  * with the dinar equivalent beside them, exactly as the real query returns them.
  */
-export function pilotRateRequests(now = Date.now()): RateRequestsView {
+/**
+ * The agents asked on the enquiry the model read — 318, Ningbo to Shuwaikh,
+ * which is why the agents are in Ningbo and the decline is about Shuwaikh.
+ * Every other enquiry has asked nobody yet, which is what its panel says,
+ * instead of every enquiry on the board showing the same four replies.
+ */
+export const PILOT_RFQ_ENQUIRY = 'enq-318'
+
+export function pilotRateRequests(enquiryId?: string, now = Date.now()): RateRequestsView {
+  if (enquiryId !== undefined && enquiryId !== PILOT_RFQ_ENQUIRY) {
+    return { baseCurrency: 'KWD', awaiting: 0, answered: 0, requests: [] }
+  }
   return {
     baseCurrency: 'KWD',
+    /*
+      Three answered — the two quotes and the decline, which is an answer too —
+      and one awaiting, the rule `replyCounts` applies to a real enquiry (F65).
+      Counted by hand because this module cannot import a server read; the
+      rate-requests test holds the two to each other.
+    */
     awaiting: 1,
-    answered: 2,
+    answered: 3,
     requests: [
       {
         id: 'demo-rr-1',
@@ -8702,6 +9210,7 @@ export function pilotRateRequests(now = Date.now()): RateRequestsView {
         comparable: true,
         isCheapest: true,
         lineCount: 4,
+        unpricedLines: 0,
         laneMismatch: null,
         declinedReason: null,
         canPromote: true,
@@ -8720,6 +9229,7 @@ export function pilotRateRequests(now = Date.now()): RateRequestsView {
         comparable: true,
         isCheapest: false,
         lineCount: 3,
+        unpricedLines: 0,
         laneMismatch: null,
         declinedReason: null,
         canPromote: true,
@@ -8738,6 +9248,7 @@ export function pilotRateRequests(now = Date.now()): RateRequestsView {
         comparable: false,
         isCheapest: false,
         lineCount: 0,
+        unpricedLines: 0,
         laneMismatch: null,
         declinedReason: 'No allocation to Shuwaikh until next month.',
         canPromote: false,
@@ -8756,6 +9267,7 @@ export function pilotRateRequests(now = Date.now()): RateRequestsView {
         comparable: false,
         isCheapest: false,
         lineCount: 0,
+        unpricedLines: 0,
         laneMismatch: null,
         declinedReason: null,
         canPromote: false,
@@ -8768,10 +9280,38 @@ export function pilotRateRequests(now = Date.now()): RateRequestsView {
 /** The agents the request-rates picker offers on the demo lane. */
 export function pilotCoveringAgents(): CoveringAgent[] {
   return [
-    { partnerId: 'demo-agent-1', name: 'Oriental Freight Services, Ningbo', type: 'agent', transitDays: 22, hasEmail: true, alreadyRequested: true },
-    { partnerId: 'demo-agent-2', name: 'Gulf Line Agencies, Kuwait', type: 'agent', transitDays: 24, hasEmail: true, alreadyRequested: true },
-    { partnerId: 'demo-agent-5', name: 'Blue Ocean Carriers, Ningbo', type: 'carrier', transitDays: 21, hasEmail: true, alreadyRequested: false },
-    { partnerId: 'demo-agent-6', name: 'Peninsula Forwarding, Dammam', type: 'agent', transitDays: null, hasEmail: false, alreadyRequested: false },
+    {
+      partnerId: 'demo-agent-1',
+      name: 'Oriental Freight Services, Ningbo',
+      type: 'agent',
+      transitDays: 22,
+      hasEmail: true,
+      alreadyRequested: true,
+    },
+    {
+      partnerId: 'demo-agent-2',
+      name: 'Gulf Line Agencies, Kuwait',
+      type: 'agent',
+      transitDays: 24,
+      hasEmail: true,
+      alreadyRequested: true,
+    },
+    {
+      partnerId: 'demo-agent-5',
+      name: 'Blue Ocean Carriers, Ningbo',
+      type: 'carrier',
+      transitDays: 21,
+      hasEmail: true,
+      alreadyRequested: false,
+    },
+    {
+      partnerId: 'demo-agent-6',
+      name: 'Peninsula Forwarding, Dammam',
+      type: 'agent',
+      transitDays: null,
+      hasEmail: false,
+      alreadyRequested: false,
+    },
   ]
 }
 
@@ -8809,6 +9349,119 @@ export function pilotRenewals(): RenewalView[] {
       lineCount: 0,
       declinedReason: null,
       canPromote: false,
+    },
+  ]
+}
+
+/**
+ * The intake agent on the demo enquiry — FR-EQ-02.
+ *
+ * Mid-conversation, because that is the state worth showing: the customer wrote
+ * four WhatsApp messages, the agent read them in one turn and asked once for
+ * the container type, and is waiting. The earlier turn — a greeting it did not
+ * answer — is on the list too, so the panel shows silence as a decision with a
+ * reason rather than as nothing.
+ */
+export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
+  return {
+    conversationId: 'intake-demo',
+    branchId: BRANCHES[0]!.id,
+    channel: 'whatsapp',
+    state: 'awaiting_customer',
+    agentEnabled: true,
+    locale: 'en',
+    missing: ['containerType'],
+    turnDueAt: null,
+    turns: 2,
+    modelCalls: 1,
+    clarifications: 1,
+    readyAt: null,
+    recent: [
+      {
+        id: 'intake-turn-2',
+        at: new Date(now - 1000 * 60 * 14),
+        action: 'clarify',
+        reason: 'clarified',
+        missing: ['containerType'],
+        messagesRead: 3,
+        modelCalled: true,
+        replyBody: `Thank you — to prepare your quotation (KWI-ENQ-2026-00418) we still need the container type (20', 40' or 40' high cube). — ${BRANCHES[0]!.en}`,
+        sendError: null,
+      },
+      {
+        id: 'intake-turn-1',
+        at: new Date(now - 1000 * 60 * 19),
+        action: 'none',
+        reason: 'chit_chat',
+        missing: ['mode', 'origin', 'destination', 'commodity'],
+        messagesRead: 1,
+        modelCalled: false,
+        replyBody: null,
+        sendError: null,
+      },
+    ],
+  }
+}
+
+/**
+ * Settings › Intake agent for the demo: the first office has the agent on with
+ * a shorter WhatsApp window of its own; the second inherits the defaults.
+ */
+export function pilotIntakeSettings(): IntakeSettingsRowLike[] {
+  const requirements = [
+    { mode: null, key: 'mode', fields: ['mode'] },
+    { mode: null, key: 'origin', fields: ['origin'] },
+    { mode: null, key: 'destination', fields: ['destination'] },
+    { mode: null, key: 'commodity', fields: ['commodity'] },
+    { mode: 'sea_fcl', key: 'containerCount', fields: ['containerCount'] },
+    { mode: 'sea_fcl', key: 'containerType', fields: ['containerType'] },
+    { mode: 'sea_lcl', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
+    { mode: 'air', key: 'weightOrVolume', fields: ['grossWeightKg', 'volumeCbm'] },
+  ]
+  return BRANCHES.slice(0, 2).map((home, index) => ({
+    branchId: home.id,
+    branchCode: home.code,
+    inherited: index !== 0,
+    enabled: index === 0,
+    whatsappQuietSeconds: index === 0 ? 90 : 120,
+    whatsappMaxWaitSeconds: 600,
+    emailQuietSeconds: 60,
+    emailMaxWaitSeconds: 600,
+    clarifyCooldownHours: 6,
+    clarifyCap: 2,
+    humanTakeoverHours: 12,
+    ownRequirements: false,
+    requirements,
+  }))
+}
+
+/**
+ * Mail from the demo agent that was filed on no record — a supplier is not a
+ * customer, so its mail does not open an enquiry. One revised-schedule notice
+ * waiting for a person, and one invoice already read into a bill.
+ */
+export function pilotPartnerMail(partnerId: string, now = Date.now()): PartnerMailLike[] {
+  if (partnerId !== 'everbright') return []
+  return [
+    {
+      id: 'partner-mail-1',
+      branchId: BRANCHES[0]!.id,
+      receivedAt: new Date(now - 1000 * 60 * 60 * 3),
+      fromAddress: 'ops@everbright.example',
+      subject: 'Revised cut-off, Qingdao sailings next week',
+      excerpt: 'Please note the CY cut-off for next week moves to Thursday 18:00.',
+      attachments: [],
+    },
+    {
+      id: 'partner-mail-2',
+      branchId: BRANCHES[0]!.id,
+      receivedAt: new Date(now - 1000 * 60 * 60 * 26),
+      fromAddress: 'accounts@everbright.example',
+      subject: 'Invoice EB-2026-0915',
+      excerpt: 'Please find our invoice attached.',
+      attachments: [
+        { assetId: 'asset-eb-0915', fileName: 'EB-2026-0915.pdf', readable: true, billId: null },
+      ],
     },
   ]
 }

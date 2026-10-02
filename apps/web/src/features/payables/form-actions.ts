@@ -27,6 +27,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -42,19 +43,23 @@ import {
   type CurrencySpec,
 } from '@qabandi/core'
 import {
+  branches,
   invoices,
+  latestFxRate,
   partnerSettlementLines,
   partnerSettlements,
   partners,
   supplierInvoiceLines,
   supplierInvoiceMatches,
   supplierInvoices,
+  rederiveBillSettlement,
+  rederiveInvoiceSettlement,
   supplierPaymentAllocations,
   supplierPayments,
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   databaseMessage,
   echo,
@@ -64,7 +69,13 @@ import {
   isUniqueViolation,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -79,6 +90,7 @@ const decimalString = (label: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^\d+(\.\d{1,6})?$/, label)
 
 const optionalUuid = z
@@ -86,44 +98,55 @@ const optionalUuid = z
   .optional()
   .or(z.literal('').transform(() => undefined))
 
-const isoDate = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter a date')
+const isoDate = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, tv('enterDate'))
 
 // --- capture ---------------------------------------------------------------
 
-const billSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  partnerId: z.uuid('Choose the supplier'),
-  reference: z.string().trim().min(1, 'Enter their invoice number').max(60),
-  currency: z.string().trim().length(3),
-  fxRate: decimalString('Enter an exchange rate'),
-  invoiceDate: isoDate,
-  dueOn: isoDate.optional().or(z.literal('').transform(() => undefined)),
-  taxAmount: decimalString('Enter the tax, or zero'),
-  notes: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional()
-    .transform((v) => v || null),
-})
+const billSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    partnerId: z.uuid(tv('chooseSupplier')),
+    reference: z.string().trim().min(1, tv('enterInvoiceNumber')).max(60),
+    currency: z.string().trim().length(3),
+    // Blank takes the latest rate on file (O3) — a default of 1 booked a USD
+    // bill at face value in KWD. A typed rate still wins.
+    fxRate: decimalString(tv('enterExchangeRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    invoiceDate: isoDate(tv),
+    dueOn: isoDate(tv)
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    taxAmount: decimalString(tv('enterTaxOrZero')),
+    notes: z
+      .string()
+      .trim()
+      .max(1000)
+      .optional()
+      .transform((v) => v || null),
+  })
 
-export async function saveSupplierInvoice(
+export const saveSupplierInvoice = refuseForbidden(async function saveSupplierInvoice(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const billId = read(form, 'supplierInvoiceId')
-  const parsed = billSchema.safeParse({
+  const parsed = await localeParse(billSchema(tv), {
     branchId: read(form, 'branchId'),
     partnerId: read(form, 'partnerId'),
     reference: read(form, 'reference'),
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     invoiceDate: read(form, 'invoiceDate') ?? '',
     dueOn: read(form, 'dueOn') ?? '',
     taxAmount: read(form, 'taxAmount') ?? '0',
@@ -132,10 +155,22 @@ export async function saveSupplierInvoice(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'payable.record', data.branchId)
 
   try {
     const outcome = await withActor(session.actor, async (tx) => {
+      const [branch] = await tx
+        .select({ baseCurrency: branches.baseCurrency })
+        .from(branches)
+        .where(eq(branches.id, data.branchId))
+        .limit(1)
+      const fxRate =
+        data.fxRate ??
+        (await latestFxRate(tx, data.currency, branch?.baseCurrency ?? data.currency))
+      if (fxRate === null) {
+        return { id: billId ?? '', error: 'no_rate' as const, base: branch?.baseCurrency ?? '' }
+      }
+
       if (!billId) {
         const [row] = await tx
           .insert(supplierInvoices)
@@ -144,12 +179,14 @@ export async function saveSupplierInvoice(
             partnerId: data.partnerId,
             reference: data.reference,
             currency: data.currency,
-            fxRate: data.fxRate,
+            fxRate,
             invoiceDate: data.invoiceDate,
             dueOn: data.dueOn ?? null,
             taxAmount: data.taxAmount,
             total: data.taxAmount,
             notes: data.notes,
+            // What the next capture's branch default is read from (U5).
+            recordedById: session.principal.id,
           })
           .returning({ id: supplierInvoices.id })
         return { id: row!.id, error: null }
@@ -168,11 +205,19 @@ export async function saveSupplierInvoice(
           partnerId: data.partnerId,
           reference: data.reference,
           currency: data.currency,
-          fxRate: data.fxRate,
+          fxRate,
           invoiceDate: data.invoiceDate,
           dueOn: data.dueOn ?? null,
-          taxAmount: data.taxAmount,
-          total: sql`${supplierInvoices.subtotal} + ${data.taxAmount}::numeric`,
+          /*
+            The lines' tax where they carry any, the typed figure where they
+            do not. An edit used to write the typed tax over whatever the
+            lines said, so correcting a reference on a bill whose lines carried
+            50 of tax silently dropped it from the total.
+          */
+          taxAmount: sql`case when ${lineTax(billId)} > 0 then ${lineTax(billId)}
+                              else ${data.taxAmount}::numeric end`,
+          total: sql`${supplierInvoices.subtotal} + case when ${lineTax(billId)} > 0
+                       then ${lineTax(billId)} else ${data.taxAmount}::numeric end`,
           notes: data.notes,
           updatedAt: new Date(),
         })
@@ -188,8 +233,11 @@ export async function saveSupplierInvoice(
     })
 
     if (outcome.error === 'locked') {
-      return failWith(
-        'That bill has been approved and can no longer be edited. Dispute it first if the figures are wrong.',
+      return failWith(tv('billApprovedLocked'), echo(form))
+    }
+    if (outcome.error === 'no_rate') {
+      return fail(
+        { fxRate: tv('noRateOnFile', { from: data.currency, to: outcome.base }) },
         echo(form),
       )
     }
@@ -199,33 +247,34 @@ export async function saveSupplierInvoice(
     return succeed(outcome.id)
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail(
-        { reference: 'That invoice number has already been captured for this supplier.' },
-        echo(form),
-      )
+      return fail({ reference: tv('invoiceNumberCaptured') }, echo(form))
     }
     throw error
   }
-}
-
-const lineSchema = z.object({
-  supplierInvoiceId: z.uuid(),
-  description: z.string().trim().min(1, 'Enter the line as they wrote it').max(300),
-  chargeTypeId: optionalUuid,
-  jobId: optionalUuid,
-  quantity: decimalString('Enter a quantity'),
-  unitPrice: decimalString('Enter the rate'),
-  taxAmount: decimalString('Enter the tax, or zero'),
 })
 
-export async function addSupplierInvoiceLine(
+const lineSchema = (tv: Translate) =>
+  z.object({
+    supplierInvoiceId: z.uuid(),
+    description: z.string().trim().min(1, tv('enterLineAsWritten')).max(300),
+    chargeTypeId: optionalUuid,
+    jobId: optionalUuid,
+    quantity: decimalString(tv('enterQuantity')),
+    unitPrice: decimalString(tv('enterRate')),
+    taxAmount: decimalString(tv('enterTaxOrZero')),
+  })
+
+export const addSupplierInvoiceLine = refuseForbidden(async function addSupplierInvoiceLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
-  const parsed = lineSchema.safeParse({
+  const parsed = await localeParse(lineSchema(tv), {
     supplierInvoiceId: read(form, 'supplierInvoiceId'),
     description: read(form, 'description'),
     chargeTypeId: read(form, 'chargeTypeId') ?? '',
@@ -251,7 +300,7 @@ export async function addSupplierInvoiceLine(
 
     if (!bill) return { error: 'not_found' as const }
     if (!['received', 'disputed'].includes(bill.status)) return { error: 'locked' as const }
-    assertInBranch(session, bill.branchId)
+    assertCanIn(session, 'payable.record', bill.branchId)
 
     const amount = dec(data.quantity)
       .times(dec(data.unitPrice))
@@ -273,14 +322,12 @@ export async function addSupplierInvoiceLine(
     return { error: null }
   })
 
-  if (outcome.error === 'not_found') return failWith('That bill is no longer visible.', echo(form))
-  if (outcome.error === 'locked') {
-    return failWith('That bill has been approved; its lines can no longer change.', echo(form))
-  }
+  if (outcome.error === 'not_found') return failWith(tv('billGone'), echo(form))
+  if (outcome.error === 'locked') return failWith(tv('billLinesLocked'), echo(form))
 
   revalidatePath(`/payables/${data.supplierInvoiceId}`)
   return succeed(data.supplierInvoiceId)
-}
+})
 
 /**
  * Totals derived from the lines, in one statement, so they cannot drift.
@@ -292,38 +339,55 @@ export async function addSupplierInvoiceLine(
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function rollBillTotals(tx: any, billId: string): Promise<void> {
+  /*
+    Tax is the lines' where any line carries it, and otherwise the figure
+    captured on the header. Supplier bills commonly state one tax figure for
+    the whole document; summing lines that carry none wiped it the moment the
+    first line was added, so a bill of 1,000 + 50 became 1,000 and paying the
+    1,050 it asked for was refused.
+  */
   await tx.execute(sql`
     update supplier_invoices set
-      subtotal   = coalesce((select sum(amount)     from supplier_invoice_lines
+      subtotal   = coalesce((select sum(amount) from supplier_invoice_lines
                               where supplier_invoice_id = ${billId}), 0),
-      tax_amount = coalesce((select sum(tax_amount) from supplier_invoice_lines
-                              where supplier_invoice_id = ${billId}), 0),
-      total      = coalesce((select sum(amount + tax_amount) from supplier_invoice_lines
-                              where supplier_invoice_id = ${billId}), 0),
+      tax_amount = case when ${lineTax(billId)} > 0 then ${lineTax(billId)} else tax_amount end,
+      total      = coalesce((select sum(amount) from supplier_invoice_lines
+                              where supplier_invoice_id = ${billId}), 0)
+                 + case when ${lineTax(billId)} > 0 then ${lineTax(billId)} else tax_amount end,
       updated_at = now()
     where id = ${billId}
   `)
 }
 
+/** The tax the bill's lines carry between them — zero where they carry none. */
+const lineTax = (billId: string) =>
+  sql`coalesce((select sum(l.tax_amount) from supplier_invoice_lines l
+                 where l.supplier_invoice_id = ${billId}), 0)`
+
 // --- matching --------------------------------------------------------------
 
-export async function matchSupplierLine(
+export const matchSupplierLine = refuseForbidden(async function matchSupplierLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const lineId = read(form, 'supplierInvoiceLineId')
   const chargeLineId = read(form, 'chargeLineId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   const billId = read(form, 'supplierInvoiceId')
 
   if (!lineId || !chargeLineId || !billId) {
-    return fail({ chargeLineId: 'Choose a cost line to match against.' })
+    return fail({ chargeLineId: tv('chooseCostLine') })
   }
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
-    return fail({ amount: 'Enter how much of this line that cost covers.' }, echo(form))
+    return fail({ amount: tv('enterMatchAmount') }, echo(form))
   }
 
   try {
@@ -362,7 +426,7 @@ export async function matchSupplierLine(
 
       if (!row || row.billed === null || !row.branch_id) return { error: 'not_found' as const }
       if (!['received', 'disputed'].includes(row.status ?? '')) return { error: 'locked' as const }
-      assertInBranch(session, row.branch_id)
+      assertCanIn(session, 'payable.record', row.branch_id)
 
       const currency = row.currency ?? 'KWD'
       const verdict = checkMatch(
@@ -384,20 +448,17 @@ export async function matchSupplierLine(
     })
 
     if (outcome.error === 'not_found') {
-      return failWith('That line is no longer visible.', echo(form))
+      return failWith(tv('lineGone'), echo(form))
     }
     if (outcome.error === 'locked') {
-      return failWith(
-        'That bill has been approved. Matching it now would change a variance somebody has already signed off.',
-        echo(form),
-      )
+      return failWith(tv('billApprovedMatchLocked'), echo(form))
     }
     if (outcome.error === 'over_billed') {
-      return fail({ amount: 'That is more than is left unmatched on this line.' }, echo(form))
+      return fail({ amount: tv('overMatched') }, echo(form))
     }
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ chargeLineId: 'That cost line is already matched to this line.' }, echo(form))
+      return fail({ chargeLineId: tv('costLineAlreadyMatched') }, echo(form))
     }
     /*
       The branch trigger from 0014 speaks plainly; surface it rather than a
@@ -406,18 +467,19 @@ export async function matchSupplierLine(
       is what they tried to do.
     */
     if (databaseMessage(error).includes('different branches')) {
-      return fail({ chargeLineId: 'That cost line belongs to another branch.' }, echo(form))
+      return fail({ chargeLineId: tv('costLineOtherBranch') }, echo(form))
     }
     throw error
   }
 
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 export async function unmatchSupplierLine(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const matchId = read(form, 'matchId')
   const billId = read(form, 'supplierInvoiceId')
@@ -454,18 +516,23 @@ export async function unmatchSupplierLine(form: FormData): Promise<void> {
 
 // --- approval --------------------------------------------------------------
 
-export async function setSupplierInvoiceStatus(
+export const setSupplierInvoiceStatus = refuseForbidden(async function setSupplierInvoiceStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  // Bound before the permission check, because that check depends on the
+  // action, and "nothing to do" has to be answered before there is one.
+  const tv = await getTranslations('payablesValidation')
 
   const billId = read(form, 'supplierInvoiceId')
   const action = read(form, 'action')
   const reason = read(form, 'reason')
   const acceptVariance = form.get('acceptVariance') === 'on'
 
-  if (!billId || !action) return failWith('Nothing to do.')
+  if (!billId || !action) return failWith(tv('nothingToDo'))
 
   if (action === 'approve') assertCan(session, 'payable.approve')
   else assertCan(session, 'payable.record')
@@ -476,17 +543,34 @@ export async function setSupplierInvoiceStatus(
         branchId: supplierInvoices.branchId,
         status: supplierInvoices.status,
         fxRate: supplierInvoices.fxRate,
+        total: supplierInvoices.total,
+        // Qualified by hand: Drizzle prints a single-table select's columns
+        // unqualified, and a bare "id" inside the subquery is the line's.
+        lines: sql<number>`(select count(*)::int from supplier_invoice_lines l
+                             where l.supplier_invoice_id = supplier_invoices.id)`,
       })
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, billId))
       .limit(1)
 
     if (!bill) return { error: 'not_found' as const }
-    assertInBranch(session, bill.branchId)
+    assertCanIn(session, action === 'approve' ? 'payable.approve' : 'payable.record', bill.branchId)
 
     if (action === 'approve') {
       if (bill.status !== 'received' && bill.status !== 'disputed') {
         return { error: 'not_approvable' as const }
+      }
+
+      /*
+        Nothing to approve (QA P2-8). A bill with no lines has a total of
+        zero, and the variance check below counts lines, so an empty bill
+        passed it as perfectly clean, was approved, and then sat in the
+        payables list with nothing a payment could ever settle and no way
+        back to editable. Compared on `numeric` in the database's terms, as
+        a string, never as a float.
+      */
+      if (Number(bill.lines) === 0 || !dec(bill.total ?? 0).gt(0)) {
+        return { error: 'empty' as const }
       }
 
       /*
@@ -555,7 +639,13 @@ export async function setSupplierInvoiceStatus(
 
     if (action === 'dispute') {
       if (!reason || reason.length < 3) return { error: 'needs_reason' as const }
-      await tx
+      /*
+        Only a bill nothing has happened to yet. Disputed is an editable
+        state, so disputing a paid, netted or exported bill reopened figures
+        that money, a set-off or the ledger already depended on. The guard is
+        in the `where`, so a payment landing first wins.
+      */
+      const disputed = await tx
         .update(supplierInvoices)
         .set({
           status: 'disputed',
@@ -563,8 +653,17 @@ export async function setSupplierInvoiceStatus(
           disputeReason: reason,
           updatedAt: new Date(),
         })
-        .where(eq(supplierInvoices.id, billId))
-      return { error: null }
+        .where(
+          and(
+            eq(supplierInvoices.id, billId),
+            inArray(supplierInvoices.status, ['received', 'approved']),
+            sql`${supplierInvoices.amountPaid} = 0`,
+            isNull(supplierInvoices.settlementId),
+            isNull(supplierInvoices.accountingExportId),
+          ),
+        )
+        .returning({ id: supplierInvoices.id })
+      return { error: disputed.length === 0 ? ('not_disputable' as const) : null }
     }
 
     if (action === 'void') {
@@ -592,53 +691,62 @@ export async function setSupplierInvoiceStatus(
   })
 
   const messages: Record<string, string> = {
-    not_found: 'That bill is no longer visible.',
-    not_approvable: 'That bill is not waiting for approval.',
-    needs_review:
-      'Some lines are outside tolerance or matched to nothing. Query them with the supplier, or tick the box and say why the variance is acceptable.',
-    needs_reason: 'Say why — this goes on the record.',
-    paid_against: 'Something has already been paid against that bill, so it cannot be voided.',
-    unknown: 'Nothing to do.',
+    not_found: tv('billGone'),
+    not_approvable: tv('billNotAwaitingApproval'),
+    empty: tv('billHasNoLines'),
+    needs_review: tv('varianceNeedsReview'),
+    needs_reason: tv('sayWhy'),
+    paid_against: tv('billPaidAgainst'),
+    not_disputable: tv('billNotDisputable'),
+    unknown: tv('nothingToDo'),
   }
 
-  if (outcome.error) return failWith(messages[outcome.error] ?? 'That did not work.', echo(form))
+  if (outcome.error) return failWith(messages[outcome.error] ?? tv('didNotWork'), echo(form))
 
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- paying ----------------------------------------------------------------
 
-const supplierPaymentSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  partnerId: z.uuid('Choose the supplier'),
-  amount: decimalString('Enter the amount paid'),
-  currency: z.string().trim().length(3),
-  fxRate: decimalString('Enter an exchange rate'),
-  paidOn: isoDate,
-  method: z.string().trim().min(1, 'How was it paid?').max(40),
-  reference: z
-    .string()
-    .trim()
-    .max(60)
-    .optional()
-    .transform((v) => v || null),
-})
+const supplierPaymentSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    partnerId: z.uuid(tv('chooseSupplier')),
+    amount: decimalString(tv('enterAmountPaid')),
+    currency: z.string().trim().length(3),
+    // Blank takes the latest rate on file, as a bill does (O3). It defaulted
+    // to 1 and booked a USD payment at face value in the branch's currency.
+    fxRate: decimalString(tv('enterExchangeRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    paidOn: isoDate(tv),
+    method: z.string().trim().min(1, tv('howPaid')).max(40),
+    reference: z
+      .string()
+      .trim()
+      .max(60)
+      .optional()
+      .transform((v) => v || null),
+  })
 
-export async function recordSupplierPayment(
+export const recordSupplierPayment = refuseForbidden(async function recordSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
-  const parsed = supplierPaymentSchema.safeParse({
+  const parsed = await localeParse(supplierPaymentSchema(tv), {
     branchId: read(form, 'branchId'),
     partnerId: read(form, 'partnerId'),
     amount: read(form, 'amount') ?? '',
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     paidOn: read(form, 'paidOn') ?? '',
     method: read(form, 'method') ?? 'transfer',
     reference: read(form, 'reference'),
@@ -646,25 +754,42 @@ export async function recordSupplierPayment(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'payable.pay', data.branchId)
 
-  await withActor(session.actor, async (tx) => {
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [branch] = await tx
+      .select({ baseCurrency: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, data.branchId))
+      .limit(1)
+    const base = branch?.baseCurrency ?? data.currency
+    const fxRate = data.fxRate ?? (await latestFxRate(tx, data.currency, base))
+    if (fxRate === null) return { error: 'no_rate' as const, base }
+
     await tx.insert(supplierPayments).values({
       branchId: data.branchId,
       partnerId: data.partnerId,
       amount: data.amount,
       currency: data.currency,
-      fxRate: data.fxRate,
+      fxRate,
       paidOn: data.paidOn,
       method: data.method,
       reference: data.reference,
       recordedById: session.actor.principalId,
     })
+    return { error: null }
   })
+
+  if (outcome.error === 'no_rate') {
+    return fail(
+      { fxRate: tv('noRateOnFilePayment', { from: data.currency, to: outcome.base }) },
+      echo(form),
+    )
+  }
 
   revalidatePath('/payables')
   return succeed(data.partnerId)
-}
+})
 
 /**
  * Allocating a payment across their bills — both ceilings, in one transaction.
@@ -675,93 +800,142 @@ export async function recordSupplierPayment(
  * of two-ceiling arithmetic would mean two places to get three-decimal
  * subtraction wrong, and the first version of that arithmetic was wrong.
  */
-export async function allocateSupplierPayment(
+export const allocateSupplierPayment = refuseForbidden(async function allocateSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const paymentId = read(form, 'supplierPaymentId')
   const billId = read(form, 'supplierInvoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
 
-  if (!paymentId || !billId) return fail({ supplierInvoiceId: 'Choose a bill to settle.' })
+  if (!paymentId || !billId) return fail({ supplierInvoiceId: tv('chooseBillToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
-    return fail({ amount: 'Enter how much of this payment settles that bill.' }, echo(form))
+    return fail({ amount: tv('enterAllocationAmount') }, echo(form))
   }
 
   const outcome = await withActor(session.actor, async (tx) => {
-    const result = await tx.execute(sql`
-      select
-        (select amount from supplier_payments where id = ${paymentId})::numeric   as received,
-        coalesce((select sum(amount) from supplier_payment_allocations
-                   where supplier_payment_id = ${paymentId}), 0)::numeric         as allocated,
-        (select total from supplier_invoices where id = ${billId})::numeric       as invoiced,
-        coalesce((select sum(amount) from supplier_payment_allocations
-                   where supplier_invoice_id = ${billId}), 0)::numeric            as settled,
-        (select currency from supplier_invoices where id = ${billId})             as currency,
-        (select branch_id from supplier_invoices where id = ${billId})            as branch_id,
-        (select status from supplier_invoices where id = ${billId})               as status
-    `)
+    /*
+      Both rows locked, and the four checks an allocation needs before its two
+      ceilings mean anything: the same supplier, the same branch, the same
+      currency, and a bill released for payment. Without the lock two
+      allocations against one bill each read "1,000 owed" and together paid
+      2,000; without the others a payment to one agent could settle another's
+      bill, in another currency, at face value.
+    */
+    const [bill] = await tx
+      .select({
+        total: supplierInvoices.total,
+        amountPaid: supplierInvoices.amountPaid,
+        currency: supplierInvoices.currency,
+        branchId: supplierInvoices.branchId,
+        partnerId: supplierInvoices.partnerId,
+        status: supplierInvoices.status,
+      })
+      .from(supplierInvoices)
+      .where(eq(supplierInvoices.id, billId))
+      .limit(1)
+      .for('update')
+    const [payment] = await tx
+      .select({
+        amount: supplierPayments.amount,
+        currency: supplierPayments.currency,
+        branchId: supplierPayments.branchId,
+        partnerId: supplierPayments.partnerId,
+      })
+      .from(supplierPayments)
+      .where(eq(supplierPayments.id, paymentId))
+      .limit(1)
+      .for('update')
 
-    const row = result.rows[0] as
-      | {
-          received: string | null
-          allocated: string | null
-          invoiced: string | null
-          settled: string | null
-          currency: string | null
-          branch_id: string | null
-          status: string | null
-        }
-      | undefined
-
-    if (!row || row.received === null || row.invoiced === null || !row.branch_id) {
-      return { error: 'not_found' as const }
-    }
-    if (!['approved', 'part_paid'].includes(row.status ?? '')) {
+    if (!bill || !payment) return { error: 'not_found' as const }
+    if (!['approved', 'part_paid'].includes(bill.status)) {
       return { error: 'not_approved' as const }
     }
-    assertInBranch(session, row.branch_id)
+    assertCanIn(session, 'payable.pay', bill.branchId)
+    if (payment.partnerId !== bill.partnerId) return { error: 'other_partner' as const }
+    if (payment.branchId !== bill.branchId) return { error: 'other_branch' as const }
+    if (payment.currency !== bill.currency) {
+      return { error: 'currency' as const, paid: payment.currency, billed: bill.currency }
+    }
 
-    const currency = row.currency ?? 'KWD'
-    const verdict = checkSettlement(amount, positionFromDb(row, currency), currency)
+    const [allocated] = await tx
+      .select({ sum: sql<string | null>`sum(${supplierPaymentAllocations.amount})::text` })
+      .from(supplierPaymentAllocations)
+      .where(eq(supplierPaymentAllocations.supplierPaymentId, paymentId))
+
+    /*
+      "Settled" is the bill's paid-to-date, which counts agreed set-offs as
+      well as payments (`rederiveBillSettlement`). Counting payments alone
+      is how a bill already netted away against the agent's receivable could
+      be paid again in cash: the netting never touched this figure.
+    */
+    const currency = bill.currency
+    const verdict = checkSettlement(
+      amount,
+      positionFromDb(
+        {
+          received: payment.amount,
+          allocated: allocated?.sum ?? null,
+          invoiced: bill.total,
+          settled: bill.amountPaid,
+        },
+        currency,
+      ),
+      currency,
+    )
     if (!verdict.ok) return { error: verdict.reason }
 
-    await tx.insert(supplierPaymentAllocations).values({
-      supplierPaymentId: paymentId,
-      supplierInvoiceId: billId,
-      branchId: row.branch_id,
-      amount,
-    })
+    // A top-up adds to the allocation already there, as on the receivables
+    // side, rather than tripping the (payment, bill) unique key.
+    await tx
+      .insert(supplierPaymentAllocations)
+      .values({
+        supplierPaymentId: paymentId,
+        supplierInvoiceId: billId,
+        branchId: bill.branchId,
+        amount,
+      })
+      .onConflictDoUpdate({
+        target: [
+          supplierPaymentAllocations.supplierPaymentId,
+          supplierPaymentAllocations.supplierInvoiceId,
+        ],
+        set: {
+          amount: sql`${supplierPaymentAllocations.amount} + excluded.amount`,
+          updatedAt: new Date(),
+        },
+      })
 
-    // Paid-to-date and status derived from the allocations, in one statement.
-    await tx.execute(sql`
-      update supplier_invoices set
-        amount_paid = coalesce((select sum(amount) from supplier_payment_allocations
-                                 where supplier_invoice_id = ${billId}), 0),
-        status = case
-          when coalesce((select sum(amount) from supplier_payment_allocations
-                          where supplier_invoice_id = ${billId}), 0) >= total
-            then 'paid'::supplier_invoice_status
-          when coalesce((select sum(amount) from supplier_payment_allocations
-                          where supplier_invoice_id = ${billId}), 0) > 0
-            then 'part_paid'::supplier_invoice_status
-          else status
-        end,
-        updated_at = now()
-      where id = ${billId}
-    `)
-
+    await rederiveBillSettlement(tx, billId)
     return { error: null }
   })
 
+  if (outcome.error === 'currency') {
+    return fail(
+      {
+        supplierInvoiceId: tv('paymentCurrencyMismatch', {
+          paid: outcome.paid,
+          billed: outcome.billed,
+        }),
+      },
+      echo(form),
+    )
+  }
   const messages: Record<string, string> = {
-    not_found: 'That bill is no longer visible.',
-    not_approved: 'That bill has not been approved for payment yet.',
-    over_allocated: 'That is more than is left unallocated on this payment.',
-    over_invoiced: 'That is more than is still outstanding on that bill.',
+    not_found: tv('billGone'),
+    not_approved: tv('billNotApproved'),
+    over_allocated: tv('overAllocated'),
+    over_invoiced: tv('overInvoiced'),
+    other_partner: tv('billOtherPartner'),
+    other_branch: tv('billOtherBranch'),
   }
   if (outcome.error) {
     const key =
@@ -774,17 +948,18 @@ export async function allocateSupplierPayment(
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- netting ---------------------------------------------------------------
 
-const settlementSchema = z.object({
-  branchId: z.uuid('Choose a branch'),
-  partnerId: z.uuid('Choose the agent'),
-  periodFrom: isoDate,
-  periodTo: isoDate,
-  fxRate: decimalString('Enter the agreed rate'),
-})
+const settlementSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid(tv('chooseBranch')),
+    partnerId: z.uuid(tv('chooseAgent')),
+    periodFrom: isoDate(tv),
+    periodTo: isoDate(tv),
+    fxRate: decimalString(tv('enterAgreedRate')),
+  })
 
 /**
  * Draft a month's set-off — the figures, and the documents behind them.
@@ -795,14 +970,17 @@ const settlementSchema = z.object({
  * re-derives it shows a different figure the moment a late invoice is captured
  * into the period.
  */
-export async function draftSettlement(
+export const draftSettlement = refuseForbidden(async function draftSettlement(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
-  const parsed = settlementSchema.safeParse({
+  const parsed = await localeParse(settlementSchema(tv), {
     branchId: read(form, 'branchId'),
     partnerId: read(form, 'partnerId'),
     periodFrom: read(form, 'periodFrom') ?? '',
@@ -812,9 +990,9 @@ export async function draftSettlement(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'settlement.run', data.branchId)
   if (data.periodTo < data.periodFrom) {
-    return fail({ periodTo: 'The period ends before it starts.' }, echo(form))
+    return fail({ periodTo: tv('periodEndsBeforeStart') }, echo(form))
   }
 
   const outcome = await withActor(session.actor, async (tx) => {
@@ -849,13 +1027,25 @@ export async function draftSettlement(
           inArray(supplierInvoices.status, ['approved', 'part_paid']),
           sql`${supplierInvoices.invoiceDate} between ${data.periodFrom}::date and ${data.periodTo}::date`,
           sql`${supplierInvoices.total} > ${supplierInvoices.amountPaid}`,
+          // Not already on another live statement — a draft as much as an
+          // agreed one, or two drafts each net the same bill.
+          sql`not exists (
+            select 1 from partner_settlement_lines sl
+              join partner_settlements ps on ps.id = sl.settlement_id
+             where sl.supplier_invoice_id = "supplier_invoices"."id" and ps.status <> 'void'
+          )`,
         ),
       )
+      .orderBy(supplierInvoices.invoiceDate, supplierInvoices.id)
 
     const ours = await tx
       .select({
         id: invoices.id,
-        total: invoices.total,
+        /*
+          Less any partial credit note (F9): what was credited is not there to
+          set off, any more than what was received.
+        */
+        total: sql<string>`(${invoices.total} - ${invoices.amountCredited})::text`,
         amountPaid: invoices.amountPaid,
       })
       .from(invoices)
@@ -865,12 +1055,20 @@ export async function draftSettlement(
           eq(invoices.currency, currency),
           inArray(invoices.status, ['issued', 'part_paid']),
           sql`${invoices.issuedAt}::date between ${data.periodFrom}::date and ${data.periodTo}::date`,
-          sql`${invoices.total} > ${invoices.amountPaid}`,
+          sql`${invoices.total} > ${invoices.amountPaid} + ${invoices.amountCredited}`,
+          /*
+            Not on another *live* statement. Any line at all used to exclude
+            it, so an invoice on a voided settlement could never be netted
+            again.
+          */
           sql`not exists (
-            select 1 from partner_settlement_lines sl where sl.invoice_id = "invoices"."id"
+            select 1 from partner_settlement_lines sl
+              join partner_settlements ps on ps.id = sl.settlement_id
+             where sl.invoice_id = "invoices"."id" and ps.status <> 'void'
           )`,
         ),
       )
+      .orderBy(invoices.issuedAt, invoices.id)
 
     if (bills.length === 0 && ours.length === 0) return { error: 'nothing_to_net' as const }
 
@@ -902,39 +1100,62 @@ export async function draftSettlement(
 
     const settlementId = row!.id
 
-    await tx.insert(partnerSettlementLines).values([
-      ...ours.map((i) => ({
+    /*
+      Each line is what the set-off *claims* of its document, as the column
+      says — not the document's whole open balance.
+
+      Only the offset is extinguished. On the smaller side that is every
+      document in full; on the larger side it is the offset spread oldest
+      first, the last one partly and the rest not at all. Writing every open
+      balance in full meant agreeing a 500-against-300 statement would have
+      settled 500 of receivables with 300 of payables. A document the offset
+      does not reach is left off, so next month's statement still sees it.
+    */
+    const claim = <T extends { id: string; total: string; amountPaid: string }>(rows: T[]) => {
+      let left = net.offset.amount
+      return rows.flatMap((r) => {
+        const open = new D(r.total).minus(new D(r.amountPaid))
+        const take = D.min(open, left)
+        left = left.minus(take)
+        return take.greaterThan(0)
+          ? [{ id: r.id, amount: take.toFixed(), isFull: take.eq(open) }]
+          : []
+      })
+    }
+
+    const lines = [
+      ...claim(ours).map((c) => ({
         settlementId,
         branchId: data.branchId,
         kind: 'invoice' as const,
-        invoiceId: i.id,
-        amount: new D(i.total).minus(new D(i.amountPaid)).toFixed(),
-        isFull: true,
+        invoiceId: c.id,
+        amount: c.amount,
+        isFull: c.isFull,
       })),
-      ...bills.map((b) => ({
+      ...claim(bills).map((c) => ({
         settlementId,
         branchId: data.branchId,
         kind: 'bill' as const,
-        supplierInvoiceId: b.id,
-        amount: new D(b.total).minus(new D(b.amountPaid)).toFixed(),
-        isFull: true,
+        supplierInvoiceId: c.id,
+        amount: c.amount,
+        isFull: c.isFull,
       })),
-    ])
+    ]
+    if (lines.length > 0) await tx.insert(partnerSettlementLines).values(lines)
 
     return { error: null, id: settlementId }
   })
 
   const messages: Record<string, string> = {
-    not_found: 'That partner is no longer visible.',
-    no_account:
-      'No current account is configured for that partner. Link them to the customer record they invoice us as, on their partner page.',
-    nothing_to_net: 'Nothing open in that period, in that currency.',
+    not_found: tv('partnerGone'),
+    no_account: tv('noCurrentAccount'),
+    nothing_to_net: tv('nothingOpenInPeriod'),
   }
   if (outcome.error) return failWith(messages[outcome.error]!, echo(form))
 
   revalidatePath('/settlements')
   return succeed(outcome.id!)
-}
+})
 
 /**
  * Agreeing, settling, voiding.
@@ -944,17 +1165,20 @@ export async function draftSettlement(
  * the same invoice out of next month's statement. `settle` records that the
  * residual actually moved.
  */
-export async function setSettlementStatus(
+export const setSettlementStatus = refuseForbidden(async function setSettlementStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const settlementId = read(form, 'settlementId')
   const action = read(form, 'action')
   const reason = read(form, 'reason')
-  if (!settlementId || !action) return failWith('Nothing to do.')
+  if (!settlementId || !action) return failWith(tv('nothingToDo'))
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [row] = await tx
@@ -964,7 +1188,7 @@ export async function setSettlementStatus(
       .limit(1)
 
     if (!row) return { error: 'not_found' as const }
-    assertInBranch(session, row.branchId)
+    assertCanIn(session, 'settlement.run', row.branchId)
 
     if (action === 'agree') {
       if (row.status !== 'draft') return { error: 'not_draft' as const }
@@ -983,19 +1207,65 @@ export async function setSettlementStatus(
       if (updated.length === 0) return { error: 'not_draft' as const }
 
       /*
-        Claim the bills, in the same transaction as the agreement.
+        The documents behind it, locked, and still what the draft said.
 
-        Without this the next statement lists them again and they get netted
-        twice — which is not caught by any balance check, because both
-        settlements are individually consistent.
+        Two drafts over the same period both listed the same bills, and
+        agreeing the second netted them twice — no balance check catches that,
+        because each settlement is consistent on its own. So at agreement every
+        document must be unclaimed by any other agreed statement, still open
+        for at least what this one claims, and still in a state that can be
+        settled; otherwise the clerk voids and redrafts. Throwing rolls back
+        the status change above.
+      */
+      await tx.execute(sql`
+        select id from invoices where id in (
+          select invoice_id from partner_settlement_lines where settlement_id = ${settlementId}
+        ) for update
+      `)
+      await tx.execute(sql`
+        select id from supplier_invoices where id in (
+          select supplier_invoice_id from partner_settlement_lines where settlement_id = ${settlementId}
+        ) for update
+      `)
+      const stale = await tx.execute(sql`
+        select count(*)::int as n
+          from partner_settlement_lines sl
+          left join invoices i on i.id = sl.invoice_id
+          left join supplier_invoices si on si.id = sl.supplier_invoice_id
+         where sl.settlement_id = ${settlementId}
+           and (
+             (si.id is not null and (si.settlement_id is not null and si.settlement_id <> ${settlementId}
+                                     or si.status not in ('approved', 'part_paid')
+                                     or sl.amount > si.total - si.amount_paid))
+             or (i.id is not null and (i.status not in ('issued', 'part_paid')
+                                       or sl.amount > i.total - i.amount_paid - i.amount_credited
+                                       or exists (
+                                         select 1 from partner_settlement_lines other
+                                           join partner_settlements ps on ps.id = other.settlement_id
+                                          where other.invoice_id = i.id
+                                            and other.settlement_id <> ${settlementId}
+                                            and ps.status in ('agreed', 'settled'))))
+           )
+      `)
+      if (Number((stale.rows[0] as { n: number } | undefined)?.n ?? 0) > 0) {
+        throw new SettlementChanged()
+      }
+
+      /*
+        Claim the bills, in the same transaction as the agreement — that is
+        what keeps them off the next statement — and settle both sides in
+        their sub-ledgers. Netting used to change only this row: the netted
+        invoices stayed owed in ageing and dunning, and the netted bills stayed
+        approved and could be paid a second time.
       */
       await tx.execute(sql`
         update supplier_invoices set settlement_id = ${settlementId}, updated_at = now()
-         where id in (
+         where settlement_id is null and id in (
            select supplier_invoice_id from partner_settlement_lines
             where settlement_id = ${settlementId} and supplier_invoice_id is not null
          )
       `)
+      await resettleDocuments(tx, settlementId)
       return { error: null }
     }
 
@@ -1028,30 +1298,66 @@ export async function setSettlementStatus(
         })
         .where(eq(partnerSettlements.id, settlementId))
 
-      // Release the bills it claimed, so the next statement sees them again.
+      // Release the bills it claimed, so the next statement sees them again,
+      // and give back what it had settled on both sides.
       await tx
         .update(supplierInvoices)
         .set({ settlementId: null, updatedAt: new Date() })
         .where(eq(supplierInvoices.settlementId, settlementId))
+      await resettleDocuments(tx, settlementId)
       return { error: null }
     }
 
     return { error: 'unknown' as const }
+  }).catch((error: unknown) => {
+    if (error instanceof SettlementChanged) return { error: 'changed' as const }
+    throw error
   })
 
   const messages: Record<string, string> = {
-    not_found: 'That settlement is no longer visible.',
-    not_draft: 'That settlement has already been agreed.',
-    not_agreed: 'Agree the statement with the agent before recording the residual as settled.',
-    already_settled: 'That settlement has been settled and cannot be voided.',
-    needs_reason: 'Say why — this goes on the record.',
-    unknown: 'Nothing to do.',
+    not_found: tv('settlementGone'),
+    not_draft: tv('settlementAlreadyAgreed'),
+    not_agreed: tv('agreeBeforeSettling'),
+    already_settled: tv('settlementSettled'),
+    needs_reason: tv('sayWhy'),
+    changed: tv('settlementDocsChanged'),
+    unknown: tv('nothingToDo'),
   }
   if (outcome.error) return failWith(messages[outcome.error]!, echo(form))
 
   revalidatePath('/settlements')
+  revalidatePath('/invoices')
+  revalidatePath('/payables')
   revalidatePath(`/settlements/${settlementId}`)
   return succeed(settlementId)
+})
+
+/** A settlement whose documents moved under it; caught into a sentence. */
+class SettlementChanged extends Error {
+  constructor() {
+    super('settlement_changed')
+    this.name = 'SettlementChanged'
+  }
+}
+
+/**
+ * Re-derive every document a settlement names — paid-to-date and status —
+ * after it is agreed or voided. The rule lives in `packages/db/src/settled.ts`
+ * because the ledger slice applies it to receipts too.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resettleDocuments(tx: any, settlementId: string): Promise<void> {
+  const lines = await tx
+    .select({
+      invoiceId: partnerSettlementLines.invoiceId,
+      supplierInvoiceId: partnerSettlementLines.supplierInvoiceId,
+    })
+    .from(partnerSettlementLines)
+    .where(eq(partnerSettlementLines.settlementId, settlementId))
+  for (const line of lines as { invoiceId: string | null; supplierInvoiceId: string | null }[]) {
+    if (line.invoiceId) await rederiveInvoiceSettlement(tx, line.invoiceId)
+    if (line.supplierInvoiceId) await rederiveBillSettlement(tx, line.supplierInvoiceId)
+  }
 }
 
 /**
@@ -1066,21 +1372,25 @@ export async function setSettlementStatus(
  * invoices could be fired by a link preview in somebody's chat client.
  */
 export async function advanceSettlement(form: FormData): Promise<void> {
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
   await setSettlementStatus({}, form)
 }
 
 /** Linking a partner to the customer record they invoice us as — enables netting. */
-export async function linkPartnerAccount(
+export const linkPartnerAccount = refuseForbidden(async function linkPartnerAccount(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
   const customerId = read(form, 'settlementCustomerId')
   const currency = read(form, 'settlementCurrency')
-  if (!partnerId) return failWith('Nothing to do.')
+  if (!partnerId) return failWith(tv('nothingToDo'))
 
   await withActor(session.actor, async (tx) => {
     await tx
@@ -1095,23 +1405,26 @@ export async function linkPartnerAccount(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 /** Tolerances live on the partner and on the charge type — this is the partner half. */
-export async function setPartnerTolerance(
+export const setPartnerTolerance = refuseForbidden(async function setPartnerTolerance(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
-  const percent = read(form, 'varianceTolerancePercent') ?? '0'
-  const absolute = read(form, 'varianceToleranceAbsolute') ?? '0'
-  if (!partnerId) return failWith('Nothing to do.')
+  const percent = normaliseAmount(read(form, 'varianceTolerancePercent') ?? '0')
+  const absolute = normaliseAmount(read(form, 'varianceToleranceAbsolute') ?? '0')
+  if (!partnerId) return failWith(tv('nothingToDo'))
 
   if (!/^\d+(\.\d{1,6})?$/.test(percent) || !/^\d+(\.\d{1,6})?$/.test(absolute)) {
-    return fail({ varianceTolerancePercent: 'Enter a number, or zero.' }, echo(form))
+    return fail({ varianceTolerancePercent: tv('enterNumberOrZero') }, echo(form))
   }
 
   await withActor(session.actor, async (tx) => {
@@ -1127,7 +1440,7 @@ export async function setPartnerTolerance(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 // --- reading a bill --------------------------------------------------------
 
@@ -1164,12 +1477,15 @@ export async function setPartnerTolerance(
  * captures it by hand, which is exactly where they were before this existed.
  * The upload still happened, so the scan is on file either way.
  */
-export async function readSupplierBill(
+export const readSupplierBill = refuseForbidden(async function readSupplierBill(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('payablesValidation')
 
   const branchId = read(form, 'branchId')
   const partnerId = read(form, 'partnerId')
@@ -1179,29 +1495,25 @@ export async function readSupplierBill(
   if (!branchId || !partnerId) {
     return fail(
       {
-        ...(branchId ? {} : { branchId: 'Choose a branch' }),
-        ...(partnerId ? {} : { partnerId: 'Choose the supplier' }),
+        ...(branchId ? {} : { branchId: tv('chooseBranch') }),
+        ...(partnerId ? {} : { partnerId: tv('chooseSupplier') }),
       },
       echo(form),
     )
   }
-  assertInBranch(session, branchId)
+  assertCanIn(session, 'payable.record', branchId)
 
   if (!(file instanceof File) || file.size === 0) {
-    return fail({ scan: 'Choose the supplier’s invoice' }, echo(form))
+    return fail({ scan: tv('chooseSupplierInvoice') }, echo(form))
   }
   if (!READABLE_TYPES.includes(file.type)) {
-    return fail({ scan: 'A PDF or a photograph of the bill' }, echo(form))
+    return fail({ scan: tv('pdfOrPhoto') }, echo(form))
   }
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
   if (!serviceUrl || !secret) {
-    return failWith(
-      'Reading a bill needs the service. Set SERVICE_URL and INTERNAL_API_SECRET; ' +
-        'bills can still be captured by hand.',
-      echo(form),
-    )
+    return failWith(tv('serviceNotConfigured'), echo(form))
   }
   const base = serviceUrl.replace(/\/$/, '')
 
@@ -1209,7 +1521,7 @@ export async function readSupplierBill(
   try {
     assetId = await uploadScan(base, secret, session.actor, branchId, file)
   } catch {
-    return failWith('The scan could not be stored, so nothing was read.', echo(form))
+    return failWith(tv('scanNotStored'), echo(form))
   }
 
   try {
@@ -1235,42 +1547,260 @@ export async function readSupplierBill(
     })
 
     if (!response.ok) {
-      return failWith(
-        response.status === 503
-          ? 'No model is configured, so bills cannot be read yet. Add a key at Settings › Integrations.'
-          : 'The bill could not be read. Capture it by hand — the scan is on file.',
-        echo(form),
-      )
+      return failWith(response.status === 503 ? tv('noModel') : tv('billUnreadable'), echo(form))
     }
 
-    const body = (await response.json()) as {
-      supplierInvoiceId?: string | null
-      refusal?: string | null
-      findings?: string[]
+    const body = (await response.json()) as BillReading
+
+    /*
+      Already on file (ai-10): the reading was fine and the bill exists. Said
+      as that, with a link to it — "could not be read, capture it by hand" was
+      an invitation to type the duplicate the constraint had just refused.
+    */
+    const existing =
+      body.refusalCode === 'already_captured' && body.refusalValues?.supplierInvoiceId
+    if (!body.supplierInvoiceId && existing) {
+      return {
+        ...failWith(billRefusal(tv, body) ?? tv('scanNotInvoice'), echo(form)),
+        link: { href: `/payables/${existing}`, label: tv('openCapturedBill') },
+      }
     }
 
     if (!body.supplierInvoiceId) {
       /*
-        The refusal is shown as the service worded it.
+        The refusal code, worded here — never `body.refusal`, which is the
+        service's English for its own log.
 
-        `refusalFor` already writes a sentence naming the figures that did not
-        reconcile, and rephrasing it here would put a second, vaguer
-        explanation in front of the person who has the document open.
+        The figures still lead. `refusalFor` names the line and both numbers,
+        and a vaguer explanation in front of the person who has the document
+        open would send them to retype what they could correct; so the findings
+        are put into this language's sentence one by one rather than summarised.
       */
-      return failWith(
-        body.refusal ?? 'Nothing on that scan could be read as an invoice.',
-        echo(form),
-      )
+      return failWith(billRefusal(tv, body) ?? tv('scanNotInvoice'), echo(form))
     }
 
     revalidatePath('/payables')
     revalidatePath(`/payables/${body.supplierInvoiceId}`)
     return succeed(body.supplierInvoiceId)
   } catch {
-    return failWith(
-      'Reading the bill timed out. Capture it by hand — the scan is on file.',
-      echo(form),
-    )
+    return failWith(tv('readTimedOut'), echo(form))
+  }
+})
+
+/** The part of the service's reply this action reads. */
+interface BillReading {
+  readonly supplierInvoiceId?: string | null
+  /** English, for the service's log. Not shown — see `billRefusal`. */
+  readonly refusal?: string | null
+  readonly refusalCode?: string | null
+  readonly refusalValues?: Readonly<Record<string, string>>
+  readonly findings?: readonly BillFinding[]
+  readonly readingIssues?: readonly BillReadingIssue[]
+}
+
+/**
+ * One part of the scan that did not read — `InvoiceReadingIssue` in `core`,
+ * as the service sends it. `field` is a header field or a line's column key;
+ * `code` is the cell parser's (or `noLines`).
+ */
+interface BillReadingIssue {
+  readonly where: string
+  readonly field: string
+  readonly line?: number | null
+  readonly code: string
+  readonly values?: Readonly<Record<string, string | number>>
+}
+
+/** One place the document does not add up, both figures as decimal strings. */
+interface BillFinding {
+  readonly check: string
+  readonly line?: number | null
+  readonly stated?: string
+  readonly computed?: string
+}
+
+/**
+ * Every code `invoice-extract.ts` refuses with. Mirrored rather than imported,
+ * because `apps/web` does not import the service; a code added there and not
+ * here gets the action's own fallback rather than the service's English.
+ */
+const BILL_REFUSALS = [
+  'scan_too_large',
+  'not_reconciled',
+  'unreadable_fields',
+  'low_confidence',
+  'no_exchange_rate',
+  'already_captured',
+] as const
+
+type BillRefusal = (typeof BILL_REFUSALS)[number]
+
+function isBillRefusal(code: unknown): code is BillRefusal {
+  return typeof code === 'string' && (BILL_REFUSALS as readonly string[]).includes(code)
+}
+
+/**
+ * Why the bill was not written, in the reader's language — or null for the
+ * caller's fallback where the service sent no code this file knows.
+ *
+ * The `never` default keeps the switch exhaustive over `BILL_REFUSALS`.
+ */
+function billRefusal(tv: Translate<'payablesValidation'>, body: BillReading): string | null {
+  const code = body.refusalCode
+  if (!isBillRefusal(code)) return null
+  const values = body.refusalValues ?? {}
+
+  switch (code) {
+    case 'scan_too_large':
+      return tv('scanTooLarge', { sizeMb: values.sizeMb ?? '', limitMb: values.limitMb ?? '' })
+    case 'not_reconciled': {
+      const details = (body.findings ?? [])
+        .map((finding) => billFinding(tv, finding))
+        .filter((detail): detail is string => detail !== null)
+      /*
+        A reply with no figures on its findings — a service older than this
+        file — still says the one thing that matters: it did not add up.
+      */
+      return details.length > 0
+        ? tv('billNotReconciled', { details: details.join(tv('findingJoiner')) })
+        : tv('billNotReconciledPlain')
+    }
+    case 'unreadable_fields': {
+      /*
+        Each issue worded here from its code, field and line — never the
+        service's `issues`, which are English. An issue this file cannot word
+        is left out rather than guessed at; with none worded at all (a service
+        older than this file, or only codes it does not know), the count
+        sentence still says what matters: nothing was written, capture it by
+        hand.
+      */
+      const details = (body.readingIssues ?? [])
+        .map((issue) => billReadingIssue(tv, issue))
+        .filter((detail): detail is string => detail !== null)
+      return details.length > 0
+        ? tv('billPartsUnreadableDetail', { details: details.join(tv('findingJoiner')) })
+        : tv('billPartsUnreadable', { count: Number(values.count ?? 0) || 1 })
+    }
+    case 'low_confidence':
+      return tv('billLowConfidence')
+    case 'no_exchange_rate':
+      return tv('billNoExchangeRate', {
+        currency: values.currency ?? '',
+        base: values.base ?? '',
+      })
+    case 'already_captured':
+      return tv('billAlreadyCaptured', { reference: values.reference ?? '' })
+    default: {
+      const unhandled: never = code
+      return unhandled
+    }
+  }
+}
+
+/** One finding as a clause, or null for a check this file cannot word. */
+function billFinding(tv: Translate<'payablesValidation'>, finding: BillFinding): string | null {
+  const { stated, computed } = finding
+  if (stated === undefined || computed === undefined) return null
+
+  switch (finding.check) {
+    case 'line_amount':
+      // The line as a string, like the figures beside it: a number would be
+      // localised and could print in different digits from its neighbours.
+      return finding.line
+        ? tv('findingLine', { line: String(finding.line), stated, computed })
+        : tv('findingLineUnnumbered', { stated, computed })
+    case 'subtotal':
+      return tv('findingSubtotal', { stated, computed })
+    case 'total':
+      return tv('findingTotal', { stated, computed })
+    default:
+      return null
+  }
+}
+
+/**
+ * One reading issue as a clause — which field, on which line, and why — or
+ * null for a field this file has no name for.
+ *
+ * The field names are ours, not the scan's: "Invoice date" rather than
+ * whatever the supplier printed, because the coordinator corrects our form.
+ * The line number is the one the arithmetic findings carry, so both kinds of
+ * problem point at the same line.
+ */
+function billReadingIssue(
+  tv: Translate<'payablesValidation'>,
+  issue: BillReadingIssue,
+): string | null {
+  if (issue.code === 'noLines') return tv('readingNoLines')
+  const field = readingField(tv, issue.field)
+  if (field === null) return null
+  const problem = readingProblem(tv, issue)
+  // The line as a string, like `findingLine`: a number would be localised.
+  return issue.where === 'line' && issue.line
+    ? tv('readingOnLine', { line: String(issue.line), field, problem })
+    : tv('readingInField', { field, problem })
+}
+
+/** A header field or a line's column, by the key `core` reports it under. */
+function readingField(tv: Translate<'payablesValidation'>, field: string): string | null {
+  switch (field) {
+    case 'invoiceNumber':
+      return tv('readingFieldInvoiceNumber')
+    case 'invoiceDate':
+      return tv('readingFieldInvoiceDate')
+    case 'dueOn':
+      return tv('readingFieldDueOn')
+    case 'currency':
+      return tv('readingFieldCurrency')
+    case 'subtotal':
+      return tv('readingFieldSubtotal')
+    case 'taxAmount':
+      return tv('readingFieldTax')
+    case 'total':
+      return tv('readingFieldTotal')
+    case 'description':
+      return tv('readingFieldDescription')
+    case 'quantity':
+      return tv('readingFieldQuantity')
+    case 'unitPrice':
+      return tv('readingFieldUnitPrice')
+    case 'amount':
+      return tv('readingFieldAmount')
+    case 'chargeType':
+      return tv('readingFieldChargeType')
+    default:
+      return null
+  }
+}
+
+/**
+ * Why a field did not read, coarsely.
+ *
+ * Coarser than the import screen's vocabulary on purpose: the fix for a bill
+ * is to correct one field on our form, and "not a date" says that as well as
+ * "day out of range" does. A code with no clause of its own is "could not be
+ * read" — true of every one of them, and never English.
+ */
+function readingProblem(tv: Translate<'payablesValidation'>, issue: BillReadingIssue): string {
+  switch (issue.code) {
+    case 'required':
+      return tv('readingMissing')
+    case 'notDate':
+    case 'monthOutOfRange':
+    case 'dayOutOfRange':
+      return tv('readingNotDate')
+    case 'notAmount':
+    case 'tooManyDigits':
+    case 'tooManyDecimals':
+    case 'negative':
+      return tv('readingNotAmount')
+    case 'unknownReference':
+    case 'noReferenceData':
+      if (issue.field === 'currency') return tv('readingUnknownCurrency')
+      if (issue.field === 'chargeType') return tv('readingUnknownChargeType')
+      return tv('readingUnreadable')
+    default:
+      return tv('readingUnreadable')
   }
 }
 

@@ -23,7 +23,9 @@ import type { Metadata, Route } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
 import { QuoteLineDialog } from '@/features/ledger/ui/dialogs'
@@ -36,8 +38,11 @@ import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
+import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
+import { MoreMenu } from '@/ui/menu'
 
 export async function generateMetadata({
   params,
@@ -45,7 +50,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const quote = await getQuoteDetail(session.actor, id)
   return { title: quote?.reference ?? 'Quotation' }
 }
@@ -54,25 +59,37 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
-  const quote = await getQuoteDetail(session.actor, id)
+  const id = recordId((await params).id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const quote = await getQuoteDetail(session.actor, id, locale)
   // Invisible under RLS means not-found, which is also the right answer to
   // give: no enumeration signal for another branch's quotation (FR-ID-04).
   if (!quote) notFound()
 
   const t = await getTranslations('quoteDetail')
+  // Each covering note's placeholder in its own language — see `CoverNoteEditor`.
+  const [tEn, tAr] = await Promise.all([
+    getTranslations({ locale: 'en', namespace: 'quoteDetail' }),
+    getTranslations({ locale: 'ar', namespace: 'quoteDetail' }),
+  ])
   const tc = await getTranslations('common')
   const tq = await getTranslations('quotes')
   const tMode = await getTranslations('mode')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const tBasis = await getTranslations('quoteForm')
 
   const sell = Number(quote.totalSell ?? 0)
   const cost = Number(quote.totalCost ?? 0)
   const marginPct = sell > 0 ? ((sell - cost) / sell) * 100 : null
   const money = (amount: number) => formatMoney({ amount, currency: quote.currency }, locale)
 
-  const expired = quote.validUntil !== null && new Date(quote.validUntil).getTime() < Date.now()
+  /*
+    Calendar days in the reader's zone, not instants (S18). `new Date('2026-10-01')`
+    is midnight UTC — 03:00 in Kuwait — so a quotation valid until the 1st read
+    "expired" for most of the 1st. Valid until a day means valid all that day,
+    the reading the PDF and the send/accept guard already give it.
+  */
+  const expired = quote.validUntil !== null && quote.validUntil < todayIn(timeZone)
   const pdf = `/api/quotes/${quote.id}/pdf`
 
   return (
@@ -97,7 +114,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </span>
           ) : undefined
         }
-        actions={
+        status={
           <>
             <Badge tone={quoteTone(quote.status)} dot>
               {tq(`statuses.${quote.status}` as 'statuses.sent')}
@@ -105,7 +122,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             {quote.version > 1 ? (
               <Badge tone="muted">{t('version', { version: quote.version })}</Badge>
             ) : null}
-            {/*
+          </>
+        }
+        /*
+          One primary: the move that takes the quotation forward (send a
+          draft, accept a sent one), or opening the shipment once it is
+          accepted. The PDFs and the moves that end it sit behind More.
+        */
+        actions={
+          <>
+            <QuoteStatusActions quoteId={quote.id} status={quote.status} part="forward" />
+            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
+            <MoreMenu label={tc('more')}>
+              {/*
               The document the customer receives — FR-EQ-08.
 
               Both languages, as plain links: a `GET` renders and streams and
@@ -114,16 +143,31 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               `check-links.mjs` reads an interpolated href by its literal
               prefix and cannot see past the first `${`.
             */}
-            <Button size="sm" variant="ghost" href={pdf} download icon="download">
-              {t('pdf')}
-            </Button>
-            <Button size="sm" variant="ghost" href={`${pdf}?locale=ar`} download>
-              {t('pdfAr')}
-            </Button>
-            <QuoteStatusActions quoteId={quote.id} status={quote.status} />
+              <Button variant="menu" href={pdf} download icon="download">
+                {t('pdf')}
+              </Button>
+              <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
+                {t('pdfAr')}
+              </Button>
+              <QuoteStatusActions quoteId={quote.id} status={quote.status} part="other" />
+            </MoreMenu>
           </>
         }
       />
+
+      {/*
+        Where the shipment went (QA P3). "Open shipment" closed its dialog and
+        the button vanished — the quote can be booked once — and nothing on
+        the page said it had worked or where the job was.
+      */}
+      {quote.bookedJob ? (
+        <Notice tone="positive" icon="check" className="mb-4">
+          {t('bookedAs')}{' '}
+          <Link href={`/jobs/${quote.bookedJob.id}`} className="ref font-medium underline">
+            {quote.bookedJob.reference}
+          </Link>
+        </Notice>
+      ) : null}
 
       {/*
         An expired quotation still shows its numbers — someone is looking at it
@@ -135,7 +179,31 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         </Notice>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/*
+        A draft the pricing marked for review (ai-13): a charge sold below its
+        cost, or sold with nothing bought for it. Said above the figures, by
+        charge, because the headline margin can look healthy over a line that
+        loses money — which is exactly how the live case got past.
+      */}
+      {quote.status === 'draft' && quote.review?.needed ? (
+        <Notice tone="caution" icon="alert" className="mb-4">
+          <p className="font-medium">{t('reviewTitle')}</p>
+          <ul className="mt-1 list-disc ps-5">
+            {quote.review.concerns.map((concern) => {
+              const charge = quote.reviewNames?.[concern.chargeTypeKey] ?? concern.chargeTypeKey
+              return (
+                <li key={`${concern.kind}-${concern.chargeTypeKey}`}>
+                  {concern.kind === 'negative_margin'
+                    ? t('reviewNegativeMargin', { charge, margin: concern.marginPercent })
+                    : t('reviewUnbacked', { charge })}
+                </li>
+              )
+            })}
+          </ul>
+        </Notice>
+      ) : null}
+
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric label={t('sell')} value={money(sell)} icon="quotes" tone="brand" />
         <Metric label={t('cost')} value={money(cost)} icon="finance" hint={t('costHint')} />
         <Metric
@@ -164,7 +232,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
       <Grid className="mb-4">
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="finance"
           title={t('lines')}
@@ -183,13 +251,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           {quote.lines.length === 0 ? (
             <EmptyState icon="finance" title={t('noLines')} description={t('noLinesHint')} />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('charge')}</TH>
-                  <TH>{t('basis')}</TH>
-                  <TH align="end">{t('quantity')}</TH>
-                  <TH align="end">{t('rate')}</TH>
+                  {/* Charge and amount on a phone; how it was priced waits
+                      for a wider screen. */}
+                  <TH priority="low">{t('basis')}</TH>
+                  <TH priority="low" align="end">
+                    {t('quantity')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('rate')}
+                  </TH>
                   <TH align="end">{t('amount')}</TH>
                 </TR>
               </THead>
@@ -199,26 +273,31 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <TD className="font-medium text-ink">
                       {line.chargeName}
                       {line.description ? (
-                        <span className="block text-[0.75rem] font-normal text-ink-subtle">
+                        <span dir="auto" className="block text-caption font-normal text-ink-subtle">
                           {line.description}
                         </span>
                       ) : null}
                     </TD>
-                    <TD className="text-ink-muted">{line.basis.replace(/_/g, ' ')}</TD>
-                    <TD align="end" numeric className="text-ink-muted">
+                    {/* The basis in the reader's language — it was the enum, spaced out. */}
+                    <TD priority="low" className="text-ink-muted">
+                      {tBasis(`bases.${line.basis}` as 'bases.flat')}
+                    </TD>
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
                       {Number(line.quantity)}
                     </TD>
-                    <TD align="end" numeric className="text-ink-muted">
-                      {formatMoney({ amount: Number(line.rate), currency: line.currency }, locale, {
-                        showCurrency: false,
-                      })}
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
+                      <Money
+                        value={{ amount: line.rate, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {formatMoney(
-                        { amount: Number(line.amount), currency: line.currency },
-                        locale,
-                        { showCurrency: false },
-                      )}
+                      <Money
+                        value={{ amount: line.amount, currency: line.currency }}
+                        locale={locale}
+                        showCurrency={false}
+                      />
                     </TD>
                   </TR>
                 ))}
@@ -227,13 +306,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4 lg:col-span-4">
+        <div className="flex flex-col gap-4 @4xl:col-span-4">
           <Panel icon="quotes" title={t('about')} explain={t('aboutExplain')}>
             <dl className="grid grid-cols-2 gap-4">
               <Field label={t('enquiry')}>
                 <Link
                   href={`/enquiries/${quote.enquiryId}`}
-                  className="ref text-brand hover:underline"
+                  className="ref text-ink hover:text-accent hover:underline"
                 >
                   {quote.enquiryReference}
                 </Link>
@@ -251,7 +330,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </Field>
             </dl>
             {quote.notes ? (
-              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">
+              <p dir="auto" className="mt-4 border-t border-line pt-4 text-body-sm text-ink-muted">
                 {quote.notes}
               </p>
             ) : null}
@@ -277,11 +356,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       href={`/quotes/${version.id}` as Route}
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
-                      <span className="ref numeric text-[0.8125rem] text-brand">
+                      <span className="ref numeric text-body-sm text-accent">
                         {version.reference}
                       </span>
                       <span className="flex items-center gap-2">
-                        <span className="numeric text-[0.75rem] text-ink-subtle">
+                        <span className="numeric text-caption text-ink-subtle">
                           {t('version', { version: version.version })}
                         </span>
                         <Badge tone={quoteTone(version.status)}>
@@ -304,14 +383,20 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         on it. The model drafts the prose; the pricing above owns every figure.
       */}
       {quote.status === 'draft' ? (
-        <Panel className="mb-4" icon="assistant" title={t('coverNote.title')} explain={t('coverNote.explain')}>
+        <Panel
+          className="mb-4"
+          icon="assistant"
+          title={t('coverNote.title')}
+          explain={t('coverNote.explain')}
+        >
           <CoverNoteEditor
             quoteId={quote.id}
             notes={{ en: quote.coverNoteEn, ar: quote.coverNoteAr }}
             labels={{
               english: t('coverNote.english'),
               arabic: t('coverNote.arabic'),
-              placeholder: t('coverNote.placeholder'),
+              placeholder: tEn('coverNote.placeholder'),
+              placeholderAr: tAr('coverNote.placeholder'),
               draft: t('coverNote.draft'),
               drafting: t('coverNote.drafting'),
               save: t('coverNote.save'),

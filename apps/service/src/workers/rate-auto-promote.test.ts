@@ -19,8 +19,16 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { branches, enquiries, partners, rateCards, rateRequests, systemActor, withActor, workingCalendars } =
-  await import('@qabandi/db')
+const {
+  branches,
+  enquiries,
+  partners,
+  rateCards,
+  rateRequests,
+  systemActor,
+  withActor,
+  workingCalendars,
+} = await import('@qabandi/db')
 
 const { autoPromoteRateReplies } = await import('./rate-auto-promote')
 
@@ -46,7 +54,12 @@ async function makeEnquiry(): Promise<string> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .insert(enquiries)
-      .values({ reference: `PROMO-${RUN}-${seq}`, branchId: BRANCH, status: 'rating', channel: 'email' })
+      .values({
+        reference: `PROMO-${RUN}-${seq}`,
+        branchId: BRANCH,
+        status: 'rating',
+        channel: 'email',
+      })
       .returning({ id: enquiries.id })
     return row!.id
   })
@@ -56,13 +69,21 @@ async function makeAgent(): Promise<string> {
   seq += 1
   const id = randomUUID()
   await withActor(actor, (tx) =>
-    tx.insert(partners).values({ id, code: `AGT-PR-${RUN}-${seq}`, type: 'agent', legalNameEn: `Agent ${seq}` }),
+    tx
+      .insert(partners)
+      .values({ id, code: `AGT-PR-${RUN}-${seq}`, type: 'agent', legalNameEn: `Agent ${seq}` }),
   )
   return id
 }
 
 /** A parsed, promotable reply quoting `total` KWD, from a fresh agent. */
-async function parsedReply(enquiryId: string, total: string, createdAt?: Date): Promise<string> {
+async function parsedReply(
+  enquiryId: string,
+  total: string,
+  createdAt?: Date,
+  unpriced?: number,
+  extra: Record<string, unknown> = {},
+): Promise<string> {
   const partnerId = await makeAgent()
   seq += 1
   return withActor(actor, async (tx) => {
@@ -79,6 +100,8 @@ async function parsedReply(enquiryId: string, total: string, createdAt?: Date): 
         ...(createdAt ? { createdAt } : {}),
         response: {
           ok: true,
+          ...(unpriced ? { unpriced } : {}),
+          ...extra,
           rows: [
             {
               mode: 'sea_fcl',
@@ -133,7 +156,11 @@ const requestRow = async (id: string) => {
 describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     if (!calendar) throw new Error('Run `pnpm db:seed` before the auto-promote tests')
     await withActor(actor, (tx) =>
@@ -169,9 +196,56 @@ describe.skipIf(!enabled)('autoPromoteRateReplies', () => {
     expect((await requestRow(dear)).status).toBe('parsed')
     // And a buy card exists for the awarded reply.
     const [card] = await withActor(actor, (tx) =>
-      tx.select({ direction: rateCards.direction }).from(rateCards).where(eq(rateCards.id, cheapRow.rateCardId!)).limit(1),
+      tx
+        .select({ direction: rateCards.direction })
+        .from(rateCards)
+        .where(eq(rateCards.id, cheapRow.rateCardId!))
+        .limit(1),
     )
     expect(card!.direction).toBe('buy')
+  })
+
+  /*
+    A partial total is not a price (F69): a reply whose per-container lines
+    went unpriced carried only its flat fees and beat every whole reply. With
+    a whole reply beside it, the whole one is awarded; the partial one waits.
+  */
+  it('does not award a reply whose total left lines unpriced over a whole one', async () => {
+    const id = await makeEnquiry()
+    const partial = await parsedReply(id, '60.000', undefined, 2)
+    const whole = await parsedReply(id, '900.000')
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(whole)).status).toBe('accepted')
+    expect((await requestRow(partial)).status).toBe('parsed')
+  })
+
+  /**
+   * Insurance at a percentage is unpriced on every reply alike; it is not a
+   * partial total (R1). Both replies here carry one, and the cheaper wins.
+   */
+  it('ranks replies whose only unpriced line is a percentage', async () => {
+    const id = await makeEnquiry()
+    const cheaper = await parsedReply(id, '700.000', undefined, 1, { partial: 0 })
+    const dearer = await parsedReply(id, '800.000', undefined, 1, { partial: 0 })
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(cheaper)).status).toBe('accepted')
+    expect((await requestRow(dearer)).status).toBe('parsed')
+  })
+
+  /** A reply that priced another lane is never awarded — not even alone (S14). */
+  it('never awards a reply that priced a different lane', async () => {
+    const id = await makeEnquiry()
+    const wrongLane = await parsedReply(id, '100.000', undefined, undefined, {
+      laneMismatch: 'CNSHA → KWSWK',
+    })
+
+    await autoPromoteRateReplies({ source: gate('first') })
+
+    expect((await requestRow(wrongLane)).status).toBe('parsed')
   })
 
   it('does nothing on its inert default', async () => {

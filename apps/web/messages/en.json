@@ -3,7 +3,8 @@
     "tagline": "Shipping & Forwarding",
     "operations": "Operations",
     "pilot": "Pilot environment",
-    "pilotHint": "Seeded pilot data — replaced by the client's own job files and rate card."
+    "pilotHint": "Seeded pilot data — replaced by the client's own job files and rate card.",
+    "demoReadOnly": "This is the demo, and it does not save changes. Nothing you entered was lost — on your own instance this would be saved."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -107,11 +108,20 @@
     "currency": "Currency",
     "notes": "Notes",
     "description": "Description",
-    "timeZone": "Time zone"
+    "timeZone": "Time zone",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "Match the device",
+    "more": "More",
+    "loading": "Loading…",
+    "home": "Home",
+    "yes": "Yes",
+    "no": "No",
+    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch."
   },
   "search": {
     "title": "Search",
-    "subtitle": "References, container numbers and customers, across every shipment you can see.",
+    "subtitle": "Shipment, enquiry, quote, invoice and consolidation references, bills of lading, container numbers and customers — across everything you can see.",
     "prompt": "Type a reference, a container number or a customer name.",
     "promptHint": "Master and house bill numbers, booking numbers and the customer's own reference all match too.",
     "empty": "Nothing matches “{query}”.",
@@ -130,6 +140,14 @@
       "booking": "booking",
       "customerReference": "customer reference",
       "customer": "customer"
+    },
+    "records": "Enquiries, quotes, invoices and consolidations",
+    "kind": "Record",
+    "kinds": {
+      "enquiry": "Enquiry",
+      "quote": "Quotation",
+      "invoice": "Invoice",
+      "consolidation": "Consolidation"
     }
   },
   "dashboard": {
@@ -280,7 +298,9 @@
     "priceIt": "Price it",
     "pricing": "Pricing…",
     "awaitingTitle": "Enquiry",
-    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in."
+    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in.",
+    "subtitleManual": "Priced by hand, buy and sell side by side.",
+    "subtitleMixed": "Priced from the rate card and by hand, buy and sell side by side."
   },
   "job": {
     "title": "Operations board",
@@ -371,7 +391,11 @@
       "storage": "Storage"
     },
     "noClocks": "No free time running",
-    "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves."
+    "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves.",
+    "clockStopped": "Stopped {on}",
+    "documentVault": "Shipment files",
+    "weightValue": "{weight} kg",
+    "volumeValue": "{volume} cbm"
   },
   "mode": {
     "sea_fcl": "Sea FCL",
@@ -416,7 +440,9 @@
       "planned": "Planned",
       "revised": "Revised"
     },
-    "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over."
+    "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over.",
+    "throttled": "Too many lookups for now.",
+    "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you."
   },
   "public": {
     "footerRights": "All rights reserved."
@@ -430,13 +456,18 @@
     "nextStep": "Next step",
     "empty": "No shipments yet.",
     "emptyHint": "New bookings appear here as soon as they are confirmed.",
-    "viewShipment": "View shipment"
+    "viewShipment": "View shipment",
+    "progress": "{done} of {total} steps",
+    "documentCount": "{count, plural, one {# document} other {# documents}}",
+    "etaPassed": "Past its ETA",
+    "backToShipments": "All shipments"
   },
   "agent": {
     "title": "Assigned shipments",
-    "subtitle": "Shipments where you are named as a partner, and open rate requests.",
+    "subtitle": "Shipments where your company is named as a partner.",
     "empty": "Nothing assigned to you.",
-    "rateRequests": "Rate requests"
+    "rateRequests": "Rate requests",
+    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email."
   },
   "rates": {
     "title": "Rate cards",
@@ -609,7 +640,8 @@
     "submitting": "Sending…",
     "sent": "If that address belongs to an account, a link is on its way. It expires in one hour.",
     "errorMissing": "Enter your email address.",
-    "backToSignIn": "Back to sign in"
+    "backToSignIn": "Back to sign in",
+    "errorThrottled": "Too many reset requests. Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "resetPassword": {
     "title": "Set a new password",
@@ -893,7 +925,8 @@
       "overdue": "Overdue",
       "approved": "Approved",
       "credited": "Credited"
-    }
+    },
+    "billedFrom": "Billed from {reference}"
   },
   "payments": {
     "eyebrow": "Finance",
@@ -919,7 +952,8 @@
       "cash": "Cash",
       "card": "Card",
       "offset": "Offset"
-    }
+    },
+    "allocate": "Match to an invoice"
   },
   "users": {
     "eyebrow": "Administration",
@@ -942,10 +976,13 @@
     "rolesTitle": "Roles",
     "rolesHint": "The permission matrix is seeded and editable without a release.",
     "addTitle": "Adding someone",
-    "addBody": "The product is invitation-only, so there is no sign-up form. Accounts are created from a shell on the server, which is also the password-reset path.",
-    "addNote": "Re-running for an existing email resets that password. Administrator and Finance additionally require TOTP enrolment.",
+    "addBody": "The product is invitation-only, so there is no sign-up form. Use Invite someone above: choose their role and branches, and they receive an email with a link to set their own password.",
+    "addNote": "If the link expires before it is used, send a new one from the person's row. Administrator and Finance must also set up an authenticator app at their first sign-in.",
     "forbidden": "You cannot view users",
-    "forbiddenHint": "Your role does not include admin.users.write."
+    "forbiddenHint": "Your role does not include admin.users.write.",
+    "awaitingPassword": "Invited — no password set yet",
+    "noLoginYet": "No login yet",
+    "sendSignInLink": "Send sign-in link"
   },
   "branches": {
     "eyebrow": "Administration",
@@ -1038,7 +1075,44 @@
     "scope": "Applies to",
     "rule": "Rule",
     "kind": "Kind",
-    "terms": "Terms"
+    "terms": "Terms",
+    "bases": {
+      "flat": "Flat",
+      "per_unit": "Per piece",
+      "per_kg": "Per kg",
+      "per_container": "Per container",
+      "per_day": "Per day",
+      "percent": "Percentage"
+    },
+    "categories": {
+      "freight": "Freight",
+      "origin": "Origin",
+      "destination": "Destination",
+      "customs": "Customs",
+      "transport": "Transport",
+      "documentation": "Documentation",
+      "special": "Special",
+      "other": "Other",
+      "commercial": "Commercial",
+      "compliance": "Compliance",
+      "partner_compliance": "Partner compliance"
+    },
+    "fxRates": "Exchange rates",
+    "fxRatesHint": "The newest rate for each pair. Quotations convert every rate card into the branch currency at these.",
+    "noFxRates": "No exchange rates yet",
+    "noFxRatesHint": "A rate card in another currency cannot be priced until its rate into the branch currency is entered here.",
+    "fxPair": "Pair",
+    "fxEffective": "From",
+    "fxManual": "Entered by hand",
+    "fxSource": "Where from",
+    "calendarsGlance": "Calendars at a glance",
+    "perContainer": "Per container",
+    "chargeableDetail": "{divisor} cm³ per kg · rounded up to {roundUp} kg · at least {minimum} kg",
+    "freeTimeDetail": "{days} free days · then {perDiem} a day · {basis}",
+    "everywhere": "Everywhere",
+    "allModes": "Every mode",
+    "editCatalogues": "Edit the catalogues",
+    "editCataloguesHint": "Correct a name, change a mapping, or retire a row nobody uses. Nothing is deleted: a retired row stays on the records that used it and can be switched back on."
   },
   "audit": {
     "eyebrow": "Administration",
@@ -1062,7 +1136,106 @@
     "noMatchHint": "Change the term, or widen the period.",
     "last7": "Last 7 days",
     "last30": "Last 30 days",
-    "entries": "Entries"
+    "entries": "Entries",
+    "ops": {
+      "INSERT": "Created",
+      "UPDATE": "Changed",
+      "DELETE": "Deleted"
+    },
+    "principalTypes": {
+      "internal": "Staff",
+      "customer_contact": "Customer contact",
+      "agent_contact": "Agent contact",
+      "system": "System",
+      "support": "Support engineer"
+    },
+    "tables": {
+      "accounting_exports": "Accounting exports",
+      "ai_invocations": "Model calls",
+      "api_keys": "API keys",
+      "assets": "Stored files",
+      "assistant_messages": "Assistant messages",
+      "assistant_threads": "Assistant conversations",
+      "branches": "Branches",
+      "calendar_holidays": "Holidays",
+      "charge_lines": "Charge lines",
+      "charge_types": "Charge types",
+      "chargeable_rules": "Chargeable-weight rules",
+      "commodities": "Commodities",
+      "consol_allocation_shares": "Consolidation shares",
+      "consol_charge_lines": "Consolidation charges",
+      "consolidations": "Consolidations",
+      "container_types": "Container types",
+      "countries": "Countries",
+      "credit_overrides": "Credit overrides",
+      "currencies": "Currencies",
+      "customer_branch_terms": "Customer terms",
+      "customer_contacts": "Customer contacts",
+      "customers": "Customers",
+      "customs_stages": "Customs stages",
+      "document_types": "Document types",
+      "documents": "Documents",
+      "duty_rates": "Duty rates",
+      "enquiries": "Enquiries",
+      "equipment": "Equipment",
+      "exception_codes": "Exception codes",
+      "exceptions": "Exceptions",
+      "extraction_proposals": "Read-off suggestions",
+      "free_time_clocks": "Free-time clocks",
+      "free_time_rules": "Free-time rules",
+      "fx_rates": "Exchange rates",
+      "incoterms": "Incoterms",
+      "integration_settings": "Integrations",
+      "invoice_lines": "Invoice lines",
+      "invoices": "Invoices",
+      "job_cargo": "Cargo lines",
+      "job_milestones": "Milestones",
+      "job_parties": "Shipment parties",
+      "job_partners": "Shipment partners",
+      "jobs": "Shipments",
+      "locations": "Ports and places",
+      "mailboxes": "Mailboxes",
+      "message_attachments": "Message attachments",
+      "messages": "Messages",
+      "milestone_templates": "Milestone templates",
+      "notification_channel_settings": "Notification switches",
+      "notification_deliveries": "Notification deliveries",
+      "notification_outbox": "Notification queue",
+      "notification_templates": "Notification wording",
+      "partner_compliance": "Partner compliance",
+      "partner_contacts": "Partner contacts",
+      "partner_coverage": "Partner coverage",
+      "partner_settlement_lines": "Settlement lines",
+      "partner_settlements": "Settlements",
+      "partners": "Partners",
+      "payment_allocations": "Payment allocations",
+      "payments": "Payments received",
+      "pod_photos": "Delivery photos",
+      "principal_branch_roles": "Role grants",
+      "principals": "People",
+      "proof_of_delivery": "Proof of delivery",
+      "quote_lines": "Quotation lines",
+      "quotes": "Quotations",
+      "rate_card_lines": "Rate card lines",
+      "rate_cards": "Rate cards",
+      "rate_requests": "Rate requests",
+      "role_permissions": "Role permissions",
+      "roles": "Roles",
+      "supplier_invoice_lines": "Supplier bill lines",
+      "supplier_invoice_matches": "Supplier bill matches",
+      "supplier_invoices": "Supplier bills",
+      "supplier_payment_allocations": "Supplier payment allocations",
+      "supplier_payments": "Supplier payments",
+      "support_grants": "Support access",
+      "webhook_deliveries": "Webhook deliveries",
+      "webhook_endpoints": "Webhook subscribers",
+      "whatsapp_numbers": "WhatsApp numbers",
+      "working_calendars": "Working calendars",
+      "intake_settings": "Intake agent settings",
+      "intake_requirements": "Intake required details",
+      "intake_conversations": "Intake conversations",
+      "intake_turns": "Intake agent turns"
+    }
   },
   "enquiryForm": {
     "open": "New enquiry",
@@ -1107,7 +1280,9 @@
       "whatsapp": "WhatsApp",
       "phone": "Phone",
       "walk_in": "Walk-in"
-    }
+    },
+    "containers": "Containers",
+    "containersHint": "Sea FCL only — the quotation is priced per container."
   },
   "partnerForm": {
     "open": "Add partner",
@@ -1263,7 +1438,8 @@
       "per_container": "Per container",
       "per_day": "Per day",
       "percent": "Percent"
-    }
+    },
+    "revisionNote": "The current version's lines are carried onto the revision, where you can change them. Once a quotation has lines, its sell price is their total."
   },
   "invoiceForm": {
     "open": "New invoice",
@@ -1295,7 +1471,13 @@
     "languages": {
       "en": "English",
       "ar": "Arabic"
-    }
+    },
+    "lineDescription": "What it is for",
+    "lineDescriptionHint": "The first line of the invoice, as the customer will read it. Add more lines on the draft.",
+    "charge": "Charge",
+    "chargeHint": "Decides which revenue account the line posts to",
+    "fxRate": "Rate to base currency",
+    "fxRateHint": "Units of the branch's base currency per one unit invoiced. Leave empty to use the latest rate on file; ignored for an invoice in the base currency."
   },
   "paymentForm": {
     "open": "Record a receipt",
@@ -1322,7 +1504,14 @@
       "cash": "Cash",
       "card": "Card",
       "offset": "Offset against a credit"
-    }
+    },
+    "unnumberedInvoice": "(draft)",
+    "fxRate": "Rate to base currency",
+    "fxRateHint": "Units of the branch's base currency per one unit received. Leave empty to use the latest rate on file; ignored when the receipt is in the base currency.",
+    "allocate": "Allocate",
+    "allocateTitle": "Allocate this receipt",
+    "allocateHint": "Match what is left of this receipt against one of the customer's open invoices in the same currency and branch.",
+    "allocationAmount": "Amount to allocate"
   },
   "jobForm": {
     "open": "New shipment",
@@ -1406,7 +1595,9 @@
     "restore": "Restore",
     "restoreTitle": "Restore {name}",
     "restoreDescription": "Gives their access back, with the same branches and roles they had.",
-    "restoreNote": "They can sign in again with the assignments already on their account."
+    "restoreNote": "They can sign in again with the assignments already on their account.",
+    "noAccess": "No access",
+    "rolesPerBranchHint": "The role this person holds in each branch you administer. Branches you do not administer are left as they are."
   },
   "branchForm": {
     "open": "Add branch",
@@ -1552,7 +1743,13 @@
     "cancel": "Cancel it",
     "cancelTitle": "Cancel this enquiry",
     "cancelDescription": "For one that will not be quoted at all — the customer went elsewhere, or it was raised twice.",
-    "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads."
+    "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads.",
+    "respondDone": "Reply recorded. The clock has stopped.",
+    "assignDone": "Enquiry assigned.",
+    "closeDone": "Enquiry closed.",
+    "reopenRating": "Reopen for revision",
+    "reopenRatingTitle": "Send this back to rating",
+    "reopenRatingDescription": "The customer asked for a different price. The enquiry goes back to rating so a revised quotation can be prepared."
   },
   "quoteDetail": {
     "version": "v{version}",
@@ -1616,7 +1813,21 @@
       "drafting": "Drafting…",
       "save": "Save note",
       "saved": "Saved."
-    }
+    },
+    "moveOpen": {
+      "sent": "Send to customer",
+      "accepted": "Mark accepted",
+      "rejected": "Mark rejected"
+    },
+    "moveDone": {
+      "sent": "Quotation sent.",
+      "accepted": "Quotation marked accepted.",
+      "rejected": "Quotation marked rejected."
+    },
+    "bookedAs": "Booked as shipment",
+    "reviewTitle": "Check this draft before sending it",
+    "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
+    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it."
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -1675,7 +1886,7 @@
       "approved": "Marks the invoice as reviewed. It still has no number and can be edited.",
       "issued": "This allocates the next number in the branch's series and cannot be undone. An issued invoice can only be corrected with a credit note.",
       "void": "Cancels this invoice. The number stays used, so the series has no gap, and the document has no effect.",
-      "credited": "Records that a credit note replaces this invoice."
+      "credited": "Raises a numbered credit note for everything still owed on this invoice and closes it. To credit only part of it, use Credit part of it."
     },
     "moveTitle": {
       "approved": "Approve this invoice",
@@ -1694,13 +1905,43 @@
       "issued": "Issue it",
       "void": "Void it",
       "credited": "Mark credited"
-    }
+    },
+    "moveOpen": {
+      "approved": "Approve",
+      "issued": "Issue",
+      "void": "Void",
+      "credited": "Credit in full"
+    },
+    "moveDone": {
+      "approved": "Invoice approved.",
+      "issued": "Invoice issued.",
+      "void": "Invoice voided.",
+      "credited": "Invoice marked credited."
+    },
+    "partialCredit": {
+      "open": "Credit part of it",
+      "title": "Credit part of this invoice",
+      "description": "Raises a numbered credit note for the amount you enter, at this invoice's rate. The invoice stays open for whatever is left.",
+      "note": "At most {ceiling} can be credited — what is still owed on this invoice.",
+      "amount": "Amount to credit",
+      "amountHint": "Including tax. Split across the invoice's lines in proportion, so each one reverses where it was booked.",
+      "reason": "Reason",
+      "reasonHint": "Printed on the credit note, so write it for the customer.",
+      "submit": "Raise the credit note",
+      "done": "Credit note raised"
+    },
+    "credited": "Credited",
+    "creditNotes": "Credit notes",
+    "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
+    "creditsInvoice": "Credits invoice",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
     "openJobsHint": "Currently moving",
-    "totalJobs": "Shipments ever",
-    "totalJobsHint": "How long you have worked together",
+    "totalJobs": "Shipments to date",
+    "totalJobsHint": "Every shipment they have worked on with us, open or closed",
     "openExceptions": "Open problems",
     "openExceptionsHint": "On shipments they are on — a conversation, not a verdict",
     "terms": "Payment terms",
@@ -1790,6 +2031,10 @@
       "integrations": {
         "title": "Integrations",
         "description": "The relay that sends the mail, the carrier registrations that feed the board, and the provider that will transmit the invoices. A credential saved here takes effect within a minute, with no release."
+      },
+      "intakeAgent": {
+        "title": "Intake agent",
+        "description": "How the agent answers WhatsApp and email enquiries: when it replies, what it asks for, and when it hands over to a person."
       }
     },
     "referenceMoved": "Ports, charge types and other reference data are operational and stayed in",
@@ -1856,7 +2101,8 @@
     "errorUnknownKind": "Unknown import.",
     "errorUnknown": "The import could not be completed.",
     "kindOpenJobs": "Open jobs",
-    "kindOpenReceivables": "Open receivables"
+    "kindOpenReceivables": "Open receivables",
+    "errorNeedsDatabase": "Importing needs a database, and this environment runs on pilot fixtures without one. The check above is real; run the import on an instance with its own database."
   },
   "support": {
     "bannerRead": "Support has read access to your data",
@@ -2041,7 +2287,7 @@
     "eta": "ETA",
     "volume": "Volume",
     "houses": "Houses",
-    "housesTitle": "{n} house bills",
+    "housesTitle": "{n, plural, one {# house bill} other {# house bills}}",
     "house": "House",
     "packages": "Packages",
     "attach": "Attach",
@@ -2064,7 +2310,7 @@
     "noCounterparty": "No counterparty",
     "amount": "Amount",
     "fxRate": "FX rate",
-    "fxRateHint": "To the branch base currency, captured now",
+    "fxRateHint": "To the branch base currency. Leave blank to use the latest rate on file.",
     "basis": "Allocation basis",
     "basisHint": "Every basis except manual reads figures the system already holds",
     "cost": "Cost",
@@ -2096,7 +2342,11 @@
       "carrier": "The carrier’s numbers",
       "carrierHint": "The master bill belongs here, not on any house",
       "route": "Route and dates"
-    }
+    },
+    "editChargeTitle": "Correct this cost",
+    "withdrawCharge": "Withdraw",
+    "restoreCharge": "Restore",
+    "withdrawnCharges": "{count, plural, one {# withdrawn cost} other {# withdrawn costs}}"
   },
   "accountingExport": {
     "preview": "Preview journal",
@@ -2184,7 +2434,7 @@
     "rate": "Rate",
     "currency": "Currency",
     "fxRate": "Rate to base",
-    "fxRateHint": "Taken now and kept on the line, so this figure never moves again.",
+    "fxRateHint": "Leave blank to use the latest rate on file. Kept on the line, so this figure never moves again.",
     "counterparty": "Owed to",
     "counterpartyHint": "The agent, carrier or haulier this cost is owed to",
     "sections": {
@@ -2277,7 +2527,7 @@
     "dueOn": "Due",
     "currency": "Currency",
     "fxRate": "Rate to base",
-    "fxRateHint": "Taken now and kept on the row, so the payable never revalues.",
+    "fxRateHint": "Leave blank to use the latest rate on file. Kept on the row, so the payable never revalues.",
     "tax": "Tax",
     "amount": "Amount",
     "quantity": "Quantity",
@@ -2624,7 +2874,8 @@
       },
       "enquiry": {
         "created": "An enquiry arrives",
-        "sla_breached": "An enquiry misses its SLA"
+        "sla_breached": "An enquiry misses its SLA",
+        "received": "A customer's enquiry is acknowledged"
       },
       "exception": {
         "opened": "An exception is raised"
@@ -2634,6 +2885,20 @@
       },
       "rate_card": {
         "expiring": "A rate card is about to lapse"
+      },
+      "supplier_invoice": {
+        "variance_flagged": "A supplier bill is over the accrual"
+      },
+      "rate_request": {
+        "late_reply": "An agent replies again on a decided rate request"
+      },
+      "intake": {
+        "clarify": "The intake agent asks the customer for missing details",
+        "confirm": "The intake agent confirms an enquiry is complete",
+        "handoff": "The intake agent hands an enquiry to a person"
+      },
+      "partner": {
+        "mail_filed": "A supplier writes in with no bill"
       }
     },
     "log": "Delivery",
@@ -2653,6 +2918,52 @@
       "read": "Read",
       "failed": "Failed",
       "suppressed": "Held back"
+    },
+    "summaries": {
+      "enquiry": {
+        "created": "A new enquiry has arrived and needs an owner.",
+        "received": "A customer’s enquiry has been received, and acknowledged to them.",
+        "sla_breached": "First response is past its SLA."
+      },
+      "quote": {
+        "sent": "A quotation has been sent to the customer.",
+        "expiring": "A sent quotation reaches the end of its validity soon."
+      },
+      "job": {
+        "created": "A shipment has been booked.",
+        "milestone_reached": "A shipment milestone has been completed.",
+        "eta_changed": "The estimated arrival of a shipment has moved."
+      },
+      "free_time": {
+        "expiring": "A container is about to start accruing demurrage, detention or storage."
+      },
+      "rate_card": {
+        "expiring": "Rate cards reach the end of their validity within the month."
+      },
+      "exception": {
+        "opened": "An exception has been raised against a shipment."
+      },
+      "document": {
+        "released": "A document has been released to the customer."
+      },
+      "invoice": {
+        "issued": "An invoice has been issued.",
+        "overdue": "An issued invoice has passed its due date unpaid."
+      },
+      "supplier_invoice": {
+        "variance_flagged": "A supplier invoice was read with a line billed over what the job accrued."
+      },
+      "rate_request": {
+        "late_reply": "An agent replied to a rate request that was already decided; the reply is filed for a person to read."
+      },
+      "intake": {
+        "clarify": "The intake agent asks the customer, once, for what a quotation still needs.",
+        "confirm": "The intake agent tells the customer their enquiry is complete.",
+        "handoff": "The intake agent has stopped asking, and an enquiry needs a person."
+      },
+      "partner": {
+        "mail_filed": "A known supplier wrote in with nothing to read as a bill."
+      }
     }
   },
   "milestoneForm": {
@@ -2790,7 +3101,11 @@
     "failedCount": "{count} failing",
     "off": "Off",
     "enable": "Turn on",
-    "disable": "Turn off"
+    "disable": "Turn off",
+    "disabledReasons": {
+      "switchedOff": "Switched off by an administrator",
+      "noDeliverySince": "Nothing delivered since {day}"
+    }
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3116,7 +3431,8 @@
         "forcePathStyle": "Path-style addressing"
       },
       "rateAutoFanout": {
-        "maxAgents": "Agents per lane (max)"
+        "maxAgents": "Agents per lane (max)",
+        "maxAgeHours": "Only enquiries newer than (hours)"
       },
       "enquiryAutoAccept": {
         "confidence": "Confidence to apply (0–1)"
@@ -3170,7 +3486,7 @@
       "platform": "Platform",
       "carriers": "Carriers",
       "finance": "Finance",
-      "intelligence": "Document extraction"
+      "intelligence": "AI services"
     },
     "groupHints": {
       "platform": "Where documents are kept, and how mail comes in and goes out. Without these the product cannot store a file or write to a customer.",
@@ -3182,7 +3498,10 @@
     "notInUse": "Not in use",
     "configure": "Configure",
     "offHint": "Set to “{driver}”. Nothing is configured here, and nothing needs to be — open Configure to switch it on.",
-    "offHintPlain": "Not switched on. Open Configure to set it up."
+    "offHintPlain": "Not switched on. Open Configure to set it up.",
+    "keyCommand": "Generate a valid key on the server with:",
+    "demoNote": "This is the demo: it connects to no provider and stores no credentials. On your own instance, each integration below is set here and sealed with your deployment key.",
+    "intakeAgentLink": "Set up the intake agent for each branch"
   },
   "assistant": {
     "title": "Assistant",
@@ -3228,7 +3547,9 @@
       "list_quotes_expiring": "quotations about to expire",
       "get_margin": "the shipment's margin",
       "get_customer_credit": "the customer's credit standing",
-      "list_consolidation_candidates": "shipments that could be consolidated"
+      "list_consolidation_candidates": "shipments that could be consolidated",
+      "get_invoice": "the invoice",
+      "get_quote": "the quotation"
     },
     "toolUnknown": "the records",
     "suggestions": {
@@ -3236,7 +3557,25 @@
       "clearance": "What is sitting in customs clearance?",
       "freeTime": "Whose free time runs out this week?",
       "exceptions": "What should I look at today?"
-    }
+    },
+    "serviceMissing": "The assistant service is not connected",
+    "serviceMissingHint": "The assistant runs in the background service, and this deployment is not connected to it. Nothing is down; an administrator needs to set SERVICE_URL and INTERNAL_API_SECRET.",
+    "failures": {
+      "serviceNotConfigured": "The assistant service is not connected on this deployment.",
+      "noBranch": "You are not assigned to a branch, so the assistant has nothing to look at.",
+      "threadsFailed": "Your conversations could not be loaded.",
+      "threadFailed": "That conversation could not be opened.",
+      "closeFailed": "That conversation could not be closed.",
+      "couldNotAnswer": "The assistant could not answer.",
+      "couldNotFinish": "The assistant could not finish that answer.",
+      "timedOut": "The assistant did not answer in time. Try a narrower question.",
+      "unreachable": "The assistant could not be reached.",
+      "notAvailable": "The assistant is not available on this deployment.",
+      "aiNotConfigured": "No model is configured for this deployment.",
+      "aiBudgetExhausted": "This month's model budget has been spent. The assistant is back next month, or when an administrator raises the ceiling."
+    },
+    "demoUnavailable": "The assistant is not part of the demo",
+    "demoUnavailableHint": "It answers from your own records on your own instance. Everything else on these screens works as it would there."
   },
   "proposals": {
     "title": "Read from the message",
@@ -3259,7 +3598,9 @@
       "volumeCbm": "Volume",
       "pieces": "Pieces",
       "dimensions": "Dimensions",
-      "isDangerous": "Dangerous goods"
+      "isDangerous": "Dangerous goods",
+      "containerCount": "Containers",
+      "containerType": "Container type"
     },
     "acceptAll": "Accept all {count}"
   },
@@ -3272,7 +3613,10 @@
     "amount": "Unbilled",
     "oldest": "Oldest line",
     "bill": "Draft invoice",
-    "mixedCurrency": "Mixed currencies — bill separately"
+    "mixedCurrency": "Mixed currencies — bill separately",
+    "showAll": "Show all {count}",
+    "billed": "Draft invoice created.",
+    "openDraft": "Open the draft"
   },
   "grouping": {
     "title": "Could share a container",
@@ -3317,7 +3661,8 @@
       "code": "Authentication code",
       "submit": "Turn on two-factor",
       "submitting": "Turning on…"
-    }
+    },
+    "errorMissingOrBackup": "Enter the 6-digit code from your authenticator app, or one of your backup codes."
   },
   "rateRequests": {
     "title": "Rates from agents",
@@ -3347,7 +3692,8 @@
       "declined": "Declined",
       "expired": "Expired",
       "superseded": "Replaced"
-    }
+    },
+    "partialTotal": "{count, plural, one {Partial total: # line not priced} other {Partial total: # lines not priced}}"
   },
   "renewals": {
     "title": "Renewals in flight",
@@ -3366,5 +3712,780 @@
     "fieldsRead": "{count, plural, one {# field read} other {# fields read}}",
     "fieldsWithPending": "{read} fields read, {pending} to confirm",
     "rateRequests": "{sent} rate requests · {replied} replied"
+  },
+  "adminValidation": {
+    "required": "Required",
+    "requiredArInvoices": "Required — it appears on Arabic invoices",
+    "requiredArDocuments": "Required — this appears on Arabic documents",
+    "requiredCustomersSee": "Required — customers see this",
+    "validEmail": "A valid email address",
+    "emailTaken": "Someone already has that email address.",
+    "atLeastOneBranch": "Give them access to at least one branch",
+    "nothingToUpdate": "Nothing to update.",
+    "cannotSuspendSelf": "You cannot suspend your own account.",
+    "minTwoChars": "At least two characters",
+    "maxEightChars": "At most eight characters",
+    "lettersDigits": "Letters and numbers only",
+    "lettersDigitsHyphens": "Letters, numbers, hyphens and underscores",
+    "lowerDigitsUnderscores": "Lower case, digits and underscores",
+    "chooseTimeZone": "Choose a time zone",
+    "branchCodeInUse": "That branch code is already in use.",
+    "codeInUseInTable": "That code is already used in this table.",
+    "templateBody": "A template needs something to say",
+    "unknownIntegration": "That is not an integration this deployment has.",
+    "mailboxPassword": "A password is needed to reach the mailbox.",
+    "mailboxConnected": "This mailbox is already connected on that host.",
+    "missingMailbox": "Missing mailbox.",
+    "sequence": "Where does it come in the sequence?",
+    "stepExists": "That step already exists for this mode and direction.",
+    "dayEnd": "The working day has to end after it starts.",
+    "noWorkingDays": "A week with no working days has no deadlines in it.",
+    "calendarKeyInUse": "That calendar key is already in use.",
+    "dateFormat": "YYYY-MM-DD",
+    "closureExists": "That day is already a holiday on this calendar.",
+    "minTwoDigits": "At least two digits",
+    "digitsOnly": "Digits only",
+    "periodEndsBeforeStart": "The period ends before it starts.",
+    "hsRateExists": "That prefix already has a rate starting on that date.",
+    "modeRuleExists": "That mode already has a rule for this branch.",
+    "numberMapped": "This number is already mapped to a branch.",
+    "missingNumber": "Missing number.",
+    "phoneNumberIdDigits": "Digits only: Kapso's phone_number_id, not the phone number",
+    "keyName": "Name it after the system that will use it",
+    "nothingToRevoke": "Nothing to revoke.",
+    "alreadyRevoked": "That key was already revoked.",
+    "postUrl": "A URL we can post to",
+    "httpsOnly": "Must be https — these carry customer data.",
+    "nothingToChange": "Nothing to change.",
+    "chooseRole": "Choose a role",
+    "threeLetterCode": "A three-letter code",
+    "chooseCountry": "Choose a country",
+    "branchNeedsCalendar": "Every branch needs a working calendar",
+    "chooseCalendar": "Choose a calendar",
+    "twoLetterCountry": "A two-letter country code",
+    "chooseCustomerForKey": "Choose the customer this key reads for",
+    "chooseBranch": "Choose a branch",
+    "divisorExample": "A divisor, for example 6000",
+    "incrementExample": "An increment, for example 0.5",
+    "floorOrZero": "A floor, or 0",
+    "amountPerDay": "An amount per day",
+    "weekendDays": "Weekday numbers, 0 is Sunday — for example 5,6",
+    "percentageExample": "A percentage, for example 5",
+    "grantOwnBranchesOnly": "You can only grant access to branches you work in yourself.",
+    "quietHoursDiffer": "Quiet hours have to start and end at different times. Turn the switch off to send at any hour.",
+    "unknownDriver": "\"{driver}\" is not one of the modes this integration has.",
+    "neededToSwitchOn": "This is needed before the integration can be switched on.",
+    "mustBeNumber": "This has to be a number.",
+    "minValue": "The smallest allowed value is {min}.",
+    "maxValue": "The largest allowed value is {max}.",
+    "fullUrl": "This has to be a full URL, starting http:// or https://.",
+    "cronUnreadable": "This schedule cannot be read as calls per hour, so the carrier rate limit cannot be checked against it. Use a shape like `30 * * * *` or `*/15 * * * *`.",
+    "mailboxKeyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a mailbox password cannot be sealed. Set it and restart before adding a mailbox.",
+    "unknownMergeFields": "This event does not supply {fields}. It would send as blank.",
+    "credentialCannotBeSealed": "A credential cannot be sealed: {problem}",
+    "periodEndsAfterStart": "The end date must be after the start date.",
+    "unknownContainerType": "Not a known container type. Choose one from the list.",
+    "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
+    "mailboxGone": "That mailbox is no longer visible. Reload the page and try again.",
+    "personSpansOtherBranches": "This person also works in a branch you do not administer. You can change their access in your branches, but their name, address, language and whether they can sign in are for an administrator of every branch they work in.",
+    "signInLinkSent": "A link to set a password has been emailed to {email}. It works for one hour.",
+    "signInLinkSuspended": "This account is suspended. Restore it before sending a sign-in link.",
+    "signInLink": {
+      "not_configured": "No email was sent: the mail service is not configured on this deployment. The account exists; send the link again once mail works.",
+      "refused": "No email was sent: the mail service refused it. The account exists; check the outbound mail settings and try again.",
+      "unreachable": "No email was sent: the mail service could not be reached. The account exists; try again in a few minutes.",
+      "throttled": "Several links have already gone to this address in the last hour. Ask them to use the newest one, or try again later.",
+      "no_login": "No email was sent: this person has no login to set a password for."
+    },
+    "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
+    "apiAccessNotAdministered": "You do not administer API access in that branch.",
+    "portalCustomerInactive": "This customer is retired, so nobody can be given a portal login for it.",
+    "keyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so mailbox passwords and integration credentials can be neither stored nor read.",
+    "keyWrongLength": "MAILBOX_ENCRYPTION_KEY must be {expected} bytes, base64-encoded; this one decodes to {bytes}.",
+    "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
+    "fxSameCurrency": "Choose two different currencies."
+  },
+  "costingValidation": {
+    "chooseChargeType": "Choose a charge type",
+    "enterQuantity": "Enter a quantity",
+    "enterRate": "Enter a rate",
+    "enterFxRate": "Enter an exchange rate",
+    "jobNotVisible": "That job is no longer visible.",
+    "lineBilled": "That line has been billed to the customer and can no longer be edited. Raise a credit note instead.",
+    "lineMatched": "A supplier invoice has been matched against that line. Unmatch it first — editing the accrual now would change a variance somebody has already reviewed.",
+    "lineIncomplete": "Something on that line is missing.",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate the cost was taken at."
+  },
+  "networkValidation": {
+    "minTwoChars": "At least two characters",
+    "maxSixteenChars": "At most sixteen characters",
+    "lettersDigitsHyphens": "Letters, numbers and hyphens only",
+    "exactLength": "Must be {length} characters",
+    "required": "Required",
+    "partnerCodeInUse": "That code is already in use by another partner.",
+    "unlocodeFormat": "Five characters: two-letter country then three for the place, e.g. KWSWK",
+    "chooseCountry": "Choose a country",
+    "unlocodeRecorded": "That UN/LOCODE is already recorded.",
+    "nothingToUpdate": "Nothing to update.",
+    "notEmail": "Not an email address",
+    "coverageOneEnd": "Name at least one end — a port, or a country.",
+    "chooseDocumentType": "Choose a document type",
+    "dateFormat": "YYYY-MM-DD",
+    "expiresBeforeIssued": "It cannot expire before it was issued."
+  },
+  "operationsValidation": {
+    "invalidDateTime": "Not a valid date and time",
+    "chooseShipment": "Choose a shipment",
+    "chooseExceptionCode": "Choose what went wrong",
+    "numbersOnly": "Numbers only",
+    "nothingToClose": "Nothing to close.",
+    "resolutionRequired": "Say what was done. This is the only record of how it was resolved.",
+    "customsIllegalStep": "That is not a step customs can move to from here.",
+    "nothingToUpdate": "Nothing to update.",
+    "containerNoFormat": "Four letters then six or seven digits, e.g. MSKU4419512",
+    "cancelReasonRequired": "Say why it was cancelled — it stays on the record.",
+    "jobTerminal": "That shipment has been closed or cancelled. Its record does not reopen — raise a new one.",
+    "dateFormat": "YYYY-MM-DD",
+    "amountPerDay": "An amount per day",
+    "endsBeforeStart": "It cannot have come back before it went out.",
+    "clockStartTooOld": "Check the year — a clock cannot start more than {years} years ago.",
+    "goodsValueNumber": "The goods value must be a number",
+    "checkFigures": "Check the figures.",
+    "noCargoToClassify": "This shipment has no cargo lines yet, so there is nothing to classify. Add them under Cargo.",
+    "estimateUnmatched": "Estimated {duty} {currency}, but {count, plural, one {# line had} other {# lines had}} no tariff row. Add the HS codes, or add the rates under Reference data → Tariff.",
+    "containerNeedsNumberOrType": "Enter the container number, or at least its type if the number is not known yet."
+  },
+  "payablesValidation": {
+    "enterDate": "Enter a date",
+    "chooseBranch": "Choose a branch",
+    "chooseSupplier": "Choose the supplier",
+    "enterInvoiceNumber": "Enter their invoice number",
+    "enterExchangeRate": "Enter an exchange rate",
+    "enterTaxOrZero": "Enter the tax, or zero",
+    "billApprovedLocked": "That bill has been approved and can no longer be edited. Dispute it first if the figures are wrong.",
+    "invoiceNumberCaptured": "That invoice number has already been captured for this supplier.",
+    "enterLineAsWritten": "Enter the line as they wrote it",
+    "enterQuantity": "Enter a quantity",
+    "enterRate": "Enter the rate",
+    "billGone": "That bill is no longer visible.",
+    "billLinesLocked": "That bill has been approved; its lines can no longer change.",
+    "chooseCostLine": "Choose a cost line to match against.",
+    "enterMatchAmount": "Enter how much of this line that cost covers.",
+    "lineGone": "That line is no longer visible.",
+    "billApprovedMatchLocked": "That bill has been approved. Matching it now would change a variance somebody has already signed off.",
+    "overMatched": "That is more than is left unmatched on this line.",
+    "costLineAlreadyMatched": "That cost line is already matched to this line.",
+    "costLineOtherBranch": "That cost line belongs to another branch.",
+    "nothingToDo": "Nothing to do.",
+    "billNotAwaitingApproval": "That bill is not waiting for approval.",
+    "varianceNeedsReview": "Some lines are outside tolerance or matched to nothing. Query them with the supplier, or tick the box and say why the variance is acceptable.",
+    "sayWhy": "Say why — this goes on the record.",
+    "billPaidAgainst": "Something has already been paid against that bill, so it cannot be voided.",
+    "didNotWork": "That did not work.",
+    "enterAmountPaid": "Enter the amount paid",
+    "howPaid": "How was it paid?",
+    "chooseBillToSettle": "Choose a bill to settle.",
+    "enterAllocationAmount": "Enter how much of this payment settles that bill.",
+    "billNotApproved": "That bill has not been approved for payment yet.",
+    "overAllocated": "That is more than is left unallocated on this payment.",
+    "overInvoiced": "That is more than is still outstanding on that bill.",
+    "chooseAgent": "Choose the agent",
+    "enterAgreedRate": "Enter the agreed rate",
+    "periodEndsBeforeStart": "The period ends before it starts.",
+    "partnerGone": "That partner is no longer visible.",
+    "noCurrentAccount": "No current account is configured for that partner. Link them to the customer record they invoice us as, on their partner page.",
+    "nothingOpenInPeriod": "Nothing open in that period, in that currency.",
+    "settlementGone": "That settlement is no longer visible.",
+    "settlementAlreadyAgreed": "That settlement has already been agreed.",
+    "agreeBeforeSettling": "Agree the statement with the agent before recording the residual as settled.",
+    "settlementSettled": "That settlement has been settled and cannot be voided.",
+    "enterNumberOrZero": "Enter a number, or zero.",
+    "chooseSupplierInvoice": "Choose the supplier’s invoice",
+    "pdfOrPhoto": "A PDF or a photograph of the bill",
+    "serviceNotConfigured": "Reading a bill needs the service. Set SERVICE_URL and INTERNAL_API_SECRET; bills can still be captured by hand.",
+    "scanNotStored": "The scan could not be stored, so nothing was read.",
+    "noModel": "No model is configured, so bills cannot be read yet. Add a key at Settings › Integrations.",
+    "billUnreadable": "The bill could not be read. Capture it by hand — the scan is on file.",
+    "scanNotInvoice": "Nothing on that scan could be read as an invoice.",
+    "readTimedOut": "Reading the bill timed out. Capture it by hand — the scan is on file.",
+    "scanTooLarge": "The scan is {sizeMb} MB, above the {limitMb} MB limit for reading a bill. Capture it by hand — the scan is on file.",
+    "billNotReconciled": "The invoice does not reconcile: {details}",
+    "billNotReconciledPlain": "The invoice does not reconcile, so nothing was written. Capture it by hand — the scan is on file.",
+    "findingLine": "line {line}: the document says {stated}, the figures give {computed}",
+    "findingLineUnnumbered": "a line: the document says {stated}, the figures give {computed}",
+    "findingSubtotal": "subtotal: the document says {stated}, the figures give {computed}",
+    "findingTotal": "total: the document says {stated}, the figures give {computed}",
+    "findingJoiner": "; ",
+    "billPartsUnreadable": "{count, plural, one {One part} other {# parts}} of the scan could not be read, so nothing was written. Capture it by hand — the scan is on file.",
+    "billLowConfidence": "The model was not confident enough to write this without review.",
+    "billPartsUnreadableDetail": "Parts of the scan could not be read, so nothing was written: {details}. Capture it by hand — the scan is on file.",
+    "readingInField": "{field}: {problem}",
+    "readingOnLine": "line {line}, {field}: {problem}",
+    "readingNoLines": "no invoice lines were found",
+    "readingMissing": "missing",
+    "readingNotDate": "not a valid date",
+    "readingNotAmount": "not a valid amount",
+    "readingUnknownCurrency": "not a known currency",
+    "readingUnknownChargeType": "not one of your charge types",
+    "readingUnreadable": "could not be read",
+    "readingFieldInvoiceNumber": "Invoice number",
+    "readingFieldInvoiceDate": "Invoice date",
+    "readingFieldDueOn": "Due date",
+    "readingFieldCurrency": "Currency",
+    "readingFieldSubtotal": "Subtotal",
+    "readingFieldTax": "Tax",
+    "readingFieldTotal": "Total",
+    "readingFieldDescription": "Description",
+    "readingFieldQuantity": "Quantity",
+    "readingFieldUnitPrice": "Unit price",
+    "readingFieldAmount": "Amount",
+    "readingFieldChargeType": "Charge type",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate on the bill.",
+    "settlementDocsChanged": "Some of these documents have been netted on another statement, paid or changed since this one was drafted. Void it and draft it again.",
+    "billOtherPartner": "That bill is from another supplier than this payment.",
+    "billOtherBranch": "That bill belongs to another branch than this payment.",
+    "paymentCurrencyMismatch": "The payment is in {paid} and the bill in {billed}. Allocate it to a bill in the same currency.",
+    "billNotDisputable": "Only a bill that has not been paid, netted or exported can be disputed. Raise the difference with the supplier as a credit or a new bill.",
+    "billNoExchangeRate": "The bill is in {currency} and there is no exchange rate to {base} on file, so it was not written. Capture it by hand with the agreed rate — the scan is on file.",
+    "billHasNoLines": "This bill has no lines, so there is nothing to approve. Add what the supplier charged first.",
+    "noRateOnFilePayment": "No {from} to {to} rate is on file. Enter the rate the payment was made at.",
+    "billAlreadyCaptured": "Bill {reference} from this supplier is already captured, so nothing new was written.",
+    "openCapturedBill": "Open the bill"
+  },
+  "creditValidation": {
+    "chooseCustomer": "Choose a customer",
+    "chooseBranch": "Choose a branch",
+    "reasonSentence": "Say why, in a sentence somebody can review",
+    "dateFormat": "Use YYYY-MM-DD",
+    "datePassed": "That date has already passed",
+    "noCreditLimit": "This customer has no credit limit at this branch, so there is nothing to override."
+  },
+  "ratesValidation": {
+    "enquiryMissing": "This enquiry is missing.",
+    "pickAgent": "Pick at least one agent to ask.",
+    "rateRequestMissing": "This rate request is missing.",
+    "promoteRequestGone": "That rate request is gone.",
+    "promoteAlreadyCard": "This reply is already a rate card.",
+    "promoteNotParsed": "Only a parsed reply can become a rate card.",
+    "promoteDeclined": "The agent declined this lane.",
+    "promoteNoCleanLines": "This reply has no clean lines to promote.",
+    "promotePortMissing": "A port on the reply ({origin}→{destination}) is no longer on file.",
+    "promoteRenewalEndsEarly": "This quote ends {validTo}, before the current rate lapses {lapses}. It cannot renew the lane.",
+    "promoteChargeMissing": "The charge {charge} on the reply is no longer on file. Add it back under Reference data, or ask the agent to quote without it.",
+    "promoteOverlap": "This rate overlaps another card for the same agent and lane. End or replace that card first.",
+    "promoteLaneMismatch": "This reply priced a different lane ({lane}), so it cannot become this enquiry's rate.",
+    "promoteOverlapsCard": "This agent already has a rate on this lane from {validFrom}. Accepting this one would overlap it."
+  },
+  "enquiriesValidation": {
+    "chooseOwner": "Choose who should own this.",
+    "missingEnquiry": "Missing enquiry.",
+    "chooseWonOrLost": "Choose won or lost.",
+    "lostReasonRequired": "Say why it was lost — this is the only place that answer gets recorded.",
+    "nothingToDo": "Nothing to do.",
+    "cancelReasonRequired": "Say why it was cancelled — it stays on the record.",
+    "enquiryNotFound": "No such enquiry, or it is not one you can see.",
+    "illegalTransition": "That is not a step this enquiry can take from where it is.",
+    "suggestionGone": "That suggestion is no longer there.",
+    "suggestionSettled": "Somebody has already decided that one.",
+    "suggestionFieldFilled": "That field has been filled in since, so the suggestion was not applied.",
+    "actionFailed": "That did not work.",
+    "noneApplied": "None could be applied — those fields have since been filled in.",
+    "suggestionNotOnFile": "“{value}” is not a place or commodity on file, so it was not applied. Add it, or set the field by hand.",
+    "suggestionAmbiguous": "“{value}” matches {count} records, and guessing between them is how the wrong one gets written. Set the field by hand.",
+    "suggestionInvalid": "“{value}” is not a valid value — expected {expected}.",
+    "suggestionUnknownField": "That suggestion names a field this screen cannot set.",
+    "customerOrEmail": "An enquiry needs either a known customer or a contact email",
+    "originDestinationDiffer": "Origin and destination must differ",
+    "expectedNumber": "a number",
+    "expectedInteger": "a whole number",
+    "expectedBoolean": "true or false",
+    "expectedDate": "a date as YYYY-MM-DD",
+    "expectedOneOf": "one of {values}",
+    "containerCountWhole": "Enter a whole number of containers, one or more.",
+    "expectedPositiveInteger": "a whole number, one or more",
+    "wonNeedsQuoted": "An enquiry can be closed as won only once a quotation has been sent.",
+    "lostNotYet": "A new enquiry cannot be closed as lost. Assign it first, or cancel it.",
+    "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
+    "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
+    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
+    "notPermitted": "Your role does not allow this in this enquiry's branch."
+  },
+  "consolidationValidation": {
+    "notValidDateTime": "Not a valid date and time",
+    "chooseBranch": "Choose a branch",
+    "amountNumber": "Amount must be a number",
+    "chooseChargeType": "Choose a charge type",
+    "rateNumber": "Rate must be a number",
+    "nothingToAllocate": "Nothing to allocate.",
+    "alreadySplit": "That cost has already been split. Reverse it first to split it again.",
+    "clusterIncomplete": "That suggestion is incomplete — nothing was created.",
+    "clusterGone": "Those shipments have been consolidated or closed since this was suggested.",
+    "chooseShipment": "Choose a shipment",
+    "houseHasSplitCosts": "This house carries its share of a split master cost. Reverse that split first, then detach it.",
+    "allocationNoHouses": "There are no houses on this master to split the cost across. Attach them first.",
+    "allocationNegativeDriver": "A house has a negative cargo figure, so the cost cannot be split by it. Correct its cargo lines first.",
+    "allocationZeroVolume": "Every house has a zero volume, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
+    "allocationZeroChargeableWeight": "Every house has a zero chargeable weight, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
+    "allocationZeroGrossWeight": "Every house has a zero gross weight, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
+    "allocationZeroPackages": "Every house has zero packages, so there is nothing to split by. Capture the cargo figures on the houses, or enter the cost to be split equally.",
+    "allocationManualMismatch": "The stated shares total {stated} {currency}, but the cost is {expected} {currency}. They must match exactly.",
+    "arrivalBeforeDeparture": "Arrival cannot be before departure.",
+    "houseNotAttached": "That shipment could not be added. It is already under a master, it is finished or cancelled, or this master is closed.",
+    "shareNumber": "Enter an amount, such as 125.500.",
+    "noRateOnFile": "No {from} to {to} rate is on file. Enter the rate the cost was taken at."
+  },
+  "documentsValidation": {
+    "numbersOnly": "Numbers only",
+    "chooseShipment": "Choose a shipment",
+    "partyNameRequired": "A party needs a name",
+    "notEmail": "Not an email address",
+    "partyRoleTaken": "That shipment already has one of those. Edit the existing party instead.",
+    "goodsDescriptionRequired": "The goods need a description",
+    "issueNeedsService": "Documents are rendered by the service, which is not configured. Set SERVICE_URL and INTERNAL_API_SECRET.",
+    "issueRefused": "The document service refused ({status}).",
+    "surrenderNotIssued": "Issue the bill of lading before surrendering it.",
+    "surrenderAirWaybill": "An air waybill is not surrendered — it has no originals to hand back.",
+    "surrenderShipmentGone": "That shipment is no longer there.",
+    "issueShipmentNotFound": "That shipment is not there, or is outside your branches.",
+    "issueTypeNotSetUp": "The {kind, select, house_bill {house bill of lading} delivery_order {delivery order} packing_list {packing list} customs_pack {customs declaration pack} air_waybill {house air waybill} other {document}} is not set up as a document type in this deployment. An administrator adds it under Reference data → Document types; on a fresh install, run pnpm db:seed.",
+    "issueNotStored": "The document was rendered, but its copy could not be stored, so nothing was issued. Try again; if it keeps failing, check the storage settings under Settings › Integrations.",
+    "issueUnknownKind": "That document cannot be issued from here."
+  },
+  "jobsValidation": {
+    "numbersOnly": "Numbers only",
+    "notValidDate": "Not a valid date",
+    "chooseBranch": "Choose a branch",
+    "chooseCustomer": "Choose a customer",
+    "chooseOrigin": "Choose where it starts",
+    "chooseDestination": "Choose where it goes",
+    "sameOriginDestination": "A shipment cannot start and end in the same place",
+    "arrivalBeforeDeparture": "Arrival cannot be before departure",
+    "billNumberTaken": "That bill number is already on another shipment.",
+    "creditHold": "This customer is on credit hold. Release the hold on their account before booking.",
+    "creditLimitExceeded": "Booking this shipment puts the customer {excess} past their credit limit. A branch manager can record an override on the customer account.",
+    "choosePartner": "Choose a partner",
+    "houseBillTaken": "That house bill number is already on another shipment in this branch.",
+    "quoteNotBookable": "That quotation could not be found.",
+    "quoteNotAccepted": "Only an accepted quotation can be booked.",
+    "quoteOtherCustomer": "That quotation is for a different customer or branch.",
+    "quoteAlreadyBooked": "A shipment has already been opened from that quotation."
+  },
+  "supportValidation": {
+    "supportSessionCannotGrant": "A support session cannot grant support access",
+    "chooseEngineer": "Choose a support engineer",
+    "atLeastAnHour": "At least an hour",
+    "atMostHours": "At most {max} hours — grant again if the work runs long",
+    "reasonRequired": "Give the ticket or the request this is for",
+    "typeGrantWrite": "Type GRANT WRITE to confirm write access",
+    "notSupportEngineer": "Not a support engineer",
+    "engineerDeactivated": "That engineer is deactivated",
+    "ownBranchesOnly": "You can only open branches you hold yourself"
+  },
+  "customersValidation": {
+    "minTwoChars": "At least two characters",
+    "maxSixteenChars": "At most sixteen characters",
+    "lettersDigitsHyphens": "Letters, numbers and hyphens only",
+    "required": "Required",
+    "chooseBranch": "Choose a branch",
+    "numbersOnly": "Numbers only",
+    "codeInUse": "That customer code is already in use.",
+    "nothingToUpdate": "Nothing to update."
+  },
+  "podValidation": {
+    "notCoordinate": "Not a coordinate",
+    "whoSigned": "Who signed for it?",
+    "sayWhatWasWrong": "Say what was wrong — short, damaged, refused",
+    "partialFix": "A partial fix is not a location",
+    "shipmentNotFound": "That shipment could not be found.",
+    "uploadSignature": "signature",
+    "uploadPhoto": "photo {number}",
+    "uploadsFailed": "The delivery was recorded, but these could not be uploaded: {files}. Add them again from the job file.",
+    "listSeparator": ", ",
+    "notDeliveryTime": "Enter when it was delivered, as a date and time.",
+    "nothingToCorrect": "That delivery record is not on this shipment, or has already been corrected."
+  },
+  "ledgerValidation": {
+    "numbersOnly": "Numbers only",
+    "chooseEnquiry": "Choose an enquiry",
+    "chooseBranch": "Choose a branch",
+    "enterQuotedPrice": "Enter the price you are quoting",
+    "enterQuotedCost": "Enter what it costs us — the margin comes from this",
+    "quoteNeedsExpiry": "A quotation needs an expiry date",
+    "priceBelowCost": "The price is below what it costs us. Check the figures before sending.",
+    "chooseCharge": "Choose a charge",
+    "quantityNumber": "Quantity must be a number",
+    "rateNumber": "Rate must be a number",
+    "nothingToUpdate": "Nothing to update.",
+    "quoteBadTransition": "That quotation cannot move to that state from where it is.",
+    "nothingToDraft": "Nothing to draft.",
+    "noSuchQuote": "No such quotation.",
+    "coverNoteDraftOnly": "A covering note can only be drafted on a draft quotation.",
+    "coverNoteNeedsService": "Drafting a covering note needs the service. Set SERVICE_URL and INTERNAL_API_SECRET; a note can still be written by hand.",
+    "coverNoteNoModel": "No model is configured, so a covering note cannot be drafted yet. Add a key at Settings › Integrations.",
+    "coverNoteFailed": "The covering note could not be drafted. Write one by hand, or try again.",
+    "nothingDrafted": "Nothing was drafted.",
+    "coverNoteTimedOut": "Drafting the covering note timed out. Write one by hand, or try again.",
+    "coverNoteEditDraftOnly": "That covering note can only be edited on a draft quotation.",
+    "chooseCustomer": "Choose a customer",
+    "enterSubtotal": "Enter the amount before tax",
+    "percentage": "A percentage",
+    "invoiceNeedsDueDate": "An invoice needs a due date",
+    "describeCharge": "Describe the charge",
+    "unitPriceNumber": "Unit price must be a number",
+    "invoiceBadTransition": "That invoice cannot move to that state from where it is.",
+    "creditHold": "This customer is on credit hold. Release the hold on their account before issuing.",
+    "creditLimitExceeded": "Issuing this invoice puts the customer {excess} past their credit limit. A branch manager can record an override on the customer account.",
+    "enterAmountReceived": "Enter the amount received",
+    "whenReceived": "When was it received?",
+    "chooseInvoiceToSettle": "Choose an invoice to settle.",
+    "enterAllocation": "Enter how much of this receipt settles that invoice.",
+    "overAllocated": "That is more than is left unallocated on this receipt.",
+    "overInvoiced": "That is more than is still outstanding on that invoice.",
+    "nothingToDo": "Nothing to do.",
+    "mixedCurrency": "This shipment has revenue in {currencies}, and an invoice carries one currency. Bill them separately rather than converting — the sell-side rate is one the customer agreed, not one we hold.",
+    "currencyJoiner": " and ",
+    "billNoCustomer": "This shipment has no customer on it, so there is nobody to invoice.",
+    "nothingUnbilled": "Nothing unbilled is left on this shipment.",
+    "shipmentGone": "That shipment is no longer there.",
+    "chooseBranchAndPeriod": "Choose a branch and a period.",
+    "datesFormat": "Dates must be YYYY-MM-DD.",
+    "periodEndsBeforeStart": "The period ends before it starts.",
+    "exportServiceNotConfigured": "The export runs in the service, which is not configured. Set SERVICE_URL and INTERNAL_API_SECRET.",
+    "exportServiceRefused": "The export service refused ({status}).",
+    "nothingToPost": "Nothing in that period is waiting to be posted. Either it has all been exported already, or nothing was issued.",
+    "nothingToVoid": "Nothing to void.",
+    "sayWhyUnwound": "Say why this is being unwound.",
+    "serviceSecretsRequired": "SERVICE_URL and INTERNAL_API_SECRET are required.",
+    "exportNotVoided": "The export could not be voided.",
+    "nothingToPrice": "Nothing to price.",
+    "pricingNotFound": "No such enquiry, or it is not one you can see.",
+    "pricingNoMode": "The enquiry has no transport mode, so there is nothing to price it against.",
+    "pricingNoCover": "No rate card covers this lane and mode on the readiness date. Ask an agent for a rate, or load the card.",
+    "pricingNoMargin": "Only a buying rate covers this lane, and this customer has no house margin set. Add one on their account, or load a selling card.",
+    "pricingCannotPrice": "The card needs a figure this enquiry does not carry — a weight or volume, or a currency with no rate to the base.",
+    "exportBranchNotFound": "No such branch, or it is not one you can see.",
+    "exportUnmappedChargeTypes": "These charge types have no account against them: {names}. Map them under Reference data → Charge types and run the export again.",
+    "exportAssetConflict": "That export file belongs to another branch.",
+    "exportJournalUnbalanced": "The journal is out by more than rounding can explain. Something in the period is not what it claims to be.",
+    "exportJournalUnmapped": "An account the journal needs is not configured. Check the branch’s chart of accounts and the charge types’ accounts, then run the export again.",
+    "exportJournalUnmappedLine": "A line in the period has no charge type, so it cannot be posted. Give it one, or match it to a cost line, before the period can close.",
+    "exportNotFound": "No such export, or it is not one you can see.",
+    "exportAlreadyVoid": "That export has already been voided.",
+    "quoteSentNoEdit": "A sent quotation cannot be edited.",
+    "pricingNoContainerCount": "This is a sea FCL enquiry with no container count, and every container rate is multiplied by it. Enter how many containers the customer needs, then price it again.",
+    "exportJournalUnbalancedBy": "The journal is out by {amount} {currency}, which is more than rounding can explain. Something in the period is not what it claims to be.",
+    "exportJournalAccountMissing": "No {account, select, rounding {rounding} receivables {receivables} payables {payables} tax {output tax} input_tax {input tax} bank {bank} fx_variance {FX variance} revenue {revenue} cost {cost} other {required}} account is configured, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Add it to the branch’s chart of accounts, then run the export again.",
+    "exportJournalChargeTypeUnmapped": "The charge type {chargeType} has no {account, select, revenue {revenue} other {cost}} account, so {document, select, journal {the journal} invoice {invoice {reference}} job_cost {the cost on {reference}} supplier_invoice {supplier invoice {reference}} payment {payment {reference}} receipt {receipt {reference}} settlement {set-off {reference}} other {{reference}}} cannot post. Map it under Reference data → Charge types, then run the export again.",
+    "exportJournalLineNoChargeType": "The line “{line}” on {document, select, supplier_invoice {supplier invoice {reference}} other {invoice {reference}}} has no charge type, so it cannot be posted. Give it one before the period can close.",
+    "quoteAlreadyAccepted": "The customer has accepted a version of this quotation, so it cannot be revised. A different price now needs a new enquiry.",
+    "pricingAlreadyQuoted": "This enquiry was priced by someone else a moment ago. Open the quotation they drafted.",
+    "quoteEnquiryClosed": "This enquiry is closed, so it cannot be quoted again.",
+    "quoteExpiryInPast": "The expiry date has already passed. A quotation must be valid until today or later.",
+    "quoteLineCurrency": "A line must be in the quotation's own currency.",
+    "quoteLapsed": "This quotation's validity has passed. Issue a new version with a fresh expiry date instead.",
+    "exportInvoiceWithoutRate": "Invoice {reference} is in a foreign currency and has no exchange rate, so it cannot post. Give it a rate and run the export again.",
+    "exportPeriodChanged": "Part of this period was posted by someone else while this export was being built. Nothing was posted — run it again.",
+    "fxRateNeeded": "There is no exchange rate from {currency} to {base} yet. Enter the rate it was agreed at.",
+    "fxRatePositive": "The exchange rate must be a number greater than zero.",
+    "amountMustBePositive": "Enter an amount greater than zero.",
+    "invoiceNotPayable": "This invoice cannot take a payment: it has not been issued, or it is already paid, credited or voided.",
+    "receiptCurrencyMismatch": "The receipt is in {received} and the invoice in {invoiced}. Record the receipt in the invoice's currency.",
+    "invoiceOtherCustomer": "That invoice belongs to another customer.",
+    "invoiceOtherBranch": "That invoice was raised by another branch.",
+    "invoiceNotDraftNoEdit": "This invoice is no longer a draft, so its lines cannot change. Correct it with a credit note.",
+    "invoiceNoLines": "Add at least one line before approving or issuing this invoice.",
+    "quantityMoreThanZero": "Quantity must be more than zero.",
+    "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override.",
+    "creditAmountNumber": "Enter the amount to credit, in figures.",
+    "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
+    "creditTooPrecise": "This currency does not have that many decimal places."
+  },
+  "validation": {
+    "invalidType": "Enter a valid value.",
+    "expectedNumber": "Enter a number.",
+    "tooShort": "{minimum, plural, one {Use at least # character.} other {Use at least # characters.}}",
+    "tooLong": "{maximum, plural, one {Use at most # character.} other {Use at most # characters.}}",
+    "exactLength": "{length, plural, one {Use exactly # character.} other {Use exactly # characters.}}",
+    "numberTooSmall": "The smallest allowed value is {minimum}.",
+    "numberTooBig": "The largest allowed value is {maximum}.",
+    "chooseAtLeast": "{minimum, plural, one {Choose at least one.} other {Choose at least #.}}",
+    "chooseAtMost": "{maximum, plural, one {Choose at most one.} other {Choose at most #.}}",
+    "validEmail": "Enter a valid email address.",
+    "validUrl": "Enter a full URL, starting http:// or https://.",
+    "chooseOption": "Choose an option from the list.",
+    "validDate": "Enter a valid date.",
+    "checkFormat": "Check the format.",
+    "multipleOf": "Enter a multiple of {divisor}.",
+    "checkValue": "Check this value."
+  },
+  "importsValidation": {
+    "inField": "{field}: {problem}",
+    "required": "Required",
+    "tooShort": "At least {min, plural, one {# character} other {# characters}}",
+    "tooLong": "At most {max, plural, one {# character} other {# characters}}",
+    "codeCharacters": "Letters, numbers and hyphens only",
+    "notAmount": "Must be an amount",
+    "tooManyDigits": "Too many digits",
+    "tooManyDecimals": "At most six decimal places",
+    "negative": "Must not be negative",
+    "belowMinimum": "Must be at least {min}",
+    "aboveMaximum": "Must be at most {max}",
+    "notWholeNumber": "Must be a whole number",
+    "notDate": "Must be a date, as YYYY-MM-DD or DD/MM/YYYY",
+    "monthOutOfRange": "Month must be between 1 and 12",
+    "dayOutOfRange": "That day does not exist",
+    "notYesNo": "Must be yes or no",
+    "notOneOf": "Must be one of: {options}",
+    "wrongLength": "Must be {length, plural, one {# character} other {# characters}}",
+    "noReferenceData": "No reference data is loaded for this column",
+    "unknownCountry": "Not a known country",
+    "unknownCurrency": "Not a known currency",
+    "unknownLocation": "Not a known location",
+    "unknownChargeType": "Not a known charge type",
+    "unknownIncoterm": "Not a known Incoterm",
+    "unknownReference": "Not a known value",
+    "notEmail": "Must be an email address",
+    "emailTooLong": "Too long for an email address",
+    "notPhone": "Must be a phone number",
+    "noHeadings": "The first row must be the column headings.",
+    "noColumn": "No column found for “{column}”.",
+    "tooManyRows": "More than {max, plural, one {# row} other {# rows}}. Split the file and import in parts.",
+    "duplicateInFile": "“{value}” is already used on line {line}.",
+    "alreadyExists": "“{value}” already exists in the system.",
+    "noRows": "The file has headings but no rows.",
+    "validToBeforeFrom": "Valid to is before valid from.",
+    "maximumBelowMinimum": "Maximum is below minimum.",
+    "containerTypeNeeded": "A per-container rate needs a container type.",
+    "zeroRateNeedsMinimum": "A zero rate needs a minimum charge, or it prices nothing.",
+    "etaBeforeEtd": "ETA is before ETD — check the two columns are not swapped",
+    "totalMismatch": "Net {net} plus tax {tax} does not equal total {total}",
+    "overpaid": "Received {paid} exceeds the total {total} — raise a credit note instead",
+    "nothingOutstanding": "Nothing outstanding — a settled invoice does not belong in an open receivables file",
+    "unknownCustomer": "No such customer “{value}” — import customers first"
+  },
+  "timeZones": {
+    "kuwait": "Kuwait",
+    "riyadh": "Riyadh",
+    "bahrain": "Bahrain",
+    "qatar": "Qatar",
+    "baghdad": "Baghdad",
+    "dubai": "Dubai",
+    "muscat": "Muscat",
+    "karachi": "Karachi",
+    "kolkata": "Kolkata",
+    "dhaka": "Dhaka",
+    "singapore": "Singapore",
+    "hongKong": "Hong Kong",
+    "shanghai": "Shanghai",
+    "istanbul": "Istanbul",
+    "amsterdam": "Amsterdam",
+    "london": "London",
+    "newYork": "New York",
+    "utc": "UTC"
+  },
+  "portalContacts": {
+    "eyebrow": "Customer portal",
+    "title": "Portal logins",
+    "description": "People at this customer who can sign in to see their own shipments, documents and invoices — and nothing else.",
+    "none": "Nobody at this customer has a portal login yet.",
+    "invite": "Give portal access",
+    "inviteTitle": "Give someone portal access",
+    "inviteDescription": "Creates their login and emails them a link to set their own password.",
+    "inviteSubmit": "Create login and send link",
+    "inviteNote": "They will see only this customer's records. The link works for one hour; you can send another from this card.",
+    "name": "Name",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "email": "Email",
+    "locale": "Language for emails",
+    "locales": {
+      "en": "English",
+      "ar": "Arabic"
+    }
+  },
+  "fileRefusal": {
+    "back": "Go back",
+    "not_found": {
+      "title": "This document is not available",
+      "body": "It does not exist, or it is not one you can open. Check the link, or ask the person who sent it."
+    },
+    "not_configured": {
+      "title": "Documents cannot be produced on this system yet",
+      "body": "The document service is not connected. The record itself is safe; an administrator needs to finish setting up the service before files can be generated or downloaded."
+    },
+    "not_available": {
+      "title": "Documents are not part of this demo",
+      "body": "This demo runs on sample data with no document service behind it, so files cannot be generated here."
+    },
+    "render_failed": {
+      "title": "The document could not be produced",
+      "body": "The document service did not finish. Try again in a minute; if it keeps failing, tell your administrator."
+    },
+    "storage_unavailable": {
+      "title": "The file could not be fetched",
+      "body": "The file store did not answer. Try again in a minute; if it keeps failing, tell your administrator."
+    }
+  },
+  "fxRateForm": {
+    "open": "Add an exchange rate",
+    "title": "Exchange rate",
+    "description": "What one unit of the first currency is worth in the second. Pricing converts every rate card into the branch currency at the newest rate on or before the pricing date.",
+    "from": "From",
+    "to": "Into",
+    "toHint": "Usually the branch's base currency — the one quotations are totalled in.",
+    "rate": "Rate",
+    "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
+    "effectiveOn": "Effective from",
+    "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
+  },
+  "settlementActions": {
+    "agree": "Agree statement",
+    "agreeTitle": "Agree this statement with the agent",
+    "agreeDescription": "Freezes the figures and sets off both sides in the ledgers.",
+    "agreeNote": "Agreeing claims every document on this statement and settles the set-off amount against them. Do it once the agent has confirmed the figures; a later change means voiding and drafting again.",
+    "agreeDone": "Statement agreed.",
+    "close": "Close settlement",
+    "closeTitle": "Close this settlement",
+    "closeDescription": "Marks the statement finished. It moves no money.",
+    "closeTheyOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's invoices: record their payment as a receipt on those invoices, then close this.",
+    "closeWeOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's bills: record our payment to them on their supplier page, then close this.",
+    "closeSquare": "The two sides cancelled exactly, so nothing is left to pay either way.",
+    "closeDone": "Settlement closed.",
+    "void": "Void settlement",
+    "voidTitle": "Void this settlement",
+    "voidDescription": "Releases the documents it claimed and gives back what it set off.",
+    "voidReason": "Reason",
+    "voidReasonHint": "Kept on the settlement. The agent disputed a line, or the period was wrong.",
+    "voidDone": "Settlement voided."
+  },
+  "intakeAgent": {
+    "title": "Intake agent",
+    "channels": {
+      "whatsapp": "Talks to the customer on WhatsApp.",
+      "email": "Talks to the customer by email, in their thread."
+    },
+    "states": {
+      "collecting": "Collecting the enquiry",
+      "awaiting_customer": "Waiting for the customer",
+      "complete": "Complete, ready to quote",
+      "handed_off": "Handed to a person"
+    },
+    "off": "Taken over by a person",
+    "missing": "Missing: {fields}.",
+    "nextRead": "Reads the conversation again at {time}.",
+    "summary": "Turns: {turns} · Model calls: {calls} · Questions asked: {asked}",
+    "languages": {
+      "en": "Customer writes in English",
+      "ar": "Customer writes in Arabic"
+    },
+    "read": "{count, plural, one {# message read} other {# messages read}}",
+    "modelCalled": "model called",
+    "sendFailed": "Not sent: {error}",
+    "noTurnsYet": "The agent reads the conversation when the customer stops typing.",
+    "takeOver": "Take over",
+    "takeOverHint": "The agent stops writing to this customer. You answer them yourself.",
+    "resume": "Turn the agent on",
+    "resumeHint": "The agent answers the customer's next message. It does not answer messages that arrived while it was off.",
+    "notFound": "The agent does not hold this enquiry.",
+    "actions": {
+      "confirm": "Confirmed the enquiry is complete",
+      "clarify": "Asked for the missing details",
+      "handoff": "Handed the enquiry to a person",
+      "none": "Sent nothing"
+    },
+    "reasons": {
+      "confirmed": "Every required detail is known.",
+      "clarified": "Details were missing, so it asked once.",
+      "cap_reached": "It asked as many times as it may.",
+      "agent_off": "The agent is off for this enquiry.",
+      "closed": "The enquiry is no longer open.",
+      "no_new_content": "No new message from the customer.",
+      "chit_chat": "The message was a greeting or a thank-you.",
+      "automatic": "The message came from an automatic reply.",
+      "already_complete": "The enquiry was already complete.",
+      "human_active": "A person replied to the customer recently.",
+      "cooldown": "It asked recently, so it waits before it asks again.",
+      "handed_off": "A person has this enquiry now.",
+      "loop_guard": "A loop guard stopped the reply.",
+      "model_unavailable": "The model was not available, so it did not reply.",
+      "model_retry": "The model failed. The agent tries again soon."
+    },
+    "requirements": {
+      "mode": "Mode",
+      "origin": "Origin",
+      "destination": "Destination",
+      "commodity": "Cargo",
+      "containerCount": "Container count",
+      "containerType": "Container type",
+      "grossWeightKg": "Gross weight",
+      "volumeCbm": "Volume",
+      "pieces": "Packages",
+      "readyOn": "Cargo ready date",
+      "incoterm": "Incoterm",
+      "dimensions": "Dimensions",
+      "weightOrVolume": "Weight or volume",
+      "weight": "Weight"
+    }
+  },
+  "intakeSettings": {
+    "eyebrow": "Intake",
+    "title": "Intake agent",
+    "subtitle": "How the agent answers WhatsApp and email enquiries, per branch. It waits until the customer stops typing, then answers once.",
+    "branches": "Branches",
+    "branch": "Branch",
+    "agentOn": "Agent on",
+    "agentOff": "Agent off",
+    "inherited": "Uses the default settings",
+    "quietWindow": "Quiet window",
+    "patience": "Questions",
+    "required": "Required details",
+    "windowSummary": "WhatsApp {whatsapp} s · email {email} s",
+    "patienceSummary": "{cap} at most, {cooldown} h apart · silent {takeover} h after a staff reply",
+    "noneYet": "No branch to configure",
+    "noneYetHint": "You configure the agent for the branches you administer.",
+    "editTitle": "Intake agent: {branch}",
+    "editSubtitle": "Changes apply to the next conversation turn.",
+    "inheritedHint": "This branch uses the default settings. Saving gives it its own.",
+    "enabled": "The agent answers this branch's enquiries",
+    "enabledHint": "Off, every enquiry gets the old acknowledgement and a person does the rest.",
+    "timing": "Timing",
+    "timingHint": "Each new message moves the turn back by the quiet window, up to the longest wait.",
+    "fields": {
+      "whatsappQuietSeconds": "WhatsApp quiet window (seconds)",
+      "whatsappMaxWaitSeconds": "WhatsApp longest wait (seconds)",
+      "emailQuietSeconds": "Email quiet window (seconds)",
+      "emailMaxWaitSeconds": "Email longest wait (seconds)",
+      "clarifyCooldownHours": "Hours between questions",
+      "clarifyCap": "Questions before a person takes over",
+      "humanTakeoverHours": "Hours of silence after a staff reply"
+    },
+    "requiredAll": "Required for every mode",
+    "requiredFor": "Required for {mode}",
+    "outOfRange": "Enter a whole number from {min} to {max}.",
+    "waitShorterThanQuiet": "Make the longest wait at least the quiet window.",
+    "noRequirements": "Choose at least one required detail.",
+    "noBranch": "Choose a branch."
+  },
+  "partnerMail": {
+    "title": "Mail waiting for a person",
+    "explain": "Mail from this supplier that opened no enquiry and had no bill to read.",
+    "noSubject": "No subject",
+    "openBill": "Open the bill",
+    "readAsBill": "Read as a bill",
+    "readAsBillHint": "The assistant reads the file into a bill in Received. Finance approves it before any payment.",
+    "reading": "Reading…",
+    "attachToJob": "Attach to a job",
+    "attach": "Attach",
+    "jobReference": "Job reference",
+    "jobReferenceHint": "The job in the same branch that this mail is about.",
+    "jobReferenceRequired": "Enter the job reference.",
+    "jobNotFound": "No job {reference} in this branch.",
+    "markHandled": "Mark as handled",
+    "handledHint": "The mail stays on record and leaves this list.",
+    "notFound": "This mail is no longer waiting.",
+    "serviceNotConfigured": "The background service is not configured, so the file cannot be read.",
+    "noModel": "No model is configured to read the file.",
+    "notABill": "The file did not read as a bill. Enter it on the payables screen.",
+    "readTimedOut": "Reading the file took too long. Try again."
   }
 }

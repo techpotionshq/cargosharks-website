@@ -29,14 +29,25 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { branches, hasSecretKey, mailboxes, sealSecret, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMailboxes } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface MailboxRow {
   readonly id: string
@@ -96,6 +107,8 @@ export async function listMailboxes(): Promise<MailboxRow[]> {
 export async function mailboxKeyConfigured(): Promise<boolean> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  // As `integrationKeyProblem`: the demo seals nothing, so it has no key to miss.
+  if (usePilotFixtures()) return true
   return hasSecretKey()
 }
 
@@ -118,9 +131,15 @@ const mailboxSchema = z.object({
  * field clearing the password — turns a small edit into a silently broken
  * mailbox that reports itself as configured.
  */
-export async function saveMailbox(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveMailbox = refuseForbidden(async function saveMailbox(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
     const value = form.get(key)
@@ -130,7 +149,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
   const mailboxId = read('mailboxId')
   const password = typeof form.get('password') === 'string' ? String(form.get('password')) : ''
 
-  const parsed = mailboxSchema.safeParse({
+  const parsed = await localeParse(mailboxSchema, {
     branchId: read('branchId'),
     host: read('host'),
     port: read('port') ?? 993,
@@ -156,28 +175,47 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
 
   if (!parsed.success) return fail(fieldErrors(parsed.error), safeEcho())
 
+  /*
+    F54: the id is a hidden field, so a malformed one is a tampered or broken
+    form rather than a typo — and it used to reach the database as a uuid cast
+    error. Refused as a form-level sentence, because there is no visible field
+    to put a message beside.
+  */
+  if (mailboxId !== undefined && !z.uuid().safeParse(mailboxId).success) {
+    return fail({ _: tv('missingMailbox') }, safeEcho())
+  }
+
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  // In that branch, not anywhere — FR-ID-02, A2.
+  assertCanIn(session, 'admin.mailboxes.write', data.branchId)
 
   if (!mailboxId && !password) {
-    return fail({ password: 'A password is needed to reach the mailbox.' }, safeEcho())
+    return fail({ password: tv('mailboxPassword') }, safeEcho())
   }
 
   if (!hasSecretKey()) {
     return fail(
       {
-        _:
-          'MAILBOX_ENCRYPTION_KEY is not set on this deployment, so a mailbox ' +
-          'password cannot be sealed. Set it and restart before adding a mailbox.',
+        _: tv('mailboxKeyMissing'),
       },
       safeEcho(),
     )
   }
 
+  let found = true
   try {
     await withActor(session.actor, async (tx) => {
       if (mailboxId) {
-        await tx
+        // The branch it is in now, as well as the one it is going to: moving
+        // another branch's mailbox into yours is taking it (A2).
+        const [current] = await tx
+          .select({ branchId: mailboxes.branchId })
+          .from(mailboxes)
+          .where(eq(mailboxes.id, mailboxId))
+          .limit(1)
+        if (current) assertCanIn(session, 'admin.mailboxes.write', current.branchId)
+
+        const updated = await tx
           .update(mailboxes)
           .set({
             ...data,
@@ -195,6 +233,14 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
             lastError: null,
           })
           .where(eq(mailboxes.id, mailboxId))
+          .returning({ id: mailboxes.id })
+        /*
+          F54: an update that matched nothing used to report success. The id
+          is from a page loaded earlier, or names a mailbox in a branch this
+          administrator cannot see — RLS makes the two indistinguishable, and
+          one sentence for both gives no signal about another branch's rows.
+        */
+        found = updated.length > 0
         return
       }
 
@@ -208,16 +254,20 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
       nothing because the first already flagged everything — an intermittent
       bug with a configuration cause, which is the worst kind to diagnose.
     */
-    const message = error instanceof Error ? error.message : String(error)
+    // Drizzle wraps the driver error: the constraint name is on its `cause`,
+    // so reading `error.message` alone never matched and a duplicate was a 500.
+    const message = databaseMessage(error)
     if (message.includes('mailboxes_address_unique')) {
-      return fail({ username: 'This mailbox is already connected on that host.' }, safeEcho())
+      return fail({ username: tv('mailboxConnected') }, safeEcho())
     }
     throw error
   }
 
+  if (!found) return fail({ _: tv('mailboxGone') }, safeEcho())
+
   revalidatePath('/settings/mailboxes')
   return succeed(data.username)
-}
+})
 
 /**
  * Stop reading a mailbox, or start again.
@@ -225,16 +275,19 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
  * Deactivating is how a mailbox is removed: the poll skips inactive rows, and
  * the row stays as the record of what was being read and when.
  */
-export async function setMailboxActive(
+export const setMailboxActive = refuseForbidden(async function setMailboxActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const mailboxId = String(form.get('mailboxId') ?? '')
   const isActive = form.get('isActive') === 'true'
-  if (!mailboxId) return fail({ _: 'Missing mailbox.' })
+  const tv = await getTranslations('adminValidation')
+  if (!mailboxId) return fail({ _: tv('missingMailbox') })
 
   await withActor(session.actor, async (tx) => {
     const [current] = await tx
@@ -246,6 +299,8 @@ export async function setMailboxActive(
     // Invisible under RLS means not-found, which is also the right answer to
     // give: no enumeration signal for another branch's configuration.
     if (!current) throw new Error('not_found')
+    // The row's own branch decides, not the pooled permission set (A2).
+    assertCanIn(session, 'admin.mailboxes.write', current.branchId)
 
     await tx
       .update(mailboxes)
@@ -255,4 +310,4 @@ export async function setMailboxActive(
 
   revalidatePath('/settings/mailboxes')
   return succeed(mailboxId)
-}
+})

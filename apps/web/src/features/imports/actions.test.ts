@@ -29,7 +29,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -340,6 +340,22 @@ describe.skipIf(!enabled)('bulk import', () => {
       expect(state.ok).toBe(true)
     })
 
+    /**
+     * The screen posts only what the operator chose — nothing, before the
+     * first check — and the headings are still read for every field it left
+     * alone. A posted mapping used to replace the guess outright (S13).
+     */
+    it('auto-maps the fields a posted mapping leaves out', async () => {
+      const state = await runImport(
+        {},
+        upload('customers', customerSheet(unique('AM')), {
+          branchId: HOME_BRANCH,
+          mapping: JSON.stringify({}),
+        }),
+      )
+      expect(state.ok).toBe(true)
+    })
+
     it('drops a column whose mapped index is not a real one', async () => {
       const state = await runImport(
         {},
@@ -395,7 +411,8 @@ describe.skipIf(!enabled)('bulk import', () => {
       expect(again.ok).toBe(false)
       expect(again.committed).toBeUndefined()
       expect(again.issues?.[0]?.field).toBe('code')
-      expect(again.issues?.[0]?.message).toContain('already exists in the system')
+      expect(again.issues?.[0]?.code).toBe('alreadyExists')
+      expect(again.issues?.[0]?.values).toEqual({ value: code })
     })
 
     it('refuses two rows in one file claiming the same code', async () => {
@@ -460,17 +477,48 @@ describe.skipIf(!enabled)('bulk import', () => {
      * Caught at the write rather than in the descriptor, because only the
      * database knows which codes exist — and reported as `unknown_reference`
      * rather than as a crash.
+     *
+     * With the lines themselves, not only the headline. The writer always
+     * collected them; the action used to drop them on the way out, so the
+     * operator learned that *a* row was wrong in a file of two thousand.
      */
-    it('refuses a contact whose customer does not exist', async () => {
+    it('refuses a contact whose customer does not exist, naming every such line', async () => {
+      const known = await customerFor()
       const state = await runImport(
         {},
         upload(
           'customer-contacts',
-          sheet(['Customer code', 'Contact name'], [['NO-SUCH-CODE', 'Nobody At All']]),
+          sheet(
+            ['Customer code', 'Contact name'],
+            [
+              [known, 'Somebody Real'],
+              ['NO-SUCH-CODE', 'Nobody At All'],
+              ['ALSO-MISSING', 'Nobody Either'],
+            ],
+          ),
           { intent: 'commit' },
         ),
       )
+
       expect(state.error).toBe('unknown_reference')
+      expect(state.ok).toBe(false)
+      expect(state.committed).toBeUndefined()
+      expect(state.issueCount).toBe(2)
+      expect(state.acceptedRows).toBe(1)
+      expect(state.issues).toEqual([
+        expect.objectContaining({
+          line: 3,
+          field: 'customerCode',
+          column: 'Customer code',
+          code: 'unknownCustomer',
+          values: { value: 'NO-SUCH-CODE' },
+        }),
+        expect.objectContaining({
+          line: 4,
+          code: 'unknownCustomer',
+          values: { value: 'ALSO-MISSING' },
+        }),
+      ])
     })
   })
 
@@ -557,7 +605,7 @@ describe.skipIf(!enabled)('bulk import', () => {
       )
       expect(state.ok).toBe(false)
       expect(state.issues?.[0]?.field).toBe('unlocode')
-      expect(state.issues?.[0]?.message).toContain('already exists in the system')
+      expect(state.issues?.[0]?.code).toBe('alreadyExists')
     })
   })
 
@@ -677,6 +725,14 @@ describe.skipIf(!enabled)('bulk import', () => {
         }),
       )
       expect(state.error).toBe('unknown_reference')
+      expect(state.issues).toEqual([
+        expect.objectContaining({
+          line: 2,
+          column: 'Customer code',
+          code: 'unknownCustomer',
+          values: { value: 'NEVER-IMPORTED-CODE' },
+        }),
+      ])
     })
   })
 
@@ -734,12 +790,18 @@ describe.skipIf(!enabled)('bulk import', () => {
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
         tx
-          .select({ status: invoices.status, paid: invoices.amountPaid })
+          .select({
+            status: invoices.status,
+            paid: invoices.amountPaid,
+            opening: invoices.amountPaidOpening,
+          })
           .from(invoices)
           .where(eq(invoices.seriesNo, seriesNo)),
       )
       expect(row?.status).toBe('part_paid')
       expect(Number(row?.paid)).toBeCloseTo(40, 3)
+      // F22. Kept apart, so a later receipt re-deriving `amount_paid` keeps it.
+      expect(row?.opening).toMatch(/^40\.0+$/)
     })
 
     /**
@@ -757,7 +819,7 @@ describe.skipIf(!enabled)('bulk import', () => {
         ),
       )
       expect(state.ok).toBe(false)
-      expect(state.issues?.[0]?.message).toContain('does not equal total')
+      expect(state.issues?.[0]?.code).toBe('totalMismatch')
     })
 
     it('refuses a settled invoice, which is not an open receivable', async () => {
@@ -768,7 +830,7 @@ describe.skipIf(!enabled)('bulk import', () => {
         }),
       )
       expect(state.ok).toBe(false)
-      expect(state.issues?.[0]?.message).toContain('Nothing outstanding')
+      expect(state.issues?.[0]?.code).toBe('nothingOutstanding')
     })
 
     it('refuses an overpayment rather than importing a negative balance', async () => {
@@ -779,7 +841,7 @@ describe.skipIf(!enabled)('bulk import', () => {
         }),
       )
       expect(state.ok).toBe(false)
-      expect(state.issues?.[0]?.message).toContain('credit note')
+      expect(state.issues?.[0]?.code).toBe('overpaid')
     })
 
     it('refuses a balance whose customer was never imported', async () => {
@@ -794,6 +856,19 @@ describe.skipIf(!enabled)('bulk import', () => {
         }),
       )
       expect(state.error).toBe('unknown_reference')
+      expect(state.issues).toEqual([
+        expect.objectContaining({
+          line: 2,
+          column: 'Customer code',
+          code: 'unknownCustomer',
+          values: { value: 'NEVER-IMPORTED-CODE' },
+        }),
+      ])
+      // Nothing written — the balance on line 2 is not half-imported.
+      const written = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ id: invoices.id }).from(invoices).where(eq(invoices.seriesNo, row[0]!)),
+      )
+      expect(written).toHaveLength(0)
     })
   })
 
@@ -900,6 +975,14 @@ describe.skipIf(!enabled)('bulk import', () => {
     })
 
     it('writes a selling tariff with no partner attached to it', async () => {
+      // "The newest sell card" is not this import's card when the coverage run
+      // has another suite writing sell cards in the same instant, so remember
+      // what was there before and look only at what is new.
+      const before = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ id: rateCards.id }).from(rateCards).where(eq(rateCards.direction, 'sell')),
+      )
+      const existing = before.map((row) => row.id)
+
       const state = await runImport(
         {},
         upload('rate-cards', sheet(RATE_HEADER, [rateRow('documentation', '15.000', FLAT)]), {
@@ -915,9 +998,11 @@ describe.skipIf(!enabled)('bulk import', () => {
         tx
           .select({ id: rateCards.id, partnerId: rateCards.partnerId })
           .from(rateCards)
-          .where(eq(rateCards.direction, 'sell'))
-          .orderBy(sql`created_at desc`)
-          .limit(1),
+          .where(
+            existing.length > 0
+              ? and(eq(rateCards.direction, 'sell'), notInArray(rateCards.id, existing))
+              : eq(rateCards.direction, 'sell'),
+          ),
       )
       expect(card?.partnerId).toBeNull()
 
@@ -973,7 +1058,7 @@ describe.skipIf(!enabled)('bulk import', () => {
         ),
       )
       expect(state.ok).toBe(false)
-      expect(state.issues?.[0]?.message).toContain('container type')
+      expect(state.issues?.[0]?.code).toBe('containerTypeNeeded')
     })
 
     /** `per container` is what a tariff says; `per_container` is what we store. */

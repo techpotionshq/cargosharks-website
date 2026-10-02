@@ -10,7 +10,9 @@
 import { describe, expect, it } from 'vitest'
 import { aggregate, compareVersions, type SurfaceOutcome } from '../src/index'
 
-const invoice = (over: Partial<Extract<SurfaceOutcome, { kind: 'invoice' }>> = {}): SurfaceOutcome => ({
+const invoice = (
+  over: Partial<Extract<SurfaceOutcome, { kind: 'invoice' }>> = {},
+): SurfaceOutcome => ({
   kind: 'invoice',
   parsed: true,
   reconciles: true,
@@ -21,7 +23,9 @@ const invoice = (over: Partial<Extract<SurfaceOutcome, { kind: 'invoice' }>> = {
   ...over,
 })
 
-const enquiry = (over: Partial<Extract<SurfaceOutcome, { kind: 'enquiry' }>> = {}): SurfaceOutcome => ({
+const enquiry = (
+  over: Partial<Extract<SurfaceOutcome, { kind: 'enquiry' }>> = {},
+): SurfaceOutcome => ({
   kind: 'enquiry',
   parsed: true,
   fieldCount: 4,
@@ -30,7 +34,9 @@ const enquiry = (over: Partial<Extract<SurfaceOutcome, { kind: 'enquiry' }>> = {
   ...over,
 })
 
-const rateReply = (over: Partial<Extract<SurfaceOutcome, { kind: 'rate' }>> = {}): SurfaceOutcome => ({
+const rateReply = (
+  over: Partial<Extract<SurfaceOutcome, { kind: 'rate' }>> = {},
+): SurfaceOutcome => ({
   kind: 'rate',
   parsed: true,
   declined: false,
@@ -58,7 +64,10 @@ describe('aggregating an invoice surface', () => {
   })
 
   it('summarises confidence over the parsed invoices', () => {
-    const metrics = aggregate('invoice_extract', [invoice({ confidence: 0.2 }), invoice({ confidence: 0.8 })])
+    const metrics = aggregate('invoice_extract', [
+      invoice({ confidence: 0.2 }),
+      invoice({ confidence: 0.8 }),
+    ])
     expect(metrics.confidence?.mean).toBeCloseTo(0.5, 5)
     // 0.2 → bucket 2, 0.8 → bucket 8.
     expect(metrics.confidence?.buckets[2]).toBe(1)
@@ -106,7 +115,10 @@ describe('aggregating a rate surface', () => {
 
 describe('confidence buckets', () => {
   it('puts an exact 1.0 in the last bucket, not off the end', () => {
-    const metrics = aggregate('invoice_extract', [invoice({ confidence: 1 }), invoice({ confidence: 0 })])
+    const metrics = aggregate('invoice_extract', [
+      invoice({ confidence: 1 }),
+      invoice({ confidence: 0 }),
+    ])
     expect(metrics.confidence?.buckets[9]).toBe(1)
     expect(metrics.confidence?.buckets[0]).toBe(1)
   })
@@ -114,7 +126,10 @@ describe('confidence buckets', () => {
 
 describe('comparing two prompt versions', () => {
   it('reports the movement of every shared ratio, parse rate first', () => {
-    const before = aggregate('invoice_extract', [invoice({ reconciles: false, findingCount: 1 }), failed()])
+    const before = aggregate('invoice_extract', [
+      invoice({ reconciles: false, findingCount: 1 }),
+      failed(),
+    ])
     const after = aggregate('invoice_extract', [invoice(), invoice()])
 
     const deltas = compareVersions(before, after)

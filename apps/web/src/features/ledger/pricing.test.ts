@@ -24,6 +24,7 @@
  * the margin rule, the cards used.
  */
 
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 
@@ -36,20 +37,40 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   chargeTypes,
   customerBranchTerms,
   enquiries,
+  fxRates,
   locations,
+  partners,
   quoteLines,
   quotes,
   rateCardLines,
   rateCards,
+  rateRequests,
   withActor,
 } = await import('@qabandi/db')
 
-const { CUSTOMER, AWAY_CUSTOMER, HOME_BRANCH, AWAY_BRANCH, PRINCIPAL, bothBranchesActor, world } =
-  await import('@/lib/testing/fixtures')
+const {
+  CUSTOMER,
+  AWAY_CUSTOMER,
+  HOME_BRANCH,
+  AWAY_BRANCH,
+  PARTNER,
+  PRINCIPAL,
+  bothBranchesActor,
+  world,
+} = await import('@/lib/testing/fixtures')
 
 const { priceEnquiry } = await import('./pricing')
 
@@ -140,6 +161,8 @@ async function enquiry(on: Lane, over: Record<string, unknown> = {}): Promise<st
         destinationId: on.destinationId,
         readyOn: READY,
         pieces: 2,
+        // FCL is priced per container, and only this says how many (F39).
+        containerCount: 2,
         ...over,
       })
       .returning({ id: enquiries.id })
@@ -272,6 +295,68 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(Number(lines[0]!.quantity)).toBe(2)
     })
 
+    /*
+      A card in another currency is converted into the branch's, and the
+      quotation says so. The totals are the sum of each line in the base
+      currency; they used to be stored under the card's currency code — KWD
+      figures labelled USD — because every card in this suite was in KWD and the
+      two never differed.
+    */
+    it('totals a foreign-currency card in the branch currency, and says so', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      const today = new Date().toISOString().slice(0, 10)
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({
+            // INR, which no other suite converts: the test database is never
+            // emptied, and a USD rate written here was read by the credit suite.
+            fromCurrency: 'INR',
+            toCurrency: 'KWD',
+            rate: '0.01000000',
+            source: 'pricing-test',
+            effectiveOn: today,
+          })
+          .onConflictDoNothing(),
+      )
+      await card(
+        on,
+        'sell',
+        [
+          { chargeTypeId: oceanFreight, basis: 'per_container', rate: '250.00', currency: 'INR' },
+          { chargeTypeId: documentation, basis: 'flat', rate: '15.00', currency: 'INR' },
+        ],
+        { currency: 'INR' },
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      expect(quote!.currency).toBe('KWD')
+      // 2 × 250 + 15 = 515 INR, at 0.01 → 5.150 KWD.
+      expect(Number(quote!.totalSell)).toBeCloseTo(5.15, 3)
+
+      // The lines are in the quotation's currency too — a PDF prints them under
+      // it, and 250 USD printed as "KWD 250.000" contradicted the total.
+      const lines = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            rate: quoteLines.rate,
+            amount: quoteLines.amount,
+            currency: quoteLines.currency,
+          })
+          .from(quoteLines)
+          .where(eq(quoteLines.quoteId, quote!.id))
+          .orderBy(quoteLines.sortOrder),
+      )
+      expect(lines.map((line) => line.currency)).toEqual(['KWD', 'KWD'])
+      expect(Number(lines[0]!.rate)).toBeCloseTo(2.5, 6)
+      expect(Number(lines[0]!.amount)).toBeCloseTo(5, 3)
+      expect(Number(lines[1]!.amount)).toBeCloseTo(0.15, 3)
+    })
+
     /** Nothing is added to a sell rate — somebody decided that price. */
     it('does not apply a margin on top of a selling rate', async () => {
       const on = await lane()
@@ -336,6 +421,108 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
     })
 
     /**
+     * The sell line's rate is the sell amount over its quantity — never our
+     * buy rate, which printed on the customer's quotation beside the margined
+     * amount, so qty × rate did not make the amount and the customer read the
+     * rate we buy at (R2).
+     */
+    it('writes the sell rate on a margined line, not the buy rate', async () => {
+      await setMargin('percent', '15')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'buy', [{ rate: '445.150' }])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const [line] = await linesOf((await quoteFor(id))!.id)
+      // 2 × 445.150 = 890.300 cost, +15% = 1,023.845 sell.
+      expect(line!.amount).toBe('1023.845000')
+      expect(Number(line!.rate)).toBeCloseTo(511.9225, 6)
+      expect(Number(line!.quantity) * Number(line!.rate)).toBeCloseTo(1023.845, 3)
+    })
+
+    /** Each line is rounded before the total, so the lines add up to it (R2). */
+    it('totals the rounded lines, so the quotation adds up', async () => {
+      await setMargin('percent', '10')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [0, 1, 2].map(() => ({ chargeTypeId: documentation, basis: 'flat', rate: '1.234' })),
+      )
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const quote = await quoteFor(id)
+      const lines = await linesOf(quote!.id)
+      expect(lines.map((l) => l.amount)).toEqual(['1.357000', '1.357000', '1.357000'])
+      expect(quote!.totalSell).toBe('4.071000')
+    })
+
+    /**
+     * An absolute or target margin is in the branch currency and applies to
+     * the whole quotation once. On a foreign-currency buy card it threw a
+     * currency mismatch and refused the enquiry, and on several lines it was
+     * applied once per line (R2).
+     */
+    it('lays an absolute margin once over a foreign-currency card', async () => {
+      await setMargin('absolute', '50')
+      await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'INR',
+            toCurrency: 'KWD',
+            rate: '0.01000000',
+            source: 'pricing-test',
+            effectiveOn: new Date().toISOString().slice(0, 10),
+          })
+          .onConflictDoNothing(),
+      )
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [
+          { basis: 'per_container', rate: '25000.00', currency: 'INR' },
+          { chargeTypeId: documentation, basis: 'flat', rate: '5000.00', currency: 'INR' },
+        ],
+        { currency: 'INR' },
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      // 2 × 25,000 + 5,000 = 55,000 INR → 550.000 KWD cost; + 50 once = 600.
+      expect(quote!.totalCost).toBe('550.000000')
+      expect(quote!.totalSell).toBe('600.000000')
+      const lines = await linesOf(quote!.id)
+      expect(lines.map((l) => l.amount)).toEqual(['545.455000', '54.545000'])
+    })
+
+    it('quotes a target sell once, however many lines the card has', async () => {
+      await setMargin('target_sell', '500')
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(
+        on,
+        'buy',
+        [0, 1, 2].map((i) => ({
+          chargeTypeId: i === 0 ? oceanFreight : documentation,
+          basis: 'flat',
+          rate: '100.000',
+        })),
+      )
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect((await quoteFor(id))!.totalSell).toBe('500.000000')
+    })
+
+    /**
      * Refuses rather than guessing.
      *
      * A house margin of zero is a decision; no house margin is an absence, and
@@ -350,7 +537,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
 
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(state.message).toContain('house margin')
+      expect(state.message).toBe('ledgerValidation.pricingNoMargin')
       expect(await quoteFor(id)).toBeUndefined()
     })
   })
@@ -370,7 +557,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
 
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(state.message).toContain('No rate card covers')
+      expect(state.message).toBe('ledgerValidation.pricingNoCover')
     })
 
     it('prefers the customer’s own card over the house card', async () => {
@@ -396,7 +583,61 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
 
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(state.message).toContain('No rate card covers')
+      expect(state.message).toBe('ledgerValidation.pricingNoCover')
+    })
+
+    /**
+     * The awarded agent rate is the cost, whatever else covers the lane (F67).
+     *
+     * Two agents' buy cards on one lane: the rival is cheaper and sorts first,
+     * so the lane lookup alone takes it. The enquiry's accepted rate request names the
+     * other, and a person pressing "Price it" after awarding it must be costed
+     * off what they awarded — the sell card stays the price either way.
+     */
+    it('costs off the buy card the enquiry awarded, not a cheaper rival', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+      const awarded = await card(on, 'buy', [{ rate: '250.000' }], { partnerId: PARTNER })
+      /*
+        The lookup orders agents' cards by the `partner_id` uuid before
+        `valid_from` — the arbitrary tie-break F67 was about — so the rival's
+        id is made to sort before the fixture agent's (…c005): without the
+        award it is the card that would cost this, every run.
+      */
+      const rival = `00000000-0000-4000-8000-${randomUUID().slice(-12)}`
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(partners).values({
+          id: rival,
+          code: `AGT-P-${RUN}-${next()}`,
+          type: 'agent',
+          legalNameEn: 'Cheaper Rival',
+        }),
+      )
+      await card(on, 'buy', [{ rate: '150.000' }], {
+        partnerId: rival,
+        validFrom: '2031-02-01',
+        validity: '[2031-02-01,2031-12-31)',
+      })
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId: id,
+          partnerId: PARTNER,
+          status: 'accepted',
+          token: `p-${RUN}-${next()}`,
+          rateCardId: awarded,
+        }),
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      // Two containers at the awarded 250 — the rival's 150 would give 300.
+      expect(quote!.totalCost).toBe('500.000000')
+      expect(Number(quote!.totalSell)).toBeCloseTo(600, 3)
+      expect((quote!.snapshot as Record<string, unknown>).buyCardId).toBe(awarded)
     })
 
     /**
@@ -412,7 +653,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
 
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(state.message).toContain('No rate card covers')
+      expect(state.message).toBe('ledgerValidation.pricingNoCover')
     })
   })
 
@@ -490,14 +731,33 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(Number(lines[0]!.rate)).toBeCloseTo(3, 3)
     })
 
-    it('takes the container count from the enquiry’s pieces on FCL', async () => {
+    /*
+      The container count, never the package count (F39). This test used to
+      assert the opposite — `pieces: 3` priced as three containers — which is
+      how 200 cartons were quoted as 200 × 40HC.
+    */
+    it('takes the container count on FCL, not the pieces', async () => {
       const on = await lane()
-      const id = await enquiry(on, { pieces: 3 })
+      const id = await enquiry(on, { pieces: 200, containerCount: 3 })
       await card(on, 'sell', [{ rate: '100.000' }])
 
       await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(Number((await quoteFor(id))!.totalSell)).toBeCloseTo(300, 3)
+      const quote = await quoteFor(id)
+      expect(Number(quote!.totalSell)).toBeCloseTo(300, 3)
+      expect(Number((await linesOf(quote!.id))[0]!.quantity)).toBe(3)
+    })
+
+    /** Only FCL needs a count — an LCL lane still prices without one. */
+    it('does not ask an LCL enquiry for a container count', async () => {
+      const on = await lane()
+      const id = await enquiry(on, { mode: 'sea_lcl', containerCount: null })
+      await card(on, 'sell', [{ basis: 'flat', rate: '80.000' }], { mode: 'sea_lcl' })
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect(state.message).toBeUndefined()
+      expect(Number((await quoteFor(id))!.totalSell)).toBeCloseTo(80, 3)
     })
   })
 
@@ -515,6 +775,33 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(snapshot.buyCardId).toBe(buy)
       expect(snapshot.baseCurrency).toBe('KWD')
       expect(snapshot.pricedAt).toEqual(expect.any(String))
+    })
+
+    /*
+      The buy side line by line, so the comparison can show a buy rate beside
+      each sell rate rather than only a buy total (F41). In the quotation's
+      currency, like the sell lines.
+    */
+    it('records the buy rate of each line beside the sell', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [
+        { chargeTypeId: oceanFreight, rate: '300.000' },
+        { chargeTypeId: documentation, basis: 'flat', rate: '15.000' },
+      ])
+      await card(on, 'buy', [{ chargeTypeId: oceanFreight, rate: '200.000' }])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const snapshot = (await quoteFor(id))!.snapshot as {
+        lineCosts: { chargeTypeKey: string; rate: string; amount: string; currency: string }[]
+      }
+      // Only the charge the buy card carries; documentation has no buy line.
+      expect(snapshot.lineCosts).toHaveLength(1)
+      expect(snapshot.lineCosts[0]!.chargeTypeKey).toBe('ocean_freight')
+      expect(Number(snapshot.lineCosts[0]!.rate)).toBeCloseTo(200, 6)
+      expect(Number(snapshot.lineCosts[0]!.amount)).toBeCloseTo(400, 3)
+      expect(snapshot.lineCosts[0]!.currency).toBe('KWD')
     })
 
     /** The block the quotation PDF renders, derived from what was priced. */
@@ -567,6 +854,73 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       expect(all[1]!.status).toBe('draft')
     })
 
+    /** The replaced version points at its replacement (S3). */
+    it('records which version replaced the old one', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+
+      await priceEnquiry({}, form({ enquiryId: id }))
+      await priceEnquiry({}, form({ enquiryId: id }))
+
+      const all = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: quotes.id, supersededById: quotes.supersededById })
+          .from(quotes)
+          .where(eq(quotes.enquiryId, id))
+          .orderBy(quotes.version),
+      )
+      expect(all[0]!.supersededById).toBe(all[1]!.id)
+      expect(all[1]!.supersededById).toBeNull()
+    })
+
+    /**
+     * Re-pricing after the customer accepted retired the accepted quote with
+     * one click (S2). It is refused with a sentence instead.
+     */
+    it('refuses to re-price once a version was accepted', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+      await priceEnquiry({}, form({ enquiryId: id }))
+      await withActor(bothBranchesActor, (tx) =>
+        tx.update(quotes).set({ status: 'accepted' }).where(eq(quotes.enquiryId, id)),
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect(state.message).toBe('ledgerValidation.quoteAlreadyAccepted')
+      const quote = await quoteFor(id)
+      expect(quote!.version).toBe(1)
+      expect(quote!.status).toBe('accepted')
+    })
+
+    /**
+     * Two prices at once — auto-draft and a coordinator in the same minute —
+     * both read "no quote yet" and both wrote version 1; the second died on
+     * `quotes_version_unique` (S19). The enquiry lock numbers them in turn.
+     */
+    it('numbers two simultaneous prices one after the other', async () => {
+      const on = await lane()
+      const id = await enquiry(on)
+      await card(on, 'sell', [{ rate: '300.000' }])
+
+      const states = await Promise.all([
+        priceEnquiry({}, form({ enquiryId: id })),
+        priceEnquiry({}, form({ enquiryId: id })),
+      ])
+
+      expect(states.every((s) => s.message === undefined)).toBe(true)
+      const all = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ version: quotes.version })
+          .from(quotes)
+          .where(eq(quotes.enquiryId, id))
+          .orderBy(quotes.version),
+      )
+      expect(all.map((q) => q.version)).toEqual([1, 2])
+    })
+
     /**
      * Withdrawing a live quotation is its own key — FR-ID-03.
      *
@@ -585,7 +939,9 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
         // The first is allowed on `quote.send` alone.
         expect((await priceEnquiry({}, form({ enquiryId: id }))).message).toBeUndefined()
 
-        await expect(priceEnquiry({}, form({ enquiryId: id }))).rejects.toThrow('quote.revise')
+        await expect(priceEnquiry({}, form({ enquiryId: id }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = session
       }
@@ -614,7 +970,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
     it('says so plainly when no card covers the lane', async () => {
       const state = await priceEnquiry({}, form({ enquiryId: await enquiry(await lane()) }))
 
-      expect(state.message).toContain('No rate card covers')
+      expect(state.message).toBe('ledgerValidation.pricingNoCover')
     })
 
     it('refuses an enquiry with no mode to price against', async () => {
@@ -622,7 +978,23 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       const id = await enquiry(on, { mode: null })
       const state = await priceEnquiry({}, form({ enquiryId: id }))
 
-      expect(state.message).toContain('no transport mode')
+      expect(state.message).toBe('ledgerValidation.pricingNoMode')
+    })
+
+    /*
+      A FCL enquiry with no container count is refused, not priced off its
+      pieces (F39) — even with a card covering the lane, and before any
+      quotation is written.
+    */
+    it('refuses a FCL enquiry with no container count', async () => {
+      const on = await lane()
+      const id = await enquiry(on, { pieces: 200, containerCount: null })
+      await card(on, 'sell', [{ rate: '100.000' }])
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+
+      expect(state.message).toBe('ledgerValidation.pricingNoContainerCount')
+      expect(await quoteFor(id)).toBeUndefined()
     })
 
     it('refuses a caller without the permission', async () => {
@@ -630,7 +1002,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       try {
         await expect(
           priceEnquiry({}, form({ enquiryId: await enquiry(await lane()) })),
-        ).rejects.toThrow('quote.send')
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }
@@ -642,7 +1014,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
         form({ enquiryId: '00000000-0000-7000-8000-0000000000ff' }),
       )
 
-      expect(state.message).toContain('No such enquiry')
+      expect(state.message).toBe('ledgerValidation.pricingNotFound')
     })
   })
 })

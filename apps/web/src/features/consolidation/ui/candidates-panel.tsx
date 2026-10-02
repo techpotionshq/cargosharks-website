@@ -37,33 +37,42 @@ import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { consolidationCandidates } from '../candidates'
 import { FormClusterButton } from './form-cluster-button'
+import { Lane } from '@/ui/layout'
 
 export async function CandidatesPanel() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const [clusters, t, locale] = await Promise.all([
-    consolidationCandidates(session.actor),
+  const locale = await getLocale()
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const [clusters, t] = await Promise.all([
+    consolidationCandidates(session.actor, undefined, lang),
     getTranslations('grouping'),
-    getLocale(),
   ])
 
   // Nothing to group is the ordinary state of a tidy week. No empty card.
   if (clusters.length === 0) return null
-
-  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const mayForm = can(session, 'consol.write')
 
   return (
     <Card className="mb-4" padding="none">
-      <CardHeader title={t('title')} description={t('description', { count: clusters.length })} />
+      <CardHeader
+        className="p-4 pb-3"
+        title={t('title')}
+        description={t('description', { count: clusters.length })}
+      />
       <ul className="divide-y divide-line">
         {clusters.map((cluster) => (
           <li key={cluster.key} className="flex flex-wrap items-start gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[0.9375rem] font-semibold text-ink">
-                  {cluster.originName ?? '—'} → {cluster.destinationName ?? '—'}
+                <span className="text-title font-semibold text-ink">
+                  {/* The drawn arrow mirrors; a typed U+2192 points back at the
+                      origin in Arabic. */}
+                  <Lane
+                    origin={cluster.originName ?? '—'}
+                    destination={cluster.destinationName ?? '—'}
+                  />
                 </span>
                 <Badge tone="muted">{t(`modes.${cluster.mode}`)}</Badge>
                 {cluster.fit ? (
@@ -77,13 +86,13 @@ export async function CandidatesPanel() {
                   <Badge tone="caution">{t('overflows')}</Badge>
                 )}
                 {cluster.fit ? (
-                  <span className="text-[0.75rem] text-ink-subtle">
+                  <span className="text-caption text-ink-subtle">
                     {t(`limitedBy.${cluster.fit.limitedBy}`)}
                   </span>
                 ) : null}
               </div>
 
-              <p className="mt-1 text-[0.8125rem] text-ink-muted">
+              <p className="mt-1 text-body-sm text-ink-muted">
                 {t('summary', {
                   shipments: cluster.shipments.length,
                   customers: cluster.customerCount,
@@ -106,7 +115,7 @@ export async function CandidatesPanel() {
                 )}
               </p>
 
-              <p className="mt-1 text-[0.75rem] text-ink-subtle" dir="auto">
+              <p className="mt-1 text-caption text-ink-subtle" dir="auto">
                 {cluster.shipments
                   .map((s) => `${s.reference}${s.customerName ? ` (${s.customerName})` : ''}`)
                   .join(' · ')}

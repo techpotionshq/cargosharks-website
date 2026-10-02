@@ -386,6 +386,67 @@ describe.skipIf(!enabled)('the public read API', () => {
       expect(body.milestones).toEqual([])
     })
 
+    /**
+     * A11. The detail was `select()` — every column of `jobs`, internal notes
+     * and owner ids included. RLS chooses rows, not columns.
+     */
+    it('states only the fields the API promises on one shipment too', async () => {
+      const mine = await job({ customerReference: 'PO-PUBLIC-DETAIL' })
+
+      const body = (await get(`/api/v1/jobs/${mine.reference}`, key)).json() as {
+        job: Record<string, unknown>
+      }
+
+      expect(Object.keys(body.job).sort()).toEqual([
+        'customerReference',
+        'eta',
+        'etd',
+        'mode',
+        'reference',
+        'status',
+      ])
+    })
+
+    it('does not show a draft, in the list or by reference', async () => {
+      const draft = await job({ status: 'draft' })
+
+      const list = (await get('/api/v1/jobs', key)).json() as { reference: string }[]
+      expect(list.map((row) => row.reference)).not.toContain(draft.reference)
+      expect((await get(`/api/v1/jobs/${draft.reference}`, key)).statusCode).toBe(404)
+    })
+
+    it('leaves out a milestone the customer is not shown', async () => {
+      const mine = await job()
+      await withActor(systemActor, (tx) =>
+        tx.insert(jobMilestones).values({
+          jobId: mine.id,
+          code: 'internal_note',
+          nameEn: 'Internal',
+          nameAr: 'داخلي',
+          seq: 5,
+          customerVisible: false,
+        } as never),
+      )
+
+      const body = (await get(`/api/v1/jobs/${mine.reference}`, key)).json() as {
+        milestones: { code: string }[]
+      }
+      expect(body.milestones.map((m) => m.code)).not.toContain('internal_note')
+    })
+
+    /**
+     * A11. The key used to act as the administrator who issued it, so every
+     * policy asking `app.has_permission()` answered for that administrator.
+     */
+    it('acts as the key, not as whoever issued it', async () => {
+      const { resolveKeyForTest } = await import('./public')
+      const [prefix, secret] = key.split('.')
+      const actor = await resolveKeyForTest(prefix!, secret!)
+      expect(actor?.principalId).not.toBe(PRINCIPAL)
+      expect(actor?.type).toBe('customer_contact')
+      expect(actor?.customerId).toBe(CUSTOMER)
+    })
+
     it('is 404 for a reference that does not exist', async () => {
       const response = await get('/api/v1/jobs/NO-SUCH-REFERENCE', key)
 

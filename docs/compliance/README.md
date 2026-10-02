@@ -24,14 +24,21 @@ security contact is at `/.well-known/security.txt`.
 ## Where this stands
 
 **Strong**, and unusually so for the stage: tenancy enforced by the database
-rather than by application code (82 of 88 tables with row-level security
-enabled *and* forced, 197 policies); audit written by 80 triggers attached by a
-loop rather than by a list; `DELETE` revoked from the application role; vendor
-support access granted by the customer, time-boxed, read-only by structure and
-logged per transaction; six CI jobs including the policy matrix run as the
+rather than by application code (87 of 93 tables with row-level security
+enabled *and* forced, 211 policies); audit written by 85 triggers, and a build
+that fails for any business table without one; `DELETE` revoked from the
+application role; vendor support access granted by the customer, time-boxed,
+read-only unless the customer grants write scope, and logged per transaction;
+permissions checked per branch in the application as well as by policy; six CI jobs including the policy matrix run as the
 unprivileged role; and, as of 2026-08-25, a nonce-based content-security policy,
 enforced two-factor for Administrator and Finance, sign-in lockout, and weekly
-supply-chain scanning.
+supply-chain scanning. Since then (re-verified 2026-10-02): the lockout and
+throttles are enforced inside Better Auth itself, every throttle and Better
+Auth's own limiter read the client address from the trusted proxy hops rather
+than the caller-written leftmost `X-Forwarded-For` entry, sign-out and password
+reset end sessions, backup codes work at the two-factor challenge, invitations
+create a real login with an emailed set-password link, and an all-branch
+webhook or API key needs the administrator's permission in every branch.
 
 **Missing**, and named in full in `Security_Measures.md` §6: any independent
 attestation, encryption at rest, a monitoring backend and alerting on top of it,

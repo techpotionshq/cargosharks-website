@@ -13,7 +13,7 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNull, lt, ne, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   customers,
@@ -33,6 +33,7 @@ import {
 import type { Direction, EnquirySummary, JobSummary, Mode, OpsOverview } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotMapData, pilotOverview } from '@/lib/pilot/fixtures'
+import { named, pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -40,8 +41,11 @@ const destination = alias(locations, 'destination')
 const LIVE = sql`${jobs.status} in ('booked','in_transit','arrived','customs','on_hold')`
 const OPEN_ENQUIRY = sql`${enquiries.status} in ('new','assigned','rating','quoted')`
 
-export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
-  if (usePilotFixtures()) return pilotOverview()
+export async function getOpsOverview(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<OpsOverview> {
+  if (usePilotFixtures()) return pilotOverview(Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const now = new Date()
@@ -58,7 +62,9 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       jobByStatus,
       jobByMode,
       quoteTotals,
+      quotedByCurrency,
       clockTotals,
+      accruedByCurrency,
       exceptionRows,
       slaWatch,
       arrivals,
@@ -93,7 +99,10 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       // quiet weekend renders as a gap rather than vanishing from the axis.
       () =>
         tx.execute(sql`
-        select to_char(d.day, 'DD Mon') as label,
+        -- The day itself, not a label: to_char(..., 'DD Mon') printed
+        -- "17 Sep" on the Arabic page. The page words it in the reader's
+        -- language.
+        select to_char(d.day, 'YYYY-MM-DD') as label,
                count(${enquiries.id})::int as value
           from generate_series(${fortnightAgo}::date, ${now}::date, interval '1 day') as d(day)
           left join ${enquiries}
@@ -134,9 +143,6 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             sent: sql<number>`count(*) filter (where ${quotes.sentAt} >= ${monthStart})::int`,
             won: sql<number>`count(*) filter (where ${quotes.status} = 'accepted')::int`,
             decided: sql<number>`count(*) filter (where ${quotes.status} in ('accepted','rejected'))::int`,
-            value: sql<
-              string | null
-            >`sum(${quotes.totalSell}) filter (where ${quotes.sentAt} >= ${monthStart})`,
             // Margin from the frozen snapshot, never recomputed from today's
             // rate card — that is the whole point of `priced_snapshot` (§6.3).
             margin: sql<string | null>`avg(
@@ -148,15 +154,43 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
           })
           .from(quotes),
 
+      /*
+        What was quoted this month, one figure per currency — and only the
+        live version of each quotation. It was one sum across every currency
+        labelled KWD, counting every superseded version as well, so a quote
+        revised four times was quoted five times over.
+      */
+      () =>
+        tx
+          .select({
+            currency: quotes.currency,
+            amount: sql<string>`sum(${quotes.totalSell})::text`,
+          })
+          .from(quotes)
+          .where(and(gte(quotes.sentAt, monthStart), ne(quotes.status, 'superseded')))
+          .groupBy(quotes.currency)
+          .orderBy(desc(sql`sum(${quotes.totalSell})`), asc(quotes.currency)),
+
       () =>
         tx
           .select({
             running: sql<number>`count(*)::int`,
-            accrued: sql<string | null>`sum(${freeTimeClocks.accruedAmount})`,
             atRisk: sql<number>`count(*) filter (where ${freeTimeClocks.accruedDays} > 0)::int`,
           })
           .from(freeTimeClocks)
           .where(isNull(freeTimeClocks.endsOn)),
+
+      // Per currency for the same reason: a USD per-diem is not dinars.
+      () =>
+        tx
+          .select({
+            currency: freeTimeClocks.currency,
+            amount: sql<string>`sum(${freeTimeClocks.accruedAmount})::text`,
+          })
+          .from(freeTimeClocks)
+          .where(and(isNull(freeTimeClocks.endsOn), gt(freeTimeClocks.accruedAmount, '0')))
+          .groupBy(freeTimeClocks.currency)
+          .orderBy(desc(sql`sum(${freeTimeClocks.accruedAmount})`), asc(freeTimeClocks.currency)),
 
       () =>
         tx
@@ -171,8 +205,9 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             code: exceptionCodes.code,
             nameEn: exceptionCodes.nameEn,
             nameAr: exceptionCodes.nameAr,
-            owner: principals.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
             customerName: customers.legalNameEn,
+            customerNameAr: customers.legalNameAr,
           })
           .from(exceptions)
           .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
@@ -198,9 +233,9 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             customerNameAr: customers.legalNameAr,
             contactName: enquiries.contactName,
             contactEmail: enquiries.contactEmail,
-            owner: principals.nameEn,
-            originName: origin.nameEn,
-            destinationName: destination.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
+            originName: named(locale, origin.nameEn, origin.nameAr),
+            destinationName: named(locale, destination.nameEn, destination.nameAr),
           })
           .from(enquiries)
           .leftJoin(customers, eq(customers.id, enquiries.customerId))
@@ -234,7 +269,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             destinationName: destination.nameEn,
             destinationNameAr: destination.nameAr,
             destinationCode: destination.unlocode,
-            owner: principals.nameEn,
+            owner: named(locale, principals.nameEn, principals.nameAr),
             customsStatus: customsStages.status,
           })
           .from(jobs)
@@ -251,12 +286,19 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         tx
           .select({
             lane: sql<string>`coalesce(${origin.nameEn}, '—') || ' → ' || coalesce(${destination.nameEn}, '—')`,
+            /*
+              Both labels, so the page picks without a second query. The arrow
+              turns round because an RTL line sets the origin on the right —
+              the same label the margin report builds. `nullif` because an
+              empty Arabic name is as unset as a null one.
+            */
+            laneAr: sql<string>`coalesce(nullif(${origin.nameAr}, ''), ${origin.nameEn}, '—') || ' ← ' || coalesce(nullif(${destination.nameAr}, ''), ${destination.nameEn}, '—')`,
             count: sql<number>`count(*)::int`,
           })
           .from(jobs)
           .leftJoin(origin, eq(origin.id, jobs.originId))
           .leftJoin(destination, eq(destination.id, jobs.destinationId))
-          .groupBy(origin.nameEn, destination.nameEn)
+          .groupBy(origin.nameEn, destination.nameEn, origin.nameAr, destination.nameAr)
           .orderBy(desc(sql`count(*)`))
           .limit(5),
     ])
@@ -291,12 +333,12 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
             ? Math.round((quoteRow.won / quoteRow.decided) * 100)
             : 0,
         averageMarginPct: quoteRow?.margin ? Math.round(Number(quoteRow.margin) * 10) / 10 : 0,
-        quotedValue: { amount: Number(quoteRow?.value ?? 0), currency: 'KWD' },
+        quotedValue: quotedByCurrency,
         medianResponseMinutes: Math.round(Number(quoteRow?.medianMinutes ?? 0)),
       },
       clocks: {
         running: clockRow?.running ?? 0,
-        accruing: { amount: Number(clockRow?.accrued ?? 0), currency: 'KWD' },
+        accruing: accruedByCurrency,
         containersAtRisk: clockRow?.atRisk ?? 0,
       },
       exceptions: exceptionRows.map((row) => ({
@@ -312,6 +354,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         owner: row.owner,
         description: row.description,
         customerName: row.customerName ?? '—',
+        customerNameAr: row.customerNameAr || row.customerName || '—',
       })),
       slaWatch: slaWatch.map((row): EnquirySummary => ({
         id: row.id,
@@ -328,7 +371,10 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         */
         customerName: row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
         customerNameAr:
-          row.customerNameAr ?? row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+          pickName('ar', row.customerName, row.customerNameAr) ??
+          row.contactName ??
+          row.contactEmail ??
+          '—',
         originName: row.originName ?? '—',
         destinationName: row.destinationName ?? '—',
         owner: row.owner,
@@ -346,12 +392,12 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
         mode: row.mode as Mode,
         direction: row.direction as Direction,
         customerName: row.customerName ?? '—',
-        customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+        customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
         originName: row.originName ?? '—',
-        originNameAr: row.originNameAr ?? row.originName ?? '—',
+        originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
         originCode: row.originCode ?? '',
         destinationName: row.destinationName ?? '—',
-        destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+        destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
         destinationCode: row.destinationCode ?? '',
         vesselOrFlight:
           row.flightNumber ??
@@ -372,6 +418,7 @@ export async function getOpsOverview(actor: Actor): Promise<OpsOverview> {
       })),
       topLanes: topLanes.map((row) => ({
         lane: row.lane,
+        laneAr: row.laneAr,
         count: row.count,
         value: { amount: 0, currency: 'KWD' },
       })),

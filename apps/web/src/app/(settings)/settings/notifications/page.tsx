@@ -44,7 +44,7 @@ export default async function NotificationsPage() {
     listTemplates(session.actor),
     listDeliveries(session.actor),
     listChannelSettings(session.actor),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('notificationTemplates'),
     getTranslations('common'),
   ])
@@ -118,7 +118,7 @@ export default async function NotificationsPage() {
           <div className="mt-4 flex justify-end border-t border-line pt-3">
             <button
               type="submit"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-body font-semibold text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('save')}
             </button>
@@ -137,11 +137,15 @@ export default async function NotificationsPage() {
               overdue`, finds nothing, and throws MISSING_MESSAGE for every
               event on the page.
             */}
+            {/* No eyebrow: it was the event's key (`invoice.overdue`), an
+                identifier in both languages above a title that already names it. */}
             <CardHeader
               icon="bell"
-              eyebrow={event.key}
               title={t(`events.${event.key}` as 'events.job.created')}
-              description={event.summary}
+              // From the catalogue, nested by prefix like the titles. The
+              // `summary` in core is the developer's description and is
+              // English; it showed as-is on the Arabic page (U1).
+              description={t(`summaries.${event.key}` as 'summaries.job.created')}
               actions={
                 <span className="flex flex-wrap items-center gap-2">
                   {/*
@@ -182,19 +186,17 @@ export default async function NotificationsPage() {
                         {template.branchCode ? (
                           <Badge tone="brand">{template.branchCode}</Badge>
                         ) : (
-                          <span className="text-[0.6875rem] text-ink-subtle">
-                            {t('allBranches')}
-                          </span>
+                          <span className="text-micro text-ink-subtle">{t('allBranches')}</span>
                         )}
                         {template.isActive ? null : <Badge tone="muted">{tc('inactive')}</Badge>}
                       </span>
                       {template.subject ? (
-                        <span className="mt-1 block text-[0.875rem] font-medium text-ink">
+                        <span className="mt-1 block text-body font-medium text-ink">
                           {template.subject}
                         </span>
                       ) : null}
                       <p
-                        className="mt-1 line-clamp-2 text-[0.8125rem] whitespace-pre-line text-ink-muted"
+                        className="mt-1 line-clamp-2 text-body-sm whitespace-pre-line text-ink-muted"
                         dir={template.locale === 'ar' ? 'rtl' : 'ltr'}
                       >
                         {template.body}
@@ -272,17 +274,30 @@ export default async function NotificationsPage() {
             <THead>
               <TR>
                 <TH>{t('event')}</TH>
-                <TH>{t('recipient')}</TH>
-                <TH>{t('when')}</TH>
+                {/* Event and outcome across a phone; when follows the event
+                    there (below). */}
+                <TH priority="low">{t('recipient')}</TH>
+                <TH priority="low">{t('when')}</TH>
                 <TH>{t('outcome')}</TH>
               </TR>
             </THead>
             <TBody>
               {deliveries.map((row) => (
                 <TR key={row.id}>
-                  <TD className="ref whitespace-nowrap text-ink">{row.eventKey}</TD>
-                  <TD className="max-w-xs truncate text-ink-muted">{row.recipient ?? '—'}</TD>
-                  <TD className="whitespace-nowrap text-ink-muted">
+                  {/* The event's name, as the switches above call it; a key the
+                      catalogue does not know yet still shows as itself. */}
+                  <TD className="text-ink">
+                    {t.has(`events.${row.eventKey}`)
+                      ? t(`events.${row.eventKey}` as 'events.job.created')
+                      : row.eventKey}
+                    <span className="block font-sans text-caption text-ink-muted @3xl:hidden">
+                      {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
+                    </span>
+                  </TD>
+                  <TD priority="low" className="max-w-xs truncate text-ink-muted">
+                    {row.recipient ?? '—'}
+                  </TD>
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
                     {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
                   </TD>
                   <TD>
@@ -302,7 +317,7 @@ export default async function NotificationsPage() {
                           {t(`deliveryStates.${row.status}` as 'deliveryStates.sent')}
                         </Badge>
                         {row.attempts > 1 ? (
-                          <span className="text-[0.6875rem] text-ink-subtle">
+                          <span className="text-micro text-ink-subtle">
                             {t('attempts', { count: row.attempts })}
                           </span>
                         ) : null}
@@ -310,7 +325,7 @@ export default async function NotificationsPage() {
                       {/* The reason, where there is one — that is the whole
                           value of a delivery log. */}
                       {(row.lastError ?? row.suppressedReason) ? (
-                        <span className="text-[0.6875rem] text-ink-subtle">
+                        <span className="text-micro break-words text-ink-subtle">
                           {row.lastError ?? row.suppressedReason}
                         </span>
                       ) : null}
@@ -323,7 +338,7 @@ export default async function NotificationsPage() {
         )}
       </Card>
 
-      <p className="mt-4 text-[0.75rem] text-ink-subtle">{t('footnote', { locale })}</p>
+      <p className="mt-4 text-caption text-ink-subtle">{t('footnote', { locale })}</p>
     </>
   )
 }

@@ -13,10 +13,10 @@
 
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { Metadata } from 'next'
+import type { Metadata, Route } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { MIN_QUERY_LENGTH, search, totalHits } from '@/features/search/queries'
+import { MIN_QUERY_LENGTH, recordHref, search, totalHits } from '@/features/search/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -25,6 +25,8 @@ import { Panel } from '@/ui/panel'
 import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { pickName } from '@/lib/named'
+import { FOCUS_RING } from '@/ui/control'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('search')
@@ -66,6 +68,11 @@ export default async function SearchPage({
     const exactContainer = results.containers.find((row) => equalsLoosely(row.containerNo, query))
     const target = exactJob?.id ?? exactContainer?.jobId
     if (target) redirect(`/jobs/${target}`)
+    // The same for an enquiry, quote, invoice or consolidation reference (U4).
+    const exactRecord = results.records.find((row) =>
+      equalsLoosely(row.matchedValue ?? row.reference, query),
+    )
+    if (exactRecord) redirect(recordHref(exactRecord.kind, exactRecord.id) as Route)
   }
 
   return (
@@ -92,7 +99,7 @@ export default async function SearchPage({
           autoFocus
           placeholder={tc('searchPlaceholder')}
           aria-label={tc('search')}
-          className="h-10 w-full rounded-full border border-line bg-surface-sunken ps-9 pe-3 text-[0.875rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+          className={`h-10 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-body text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
         />
       </form>
 
@@ -106,11 +113,11 @@ export default async function SearchPage({
         </Card>
       ) : (
         <div className="flex flex-col gap-4">
-          <p className="text-[0.8125rem] text-ink-subtle">{t('found', { count })}</p>
+          <p className="text-body-sm text-ink-subtle">{t('found', { count })}</p>
 
           {results.jobs.length > 0 ? (
             <Panel padding="none" icon="jobs" title={t('jobs')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tJob('reference')}</TH>
@@ -126,11 +133,11 @@ export default async function SearchPage({
                       <TD className="whitespace-nowrap">
                         <Link
                           href={`/jobs/${job.id}`}
-                          className="ref numeric font-medium text-brand hover:underline"
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                         >
                           {job.reference}
                         </Link>
-                        <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
+                        <span className="mt-0.5 flex items-center gap-1 text-micro text-ink-subtle">
                           <Icon name={modeIcon(job.mode)} size={12} />
                           {tMode(job.mode)}
                           {/*
@@ -146,14 +153,12 @@ export default async function SearchPage({
                         </span>
                       </TD>
                       <TD className="max-w-52 truncate">
-                        {locale === 'ar' ? job.customerNameAr : job.customerName}
+                        {pickName(locale, job.customerName, job.customerNameAr)}
                       </TD>
                       <TD className="text-ink-muted">
                         <Lane
-                          origin={locale === 'ar' ? job.originNameAr : job.originName}
-                          destination={
-                            locale === 'ar' ? job.destinationNameAr : job.destinationName
-                          }
+                          origin={pickName(locale, job.originName, job.originNameAr)}
+                          destination={pickName(locale, job.destinationName, job.destinationNameAr)}
                         />
                       </TD>
                       <TD>
@@ -171,9 +176,48 @@ export default async function SearchPage({
             </Panel>
           ) : null}
 
+          {results.records.length > 0 ? (
+            /*
+              Enquiries, quotes, invoices and consolidations by their own
+              references, and consolidations by their master bill (U4).
+            */
+            <Panel padding="none" icon="document" title={t('records')}>
+              <TableShell>
+                <THead>
+                  <TR>
+                    <TH>{tJob('reference')}</TH>
+                    <TH>{t('kind')}</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {results.records.map((row) => (
+                    <TR key={`${row.kind}-${row.id}`}>
+                      <TD className="whitespace-nowrap">
+                        <Link
+                          href={recordHref(row.kind, row.id) as Route}
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
+                        >
+                          {row.reference}
+                        </Link>
+                        {row.matchedValue ? (
+                          <span className="ref numeric mt-0.5 block text-micro text-ink-subtle">
+                            {t('fields.masterBill')} {row.matchedValue}
+                          </span>
+                        ) : null}
+                      </TD>
+                      <TD className="text-ink-muted">
+                        {t(`kinds.${row.kind}` as 'kinds.enquiry')}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </TableShell>
+            </Panel>
+          ) : null}
+
           {results.containers.length > 0 ? (
             <Panel padding="none" icon="container" title={t('containers')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tc('container')}</TH>
@@ -192,7 +236,7 @@ export default async function SearchPage({
                       <TD>
                         <Link
                           href={`/jobs/${row.jobId}`}
-                          className="ref numeric font-medium text-brand hover:underline"
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                         >
                           {row.jobReference}
                         </Link>
@@ -211,7 +255,7 @@ export default async function SearchPage({
 
           {results.customers.length > 0 ? (
             <Panel padding="none" icon="customers" title={t('customers')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tc('customer')}</TH>
@@ -236,7 +280,7 @@ export default async function SearchPage({
                           {customer.id ? (
                             <Link
                               href={`/customers/${customer.id}`}
-                              className="text-brand hover:underline"
+                              className="text-accent hover:underline"
                             >
                               {name}
                             </Link>

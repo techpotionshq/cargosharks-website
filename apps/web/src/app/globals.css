@@ -49,6 +49,8 @@
   --color-brand-soft-ink: var(--qb-brand-soft-ink);
   --color-accent: var(--qb-accent);
   --color-accent-soft: var(--qb-accent-soft);
+  /* Its own token so `outline-focus` never resolves to the error red. */
+  --color-focus: var(--qb-focus);
 
   --color-brand-50: var(--qb-primary-50);
   --color-brand-100: var(--qb-primary-100);
@@ -95,6 +97,41 @@
   --font-arabic: var(--qb-font-arabic);
   --font-mono: var(--qb-font-mono);
   --font-display: var(--qb-font-display);
+
+  /*
+   * The type scale. Ten named steps where there were fourteen arbitrary
+   * `text-[…rem]` sizes and a handful of Tailwind's own names, so a size is
+   * now a decision (a caption, a card title) rather than a number typed in
+   * that a neighbouring screen typed slightly differently. Each step sits
+   * where the arbitrary sizes clustered: every old size is within 1px of the
+   * step it became, which is why `headline` and `display-lg` are 21px and
+   * 29px — the midpoints of the 20/22 and 28/30 pairs they replaced.
+   *
+   * Line heights: the text steps keep 1.5, the height they inherited from the
+   * root before they were named, so naming them moved nothing; the display
+   * steps tighten, matching the `text-2xl`/`text-3xl` they replaced. An
+   * explicit `leading-*` still wins over all of them.
+   */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.5;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.5;
+  --text-body-sm: 0.8125rem;
+  --text-body-sm--line-height: 1.5;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.5;
+  --text-title: 0.9375rem;
+  --text-title--line-height: 1.5;
+  --text-heading: 1.125rem;
+  --text-heading--line-height: 1.5;
+  --text-headline: 1.3125rem;
+  --text-headline--line-height: 1.5;
+  --text-display: 1.5rem;
+  --text-display--line-height: calc(2 / 1.5);
+  --text-display-lg: 1.8125rem;
+  --text-display-lg--line-height: 1.25;
+  --text-hero: 2.5rem;
+  --text-hero--line-height: 1.1;
 
   --radius-card: var(--qb-radius);
   --radius-sm: var(--qb-radius-sm);
@@ -235,11 +272,27 @@
   }
 
   /**
+   * A reference or a figure is its own direction island.
+   *
+   * `KWI-2026-01041` and `1,580.000 KWD` are left-to-right runs, and dropped
+   * into an Arabic sentence without isolation the bidi algorithm lets their
+   * neutral characters — the hyphens, the comma, the space before the
+   * currency — attach to the Arabic around them. The reference then reads
+   * `01041-2026-KWI` and the currency jumps to the wrong end of the amount.
+   * `isolate` makes each one a single unit whatever surrounds it, and costs
+   * nothing in English.
+   */
+  .ref,
+  .numeric {
+    unicode-bidi: isolate;
+  }
+
+  /**
    * The section eyebrow: small, tracked, muted. Used above every card title so
    * the dashboard reads as one system rather than a pile of panels.
    */
   .eyebrow {
-    font-size: 0.6875rem;
+    font-size: var(--text-micro);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -258,6 +311,11 @@
    * The single most persuasive detail in the demo is a number that is visibly
    * still moving. The pulse is slow and low-contrast on purpose: it must read
    * as "accruing", not as an alarm.
+   *
+   * A glow, not a fade. It faded to 62% opacity, which took the red figure to
+   * 3.5:1 against its card at the bottom of every breath — below AA for the
+   * one number the page exists to show. The halo moves; the figure stays at
+   * full contrast.
    */
   .accruing {
     animation: qb-accrue 2.4s ease-in-out infinite;
@@ -266,10 +324,10 @@
   @keyframes qb-accrue {
     0%,
     100% {
-      opacity: 1;
+      text-shadow: 0 0 0 transparent;
     }
     50% {
-      opacity: 0.62;
+      text-shadow: 0 0 0.6em color-mix(in oklch, currentColor 40%, transparent);
     }
   }
 
@@ -386,6 +444,33 @@
   }
 
   /**
+   * A table that scrolls sideways says so.
+   *
+   * Four background layers, the old scroll-shadow technique: two soft shadows
+   * pinned to the box's edges (`scroll`), and two covers in the surface colour
+   * that travel with the content (`local`). At rest the covers sit over the
+   * shadows; scroll, and the cover on the side you scrolled from moves away and
+   * uncovers its shadow. So the edge darkens only where there really is more
+   * table, on either side, in either direction — no script, and nothing to
+   * mirror for Arabic because both edges are always handled.
+   *
+   * The covers are the card's colour, so a table sitting on something other
+   * than `surface` names its own with `--qb-scroll-cover`.
+   */
+  .qb-scroll-x {
+    --qb-scroll-edge: color-mix(in oklab, var(--qb-ink) 12%, transparent);
+    background:
+      linear-gradient(to right, var(--qb-scroll-cover, var(--qb-surface)) 40%, transparent) left
+        center / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--qb-scroll-cover, var(--qb-surface)) 40%, transparent) right
+        center / 2.5rem 100% no-repeat local,
+      linear-gradient(to right, var(--qb-scroll-edge), transparent) left center / 0.75rem 100%
+        no-repeat scroll,
+      linear-gradient(to left, var(--qb-scroll-edge), transparent) right center / 0.75rem 100%
+        no-repeat scroll;
+  }
+
+  /**
    * The board's section rule.
    *
    * A hairline with the section title sitting on it, used instead of a card
@@ -453,6 +538,35 @@
   .qb-scroll::-webkit-scrollbar-thumb:hover {
     background-color: var(--qb-ink-subtle);
   }
+}
+
+/**
+ * The same rule for every tracked, upper-cased label, not only `.eyebrow`.
+ *
+ * Column headers, form labels, section titles and the sidebar's group
+ * names are written as `uppercase tracking-…` utilities, and in Arabic the
+ * tracking pulls the letters of each word apart — the joins between them
+ * break, and a header reads as a row of isolated glyphs. Arabic also has no
+ * case to raise, so the small sizes those labels use (11px, 10px) are pure
+ * loss there: they are lifted a step so the script's dots stay legible.
+ *
+ * Unlayered, like the viewport rules below, because the thing it overrides is
+ * a utility — and utilities are the last layer, so a rule inside
+ * `@layer components` loses to `tracking-wide` whatever its specificity.
+ */
+[lang='ar'] .uppercase {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Negative tracking is worse than positive in Arabic: it pushes the joined
+   letters of a heading into each other. */
+[lang='ar'] :is(.tracking-tight, .tracking-tighter) {
+  letter-spacing: 0;
+}
+
+[lang='ar'] .uppercase.text-micro {
+  font-size: var(--text-caption);
 }
 
 /*
@@ -550,7 +664,7 @@ main:has(.qb-viewport-page) {
 .qb-map .maplibregl-ctrl-attrib {
   background-color: color-mix(in oklab, var(--qb-surface) 82%, transparent);
   color: var(--qb-ink-subtle);
-  font-size: 0.6875rem;
+  font-size: var(--text-micro);
 }
 
 .qb-map .maplibregl-ctrl-attrib a {
@@ -562,7 +676,7 @@ main:has(.qb-viewport-page) {
   color: var(--qb-surface);
   border-radius: var(--radius-sm);
   padding: 0.375rem 0.625rem;
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
   font-weight: 500;
   box-shadow: var(--shadow-pop);
 }

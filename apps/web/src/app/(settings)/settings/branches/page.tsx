@@ -43,7 +43,7 @@ export default async function BranchesPage() {
 
   const [rows, calendars] = await Promise.all([
     listBranches(session.actor),
-    listCalendarOptions(session.actor),
+    listCalendarOptions(session.actor, locale),
   ])
   const active = rows.filter((row) => row.isActive).length
 
@@ -65,13 +65,23 @@ export default async function BranchesPage() {
           <TR>
             <TH>{t('code')}</TH>
             <TH>{t('name')}</TH>
-            <TH>{t('country')}</TH>
-            <TH>{t('currency')}</TH>
-            <TH>{t('calendar')}</TH>
-            <TH>{t('invoiceSeries')}</TH>
-            <TH align="end">{t('people')}</TH>
-            <TH align="end">{t('openJobs')}</TH>
-            <TH>{t('accounts')}</TH>
+            {/*
+              Eleven columns of configuration. A phone keeps code, name, status
+              and the edit button; of the rest, the two states that stop a
+              branch working — no calendar, accounts unmapped — follow the name
+              and the status there (below), and the others wait.
+            */}
+            <TH priority="low">{t('country')}</TH>
+            <TH priority="low">{t('currency')}</TH>
+            <TH priority="low">{t('calendar')}</TH>
+            <TH priority="low">{t('invoiceSeries')}</TH>
+            <TH priority="low" align="end">
+              {t('people')}
+            </TH>
+            <TH priority="low" align="end">
+              {t('openJobs')}
+            </TH>
+            <TH priority="low">{t('accounts')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{tc('actions')}</TH>
           </TR>
@@ -79,17 +89,29 @@ export default async function BranchesPage() {
         <TBody>
           {rows.map((row) => (
             <TR key={row.id} flag={row.calendarName ? undefined : 'caution'}>
-              <TD className="ref whitespace-nowrap text-brand">{row.code}</TD>
+              <TD className="ref whitespace-nowrap font-medium text-ink">{row.code}</TD>
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
+                {row.calendarName ? null : (
+                  <span className="mt-0.5 flex items-center gap-1 text-caption text-caution @3xl:hidden">
+                    <Icon name="alert" size={13} className="shrink-0" />
+                    {t('noCalendar')}
+                  </span>
+                )}
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.country}</TD>
-              <TD className="ref whitespace-nowrap text-ink">{row.baseCurrency}</TD>
-              <TD className="whitespace-nowrap">
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.country}
+              </TD>
+              <TD priority="low" className="ref whitespace-nowrap text-ink">
+                {row.baseCurrency}
+              </TD>
+              {/* The zone sits under the calendar's name: on one line the
+                  pair was 222px, and eleven columns at 1280 have 966px. */}
+              <TD priority="low" className="whitespace-nowrap">
                 {row.calendarName ? (
                   <span className="text-ink-muted">
-                    {row.calendarName}
-                    <span className="ms-1.5 text-[0.75rem] text-ink-subtle">{row.timeZone}</span>
+                    {(locale === 'ar' && row.calendarNameAr) || row.calendarName}
+                    <span className="ref block text-caption text-ink-subtle">{row.timeZone}</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 font-medium text-caution">
@@ -98,14 +120,14 @@ export default async function BranchesPage() {
                   </span>
                 )}
               </TD>
-              <TD className="ref whitespace-nowrap text-ink-muted">
+              <TD priority="low" className="ref whitespace-nowrap text-ink-muted">
                 {row.invoiceSeries ?? '—'}
                 <span className="ms-1 text-ink-subtle">#{row.invoiceSeriesNext}</span>
               </TD>
-              <TD align="end" numeric>
+              <TD priority="low" align="end" numeric>
                 {row.people}
               </TD>
-              <TD align="end" numeric>
+              <TD priority="low" align="end" numeric>
                 {row.openJobs}
               </TD>
               {/*
@@ -116,7 +138,7 @@ export default async function BranchesPage() {
                 only in the export's refusal, because this is the screen where
                 somebody fixes it.
               */}
-              <TD className="whitespace-nowrap">
+              <TD priority="low" className="whitespace-nowrap">
                 {row.arAccountCode && row.apAccountCode && row.bankAccountCode ? (
                   <Badge tone="positive">{t('accountsSet')}</Badge>
                 ) : (
@@ -127,6 +149,11 @@ export default async function BranchesPage() {
                 <Badge tone={row.isActive ? 'positive' : 'muted'}>
                   {row.isActive ? tc('active') : tc('inactive')}
                 </Badge>
+                {row.arAccountCode && row.apAccountCode && row.bankAccountCode ? null : (
+                  <span className="mt-1 block @3xl:hidden">
+                    <Badge tone="caution">{t('accountsMissing')}</Badge>
+                  </span>
+                )}
               </TD>
               <TD align="end">
                 <BranchDialog

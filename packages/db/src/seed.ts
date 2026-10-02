@@ -11,9 +11,15 @@
  * there is no administrator yet.
  */
 
-import { sql } from 'drizzle-orm'
+import { isNull, sql } from 'drizzle-orm'
 import { loadEnv } from './env'
-import { ADMIN_PERMISSIONS, SEED_KW_TARIFF, permissionKeys } from '@qabandi/core'
+import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_INTAKE_REQUIREMENTS,
+  DEFAULT_INTAKE_SETTINGS,
+  SEED_KW_TARIFF,
+  permissionKeys,
+} from '@qabandi/core'
 import { createDatabase } from './client'
 import { NOTIFICATION_TEMPLATES } from './notification-templates'
 import { locationSeedRows } from './places'
@@ -31,6 +37,8 @@ import {
   locations,
   milestoneTemplates,
   notificationTemplates,
+  intakeRequirements,
+  intakeSettings,
   principals,
   rolePermissions,
   roles,
@@ -411,6 +419,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'credit.override',
     'report.read',
     'job.read',
+    // Both ledgers, read — the ones this role writes to (QA P2-11).
+    'receivable.read',
+    'payable.read',
   ],
   operations_manager: [
     /*
@@ -458,6 +469,13 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'customer.write',
     'partner.write',
     'report.read',
+    /*
+      The branch manager reads both ledgers (SRS §5: "everything in their
+      branch"): they run set-offs, hold the credit exception, and cannot do
+      either without seeing what is owed each way.
+    */
+    'receivable.read',
+    'payable.read',
   ],
   coordinator: [
     'enquiry.assign',
@@ -502,6 +520,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
       agent invoice each line belongs to. Nothing they do here releases money.
     */
     'payable.record',
+    // The register they capture bills into. Not the receivables side: a
+    // coordinator has no business in what customers owe (QA P2-11).
+    'payable.read',
     'customer.write',
   ],
   sales: [
@@ -518,6 +539,13 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     'report.read',
   ],
   customs_broker: ['customs.file', 'customs.update', 'customs.pay', 'job.read', 'job.update'],
+  /*
+    No ledger reads (`receivable.read`, `payable.read`), deliberately. This is
+    the operational viewer, and the SRS gives reading the books to Finance and
+    branch management; the money a read-only login sees is the margin report
+    `report.read` opens. Before QA P2-11 it could open every invoice and bill
+    only because those pages checked for a session and nothing else.
+  */
   read_only: ['job.read', 'report.read'],
 }
 
@@ -825,6 +853,41 @@ async function main(): Promise<void> {
             updatedAt: new Date(),
           },
         })
+
+      /*
+        The intake agent's defaults — the rows every branch inherits until an
+        administrator gives it its own (FR-AD-03).
+
+        Inserted once and then left alone, unlike the templates above: these are
+        numbers an operator may have tuned, and a re-seed that put the quiet
+        window back to 120 seconds would be a release overwriting a decision.
+        The settings default to *off* (`DEFAULT_INTAKE_SETTINGS`), so a fresh
+        deployment holds no automatic conversation nobody switched on. The
+        requirement rows are written only when no default set exists at all, for
+        the same reason — they have no natural key to conflict on, and a second
+        copy would ask every question twice in the list an administrator edits.
+      */
+      await db
+        .insert(intakeSettings)
+        .values({ branchId: null, ...DEFAULT_INTAKE_SETTINGS })
+        .onConflictDoNothing()
+
+      const [anyDefault] = await db
+        .select({ id: intakeRequirements.id })
+        .from(intakeRequirements)
+        .where(isNull(intakeRequirements.branchId))
+        .limit(1)
+      if (!anyDefault) {
+        await db.insert(intakeRequirements).values(
+          DEFAULT_INTAKE_REQUIREMENTS.map((requirement, position) => ({
+            branchId: null,
+            mode: requirement.mode,
+            key: requirement.key,
+            fields: [...requirement.fields],
+            position,
+          })),
+        )
+      }
 
       /*
         The tariff, as far as a generic seed can honestly go.

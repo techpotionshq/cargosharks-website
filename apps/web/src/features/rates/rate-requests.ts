@@ -20,6 +20,7 @@ import type {
   RateRequestView,
   RenewalView,
 } from '@/lib/pilot/types'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pilot/fixtures'
 
@@ -32,11 +33,16 @@ import { pilotCoveringAgents, pilotRateRequests, pilotRenewals } from '@/lib/pil
  * incomparable rather than ranked at a made-up number. The authority for the
  * figure is always the reply's own lines in `response`; this only ranks.
  */
+/**
+ * `locale` names the partner in the reader's language (F27). The fixtures carry
+ * their agents in English only, as partners do on a real database today.
+ */
 export async function getEnquiryRateRequests(
   actor: Actor,
   enquiryId: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<RateRequestsView | null> {
-  if (usePilotFixtures()) return pilotRateRequests()
+  if (usePilotFixtures()) return pilotRateRequests(enquiryId)
   if (!enquiryId) return null
 
   return withActor(actor, async (tx) => {
@@ -58,7 +64,7 @@ export async function getEnquiryRateRequests(
       .select({
         id: rateRequests.id,
         partnerId: rateRequests.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         status: rateRequests.status,
         sentAt: rateRequests.sentAt,
         respondedAt: rateRequests.respondedAt,
@@ -70,9 +76,7 @@ export async function getEnquiryRateRequests(
       })
       .from(rateRequests)
       .innerJoin(partners, eq(rateRequests.partnerId, partners.id))
-      .where(
-        and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')),
-      )
+      .where(and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')))
       .orderBy(desc(rateRequests.createdAt))
 
     // The FX rates needed to bring every quoted currency onto the base.
@@ -91,15 +95,34 @@ export async function getEnquiryRateRequests(
         rows?: unknown[]
         declined?: boolean
         laneMismatch?: string
+        unpriced?: number
+        partial?: number
       }
       const lineCount = Array.isArray(response.rows) ? response.rows.length : 0
+      /*
+        The lines that make the total partial, not every unpriced one (R1): a
+        percent line (insurance at 0.3%) is unpriced on every reply alike and
+        left none of them comparable. Older replies carry only `unpriced`.
+      */
+      const unpricedLines =
+        typeof response.partial === 'number'
+          ? response.partial
+          : typeof response.unpriced === 'number'
+            ? response.unpriced
+            : 0
 
       const normalizedTotal = normalise(row.quotedTotal, row.quotedCurrency, baseCurrency, fx)
 
+      /*
+        A reply that priced another lane than the one asked about is shown,
+        with the mismatch, and never offered as this enquiry's buy rate (S14):
+        accepted, it wrote a card for a lane nobody asked to cover.
+      */
       const canPromote =
         row.status === 'parsed' &&
         response.ok === true &&
         response.declined !== true &&
+        !response.laneMismatch &&
         row.rateCardId === null &&
         lineCount > 0
 
@@ -116,6 +139,7 @@ export async function getEnquiryRateRequests(
         comparable: normalizedTotal !== null,
         isCheapest: false,
         lineCount,
+        unpricedLines,
         laneMismatch: response.laneMismatch ?? null,
         declinedReason: row.declinedReason,
         canPromote,
@@ -123,9 +147,20 @@ export async function getEnquiryRateRequests(
       }
     })
 
-    // Cheapest among the answered, non-declined, comparable replies.
+    /*
+      Cheapest among the answered, non-declined, comparable replies — and only
+      the whole ones. A reply with lines its total could not price (a
+      per-container charge on an FCL enquiry with no container count) carries a
+      partial figure; ranked, it won "Cheapest" on its flat fees alone (F69).
+      It is shown, marked partial, and left out, as a reply with no FX rate is.
+    */
     const ranked = requests.filter(
-      (r) => r.comparable && r.status !== 'declined' && r.normalizedTotal !== null,
+      (r) =>
+        r.comparable &&
+        r.unpricedLines === 0 &&
+        r.laneMismatch === null &&
+        r.status !== 'declined' &&
+        r.normalizedTotal !== null,
     )
     if (ranked.length > 0) {
       const cheapest = ranked.reduce((a, b) =>
@@ -136,14 +171,38 @@ export async function getEnquiryRateRequests(
       requests.push(...flagged)
     }
 
-    return {
-      baseCurrency,
-      requests,
-      awaiting: requests.filter((r) => r.status === 'sent').length,
-      answered: requests.filter((r) => r.status === 'responded' || r.status === 'parsed').length,
-    }
+    return { baseCurrency, requests, ...replyCounts(requests) }
   })
 }
+
+/**
+ * The panel's "N awaiting, N answered", from the statuses on the list.
+ *
+ * "Answered" is every request the agent has replied to, whatever became of the
+ * reply: responded, parsed, accepted — and declined, because "no allocation
+ * this month" is an answer and the coordinator is no longer waiting on it. It
+ * counted only responded and parsed, so the moment a reply was accepted the
+ * summary read "0 awaiting, 0 answered" above the accepted row (F65), and a
+ * decline was never counted at all. `expired` is neither: the window closed
+ * with nothing usable, so nobody is waiting and nobody answered. Exported so
+ * the pilot fixture's figures are tested against the same rule.
+ */
+export function replyCounts(requests: readonly Pick<RateRequestView, 'status'>[]): {
+  awaiting: number
+  answered: number
+} {
+  return {
+    awaiting: requests.filter((r) => r.status === 'sent').length,
+    answered: requests.filter((r) => ANSWERED.has(r.status)).length,
+  }
+}
+
+const ANSWERED: ReadonlySet<RateRequestView['status']> = new Set<RateRequestView['status']>([
+  'responded',
+  'parsed',
+  'accepted',
+  'declined',
+])
 
 /**
  * The agents that cover this enquiry's lane — the request-rates picker.
@@ -154,7 +213,12 @@ export async function getEnquiryRateRequests(
  * enquiry is returned flagged rather than hidden, so the picker can grey them
  * out instead of silently dropping a name a coordinator expected to see.
  */
-export async function listCoveringAgents(actor: Actor, enquiryId: string): Promise<CoveringAgent[]> {
+/** `locale` names the agents in the reader's language (F27). */
+export async function listCoveringAgents(
+  actor: Actor,
+  enquiryId: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<CoveringAgent[]> {
   if (usePilotFixtures()) return pilotCoveringAgents()
   if (!enquiryId) return []
 
@@ -176,7 +240,7 @@ export async function listCoveringAgents(actor: Actor, enquiryId: string): Promi
     const covering = await tx
       .selectDistinct({
         partnerId: partnerCoverage.partnerId,
-        name: partners.legalNameEn,
+        name: named(locale, partners.legalNameEn, partners.legalNameAr),
         type: partners.type,
         transitDays: partnerCoverage.transitDays,
       })
@@ -252,7 +316,11 @@ export async function listCoveringAgents(actor: Actor, enquiryId: string): Promi
  * one accept from a successor card. Superseded and long-accepted rows drop off;
  * what stays is what still wants a person's eye.
  */
-export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
+/** `locale` names the partner in the reader's language (F27). */
+export async function getRenewals(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<RenewalView[]> {
   if (usePilotFixtures()) return pilotRenewals()
 
   return withActor(actor, async (tx) => {
@@ -262,7 +330,7 @@ export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
     const rows = await tx
       .select({
         id: rateRequests.id,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         mode: rateCards.mode,
         originCode: origin.unlocode,
         destinationCode: destination.unlocode,
@@ -279,14 +347,16 @@ export async function getRenewals(actor: Actor): Promise<RenewalView[]> {
       .innerJoin(rateCards, eq(rateRequests.sourceRateCardId, rateCards.id))
       .leftJoin(origin, eq(rateCards.originId, origin.id))
       .leftJoin(destination, eq(rateCards.destinationId, destination.id))
-      .where(
-        and(isNotNull(rateRequests.sourceRateCardId), ne(rateRequests.status, 'superseded')),
-      )
+      .where(and(isNotNull(rateRequests.sourceRateCardId), ne(rateRequests.status, 'superseded')))
       .orderBy(desc(rateRequests.createdAt))
       .limit(100)
 
     return rows.map((row): RenewalView => {
-      const response = (row.response ?? {}) as { ok?: boolean; declined?: boolean; rows?: unknown[] }
+      const response = (row.response ?? {}) as {
+        ok?: boolean
+        declined?: boolean
+        rows?: unknown[]
+      }
       const lineCount = Array.isArray(response.rows) ? response.rows.length : 0
       return {
         id: row.id,

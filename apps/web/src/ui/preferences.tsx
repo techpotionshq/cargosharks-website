@@ -16,8 +16,9 @@ import { getTranslations } from 'next-intl/server'
 import { setLocalePreference, setThemePreference, setTimeZonePreference } from '@/lib/preferences'
 import type { ThemeChoice } from '@/lib/theme'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { TIME_ZONES, describeTimeZone } from '@/lib/time'
+import { TIME_ZONES, describeTimeZone, timeZoneKey } from '@/lib/time'
 import { Icon } from './icon'
+import { AutoSubmitSelect } from './auto-submit'
 
 export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' | 'chrome' }) {
   const resolved = await getLocale()
@@ -34,7 +35,7 @@ export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' |
         // shape and speak the label in the language it is written in.
         lang={next}
         aria-label={`${t('language')}`}
-        className={`inline-flex h-8 items-center gap-1.5 rounded-sm px-2 text-[0.8125rem] font-medium transition-colors ${
+        className={`inline-flex h-10 items-center gap-1.5 rounded-sm px-2 text-body-sm font-medium transition-colors md:h-8 ${
           tone === 'chrome'
             ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
             : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
@@ -47,10 +48,14 @@ export async function LanguageSwitch({ tone = 'ink' }: { readonly tone?: 'ink' |
   )
 }
 
-const THEMES: readonly { value: ThemeChoice; icon: 'sun' | 'moon' | 'dashboard' }[] = [
-  { value: 'light', icon: 'sun' },
-  { value: 'dark', icon: 'moon' },
-  { value: 'system', icon: 'dashboard' },
+const THEMES: readonly {
+  value: ThemeChoice
+  icon: 'sun' | 'moon' | 'dashboard'
+  label: 'themeLight' | 'themeDark' | 'themeSystem'
+}[] = [
+  { value: 'light', icon: 'sun', label: 'themeLight' },
+  { value: 'dark', icon: 'moon', label: 'themeDark' },
+  { value: 'system', icon: 'dashboard', label: 'themeSystem' },
 ]
 
 export async function ThemeSwitch({
@@ -70,17 +75,24 @@ export async function ThemeSwitch({
         tone === 'chrome' ? 'bg-white/10' : 'bg-surface-sunken'
       }`}
     >
-      {THEMES.map(({ value, icon }) => {
+      {THEMES.map(({ value, icon, label }) => {
         const active = current === value
         return (
+          /*
+            Named in the reader's language. These were icon-only with
+            `title="light"` — an English word for a tooltip and nothing at all
+            for a screen reader, which announced three unnamed buttons. 40px
+            on a phone, where they were 28px targets three pixels apart.
+          */
           <button
             key={value}
             type="submit"
             name="theme"
             value={value}
             aria-pressed={active}
-            title={value}
-            className={`flex size-7 items-center justify-center rounded-md transition-colors ${
+            aria-label={t(label)}
+            title={t(label)}
+            className={`flex size-10 items-center justify-center rounded-md transition-colors md:size-8 ${
               active
                 ? tone === 'chrome'
                   ? 'bg-white/15 text-chrome-ink'
@@ -101,11 +113,13 @@ export async function ThemeSwitch({
 /**
  * The time-zone picker.
  *
- * A `<select>` and a submit, rather than a control that posts on change: the
- * same no-JavaScript rule the two switches above follow, and the reason is the
- * same one — the tracking page is opened on a phone on a port road. A select
- * that needs an `onChange` handler to do anything is a select that does nothing
- * until a bundle arrives.
+ * Posts on change, with a Save button kept for the moment before the bundle
+ * arrives. It was a select *and* a button, and people changed the select, saw
+ * nothing happen and moved on, believing it saved: two controls for one
+ * decision is a trap. `AutoSubmitSelect` submits the form as soon as it can,
+ * and the button is rendered inside `<noscript>`, so the no-JavaScript rule
+ * the two switches above follow still holds without asking everyone else for
+ * a second click.
  *
  * The list is a menu rather than the vocabulary. `resolveTimeZone` accepts any
  * zone the runtime knows, so a principal whose zone was set from a longer list
@@ -120,10 +134,17 @@ export async function TimeZoneSwitch({
   readonly tone?: 'ink' | 'chrome'
 }) {
   const t = await getTranslations('common')
+  const tZone = await getTranslations('timeZones')
   const locale = await getLocale()
 
   // A stored zone outside the menu still needs an option to be selected on.
   const options = TIME_ZONES.includes(current) ? TIME_ZONES : [current, ...TIME_ZONES]
+
+  // The city in the viewer's language where the catalogue names it (F64).
+  const cityOf = (zone: string): string | undefined => {
+    const key = timeZoneKey(zone)
+    return tZone.has(key) ? tZone(key) : undefined
+  }
 
   return (
     /*
@@ -150,31 +171,36 @@ export async function TimeZoneSwitch({
         size={16}
         className={tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'}
       />
-      <select
+      {/*
+        No `dir="ltr"` any more: it was there because every label was an
+        English city. The labels are now in the page's language, and an Arabic
+        label forced left-to-right puts its parenthesised offset on the wrong
+        side.
+      */}
+      <AutoSubmitSelect
         id="preferences-time-zone"
         name="timeZone"
         defaultValue={current}
-        dir="ltr"
-        className={`h-8 rounded-sm border-0 bg-transparent px-1 text-[0.8125rem] font-medium focus:outline-none ${
+        className={`h-8 rounded-sm border-0 bg-transparent px-1 text-body-sm font-medium hover:bg-surface-sunken ${
           tone === 'chrome' ? 'text-chrome-ink-muted' : 'text-ink-muted'
         }`}
-      >
-        {options.map((zone) => (
-          <option key={zone} value={zone}>
-            {describeTimeZone(zone, locale)}
-          </option>
-        ))}
-      </select>
-      <button
-        type="submit"
-        className={`inline-flex h-8 items-center rounded-sm px-2 text-[0.8125rem] font-medium transition-colors ${
-          tone === 'chrome'
-            ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
-            : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
-        }`}
-      >
-        {t('save')}
-      </button>
+        options={options.map((zone) => ({
+          value: zone,
+          label: describeTimeZone(zone, locale, cityOf(zone)),
+        }))}
+      />
+      <noscript>
+        <button
+          type="submit"
+          className={`inline-flex h-8 items-center rounded-sm px-2 text-body-sm font-medium transition-colors ${
+            tone === 'chrome'
+              ? 'text-chrome-ink-muted hover:bg-white/10 hover:text-chrome-ink'
+              : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
+          }`}
+        >
+          {t('save')}
+        </button>
+      </noscript>
     </form>
   )
 }

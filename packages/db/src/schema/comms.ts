@@ -17,7 +17,7 @@ import { pgTable, systemTable } from './table'
 import { channelEnum, deliveryStatusEnum, localeEnum, messageDirectionEnum } from './enums'
 import { branches, principals } from './identity'
 import { assets } from './files'
-import { customers } from './commercial'
+import { customers, partners } from './commercial'
 import { enquiries, jobs } from './jobs'
 
 /**
@@ -96,6 +96,21 @@ export const mailboxes = pgTable(
     lastPolledAt: tsz('last_polled_at'),
     lastMessageAt: tsz('last_message_at'),
     lastError: text('last_error'),
+    /**
+     * Where the poll has got to — the folder and UIDVALIDITY it belongs to,
+     * the next UID not yet looked at, and the UIDs below it still owed a
+     * filing. See `UidCursor` in the service's IMAP adapter.
+     *
+     * Not `\Seen`: these are live office mailboxes, and a message a person
+     * opened before the poll reached it used to be skipped for good. Null until
+     * the first poll, which falls back once to the unseen rule.
+     */
+    uidCursor: jsonb('uid_cursor').$type<{
+      folder: string
+      uidValidity: string
+      uidNext: number
+      pending: Record<string, { attempts: number; failedAt: string | null }>
+    }>(),
     ...timestamps,
   },
   (t) => [
@@ -207,6 +222,20 @@ export const messages = pgTable(
     /** The provider's own id, so a webhook can match a status to this row. */
     externalRef: text('external_ref'),
     customerVisible: boolean('customer_visible').notNull().default(true),
+    /**
+     * Written by a person outside the product — a coordinator answering from
+     * their own WhatsApp, or from the Kapso inbox — so no principal can be
+     * named in `author_id`. It is still a person talking to the customer, and
+     * the intake agent's human-takeover silence counts it exactly as it counts
+     * a reply written here.
+     */
+    staffAuthored: boolean('staff_authored').notNull().default(false),
+    /**
+     * The supplier a mail came from, where it was filed on no enquiry or job
+     * because the sender is a known partner and not a customer (`ingestMessage`).
+     * What the partner page's "mail from this supplier" list reads.
+     */
+    partnerId: ref('partner_id').references(() => partners.id),
     sentAt: tsz('sent_at'),
     deliveredAt: tsz('delivered_at'),
     readAt: tsz('read_at'),
@@ -216,6 +245,8 @@ export const messages = pgTable(
     index('messages_job_idx').on(t.jobId, t.createdAt),
     index('messages_enquiry_idx').on(t.enquiryId, t.createdAt),
     index('messages_external_idx').on(t.externalRef),
+    // The partner page's list of mail filed on no record, newest first.
+    index('messages_partner_idx').on(t.partnerId, t.createdAt),
   ],
 )
 

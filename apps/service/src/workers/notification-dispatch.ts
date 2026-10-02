@@ -189,11 +189,26 @@ async function expand(
       })
       .from(notificationOutbox)
       .innerJoin(branches, eq(branches.id, notificationOutbox.branchId))
+      /*
+        Undispatched only — an addressed run included — and locked as read.
+
+        `skip locked` is the same claim `claim()` makes for deliveries: two
+        dispatchers (two service instances, or a cron tick overlapping an
+        addressed run) each expand a disjoint set of events, where both used
+        to read the same pending rows and write every delivery twice. The lock
+        is held to the end of this transaction, which is where `markDispatched`
+        stamps the row, so the second runner never sees it pending again. An
+        addressed run of an event already dispatched expands nothing rather
+        than a second set of deliveries.
+      */
       .where(
-        outboxId ? eq(notificationOutbox.id, outboxId) : isNull(notificationOutbox.dispatchedAt),
+        outboxId
+          ? and(eq(notificationOutbox.id, outboxId), isNull(notificationOutbox.dispatchedAt))
+          : isNull(notificationOutbox.dispatchedAt),
       )
       .orderBy(asc(notificationOutbox.createdAt))
       .limit(100)
+      .for('update', { of: notificationOutbox, skipLocked: true })
 
     let expanded = 0
     let suppressed = 0
@@ -389,7 +404,16 @@ async function customerRecipients(tx: any, customerId: string | null): Promise<R
     .leftJoin(principals, eq(principals.id, customerContacts.principalId))
     .where(and(eq(customerContacts.customerId, customerId), eq(customerContacts.isActive, true)))
 
-  return rows
+  /*
+    One recipient per address. `customer_contacts` has no unique key on
+    (customer, email), and a contacts CSV imported twice — the importer inserts
+    blindly — doubled every customer email the dispatcher sent. The first row
+    for an address answers for it, preferring one with a portal principal
+    (it carries the stated language); opt-outs are the union, because a contact
+    who opted out on either copy of themselves has opted out.
+  */
+  const byAddress = new Map<string, Recipient>()
+  const recipients: Recipient[] = rows
     .map((row: Record<string, unknown>) => {
       // A contact who has never been invited to the portal has no principal and
       // therefore no stated language preference. English is the fallback, and
@@ -405,6 +429,21 @@ async function customerRecipients(tx: any, customerId: string | null): Promise<R
       }
     })
     .filter((r: Recipient) => r.email.length > 0)
+
+  for (const recipient of recipients) {
+    const key = recipient.email.trim().toLowerCase()
+    const seen = byAddress.get(key)
+    if (!seen) {
+      byAddress.set(key, recipient)
+      continue
+    }
+    const keep = seen.principalId === null && recipient.principalId !== null ? recipient : seen
+    byAddress.set(key, {
+      ...keep,
+      optOuts: [...new Set([...seen.optOuts, ...recipient.optOuts])],
+    })
+  }
+  return [...byAddress.values()]
 }
 
 /**
@@ -656,12 +695,26 @@ async function claim(asOf: Date): Promise<ClaimedDelivery[]> {
         subject: notificationTemplates.subject,
         body: notificationTemplates.body,
         payload: notificationOutbox.payload,
-        recipientNameEn: sql<
-          string | null
-        >`coalesce(${customerContacts.nameEn}, ${principals.nameEn})`,
-        recipientNameAr: sql<
-          string | null
-        >`coalesce(${customerContacts.nameAr}, ${principals.nameAr})`,
+        /*
+          One contact's name, by subquery rather than a join. A join on
+          (customer, address) returned the delivery once per matching contact
+          row — and the flush sends once per row returned, so a duplicated
+          contact meant the same mail sent twice from one delivery.
+        */
+        recipientNameEn: sql<string | null>`coalesce(
+          (select cc.name_en from ${customerContacts} cc
+            where cc.customer_id = ${notificationOutbox.customerId}
+              and lower(cc.email) = lower(${notificationDeliveries.toAddress})
+            order by cc.is_active desc, cc.created_at
+            limit 1),
+          ${principals.nameEn})`,
+        recipientNameAr: sql<string | null>`coalesce(
+          (select cc.name_ar from ${customerContacts} cc
+            where cc.customer_id = ${notificationOutbox.customerId}
+              and lower(cc.email) = lower(${notificationDeliveries.toAddress})
+            order by cc.is_active desc, cc.created_at
+            limit 1),
+          ${principals.nameAr})`,
         senderNameEn: branches.legalNameEn,
         senderNameAr: branches.legalNameAr,
         /*
@@ -681,13 +734,6 @@ async function claim(asOf: Date): Promise<ClaimedDelivery[]> {
         eq(notificationTemplates.id, notificationDeliveries.templateId),
       )
       .leftJoin(principals, eq(principals.id, notificationDeliveries.principalId))
-      .leftJoin(
-        customerContacts,
-        and(
-          eq(customerContacts.customerId, notificationOutbox.customerId),
-          eq(customerContacts.email, notificationDeliveries.toAddress),
-        ),
-      )
       .where(inArray(notificationDeliveries.id, ids))
   })
 }

@@ -117,7 +117,7 @@ describe('parseAddress', () => {
 // --- the conversation --------------------------------------------------------
 
 describe('sendMail', () => {
-  it('delivers a plain English message and returns the queue reference', async () => {
+  it('delivers a plain English message and returns its Message-ID', async () => {
     const server = await fakeSmtp()
     try {
       const reference = await sendMail(options(server.port), {
@@ -134,7 +134,48 @@ describe('sendMail', () => {
       expect(header(message, 'To')).toBe('ops@customer.example')
       expect(header(message, 'Content-Language')).toBe('en')
       expect(body(message)).toBe('Hello Ahmed\n\nYour shipment is booked.\n')
-      expect(reference).toContain('queued as')
+      /*
+        The id the message carries, not the relay's queue line — a bounce
+        quotes the former and is matched back to its delivery row by it.
+      */
+      expect(reference).toMatch(/^<[0-9a-f-]{36}@qabandi\.test>$/)
+      expect(header(message, 'Message-ID')).toBe(reference)
+    } finally {
+      await server.close()
+    }
+  })
+
+  /**
+   * RFC 3834, and the loop breaker's other half.
+   *
+   * Everything this adapter sends is generated. Marking it so keeps vacation
+   * responders quiet, and lets `automaticByHeaders` recognise our own mail if
+   * it ever comes back into a polled inbox — rather than filing it as an
+   * enquiry, which is how one bounce once became a hundred and ninety-five.
+   */
+  it('marks every message it sends as auto-generated', async () => {
+    const server = await fakeSmtp()
+    try {
+      await sendMail(options(server.port), {
+        to: 'ops@customer.example',
+        subject: 'Invoice issued',
+        body: 'Attached.\n',
+        locale: 'en',
+        attachments: [
+          { filename: 'invoice.pdf', contentType: 'application/pdf', content: Buffer.from('%PDF') },
+        ],
+      })
+      await sendMail(options(server.port), {
+        to: 'ops@customer.example',
+        subject: 'Shipment booked',
+        body: 'Booked.\n',
+        locale: 'en',
+      })
+
+      expect(server.messages).toHaveLength(2)
+      for (const message of server.messages) {
+        expect(header(message, 'Auto-Submitted')).toBe('auto-generated')
+      }
     } finally {
       await server.close()
     }

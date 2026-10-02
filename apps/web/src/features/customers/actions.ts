@@ -17,12 +17,16 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { customerBranchTerms, customers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface CustomerFormState {
   /** Field-keyed messages, so each input can render its own error. */
@@ -52,20 +56,23 @@ function echo(form: FormData): Record<string, string> {
   return out
 }
 
-export async function createCustomer(
+export const createCustomer = refuseForbidden(async function createCustomer(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('customersValidation')
 
-  const parsed = customerFormSchema.safeParse(customerFormData(form))
+  const parsed = await localeParse(customerFormSchema(tv), customerFormData(form))
   if (!parsed.success) {
     return { errors: fieldErrors(parsed.error), values: echo(form) }
   }
 
   const data = parsed.data
-  assertInBranch(session, data.primaryBranchId)
+  assertCanIn(session, 'customer.write', data.primaryBranchId)
 
   let createdId: string
   try {
@@ -103,7 +110,7 @@ export async function createCustomer(
     // trace, and it is the one collision an operator will actually hit.
     if (isUniqueViolation(error)) {
       return {
-        errors: { code: 'That customer code is already in use.' },
+        errors: { code: tv('codeInUse') },
         values: echo(form),
       }
     }
@@ -112,16 +119,19 @@ export async function createCustomer(
 
   revalidatePath('/customers')
   redirect(`/customers/${createdId}`)
-}
+})
 
-export async function updateCustomer(
+export const updateCustomer = refuseForbidden(async function updateCustomer(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('customersValidation')
 
-  const parsed = updateCustomerSchema.safeParse({
+  const parsed = await localeParse(updateCustomerSchema(tv), {
     ...customerFormData(form),
     customerId: form.get('customerId'),
   })
@@ -130,7 +140,7 @@ export async function updateCustomer(
   }
 
   const data = parsed.data
-  assertInBranch(session, data.primaryBranchId)
+  assertCanIn(session, 'customer.write', data.primaryBranchId)
 
   try {
     await withActor(session.actor, async (tx) => {
@@ -183,7 +193,7 @@ export async function updateCustomer(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return { errors: { code: 'That customer code is already in use.' }, values: echo(form) }
+      return { errors: { code: tv('codeInUse') }, values: echo(form) }
     }
     throw error
   }
@@ -191,7 +201,7 @@ export async function updateCustomer(
   revalidatePath('/customers')
   revalidatePath(`/customers/${data.customerId}`)
   return { message: 'saved' }
-}
+})
 
 /**
  * Deactivate rather than delete — FR-ID-09, §5.5.
@@ -199,12 +209,14 @@ export async function updateCustomer(
  * A customer with shipment history cannot be removed without taking the
  * history with it, so the record stays and stops being selectable.
  */
-export async function setCustomerActive(
+export const setCustomerActive = refuseForbidden(async function setCustomerActive(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   /*
     A form action like every other one here, rather than the two positional
@@ -217,7 +229,8 @@ export async function setCustomerActive(
     in this slice already is.
   */
   const customerId = String(form.get('customerId') ?? '')
-  if (!customerId) return { message: 'Nothing to update.' }
+  const tv = await getTranslations('customersValidation')
+  if (!customerId) return { message: tv('nothingToUpdate') }
 
   // Presence is the signal, matching the checkbox convention of every form in
   // the application: reactivating sends the field, deactivating omits it.
@@ -233,4 +246,4 @@ export async function setCustomerActive(
   revalidatePath('/customers')
   revalidatePath(`/customers/${customerId}`)
   return { message: 'saved' }
-}
+})

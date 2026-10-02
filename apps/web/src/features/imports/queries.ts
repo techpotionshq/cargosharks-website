@@ -23,6 +23,13 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { named } from '@/lib/named'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotImportReference,
+  pilotImportableBranches,
+  pilotRatePartners,
+} from '@/lib/pilot/fixtures'
 import type { ImportKind } from './descriptors'
 
 export interface ImportReference {
@@ -37,6 +44,13 @@ export interface ImportReference {
  * import has no reason to read the charge catalogue.
  */
 export async function loadReference(actor: Actor, kind: ImportKind): Promise<ImportReference> {
+  /*
+    The pilot checks a file against its own reference data, so "Check" is a
+    real answer offline. It returned a 500 ("DATABASE_URL is not set") while
+    the page said only that nothing could be imported.
+  */
+  if (usePilotFixtures()) return pilotImportReference(kind)
+
   return withActor(actor, async (tx) => {
     const lookups: Record<string, ReadonlySet<string>> = {}
     const existing: Record<string, ReadonlySet<string>> = {}
@@ -212,25 +226,46 @@ export async function resolveCustomerCodes(
   })
 }
 
-/** Branches the principal may import into, for the destination selector. */
+/**
+ * Branches the principal may import into, for the destination selector.
+ * `locale` names them in the reader's language (F27).
+ */
 export async function importableBranches(
   actor: Actor,
-): Promise<{ id: string; code: string; nameEn: string }[]> {
+  locale: 'en' | 'ar' = 'en',
+): Promise<{ id: string; code: string; name: string }[]> {
+  // The customer and cutover sheets have nowhere to go without a branch.
+  if (usePilotFixtures()) return pilotImportableBranches(locale)
+
   return withActor(actor, async (tx) =>
     tx
-      .select({ id: branches.id, code: branches.code, nameEn: branches.legalNameEn })
+      .select({
+        id: branches.id,
+        code: branches.code,
+        name: named(locale, branches.legalNameEn, branches.legalNameAr),
+      })
       .from(branches)
       .where(eq(branches.isActive, true)),
   )
 }
 
-/** Active agents and carriers, for the rate-card sheet's owning partner. */
+/**
+ * Active agents and carriers, for the rate-card sheet's owning partner.
+ * `locale` names them in the reader's language (F27).
+ */
 export async function ratePartners(
   actor: Actor,
-): Promise<{ id: string; code: string; nameEn: string }[]> {
+  locale: 'en' | 'ar' = 'en',
+): Promise<{ id: string; code: string; name: string }[]> {
+  if (usePilotFixtures()) return pilotRatePartners(locale)
+
   return withActor(actor, async (tx) =>
     tx
-      .select({ id: partners.id, code: partners.code, nameEn: partners.legalNameEn })
+      .select({
+        id: partners.id,
+        code: partners.code,
+        name: named(locale, partners.legalNameEn, partners.legalNameAr),
+      })
       .from(partners)
       .where(eq(partners.isActive, true)),
   )

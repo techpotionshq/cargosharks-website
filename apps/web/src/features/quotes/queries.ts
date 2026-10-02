@@ -14,9 +14,10 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   chargeTypes,
   enquiries,
   customers,
@@ -48,16 +49,49 @@ function text(value: unknown): string | null {
 }
 
 /**
+ * The buy rate of each charge, from the snapshot's `lineCosts`.
+ *
+ * Pricing records the buy side line by line (F41), already in the quotation's
+ * currency like the sell lines, keyed by charge type — the join between a buy
+ * line and its sell line. A quotation priced before that has no `lineCosts`,
+ * and a sell charge the buy card did not carry has no entry: both read as
+ * `undefined` here and the page shows the buy rate as unknown, never as zero.
+ */
+function buyRates(snapshot: Record<string, unknown>): Map<string, number> {
+  const rates = new Map<string, number>()
+  if (!Array.isArray(snapshot.lineCosts)) return rates
+  for (const entry of snapshot.lineCosts as unknown[]) {
+    if (!entry || typeof entry !== 'object') continue
+    const { chargeTypeKey, rate } = entry as Record<string, unknown>
+    if (typeof chargeTypeKey !== 'string' || typeof rate !== 'string') continue
+    // The first line of a charge wins, as the sell side's order does.
+    if (!rates.has(chargeTypeKey)) rates.set(chargeTypeKey, Number(rate))
+  }
+  return rates
+}
+
+/**
  * The priced options for an enquiry, ranked.
  *
  * `enquiryId` is optional so the demo can open the comparison directly; in the
  * product it is always reached from the enquiry.
+ *
+ * `undefined` means the enquiry does not exist or this actor cannot see it —
+ * nothing else. An enquiry with no quote yet comes back with `options: []`,
+ * because this is the page that prices it: answering "not found" for a
+ * quoteless enquiry made every new one unreachable, and with it the only
+ * "Price it" button it has.
+ *
+ * `locale` names the customer, the lane and the card's partner in the reader's
+ * language. Defaulted to English so a caller that does not pass one renders
+ * as it did before rather than failing to compile.
  */
 export async function getQuoteComparison(
   actor: Actor,
   enquiryId?: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<QuoteComparison | undefined> {
-  if (usePilotFixtures()) return pilotQuote()
+  if (usePilotFixtures()) return pilotQuote(enquiryId, Date.now(), locale)
   if (!enquiryId) return undefined
 
   return withActor(actor, async (tx) => {
@@ -65,15 +99,26 @@ export async function getQuoteComparison(
       .select({
         enquiryReference: enquiries.reference,
         mode: enquiries.mode,
+        containerCount: enquiries.containerCount,
         incoterm: enquiries.incoterm,
         firstRespondedAt: enquiries.firstRespondedAt,
         status: enquiries.status,
+        branchId: enquiries.branchId,
+        baseCurrency: branches.baseCurrency,
+        hasAccepted: sql<boolean>`exists (
+          select 1 from quotes a where a.enquiry_id = "enquiries"."id" and a.status = 'accepted'
+        )`,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         preparedBy: principals.nameEn,
+        preparedByAr: principals.nameAr,
         originName: origin.nameEn,
+        originNameAr: origin.nameAr,
         destinationName: destination.nameEn,
+        destinationNameAr: destination.nameAr,
       })
       .from(enquiries)
+      .innerJoin(branches, eq(branches.id, enquiries.branchId))
       .leftJoin(customers, eq(customers.id, enquiries.customerId))
       .leftJoin(principals, eq(principals.id, enquiries.ownerId))
       // The lane the enquiry actually names. It used to be a hard-coded dash
@@ -86,6 +131,14 @@ export async function getQuoteComparison(
       .limit(1)
 
     if (!header) return undefined
+
+    /*
+      The Arabic name where there is one. Partners mostly have none yet, and
+      an empty string is as unset as a null, hence `||` rather than `??`.
+    */
+    const named = (en: string | null, ar: string | null) => (locale === 'ar' && ar) || en
+    const originName = named(header.originName, header.originNameAr)
+    const destinationName = named(header.destinationName, header.destinationNameAr)
 
     const optionRows = await tx
       .select({
@@ -105,6 +158,8 @@ export async function getQuoteComparison(
           exactly what `rate_card_version_id` is kept for.
         */
         cardPartner: partners.legalNameEn,
+        cardPartnerAr: partners.legalNameAr,
+        rateCardVersionId: quotes.rateCardVersionId,
       })
       .from(quotes)
       .leftJoin(rateCards, eq(rateCards.id, quotes.rateCardVersionId))
@@ -117,22 +172,34 @@ export async function getQuoteComparison(
     // No quote yet is the normal state of a new enquiry, not a missing one —
     // returning nothing here made every unpriced enquiry's page a 404.
 
-    const lineRows = await tx
-      .select({
-        quoteId: quoteLines.quoteId,
-        description: quoteLines.description,
-        basis: quoteLines.basis,
-        quantity: quoteLines.quantity,
-        rate: quoteLines.rate,
-        amount: quoteLines.amount,
-        currency: quoteLines.currency,
-        code: chargeTypes.key,
-        nameEn: chargeTypes.nameEn,
-        nameAr: chargeTypes.nameAr,
-      })
-      .from(quoteLines)
-      .innerJoin(chargeTypes, eq(chargeTypes.id, quoteLines.chargeTypeId))
-      .orderBy(asc(quoteLines.sortOrder))
+    /*
+      Only the lines of the options on screen. Unfiltered, this read every quote
+      line the actor could see — every quotation in their branches — on every
+      page load, and threw all but a handful away below. Skipped outright when
+      there is nothing to price yet: `inArray` over an empty list is no query
+      worth sending.
+    */
+    const optionIds = optionRows.map((row) => row.id)
+    const lineRows =
+      optionIds.length === 0
+        ? []
+        : await tx
+            .select({
+              quoteId: quoteLines.quoteId,
+              description: quoteLines.description,
+              basis: quoteLines.basis,
+              quantity: quoteLines.quantity,
+              rate: quoteLines.rate,
+              amount: quoteLines.amount,
+              currency: quoteLines.currency,
+              code: chargeTypes.key,
+              nameEn: chargeTypes.nameEn,
+              nameAr: chargeTypes.nameAr,
+            })
+            .from(quoteLines)
+            .innerJoin(chargeTypes, eq(chargeTypes.id, quoteLines.chargeTypeId))
+            .where(inArray(quoteLines.quoteId, optionIds))
+            .orderBy(asc(quoteLines.sortOrder))
 
     /** The cheapest sell is recommended unless a snapshot says otherwise. */
     const cheapest = optionRows.reduce<(typeof optionRows)[number] | undefined>(
@@ -145,9 +212,10 @@ export async function getQuoteComparison(
       const sell = Number(row.totalSell ?? 0)
       const cost = Number(row.totalCost ?? 0)
       const snapshot = (row.pricedSnapshot ?? {}) as Record<string, unknown>
+      const buyRateOf = buyRates(snapshot)
       return {
         id: row.id,
-        carrier: text(snapshot.carrier) ?? row.cardPartner,
+        carrier: text(snapshot.carrier) ?? named(row.cardPartner, row.cardPartnerAr),
         service: text(snapshot.service),
         transitDays: typeof snapshot.transitDays === 'number' ? snapshot.transitDays : null,
         buy: { amount: cost, currency: row.currency },
@@ -163,7 +231,7 @@ export async function getQuoteComparison(
             nameAr: line.nameAr,
             basis: line.basis,
             quantity: Number(line.quantity),
-            buyRate: 0,
+            buyRate: buyRateOf.get(line.code) ?? null,
             sellRate: Number(line.rate),
             amount: { amount: Number(line.amount), currency: line.currency },
           })),
@@ -172,15 +240,20 @@ export async function getQuoteComparison(
 
     return {
       enquiryReference: header.enquiryReference,
-      customerName: header.customerName ?? '—',
+      // Null rather than a dash: the page says "Not recorded" in words.
+      customerName: named(header.customerName, header.customerNameAr),
+      // The arrow turns round in Arabic: an RTL line sets the origin on the right.
       lane:
-        header.originName && header.destinationName
-          ? `${header.originName} → ${header.destinationName}`
+        originName && destinationName
+          ? `${originName} ${locale === 'ar' ? '←' : '→'} ${destinationName}`
           : null,
-      mode: (header.mode ?? 'sea_fcl') as Mode,
+      // Not defaulted: a WhatsApp or emailed enquiry has no mode until it is
+      // read, and "Sea FCL" in its place states a fact nobody recorded.
+      mode: header.mode as Mode | null,
+      containerCount: header.containerCount,
       containerType: null,
       incoterm: header.incoterm,
-      preparedBy: header.preparedBy ?? '—',
+      preparedBy: named(header.preparedBy, header.preparedByAr),
       pricedAt: new Date(),
       /*
         Neither number is measured on the live path yet.
@@ -199,6 +272,14 @@ export async function getQuoteComparison(
       // The raw status too: "start rating" is only a move from `assigned`,
       // and `isClosed` cannot answer which of the open states it is in.
       status: header.status,
+      branchId: header.branchId,
+      baseCurrency: header.baseCurrency,
+      hasAccepted: header.hasAccepted,
+      pricedFrom: optionRows.every((row) => row.rateCardVersionId)
+        ? ('rate_card' as const)
+        : optionRows.some((row) => row.rateCardVersionId)
+          ? ('mixed' as const)
+          : ('manual' as const),
       options,
     }
   })

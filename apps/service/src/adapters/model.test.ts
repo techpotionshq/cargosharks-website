@@ -214,6 +214,36 @@ describe('the response', () => {
     ])
   })
 
+  /*
+    `Operations_Findings` §11, OP-31: the answer can arrive in `reasoning` with
+    no content. The provider sends that as `null` *and* as `""`, and only the
+    first used to fall through — the second read as "the model returned
+    nothing" and was retried five times at full price.
+  */
+  it('reads the reply from reasoning when content is empty, not only when it is null', () => {
+    for (const content of [null, '', '  ']) {
+      const result = readCompletion(
+        completion({
+          choices: [{ message: { content, reasoning: '{"mode":"sea"}' }, finish_reason: 'stop' }],
+        }) as never,
+        'vendor/model-a',
+      )
+      expect(result.text).toBe('{"mode":"sea"}')
+    }
+  })
+
+  it('keeps real content over reasoning', () => {
+    const result = readCompletion(
+      completion({
+        choices: [
+          { message: { content: '{"mode":"air"}', reasoning: 'thinking…' }, finish_reason: 'stop' },
+        ],
+      }) as never,
+      'vendor/model-a',
+    )
+    expect(result.text).toBe('{"mode":"air"}')
+  })
+
   it('treats a missing usage block as zero tokens and no cost, not as a crash', () => {
     const result = readCompletion(completion({ usage: undefined }) as never, 'vendor/model-a')
     expect(result.inputTokens).toBe(0)
@@ -301,5 +331,68 @@ describe('failures an operator can act on', () => {
       }),
     )
     await expect(openRouterModel(options).complete(ask())).rejects.toThrow(/within 5000ms/)
+  })
+
+  /*
+    ai-12, live: the headers came back inside the minute and the body did not,
+    so the abort fired while the body was being read — and a swallowed parse
+    error became `payload.choices` on null, a TypeError in the ledger and a
+    500 at the route. Each of these is now a typed, retryable model error.
+  */
+  it('reports a body that times out mid-read as a timeout, not a TypeError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                const error = new Error('The operation was aborted due to timeout')
+                error.name = 'TimeoutError'
+                controller.error(error)
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    )
+    const failure = openRouterModel(options).complete(ask())
+    await expect(failure).rejects.toBeInstanceOf(ModelError)
+    await expect(failure).rejects.toMatchObject({ code: 'model.timeout', retryable: true })
+  })
+
+  it('reports a successful status with a body that is not JSON as unreadable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('<html>gateway</html>', { status: 200 }))),
+    )
+    await expect(openRouterModel(options).complete(ask())).rejects.toMatchObject({
+      code: 'model.unreadable_response',
+      retryable: true,
+    })
+  })
+
+  it('reads a null body as an empty response', () => {
+    expect(() => readCompletion(null, 'vendor/model-a')).toThrow(ModelError)
+  })
+
+  it('does not call a refusal retryable', () => {
+    expect(new ModelError('model.refused', 'no').retryable).toBe(false)
+    expect(new ModelError('model.out_of_credit', 'no').retryable).toBe(false)
+  })
+
+  it('takes a request’s own timeout over the default', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        const error = new Error('The operation was aborted due to timeout')
+        error.name = 'TimeoutError'
+        return Promise.reject(error)
+      }),
+    )
+    await expect(openRouterModel(options).complete(ask({ timeoutMs: 105_000 }))).rejects.toThrow(
+      /within 105000ms/,
+    )
   })
 })

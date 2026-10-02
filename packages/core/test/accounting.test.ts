@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AccountingError,
   SEED_CURRENCIES,
   allocatedBase,
   buildJournal,
@@ -18,6 +19,17 @@ import {
 } from '../src/index'
 
 const KWD: CurrencySpec = SEED_CURRENCIES.find((c) => c.code === 'KWD')!
+
+/** The `AccountingError` a call throws, for asserting its code and values. */
+function caught(run: () => unknown): AccountingError {
+  try {
+    run()
+  } catch (error) {
+    if (error instanceof AccountingError) return error
+    throw error
+  }
+  throw new Error('expected an AccountingError')
+}
 
 const controls: ControlAccounts = {
   receivables: '1200',
@@ -266,6 +278,69 @@ describe('cash and realised FX', () => {
     expect(journal.lines[1]!.description).toBe('On account')
     expect(isBalanced(journal)).toBe(true)
   })
+
+  /*
+    A 1,000 KWD receipt allocated 600 used to post an "exchange difference" of
+    400 KWD: the unallocated rest fell into `received - cleared`.
+  */
+  it('keeps the unallocated rest of a receipt on account, not in FX variance', () => {
+    const journal = buildJournal(
+      base({
+        payments: [
+          {
+            id: 'pay-4',
+            receivedOn: new Date('2026-04-02T00:00:00Z'),
+            customerName: 'Gulf Trading Co.',
+            currency: 'KWD',
+            amount: '1000',
+            fxRate: 1,
+            method: 'transfer',
+            allocations: [{ invoiceSeriesNo: 'KWI-2026-00001', baseAmount: '600', amount: '600' }],
+          },
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines.some((l) => l.account === '7800')).toBe(false)
+    const credits = journal.lines.filter((l) => l.account === '1200')
+    expect(credits.map((l) => [l.description, l.credit.amount.toString()])).toEqual([
+      ['Settles KWI-2026-00001', '600'],
+      ['On account', '400'],
+    ])
+    expect(isBalanced(journal)).toBe(true)
+  })
+
+  it('posts only the true exchange difference on a part-allocated foreign receipt', () => {
+    // USD 1,000 at 0.309 = 309 KWD. USD 600 settles an invoice raised at 0.307
+    // (184.2 KWD); USD 400 is on account at the receipt's rate (123.6 KWD).
+    // The gain is 600 × (0.309 − 0.307) = 1.2 KWD, not 124.8.
+    const journal = buildJournal(
+      base({
+        payments: [
+          {
+            id: 'pay-5',
+            receivedOn: new Date('2026-04-02T00:00:00Z'),
+            customerName: 'Gulf Trading Co.',
+            currency: 'USD',
+            amount: '1000',
+            fxRate: '0.309',
+            method: 'transfer',
+            allocations: [
+              { invoiceSeriesNo: 'KWI-2026-00001', baseAmount: '184.2', amount: '600' },
+            ],
+          },
+        ],
+      }),
+      KWD,
+    )
+
+    const fx = journal.lines.find((l) => l.account === '7800')!
+    expect(fx.credit.amount.toString()).toBe('1.2')
+    const onAccount = journal.lines.find((l) => l.description === 'On account')!
+    expect(onAccount.credit.amount.toString()).toBe('123.6')
+    expect(isBalanced(journal)).toBe(true)
+  })
 })
 
 describe('refusals', () => {
@@ -313,6 +388,75 @@ describe('refusals', () => {
         KWD,
       ),
     ).toThrow(/No receivables configured/)
+  })
+
+  /**
+   * The English names the invoice; a translated sentence can only do the same
+   * if the facts travel beside it. Strings only — see `AccountingErrorValues`.
+   */
+  it('carries which account is missing and which invoice it stopped, as values', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({ controls: { ...controls, receivables: null }, invoices: [invoice()] }),
+        KWD,
+      ),
+    )
+    expect(refusal.code).toBe('journal_unmapped')
+    expect(refusal.values).toEqual({
+      account: 'receivables',
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+    })
+  })
+
+  it('names the unmapped charge type in both languages, Arabic falling back to English', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({
+          invoices: [
+            invoice({
+              lines: [
+                {
+                  chargeTypeId: 'ct-unmapped',
+                  description: 'Legalisation',
+                  amount: '30',
+                  taxAmount: '0',
+                },
+              ],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    )
+    expect(refusal.values).toEqual({
+      account: 'revenue',
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+      chargeTypeEn: 'Legalisation',
+      chargeTypeAr: 'Legalisation',
+    })
+  })
+
+  it('names the invoice and the line that has no charge type', () => {
+    const refusal = caught(() =>
+      buildJournal(
+        base({
+          invoices: [
+            invoice({
+              lines: [{ chargeTypeId: null, description: 'Sundry', amount: '30', taxAmount: '0' }],
+            }),
+          ],
+        }),
+        KWD,
+      ),
+    )
+    expect(refusal.code).toBe('journal_unmapped_line')
+    expect(refusal.values).toEqual({
+      document: 'invoice',
+      reference: 'KWI-2026-00001',
+      line: 'Sundry',
+    })
   })
 
   it('lists what needs mapping before the export is attempted', () => {
@@ -633,6 +777,31 @@ describe('paying a supplier', () => {
     expect(journal.lines).toHaveLength(2)
     expect(journal.lines[0]!.description).toBe('On account')
   })
+
+  it('keeps the unallocated rest of a payment on account, not in FX variance', () => {
+    const journal = buildJournal(
+      base({
+        supplierPayments: [
+          payment({
+            amount: '1000',
+            allocations: [{ supplierReference: 'JEA/2026/8841', baseAmount: '600', amount: '600' }],
+          }),
+        ],
+      }),
+      KWD,
+    )
+
+    expect(journal.lines.some((l) => l.account === '7800')).toBe(false)
+    expect(
+      journal.lines
+        .filter((l) => l.account === '2100')
+        .map((l) => [l.description, l.debit.amount.toString()]),
+    ).toEqual([
+      ['Settles JEA/2026/8841', '600'],
+      ['On account', '400'],
+    ])
+    expect(isBalanced(journal)).toBe(true)
+  })
 })
 
 describe('setting off an agent current account', () => {
@@ -749,6 +918,11 @@ describe('rounding, and the line that is not rounding', () => {
    */
   it('refuses a difference too large to be rounding, and says so', () => {
     expect(() => buildJournal(fractional(4), KWD)).toThrow(/too much to be rounding/)
+    // The amount as a decimal string, three places and all — never a number.
+    const refusal = caught(() => buildJournal(fractional(4), KWD))
+    expect(refusal.code).toBe('journal_unbalanced')
+    expect(refusal.values.currency).toBe('KWD')
+    expect(refusal.values.amount).toMatch(/^-?\d+(\.\d+)?$/)
   })
 
   it('refuses to plug a difference with no rounding account configured', () => {

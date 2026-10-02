@@ -88,6 +88,8 @@ const ALL_SETTINGS_ROUTES = [
   '/settings/mailboxes',
   // The WhatsApp intake's counterpart to mailboxes — number → branch mapping.
   '/settings/whatsapp-numbers',
+  // The agent behind those numbers and mailboxes — its timing, patience and requirements.
+  '/settings/intake-agent',
 ] as const
 
 /**

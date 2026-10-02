@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'spreadsheets')
 
-REVIEWED = '2026-08-25'
+REVIEWED = '2026-10-02'
 OWNER = '[TO CONFIRM — a named person]'
 
 # --- house style -------------------------------------------------------------
@@ -163,7 +163,7 @@ ROPA_ROWS = [
      "The operator's own staff scoped by branch; the customer contact for their own shipments; the agent contact for jobs their partner is named on",
      'Determined by the hosting region, which is not yet chosen',
      NOT_SET,
-     'Row-level security (ENABLE and FORCE) on 82 of 88 tables, 197 policies; audit by trigger; DELETE revoked',
+     'Row-level security (ENABLE and FORCE) on 87 of 93 tables, 211 policies; audit by trigger; DELETE revoked; permissions checked per branch',
      'principals, customer_contacts, partner_contacts, jobs, shipments, pod_*, documents, messages',
      'Live'],
 
@@ -184,13 +184,13 @@ ROPA_ROWS = [
     ['P-03', 'Audit trail', 'Processor', 'The forwarder',
      'Accountability. Who changed what, when',
      'Anyone whose record was created, changed or viewed',
-     'Principal id, table, row id, action, timestamp, before/after values — which include personal data wherever the audited row did',
+     'Principal id, table, row id, operation, timestamp, client IP address, before/after values — which include personal data wherever the audited row did',
      'Only where the audited row held it',
      'Legal obligation and legitimate interest; an audit trail is itself a security measure',
      'Internal principals with the audit permission; support principals under an unexpired grant',
      'None',
-     'NOT SET. NFR-10 requires 12 months minimum, searchable and exportable — neither the search nor the export is built',
-     'Insert-only. DELETE revoked. 80 triggers attached by a loop rather than a list',
+     'NOT SET. NFR-10 requires 12 months minimum, searchable and exportable — the search and the CSV export are built; the period is not',
+     'Insert-only. DELETE revoked. 85 triggers; the build fails for any business table without one',
      'audit_log',
      'Live. The table that collides hardest with erasure rights'],
 
@@ -203,27 +203,27 @@ ROPA_ROWS = [
      'Named support engineers only',
      'Depends on where the engineer is',
      'NOT SET',
-     'Granted by the customer, time-boxed, revocable, read-only by structure (SELECT policies only), logged once per transaction inside that transaction',
+     'Granted by the customer, time-boxed, revocable, read-only unless the customer grants write scope (updates only, never inserts or deletes), logged once per transaction inside that transaction',
      'support_grants, support_access_log',
      'Live. A banner shows the customer while a session is open'],
 
     ['P-05', 'Inbound enquiry mail', 'Processor', 'The forwarder',
-     'Turning emailed enquiries into structured records',
-     'Anyone who emails the enquiry mailbox',
-     'Sender address, message body, attachments — uncontrolled, because anyone may write in',
+     'Turning emailed and WhatsApp enquiries into structured records, and — where a branch switches the intake agent on — answering the sender with at most one confirmation and a capped number of clarifications',
+     'Anyone who emails the enquiry mailbox or messages a business WhatsApp number',
+     'Sender address or phone number, message body, attachments (WhatsApp media fetched through Kapso), and staff WhatsApp replies sent from outside the product — uncontrolled, because anyone may write in',
      'Possible but not sought — the sender controls what they send',
      "The controller's legitimate interest in answering enquiries",
      'The IMAP mailbox provider the customer provisions',
      'Depends on the mailbox provider',
      'NOT SET',
      'Mailbox passwords sealed with AES-256-GCM under a key held outside the database; a check constraint refuses plaintext',
-     'mailboxes, messages, message_attachments',
-     'Live. The mailbox is on the open internet'],
+     'mailboxes, whatsapp_numbers, messages, message_attachments, intake_conversations, intake_turns',
+     'Live. The mailbox is on the open internet. The intake agent ships off per branch'],
 
     ['P-06', 'The AI surface', 'Processor', 'The forwarder',
      'Extracting structure from enquiries and documents; answering operator questions',
      'Anyone named in text submitted for extraction',
-     'Enquiry and document text, which may contain any of the categories above',
+     'Enquiry and document text — for the intake agent, every customer message in the conversation and any PDF or image attached to it — which may contain any of the categories above',
      'Possible, incidentally',
      "The controller's legitimate interest, and their explicit decision to switch the surface on",
      'OpenRouter, and the model provider it routes to',
@@ -291,7 +291,7 @@ C = [
 
     ('Data Security and Privacy', 'DSP-01', 'Is data classified?', 'Partial', 'Implicit in the schema and the ROPA; no formal classification scheme.', 'docs/compliance/ROPA.md'),
     ('Data Security and Privacy', 'DSP-02', 'Is there a data inventory?', 'Yes', 'The ROPA, derived from the schema.', 'docs/compliance/ROPA.md'),
-    ('Data Security and Privacy', 'DSP-03', 'Is data segregated between tenants?', 'Yes', 'Enforced by the database: RLS ENABLE and FORCE on 82 of 88 tables, 197 policies, and a database per customer.', 'packages/db/migrations/0004_rls.sql'),
+    ('Data Security and Privacy', 'DSP-03', 'Is data segregated between tenants?', 'Yes', 'Enforced by the database: RLS ENABLE and FORCE on 87 of 93 tables, 211 policies, and a database per customer.', 'packages/db/migrations/0004_rls.sql'),
     ('Data Security and Privacy', 'DSP-04', 'Is secure deletion supported?', 'No', 'The system is built on "nothing is deleted". DELETE is revoked from the application role.', 'packages/db/migrations/01-roles.sql'),
     ('Data Security and Privacy', 'DSP-05', 'Are retention periods defined?', 'No', 'Open, and blocked on the erasure decision.', 'Decisions_Required.md'),
     ('Data Security and Privacy', 'DSP-06', 'Is a DPIA performed where required?', 'No', 'Blocked on which law applies.', '—'),
@@ -308,13 +308,13 @@ C = [
     ('Human Resources Security', 'HRS-03', 'Is security awareness training provided?', 'No', '—', '—'),
     ('Human Resources Security', 'HRS-04', 'Is there an onboarding and offboarding process?', 'Partial', 'Technically: accounts are is_active = false and revocation takes effect on the next request. Not documented as a procedure.', 'apps/web/src/lib/session.ts'),
 
-    ('Identity and Access Management', 'IAM-01', 'Is there an access-management policy?', 'Yes', 'Roles and permissions are seed rows; 35 enforced keys, granted per branch.', 'scripts/check-permissions.mjs'),
+    ('Identity and Access Management', 'IAM-01', 'Is there an access-management policy?', 'Yes', 'Roles and permissions are seed rows; 38 enforced keys, granted and checked per branch.', 'scripts/check-permissions.mjs'),
     ('Identity and Access Management', 'IAM-02', 'Is least privilege enforced?', 'Yes', 'Application role holds NOBYPASSRLS, owns nothing, DELETE revoked. Migrations run as a separate role.', 'packages/db/migrations/01-roles.sql'),
-    ('Identity and Access Management', 'IAM-03', 'Is multi-factor authentication supported?', 'Yes', 'TOTP, and mandatory for Administrator and Finance — enforced in both internal shells.', 'apps/web/src/features/auth/enrolment.ts'),
+    ('Identity and Access Management', 'IAM-03', 'Is multi-factor authentication supported?', 'Yes', 'TOTP, and mandatory for Administrator and Finance — enforced in both internal shells. Backup codes accepted at the challenge.', 'apps/web/src/features/auth/enrolment.ts'),
     ('Identity and Access Management', 'IAM-04', 'Are strong passwords enforced?', 'Yes', 'Twelve characters minimum.', 'apps/web/src/lib/auth.ts'),
-    ('Identity and Access Management', 'IAM-05', 'Is there protection against brute force?', 'Yes', 'Five failures locks the account for fifteen minutes; ten attempts per address per fifteen minutes.', 'packages/core/src/lockout.ts, apps/web/src/lib/throttle.ts'),
-    ('Identity and Access Management', 'IAM-06', 'Are sessions managed securely?', 'Yes', 'Database-backed and opaque, never JWTs. Revocation takes effect on the next request. 12-hour expiry, __Secure- cookies.', 'apps/web/src/lib/session.ts'),
-    ('Identity and Access Management', 'IAM-07', 'Are privileged accesses logged?', 'Yes', '80 audit triggers; vendor support access separately granted, time-boxed, read-only by structure, logged per transaction.', 'packages/db/migrations/0008_support_access.sql'),
+    ('Identity and Access Management', 'IAM-05', 'Is there protection against brute force?', 'Yes', 'Five failures locks the account for fifteen minutes; ten attempts per address per fifteen minutes. Enforced inside Better Auth; the address comes from the trusted proxy hops, never the leftmost X-Forwarded-For entry.', 'packages/core/src/lockout.ts, apps/web/src/lib/throttle.ts'),
+    ('Identity and Access Management', 'IAM-06', 'Are sessions managed securely?', 'Yes', 'Database-backed and opaque, never JWTs. Revocation takes effect on the next request; sign-out deletes the session and a reset revokes all of them. 12-hour expiry, __Secure- cookies.', 'apps/web/src/lib/session.ts'),
+    ('Identity and Access Management', 'IAM-07', 'Are privileged accesses logged?', 'Yes', '85 audit triggers; vendor support access separately granted, time-boxed, read-only unless the customer grants write scope, logged per transaction.', 'packages/db/migrations/0008_support_access.sql'),
     ('Identity and Access Management', 'IAM-08', 'Are access reviews performed periodically?', 'No', 'No cadence defined.', '—'),
     ('Identity and Access Management', 'IAM-09', 'Is SSO or SAML supported?', 'No', 'Deliberately out of scope for Release One.', 'apps/web/src/lib/auth.ts'),
 

@@ -15,7 +15,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
 import { listWhatsappNumbers } from '@/features/admin/whatsapp-numbers'
 import {
   WhatsappNumberDialog,
@@ -43,7 +43,7 @@ export default async function WhatsappNumbersPage() {
 
   const [rows, options, t, tc] = await Promise.all([
     listWhatsappNumbers(),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('whatsappNumbers'),
     getTranslations('common'),
   ])
@@ -56,7 +56,9 @@ export default async function WhatsappNumbersPage() {
   // Only branches this administrator holds a role in — `whatsapp_numbers_scope`
   // scopes the insert to `app.branch_ids()`, so offering an unheld branch would
   // be a choice the database refuses after the form is filled in.
-  const assignable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+  // Administered, not merely held (A2) — the action refuses the rest.
+  const administered = new Set(branchesWhere(session, 'admin.mailboxes.write'))
+  const assignable = options.branches.filter((branch) => administered.has(branch.value))
 
   return (
     <Register
@@ -76,9 +78,12 @@ export default async function WhatsappNumbersPage() {
           <TR>
             <TH>{t('branch')}</TH>
             <TH>{t('label')}</TH>
-            <TH>{t('displayNumber')}</TH>
-            <TH>{t('phoneNumberId')}</TH>
-            <TH>{t('lastMessage')}</TH>
+            {/* The number follows its label on a phone (below). */}
+            <TH priority="low">{t('displayNumber')}</TH>
+            {/* The provider's ID and the last message wait for a wider
+                screen; which number and whether it is on is what a phone keeps. */}
+            <TH priority="low">{t('phoneNumberId')}</TH>
+            <TH priority="low">{t('lastMessage')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{tc('actions')}</TH>
           </TR>
@@ -87,12 +92,34 @@ export default async function WhatsappNumbersPage() {
           {rows.map((row) => (
             <TR key={row.id}>
               <TD>{row.branchCode}</TD>
-              <TD>{row.label ?? '—'}</TD>
-              <TD>{row.displayNumber ?? '—'}</TD>
               <TD>
-                <span className="text-muted">{row.phoneNumberId}</span>
+                {row.label ?? '—'}
+                {row.displayNumber ? (
+                  // `dir="ltr"`: "+965 2222 0000" is written left to right in
+                  // Arabic too; unmarked, the groups came out reversed.
+                  <span
+                    dir="ltr"
+                    className="numeric block text-caption whitespace-nowrap text-ink-muted @3xl:hidden"
+                  >
+                    {row.displayNumber}
+                  </span>
+                ) : null}
               </TD>
-              <TD>
+              <TD priority="low">
+                {row.displayNumber ? (
+                  <span dir="ltr" className="numeric whitespace-nowrap">
+                    {row.displayNumber}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </TD>
+              <TD priority="low">
+                <span dir="ltr" className="numeric text-muted">
+                  {row.phoneNumberId}
+                </span>
+              </TD>
+              <TD priority="low">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}
               </TD>
               <TD>
@@ -130,7 +157,7 @@ export default async function WhatsappNumbersPage() {
         which reads as a bug in the page rather than as a gap in their roles.
       */}
       {assignable.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">{t('noBranchRole')}</p>
+        <p className="mt-3 text-body text-muted">{t('noBranchRole')}</p>
       ) : null}
     </Register>
   )

@@ -8,7 +8,13 @@
  */
 
 import type { Job } from 'pg-boss'
-import { JOBS, applyCarrierPollSchedule, applyInboundMailSchedule, getBoss } from '../queue'
+import {
+  JOBS,
+  applyCarrierPollSchedule,
+  applyInboundMailSchedule,
+  getBoss,
+  sendReceiptJob,
+} from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
@@ -16,7 +22,11 @@ import { runNotificationDispatch, registerChannel } from './notification-dispatc
 import { inAppChannel, resolveEmailChannel } from '../adapters/index'
 import { runFxRefresh } from './fx-refresh'
 import { runCarrierPoll } from './carrier-poll'
-import { runInvoiceOverdueNotices, runQuoteExpiryWarnings } from './commercial-reminders'
+import {
+  runInvoiceOverdueNotices,
+  runQuoteExpiryWarnings,
+  runQuoteLapse,
+} from './commercial-reminders'
 import { runInboundMailPoll } from './inbound-mail'
 import { runRateCardExpiryDigest } from './rate-card-expiry'
 import { refreshExpiringRateCards } from './rate-card-refresh'
@@ -32,6 +42,8 @@ import {
   runInboundWhatsAppWebhook,
   type InboundWhatsAppWebhookInput,
 } from './inbound-whatsapp-webhook'
+import { runInboundRedrive } from './inbound-redrive'
+import { runIntakeTurns } from './intake-turn'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
@@ -231,6 +243,9 @@ export async function registerWorkers(log: {
     below owns everything about actually sending.
   */
   await work(JOBS.quoteExpiry, async () => {
+    // Lapse first: a quotation already past its date is expired, not warned.
+    const lapsed = await runQuoteLapse()
+    log.info(lapsed, 'lapsed quotations expired')
     const result = await runQuoteExpiryWarnings()
     log.info(result, 'quote expiry warnings raised')
   })
@@ -363,6 +378,33 @@ export async function registerWorkers(log: {
     shared with email, so a WhatsApp enquiry is read by the same model call and
     files the same rows as an emailed one.
   */
+  /*
+    The safety net under both routes above: a receipt recorded but never
+    processed — a send that failed after the receipt committed, or a job that
+    ran out of retries — is queued again. Logged only when it found something.
+  */
+  await work(JOBS.inboundRedrive, async () => {
+    const result = await runInboundRedrive((jobName, eventId) =>
+      sendReceiptJob(boss, jobName, eventId),
+    )
+    if (result.requeued > 0 || result.failed > 0) log.info(result, 'inbound receipts re-driven')
+  })
+
+  /*
+    The intake agent's debounced turn — FR-EQ-02, the conversation half.
+
+    One handler for both triggers: the minute sweep and the per-conversation
+    wake-up the ingest queues at the exact due time. Either way it runs every
+    turn that is due, so a wake-up arriving after the sweep already took the
+    turn finds nothing and returns. Failures are the turn's own — a conversation
+    whose turn throws keeps its lease until it expires and is retried by a later
+    sweep — so nothing rethrows into pg-boss's backoff here.
+  */
+  await work(JOBS.intakeTurn, async () => {
+    const result = await runIntakeTurns()
+    if (result.due > 0) log.info(result, 'intake turns run')
+  })
+
   await work(JOBS.inboundWhatsApp, async (jobs) => {
     for (const job of jobs) {
       const input = job.data as unknown as InboundWhatsAppWebhookInput
@@ -496,7 +538,7 @@ export async function registerWorkers(log: {
     skipped inside, not thrown, so one missing address never fails the sweep.
   */
   await work(JOBS.rateRequestSend, async () => {
-    const result = await sendRateRequests()
+    const result = await sendRateRequests({ log: log.info.bind(log) })
     if (result.sent + result.skipped + result.failed > 0) log.info(result, 'rate requests sent')
   })
 

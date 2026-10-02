@@ -11,10 +11,12 @@
  * itself, and the release control on the document vault.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getJobDetail } from '@/features/jobs/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import {
@@ -51,13 +53,31 @@ import { ProofOfDeliveryCard } from '@/features/pod/ui/panels'
 import { DutyEstimateDialog } from '@/features/operations/ui/duty-dialog'
 import { releaseDocument } from '@/features/operations/form-actions'
 import { can } from '@/lib/permissions'
+import { pickName } from '@/lib/named'
+import { localInputValue } from '@qabandi/core'
+import { MoreMenu } from '@/ui/menu'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const job = await getJobDetail(session.actor, recordId((await params).id))
+  const t = await getTranslations('job')
+  return { title: job?.reference ?? t('title') }
+}
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
-  const job = await getJobDetail(session.actor, id)
+  const id = recordId((await params).id)
+  // Resolved before the reads below: the ledger names its charges in it, and
+  // the file names its owner and its free-text fields in it.
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const job = await getJobDetail(session.actor, id, locale)
   if (!job) notFound()
 
   // Resolved once rather than per row — the document list can be long and the
@@ -84,7 +104,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       widening it would mean inventing a P&L for twenty demo shipments. Returns
       an empty ledger under fixtures and the card says so.
     */
-    getJobLedger(session.actor, id),
+    getJobLedger(session.actor, id, locale),
     /*
       Proof of delivery, and the containers it can name.
 
@@ -102,10 +122,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const tMode = await getTranslations('mode')
   const tDirection = await getTranslations('direction')
   const tPartners = await getTranslations('jobPartners')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
-  const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  // An empty Arabic name falls back to English rather than rendering blank (F52).
+  const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
 
   return (
     <>
@@ -123,8 +142,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         description={formatLane(
           nameOf(job.originName, job.originNameAr),
           nameOf(job.destinationName, job.destinationNameAr),
+          locale,
         )}
-        actions={
+        status={
           <>
             <Badge tone={jobTone(job.status)} dot>
               {t(`statuses.${job.status}` as 'statuses.booked')}
@@ -137,44 +157,64 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {t(`customsStatuses.${job.customsStatus}` as 'customsStatuses.held')}
               </Badge>
             ) : null}
+          </>
+        }
+        actions={
+          <>
             {/*
-              The four things somebody actually does from a job file, in the
-              order they are needed: flag a problem, move customs on, move the
-              shipment on, correct the record. Each is permission-gated inside
-              its own component, so a coordinator sees only what they can act
-              on — and `job.hold`, `job.cancel` and `job.close` are separate
-              keys that the status dialog's own action checks per status.
+              The four things somebody actually does from a job file: move the
+              shipment on, flag a problem, move customs on, correct the record.
+              Moving it on is the one the file exists for, so it is the
+              header's single primary button; the other three wait behind More
+              in the order they are needed. Each is permission-gated inside its
+              own component, so a coordinator sees only what they can act on —
+              and `job.hold`, `job.cancel` and `job.close` are separate keys
+              that the status dialog's own action checks per status.
             */}
-            <RaiseExceptionDialog jobId={job.id} variant="secondary" />
-            <JobStatusDialog jobId={job.id} status={job.status} variant="secondary" />
-            <CustomsDialog
-              jobId={job.id}
-              variant="secondary"
-              defaults={{ status: job.customsStatus ?? 'not_started' }}
-            />
-            <JobDialog
-              variant="ghost"
-              defaults={{
-                id: job.id,
-                branchId: job.branchId,
-                customerId: job.customerId,
-                mode: job.mode,
-                tradeDirection: job.direction,
-                status: job.status,
-                originId: job.originId,
-                destinationId: job.destinationId,
-                incoterm: job.incoterm,
-                masterBillNumber: job.masterBillNumber,
-                houseBillNumber: job.houseBillNumber,
-                vesselName: job.vesselOrFlight,
-                placeOfReceipt: job.placeOfReceipt,
-                placeOfDelivery: job.placeOfDelivery,
-                customerReference: job.customerReference,
-                grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
-                volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
-                pieces: job.pieces,
-              }}
-            />
+            <JobStatusDialog jobId={job.id} status={job.status} variant="primary" />
+            <MoreMenu label={tc('more')}>
+              <RaiseExceptionDialog jobId={job.id} variant="secondary" />
+              <CustomsDialog
+                jobId={job.id}
+                variant="secondary"
+                defaults={{ status: job.customsStatus ?? 'not_started' }}
+              />
+              <JobDialog
+                variant="ghost"
+                defaults={{
+                  id: job.id,
+                  branchId: job.branchId,
+                  customerId: job.customerId,
+                  mode: job.mode,
+                  tradeDirection: job.direction,
+                  ownerId: job.ownerId,
+                  quoteId: job.quoteId,
+                  originId: job.originId,
+                  destinationId: job.destinationId,
+                  commodityId: job.commodityId,
+                  incoterm: job.incoterm,
+                  masterBillNumber: job.masterBillNumber,
+                  houseBillNumber: job.houseBillNumber,
+                  bookingNumber: job.bookingNumber,
+                  // The raw columns, not `vesselOrFlight`: that is the vessel and
+                  // voyage joined for display, and saving it back as the vessel
+                  // name grew it by the voyage on every save.
+                  vesselName: job.vesselName,
+                  voyageNumber: job.voyageNumber,
+                  flightNumber: job.flightNumber,
+                  // In the branch's zone, the one `saveJob` reads them back in,
+                  // so a form opened and saved untouched writes the same instant.
+                  etd: localInputValue(job.etd, job.branchTimeZone),
+                  eta: localInputValue(job.eta, job.branchTimeZone),
+                  placeOfReceipt: job.placeOfReceipt,
+                  placeOfDelivery: job.placeOfDelivery,
+                  customerReference: job.customerReference,
+                  grossWeightKg: job.grossWeightKg === null ? null : String(job.grossWeightKg),
+                  volumeCbm: job.volumeCbm === null ? null : String(job.volumeCbm),
+                  pieces: job.pieces,
+                }}
+              />
+            </MoreMenu>
           </>
         }
       />
@@ -191,7 +231,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[0.875rem] font-medium text-ink">
+                    <span className="text-body font-medium text-ink">
                       {nameOf(exception.nameEn, exception.nameAr)}
                     </span>
                     <Badge tone={severityTone(exception.severity)}>
@@ -199,11 +239,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     </Badge>
                   </div>
                   {exception.description ? (
-                    <p className="mt-1 text-[0.8125rem] text-ink-muted">{exception.description}</p>
+                    <p dir="auto" className="mt-1 text-body-sm text-ink-muted">
+                      {exception.description}
+                    </p>
                   ) : null}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <div className="text-end text-[0.6875rem] text-ink-subtle">
+                <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+                  {/* Muted: 11px subtle ink on the exception's tinted row was 4.4:1. */}
+                  <div className="text-end text-micro text-ink-muted">
                     <p>
                       {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
                     </p>
@@ -217,7 +260,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             ))}
           </ul>
           {job.customsNote ? (
-            <p className="mt-3 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            // `dir="auto"`: the note is free text in whatever language the
+            // broker wrote it. An English note in the Arabic page had its full
+            // stop thrown to the start of the line.
+            <p dir="auto" className="mt-3 border-t border-line pt-3 text-body-sm text-ink-muted">
               {job.customsNote}
             </p>
           ) : null}
@@ -226,7 +272,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid className="mb-4">
         {/* --- the milestone timeline ---------------------------------- */}
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader
             icon="tracking"
             eyebrow={t('shipment')}
@@ -268,7 +314,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </Card>
 
-        <div className="flex flex-col gap-4 lg:col-span-7">
+        <div className="flex flex-col gap-4 @4xl:col-span-7">
           {/* --- the shipment's own facts ----------------------------- */}
           <Card>
             <CardHeader
@@ -277,7 +323,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               title={t('shipment')}
               description={`${tDirection(job.direction)} · ${job.owner ?? tc('unassigned')}`}
             />
-            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 @xl:grid-cols-3">
               <Field label={t('masterBill')} mono>
                 {job.masterBillNumber ?? '—'}
               </Field>
@@ -296,12 +342,24 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {job.customerReference ?? '—'}
               </Field>
               <Field label={t('incoterm')}>{job.incoterm ?? '—'}</Field>
-              <Field label={t('commodity')}>{job.commodity}</Field>
+              <Field label={t('commodity')}>
+                {locale === 'ar' && job.commodityAr ? job.commodityAr : job.commodity}
+              </Field>
               <Field label={t('weight')}>
-                {job.grossWeightKg === null ? '—' : `${formatNumber(job.grossWeightKg, locale)} kg`}
+                {/* <bdi> keeps the figure and its unit together in either
+                    direction; the unit itself is the reader's — "كغم", not "kg". */}
+                {job.grossWeightKg === null ? (
+                  '—'
+                ) : (
+                  <bdi>{t('weightValue', { weight: formatNumber(job.grossWeightKg, locale) })}</bdi>
+                )}
               </Field>
               <Field label={t('volume')}>
-                {job.volumeCbm === null ? '—' : `${formatNumber(job.volumeCbm, locale)} cbm`}
+                {job.volumeCbm === null ? (
+                  '—'
+                ) : (
+                  <bdi>{t('volumeValue', { volume: formatNumber(job.volumeCbm, locale) })}</bdi>
+                )}
               </Field>
               <Field label={t('pieces')}>
                 {job.pieces === null ? '—' : formatNumber(job.pieces, locale)}
@@ -342,7 +400,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     // terminal — is a partner already engaged on the job.
                     partners={job.partners.map((partner) => ({
                       value: partner.partnerId,
-                      label: partner.name,
+                      label: nameOf(partner.name, partner.nameAr),
                     }))}
                   />
                 }
@@ -355,11 +413,47 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                         <Badge tone="critical">
                           {t(`clockKinds.${clock.kind}` as 'clockKinds.demurrage')}
                         </Badge>
-                        <span className="ref numeric text-[0.8125rem] text-ink-muted">
+                        <span className="ref numeric text-body-sm text-ink-muted">
                           {clock.containerNo}
                         </span>
+                        {clock.endsOn ? (
+                          <Badge tone="muted">
+                            {t('clockStopped', {
+                              on: formatDate(
+                                new Date(`${clock.endsOn}T12:00:00Z`),
+                                locale,
+                                timeZone,
+                              ),
+                            })}
+                          </Badge>
+                        ) : null}
+                        {/*
+                          Correct or stop this clock (O2). It could only ever
+                          be started: nothing rendered the dialog with a
+                          clock's values, so nothing set `ends_on`, and the
+                          nightly accrual billed until the 730-day guard.
+                        */}
+                        <FreeTimeClockDialog
+                          jobId={job.id}
+                          containers={containerOptions}
+                          partners={job.partners.map((partner) => ({
+                            value: partner.partnerId,
+                            label: nameOf(partner.name, partner.nameAr),
+                          }))}
+                          defaults={{
+                            id: clock.id,
+                            kind: clock.kind,
+                            equipmentId: clock.equipmentId,
+                            startsOn: clock.startsOnDay,
+                            endsOn: clock.endsOn,
+                            freeDays: clock.freeDays,
+                            perDiem: clock.perDiemText,
+                            currency: clock.perDiem.currency,
+                            counterpartyId: clock.counterpartyId,
+                          }}
+                        />
                       </span>
-                      <span className="numeric accruing font-display text-[1.375rem] leading-none font-semibold text-critical">
+                      <span className="numeric accruing font-display text-headline leading-none font-semibold text-critical">
                         {formatMoney(clock.accrued, locale)}
                       </span>
                     </div>
@@ -372,7 +466,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       label={`${clock.elapsedDays} / ${clock.freeDays}`}
                     />
 
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[0.75rem] text-ink-muted">
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-caption text-ink-muted">
                       <span>
                         {t('freeDays', { days: clock.freeDays })} ·{' '}
                         <span className="font-medium text-critical">
@@ -382,7 +476,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       </span>
                       {clock.counterparty ? (
                         <span>
-                          {t('counterparty')} {clock.counterparty}
+                          {/* <bdi>: a Latin carrier name after "مستحقة لـ" let
+                              the bidi algorithm move the preposition to the
+                              far end of the name. */}
+                          {t('counterparty')} <bdi>{clock.counterparty}</bdi>
                         </span>
                       ) : null}
                     </div>
@@ -392,7 +489,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       to add this line — the nightly accrual wrote it.
                     */}
                     {clock.chargeLineWritten ? (
-                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-positive-soft px-2 py-1 text-[0.75rem] font-medium text-positive">
+                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-positive-soft px-2 py-1 text-caption font-medium text-positive">
                         <Icon name="check" size={13} strokeWidth={2.5} />
                         {t('chargeLineWritten')}
                       </p>
@@ -426,7 +523,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     containers={containerOptions}
                     partners={job.partners.map((partner) => ({
                       value: partner.partnerId,
-                      label: partner.name,
+                      label: nameOf(partner.name, partner.nameAr),
                     }))}
                     variant="secondary"
                   />
@@ -439,12 +536,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid>
         {/* --- the document vault, with release control ---------------- */}
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="document"
               eyebrow={t('documents')}
-              title={t('documents')}
+              title={t('documentVault')}
               description={t('documentsHint')}
             />
           </div>
@@ -462,10 +559,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     <Icon name="document" size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[0.875rem] font-medium text-ink">
+                    <p className="truncate text-body font-medium text-ink">
                       {nameOf(document.nameEn, document.nameAr)}
                     </p>
-                    <p className="text-[0.6875rem] text-ink-subtle">
+                    <p className="text-micro text-ink-subtle">
                       {t('version', { version: document.version })} · {document.sizeKb} KB
                     </p>
                   </div>
@@ -514,7 +611,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- who we engaged ---------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="partners"
@@ -528,7 +625,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.partners.length === 0 ? (
             <EmptyState icon="partners" title={tPartners('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{tPartners('partner')}</TH>
@@ -539,7 +636,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <TBody>
                 {job.partners.map((partner) => (
                   <TR key={partner.id}>
-                    <TD className="font-medium text-ink">{partner.name}</TD>
+                    <TD className="font-medium text-ink">{nameOf(partner.name, partner.nameAr)}</TD>
                     <TD>
                       <Badge tone="info">
                         {tPartners(`roles.${partner.role}` as 'roles.carrier')}
@@ -556,7 +653,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- containers -------------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="container"
@@ -569,7 +666,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.containers.length === 0 ? (
             <EmptyState icon="container" title={tc('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('equipment')}</TH>
@@ -583,7 +680,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   <TR key={container.containerNo}>
                     <TD>
                       <span className="ref numeric font-medium">{container.containerNo}</span>
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-0.5 block text-micro text-ink-subtle">
                         {container.type}
                       </span>
                     </TD>
@@ -604,13 +701,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- parties, cargo, and what they produce ------------------- */}
-        <PartiesCard jobId={id} parties={parties} className="lg:col-span-7" />
+        <PartiesCard jobId={id} parties={parties} className="@4xl:col-span-7" />
 
         <ProofOfDeliveryCard
           jobId={id}
           records={podRecords}
           equipment={podEquipment}
-          className="lg:col-span-12"
+          branchTimeZone={job.branchTimeZone}
+          className="@4xl:col-span-12"
         />
 
         {/*
@@ -628,7 +726,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           cargo={cargo}
           containers={containerOptions}
-          className="lg:col-span-7"
+          className="@4xl:col-span-7"
         />
 
         <DocumentActionsCard
@@ -638,7 +736,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           houseBillNumber={job.houseBillNumber}
           houseBillSurrenderedAt={job.houseBillSurrenderedAt}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
-          className="lg:col-span-5"
+          className="@4xl:col-span-5"
         />
 
         {/*
@@ -649,7 +747,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           opens this page to move a shipment; the margin is what they scroll to
           when somebody asks.
         */}
-        {ledger ? <JobLedgerCard ledger={ledger} className="lg:col-span-12" /> : null}
+        {ledger ? <JobLedgerCard ledger={ledger} className="@4xl:col-span-12" /> : null}
       </Grid>
     </>
   )

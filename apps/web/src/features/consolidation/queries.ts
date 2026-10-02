@@ -14,9 +14,10 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
+  branches,
   chargeTypes,
   consolAllocationShares,
   consolChargeLines,
@@ -30,6 +31,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { enumFilter } from '@/lib/filters'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotAllocationShares,
@@ -62,15 +64,17 @@ export interface ConsolidationSummary {
   readonly unallocatedCount: number
 }
 
+/** `locale` names the ports in the reader's language (F27). */
 export async function listConsolidations(
   actor: Actor,
   filters: { readonly status?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ConsolidationSummary[]> {
   // Narrowed before the fixtures branch so both modes answer an unknown filter
   // the same way — see `lib/filters.ts`.
   const status = enumFilter(consolidationStatusEnum.enumValues, filters.status)
 
-  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status })
+  if (usePilotFixtures()) return pilotConsolidations(Date.now(), { status }, locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -84,8 +88,8 @@ export async function listConsolidations(
         vesselName: consolidations.vesselName,
         voyageNumber: consolidations.voyageNumber,
         flightNumber: consolidations.flightNumber,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         etd: consolidations.etd,
         eta: consolidations.eta,
         /*
@@ -97,21 +101,29 @@ export async function listConsolidations(
         houseCount: sql<number>`(
           select count(*)::int from jobs j where j.consolidation_id = "consolidations"."id"
         )`,
+        /*
+          Each house's cargo lines, or its own header where it has none — the
+          same figure the allocation splits by (O12), so the total here is
+          the one the split will see.
+        */
         volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text
-            from job_cargo c
-            join jobs j on j.id = c.job_id
+          select coalesce(sum(coalesce(
+                   (select sum(c.volume_cbm) from job_cargo c where c.job_id = j.id),
+                   j.volume_cbm)), 0)::text
+            from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
         grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c
-            join jobs j on j.id = c.job_id
+          select coalesce(sum(coalesce(
+                   (select sum(c.gross_weight_kg) from job_cargo c where c.job_id = j.id),
+                   j.gross_weight_kg)), 0)::text
+            from jobs j
            where j.consolidation_id = "consolidations"."id"
         )`,
         unallocatedCount: sql<number>`(
           select count(*)::int from consol_charge_lines l
            where l.consolidation_id = "consolidations"."id" and l.allocated_at is null
+             and l.withdrawn_at is null
         )`,
       })
       .from(consolidations)
@@ -142,6 +154,10 @@ export interface ConsolidationHouse {
 export interface ConsolidationCharge {
   readonly id: string
   readonly direction: 'cost' | 'revenue'
+  /** The ids and rate behind the names, for the edit form (O12). */
+  readonly chargeTypeId: string
+  readonly counterpartyPartnerId: string | null
+  readonly fxRate: string
   readonly chargeTypeName: string
   readonly description: string | null
   readonly amount: string
@@ -150,12 +166,24 @@ export interface ConsolidationCharge {
   readonly baseCurrency: string
   readonly allocationBasis: string
   readonly allocatedAt: Date | null
+  /** Set when an unsplit cost was taken off the master (O12); it can be put back. */
+  readonly withdrawnAt: Date | null
   readonly counterpartyName: string | null
   readonly shareCount: number
 }
 
 export interface ConsolidationDetail extends ConsolidationSummary {
   readonly branchId: string
+  /*
+    The ids behind the names, and the zone its dates are typed in, so the edit
+    form opens on what is stored. Without them every edit blanked the carrier,
+    the co-loader, both ports and both dates.
+  */
+  readonly branchTimeZone: string
+  readonly carrierPartnerId: string | null
+  readonly coloadPartnerId: string | null
+  readonly originId: string | null
+  readonly destinationId: string | null
   readonly carrierName: string | null
   readonly coloadPartnerName: string | null
   readonly bookingNumber: string | null
@@ -163,14 +191,21 @@ export interface ConsolidationDetail extends ConsolidationSummary {
   readonly closedAt: Date | null
   readonly houses: readonly ConsolidationHouse[]
   readonly charges: readonly ConsolidationCharge[]
+  /**
+   * Costs withdrawn before they were split, listed apart so one entered on
+   * the wrong master by mistake can be restored rather than re-keyed (O12).
+   */
+  readonly withdrawn: readonly ConsolidationCharge[]
 }
 
+/** `locale` names ports, parties, customers and charges in the reader's language (F27). */
 export async function getConsolidation(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ConsolidationDetail | undefined> {
   if (usePilotFixtures()) {
-    const rows = pilotConsolidation(id)
+    const rows = pilotConsolidation(id, Date.now(), locale)
     return rows === undefined ? undefined : consolidationOf(rows.row, rows.houses, rows.charges)
   }
 
@@ -182,6 +217,11 @@ export async function getConsolidation(
       .select({
         id: consolidations.id,
         branchId: consolidations.branchId,
+        branchTimeZone: branches.timeZone,
+        carrierPartnerId: consolidations.carrierPartnerId,
+        coloadPartnerId: consolidations.coloadPartnerId,
+        originId: consolidations.originId,
+        destinationId: consolidations.destinationId,
         reference: consolidations.reference,
         status: consolidations.status,
         mode: consolidations.mode,
@@ -191,16 +231,17 @@ export async function getConsolidation(
         vesselName: consolidations.vesselName,
         voyageNumber: consolidations.voyageNumber,
         flightNumber: consolidations.flightNumber,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         etd: consolidations.etd,
         eta: consolidations.eta,
         closedAt: consolidations.closedAt,
         notes: consolidations.notes,
-        carrierName: carrier.legalNameEn,
-        coloadPartnerName: coload.legalNameEn,
+        carrierName: named(locale, carrier.legalNameEn, carrier.legalNameAr),
+        coloadPartnerName: named(locale, coload.legalNameEn, coload.legalNameAr),
       })
       .from(consolidations)
+      .innerJoin(branches, eq(branches.id, consolidations.branchId))
       .leftJoin(origin, eq(origin.id, consolidations.originId))
       .leftJoin(destination, eq(destination.id, consolidations.destinationId))
       .leftJoin(carrier, eq(carrier.id, consolidations.carrierPartnerId))
@@ -215,21 +256,23 @@ export async function getConsolidation(
         jobId: jobs.id,
         reference: jobs.reference,
         houseBillNumber: jobs.houseBillNumber,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         status: jobs.status,
         chargeableWeightKg: jobs.chargeableWeightKg,
-        packages: sql<number>`(
-          select coalesce(sum(c.package_count), 0)::int
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        grossWeightKg: sql<string>`(
-          select coalesce(sum(c.gross_weight_kg), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
-        volumeCbm: sql<string>`(
-          select coalesce(sum(c.volume_cbm), 0)::text
-            from job_cargo c where c.job_id = "jobs"."id"
-        )`,
+        // Cargo lines where there are any, the job header where not — what
+        // the allocation splits by (O12), so the table shows what it will use.
+        packages: sql<number>`coalesce(
+          (select sum(c.package_count) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."pieces", 0
+        )::int`,
+        grossWeightKg: sql<string>`coalesce(
+          (select sum(c.gross_weight_kg) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."gross_weight_kg", 0
+        )::text`,
+        volumeCbm: sql<string>`coalesce(
+          (select sum(c.volume_cbm) from job_cargo c where c.job_id = "jobs"."id"),
+          "jobs"."volume_cbm", 0
+        )::text`,
       })
       .from(jobs)
       .innerJoin(customers, eq(customers.id, jobs.customerId))
@@ -240,7 +283,10 @@ export async function getConsolidation(
       .select({
         id: consolChargeLines.id,
         direction: consolChargeLines.direction,
-        chargeTypeName: chargeTypes.nameEn,
+        chargeTypeId: consolChargeLines.chargeTypeId,
+        counterpartyPartnerId: consolChargeLines.counterpartyPartnerId,
+        fxRate: consolChargeLines.fxRate,
+        chargeTypeName: named(locale, chargeTypes.nameEn, chargeTypes.nameAr),
         description: consolChargeLines.description,
         amount: consolChargeLines.amount,
         currency: consolChargeLines.currency,
@@ -248,7 +294,8 @@ export async function getConsolidation(
         baseCurrency: consolChargeLines.baseCurrency,
         allocationBasis: consolChargeLines.allocationBasis,
         allocatedAt: consolChargeLines.allocatedAt,
-        counterpartyName: partners.legalNameEn,
+        withdrawnAt: consolChargeLines.withdrawnAt,
+        counterpartyName: named(locale, partners.legalNameEn, partners.legalNameAr),
         shareCount: sql<number>`(
           select count(*)::int from consol_allocation_shares s
            where s.consol_charge_line_id = "consol_charge_lines"."id"
@@ -257,6 +304,7 @@ export async function getConsolidation(
       .from(consolChargeLines)
       .innerJoin(chargeTypes, eq(chargeTypes.id, consolChargeLines.chargeTypeId))
       .leftJoin(partners, eq(partners.id, consolChargeLines.counterpartyPartnerId))
+      // Withdrawn lines too: `consolidationOf` sets them apart for restoring.
       .where(eq(consolChargeLines.consolidationId, id))
       .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
 
@@ -267,7 +315,13 @@ export async function getConsolidation(
 /** The master's row, with the four figures that are sums over what is under it. */
 type ConsolidationHead = Omit<
   ConsolidationDetail,
-  'houseCount' | 'volumeCbm' | 'grossWeightKg' | 'unallocatedCount' | 'houses' | 'charges'
+  | 'houseCount'
+  | 'volumeCbm'
+  | 'grossWeightKg'
+  | 'unallocatedCount'
+  | 'houses'
+  | 'charges'
+  | 'withdrawn'
 >
 
 /**
@@ -282,8 +336,11 @@ type ConsolidationHead = Omit<
 function consolidationOf(
   row: ConsolidationHead,
   houses: readonly ConsolidationHouse[],
-  charges: readonly ConsolidationCharge[],
+  all: readonly ConsolidationCharge[],
 ): ConsolidationDetail {
+  // A withdrawn cost is off the master: not counted, not split, only restorable.
+  const charges = all.filter((c) => c.withdrawnAt === null)
+  const withdrawn = all.filter((c) => c.withdrawnAt !== null)
   const totals = houses.reduce(
     (acc, h) => ({
       volume: acc.volume + Number(h.volumeCbm ?? 0),
@@ -300,6 +357,7 @@ function consolidationOf(
     unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
     houses,
     charges,
+    withdrawn,
   }
 }
 
@@ -311,13 +369,15 @@ function consolidationOf(
  * allocated a share of a Kuwait master cost lands in the wrong entity's P&L
  * and the wrong entity's accounting export.
  */
+/** `locale` names the customer in each label (F27). */
 export async function listAttachableJobs(
   actor: Actor,
   consolidationId: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ readonly id: string; readonly label: string }[]> {
   // Awaited beside `getConsolidation` on the master file, so it needs the same
   // branch: fixing one read alone only moves the failure down the page.
-  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId)
+  if (usePilotFixtures()) return pilotAttachableJobs(consolidationId, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const [consol] = await tx
@@ -332,7 +392,7 @@ export async function listAttachableJobs(
       .select({
         id: jobs.id,
         reference: jobs.reference,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
       })
       .from(jobs)
       .innerJoin(customers, eq(customers.id, jobs.customerId))
@@ -395,7 +455,15 @@ export async function listAllocationShares(
         consolChargeLines,
         eq(consolChargeLines.id, consolAllocationShares.consolChargeLineId),
       )
-      .where(eq(consolChargeLines.consolidationId, consolidationId))
+      // Only standing splits. A reversal leaves the share rows in place
+      // (nothing is deleted), and listing them would show a breakdown of a
+      // split that no longer exists.
+      .where(
+        and(
+          eq(consolChargeLines.consolidationId, consolidationId),
+          isNotNull(consolChargeLines.allocatedAt),
+        ),
+      )
       .orderBy(asc(jobs.reference)),
   )
 }

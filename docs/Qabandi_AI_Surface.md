@@ -481,7 +481,7 @@ evaluation result that does not describe the prompt running in production
 describes nothing — and a prompt is code with a test suite, not a setting. The
 *thresholds* around it are rows; the text is versioned where the tests are.
 *As built:* `apps/service/src/ai/prompts.ts`, four prompts at
-`invoice-extract@1`, `rate-extract@1`, `assistant@2` and `enquiry-extract@1`,
+`invoice-extract@1`, `rate-extract@1`, `assistant@4` and `enquiry-extract@1`,
 each version landing in `ai_invocations.prompt_version`. The instructions are
 versioned in-repo — the assistant's interpolates the branch's own name, which is
 why it moved to `@2` — but the document or mail always arrives as a separate

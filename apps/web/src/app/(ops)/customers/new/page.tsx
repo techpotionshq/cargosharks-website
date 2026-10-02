@@ -7,7 +7,7 @@
  */
 
 import type { Metadata } from 'next'
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadFormReference } from '@/features/customers/queries'
@@ -33,8 +33,9 @@ export default async function NewCustomerPage() {
     )
   }
 
+  const locale = (await getLocale()) === 'ar' ? 'ar' : 'en'
   const [reference, labels] = await Promise.all([
-    loadFormReference(session.actor),
+    loadFormReference(session.actor, locale),
     customerFormLabels(),
   ])
 

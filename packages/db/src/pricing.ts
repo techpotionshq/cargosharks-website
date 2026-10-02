@@ -24,13 +24,16 @@
 
 import { sql } from 'drizzle-orm'
 import {
-  applyMargin,
   chargeableWeight,
   currencyLookup,
   dayIn,
   dec,
+  distributeMargin,
+  draftConcerns,
   fxRate,
+  identityRate,
   priceLines,
+  roundWith,
   selectBreak,
   summariseMargin,
   toScale,
@@ -48,15 +51,31 @@ import { findCoveringRateCard, type CoveringRateCard, type CoveringRateLine } fr
 import type { Tx } from './actor'
 
 /** What pricing can answer with — the caller turns each into a sentence. */
-export type PricingRefusal = 'not_found' | 'no_mode' | 'no_cover' | 'no_margin' | 'cannot_price'
+export type PricingRefusal =
+  | 'not_found'
+  | 'no_mode'
+  | 'no_container_count'
+  | 'no_cover'
+  | 'no_margin'
+  | 'cannot_price'
+  /** A version of this enquiry's quotation was accepted; it is never superseded (S2). */
+  | 'quote_accepted'
+  /** Auto-draft only: somebody priced the enquiry first (S19). */
+  | 'already_quoted'
 
 export type PriceOutcome =
-  | { readonly reference: string }
-  | { readonly error: PricingRefusal; readonly detail?: string }
+  { readonly reference: string } | { readonly error: PricingRefusal; readonly detail?: string }
 
 export interface PriceEnquiryHooks {
   /** Called before superseding an existing quotation — the `quote.revise` gate. */
   readonly assertRevise?: () => void
+  /**
+   * Write only a first quotation — refuse `already_quoted` if any exists. The
+   * auto-draft sweep's: it picked the enquiry because it had no quote, and a
+   * coordinator who priced it meanwhile must not have that draft superseded
+   * by the machine's (S19).
+   */
+  readonly firstOnly?: boolean
 }
 
 /** How long an instant quotation stands. Beyond this it expires by itself. */
@@ -85,6 +104,7 @@ export async function priceEnquiryToQuote(
              e.destination_id as "destinationId", e.ready_on::text as "readyOn",
              e.gross_weight_kg::text as "grossWeightKg",
              e.volume_cbm::text as "volumeCbm", e.pieces,
+             e.container_count as "containerCount",
              b.base_currency as "baseCurrency",
              b.default_exclusions_en as "exclusionsEn",
              b.default_exclusions_ar as "exclusionsAr",
@@ -102,6 +122,17 @@ export async function priceEnquiryToQuote(
 
   if (!enquiry) return { error: 'not_found' }
   if (!enquiry.mode) return { error: 'no_mode' }
+  /*
+    A FCL lane is priced per container, and only the enquiry's own container
+    count says how many. It used to fall back to `pieces` — packages — so 200
+    cartons in two boxes were quoted as 200 × 40HC (F39). Refused instead: a
+    refusal a coordinator answers by entering the count beats a price that is
+    wrong by two orders of magnitude, and the auto-draft sweep skips it the same
+    way it skips a lane with no cover.
+  */
+  if (enquiry.mode === 'sea_fcl' && enquiry.containerCount === null) {
+    return { error: 'no_container_count' }
+  }
 
   // Cover is asked for on the readiness date, not today — a shipment ready in
   // six weeks is priced against the card that will be live then.
@@ -115,8 +146,41 @@ export async function priceEnquiryToQuote(
     customerId: enquiry.customerId,
   }
 
+  /*
+    The buy side is the rate this enquiry's agent reply was awarded as, when
+    one was (F67). Several agents can hold a buy card on one lane, and the
+    lane lookup alone picked whichever sorted first — QUO-2026-00004 was costed
+    off an older MAERSK card while the enquiry page said the SHACO reply was
+    accepted and made a card. Awarding a rate is the decision about what the
+    shipment costs; pricing that ignores it contradicts the screen.
+
+    Decided here rather than passed in by the auto-draft sweep, so that a
+    coordinator clicking "Price it" after awarding a rate gets the same buy
+    card the machine would — one rule, both callers, which is why this
+    function exists. Only the cost side moves: a sell card, where there is one,
+    is still the price, and without one the margin is laid on the awarded cost.
+    The newest award wins if a lane was re-awarded.
+  */
+  const [awarded] = await tx
+    .execute(
+      sql`
+      select r.rate_card_id as "rateCardId"
+        from rate_requests r
+       where r.enquiry_id = ${enquiryId}
+         and r.status = 'accepted'
+         and r.rate_card_id is not null
+       order by r.updated_at desc, r.created_at desc
+       limit 1
+    `,
+    )
+    .then((r) => r.rows as unknown as { rateCardId: string }[])
+
   const sellCard = await findCoveringRateCard(tx, { ...lane, direction: 'sell' })
-  const buyCard = await findCoveringRateCard(tx, { ...lane, direction: 'buy' })
+  const buyCard = await findCoveringRateCard(tx, {
+    ...lane,
+    direction: 'buy',
+    preferCardId: awarded?.rateCardId ?? null,
+  })
 
   if (!sellCard && !buyCard) return { error: 'no_cover' }
 
@@ -161,23 +225,46 @@ export async function priceEnquiryToQuote(
   }
 
   let priced: PricedLine[]
+  let cost: PricedLine[] = []
   let marginRule: MarginRule | null = null
 
   try {
-    const cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
+    cost = buyCard ? priceLines(inputsFor(buyCard, 'cost', chargeableKg, ctx), opts) : []
 
     if (sellCard) {
       priced = [...cost, ...priceLines(inputsFor(sellCard, 'revenue', chargeableKg, ctx), opts)]
     } else {
       marginRule = houseMargin(enquiry, opts.baseCurrency)
       if (!marginRule) return { error: 'no_margin' }
+      /*
+        The margin is laid on the base-currency cost, once for the quotation
+        (R2). It used to be applied to each line's card-currency `amount` too,
+        which threw a currency mismatch for an absolute or target rule (base)
+        on a USD card, and applied that rule once per line. `distributeMargin`
+        decides how a whole-quote rule is shared across the lines and rounds
+        each one; see its comment for why in proportion to cost.
+
+        The sell line's rate is its sell amount over its quantity, in base —
+        never the buy rate it was costed at, which printed beside the margined
+        amount on the customer's quotation (qty 2 × our buy rate ≠ the amount)
+        and handed the customer the rate we buy at.
+      */
+      const sells = distributeMargin(
+        cost.map((line) => line.amountInBase),
+        marginRule,
+        lookup,
+      )
       priced = [
         ...cost,
-        ...cost.map((line) => ({
+        ...cost.map((line, index) => ({
           ...line,
           direction: 'revenue' as const,
-          amount: applyMargin(line.amount, marginRule!),
-          amountInBase: applyMargin(line.amountInBase, marginRule!),
+          rate: line.quantity.isZero()
+            ? sells[index]!.amount
+            : sells[index]!.amount.dividedBy(line.quantity),
+          amount: sells[index]!,
+          amountInBase: sells[index]!,
+          fx: identityRate(opts.baseCurrency, pricedAt),
         })),
       ]
     }
@@ -188,13 +275,52 @@ export async function priceEnquiryToQuote(
   const revenue = priced.filter((line) => line.direction === 'revenue')
   if (revenue.length === 0) return { error: 'no_cover' }
 
-  const totals = summariseMargin(priced, opts.baseCurrency)
-  const sellCurrency = revenue[0]!.amount.currency
+  /*
+    Totals from the lines as they are stored — each rounded to the currency
+    first — so the lines on the quotation add up to the total beneath them.
+    Rounding the unrounded sum instead could differ from the printed lines by
+    a fil per few lines.
+  */
+  const rounded = priced.map((line) => ({
+    direction: line.direction,
+    amountInBase: roundWith(line.amountInBase, lookup),
+  }))
+  const totals = summariseMargin(rounded, opts.baseCurrency)
+  /*
+    The totals are in the entity's base currency — `summariseMargin` adds each
+    line's `amountInBase` — so that is the currency the quotation carries.
+    This used to take the first sell line's currency instead: a USD card priced
+    for a KWD branch stored KWD totals labelled USD, to three decimals, on the
+    register, the comparison page and the quotation. Lines keep their own
+    currency; quoting a customer in the card's currency is a separate choice.
+  */
+  const sellCurrency = opts.baseCurrency
+
+  /*
+    Whether this draft needs a person before it is sent (ai-13): a charge sold
+    below its cost, or sold with nothing bought for it — outside the scope the
+    awarded rate quoted. `draftConcerns` in core states the rule and why it is
+    per charge type. Frozen with the rest of the decision, so the quotation
+    screen shows the reasons as they were when it was priced.
+  */
+  const concerns = sellCard
+    ? draftConcerns({
+        revenue: revenue.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          amountInBase: roundWith(line.amountInBase, lookup),
+        })),
+        cost: cost.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          amountInBase: roundWith(line.amountInBase, lookup),
+        })),
+      })
+    : // Buy plus house margin sells exactly what was bought, each above cost.
+      []
 
   const validUntil = new Date(pricedAt)
   validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
 
-  const reference = await writeQuote(
+  return writeQuote(
     tx,
     {
       enquiryId,
@@ -219,23 +345,49 @@ export async function priceEnquiryToQuote(
         baseCurrency: opts.baseCurrency,
         fx: opts.fxRates.map((r) => ({ from: r.from, to: r.to, rate: r.rate.toString() })),
         inclusions: revenue.map((line) => nameFor(line.chargeTypeKey, sellCard ?? buyCard!)),
+        /*
+          The buy side line by line, in the quotation's currency and converted
+          the way the sell lines are, so the internal comparison can put a buy
+          rate beside each sell rate instead of only a buy total (F41). Keyed by
+          charge type because that is what joins a buy line to its sell line;
+          a sell charge with no buy counterpart simply has no entry. Empty when
+          no buy card covered the lane. Quotations priced before this have no
+          `lineCosts` at all, and the comparison shows their buy rate as unknown.
+        */
+        lineCosts: cost.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          basis: line.basis,
+          quantity: line.quantity.toString(),
+          rate: line.rate.times(line.fx.rate).toDecimalPlaces(6).toString(),
+          amount: toScale(line.amountInBase, lookup),
+          currency: line.amountInBase.currency,
+        })),
         exclusions: splitLines(enquiry.exclusionsEn),
         exclusionsAr: splitLines(enquiry.exclusionsAr),
+        review: { needed: concerns.length > 0, concerns },
       },
+      /*
+        Lines in the quotation's currency, like its total.
+
+        They were written in the card's currency (USD) under a quotation in the
+        base currency (KWD), and the quotation PDF formats every amount in the
+        quotation's currency — so a customer was sent "KWD 1,856.000" per
+        container for a 1,856 USD rate, five lines summing to 5,281 above a
+        total of 1,629.955. Converted at the rate each line was priced at; that
+        rate and the card's own currency stay in `priced_snapshot`.
+      */
       lines: revenue.map((line, index) => ({
         chargeTypeId: chargeTypeIdFor(line.chargeTypeKey, sellCard ?? buyCard!),
         basis: line.basis,
         quantity: line.quantity.toString(),
-        rate: line.rate.toString(),
-        amount: toScale(line.amount, lookup),
-        currency: line.amount.currency,
+        rate: line.rate.times(line.fx.rate).toDecimalPlaces(6).toString(),
+        amount: toScale(line.amountInBase, lookup),
+        currency: line.amountInBase.currency,
         sortOrder: index,
       })),
     },
-    hooks.assertRevise ?? (() => {}),
+    hooks,
   )
-
-  return { reference }
 }
 
 // --- the pieces `priceEnquiry` was built from --------------------------------
@@ -251,6 +403,7 @@ interface EnquiryRow {
   readonly grossWeightKg: string | null
   readonly volumeCbm: string | null
   readonly pieces: number | null
+  readonly containerCount: number | null
   readonly baseCurrency: string
   readonly exclusionsEn: string | null
   readonly exclusionsAr: string | null
@@ -258,17 +411,29 @@ interface EnquiryRow {
   readonly marginValue: string | null
 }
 
-/** What the six bases are calculated against, from the enquiry's own figures. */
+/**
+ * What the six bases are calculated against, from the enquiry's own figures.
+ *
+ * `containers` is the enquiry's container count on a FCL lane — never `pieces`,
+ * which counts packages (F39). The caller has already refused a FCL enquiry
+ * without one; the `?? 1` is only for the type. Other modes keep one container,
+ * as they always have: a per-container line on an LCL or air card is a flat fee.
+ */
 function contextFor(
   mode: string,
-  cargo: { grossWeightKg: string | null; volumeCbm: string | null; pieces: number | null },
+  cargo: {
+    grossWeightKg: string | null
+    volumeCbm: string | null
+    pieces: number | null
+    containerCount: number | null
+  },
   chargeableKg: string | null,
 ): ChargeContext {
   const pieces = cargo.pieces ?? 1
   return {
     kg: chargeableKg ?? cargo.grossWeightKg ?? 0,
     units: pieces,
-    containers: mode === 'sea_fcl' ? pieces : 1,
+    containers: mode === 'sea_fcl' ? (cargo.containerCount ?? 1) : 1,
     days: 1,
   }
 }
@@ -308,7 +473,11 @@ function rateLineFor(
   if (!selection) return { line: base, ctx }
 
   return {
-    line: { ...base, rate: selection.appliedBreak.ratePerKg, minimum: selection.appliedBreak.minimumCharge ?? base.minimum },
+    line: {
+      ...base,
+      rate: selection.appliedBreak.ratePerKg,
+      minimum: selection.appliedBreak.minimumCharge ?? base.minimum,
+    },
     ctx: { ...ctx, kg: selection.billedKg },
   }
 }
@@ -384,25 +553,10 @@ interface QuoteWrite {
 async function writeQuote(
   tx: Tx,
   write: QuoteWrite,
-  assertRevise: () => void,
-): Promise<string> {
-  const [latest] = await tx
-    .execute(
-      sql`
-    select id, version, reference from quotes
-     where enquiry_id = ${write.enquiryId}
-     order by version desc limit 1
-  `,
-    )
-    .then((r) => r.rows as { id: string; version: number; reference: string }[])
-
-  if (latest) assertRevise()
-
-  const version = (latest?.version ?? 0) + 1
-  const seqRow = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
-  const seq = (seqRow.rows[0] as { seq: string }).seq
-  const year = new Date().getUTCFullYear()
-  const stem = latest?.reference?.replace(/-v\d+$/, '') ?? `QUO-${year}-${seq.padStart(5, '0')}`
+  hooks: PriceEnquiryHooks,
+): Promise<PriceOutcome> {
+  const next = await nextQuoteVersion(tx, write.enquiryId, hooks)
+  if (!next.ok) return { error: next.reason }
 
   const inserted = await tx
     .execute(
@@ -410,8 +564,8 @@ async function writeQuote(
     insert into quotes (reference, enquiry_id, branch_id, version, status, currency,
                         total_sell, total_cost, valid_until, priced_snapshot,
                         rate_card_version_id, prepared_by_id)
-    values (${version === 1 ? stem : `${stem}-v${version}`}, ${write.enquiryId},
-            ${write.branchId}, ${version}, 'draft', ${write.currency},
+    values (${next.reference}, ${write.enquiryId},
+            ${write.branchId}, ${next.version}, 'draft', ${write.currency},
             ${write.totalSell}, ${write.totalCost}, ${write.validUntil}::date,
             ${JSON.stringify(write.snapshot)}::jsonb,
             ${(write.snapshot.sellCardId as string | null) ?? null}, ${write.preparedById})
@@ -429,11 +583,7 @@ async function writeQuote(
     `)
   }
 
-  if (latest) {
-    await tx.execute(sql`
-      update quotes set status = 'superseded', updated_at = now() where id = ${latest.id}
-    `)
-  }
+  await retireQuoteVersion(tx, next.previousId, inserted.id)
 
   // The enquiry has been answered — a priced quotation is a first reply.
   await tx.execute(sql`
@@ -445,5 +595,109 @@ async function writeQuote(
      where id = ${write.enquiryId}
   `)
 
-  return inserted.reference
+  return { reference: inserted.reference }
+}
+
+// --- versioning, shared with the manual "New quotation" form ----------------
+
+export type QuoteVersionOutcome =
+  | {
+      readonly ok: true
+      readonly version: number
+      readonly reference: string
+      /** The version this one replaces, or null for a first quotation. */
+      readonly previousId: string | null
+    }
+  | { readonly ok: false; readonly reason: 'quote_accepted' | 'already_quoted' }
+
+/**
+ * The next version and reference for an enquiry's quotation — the numbering
+ * `priceEnquiryToQuote` and the web's `createQuote` both perform, because they
+ * are the same act and drifted apart as two copies.
+ *
+ * Three rules, each a bug it once was:
+ *
+ * - **The enquiry row is locked first.** Auto-draft and a coordinator's "Price
+ *   it" in the same minute both read "no quote yet", both computed version 1,
+ *   and the second died on `quotes_version_unique` (S19). `for update` on the
+ *   enquiry makes the second wait for the first and then number after it.
+ * - **An accepted quotation is never superseded.** Re-pricing used to retire
+ *   whatever the latest version was, accepted or not, with no machine check —
+ *   one click un-accepted the offer a job may already be booked against (S2).
+ *   The customer said yes to that version; a different price now is a new
+ *   enquiry, not a revision.
+ * - **The reference is the first version's stem.** `createQuote` stemmed from
+ *   the previous reference whole, so v7 was `QUO-2026-00006-v2-v3-v4-v5-v6-v7`
+ *   (S6). Every trailing `-vN` is stripped, which also stops references
+ *   already compounded that way from growing further.
+ */
+export async function nextQuoteVersion(
+  tx: Tx,
+  enquiryId: string,
+  hooks: PriceEnquiryHooks = {},
+): Promise<QuoteVersionOutcome> {
+  await tx.execute(sql`select id from enquiries where id = ${enquiryId} for update`)
+
+  const [latest] = await tx
+    .execute(
+      sql`
+    select id, version, reference,
+           exists (select 1 from quotes a
+                    where a.enquiry_id = ${enquiryId} and a.status = 'accepted') as "hasAccepted"
+      from quotes
+     where enquiry_id = ${enquiryId}
+     order by version desc limit 1
+  `,
+    )
+    .then(
+      (r) => r.rows as { id: string; version: number; reference: string; hasAccepted: boolean }[],
+    )
+
+  if (latest?.hasAccepted) return { ok: false, reason: 'quote_accepted' }
+  if (latest && hooks.firstOnly) return { ok: false, reason: 'already_quoted' }
+  if (latest) hooks.assertRevise?.()
+
+  const version = (latest?.version ?? 0) + 1
+  let stem = latest?.reference.replace(/(-v\d+)+$/, '')
+  if (!stem) {
+    const seqRow = await tx.execute(sql`select nextval('quote_reference_seq')::text as seq`)
+    const seq = (seqRow.rows[0] as { seq: string }).seq
+    stem = `QUO-${new Date().getUTCFullYear()}-${seq.padStart(5, '0')}`
+  }
+
+  return {
+    ok: true,
+    version,
+    reference: version === 1 ? stem : `${stem}-v${version}`,
+    previousId: latest?.id ?? null,
+  }
+}
+
+/**
+ * Point the replaced version at its replacement, and retire it where the quote
+ * machine allows.
+ *
+ * `superseded_by_id` is what every "current quotation" read filters on — the
+ * enquiry queue, the comparison page — and nothing wrote it, so an enquiry
+ * priced seven times appeared seven times in the queue and withdrawn versions
+ * were offered as options, one of them "Recommended" (S3). It is set whatever
+ * the old status: a rejected or expired version is no more current than a
+ * superseded one. The *status* moves only from `draft` or `sent`, the two
+ * states `quoteMachine` lets a revision supersede; a rejected quote stays
+ * rejected, because that is what the customer said.
+ */
+export async function retireQuoteVersion(
+  tx: Tx,
+  previousId: string | null,
+  replacementId: string,
+): Promise<void> {
+  if (!previousId) return
+  await tx.execute(sql`
+    update quotes
+       set superseded_by_id = ${replacementId},
+           status = case when status in ('draft', 'sent') then 'superseded'::quote_status
+                         else status end,
+           updated_at = now()
+     where id = ${previousId}
+  `)
 }

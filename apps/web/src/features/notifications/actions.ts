@@ -19,6 +19,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireSession } from '@/lib/session'
 import { markAllRead, markRead } from './queries'
+import { isTarget } from './target'
 
 /**
  * Open one alert: mark it read, then go where it points.
@@ -36,9 +37,15 @@ export async function openNotification(formData: FormData): Promise<void> {
   if (id) await markRead(session.actor, id)
   revalidatePath('/', 'layout')
 
-  // Typed routes reject a runtime string; the target came from our own query,
-  // which only ever builds `/jobs/:id` or `/enquiries/:id`.
-  if (href) redirect(href as Route)
+  /*
+    Only a path our own query could have built — A13, `target.ts`.
+
+    The comment here used to say the target "came from our own query", and it
+    came from a form field. Anything posted that is not a job or enquiry path
+    is treated as an alert about nothing openable: marked read, and no
+    redirect, so the product cannot be used to bounce a person to another site.
+  */
+  if (href && isTarget(href)) redirect(href as Route)
 }
 
 export async function clearNotifications(): Promise<void> {

@@ -399,9 +399,27 @@ export const rateRequests = pgTable(
      */
     sourceRateCardId: ref('source_rate_card_id').references(() => rateCards.id),
     declinedReason: text('declined_reason'),
+    /**
+     * How many times the send worker tried to mail this request and could not
+     * — no contact on file, or a relay that refused — and when it last tried.
+     *
+     * The drain used to retry every unsent row every minute, forever, with no
+     * order: an agent behind a relay that timed out after DATA was mailed the
+     * same RFQ every minute, and two hundred unsendable rows starved every new
+     * one. These drive an exponential backoff and a ceiling, after which the
+     * row stays `sent` with `sent_at` null and `send_error` saying why — a
+     * request a person chases, not one a machine retries for ever.
+     */
+    sendAttempts: integer('send_attempts').notNull().default(0),
+    lastSendAttemptAt: tsz('last_send_attempt_at'),
+    sendError: text('send_error'),
     ...timestamps,
   },
-  (t) => [index('rate_requests_enquiry_idx').on(t.enquiryId)],
+  (t) => [
+    index('rate_requests_enquiry_idx').on(t.enquiryId),
+    // The send drain's whole query: unsent, by when it was last tried.
+    index('rate_requests_unsent_idx').on(t.status, t.sentAt, t.lastSendAttemptAt),
+  ],
 )
 
 /**

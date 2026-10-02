@@ -324,6 +324,13 @@ export function LaneMap({
       const imported = await import('maplibre-gl')
       const maplibre = (imported as unknown as { default?: typeof imported }).default ?? imported
       if (disposed) return
+      /*
+        v6 finds its worker beside its own module, and bundled into a Next chunk
+        that is nowhere: the map logged "Worker failed to load" and stayed
+        blank. `scripts/maplibre-worker.mjs` serves the worker from `public/`
+        under the installed version, which is the path given here.
+      */
+      maplibre.setWorkerUrl(`/maplibre/${maplibre.getVersion()}/maplibre-gl-worker.mjs`)
 
       const resolver = createResolver()
       cleanups.push(resolver.dispose)
@@ -343,7 +350,12 @@ export function LaneMap({
           mode: lane.mode,
           count: lane.count,
           href: lane.href ?? '',
-          label: `${lane.originName} → ${lane.destinationName} · ${lane.count}`,
+          // The arrow points at the destination in either direction; U+2192
+          // under RTL pointed back at the origin (see `formatLane`). This runs
+          // in the browser, so the document's own `dir` is the source.
+          label: `${lane.originName} ${
+            document.documentElement.dir === 'rtl' ? '←' : '→'
+          } ${lane.destinationName} · ${lane.count}`,
         },
       }))
 
@@ -389,7 +401,25 @@ export function LaneMap({
         event and nowhere else — without a handler, a basemap that never loads
         renders as a plain coloured rectangle and looks like a styling mistake.
       */
+      /*
+        Except the ones we cause by leaving. A navigation tears the page down
+        while tiles are still in flight, and Chromium reports each cancelled
+        fetch as "Failed to fetch (0)" — an error about a map nobody is looking
+        at any more, which buried real failures and failed the e2e console
+        check whenever the tile server was a little slow.
+      */
+      let leaving = false
+      const markLeaving = () => {
+        leaving = true
+      }
+      window.addEventListener('pagehide', markLeaving)
+      window.addEventListener('beforeunload', markLeaving)
+      cleanups.push(() => {
+        window.removeEventListener('pagehide', markLeaving)
+        window.removeEventListener('beforeunload', markLeaving)
+      })
       instance.on('error', (event) => {
+        if (disposed || leaving) return
         console.error('[lane-map]', event?.error?.message ?? event)
       })
 
@@ -664,7 +694,7 @@ export function LaneMapLegend({
         .join(' ')}
     >
       {modes.map((entry) => (
-        <li key={entry.mode} className="flex items-center gap-1.5 text-[0.75rem] text-ink-muted">
+        <li key={entry.mode} className="flex items-center gap-1.5 text-caption text-ink-muted">
           <span
             aria-hidden
             className="h-[3px] w-4 rounded-full"

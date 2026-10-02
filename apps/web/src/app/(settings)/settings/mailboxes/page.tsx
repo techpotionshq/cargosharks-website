@@ -16,7 +16,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
 import { listMailboxes, mailboxKeyConfigured } from '@/features/admin/mailboxes'
 import { MailboxDialog, ToggleMailboxButton } from '@/features/admin/ui/mailbox-dialogs'
 import { loadOptions } from '@/lib/options'
@@ -45,7 +45,7 @@ export default async function MailboxesPage() {
   const [rows, keyConfigured, options, t, tc] = await Promise.all([
     listMailboxes(),
     mailboxKeyConfigured(),
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('mailboxes'),
     getTranslations('common'),
   ])
@@ -71,7 +71,9 @@ export default async function MailboxesPage() {
     administrator of Kuwait seeing Dubai in this list is the interface making a
     promise the tenancy model never made.
   */
-  const assignable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+  // Administered, not merely held (A2) — the action refuses the rest.
+  const administered = new Set(branchesWhere(session, 'admin.mailboxes.write'))
+  const assignable = options.branches.filter((branch) => administered.has(branch.value))
 
   return (
     <Register
@@ -92,10 +94,12 @@ export default async function MailboxesPage() {
           <TR>
             <TH>{t('branch')}</TH>
             <TH>{t('username')}</TH>
-            <TH>{t('host')}</TH>
-            <TH>{t('folder')}</TH>
-            <TH>{t('lastPolled')}</TH>
-            <TH>{t('lastMessage')}</TH>
+            {/* Which mailbox, and whether it is working: on a phone the
+                connection details wait for a wider screen. */}
+            <TH priority="low">{t('host')}</TH>
+            <TH priority="low">{t('folder')}</TH>
+            <TH priority="low">{t('lastPolled')}</TH>
+            <TH priority="low">{t('lastMessage')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{tc('actions')}</TH>
           </TR>
@@ -104,12 +108,12 @@ export default async function MailboxesPage() {
           {rows.map((row) => (
             <TR key={row.id}>
               <TD>{row.branchCode}</TD>
-              <TD>{row.username}</TD>
-              <TD>
+              <TD className="wrap-anywhere">{row.username}</TD>
+              <TD priority="low">
                 {row.host}
                 <span className="text-muted">:{row.port}</span>
               </TD>
-              <TD>
+              <TD priority="low">
                 {row.folder}
                 {row.archiveFolder ? (
                   // The arrow is direction-neutral on purpose: `→` would point
@@ -117,8 +121,10 @@ export default async function MailboxesPage() {
                   <span className="text-muted"> · {row.archiveFolder}</span>
                 ) : null}
               </TD>
-              <TD>{row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale, timeZone) : '—'}</TD>
-              <TD>
+              <TD priority="low">
+                {row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale, timeZone) : '—'}
+              </TD>
+              <TD priority="low">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}
               </TD>
               <TD>
@@ -136,7 +142,7 @@ export default async function MailboxesPage() {
                   */
                   <div className="flex flex-col items-start gap-1">
                     <Badge tone="critical">{t('erroring')}</Badge>
-                    <span className="text-xs text-muted">{row.lastError}</span>
+                    <span className="text-caption break-words text-muted">{row.lastError}</span>
                   </div>
                 ) : (
                   <Badge tone="positive">{tc('active')}</Badge>
@@ -169,7 +175,7 @@ export default async function MailboxesPage() {
       </TableShell>
 
       {rows.some((row) => row.isActive && row.lastError) ? (
-        <p className="mt-3 text-sm text-muted">{t('errorHint')}</p>
+        <p className="mt-3 text-body text-muted">{t('errorHint')}</p>
       ) : null}
 
       {/*
@@ -178,7 +184,7 @@ export default async function MailboxesPage() {
         which reads as a bug in the page rather than as a gap in their roles.
       */}
       {assignable.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">{t('noBranchRole')}</p>
+        <p className="mt-3 text-body text-muted">{t('noBranchRole')}</p>
       ) : null}
     </Register>
   )

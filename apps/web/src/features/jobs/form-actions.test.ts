@@ -26,9 +26,19 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { jobPartners, jobs, withActor } = await import('@qabandi/db')
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const { enquiries, jobPartners, jobs, quotes, withActor } = await import('@qabandi/db')
 
 const {
+  AWAY_CUSTOMER,
   CUSTOMER,
   DESTINATION,
   HOME_BRANCH,
@@ -41,6 +51,7 @@ const {
 } = await import('@/lib/testing/fixtures')
 
 const { saveJob, addJobPartner } = await import('./form-actions')
+const { getQuoteDetail } = await import('@/features/ledger/queries')
 
 const session = {
   actor: bothBranchesActor,
@@ -224,6 +235,191 @@ describe.skipIf(!enabled)('booking a shipment', () => {
       await expect(
         saveJob({}, booking({ jobId: '00000000-0000-7000-8000-0000000000fa' })),
       ).rejects.toThrow('not_found')
+    })
+  })
+
+  /**
+   * O1 — the edit form wiped half the job.
+   *
+   * Each case is one of the ways a save used to corrupt the record: a field
+   * the form did not carry was nulled, the status moved without its own
+   * checks, and a cleared ETA told the customer it had "changed to —".
+   */
+  describe('an edit leaves alone what it did not carry', () => {
+    async function row(jobId: string) {
+      const [found] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            bookingNumber: jobs.bookingNumber,
+            voyageNumber: jobs.voyageNumber,
+            vesselName: jobs.vesselName,
+            status: jobs.status,
+            eta: jobs.eta,
+            etd: jobs.etd,
+          })
+          .from(jobs)
+          .where(eq(jobs.id, jobId)),
+      )
+      return found!
+    }
+
+    it('keeps the columns a narrower form does not post', async () => {
+      await saveJob(
+        {},
+        booking({ bookingNumber: 'BKG-KEEP', voyageNumber: '077W', vesselName: 'CMA CGM TAGE' }),
+      )
+      const job = await latestJob()
+
+      // No bookingNumber or voyageNumber key at all — an older or narrower form.
+      await saveJob({}, booking({ jobId: job.id, vesselName: 'CMA CGM TAGE' }))
+
+      const after = await row(job.id)
+      expect(after.bookingNumber).toBe('BKG-KEEP')
+      expect(after.voyageNumber).toBe('077W')
+      expect(after.vesselName).toBe('CMA CGM TAGE')
+    })
+
+    it('still clears a field the form posts empty', async () => {
+      await saveJob({}, booking({ bookingNumber: 'BKG-CLEAR' }))
+      const job = await latestJob()
+      await saveJob({}, booking({ jobId: job.id, bookingNumber: '' }))
+      expect((await row(job.id)).bookingNumber).toBeNull()
+    })
+
+    it('does not move the status, whatever the form posts', async () => {
+      await saveJob({}, booking())
+      const job = await latestJob()
+      await saveJob({}, booking({ jobId: job.id, status: 'closed' }))
+      expect((await row(job.id)).status).toBe('booked')
+    })
+
+    it('will not open a shipment already closed', async () => {
+      const state = await saveJob({}, booking({ status: 'closed' }))
+      expect(state.errors?.status).toBeDefined()
+    })
+
+    it('tells nobody when the arrival estimate is cleared', async () => {
+      await saveJob({}, booking({ eta: '2026-09-01T08:00' }))
+      const job = await latestJob()
+      const before = await etaEventsFor(job.id)
+
+      await saveJob({}, booking({ jobId: job.id, eta: '' }))
+
+      expect((await row(job.id)).eta).toBeNull()
+      expect(await etaEventsFor(job.id)).toBe(before)
+    })
+  })
+
+  /** O4 — a time typed into the form is the branch's, not the server's. */
+  describe('dates are read in the branch zone', () => {
+    it('stores a Kuwait 22:00 ETA as 19:00 UTC, on the same day', async () => {
+      await saveJob({}, booking({ etd: '2026-09-01T09:00', eta: '2026-09-20T22:00' }))
+      const job = await latestJob()
+      const [found] = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ etd: jobs.etd, eta: jobs.eta }).from(jobs).where(eq(jobs.id, job.id)),
+      )
+      expect(found!.etd!.toISOString()).toBe('2026-09-01T06:00:00.000Z')
+      expect(found!.eta!.toISOString()).toBe('2026-09-20T19:00:00.000Z')
+    })
+
+    it('refuses a lone point as a weight rather than failing in the database', async () => {
+      const state = await saveJob({}, booking({ grossWeightKg: '.' }))
+      expect(state.errors?.grossWeightKg).toBe('jobsValidation.numbersOnly')
+    })
+  })
+
+  /** O14 — the house bill is ours, and names one consignment per branch. */
+  describe('house bill numbers', () => {
+    it('refuses a house bill already on another shipment, on that field', async () => {
+      const hbl = `HBL-${Date.now()}`
+      expect((await saveJob({}, booking({ houseBillNumber: hbl }))).errors).toBeUndefined()
+
+      const state = await saveJob({}, booking({ houseBillNumber: hbl }))
+      expect(state.errors?.houseBillNumber).toBe('jobsValidation.houseBillTaken')
+      expect(state.errors?.masterBillNumber).toBeUndefined()
+    })
+
+    it('lets houses share a master bill', async () => {
+      const mbl = `MBL-${Date.now()}`
+      await saveJob({}, booking({ masterBillNumber: mbl }))
+      const state = await saveJob({}, booking({ masterBillNumber: mbl }))
+      expect(state.errors).toBeUndefined()
+    })
+  })
+
+  /**
+   * S8 — booking from an accepted quotation.
+   *
+   * `saveJob` accepted any quote id: a draft, another customer's, or one
+   * already booked, and weighed credit against whichever it was given.
+   */
+  describe('booking from a quotation', () => {
+    async function quotation(
+      status: 'draft' | 'accepted',
+      customerId: string = CUSTOMER,
+    ): Promise<{ quoteId: string; enquiryId: string }> {
+      const tag = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      return withActor(bothBranchesActor, async (tx) => {
+        const [enquiry] = await tx
+          .insert(enquiries)
+          .values({
+            reference: `FXH-ENQ-S8-${tag}`,
+            branchId: HOME_BRANCH,
+            customerId,
+            status: 'quoted',
+          })
+          .returning({ id: enquiries.id })
+        const [quote] = await tx
+          .insert(quotes)
+          .values({
+            reference: `FXH-QUO-S8-${tag}`,
+            enquiryId: enquiry!.id,
+            branchId: HOME_BRANCH,
+            currency: 'KWD',
+            status,
+            totalSell: '100.000',
+          })
+          .returning({ id: quotes.id })
+        return { quoteId: quote!.id, enquiryId: enquiry!.id }
+      })
+    }
+
+    async function enquiryStatus(enquiryId: string) {
+      const [found] = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ status: enquiries.status }).from(enquiries).where(eq(enquiries.id, enquiryId)),
+      )
+      return found!.status
+    }
+
+    it('books an accepted quotation and wins its enquiry', async () => {
+      const { quoteId, enquiryId } = await quotation('accepted')
+      const state = await saveJob({}, booking({ quoteId }))
+      expect(state.errors).toBeUndefined()
+      expect(await enquiryStatus(enquiryId)).toBe('won')
+
+      // QA P3: the quotation page says where the shipment went.
+      const detail = await getQuoteDetail(bothBranchesActor, quoteId)
+      expect(detail?.bookedJob?.reference).toBe(String(state.ok).replace(/:\d+$/, ''))
+    })
+
+    it('refuses a quotation that was never accepted', async () => {
+      const { quoteId, enquiryId } = await quotation('draft')
+      const state = await saveJob({}, booking({ quoteId }))
+      expect(state.errors?.quoteId).toBe('jobsValidation.quoteNotAccepted')
+      expect(await enquiryStatus(enquiryId)).toBe('quoted')
+    })
+
+    it("refuses another customer's quotation", async () => {
+      const { quoteId } = await quotation('accepted', AWAY_CUSTOMER)
+      const state = await saveJob({}, booking({ quoteId }))
+      expect(state.errors?.quoteId).toBe('jobsValidation.quoteOtherCustomer')
+    })
+
+    it('refuses to book the same quotation twice', async () => {
+      const { quoteId } = await quotation('accepted')
+      expect((await saveJob({}, booking({ quoteId }))).errors).toBeUndefined()
+      const state = await saveJob({}, booking({ quoteId }))
+      expect(state.errors?.quoteId).toBe('jobsValidation.quoteAlreadyBooked')
     })
   })
 

@@ -13,7 +13,8 @@
  * builder happens to read.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -57,7 +58,7 @@ export async function ChargeLineDialog({
     two vocabularies for one concept on two screens.
   */
   const [options, t, tc, tBasis] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('chargeForm'),
     getTranslations('common'),
     getTranslations('quote'),
@@ -135,7 +136,7 @@ export async function ChargeLineDialog({
           span: 4,
           required: true,
           mono: true,
-          defaultValue: defaults?.rate,
+          defaultValue: amountInput(defaults?.rate, defaults?.currency),
         },
         {
           kind: 'select',
@@ -161,7 +162,9 @@ export async function ChargeLineDialog({
             payables balance nobody can reconcile.
           */
           hint: t('fxRateHint'),
-          defaultValue: defaults?.fxRate ?? '1',
+          // Blank, not 1: a blank rate is looked up from `fx_rates`, and a
+          // default of 1 booked every foreign cost at face value in base.
+          defaultValue: defaults?.fxRate,
         },
         {
           kind: 'select',

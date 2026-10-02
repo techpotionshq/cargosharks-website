@@ -38,11 +38,13 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import {
   assets,
+  branches,
   chargeLines,
   chargeTypes,
   currencies,
   inSeries,
   jobs,
+  latestFxRate,
   notificationOutbox,
   partners,
   supplierInvoiceLines,
@@ -123,7 +125,35 @@ export interface ExtractInvoiceResult {
   readonly supplierInvoiceId?: string
   /** Why nothing was written, in one line, where nothing was. */
   readonly refusal?: string
+  /**
+   * The same reason as a code, for a screen to say in the reader's language.
+   * `refusal` stays English because the worker log reads it and has no locale.
+   */
+  readonly refusalCode?: InvoiceRefusal
+  /** What the sentence names — the sizes, or how many findings or issues. */
+  readonly refusalValues?: Readonly<Record<string, string>>
 }
+
+/**
+ * Why a bill was not written, as a stable code.
+ *
+ *   `scan_too_large`     refused before the model was called
+ *   `not_reconciled`     the figures do not add up — the findings say where
+ *   `unreadable_fields`  a header field or a line did not parse
+ *   `low_confidence`     nothing wrong with the reading; the model was unsure
+ *   `no_exchange_rate`   a foreign-currency bill, and no rate to the base on file
+ *   `already_captured`   this supplier's bill with this number is on file already
+ *
+ * The web app translates these, and its switch has a `never` default, so a
+ * code added here without a sentence there fails its typecheck.
+ */
+export type InvoiceRefusal =
+  | 'scan_too_large'
+  | 'not_reconciled'
+  | 'unreadable_fields'
+  | 'low_confidence'
+  | 'no_exchange_rate'
+  | 'already_captured'
 
 /**
  * Read one supplier invoice.
@@ -154,8 +184,12 @@ export async function extractSupplierInvoice(
       costs real money to be told it was too large. The same reasoning the mail
       worker uses: note the fact, keep the row, let a person act.
     */
+    const sizeMb = String(Math.round(bytes.byteLength / 1024 / 1024))
+    const limitMb = String(MAX_DOCUMENT_BYTES / 1024 / 1024)
     return refuse(
-      `The scan is ${Math.round(bytes.byteLength / 1024 / 1024)}MB, above the ${MAX_DOCUMENT_BYTES / 1024 / 1024}MB limit for extraction.`,
+      `The scan is ${sizeMb}MB, above the ${limitMb}MB limit for extraction.`,
+      'scan_too_large',
+      { sizeMb, limitMb },
     )
   }
 
@@ -196,21 +230,146 @@ export async function extractSupplierInvoice(
 
   const base = { invocationId, extracted, findings, consistent }
 
+  /*
+    The same bill, read again (ai-10). `(partner_id, reference)` is unique, so
+    a second read of a captured bill reached the insert, failed it, and came
+    back as a 500 — which the screen worded "could not be read, capture it by
+    hand", inviting exactly the duplicate the constraint exists to stop, and
+    which the email path retried five times. Checked here, before any write and
+    on the attended read too, and answered as a terminal refusal naming the bill
+    that is already there.
+  */
+  const number = extracted.header.invoiceNumber
+  const existing = number ? await capturedAlready(actor, input.partnerId, number) : undefined
+  if (existing) return { ...base, ...alreadyCaptured(number!, existing) }
+
   if (!input.write) return base
-  if (!consistent) return { ...base, refusal: refusalFor(extracted, findings) }
+  if (!consistent) {
+    const code = refusalCodeFor(extracted, findings)
+    return {
+      ...base,
+      refusal: refusalFor(extracted, findings),
+      refusalCode: code,
+      refusalValues: refusalValuesFor(code, extracted, findings),
+    }
+  }
 
-  const supplierInvoiceId = await write(input, extracted, spec!, asset.id, reference)
-  return { ...base, supplierInvoiceId }
+  let written: Awaited<ReturnType<typeof write>>
+  try {
+    written = await write(input, extracted, spec!, asset.id, reference)
+  } catch (error) {
+    // Captured by somebody else between the check above and this insert.
+    const raced = number && isUniqueViolation(error)
+    const id = raced ? await capturedAlready(actor, input.partnerId, number) : undefined
+    if (id) return { ...base, ...alreadyCaptured(number!, id) }
+    throw error
+  }
+  if ('noRateTo' in written) {
+    const values = { currency: spec!.code, base: written.noRateTo }
+    return {
+      ...base,
+      refusal: `No exchange rate from ${values.currency} to ${values.base} is on file, so the bill was not written.`,
+      refusalCode: 'no_exchange_rate',
+      refusalValues: values,
+    }
+  }
+  return { ...base, supplierInvoiceId: written.id }
 
-  function refuse(reason: string): ExtractInvoiceResult {
+  function refuse(
+    reason: string,
+    code: InvoiceRefusal,
+    values: Readonly<Record<string, string>>,
+  ): ExtractInvoiceResult {
     return {
       invocationId: '',
       extracted: emptyExtraction(),
       findings: [],
       consistent: false,
       refusal: reason,
+      refusalCode: code,
+      refusalValues: values,
     }
   }
+}
+
+/** The bill this supplier already has on file under this number, if any. */
+async function capturedAlready(
+  actor: Actor,
+  partnerId: string,
+  number: string,
+): Promise<string | undefined> {
+  const [row] = await withActor(actor, (tx: Tx) =>
+    tx
+      .select({ id: supplierInvoices.id })
+      .from(supplierInvoices)
+      .where(and(eq(supplierInvoices.partnerId, partnerId), eq(supplierInvoices.reference, number)))
+      .limit(1),
+  )
+  return row?.id
+}
+
+function alreadyCaptured(
+  number: string,
+  supplierInvoiceId: string,
+): Pick<ExtractInvoiceResult, 'refusal' | 'refusalCode' | 'refusalValues'> {
+  return {
+    refusal: `Bill ${number} from this supplier is already captured (${supplierInvoiceId}); nothing was written.`,
+    refusalCode: 'already_captured',
+    refusalValues: { reference: number, supplierInvoiceId },
+  }
+}
+
+/** A unique violation, wherever Drizzle buried the driver's error (`.cause`). */
+function isUniqueViolation(error: unknown): boolean {
+  for (let e = error as { code?: unknown; cause?: unknown } | undefined; e; e = e.cause as never) {
+    if (e.code === '23505') return true
+  }
+  return false
+}
+
+/**
+ * Which of the three post-reading refusals applies — the order `refusalFor`
+ * words them in, and the one place that order is decided, so the code a screen
+ * translates and the sentence a log prints can never name different reasons.
+ */
+export function refusalCodeFor(
+  extracted: ExtractedInvoice,
+  findings: readonly ArithmeticFinding[],
+): InvoiceRefusal {
+  if (findings.length > 0) return 'not_reconciled'
+  if (readingIssues(extracted).length > 0) return 'unreadable_fields'
+  return 'low_confidence'
+}
+
+/**
+ * Counts only, never the English details.
+ *
+ * The findings travel on their own in the response, with both figures, so the
+ * screen can word each one itself. The parse issues travel the same way, coded
+ * (`invoiceReadingIssues`, sent as `readingIssues` by the route); the count
+ * here is what the screen falls back to when it cannot word one of them.
+ */
+function refusalValuesFor(
+  code: InvoiceRefusal,
+  extracted: ExtractedInvoice,
+  findings: readonly ArithmeticFinding[],
+): Readonly<Record<string, string>> {
+  switch (code) {
+    case 'not_reconciled':
+      return { count: String(findings.length) }
+    case 'unreadable_fields':
+      return { count: String(readingIssues(extracted).length) }
+    default:
+      return {}
+  }
+}
+
+/** The header's issues and the lines', in the one form both callers print. */
+function readingIssues(extracted: ExtractedInvoice): string[] {
+  return [
+    ...extracted.headerIssues,
+    ...extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
+  ]
 }
 
 /**
@@ -231,22 +390,20 @@ export function refusalFor(
   extracted: ExtractedInvoice,
   findings: readonly ArithmeticFinding[],
 ): string {
-  if (findings.length > 0) {
-    return `The invoice does not reconcile: ${findings.map(describeFinding).join('; ')}`
+  switch (refusalCodeFor(extracted, findings)) {
+    case 'not_reconciled':
+      return `The invoice does not reconcile: ${findings.map(describeFinding).join('; ')}`
+    case 'unreadable_fields':
+      return readingIssues(extracted).join('; ')
+    default:
+      /*
+        Nothing wrong with the reading, so the model simply was not sure
+        enough. Said plainly rather than as "validation failed", because there
+        is nothing for the coordinator to correct — the answer is to read the
+        PDF.
+      */
+      return 'The model was not confident enough to write this without review.'
   }
-
-  const issues = [
-    ...extracted.headerIssues,
-    ...extracted.lines.issues.map((issue) => `line ${issue.line}: ${issue.message}`),
-  ]
-  if (issues.length > 0) return issues.join('; ')
-
-  /*
-    Nothing wrong with the reading, so the model simply was not sure enough.
-    Said plainly rather than as "validation failed", because there is nothing
-    for the coordinator to correct — the answer is to read the PDF.
-  */
-  return 'The model was not confident enough to write this without review.'
 }
 
 /* -------------------------------------------------------------------------
@@ -272,11 +429,28 @@ async function write(
   spec: CurrencySpec,
   assetId: string,
   reference: Reference,
-): Promise<string> {
+): Promise<{ id: string } | { noRateTo: string }> {
   const { header } = extracted
   const code = spec.code
 
   return withActor(input.actor, async (tx: Tx) => {
+    /*
+      The rate to the branch's base, taken now and written on the bill
+      (FR-RT-06). It was never set, so every bill the extractor wrote carried
+      the column default of 1 — a USD 2,900 bill approved and paid as 2,900
+      dinars. Where no rate is on file nothing is written, rather than a bill
+      that looks right and posts at face value; the coordinator captures it by
+      hand with the rate the agent agreed.
+    */
+    const [branch] = await tx
+      .select({ base: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, input.branchId))
+      .limit(1)
+    const base = branch?.base ?? code
+    const fxRate = base === code ? '1' : await latestFxRate(tx, code, base)
+    if (!fxRate) return { noRateTo: base }
+
     /*
       Decimal throughout, never a JS number (§11). KWD carries three decimals
       and a supplier invoice is exactly where the difference shows.
@@ -303,6 +477,7 @@ async function write(
         */
         status: 'received' as const,
         currency: code,
+        fxRate,
         subtotal: header.subtotal ?? toDb(net),
         taxAmount: tax,
         /*
@@ -358,7 +533,7 @@ async function write(
     */
     await flagVariance(tx, input, extracted, spec, code, reference)
 
-    return invoiceId
+    return { id: invoiceId }
   })
 }
 
@@ -490,10 +665,7 @@ export async function flagVariance(
       ).amount,
       accrued,
       matchCount: 1,
-      tolerance: resolveTolerance(
-        tolerance(type?.percent, type?.absolute),
-        partnerTol,
-      ),
+      tolerance: resolveTolerance(tolerance(type?.percent, type?.absolute), partnerTol),
     })
   }
 
@@ -627,6 +799,7 @@ function emptyExtraction(): ExtractedInvoice {
     },
     confidence: 0,
     headerIssues: [],
+    headerIssueDetails: [],
   }
 }
 

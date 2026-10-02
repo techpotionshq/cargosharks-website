@@ -15,10 +15,11 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listQuotes, quoteStatusCounts } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, quoteTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 
 /** Margin from the two frozen totals. Null where either is missing. */
@@ -50,7 +51,7 @@ export default async function QuotesPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [rows, counts] = await Promise.all([
-    listQuotes(session.actor, status),
+    listQuotes(session.actor, status, locale),
     quoteStatusCounts(session.actor),
   ])
 
@@ -92,57 +93,70 @@ export default async function QuotesPage({
         <THead>
           <TR>
             <TH>{t('reference')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{t('sell')}</TH>
-            <TH align="end">{t('margin')}</TH>
-            <TH>{t('validUntil')}</TH>
-            <TH>{t('preparedBy')}</TH>
+            {/* Margin rides under the sell figure on a phone (below). */}
+            <TH priority="low" align="end">
+              {t('margin')}
+            </TH>
+            <TH priority="low">{t('validUntil')}</TH>
+            <TH priority="low">{t('preparedBy')}</TH>
           </TR>
         </THead>
         <TBody>
           {rows.map((row) => {
             const margin = marginPercent(row.totalSell, row.totalCost)
+            const marginClass =
+              margin === null
+                ? 'text-ink-subtle'
+                : margin < 8
+                  ? 'font-semibold text-critical'
+                  : margin < 15
+                    ? 'text-caution'
+                    : 'text-ink'
+            const marginText = margin === null ? '—' : `${margin.toFixed(1)}%`
             return (
               <TR key={row.id}>
                 <TD>
                   <RecordLink href={`/quotes/${row.id}`}>{row.reference}</RecordLink>
                   {row.version > 1 ? (
-                    <span className="numeric ms-1.5 text-[0.75rem] text-ink-subtle">
+                    // Under the reference on a phone: beside it, the pair
+                    // could not break and set the column's floor.
+                    <span className="numeric block text-caption text-ink-subtle @3xl:ms-1.5 @3xl:inline">
                       v{row.version}
                     </span>
                   ) : null}
                 </TD>
-                <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="font-medium text-ink">
+                  {row.customerName ?? '—'}
+                </TD>
                 <TD>
                   <Badge tone={quoteTone(row.status)} dot>
                     {t(`statuses.${row.status}`)}
                   </Badge>
                 </TD>
                 <TD align="end" numeric>
-                  {row.totalSell
-                    ? formatMoney({ amount: Number(row.totalSell), currency: row.currency }, locale)
-                    : '—'}
+                  <Money
+                    value={row.totalSell ? { amount: row.totalSell, currency: row.currency } : null}
+                    locale={locale}
+                  />
+                  {/* A quote's sell figure without its margin is half the
+                      answer, so a phone gets the margin as a second line
+                      rather than a column it would have to scroll to. */}
+                  <span className={`block text-micro @3xl:hidden ${marginClass}`}>
+                    {marginText}
+                  </span>
                 </TD>
-                <TD
-                  align="end"
-                  numeric
-                  className={
-                    margin === null
-                      ? 'text-ink-subtle'
-                      : margin < 8
-                        ? 'font-semibold text-critical'
-                        : margin < 15
-                          ? 'text-caution'
-                          : 'text-ink'
-                  }
-                >
-                  {margin === null ? '—' : `${margin.toFixed(1)}%`}
+                <TD priority="low" align="end" numeric className={marginClass}>
+                  {marginText}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.validUntil ? formatDate(new Date(row.validUntil), locale, timeZone) : '—'}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.preparedBy ?? '—'}</TD>
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                  {row.preparedBy ?? '—'}
+                </TD>
               </TR>
             )
           })}

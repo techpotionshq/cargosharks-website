@@ -27,6 +27,7 @@ import { and, desc, eq, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { customers, jobs, locations, withActor, type Actor } from '@qabandi/db'
 import { clusterShipments, type GroupableShipment, type ShipmentCluster } from '@qabandi/core'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotGroupableShipments } from '@/lib/pilot/fixtures'
 
@@ -46,6 +47,8 @@ const destination = alias(locations, 'candidate_destination')
 export async function consolidationCandidates(
   actor: Actor,
   limit = 400,
+  // Names customers and ports in the reader's language (F27); grouping is on ids.
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ShipmentCluster[]> {
   /*
     The fixture stops at the shipments and `clusterShipments` still runs — the
@@ -53,7 +56,7 @@ export async function consolidationCandidates(
     be the same call in both modes. A fixture that returned finished clusters
     would be a demo of a second implementation nobody ships.
   */
-  if (usePilotFixtures()) return clusterShipments(pilotGroupableShipments())
+  if (usePilotFixtures()) return clusterShipments(pilotGroupableShipments(Date.now(), locale))
 
   const rows = await withActor(actor, async (tx) =>
     tx
@@ -62,12 +65,12 @@ export async function consolidationCandidates(
         reference: jobs.reference,
         branchId: jobs.branchId,
         customerId: jobs.customerId,
-        customerName: customers.legalNameEn,
+        customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         mode: jobs.mode,
         originId: jobs.originId,
         destinationId: jobs.destinationId,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         readyOn: jobs.etd,
         volumeCbm: jobs.volumeCbm,
         grossWeightKg: jobs.grossWeightKg,

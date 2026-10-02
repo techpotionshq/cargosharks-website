@@ -35,7 +35,16 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { chargeLines, jobs, withActor } = await import('@qabandi/db')
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const { chargeLines, currencies, fxRates, jobs, withActor } = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
@@ -197,6 +206,82 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       expect((await latestLine(jobId))?.direction).toBe('revenue')
     })
 
+    /*
+      O3. "Rate to base" defaulted to 1 and the action trusted it, so a USD
+      2,900 cost was booked as KWD 2,900. Blank now takes the latest rate on
+      file; nothing on file is a sentence on the field, never 1.
+
+      Two ISO test codes of this suite's own, because the database is never
+      emptied and a rate written here for a real currency would be read by
+      every other suite that converts it.
+    */
+    it('takes the latest rate on file when none was typed', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      await withActor(systemActor, async (tx) => {
+        await tx
+          .insert(currencies)
+          .values([
+            { code: 'XTS', nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 },
+            { code: 'XXX', nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 },
+          ])
+          .onConflictDoNothing()
+        await tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'XTS',
+            toCurrency: 'KWD',
+            rate: '0.30700000',
+            source: 'costing-test',
+            effectiveOn: today,
+          })
+          .onConflictDoNothing()
+      })
+
+      const jobId = await freshJob()
+      const state = await saveChargeLine(
+        {},
+        lineForm(jobId, { rate: '2900.00', currency: 'XTS', fxRate: '' }),
+      )
+      expect(state.errors).toBeUndefined()
+      const line = await latestLine(jobId)
+      expect(line?.fxRate).toBe('0.30700000')
+      expect(line?.amountBase).toBe('890.300000')
+
+      const none = await saveChargeLine(
+        {},
+        lineForm(await freshJob(), { rate: '10.00', currency: 'XXX', fxRate: '' }),
+      )
+      expect(none.errors?.fxRate).toBe('costingValidation.noRateOnFile:{"from":"XXX","to":"KWD"}')
+    })
+
+    /*
+      O10. The edit dialog was given no counterparty, so it opened on "none"
+      and saving wrote null. A form without the customer field leaves that
+      one alone too.
+    */
+    it('keeps the counterparty through an edit', async () => {
+      const jobId = await freshJob()
+      await saveChargeLine(
+        {},
+        lineForm(jobId, { counterpartyPartnerId: PARTNER, counterpartyCustomerId: CUSTOMER }),
+      )
+      const line = await latestLine(jobId)
+
+      await saveChargeLine(
+        {},
+        lineForm(jobId, {
+          chargeLineId: line!.id,
+          rate: '120.000',
+          counterpartyPartnerId: PARTNER,
+        }),
+      )
+
+      const after = await latestLine(jobId)
+      expect(after?.amount).toBe('120.000000')
+      expect(after?.counterpartyPartnerId).toBe(PARTNER)
+      expect(after?.counterpartyCustomerId).toBe(CUSTOMER)
+    })
+
     it('records who the line is with', async () => {
       const jobId = await freshJob()
       await saveChargeLine({}, lineForm(jobId, { counterpartyPartnerId: PARTNER }))
@@ -259,14 +344,16 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
     /** Not-found rather than forbidden, and said rather than thrown. */
     it('says the shipment is no longer visible', async () => {
       const state = await saveChargeLine({}, lineForm('00000000-0000-7000-8000-0000000000c1'))
-      expect(state.message).toContain('no longer visible')
+      expect(state.message).toBe('costingValidation.jobNotVisible')
     })
 
     it('refuses a caller who may not touch the shipment', async () => {
       const jobId = await freshJob()
       harness.session = sessionWith([])
       try {
-        await expect(saveChargeLine({}, lineForm(jobId))).rejects.toThrow('job.update')
+        await expect(saveChargeLine({}, lineForm(jobId))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['job.update'])
       }
@@ -281,7 +368,9 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
       const jobId = await freshJob(AWAY_BRANCH)
       harness.session = sessionWith(['job.update'], [HOME_BRANCH])
       try {
-        await expect(saveChargeLine({}, lineForm(jobId))).rejects.toThrow(`branch:${AWAY_BRANCH}`)
+        await expect(saveChargeLine({}, lineForm(jobId))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['job.update'])
       }
@@ -313,7 +402,7 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
         {},
         lineForm(jobId, { chargeLineId: '00000000-0000-7000-8000-0000000000c2' }),
       )
-      expect(state.message).toContain('no longer visible')
+      expect(state.message).toBe('costingValidation.jobNotVisible')
     })
 
     /**
@@ -346,7 +435,7 @@ describe.skipIf(!enabled)('the charge ledger, written by hand', () => {
         lineForm(jobId, { chargeLineId: line!.id, rate: '999.000' }),
       )
 
-      expect(state.message).toContain('credit note')
+      expect(state.message).toBe('costingValidation.lineBilled')
       // Unchanged: the refusal is a refusal, not a warning.
       expect((await latestLine(jobId))?.amount).toBe('100.000000')
     })

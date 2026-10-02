@@ -149,6 +149,56 @@ describe('reading a provider receipt', () => {
     })
   })
 
+  /*
+    A bounce through the webhook used to be ignored as automatic mail and
+    nothing more, so the delivery it reports stayed `sent` (FR-NT-06). It now
+    carries `bounceOf`, read by the same `readBounce` the poll uses, and
+    `ingestMessage` marks the delivery failed exactly as it does for IMAP.
+  */
+  describe('bounces', () => {
+    const dsn = (action: string) =>
+      postmark({
+        From: 'MAILER-DAEMON@mail.relay.test',
+        Subject: 'Undelivered Mail Returned to Sender',
+        TextBody: 'This is the mail system at host mail.relay.test.',
+        Headers: [{ Name: 'Content-Type', Value: 'multipart/report; report-type=delivery-status' }],
+        Attachments: [
+          {
+            Name: 'details.txt',
+            ContentType: 'message/delivery-status',
+            Content: Buffer.from(
+              `Final-Recipient: rfc822; nobody@customer.com\nAction: ${action}\n` +
+                'Status: 5.1.1\nDiagnostic-Code: smtp; 550 5.1.1 User unknown\n',
+            ).toString('base64'),
+          },
+          {
+            Name: 'original.eml',
+            ContentType: 'message/rfc822',
+            Content: Buffer.from(
+              'Message-ID: <ours-123@qabandi.test>\nSubject: We have your enquiry\n',
+            ).toString('base64'),
+          },
+        ],
+      })
+
+    it('reads the delivery a failed DSN reports, and calls it automatic', () => {
+      const message = toInboundMessage(dsn('failed'), AT)
+      expect(message.bounceOf).toEqual({
+        messageId: '<ours-123@qabandi.test>',
+        reason: '550 5.1.1 User unknown',
+      })
+      expect(message.automatic).toBe(true)
+    })
+
+    it('does not call a delay a bounce', () => {
+      expect(toInboundMessage(dsn('delayed'), AT).bounceOf).toBeUndefined()
+    })
+
+    it('finds no bounce in an ordinary mail', () => {
+      expect(toInboundMessage(postmark(), AT).bounceOf).toBeUndefined()
+    })
+  })
+
   describe('the neutral shape', () => {
     it('reads it', () => {
       const message = toInboundMessage(neutral(), AT)

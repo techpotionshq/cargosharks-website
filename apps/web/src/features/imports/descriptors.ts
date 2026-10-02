@@ -26,8 +26,30 @@ import {
   phone,
   text,
   withDefault,
-  type ImportDescriptor,
+  type ImportDescriptor as EngineDescriptor,
+  type IssueDetail,
 } from '@qabandi/core/import'
+
+/**
+ * What the cross-field checks below can say, as codes.
+ *
+ * The engine reports its own problems as codes and leaves the wording to the
+ * screen; these are the sheet-specific ones, in the same form, so the console
+ * translates every line of a report the same way. A closed union because
+ * `issue-messages.ts` switches over it exhaustively — a check added here that
+ * the screen cannot word fails the typecheck rather than rendering a code.
+ */
+export type ImportCheckCode =
+  | 'validToBeforeFrom'
+  | 'maximumBelowMinimum'
+  | 'containerTypeNeeded'
+  | 'zeroRateNeedsMinimum'
+  | 'etaBeforeEtd'
+  | 'totalMismatch'
+  | 'overpaid'
+  | 'nothingOutstanding'
+
+type ImportDescriptor = EngineDescriptor<ImportCheckCode>
 
 /**
  * The modes an agent writes in a tariff, mapped to `transport_mode`.
@@ -511,20 +533,28 @@ export const rateCardDescriptor: ImportDescriptor = {
   check: (row) => {
     const from = row.validFrom as string
     const to = row.validTo as string | null
-    if (to !== null && to < from) return 'Valid to is before valid from.'
+    if (to !== null && to < from) {
+      return { code: 'validToBeforeFrom', message: 'Valid to is before valid from.' }
+    }
 
     const rate = row.rate as string
     const minimum = row.minimum as string | null
     const maximum = row.maximum as string | null
     if (minimum !== null && maximum !== null && Number(maximum) < Number(minimum)) {
-      return 'Maximum is below minimum.'
+      return { code: 'maximumBelowMinimum', message: 'Maximum is below minimum.' }
     }
     // A per-container rate with no equipment cannot be applied to a booking.
     if (row.basis === 'per_container' && row.containerType === null) {
-      return 'A per-container rate needs a container type.'
+      return {
+        code: 'containerTypeNeeded',
+        message: 'A per-container rate needs a container type.',
+      }
     }
     if (rate === '0' && minimum === null) {
-      return 'A zero rate needs a minimum charge, or it prices nothing.'
+      return {
+        code: 'zeroRateNeedsMinimum',
+        message: 'A zero rate needs a minimum charge, or it prices nothing.',
+      }
     }
     return null
   },
@@ -798,7 +828,12 @@ export const openJobDescriptor: ImportDescriptor = {
   check: (row) => {
     const etd = row.etd as string | null
     const eta = row.eta as string | null
-    if (etd && eta && eta < etd) return 'ETA is before ETD — check the two columns are not swapped'
+    if (etd && eta && eta < etd) {
+      return {
+        code: 'etaBeforeEtd',
+        message: 'ETA is before ETD — check the two columns are not swapped',
+      }
+    }
     return null
   },
 }
@@ -939,22 +974,47 @@ export const openReceivableDescriptor: ImportDescriptor = {
    * credit note in the old system that was never issued in this one — real,
    * but not something to import silently as a negative balance.
    */
-  check: (row) => {
+  check: (row): IssueDetail<ImportCheckCode> | null => {
     const subtotal = Number(row.subtotal as string)
     const tax = Number((row.taxAmount as string) ?? '0')
     const total = Number(row.total as string)
     const paid = Number((row.amountPaid as string) ?? '0')
 
+    /*
+      The figures in the report are the parsed strings, not the numbers the
+      comparison used — `Number('100.000')` prints as `100`, and a Kuwaiti
+      operator checking a three-decimal sheet should see the three decimals
+      they typed (§11). The comparison itself stays as it was.
+    */
+    const shown = {
+      net: row.subtotal as string,
+      tax: (row.taxAmount as string) ?? '0',
+      total: row.total as string,
+      paid: (row.amountPaid as string) ?? '0',
+    }
+
     // A tolerance of half a fils: KWD carries three decimals, and a sheet
     // rounded per line will not foot to the last place.
     if (Math.abs(subtotal + tax - total) > 0.0005) {
-      return `Net ${subtotal} plus tax ${tax} does not equal total ${total}`
+      return {
+        code: 'totalMismatch',
+        values: { net: shown.net, tax: shown.tax, total: shown.total },
+        message: `Net ${shown.net} plus tax ${shown.tax} does not equal total ${shown.total}`,
+      }
     }
     if (paid > total + 0.0005) {
-      return `Received ${paid} exceeds the total ${total} — raise a credit note instead`
+      return {
+        code: 'overpaid',
+        values: { paid: shown.paid, total: shown.total },
+        message: `Received ${shown.paid} exceeds the total ${shown.total} — raise a credit note instead`,
+      }
     }
     if (Math.abs(total - paid) <= 0.0005) {
-      return 'Nothing outstanding — a settled invoice does not belong in an open receivables file'
+      return {
+        code: 'nothingOutstanding',
+        message:
+          'Nothing outstanding — a settled invoice does not belong in an open receivables file',
+      }
     }
     return null
   },

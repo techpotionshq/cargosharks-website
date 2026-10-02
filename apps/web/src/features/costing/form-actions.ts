@@ -23,12 +23,13 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { SEED_CURRENCIES, dec, type CurrencySpec } from '@qabandi/core'
-import { chargeLines, branches, jobs, withActor } from '@qabandi/db'
+import { chargeLines, branches, jobs, latestFxRate, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   databaseMessage,
   echo,
@@ -37,7 +38,12 @@ import {
   fieldErrors,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -64,33 +70,51 @@ const decimalString = (label: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^-?\d+(\.\d{1,6})?$/, label)
 
-const chargeLineSchema = z.object({
-  jobId: z.uuid(),
-  direction: z.enum(['cost', 'revenue']),
-  chargeTypeId: z.uuid('Choose a charge type'),
-  description: z
-    .string()
-    .trim()
-    .max(300)
-    .optional()
-    .transform((v) => v || null),
-  basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
-  quantity: decimalString('Enter a quantity'),
-  rate: decimalString('Enter a rate'),
-  currency: z.string().trim().length(3),
-  fxRate: decimalString('Enter an exchange rate'),
-  counterpartyPartnerId: optionalUuid,
-  counterpartyCustomerId: optionalUuid,
-})
+const chargeLineSchema = (tv: Translate) =>
+  z.object({
+    jobId: z.uuid(),
+    direction: z.enum(['cost', 'revenue']),
+    chargeTypeId: z.uuid(tv('chooseChargeType')),
+    description: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .transform((v) => v || null),
+    basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
+    quantity: decimalString(tv('enterQuantity')),
+    rate: decimalString(tv('enterRate')),
+    currency: z.string().trim().length(3),
+    /*
+      Optional now, and looked up when it is left blank.
 
-export async function saveChargeLine(_previous: ActionState, form: FormData): Promise<ActionState> {
+      The form defaulted it to 1 and this trusted it, so a USD 2,900 cost was
+      booked as KWD 2,900 — 3.26 times the truth — on a branch whose `fx_rates`
+      held the real rate. A typed rate still wins (FR-RT-06: the rate a cost was
+      taken at belongs to the cost); a blank one takes the latest on file.
+    */
+    fxRate: decimalString(tv('enterFxRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    counterpartyPartnerId: optionalUuid,
+    counterpartyCustomerId: optionalUuid,
+  })
+
+export const saveChargeLine = refuseForbidden(async function saveChargeLine(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('costingValidation')
 
   const chargeLineId = read(form, 'chargeLineId')
-  const parsed = chargeLineSchema.safeParse({
+  const parsed = await localeParse(chargeLineSchema(tv), {
     jobId: read(form, 'jobId'),
     direction: read(form, 'direction') ?? 'cost',
     chargeTypeId: read(form, 'chargeTypeId'),
@@ -99,7 +123,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
     quantity: read(form, 'quantity') ?? '1',
     rate: read(form, 'rate') ?? '',
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     counterpartyPartnerId: read(form, 'counterpartyPartnerId') ?? '',
     counterpartyCustomerId: read(form, 'counterpartyCustomerId') ?? '',
   })
@@ -129,13 +153,18 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         .limit(1)
 
       if (!job) return { error: 'not_found' as const }
-      assertInBranch(session, job.branchId)
+      assertCanIn(session, 'job.update', job.branchId)
 
       const baseSpec = spec(job.baseCurrency)
+      const fxRate =
+        data.currency === job.baseCurrency
+          ? '1'
+          : (data.fxRate ?? (await latestFxRate(tx, data.currency, job.baseCurrency)))
+      if (fxRate === null) return { error: 'no_rate' as const, base: job.baseCurrency }
       const amountBase =
         data.currency === job.baseCurrency
           ? amount
-          : amount.times(dec(data.fxRate)).toDecimalPlaces(baseSpec.minorUnits)
+          : amount.times(dec(fxRate)).toDecimalPlaces(baseSpec.minorUnits)
 
       const values = {
         jobId: data.jobId,
@@ -148,7 +177,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         rate: data.rate,
         amount: amount.toFixed(),
         currency: data.currency,
-        fxRate: data.fxRate,
+        fxRate,
         amountBase: amountBase.toFixed(),
         baseCurrency: job.baseCurrency,
         counterpartyPartnerId: data.counterpartyPartnerId ?? null,
@@ -159,6 +188,16 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         await tx.insert(chargeLines).values(values)
         return { error: null }
       }
+
+      /*
+        A counterparty the form does not carry is left as it is. The dialog
+        offers partners only; a customer named on a revenue line was erased by
+        every edit, and with it the line's place in the settlement.
+      */
+      const { counterpartyCustomerId, ...always } = values
+      const updatable = form.has('counterpartyCustomerId')
+        ? { ...always, counterpartyCustomerId }
+        : always
 
       /*
         Both freezes, read in the same transaction as the update.
@@ -185,7 +224,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
 
       const updated = await tx
         .update(chargeLines)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...updatable, updatedAt: new Date() })
         .where(sql`${chargeLines.id} = ${chargeLineId} and ${chargeLines.invoiceId} is null`)
         .returning({ id: chargeLines.id })
 
@@ -193,23 +232,23 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
     })
 
     if (result.error === 'not_found') {
-      return failWith('That job is no longer visible.', echo(form))
+      return failWith(tv('jobNotVisible'), echo(form))
+    }
+    if (result.error === 'no_rate') {
+      return fail(
+        { fxRate: tv('noRateOnFile', { from: data.currency, to: result.base }) },
+        echo(form),
+      )
     }
     if (result.error === 'billed') {
-      return failWith(
-        'That line has been billed to the customer and can no longer be edited. Raise a credit note instead.',
-        echo(form),
-      )
+      return failWith(tv('lineBilled'), echo(form))
     }
     if (result.error === 'matched') {
-      return failWith(
-        'A supplier invoice has been matched against that line. Unmatch it first — editing the accrual now would change a variance somebody has already reviewed.',
-        echo(form),
-      )
+      return failWith(tv('lineMatched'), echo(form))
     }
   } catch (error) {
     if (databaseMessage(error).includes('not-null')) {
-      return failWith('Something on that line is missing.', echo(form))
+      return failWith(tv('lineIncomplete'), echo(form))
     }
     throw error
   }
@@ -217,4 +256,4 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/jobs/${data.jobId}`)
   revalidatePath('/finance')
   return succeed(data.jobId)
-}
+})

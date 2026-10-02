@@ -57,10 +57,10 @@ export default async function EnrolPage() {
       <div className="w-full max-w-sm">
         <Logo brand={brand} locale={locale} size="md" markOnly className="mb-5" />
 
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
+        <h1 className="font-display text-display font-semibold tracking-tight text-ink">
           {t('title')}
         </h1>
-        <p className="mt-1.5 text-[0.9375rem] text-ink-muted">{t('subtitle')}</p>
+        <p className="mt-1.5 text-title text-ink-muted">{t('subtitle')}</p>
 
         <div className="mt-7">
           <EnrolForm

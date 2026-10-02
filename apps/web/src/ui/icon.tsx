@@ -23,6 +23,8 @@ import {
   Anchor,
   Sparkle,
   ArrowRight,
+  ArrowsInSimple,
+  ArrowsOutSimple,
   ArrowSquareOut,
   ArrowUpRight,
   Bell,
@@ -37,6 +39,7 @@ import {
   Clock,
   ClockCounterClockwise,
   CurrencyDollar,
+  DotsThree,
   DownloadSimple,
   Envelope,
   FileText,
@@ -135,6 +138,9 @@ const ICONS = {
   close: X,
   menu: List,
   plus: Plus,
+  more: DotsThree,
+  expand: ArrowsOutSimple,
+  collapse: ArrowsInSimple,
 } as const satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof ICONS

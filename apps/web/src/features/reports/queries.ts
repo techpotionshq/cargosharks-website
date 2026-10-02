@@ -148,6 +148,15 @@ export async function marginByDimension(
     )
 
     /*
+      Every cut is also grouped by the base currency.
+
+      `amount_base` is in its *branch's* base currency, and branches differ —
+      KWI books dinars, DXB dirhams. Grouped by customer, lane, mode or owner
+      alone, a customer trading through both summed dinars and dirhams into
+      one figure and labelled it with whichever came first alphabetically. A
+      group that spans two bases is now two rows, each one real money; the
+      report, the screen and the CSV all show the currency beside it.
+
       Each dimension states its own query rather than sharing a builder.
 
       Drizzle's query builder is typed by its joins, so a `base` reused across
@@ -166,13 +175,18 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: sql<string>`min(${chargeLines.baseCurrency})`,
+            currency: chargeLines.baseCurrency,
           })
           .from(jobs)
           .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
           .innerJoin(branches, eq(branches.id, jobs.branchId))
           .where(where)
-          .groupBy(branches.id, branches.legalNameEn, branches.legalNameAr)
+          .groupBy(
+            branches.id,
+            branches.legalNameEn,
+            branches.legalNameAr,
+            chargeLines.baseCurrency,
+          )
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -186,13 +200,18 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: sql<string>`min(${chargeLines.baseCurrency})`,
+            currency: chargeLines.baseCurrency,
           })
           .from(jobs)
           .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
           .innerJoin(customers, eq(customers.id, jobs.customerId))
           .where(where)
-          .groupBy(customers.id, customers.legalNameEn, customers.legalNameAr)
+          .groupBy(
+            customers.id,
+            customers.legalNameEn,
+            customers.legalNameAr,
+            chargeLines.baseCurrency,
+          )
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -219,7 +238,7 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: sql<string>`min(${chargeLines.baseCurrency})`,
+            currency: chargeLines.baseCurrency,
           })
           .from(jobs)
           .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
@@ -233,6 +252,7 @@ export async function marginByDimension(
             sql`destination.name_en`,
             sql`origin.name_ar`,
             sql`destination.name_ar`,
+            chargeLines.baseCurrency,
           )
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
@@ -248,12 +268,12 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: sql<string>`min(${chargeLines.baseCurrency})`,
+            currency: chargeLines.baseCurrency,
           })
           .from(jobs)
           .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
           .where(where)
-          .groupBy(jobs.mode)
+          .groupBy(jobs.mode, chargeLines.baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
 
@@ -274,13 +294,13 @@ export async function marginByDimension(
             revenue,
             cost,
             grossProfit,
-            currency: sql<string>`min(${chargeLines.baseCurrency})`,
+            currency: chargeLines.baseCurrency,
           })
           .from(jobs)
           .innerJoin(chargeLines, eq(chargeLines.jobId, jobs.id))
           .leftJoin(principals, eq(principals.id, jobs.ownerId))
           .where(where)
-          .groupBy(principals.id, principals.nameEn, principals.nameAr)
+          .groupBy(principals.id, principals.nameEn, principals.nameAr, chargeLines.baseCurrency)
           .orderBy(sql`${grossProfit} desc`)
           .then(normalise)
     }
@@ -290,8 +310,8 @@ export async function marginByDimension(
 /**
  * The one thing left to do in JavaScript: name the currency.
  *
- * `min(base_currency)` is null for a group with no charge lines, which cannot
- * happen given the inner join but costs nothing to answer honestly. Everything
+ * The base currency is a grouping column, never null given the inner join,
+ * but answering a null honestly costs nothing. Everything
  * else — the sums, the subtraction, the ordering — happened in PostgreSQL on
  * `numeric`, which is the only place this arithmetic is exact.
  */

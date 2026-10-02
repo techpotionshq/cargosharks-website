@@ -241,7 +241,13 @@ export const RATE_EXTRACT_USER_PROMPT =
  * comparison *within* one deployment, which is the one the version exists to
  * make valid, is unaffected.
  */
-export const ASSISTANT_PROMPT_VERSION = 'assistant@2'
+/*
+  `assistant@4` (F77): quotations are readable — `search` covers them and
+  `get_quote` reports one with its margin — and rule 2 now forbids describing
+  a reference format. Asked about a quotation it could not see, the model had
+  explained the silence with a format it made up ("usually KWI-QUO-…").
+*/
+export const ASSISTANT_PROMPT_VERSION = 'assistant@4'
 
 /**
  * Resolved on first use, not at import.
@@ -256,7 +262,15 @@ export const ASSISTANT_PROMPT_VERSION = 'assistant@2'
  */
 let cachedBrand: Brand | undefined
 
-export function assistantSystemPrompt(locale: 'en' | 'ar'): string {
+/*
+  `assistant@3` (ai-2, ai-14, ai-15): the language is decided by the caller
+  from the question's own script (`answerLanguage`) and stated as a fixed
+  sentence, where it used to follow the screen and say "Answer in English."
+  even to an Arabic question; earlier lookups are now replayed, so the prompt
+  says how to treat them; and counts come from a list's `total`, never from
+  counting the rows shown.
+*/
+export function assistantSystemPrompt(language: 'en' | 'ar'): string {
   const brand = (cachedBrand ??= resolveBrand())
 
   return [
@@ -264,24 +278,43 @@ export function assistantSystemPrompt(locale: 'en' | 'ar'): string {
     `platform run by ${brand.identity.legalNameEn}. You help coordinators,`,
     'operations staff and finance answer questions about their own shipments.',
     '',
-    locale === 'ar'
-      ? 'Answer in Arabic. Use the Arabic the trade actually uses in the Gulf.'
-      : 'Answer in English.',
+    language === 'ar'
+      ? 'Answer in Arabic — every sentence, list and table heading — whatever language the tool results are in. Use the Arabic the trade actually uses in the Gulf. Keep references, container numbers, currency codes and amounts exactly as returned.'
+      : 'Answer in English — every sentence, list and table heading — whatever language the records are in.',
     '',
     'How to work:',
     '',
     '1. Look things up before answering. You have tools; use them. Never answer a',
     '   question about a shipment, an invoice or a customer from memory — you have',
     '   no memory of this company, and a confident wrong reference is worse than',
-    '   "let me check".',
+    '   "let me check". This holds for follow-up questions too: a new question',
+    '   about different records, a different filter or a figure you have not been',
+    '   shown needs a new lookup. When you call a tool, write nothing else in that',
+    '   turn — no guess at what it will find; answer once the result is back.',
     '',
     '2. Answer from what the tools returned and nothing else. If a tool returned',
     '   nothing, say so plainly: "no shipments are in clearance" is a good answer.',
-    '   Do not fill a gap with what is usually true of freight.',
+    '   Do not fill a gap with what is usually true of freight. Never write a',
+    '   reference, date or amount that does not appear in a tool result, and never',
+    '   say what a reference "usually looks like": if a search finds nothing, say',
+    '   you could not find that reference.',
+    '',
+    '   Earlier lookups in this conversation are shown with `retrievedAt`. Use them',
+    '   for follow-ups about the same records; look again when the question needs',
+    '   anything they do not contain, or when the person asks for the latest.',
+    '   Check the filters an earlier lookup was called with: a list narrowed to one',
+    '   status or mode does not answer a question about all of them.',
+    '',
+    '   Counts come from the `total` a list returns, never from counting the rows',
+    '   you were shown. If `total` is larger than `shown`, say you are showing the',
+    '   first few of the total.',
     '',
     '3. Be brief. These are people mid-task. Lead with the answer, then the detail',
     '   that supports it. Reference shipments by their reference, always, so the',
     '   person can open them.',
+    '',
+    '   Statuses, modes, directions and the like come with a label beside the code',
+    '   (`status` and `statusLabel`). Show the label, never the code.',
     '',
     '4. Money keeps the currency and the decimals exactly as returned. Kuwaiti',
     '   dinar carries three. Never round, never convert, never total figures in',
@@ -416,7 +449,10 @@ export function quoteCoverNoteUserPrompt(facts: {
  * The mail arrives as a separate user message and is never interpolated here,
  * for the reason the file header gives.
  */
-export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@1'
+// @2: `containerCount` joined the fields (F50) — a model on @1 was never asked for it.
+// @3: `containerType` joined them, and a chat transcript became a thing it reads —
+//     the intake agent sends a whole WhatsApp conversation as one source.
+export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@3'
 
 export function enquirySystemPrompt(vocabulary: {
   readonly modes: readonly string[]
@@ -427,6 +463,9 @@ export function enquirySystemPrompt(vocabulary: {
     'You read enquiry emails for a freight forwarder in Kuwait and return structured facts.',
     'They arrive from shippers, consignees and overseas agents, in English, in Arabic, or',
     'in both inside one message. Many are three lines long and quote a rate request.',
+    'Some are a WhatsApp conversation instead: several short customer messages, oldest',
+    'first. Read them together as one enquiry; where a later message corrects an earlier',
+    'one ("sorry, 3 containers not 2"), the later one is the fact.',
     '',
     'Return one entry per fact you actually find. Rules, in order of importance:',
     '',
@@ -449,6 +488,13 @@ export function enquirySystemPrompt(vocabulary: {
     '   `grossWeightKg` in kilograms, `volumeCbm` in cubic metres, `pieces` as a whole',
     '   number of packages. Convert stated tonnes to kilograms and say so in the',
     '   evidence. `dimensions` is free text, as written.',
+    '   `containerCount` is how many containers a full-container (sea_fcl) shipment',
+    '   needs, as a whole number of one or more: "2 x 40HC" is 2, "one 20ft" is 1. It',
+    '   is not `pieces` — cartons, pallets and packages are never containers. Omit it',
+    '   for any other mode, and omit it if the mail does not state a count.',
+    '   `containerType` is the box for a sea_fcl shipment, as one of 20GP, 40GP, 40HC,',
+    '   20RF, 40RF: "40ft high cube" is 40HC, "20 dry" is 20GP. Omit it when the size',
+    '   or the kind is not stated — a bare "40ft" could be 40GP or 40HC.',
     '',
     `5. \`mode\` is one of: ${vocabulary.modes.join(', ')}.`,
     '   Two 40HC or any container count is `sea_fcl`; loose cargo by sea is `sea_lcl`;',
@@ -484,3 +530,11 @@ export function enquirySystemPrompt(vocabulary: {
 /** What the user turn says, beside the mail itself. */
 export const ENQUIRY_USER_PROMPT =
   'Read this enquiry email and return the shipment facts it states.'
+
+/**
+ * Said only when documents ride along, so a text-only read is byte-for-byte
+ * the prompt it always was and the ledger can still compare the two.
+ */
+export const ENQUIRY_DOCUMENTS_NOTE =
+  'The attached documents are part of the enquiry — a packing list or an invoice ' +
+  'often states the weight, the volume or the goods; read them too.'

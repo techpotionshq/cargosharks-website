@@ -28,7 +28,22 @@
  * not see it. The narrow projection is a second fence behind RLS.
  */
 
-import { and, desc, eq, gt, ilike, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   branches,
@@ -58,15 +73,19 @@ import {
 } from '@qabandi/db'
 import {
   ASSISTANT_LIMITS,
+  MODE_FILTERS,
+  NULLISH_WORDS,
   assessCredit,
   clusterShipments,
   emptyLedgerMargin,
   isNearLimit,
   jobMargin,
+  modesFor,
   toScale,
   type GroupableShipment,
+  type ModeFilter,
 } from '@qabandi/core'
-import { dayIn, todayIn } from '@qabandi/core'
+import { dayIn, shiftDay, todayIn } from '@qabandi/core'
 
 const candidateOrigin = alias(locations, 'candidate_origin')
 const candidateDestination = alias(locations, 'candidate_destination')
@@ -75,7 +94,7 @@ const candidateDestination = alias(locations, 'candidate_destination')
 export type ToolArgs = Record<string, unknown>
 
 /**
- * Words a model writes when it means `null`.
+ * Words a model writes when it means `null` — `NULLISH_WORDS` in core.
  *
  * Found in a live call, not imagined: asked which invoices were overdue,
  * `minimax/minimax-m3` correctly chose `list_overdue_invoices` and filled the
@@ -87,12 +106,14 @@ export type ToolArgs = Record<string, unknown>
  * That is the worst shape a bug can take here: not an error, not an empty
  * screen, but a plausible wrong answer to a question about money. A schema
  * cannot prevent it — the field is legitimately a string — so it is caught
- * where the string becomes a filter.
+ * where the string becomes a filter. The closed parameters (status, mode,
+ * severity) are held to their enums earlier, by `normaliseToolArgs`, before a
+ * call reaches this file.
  *
  * Case-insensitive, and it costs us nothing real: a customer named "none" or
  * "n/a" does not exist, and one that did would be findable by its code.
  */
-const NULLISH = new Set(['none', 'null', 'nil', 'undefined', 'n/a', 'na', 'any', 'all', '-'])
+const NULLISH = NULLISH_WORDS
 
 /**
  * The three readers, bound to one call's arguments.
@@ -162,6 +183,10 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return listFreeTime(actor, args)
     case 'list_overdue_invoices':
       return listOverdueInvoices(actor, args)
+    case 'get_quote':
+      return getQuote(actor, args)
+    case 'get_invoice':
+      return getInvoice(actor, args)
     case 'list_unbilled':
       return listUnbilled(actor, args)
     case 'list_quotes_expiring':
@@ -202,50 +227,69 @@ async function search(actor: Actor, args: ToolArgs): Promise<unknown> {
   const like = `%${query}%`
 
   return withActor(actor, async (tx: Tx) => {
-    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows] = await inSeries([
-      () =>
-        tx
-          .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
-          .from(jobs)
-          .where(ilike(jobs.reference, like))
-          .limit(limit),
-      () =>
-        tx
-          .select({ reference: enquiries.reference, status: enquiries.status })
-          .from(enquiries)
-          .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
-          .limit(limit),
-      () =>
-        tx
-          .select({ code: customers.code, name: customers.legalNameEn })
-          .from(customers)
-          .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
-          .limit(limit),
-      () =>
-        tx
-          .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
-          .from(invoices)
-          .where(ilike(invoices.seriesNo, like))
-          .limit(limit),
-      /*
+    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows, quoteRows] =
+      await inSeries([
+        () =>
+          tx
+            .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
+            .from(jobs)
+            .where(ilike(jobs.reference, like))
+            .limit(limit),
+        () =>
+          tx
+            .select({ reference: enquiries.reference, status: enquiries.status })
+            .from(enquiries)
+            .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
+            .limit(limit),
+        () =>
+          tx
+            .select({ code: customers.code, name: customers.legalNameEn })
+            .from(customers)
+            .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
+            .limit(limit),
+        () =>
+          tx
+            .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
+            .from(invoices)
+            .where(ilike(invoices.seriesNo, like))
+            .limit(limit),
+        /*
         Containers hang off `equipment`, not `job_cargo`.
 
         `job_cargo` is what is *in* the box — packages, description, HS code —
         and `equipment` is the box. Searching the wrong one finds nothing and
         looks exactly like a container we are not handling.
       */
-      () =>
-        tx
-          .select({ container: equipment.containerNo, reference: jobs.reference })
-          .from(equipment)
-          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-          .where(ilike(equipment.containerNo, like))
-          .limit(limit),
-    ])
+        () =>
+          tx
+            .select({ container: equipment.containerNo, reference: jobs.reference })
+            .from(equipment)
+            .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+            .where(ilike(equipment.containerNo, like))
+            .limit(limit),
+        /*
+        Quotations, which this tool's description always promised and the query
+        never searched (F77): asked for the margin on QUO-2026-00004 the
+        assistant found nothing, and explained the silence by inventing a
+        reference format. Superseded revisions are history, not the quotation.
+      */
+        () =>
+          tx
+            .select({
+              reference: quotes.reference,
+              status: quotes.status,
+              enquiry: enquiries.reference,
+            })
+            .from(quotes)
+            .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+            .where(and(ilike(quotes.reference, like), isNull(quotes.supersededById)))
+            .limit(limit),
+      ])
 
     return {
       shipments: jobRows,
       enquiries: enquiryRows,
+      quotes: quoteRows,
       customers: customerRows,
       invoices: invoiceRows,
       containers: containerRows,
@@ -379,30 +423,94 @@ async function getJob(actor: Actor, args: ToolArgs): Promise<unknown> {
  * the lists
  * ---------------------------------------------------------------------- */
 
+/**
+ * How many rows matched, carried beside the rows shown (ai-15).
+ *
+ * Asked how many enquiries were open, the assistant counted the rows a list
+ * returned and said 12 when the board said 13 — the list was capped, or the
+ * model miscounted, and either way the person was given a number nobody had
+ * computed. Every list now returns `total`, from `count(*) over ()` in the same
+ * statement (so the count and the rows cannot disagree about the filter), and
+ * the prompt tells the model to report counts from it.
+ *
+ * `_matches` rather than `total` on the row because two of these lists already
+ * carry a money column called `total`.
+ */
+const MATCHES = sql<number>`(count(*) over ())::int`
+
+export interface Counted<T> {
+  /** Every row that matched, not only those shown. */
+  readonly total: number
+  readonly shown: number
+  readonly rows: T[]
+}
+
+export function counted<T extends { _matches: number }>(rows: T[]): Counted<Omit<T, '_matches'>> {
+  return {
+    total: rows[0]?._matches ?? 0,
+    shown: rows.length,
+    rows: rows.map(({ _matches: _, ...row }) => row),
+  }
+}
+
 async function listJobs(actor: Actor, args: ToolArgs): Promise<unknown> {
   const status = text(args, 'status')
   const mode = text(args, 'mode')
+  const direction = text(args, 'direction')
   const limit = count(args, 'limit', 20)
+  const within =
+    args.arrivingWithinDays === null || args.arrivingWithinDays === undefined
+      ? undefined
+      : Number(args.arrivingWithinDays)
+  const arriving = within !== undefined && Number.isFinite(within)
 
-  return withActor(actor, (tx: Tx) => {
+  return withActor(actor, async (tx: Tx) => {
+    const now = new Date()
+    const horizon = new Date(now.getTime() + Math.max(0, Math.min(60, within ?? 0)) * 86_400_000)
+
     const filters = [
       status ? eq(sql`${jobs.status}::text`, status) : undefined,
-      mode ? eq(sql`${jobs.mode}::text`, mode) : undefined,
+      /*
+        A family, not an equality (ai-1). The column holds `sea_fcl` and
+        `sea_lcl`; "sea" compared exactly matched neither and answered "no sea
+        shipments" on a board full of them. `modesFor` expands the family, and
+        an unknown mode never gets this far — `normaliseToolArgs` refused it.
+      */
+      mode && (MODE_FILTERS as readonly string[]).includes(mode)
+        ? inArray(jobs.mode, modesFor(mode as ModeFilter))
+        : undefined,
+      direction ? eq(sql`${jobs.tradeDirection}::text`, direction) : undefined,
+      /*
+        "Arriving" is an ETA ahead of us on a shipment that has not arrived:
+        no actual arrival recorded, and not cancelled. Without this the
+        description promised "what is arriving this week" and the tool could
+        only list the newest shipments, leaving the model to guess from ETAs
+        it was shown twenty of.
+      */
+      arriving ? gte(jobs.eta, now) : undefined,
+      arriving ? lte(jobs.eta, horizon) : undefined,
+      arriving ? isNull(jobs.ata) : undefined,
+      arriving ? ne(jobs.status, 'cancelled') : undefined,
     ].filter(Boolean)
 
-    return tx
+    const rows = await tx
       .select({
         reference: jobs.reference,
         status: jobs.status,
         mode: jobs.mode,
+        direction: jobs.tradeDirection,
+        etd: jobs.etd,
         eta: jobs.eta,
         customer: customers.legalNameEn,
+        _matches: MATCHES,
       })
       .from(jobs)
       .leftJoin(customers, eq(customers.id, jobs.customerId))
       .where(filters.length > 0 ? and(...filters) : undefined)
-      .orderBy(desc(jobs.createdAt))
+      .orderBy(arriving ? asc(jobs.eta) : desc(jobs.createdAt))
       .limit(limit)
+
+    return counted(rows)
   })
 }
 
@@ -419,7 +527,7 @@ async function listEnquiries(actor: Actor, args: ToolArgs): Promise<unknown> {
   const limit = count(args, 'limit', 20)
   const overdueOnly = flag(args, 'overdueOnly')
 
-  return withActor(actor, (tx: Tx) => {
+  return withActor(actor, async (tx: Tx) => {
     const filters = [
       status ? eq(sql`${enquiries.status}::text`, status) : undefined,
       overdueOnly ? lte(enquiries.slaDueAt, new Date()) : undefined,
@@ -427,7 +535,7 @@ async function listEnquiries(actor: Actor, args: ToolArgs): Promise<unknown> {
       isNull(enquiries.closedAt),
     ].filter(Boolean)
 
-    return tx
+    const rows = await tx
       .select({
         reference: enquiries.reference,
         status: enquiries.status,
@@ -435,13 +543,22 @@ async function listEnquiries(actor: Actor, args: ToolArgs): Promise<unknown> {
         contactEmail: enquiries.contactEmail,
         slaDueAt: enquiries.slaDueAt,
         firstRespondedAt: enquiries.firstRespondedAt,
+        /*
+          Computed here, not left to the model: live, it called an SLA due
+          two hours ahead "overdue", reading a UTC timestamp against a clock
+          it does not have. The board's own comparison, as a fact.
+        */
+        overdue: sql<boolean>`(${enquiries.firstRespondedAt} is null and ${enquiries.slaDueAt} <= now())`,
         notes: enquiries.notes,
+        _matches: MATCHES,
       })
       .from(enquiries)
       .leftJoin(customers, eq(customers.id, enquiries.customerId))
       .where(and(...filters))
       .orderBy(enquiries.slaDueAt)
       .limit(limit)
+
+    return counted(rows)
   })
 }
 
@@ -449,13 +566,13 @@ async function listExceptions(actor: Actor, args: ToolArgs): Promise<unknown> {
   const severity = text(args, 'severity')
   const limit = count(args, 'limit', 20)
 
-  return withActor(actor, (tx: Tx) => {
+  return withActor(actor, async (tx: Tx) => {
     const filters = [
       isNull(exceptions.closedAt),
       severity ? eq(sql`${exceptions.severity}::text`, severity) : undefined,
     ].filter(Boolean)
 
-    return tx
+    const rows = await tx
       .select({
         shipment: jobs.reference,
         code: exceptionCodes.code,
@@ -463,6 +580,7 @@ async function listExceptions(actor: Actor, args: ToolArgs): Promise<unknown> {
         openedAt: exceptions.openedAt,
         dueAt: exceptions.dueAt,
         description: exceptions.description,
+        _matches: MATCHES,
       })
       .from(exceptions)
       .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
@@ -470,6 +588,8 @@ async function listExceptions(actor: Actor, args: ToolArgs): Promise<unknown> {
       .where(and(...filters))
       .orderBy(exceptions.dueAt, exceptions.openedAt)
       .limit(limit)
+
+    return counted(rows)
   })
 }
 
@@ -485,67 +605,238 @@ async function listFreeTime(actor: Actor, args: ToolArgs): Promise<unknown> {
   const limit = count(args, 'limit', 20)
   const withinDays = Number.isFinite(Number(args.withinDays)) ? Number(args.withinDays) : 7
 
-  return withActor(actor, (tx: Tx) => {
-    const horizon = new Date()
-    horizon.setUTCDate(horizon.getUTCDate() + Math.max(0, Math.min(60, withinDays)))
+  return withActor(actor, async (tx: Tx) => {
+    const horizon = shiftDay(todayIn(), Math.max(0, Math.min(60, withinDays)))
+    /*
+      The last free day, which is what "running out" means (O20).
 
-    return (
-      tx
-        .select({
-          shipment: jobs.reference,
-          container: equipment.containerNo,
-          kind: freeTimeClocks.kind,
-          startsOn: freeTimeClocks.startsOn,
-          endsOn: freeTimeClocks.endsOn,
-          accruedDays: freeTimeClocks.accruedDays,
-          accruedAmount: freeTimeClocks.accruedAmount,
-          currency: freeTimeClocks.currency,
-        })
-        .from(freeTimeClocks)
-        .innerJoin(jobs, eq(jobs.id, freeTimeClocks.jobId))
-        .leftJoin(equipment, eq(equipment.id, freeTimeClocks.equipmentId))
-        /*
-        No `closed_at` on this table: a clock stops when the box is returned,
-        which `equipment.empty_returned_at` records. Filtering on that rather
-        than inventing a column keeps the assistant's answer identical to the
-        board's.
-      */
-        .where(and(isNull(equipment.emptyReturnedAt), lte(freeTimeClocks.endsOn, dayIn(horizon))))
-        .orderBy(freeTimeClocks.endsOn)
-        .limit(limit)
-    )
+      This filtered and sorted on `ends_on` — the day the box came back — so it
+      matched only clocks that had already stopped, and with nothing setting
+      that column it answered every question with nothing. The free time ends
+      `free_days - 1` after the start (the start day is day one). Counted in
+      calendar days; on a working-day clock that names a day at or before the
+      real one, which errs towards warning early.
+    */
+    const freeUntil = sql<string>`(${freeTimeClocks.startsOn} + greatest(${freeTimeClocks.freeDays} - 1, 0))`
+
+    const rows = await tx
+      .select({
+        shipment: jobs.reference,
+        container: equipment.containerNo,
+        kind: freeTimeClocks.kind,
+        startsOn: freeTimeClocks.startsOn,
+        freeUntil: sql<string>`${freeUntil}::text`,
+        accruedDays: freeTimeClocks.accruedDays,
+        accruedAmount: freeTimeClocks.accruedAmount,
+        currency: freeTimeClocks.currency,
+        _matches: MATCHES,
+      })
+      .from(freeTimeClocks)
+      .innerJoin(jobs, eq(jobs.id, freeTimeClocks.jobId))
+      .leftJoin(equipment, eq(equipment.id, freeTimeClocks.equipmentId))
+      /*
+          Only clocks still running: no end date, and the box not back. Both,
+          because an operator records either — the clock's own end date, or
+          the container's empty return.
+        */
+      .where(
+        and(
+          isNull(freeTimeClocks.endsOn),
+          isNull(equipment.emptyReturnedAt),
+          sql`${freeUntil} <= ${horizon}::date`,
+        ),
+      )
+      .orderBy(freeUntil)
+      .limit(limit)
+
+    return { ...counted(rows), withinDays, horizon }
   })
 }
+
+/** What is still owed on an invoice: total less receipts less credit notes (F9). */
+const BALANCE = sql`(${invoices.total} - ${invoices.amountPaid} - ${invoices.amountCredited})`
 
 async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknown> {
   const customer = text(args, 'customer')
   const limit = count(args, 'limit', 20)
   const today = todayIn()
 
-  return withActor(actor, (tx: Tx) => {
-    const filters = [
-      lte(invoices.dueOn, today),
-      sql`${invoices.status}::text in ('issued', 'part_paid')`,
-      customer
-        ? or(ilike(customers.legalNameEn, `%${customer}%`), ilike(customers.code, `%${customer}%`))
-        : undefined,
-    ].filter(Boolean)
+  return withActor(actor, async (tx: Tx) => {
+    const filters = and(
+      ...[
+        lte(invoices.dueOn, today),
+        sql`${invoices.status}::text in ('issued', 'part_paid')`,
+        customer
+          ? or(
+              ilike(customers.legalNameEn, `%${customer}%`),
+              ilike(customers.code, `%${customer}%`),
+            )
+          : undefined,
+      ].filter(Boolean),
+    )
 
-    return tx
-      .select({
-        number: invoices.seriesNo,
-        customer: customers.legalNameEn,
-        currency: invoices.currency,
-        total: invoices.total,
-        amountPaid: invoices.amountPaid,
-        dueOn: invoices.dueOn,
-        daysOverdue: sql<number>`(current_date - ${invoices.dueOn})::int`,
-      })
-      .from(invoices)
-      .innerJoin(customers, eq(customers.id, invoices.customerId))
-      .where(and(...filters))
-      .orderBy(invoices.dueOn)
-      .limit(limit)
+    const [rows, sums] = await inSeries([
+      () =>
+        tx
+          .select({
+            number: invoices.seriesNo,
+            customer: customers.legalNameEn,
+            currency: invoices.currency,
+            total: invoices.total,
+            amountPaid: invoices.amountPaid,
+            // Named apart from receipts so an answer can say which (F9).
+            amountCredited: invoices.amountCredited,
+            // What is owed — the definition `settled.ts` keeps — computed here
+            // in numeric rather than left for a model to subtract.
+            balance: sql<string>`(${BALANCE})::text`,
+            dueOn: invoices.dueOn,
+            daysOverdue: sql<number>`(current_date - ${invoices.dueOn})::int`,
+            _matches: MATCHES,
+          })
+          .from(invoices)
+          .innerJoin(customers, eq(customers.id, invoices.customerId))
+          .where(filters)
+          .orderBy(invoices.dueOn)
+          .limit(limit),
+      /*
+        The sum across every match, per currency — never across currencies,
+        which is rule 4 of the prompt and would be wrong in any case. A model
+        asked "how much is overdue" otherwise adds up the rows it was shown.
+      */
+      () =>
+        tx
+          .select({
+            currency: invoices.currency,
+            invoices: sql<number>`count(*)::int`,
+            outstanding: sql<string>`sum(${BALANCE})::text`,
+          })
+          .from(invoices)
+          .innerJoin(customers, eq(customers.id, invoices.customerId))
+          .where(filters)
+          .groupBy(invoices.currency)
+          .orderBy(invoices.currency),
+    ])
+
+    return { ...counted(rows), outstandingByCurrency: sums }
+  })
+}
+
+/**
+ * One invoice, with its balance (ai-15).
+ *
+ * Asked for the balance on a named invoice, the assistant had only the overdue
+ * list — which an invoice not yet due is not on — and answered from nothing.
+ * Exact number first; failing that a fragment, but only when it names one
+ * invoice, because "INV-2026" matches a year of them and picking the first
+ * would be answering about the wrong one with confidence.
+ */
+async function getInvoice(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const number = text(args, 'number')
+  if (!number) return { found: false }
+
+  return withActor(actor, async (tx: Tx) => {
+    const select = () =>
+      tx
+        .select({
+          number: invoices.seriesNo,
+          customer: customers.legalNameEn,
+          status: invoices.status,
+          isCreditNote: invoices.isCreditNote,
+          currency: invoices.currency,
+          subtotal: invoices.subtotal,
+          tax: invoices.taxAmount,
+          total: invoices.total,
+          amountPaid: invoices.amountPaid,
+          amountCredited: invoices.amountCredited,
+          balance: sql<string>`(${BALANCE})::text`,
+          issuedAt: invoices.issuedAt,
+          dueOn: invoices.dueOn,
+          daysOverdue: sql<
+            number | null
+          >`case when ${invoices.dueOn} < current_date and ${invoices.status}::text in ('issued', 'part_paid') then (current_date - ${invoices.dueOn})::int end`,
+          shipments: sql<
+            string[]
+          >`coalesce((select array_agg(distinct j.reference) from charge_lines cl join jobs j on j.id = cl.job_id where cl.invoice_id = ${invoices.id}), '{}')`,
+        })
+        .from(invoices)
+        .innerJoin(customers, eq(customers.id, invoices.customerId))
+
+    const [exact] = await select().where(ilike(invoices.seriesNo, number)).limit(1)
+    if (exact) return { found: true, invoice: exact }
+
+    const partial = await select()
+      .where(ilike(invoices.seriesNo, `%${number}%`))
+      .limit(6)
+    if (partial.length === 1) return { found: true, invoice: partial[0] }
+    if (partial.length > 1) {
+      return {
+        found: false,
+        ambiguous: true,
+        candidates: partial.map((row) => row.number),
+        note: 'Several invoices match; ask which one, or call again with the full number.',
+      }
+    }
+    // As everywhere: not found and not permitted are one answer (see getJob).
+    return { found: false, number }
+  })
+}
+
+/**
+ * One quotation: its state, totals and margin (F77).
+ *
+ * The assistant had no way to read a quotation — only the list of those about
+ * to lapse — so "what is the margin on QUO-…" got "no record found". Matched
+ * the way `getInvoice` matches: the exact reference first, then a fragment
+ * only when it names one quotation. The margin is worked out in SQL on the
+ * stored `numeric` totals, never in a JavaScript number, and is null when
+ * nothing was sold to divide by. A superseded revision names the one that
+ * replaced it, because a question about a revised quote means the live one.
+ */
+async function getQuote(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const reference = text(args, 'reference')
+  if (!reference) return { found: false }
+
+  return withActor(actor, async (tx: Tx) => {
+    const replacement = alias(quotes, 'replacement')
+    const select = () =>
+      tx
+        .select({
+          reference: quotes.reference,
+          status: quotes.status,
+          version: quotes.version,
+          currency: quotes.currency,
+          totalSell: quotes.totalSell,
+          totalCost: quotes.totalCost,
+          marginAmount: sql<string | null>`(${quotes.totalSell} - ${quotes.totalCost})::text`,
+          marginPercent: sql<
+            string | null
+          >`round((${quotes.totalSell} - ${quotes.totalCost}) / nullif(${quotes.totalSell}, 0) * 100, 1)::text`,
+          validUntil: quotes.validUntil,
+          enquiry: enquiries.reference,
+          customer: customers.legalNameEn,
+          supersededBy: replacement.reference,
+        })
+        .from(quotes)
+        .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+        .leftJoin(customers, eq(customers.id, enquiries.customerId))
+        .leftJoin(replacement, eq(replacement.id, quotes.supersededById))
+
+    const [exact] = await select().where(ilike(quotes.reference, reference)).limit(1)
+    if (exact) return { found: true, quote: exact }
+
+    const partial = await select()
+      .where(and(ilike(quotes.reference, `%${reference}%`), isNull(quotes.supersededById)))
+      .limit(6)
+    if (partial.length === 1) return { found: true, quote: partial[0] }
+    if (partial.length > 1) {
+      return {
+        found: false,
+        ambiguous: true,
+        candidates: partial.map((row) => row.reference),
+        note: 'Several quotations match; ask which one, or call again with the full reference.',
+      }
+    }
+    return { found: false, reference }
   })
 }
 
@@ -562,8 +853,8 @@ async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknow
 async function listUnbilled(actor: Actor, args: ToolArgs): Promise<unknown> {
   const limit = count(args, 'limit', 20)
 
-  return withActor(actor, (tx: Tx) =>
-    tx
+  return withActor(actor, async (tx: Tx) => {
+    const rows = await tx
       .select({
         shipment: jobs.reference,
         status: jobs.status,
@@ -577,6 +868,8 @@ async function listUnbilled(actor: Actor, args: ToolArgs): Promise<unknown> {
           it at the click, and the assistant should be able to say so too.
         */
         currencies: sql<string[]>`array_agg(distinct ${chargeLines.currency})`,
+        // Over the grouped rows: how many shipments carry unbilled revenue.
+        _matches: MATCHES,
       })
       .from(chargeLines)
       .innerJoin(jobs, eq(jobs.id, chargeLines.jobId))
@@ -592,8 +885,10 @@ async function listUnbilled(actor: Actor, args: ToolArgs): Promise<unknown> {
       )
       .groupBy(jobs.id, jobs.reference, jobs.status, customers.legalNameEn)
       .orderBy(desc(sql`sum(${chargeLines.amountBase})`))
-      .limit(limit),
-  )
+      .limit(limit)
+
+    return counted(rows)
+  })
 }
 
 /**
@@ -613,8 +908,8 @@ async function listQuotesExpiring(actor: Actor, args: ToolArgs): Promise<unknown
   const horizon = new Date()
   horizon.setUTCDate(horizon.getUTCDate() + Math.max(0, Math.min(60, withinDays)))
 
-  return withActor(actor, (tx: Tx) =>
-    tx
+  return withActor(actor, async (tx: Tx) => {
+    const rows = await tx
       .select({
         reference: quotes.reference,
         status: quotes.status,
@@ -622,6 +917,7 @@ async function listQuotesExpiring(actor: Actor, args: ToolArgs): Promise<unknown
         validUntil: quotes.validUntil,
         total: quotes.totalSell,
         currency: quotes.currency,
+        _matches: MATCHES,
       })
       .from(quotes)
       .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
@@ -637,8 +933,10 @@ async function listQuotesExpiring(actor: Actor, args: ToolArgs): Promise<unknown
         ),
       )
       .orderBy(quotes.validUntil)
-      .limit(limit),
-  )
+      .limit(limit)
+
+    return counted(rows)
+  })
 }
 
 /**

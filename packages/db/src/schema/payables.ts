@@ -101,6 +101,14 @@ export const supplierInvoices = pgTable(
     approvedById: ref('approved_by_id').references(() => principals.id),
     approvedAt: tsz('approved_at'),
     /**
+     * Who captured it, where a person did (U5). Read to open the next
+     * "Capture bill" on the branch this person last entered a bill for —
+     * someone in Kuwait and Dubai who only ever keys Kuwait's bills should
+     * not pick the branch every time. Null for bills from before it was
+     * kept, and for any the system raised itself.
+     */
+    recordedById: ref('recorded_by_id').references(() => principals.id),
+    /**
      * Approving a bill that is outside tolerance is a decision, recorded as one.
      *
      * Not folded into `notes`, which is free text somebody may already have
@@ -123,6 +131,7 @@ export const supplierInvoices = pgTable(
     unique('supplier_invoices_reference_unique').on(t.partnerId, t.reference),
     index('supplier_invoices_partner_idx').on(t.partnerId, t.status),
     index('supplier_invoices_ageing_idx').on(t.branchId, t.status, t.dueOn),
+    index('supplier_invoices_recorded_by_idx').on(t.recordedById, t.createdAt),
     index('supplier_invoices_unposted_idx').on(t.branchId, t.accountingExportId),
   ],
 )

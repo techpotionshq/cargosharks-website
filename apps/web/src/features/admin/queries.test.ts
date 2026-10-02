@@ -90,6 +90,20 @@ describe.skipIf(!enabled)('administration reads', () => {
       const sample = await listReferenceSample(bothBranchesActor)
       expect(sample).toBeDefined()
     })
+
+    /*
+      F27: an Arabic screen names the rows in Arabic. The same rows in the same
+      order, only the name moves — and the seed gives every incoterm an Arabic
+      name, so at least one must differ from its English one.
+    */
+    it('names the reference rows in the reader’s language', async () => {
+      const en = await listReferenceSample(bothBranchesActor)
+      const ar = await listReferenceSample(bothBranchesActor, 'ar')
+
+      expect(ar.incoterms.map((row) => row.code)).toEqual(en.incoterms.map((row) => row.code))
+      expect(ar.incoterms.some((row, index) => row.name !== en.incoterms[index]!.name)).toBe(true)
+      expect(ar.incoterms.every((row) => row.name.length > 0)).toBe(true)
+    })
   })
 
   describe('audit — FR-AD-01', () => {

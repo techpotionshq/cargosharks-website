@@ -9,17 +9,28 @@ import type { Route } from 'next'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
+import { BUTTON_SIZE, BUTTON_VARIANT, MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
 
 export function PageHeader({
   title,
   eyebrow,
   description,
+  status,
   actions,
   className,
 }: {
   readonly title: ReactNode
   readonly eyebrow?: ReactNode
   readonly description?: ReactNode
+  /**
+   * The record's state, beside its name.
+   *
+   * Status pills used to ride in the actions row, where they read as one
+   * more button — "Issued" next to "Void", the same height and the same
+   * shape. Beside the title they read as what they are: a fact about the
+   * thing the page is about.
+   */
+  readonly status?: ReactNode
   readonly actions?: ReactNode
   readonly className?: string
 }) {
@@ -31,34 +42,37 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
-        <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
-          {title}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h1 className="font-display text-display leading-tight font-semibold tracking-tight text-ink">
+            {title}
+          </h1>
+          {status ? <div className="flex flex-wrap items-center gap-1.5">{status}</div> : null}
+        </div>
         {description ? (
-          <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
+          <p className="mt-1.5 max-w-2xl text-body text-ink-muted">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {/*
+        The actions wrap, within the screen. Kept on one line, a header with
+        five buttons — an enquiry's "Assign · Cancel it · Close · Price it · New
+        quotation" — was 572px wide on a 390px phone and pushed the whole page
+        sideways; nine screens did it.
+      */}
+      {actions ? (
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+      ) : null}
     </header>
   )
 }
 
-const BUTTON_VARIANT = {
-  primary: 'bg-brand text-on-brand hover:bg-brand-hover shadow-card',
-  secondary: 'border border-line bg-surface text-ink hover:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-  danger: 'bg-critical text-on-brand hover:opacity-90',
-} as const
-
-const BUTTON_SIZE = {
-  sm: 'h-8 px-2.5 text-[0.8125rem] gap-1.5',
-  md: 'h-9 px-3.5 text-[0.875rem] gap-2',
-  lg: 'h-11 px-5 text-[0.9375rem] gap-2',
-} as const
-
 export interface ButtonProps {
   readonly children?: ReactNode
-  readonly variant?: keyof typeof BUTTON_VARIANT
+  /**
+   * `menu` and `menu-danger` draw the button as a row of a `MoreMenu` panel.
+   * A server component cannot ask the menu whether it is inside one, so the
+   * caller says so.
+   */
+  readonly variant?: keyof typeof BUTTON_VARIANT | 'menu' | 'menu-danger'
   readonly size?: keyof typeof BUTTON_SIZE
   readonly icon?: IconName
   /** Places the glyph after the label — for "next", "open". */
@@ -83,11 +97,14 @@ export interface ButtonProps {
   readonly download?: boolean
   readonly type?: 'button' | 'submit'
   /**
-   * Only meaningful on a `<button>`, and deliberately not forwarded to a link.
+   * On a `<button>`, the attribute. On a link, `aria-disabled` and out of the
+   * tab order.
    *
-   * `disabled` is not an anchor attribute — React drops it, the element stays
-   * clickable, and it looks disabled while navigating anyway. A destination
-   * that should not be reachable is one that should not be rendered as a link.
+   * `disabled` is not an anchor attribute — React drops it, and the link used
+   * to look dimmed while staying focusable and announced as a live link. A
+   * destination that should never be reachable is still better not rendered
+   * at all; this is for the one that is reachable *later* (a download that
+   * needs a document first) and wants to show where it will be.
    */
   readonly disabled?: boolean
   readonly className?: string
@@ -118,9 +135,11 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const classes = [
-    'inline-flex items-center justify-center rounded-sm font-medium whitespace-nowrap transition-colors',
-    BUTTON_VARIANT[variant],
-    BUTTON_SIZE[size],
+    variant === 'menu'
+      ? MENU_ITEM
+      : variant === 'menu-danger'
+        ? MENU_ITEM_DANGER
+        : buttonClass(variant, size),
     // Dimmed and inert, but still readable — a pending submit says what it is
     // doing, and a label nobody can read is worse than a live button.
     disabled ? 'pointer-events-none opacity-60' : '',
@@ -128,6 +147,9 @@ export function Button({
   ]
     .filter(Boolean)
     .join(' ')
+
+  // A disabled link is announced as one and skipped by Tab (see `disabled`).
+  const inert = disabled ? ({ 'aria-disabled': true, tabIndex: -1 } as const) : {}
 
   const inner = (
     <>
@@ -139,14 +161,14 @@ export function Button({
 
   if (href && download) {
     return (
-      <a href={href} className={classes} {...rest}>
+      <a href={href} className={classes} {...inert} {...rest}>
         {inner}
       </a>
     )
   }
 
   return href ? (
-    <Link href={href as Route} className={classes} {...rest}>
+    <Link href={href as Route} className={classes} {...inert} {...rest}>
       {inner}
     </Link>
   ) : (
@@ -185,14 +207,18 @@ export function EmptyState({
   if (variant === 'inline') {
     return (
       <div
-        className={['flex items-start gap-2 text-[0.8125rem] text-ink-muted', className]
+        className={['flex items-start gap-2 text-body-sm text-ink-muted', className]
           .filter(Boolean)
           .join(' ')}
       >
         <Icon name={icon} size={15} className="mt-px shrink-0 text-ink-subtle" />
+        {/* The title is a phrase with no full stop ("Nothing delivered yet"),
+            so run straight into the hint it read as one broken sentence:
+            "Nothing delivered yet Capture the signature…". Weight and a dash
+            make it a heading and its note, in either language. */}
         <span>
-          {title}
-          {description ? <span className="text-ink-subtle"> {description}</span> : null}
+          <span className="font-medium">{title}</span>
+          {description ? <span className="text-ink-subtle"> — {description}</span> : null}
         </span>
         {action}
       </div>
@@ -208,9 +234,9 @@ export function EmptyState({
       <span className="mb-3 flex size-11 items-center justify-center rounded-full bg-surface-sunken text-ink-subtle">
         <Icon name={icon} size={20} />
       </span>
-      <p className="text-[0.9375rem] font-medium text-ink">{title}</p>
+      <p className="text-title font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[0.8125rem] text-ink-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-body-sm text-ink-muted">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -239,8 +265,14 @@ export function Field({
   return (
     <div className={['min-w-0', className].filter(Boolean).join(' ')}>
       <dt className="eyebrow mb-1">{label}</dt>
+      {/*
+        Two lines, then an ellipsis — not one. A customer called "Fintas Steel
+        Industries" in a quarter-width column read "Fintas Steel I…", and the
+        name is the one thing on that card a person came to check. The title
+        still carries the whole value for anything longer.
+      */}
       <dd
-        className={`truncate text-[0.875rem] text-ink ${mono ? 'ref numeric' : ''}`}
+        className={`line-clamp-2 text-body break-words text-ink ${mono ? 'ref numeric' : ''}`}
         title={typeof children === 'string' ? children : undefined}
       >
         {children}
@@ -271,15 +303,36 @@ export function Lane({
   readonly className?: string
 }) {
   return (
-    <span className={['inline-flex items-center gap-1.5', className].filter(Boolean).join(' ')}>
+    // Wraps, origin over destination, whenever the line does not fit: held to
+    // one line, a lane was the widest cell in a phone register and its two
+    // names truncated to "Ista… → Shuw…" — the one fact the column exists to
+    // show. It used to stop wrapping at md, and then "Nhava Sheva → Shuwaikh"
+    // on one line was 286px of a 966px card and the reason the enquiry and
+    // job registers scrolled sideways at 1280. Wrapping costs nothing where
+    // there is room: a table gives a cell its one-line width when it can.
+    <span
+      className={['inline-flex flex-wrap items-center gap-x-1.5', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <span className="truncate">{origin}</span>
-      <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
-      <span className="truncate">{destination}</span>
+      {/* The arrow travels with the destination (a no-break pair): wrapped on
+          its own, it sat alone on a middle line between two place names. */}
+      <span className="inline-flex min-w-0 items-center gap-x-1.5">
+        <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
+        <span className="truncate">{destination}</span>
+      </span>
     </span>
   )
 }
 
-/** The dashboard's column grid. Twelve columns, collapsing to one on a phone. */
+/**
+ * The dashboard's column grid. Twelve columns, collapsing to one on a narrow page.
+ *
+ * Twelve from a 56rem content area (the layout's `<main>` is the container),
+ * not from the window's `lg`: at a 1024px window the sidebar leaves 712px, and
+ * a four-twelfths card in that is a 230px column nobody can read a table in.
+ */
 export function Grid({
   children,
   className,
@@ -289,7 +342,7 @@ export function Grid({
 }) {
   return (
     <div
-      className={['grid grid-cols-1 gap-4 lg:grid-cols-12', className].filter(Boolean).join(' ')}
+      className={['grid grid-cols-1 gap-4 @4xl:grid-cols-12', className].filter(Boolean).join(' ')}
     >
       {children}
     </div>

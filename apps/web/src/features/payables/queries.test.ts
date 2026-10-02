@@ -13,7 +13,9 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { PARTNER, bothBranchesActor, homeActor, world } = await import('@/lib/testing/fixtures')
+const { AWAY_BRANCH, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, homeActor, world } =
+  await import('@/lib/testing/fixtures')
+const { supplierInvoices, withActor } = await import('@qabandi/db')
 const {
   listSupplierInvoices,
   payablesSummary,
@@ -25,6 +27,7 @@ const {
   listSettlements,
   getSettlement,
   listSettleablePartners,
+  defaultBillBranch,
 } = await import('./queries')
 
 describe.skipIf(!enabled)('payables reads', () => {
@@ -69,15 +72,66 @@ describe.skipIf(!enabled)('payables reads', () => {
     })
   })
 
+  /*
+    U5. "Capture bill" opened on no branch for anyone in two, so the clerk
+    picked one every time and sometimes picked wrong.
+  */
+  describe('the branch a new bill opens on', () => {
+    const captured = (branchId: string) =>
+      withActor(bothBranchesActor, (tx) =>
+        tx.insert(supplierInvoices).values({
+          branchId,
+          partnerId: PARTNER,
+          reference: `U5-${branchId.slice(-4)}-${Date.now()}-${Math.random()}`,
+          currency: 'KWD',
+          invoiceDate: '2026-08-18',
+          recordedById: PRINCIPAL,
+        }),
+      )
+
+    it('is the only branch the person may record in', async () => {
+      expect(await defaultBillBranch(homeActor, [AWAY_BRANCH], [HOME_BRANCH, AWAY_BRANCH])).toBe(
+        AWAY_BRANCH,
+      )
+    })
+
+    it('follows the last bill they captured, among the branches they may record in', async () => {
+      const both = [HOME_BRANCH, AWAY_BRANCH]
+      await captured(AWAY_BRANCH)
+      expect(await defaultBillBranch(bothBranchesActor, both, both)).toBe(AWAY_BRANCH)
+      await captured(HOME_BRANCH)
+      expect(await defaultBillBranch(bothBranchesActor, both, both)).toBe(HOME_BRANCH)
+      // A branch they may no longer record in is not offered back.
+      expect(
+        await defaultBillBranch(
+          bothBranchesActor,
+          [AWAY_BRANCH, '00000000-0000-7000-8000-0000000000ff'],
+          both,
+        ),
+      ).toBe(AWAY_BRANCH)
+    })
+
+    it('falls back to the first branch the picker lists', async () => {
+      const stranger = { ...bothBranchesActor, principalId: '00000000-0000-7000-8000-0000000000aa' }
+      expect(
+        await defaultBillBranch(stranger, [HOME_BRANCH, AWAY_BRANCH], [AWAY_BRANCH, HOME_BRANCH]),
+      ).toBe(AWAY_BRANCH)
+    })
+  })
+
   describe('the aggregates', () => {
     it('summarises without throwing on an empty ledger', async () => {
       expect(await payablesSummary(homeActor)).toBeDefined()
     })
 
-    it('ages payables and reports the currency it aged them in', async () => {
-      const result = await payablesAgeing(homeActor)
-      expect(typeof result.currency).toBe('string')
-      expect(result.ageing).toBeDefined()
+    /** F16. One ageing per base currency, never two bases added together. */
+    it('ages payables once per base currency', async () => {
+      const result = await payablesAgeing(bothBranchesActor)
+      const currencies = result.byCurrency.map((entry) => entry.currency)
+      expect(new Set(currencies).size).toBe(currencies.length)
+      for (const entry of result.byCurrency) {
+        expect(entry.ageing.total.currency).toBe(entry.currency)
+      }
     })
   })
 

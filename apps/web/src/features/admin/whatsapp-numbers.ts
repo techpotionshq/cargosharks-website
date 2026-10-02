@@ -25,14 +25,26 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { branches, whatsappNumbers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotWhatsappNumbers } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  fieldErrors,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface WhatsappNumberRow {
   readonly id: string
@@ -75,20 +87,31 @@ export async function listWhatsappNumbers(): Promise<WhatsappNumberRow[]> {
   )
 }
 
-const numberSchema = z.object({
-  branchId: z.string().uuid(),
-  phoneNumberId: z.string().trim().min(1).max(64),
-  displayNumber: z.string().trim().max(32).nullable(),
-  label: z.string().trim().max(120).nullable(),
-})
+const numberSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.string().uuid(),
+    /*
+    Digits only. The id is what Kapso stamps on every delivery and what a send
+    is addressed to; the dialable number looks just as plausible in this field
+    and was saved here once — after which every message to the number was
+    skipped as "no active WhatsApp number", with nothing on this screen wrong
+    to the eye. The hint says so; this makes it true.
+  */
+    phoneNumberId: z.string().trim().min(1).max(64).regex(/^\d+$/, tv('phoneNumberIdDigits')),
+    displayNumber: z.string().trim().max(32).nullable(),
+    label: z.string().trim().max(120).nullable(),
+  })
 
 /** Create or update a number → branch mapping. */
-export async function saveWhatsappNumber(
+export const saveWhatsappNumber = refuseForbidden(async function saveWhatsappNumber(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
     const value = form.get(key)
@@ -97,7 +120,7 @@ export async function saveWhatsappNumber(
 
   const numberId = read('numberId')
 
-  const parsed = numberSchema.safeParse({
+  const parsed = await localeParse(numberSchema(tv), {
     branchId: read('branchId'),
     phoneNumberId: read('phoneNumberId'),
     displayNumber: read('displayNumber') ?? null,
@@ -107,11 +130,19 @@ export async function saveWhatsappNumber(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  // In that branch, not anywhere — FR-ID-02, A2.
+  assertCanIn(session, 'admin.mailboxes.write', data.branchId)
 
   try {
     await withActor(session.actor, async (tx) => {
       if (numberId) {
+        // The branch it is in now, as well as the one it is going to (A2).
+        const [current] = await tx
+          .select({ branchId: whatsappNumbers.branchId })
+          .from(whatsappNumbers)
+          .where(eq(whatsappNumbers.id, numberId))
+          .limit(1)
+        if (current) assertCanIn(session, 'admin.mailboxes.write', current.branchId)
         await tx.update(whatsappNumbers).set(data).where(eq(whatsappNumbers.id, numberId))
         return
       }
@@ -123,16 +154,18 @@ export async function saveWhatsappNumber(
       rows for one number would make branch resolution ambiguous — the same
       shape of bug the mailboxes address-unique guards against.
     */
-    const message = error instanceof Error ? error.message : String(error)
+    // Drizzle wraps the driver error: the constraint name is on its `cause`,
+    // so reading `error.message` alone never matched and a duplicate was a 500.
+    const message = databaseMessage(error)
     if (message.includes('whatsapp_numbers_phone_number_id_unique')) {
-      return fail({ phoneNumberId: 'This number is already mapped to a branch.' }, echo(form))
+      return fail({ phoneNumberId: tv('numberMapped') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/settings/whatsapp-numbers')
   return succeed(data.label ?? data.phoneNumberId)
-}
+})
 
 /**
  * Stop answering on a number, or start again.
@@ -140,16 +173,19 @@ export async function saveWhatsappNumber(
  * Deactivating is how a number is removed: the inbound worker skips inactive
  * rows, and the row stays as the record of what was being answered and when.
  */
-export async function setWhatsappNumberActive(
+export const setWhatsappNumberActive = refuseForbidden(async function setWhatsappNumberActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const numberId = String(form.get('numberId') ?? '')
   const isActive = form.get('isActive') === 'true'
-  if (!numberId) return fail({ _: 'Missing number.' })
+  const tv = await getTranslations('adminValidation')
+  if (!numberId) return fail({ _: tv('missingNumber') })
 
   await withActor(session.actor, async (tx) => {
     const [current] = await tx
@@ -161,6 +197,8 @@ export async function setWhatsappNumberActive(
     // Invisible under RLS means not-found, which is the right answer to give:
     // no enumeration signal for another branch's configuration.
     if (!current) throw new Error('not_found')
+    // The row's own branch decides, not the pooled permission set (A2).
+    assertCanIn(session, 'admin.mailboxes.write', current.branchId)
 
     await tx
       .update(whatsappNumbers)
@@ -170,4 +208,4 @@ export async function setWhatsappNumberActive(
 
   revalidatePath('/settings/whatsapp-numbers')
   return succeed(numberId)
-}
+})

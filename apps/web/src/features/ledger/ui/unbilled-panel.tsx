@@ -27,76 +27,103 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatMoney, formatDate } from '@/lib/format'
+import { formatDate } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { unbilledRevenue } from '../unbilled'
 import { BillJobButton } from './bill-job-button'
+import { Button } from '@/ui/layout'
 
-export async function UnbilledPanel() {
+/** Rows shown before "Show all": enough to act on, short enough to scan. */
+const PREVIEW_ROWS = 5
+
+export async function UnbilledPanel({ showAll = false }: { readonly showAll?: boolean }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const [summary, t, locale] = await Promise.all([
-    unbilledRevenue(session.actor),
+  const locale = await getLocale()
+  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const [summary, t] = await Promise.all([
+    unbilledRevenue(session.actor, undefined, lang),
     getTranslations('unbilled'),
-    getLocale(),
   ])
+  const shown = showAll ? summary.jobs : summary.jobs.slice(0, PREVIEW_ROWS)
+  const hidden = summary.jobs.length - shown.length
 
   // Nothing to chase is worth saying once, not worth a table with no rows in it.
   if (summary.jobCount === 0) return null
 
-  const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const billable = can(session, 'invoice.approve')
-  const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, lang)
 
   return (
     <Card className="mb-4" padding="none">
       <CardHeader
+        className="px-5 pt-4 pb-3"
+        icon="invoices"
         title={t('title')}
         description={t('description', {
           count: summary.jobCount,
-          total: money(summary.totalBase, summary.baseCurrency),
+          // One figure per base currency — dinars and dirhams do not add.
+          total: formatByCurrency(summary.totals, lang),
         })}
       />
       <TableShell>
         <THead>
           <TR>
             <TH>{t('shipment')}</TH>
-            <TH>{t('customer')}</TH>
-            <TH align="end">{t('lines')}</TH>
+            <TH priority="low">{t('customer')}</TH>
+            <TH priority="low" align="end">
+              {t('lines')}
+            </TH>
             <TH align="end">{t('amount')}</TH>
-            <TH>{t('oldest')}</TH>
+            {/* Under the shipment on a phone (below). */}
+            <TH priority="low">{t('oldest')}</TH>
             <TH />
           </TR>
         </THead>
         <TBody>
-          {summary.jobs.map((row) => {
+          {shown.map((row) => {
             const mixed = row.currencies.length > 1
 
             return (
               <TR key={row.jobId}>
-                <TD className="ref">{row.reference}</TD>
-                <TD>{row.customerName ?? <span className="text-ink-subtle">—</span>}</TD>
-                <TD numeric align="end">
+                <TD className="ref">
+                  {row.reference}
+                  <span className="block text-micro text-ink-subtle @3xl:hidden">
+                    {formatDate(row.oldestAt, lang, timeZone)}
+                  </span>
+                </TD>
+                <TD priority="low">
+                  {row.customerName ?? <span className="text-ink-subtle">—</span>}
+                </TD>
+                <TD priority="low" numeric align="end">
                   {row.lines}
                 </TD>
                 <TD numeric align="end">
-                  {money(row.amountBase, row.baseCurrency)}
+                  <Money
+                    value={{ amount: row.amountBase, currency: row.baseCurrency }}
+                    locale={lang}
+                  />
                   {mixed ? (
                     <Badge tone="caution" className="ms-2">
                       {row.currencies.join(' / ')}
                     </Badge>
                   ) : null}
                 </TD>
-                <TD>{formatDate(row.oldestAt, lang, timeZone)}</TD>
+                <TD priority="low">{formatDate(row.oldestAt, lang, timeZone)}</TD>
                 <TD>
                   {billable && !mixed ? (
-                    <BillJobButton jobId={row.jobId} label={t('bill')} />
+                    <BillJobButton
+                      jobId={row.jobId}
+                      label={t('bill')}
+                      done={t('billed')}
+                      open={t('openDraft')}
+                    />
                   ) : mixed ? (
-                    <span className="text-[0.75rem] text-ink-subtle">{t('mixedCurrency')}</span>
+                    <span className="text-caption text-ink-subtle">{t('mixedCurrency')}</span>
                   ) : null}
                 </TD>
               </TR>
@@ -104,6 +131,18 @@ export async function UnbilledPanel() {
           })}
         </TBody>
       </TableShell>
+      {/*
+        A preview, not the whole list. Thirty unbilled jobs at the top of the
+        finance page pushed every other figure below the fold; five say "this
+        needs doing" and the link says how much.
+      */}
+      {hidden > 0 ? (
+        <div className="border-t border-line px-5 py-2.5">
+          <Button href="/finance?unbilled=all" variant="ghost" size="sm" iconEnd="chevron-end">
+            {t('showAll', { count: summary.jobs.length })}
+          </Button>
+        </div>
+      ) : null}
     </Card>
   )
 }

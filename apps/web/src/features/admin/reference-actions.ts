@@ -20,6 +20,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -27,13 +28,27 @@ import {
   chargeableRules,
   dutyRates,
   freeTimeRules,
+  fxRates,
   milestoneTemplates,
   withActor,
   workingCalendars,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, isUniqueViolation, succeed, type ActionState } from '@/lib/form-state'
+import {
+  databaseMessage,
+  echo,
+  fail,
+  isForeignKeyViolation,
+  isUniqueViolation,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -59,28 +74,34 @@ const optional = (max = 200) =>
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
 
-const milestoneSchema = z.object({
-  templateId: z.uuid().optional(),
-  mode: z.enum(MODES),
-  direction: z.enum(DIRECTIONS),
-  seq: z.coerce.number().int().min(1, 'Where does it come in the sequence?').max(99),
-  code: z
-    .string()
-    .trim()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9_]+$/, 'Lower case, digits and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  /** Required, like every other customer-facing name — NFR-01. */
-  nameAr: z.string().trim().min(2, 'Required — customers see this').max(120),
-  ownerRole: optional(40),
-  plannedOffsetDays: z
-    .union([z.coerce.number().int().min(-365).max(365), z.literal('')])
-    .optional()
-    .transform((v) => (v === '' || v === undefined ? null : v)),
-  customerVisible: z.coerce.boolean(),
-  isActive: z.coerce.boolean(),
-})
+const milestoneSchema = (tv: Translate) =>
+  z.object({
+    templateId: z.uuid().optional(),
+    mode: z.enum(MODES),
+    direction: z.enum(DIRECTIONS),
+    seq: z.coerce.number().int().min(1, tv('sequence')).max(99),
+    code: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9_]+$/, tv('lowerDigitsUnderscores')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    /** Required, like every other customer-facing name — NFR-01. */
+    nameAr: z.string().trim().min(2, tv('requiredCustomersSee')).max(120),
+    ownerRole: optional(40),
+    plannedOffsetDays: z
+      /*
+        The empty string first: `z.coerce.number()` reads '' as 0, so with it
+        first a blank offset was saved as 0 — planned for the booking day —
+        and the null this transform maps '' to was never reached.
+      */
+      .union([z.literal(''), z.coerce.number().int().min(-365).max(365)])
+      .optional()
+      .transform((v) => (v === '' || v === undefined ? null : v)),
+    customerVisible: z.coerce.boolean(),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A step in the plan a job of a given shape gets — FR-JB-02.
@@ -91,14 +112,17 @@ const milestoneSchema = z.object({
  * change to appear on yesterday's shipment will not find it, and rewriting
  * live plans would move dates a customer has already been told.
  */
-export async function saveMilestoneTemplate(
+export const saveMilestoneTemplate = refuseForbidden(async function saveMilestoneTemplate(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = milestoneSchema.safeParse({
+  const parsed = await localeParse(milestoneSchema(tv), {
     templateId: read(form, 'templateId'),
     mode: read(form, 'mode') ?? 'sea_fcl',
     direction: read(form, 'direction') ?? 'import',
@@ -139,38 +163,39 @@ export async function saveMilestoneTemplate(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That step already exists for this mode and direction.' }, echo(form))
+      return fail({ code: tv('stepExists') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/reference')
   return succeed(data.code)
-}
+})
 
 /* ------------------------------------------------------- working calendars */
 
-const calendarSchema = z.object({
-  calendarId: z.uuid().optional(),
-  key: z
-    .string()
-    .trim()
-    .min(2)
-    .max(40)
-    .regex(/^[a-z0-9_]+$/, 'Lower case, digits and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  nameAr: z.string().trim().min(2, 'Required').max(120),
-  timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
-  /** Weekday numbers, 0 = Sunday. Kuwait is Friday and Saturday. */
-  weekend: z
-    .string()
-    .trim()
-    .regex(/^[0-6](,[0-6])*$/, 'Weekday numbers, 0 is Sunday — for example 5,6')
-    .transform((v) => [...new Set(v.split(',').map(Number))].sort()),
-  dayStartMinute: z.coerce.number().int().min(0).max(1439),
-  dayEndMinute: z.coerce.number().int().min(1).max(1440),
-  isActive: z.coerce.boolean(),
-})
+const calendarSchema = (tv: Translate) =>
+  z.object({
+    calendarId: z.uuid().optional(),
+    key: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9_]+$/, tv('lowerDigitsUnderscores')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    nameAr: z.string().trim().min(2, tv('required')).max(120),
+    timeZone: z.string().trim().min(3, tv('chooseTimeZone')).max(64),
+    /** Weekday numbers, 0 = Sunday. Kuwait is Friday and Saturday. */
+    weekend: z
+      .string()
+      .trim()
+      .regex(/^[0-6](,[0-6])*$/, tv('weekendDays'))
+      .transform((v) => [...new Set(v.split(',').map(Number))].sort()),
+    dayStartMinute: z.coerce.number().int().min(0).max(1439),
+    dayEndMinute: z.coerce.number().int().min(1).max(1440),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A branch's working week — NFR-03, and the input to every clock in the
@@ -181,14 +206,17 @@ const calendarSchema = z.object({
  * minutes. `core/clocks.ts` does the arithmetic and takes the calendar as an
  * argument precisely so this can be a row.
  */
-export async function saveWorkingCalendar(
+export const saveWorkingCalendar = refuseForbidden(async function saveWorkingCalendar(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = calendarSchema.safeParse({
+  const parsed = await localeParse(calendarSchema(tv), {
     calendarId: read(form, 'calendarId'),
     key: read(form, 'key') ?? '',
     nameEn: read(form, 'nameEn') ?? '',
@@ -203,7 +231,7 @@ export async function saveWorkingCalendar(
 
   const data = parsed.data
   if (data.dayEndMinute <= data.dayStartMinute) {
-    return fail({ dayEndMinute: 'The working day has to end after it starts.' }, echo(form))
+    return fail({ dayEndMinute: tv('dayEnd') }, echo(form))
   }
   /*
     A calendar with no working days would make every SLA infinite.
@@ -213,7 +241,7 @@ export async function saveWorkingCalendar(
     enquiry queue quietly stops escalating anything.
   */
   if (data.weekend.length >= 7) {
-    return fail({ weekend: 'A week with no working days has no deadlines in it.' }, echo(form))
+    return fail({ weekend: tv('noWorkingDays') }, echo(form))
   }
 
   try {
@@ -239,7 +267,7 @@ export async function saveWorkingCalendar(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ key: 'That calendar key is already in use.' }, echo(form))
+      return fail({ key: tv('calendarKeyInUse') }, echo(form))
     }
     throw error
   }
@@ -247,14 +275,15 @@ export async function saveWorkingCalendar(
   revalidatePath('/reference')
   revalidatePath('/settings/branches')
   return succeed(data.key)
-}
-
-const holidaySchema = z.object({
-  calendarId: z.uuid('Choose a calendar'),
-  onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-  nameEn: z.string().trim().min(2, 'Required').max(120),
-  nameAr: optional(120),
 })
+
+const holidaySchema = (tv: Translate) =>
+  z.object({
+    calendarId: z.uuid(tv('chooseCalendar')),
+    onDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+    nameEn: z.string().trim().min(2, tv('required')).max(120),
+    nameAr: optional(120),
+  })
 
 /**
  * A day the office is shut — read by every SLA and free-time calculation.
@@ -265,11 +294,17 @@ const holidaySchema = z.object({
  * system. Somebody enters next year's dates once a year, which is what every
  * office in the region already does.
  */
-export async function saveHoliday(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveHoliday = refuseForbidden(async function saveHoliday(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = holidaySchema.safeParse({
+  const parsed = await localeParse(holidaySchema(tv), {
     calendarId: read(form, 'calendarId') ?? '',
     onDate: read(form, 'onDate') ?? '',
     nameEn: read(form, 'nameEn') ?? '',
@@ -282,39 +317,41 @@ export async function saveHoliday(_previous: ActionState, form: FormData): Promi
     await withActor(session.actor, (tx) => tx.insert(calendarHolidays).values(data))
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ onDate: 'That day is already a holiday on this calendar.' }, echo(form))
+      return fail({ onDate: tv('closureExists') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/reference')
   return succeed(data.onDate)
-}
+})
 
 /* -------------------------------------------------------------- duty rates */
 
-const dutySchema = z.object({
-  rateId: z.uuid().optional(),
-  country: z
-    .string()
-    .trim()
-    .length(2, 'A two-letter country code')
-    .transform((v) => v.toUpperCase()),
-  hsPrefix: z.string().trim().min(2, 'At least two digits').max(10).regex(/^\d+$/, 'Digits only'),
-  ratePercent: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'A percentage, for example 5'),
-  descriptionEn: z.string().trim().min(2, 'Required').max(200),
-  descriptionAr: optional(200),
-  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-  effectiveTo: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-  notes: optional(500),
-  isActive: z.coerce.boolean(),
-})
+const dutySchema = (tv: Translate) =>
+  z.object({
+    rateId: z.uuid().optional(),
+    country: z
+      .string()
+      .trim()
+      .length(2, tv('twoLetterCountry'))
+      .transform((v) => v.toUpperCase()),
+    hsPrefix: z.string().trim().min(2, tv('minTwoDigits')).max(10).regex(/^\d+$/, tv('digitsOnly')),
+    ratePercent: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('percentageExample')),
+    descriptionEn: z.string().trim().min(2, tv('required')).max(200),
+    descriptionAr: optional(200),
+    effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+    effectiveTo: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+    notes: optional(500),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A tariff line — FR-CS-05, and the number a customer is quoted for clearance.
@@ -326,11 +363,17 @@ const dutySchema = z.object({
  * March has to keep applying to last March's declaration, which is what
  * `effective_from` is for.
  */
-export async function saveDutyRate(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveDutyRate = refuseForbidden(async function saveDutyRate(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = dutySchema.safeParse({
+  const parsed = await localeParse(dutySchema(tv), {
     rateId: read(form, 'rateId'),
     country: read(form, 'country') ?? '',
     hsPrefix: read(form, 'hsPrefix') ?? '',
@@ -346,7 +389,12 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
 
   const data = parsed.data
   if (data.effectiveTo && data.effectiveTo < data.effectiveFrom) {
-    return fail({ effectiveTo: 'The period ends before it starts.' }, echo(form))
+    return fail({ effectiveTo: tv('periodEndsBeforeStart') }, echo(form))
+  }
+  // The end date is exclusive: `duty_rates_period_ordered` wants it after the
+  // start, so a same-day period was a check violation and a 500.
+  if (data.effectiveTo && data.effectiveTo === data.effectiveFrom) {
+    return fail({ effectiveTo: tv('periodEndsAfterStart') }, echo(form))
   }
 
   try {
@@ -363,7 +411,7 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ hsPrefix: 'That prefix already has a rate starting on that date.' }, echo(form))
+      return fail({ hsPrefix: tv('hsRateExists') }, echo(form))
     }
     throw error
   }
@@ -371,34 +419,38 @@ export async function saveDutyRate(_previous: ActionState, form: FormData): Prom
   revalidatePath('/reference')
   revalidatePath('/customs')
   return succeed(data.hsPrefix)
-}
+})
 
 /* ----------------------------------------------- what the engines measure */
 
-const chargeableSchema = z.object({
-  ruleId: z.uuid().optional(),
-  mode: z.enum(MODES),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  divisorCm3PerKg: z
-    .union([
-      z
-        .string()
-        .trim()
-        .regex(/^\d+(\.\d{1,6})?$/, 'A divisor, for example 6000'),
-      z.literal(''),
-    ])
-    .optional()
-    .transform((v) => v || null),
-  roundUpToKg: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'An increment, for example 0.5'),
-  minimumKg: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'A floor, or 0'),
-  isActive: z.coerce.boolean(),
-})
+const chargeableSchema = (tv: Translate) =>
+  z.object({
+    ruleId: z.uuid().optional(),
+    mode: z.enum(MODES),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    divisorCm3PerKg: z
+      .union([
+        z
+          .string()
+          .trim()
+          .overwrite(normaliseAmount)
+          .regex(/^\d+(\.\d{1,6})?$/, tv('divisorExample')),
+        z.literal(''),
+      ])
+      .optional()
+      .transform((v) => v || null),
+    roundUpToKg: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('incrementExample')),
+    minimumKg: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('floorOrZero')),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * The volumetric rule for a mode — the divisor a shipment is billed on.
@@ -413,14 +465,17 @@ const chargeableSchema = z.object({
  * divisor with its carrier is a row, not a release. `chargeableRuleFor` sorts
  * the branch's own above the default.
  */
-export async function saveChargeableRule(
+export const saveChargeableRule = refuseForbidden(async function saveChargeableRule(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = chargeableSchema.safeParse({
+  const parsed = await localeParse(chargeableSchema(tv), {
     ruleId: read(form, 'ruleId'),
     mode: read(form, 'mode') ?? 'air',
     branchId: read(form, 'branchId') ?? '',
@@ -453,34 +508,36 @@ export async function saveChargeableRule(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ mode: 'That mode already has a rule for this branch.' }, echo(form))
+      return fail({ mode: tv('modeRuleExists') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/reference')
   return succeed(data.mode)
-}
-
-const freeTimeSchema = z.object({
-  ruleId: z.uuid().optional(),
-  kind: z.enum(['demurrage', 'detention', 'storage']),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  mode: z.union([z.enum(MODES), z.literal('')]).optional(),
-  containerType: optional(20),
-  freeDays: z.coerce.number().int().min(0).max(365),
-  perDiem: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'An amount per day'),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((v) => v.toUpperCase()),
-  dayBasis: z.enum(['calendar', 'working']),
-  isActive: z.coerce.boolean(),
 })
+
+const freeTimeSchema = (tv: Translate) =>
+  z.object({
+    ruleId: z.uuid().optional(),
+    kind: z.enum(['demurrage', 'detention', 'storage']),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    mode: z.union([z.enum(MODES), z.literal('')]).optional(),
+    containerType: optional(20),
+    freeDays: z.coerce.number().int().min(0).max(365),
+    perDiem: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('amountPerDay')),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((v) => v.toUpperCase()),
+    dayBasis: z.enum(['calendar', 'working']),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * The free-time terms a branch grants — §7.2, FR-AD-03.
@@ -495,14 +552,17 @@ const freeTimeSchema = z.object({
  * `freeTimeTermsFor` sorts the most specific first, so the general row is a
  * fallback rather than a competitor.
  */
-export async function saveFreeTimeRule(
+export const saveFreeTimeRule = refuseForbidden(async function saveFreeTimeRule(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = freeTimeSchema.safeParse({
+  const parsed = await localeParse(freeTimeSchema(tv), {
     ruleId: read(form, 'ruleId'),
     kind: read(form, 'kind') ?? 'demurrage',
     branchId: read(form, 'branchId') ?? '',
@@ -517,28 +577,139 @@ export async function saveFreeTimeRule(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  await withActor(session.actor, async (tx) => {
-    const values = {
-      kind: data.kind,
-      branchId: data.branchId || null,
-      mode: data.mode || null,
-      containerType: data.containerType,
-      freeDays: data.freeDays,
-      perDiem: data.perDiem,
-      currency: data.currency,
-      dayBasis: data.dayBasis,
-      isActive: data.isActive,
+  try {
+    await withActor(session.actor, async (tx) => {
+      const values = {
+        kind: data.kind,
+        branchId: data.branchId || null,
+        mode: data.mode || null,
+        containerType: data.containerType,
+        freeDays: data.freeDays,
+        perDiem: data.perDiem,
+        currency: data.currency,
+        dayBasis: data.dayBasis,
+        isActive: data.isActive,
+      }
+      if (data.ruleId) {
+        await tx
+          .update(freeTimeRules)
+          .set({ ...values, updatedAt: new Date() })
+          .where(eq(freeTimeRules.id, data.ruleId))
+      } else {
+        await tx.insert(freeTimeRules).values(values)
+      }
+    })
+  } catch (error) {
+    /*
+      F53: a container type or currency the reference tables do not hold. The
+      currency is typed, so a mistyped code reaches here; a container type or
+      branch arrives from a select, so only a stale option does. Caught rather
+      than looked up first — the foreign key already answers the question, and a
+      lookup before the write is a race. The constraint's name says which field
+      to put the sentence beside; one we do not recognise is still a 500,
+      because a field message on the wrong field would be worse than none.
+    */
+    if (isForeignKeyViolation(error)) {
+      const said = databaseMessage(error)
+      if (said.includes('free_time_rules_container_type_')) {
+        return fail({ containerType: tv('unknownContainerType') }, echo(form))
+      }
+      if (said.includes('free_time_rules_currency_')) {
+        return fail({ currency: tv('unknownCurrency') }, echo(form))
+      }
+      if (said.includes('free_time_rules_branch_id_')) {
+        return fail({ branchId: tv('chooseBranch') }, echo(form))
+      }
     }
-    if (data.ruleId) {
-      await tx
-        .update(freeTimeRules)
-        .set({ ...values, updatedAt: new Date() })
-        .where(eq(freeTimeRules.id, data.ruleId))
-    } else {
-      await tx.insert(freeTimeRules).values(values)
-    }
-  })
+    throw error
+  }
 
   revalidatePath('/reference')
   return succeed(data.kind)
-}
+})
+
+/* ------------------------------------------------------- exchange rates */
+
+const fxSchema = (tv: Translate) =>
+  z.object({
+    fromCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, tv('unknownCurrency'))
+      .transform((v) => v.toUpperCase()),
+    toCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, tv('unknownCurrency'))
+      .transform((v) => v.toUpperCase()),
+    // `numeric(19,8)`: eight places, because a weak currency onto a strong
+    // one — JPY into KWD — is 0.00204082 and two places is zero.
+    rate: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,8})?$/, tv('fxRateExample'))
+      .refine((v) => /[1-9]/.test(v), tv('fxRateExample')),
+    effectiveOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')),
+  })
+
+/**
+ * An exchange rate, entered by hand — S12.
+ *
+ * Every seeded rate card is in USD and every branch quotes in its own base,
+ * so pricing needs a rate onto the base and refuses without one. The only
+ * source was the service's fx-refresh worker, which a fresh instance — or one
+ * with no feed configured — does not run, and no screen could enter one: on a
+ * new deployment every sea enquiry refused "Price it". This is that screen's
+ * action, under the permission the `fx_rates` policy already names.
+ *
+ * Written as `source = 'manual'`, one row per pair and day. The same pair and
+ * day entered again corrects that day's manual figure (the audit trigger keeps
+ * the old one) rather than adding a second rate for pricing to choose between;
+ * a feed's row for the same day is another source and is left alone. Readers
+ * take the newest rate on or before the pricing date, so a new day's rate
+ * takes over from yesterday's without anything being deleted.
+ */
+export const saveFxRate = refuseForbidden(async function saveFxRate(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
+
+  const parsed = await localeParse(fxSchema(tv), {
+    fromCurrency: read(form, 'fromCurrency') ?? '',
+    toCurrency: read(form, 'toCurrency') ?? '',
+    rate: read(form, 'rate') ?? '',
+    effectiveOn: read(form, 'effectiveOn') ?? '',
+  })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const data = parsed.data
+  if (data.fromCurrency === data.toCurrency) {
+    return fail({ toCurrency: tv('fxSameCurrency') }, echo(form))
+  }
+
+  try {
+    await withActor(session.actor, (tx) =>
+      tx
+        .insert(fxRates)
+        .values({ ...data, source: 'manual', takenAt: new Date() })
+        .onConflictDoUpdate({
+          target: [fxRates.fromCurrency, fxRates.toCurrency, fxRates.effectiveOn, fxRates.source],
+          set: { rate: data.rate, takenAt: new Date(), updatedAt: new Date() },
+        }),
+    )
+  } catch (error) {
+    // A code the currencies table does not hold.
+    if (isForeignKeyViolation(error)) {
+      return fail({ fromCurrency: tv('unknownCurrency') }, echo(form))
+    }
+    throw error
+  }
+
+  revalidatePath('/reference')
+  return succeed(`${data.fromCurrency}${data.toCurrency}`)
+})

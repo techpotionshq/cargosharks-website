@@ -26,11 +26,12 @@
  * the reply *claims* that disagrees with ours is surfaced, never acted on.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import {
   assets,
   enquiries,
   inSeries,
+  locationCodes,
   locations,
   messageAttachments,
   messages,
@@ -45,12 +46,14 @@ import {
 } from '@qabandi/db'
 import {
   parseModelJson,
+  rateReplyContext,
   readExtractedRateReply,
   summariseRateReply,
   BASES,
   RATE_EXTRACTION_SCHEMA,
   type ChargeContext,
   type RateReplyLane,
+  type RawExtractedRateReply,
 } from '@qabandi/core'
 import type { ImportLookups } from '@qabandi/core/import'
 import { invoke } from '../ai/ledger'
@@ -101,7 +104,8 @@ export async function extractRateReply(
   const actor = systemActor([input.branchId])
 
   const context = await load(actor, input)
-  if (!context) return { status: 'parsed', lines: 0, rejected: 0, skipped: 'request_or_message_gone' }
+  if (!context)
+    return { status: 'parsed', lines: 0, rejected: 0, skipped: 'request_or_message_gone' }
   const lane = context.lane
   if (!lane) {
     // A lane with no UN/LOCODE cannot key a rate card; a person prices it.
@@ -134,7 +138,10 @@ export async function extractRateReply(
             harmless; this keeps a boundary that costs nothing.
           */
           content: [
-            { type: 'text', text: `${RATE_EXTRACT_USER_PROMPT}\n\n${bodyFor(context.subject, context.body)}` },
+            {
+              type: 'text',
+              text: `${RATE_EXTRACT_USER_PROMPT}\n\n${bodyFor(context.subject, context.body)}`,
+            },
             ...attachments,
           ],
         },
@@ -149,15 +156,21 @@ export async function extractRateReply(
   // An unstated start date falls back to the reply's own date — an agent quotes
   // a rate "from now", not from a date they rarely bother to write.
   const replyDay = (context.respondedAt ?? new Date()).toISOString().slice(0, 10)
-  const extracted = readExtractedRateReply(parseModelJson(response.text), context.lookups, lane, replyDay)
+  const raw = parseModelJson<RawExtractedRateReply>(response.text)
+  const extracted = readExtractedRateReply(
+    raw,
+    context.lookups,
+    { ...lane, places: await resolvePlaces(actor, raw) },
+    replyDay,
+  )
 
   const summary = summariseRateReply(extracted.lines.rows, context.chargeContext)
   const primary = summary.primary
 
   const status: 'parsed' | 'declined' = extracted.declined ? 'declined' : 'parsed'
 
-  await withActor(actor, async (tx: Tx) => {
-    await tx
+  const written = await withActor(actor, async (tx: Tx) =>
+    tx
       .update(rateRequests)
       .set({
         status,
@@ -185,12 +198,43 @@ export async function extractRateReply(
           rows: extracted.lines.rows.map((r) => r.values),
           issues: extracted.lines.issues,
           headerIssues: extracted.headerIssues,
-          totals: summary.totals.map((t) => ({ currency: t.currency, amount: t.amount.amount.toString() })),
+          totals: summary.totals.map((t) => ({
+            currency: t.currency,
+            amount: t.amount.amount.toString(),
+          })),
           unpriced: summary.unpriced,
+          // Which of those make the total partial — the ranking gate (R1).
+          partial: summary.partial,
         },
       })
-      .where(eq(rateRequests.id, input.rateRequestId))
-  })
+      /*
+        Only while the request is still waiting on this answer.
+
+        A pg-boss retry can land after a person — or the auto-promote sweep —
+        has already accepted, declined or superseded the request. Writing
+        `parsed` then would put a decided request back on the comparison board
+        as a fresh reply, and an `accepted` one back in front of the promotion
+        that already happened. The model's reading is still in the ledger; the
+        decision stands.
+      */
+      .where(
+        and(
+          eq(rateRequests.id, input.rateRequestId),
+          inArray(rateRequests.status, ['sent', 'responded']),
+        ),
+      )
+      .returning({ id: rateRequests.id }),
+  )
+
+  if (written.length === 0) {
+    return {
+      invocationId,
+      status,
+      lines: extracted.lines.rows.length,
+      rejected: extracted.lines.issues.length,
+      skipped: 'request_already_decided',
+    }
+  }
 
   return {
     invocationId,
@@ -256,10 +300,7 @@ async function load(actor: Actor, input: ExtractRateReplyInput): Promise<Loaded 
           .innerJoin(assets, eq(messageAttachments.assetId, assets.id))
           .where(eq(messageAttachments.messageId, input.messageId)),
       () =>
-        tx
-          .select({ key: chargeTypes.key })
-          .from(chargeTypes)
-          .where(eq(chargeTypes.isActive, true)),
+        tx.select({ key: chargeTypes.key }).from(chargeTypes).where(eq(chargeTypes.isActive, true)),
       () => tx.select({ code: currencies.code }).from(currencies),
       () =>
         tx
@@ -330,7 +371,12 @@ async function laneFor(tx: Tx, enquiryId: string): Promise<{ lane: RateReplyLane
   if (!e || !e.mode || !e.originId || !e.destinationId) return { lane: null }
 
   const [o, d] = await inSeries([
-    () => tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, e.originId!)).limit(1),
+    () =>
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, e.originId!))
+        .limit(1),
     () =>
       tx
         .select({ code: locations.unlocode })
@@ -355,7 +401,11 @@ async function laneFor(tx: Tx, enquiryId: string): Promise<{ lane: RateReplyLane
  */
 async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateReplyLane | null }> {
   const rows = await tx
-    .select({ mode: rateCards.mode, originId: rateCards.originId, destinationId: rateCards.destinationId })
+    .select({
+      mode: rateCards.mode,
+      originId: rateCards.originId,
+      destinationId: rateCards.destinationId,
+    })
     .from(rateCards)
     .where(eq(rateCards.id, rateCardId))
     .limit(1)
@@ -363,9 +413,18 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
   if (!c || !c.mode || !c.originId || !c.destinationId) return { lane: null }
 
   const [o, d] = await inSeries([
-    () => tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, c.originId!)).limit(1),
     () =>
-      tx.select({ code: locations.unlocode }).from(locations).where(eq(locations.id, c.destinationId!)).limit(1),
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, c.originId!))
+        .limit(1),
+    () =>
+      tx
+        .select({ code: locations.unlocode })
+        .from(locations)
+        .where(eq(locations.id, c.destinationId!))
+        .limit(1),
   ])
   const originCode = o[0]?.code
   const destinationCode = d[0]?.code
@@ -380,10 +439,25 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
  * Approximate by design, and the schema comment on `quoted_total` says why: the
  * figure this produces is a *sort key* for the comparison view, not the quote.
  * The authoritative price is struck later, when a person accepts a reply and
- * `priceEnquiry` runs against the promoted card. So `pieces` doubles as the
- * container count on an FCL lane the way `pricing.ts` already reads it, weight
- * is the gross, and a `percent` line — which needs a base this context cannot
- * supply — is counted as unpriced rather than guessed.
+ * `priceEnquiry` runs against the promoted card. Weight is the gross, and a
+ * `percent` line — which needs a base this context cannot supply — is counted
+ * as unpriced rather than guessed.
+ *
+ * Sort key or not, it has to rank the right way round. On a FCL lane the
+ * container count is the enquiry's own `container_count`, as `pricing.ts`
+ * reads it — never `pieces`, which counts packages (F39). This read `pieces`
+ * after pricing had stopped doing so, and a FCL enquiry carries a container
+ * count and usually no pieces: every per-container line fell out as unpriced,
+ * a reply of USD 1,850 per 40HC + 180 per container + 60 flat was stored as
+ * USD 60, and the comparison ranked it "Cheapest" on the flat fee alone (F66).
+ * With no count at all the per-container lines stay unpriced — counted, not
+ * guessed — because a count of one would be a number nobody gave.
+ *
+ * The rule lives in core as `rateReplyContext` now (R1): the web re-summarises
+ * the replies already read when a coordinator enters the container count, and
+ * the two must price a reply against the same context. It also prices a
+ * `per_day` line at one day, as `pricing.ts` does — this context supplied no
+ * days, so every storage-per-day line was unpriced and its reply partial.
  */
 async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
   const rows = await tx
@@ -391,22 +465,17 @@ async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
       mode: enquiries.mode,
       grossWeightKg: enquiries.grossWeightKg,
       pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
     })
     .from(enquiries)
     .where(eq(enquiries.id, enquiryId))
     .limit(1)
   const e = rows[0]
-  if (!e) return {}
-
-  const pieces = e.pieces ?? undefined
-  const ctx: ChargeContext = {}
-  if (e.grossWeightKg != null) Object.assign(ctx, { kg: e.grossWeightKg })
-  if (pieces != null) {
-    Object.assign(ctx, { units: pieces })
-    if (e.mode === 'sea_fcl') Object.assign(ctx, { containers: pieces })
-  }
-  return ctx
+  return e ? chargeContextFor(e) : {}
 }
+
+/** The pure half of `contextFor`, exported so the rule is tested without a database. */
+export const chargeContextFor = rateReplyContext
 
 async function loadAttachmentParts(rows: readonly AttachmentRow[]) {
   const store = await fileStore()
@@ -426,6 +495,33 @@ async function loadAttachmentParts(rows: readonly AttachmentRow[]) {
 }
 
 function bodyFor(subject: string | null, body: string): string {
-  const trimmed = body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
+  const trimmed =
+    body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body
   return subject ? `Subject: ${subject}\n\n${trimmed}` : trimmed
+}
+
+/**
+ * The reply's own place names, resolved through `locations` (ai-4).
+ *
+ * Core compares the lane and does no I/O, so the names the model read —
+ * "Shanghai", "ميناء الشويخ", "Jebel Ali, UAE" — are looked up here and handed
+ * in as the codes they stand for. Without this, free text was compared with a
+ * UN/LOCODE and every reply that spelled a port as a person would was flagged
+ * "different lane" and excluded from ranking and auto-award.
+ */
+async function resolvePlaces(
+  actor: Actor,
+  raw: unknown,
+): Promise<Record<string, readonly string[]>> {
+  const reply = (raw ?? {}) as { origin?: unknown; destination?: unknown }
+  const names = [reply.origin, reply.destination].filter(
+    (value): value is string => typeof value === 'string' && value.trim() !== '',
+  )
+  if (names.length === 0) return {}
+
+  return withActor(actor, async (tx: Tx) => {
+    const places: Record<string, readonly string[]> = {}
+    for (const name of names) places[name.trim().toLowerCase()] = await locationCodes(tx, name)
+    return places
+  })
 }

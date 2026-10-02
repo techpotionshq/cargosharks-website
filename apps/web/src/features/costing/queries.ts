@@ -49,6 +49,8 @@ export interface ChargeLineRow {
   readonly amountBase: string
   readonly baseCurrency: string
   readonly fxRate: string
+  readonly counterpartyPartnerId: string | null
+  readonly counterpartyCustomerId: string | null
   readonly counterpartyName: string | null
   readonly isAccrual: boolean
   /** Where a worker or the allocator wrote it — `null` means somebody typed it. */
@@ -70,7 +72,30 @@ export interface JobLedger {
   readonly margin: LedgerMargin
 }
 
-export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedger | undefined> {
+/*
+  A charge type or counterparty in the reader's language.
+
+  Every charge type carries an Arabic name; most partners do not yet, so the
+  English one stands in — `nullif` because an empty Arabic name is as unset as
+  a null one. English reads keep the plain column.
+*/
+function chargeTypeNameIn(locale: 'en' | 'ar') {
+  return locale === 'ar'
+    ? sql<string>`coalesce(nullif(${chargeTypes.nameAr}, ''), ${chargeTypes.nameEn})`
+    : sql<string>`${chargeTypes.nameEn}`
+}
+
+function partnerNameIn(locale: 'en' | 'ar') {
+  return locale === 'ar'
+    ? sql<string | null>`coalesce(nullif(${partners.legalNameAr}, ''), ${partners.legalNameEn})`
+    : sql<string | null>`${partners.legalNameEn}`
+}
+
+export async function getJobLedger(
+  actor: Actor,
+  jobId: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<JobLedger | undefined> {
   /*
     The fixture stops at the lines, and `jobMargin` still runs over them.
 
@@ -83,7 +108,7 @@ export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedg
     used screen in the product down with it.
   */
   if (usePilotFixtures()) {
-    const rows = pilotJobLedger(jobId)
+    const rows = pilotJobLedger(jobId, Date.now(), locale)
     return rows === undefined ? undefined : ledgerOf(rows)
   }
 
@@ -107,7 +132,7 @@ export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedg
         id: chargeLines.id,
         direction: chargeLines.direction,
         chargeTypeId: chargeLines.chargeTypeId,
-        chargeTypeName: chargeTypes.nameEn,
+        chargeTypeName: chargeTypeNameIn(locale),
         description: chargeLines.description,
         basis: chargeLines.basis,
         quantity: chargeLines.quantity,
@@ -117,9 +142,17 @@ export async function getJobLedger(actor: Actor, jobId: string): Promise<JobLedg
         amountBase: chargeLines.amountBase,
         baseCurrency: chargeLines.baseCurrency,
         fxRate: chargeLines.fxRate,
-        counterpartyName: sql<string | null>`coalesce(
-          "partners"."legal_name_en", "customers"."legal_name_en"
-        )`,
+        counterpartyPartnerId: chargeLines.counterpartyPartnerId,
+        counterpartyCustomerId: chargeLines.counterpartyCustomerId,
+        counterpartyName:
+          locale === 'ar'
+            ? sql<string | null>`coalesce(
+                nullif("partners"."legal_name_ar", ''), "partners"."legal_name_en",
+                nullif("customers"."legal_name_ar", ''), "customers"."legal_name_en"
+              )`
+            : sql<string | null>`coalesce(
+                "partners"."legal_name_en", "customers"."legal_name_en"
+              )`,
         isAccrual: chargeLines.isAccrual,
         sourceKind: chargeLines.sourceKind,
         isBilled: sql<boolean>`"charge_lines"."invoice_id" is not null`,
@@ -213,13 +246,14 @@ export interface MatchCandidate {
 export async function listMatchCandidates(
   actor: Actor,
   filters: { readonly jobId?: string; readonly partnerId?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<MatchCandidate[]> {
   /*
     Reached from the supplier bill's matching dialog, so it needs the same
     branch that read gets — otherwise fixing `getSupplierInvoice` alone only
     moves the failure one query down the page.
   */
-  if (usePilotFixtures()) return pilotMatchCandidates(filters)
+  if (usePilotFixtures()) return pilotMatchCandidates(filters, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -228,7 +262,7 @@ export async function listMatchCandidates(
         jobId: chargeLines.jobId,
         jobReference: jobs.reference,
         chargeTypeId: chargeLines.chargeTypeId,
-        chargeTypeName: chargeTypes.nameEn,
+        chargeTypeName: chargeTypeNameIn(locale),
         description: chargeLines.description,
         amount: chargeLines.amount,
         currency: chargeLines.currency,
@@ -237,7 +271,7 @@ export async function listMatchCandidates(
             from supplier_invoice_matches m
            where m.charge_line_id = "charge_lines"."id" and m.retracted_at is null
         )`,
-        counterpartyName: partners.legalNameEn,
+        counterpartyName: partnerNameIn(locale),
       })
       .from(chargeLines)
       .innerJoin(jobs, eq(jobs.id, chargeLines.jobId))
@@ -260,6 +294,32 @@ export async function listMatchCandidates(
             ? sql`(${chargeLines.counterpartyPartnerId} = ${filters.partnerId}
                    or ${chargeLines.counterpartyPartnerId} is null)`
             : undefined,
+          /*
+            Only costs a bill can actually be for (QA P2-9).
+
+            Reversing a consolidation allocation posts a negative copy of each
+            share and leaves the original where it is — nothing is deleted —
+            so the picker offered both: "Ocean Freight — US$150.00" and
+            "Ocean Freight — -US$150.00", neither saying which shipment or
+            that the pair cancels out. A negative line is never what a
+            supplier billed, and a share an existing reversal has undone is no
+            longer a cost. The pairing is the one `reverseAllocation` uses: per
+            house and master line, the oldest k shares are undone, where k is
+            that house's reversal count.
+          */
+          sql`${chargeLines.amount} > 0`,
+          sql`not (
+            coalesce("charge_lines"."source_kind", '') = 'consol_allocation'
+            and (select count(*) from charge_lines a
+                  where a.source_kind = 'consol_allocation'
+                    and a.source_id = "charge_lines"."source_id"
+                    and a.job_id = "charge_lines"."job_id"
+                    and (a.created_at, a.id) <= ("charge_lines"."created_at", "charge_lines"."id"))
+                <= (select count(*) from charge_lines r
+                     where r.source_kind = 'consol_allocation_reversal'
+                       and r.source_id = "charge_lines"."source_id"
+                       and r.job_id = "charge_lines"."job_id")
+          )`,
         ),
       )
       .orderBy(asc(chargeTypes.sortOrder), asc(chargeLines.createdAt))

@@ -26,21 +26,35 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { apiKeys, customers, principals, webhookEndpoints, withActor } from '@qabandi/db'
-import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { apiKeys, branches, customers, principals, webhookEndpoints, withActor } from '@qabandi/db'
+import { requireSession, type Session } from '@/lib/session'
+import { assertCan, assertCanIn, canIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { named } from '@/lib/named'
 import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
-import { echo, fail, fieldErrors, failWith, succeed, type ActionState } from '@/lib/form-state'
+import {
+  echo,
+  fail,
+  fieldErrors,
+  failWith,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface ApiKeyRow {
   readonly id: string
   readonly prefix: string
   readonly name: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly branchId: string | null
   readonly scopes: string[]
   readonly createdBy: string | null
@@ -51,11 +65,11 @@ export interface ApiKeyRow {
 }
 
 /** Live keys first, then revoked ones — the revoked stay visible (§5.5). */
-export async function listApiKeys(): Promise<ApiKeyRow[]> {
+export async function listApiKeys(locale: 'en' | 'ar' = 'en'): Promise<ApiKeyRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
-  if (usePilotFixtures()) return pilotApiKeys()
+  if (usePilotFixtures()) return pilotApiKeys(Date.now(), locale)
 
   return withActor(session.actor, (tx) =>
     tx
@@ -64,9 +78,10 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
         prefix: apiKeys.prefix,
         name: apiKeys.name,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         branchId: apiKeys.branchId,
         scopes: apiKeys.scopes,
-        createdBy: principals.nameEn,
+        createdBy: named(locale, principals.nameEn, principals.nameAr),
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
         expiresAt: apiKeys.expiresAt,
@@ -80,34 +95,41 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
   )
 }
 
-const keySchema = z.object({
-  name: z.string().trim().min(3, 'Name it after the system that will use it').max(120),
-  customerId: z.uuid('Choose the customer this key reads for'),
-  branchId: z.uuid('Choose a branch'),
-  expiresAt: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-})
+const keySchema = (tv: Translate) =>
+  z.object({
+    name: z.string().trim().min(3, tv('keyName')).max(120),
+    customerId: z.uuid(tv('chooseCustomerForKey')),
+    branchId: z.uuid(tv('chooseBranch')),
+    expiresAt: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+  })
 
 /**
  * Mint a key, and hand back the only copy of its secret.
  *
  * ## Why the hash is SHA-256 and not Argon2id
  *
- * The column comment says Argon2id and `apps/service` verifies with SHA-256,
- * which is the shape that matters: this has to produce what that reads, and
- * changing the algorithm would invalidate every key already issued. It is also
- * the right call for this input — Argon2's cost exists to make *guessable*
- * secrets expensive to attack, and a 256-bit random secret is not guessable.
- * Applying a slow KDF to it would add latency to every API request and no
- * security. The comment is what is wrong here, not the code.
+ * The column comment once said Argon2id; it now says SHA-256, because
+ * `apps/service/src/api/public.ts` verifies with SHA-256 and that is the shape
+ * that matters: this has to produce what that reads, and changing the
+ * algorithm would invalidate every key already issued. It is also the right
+ * call for this input — Argon2's cost exists to make *guessable* secrets
+ * expensive to attack, and a 256-bit random secret is not guessable. Applying
+ * a slow KDF to it would add latency to every API request and no security.
  */
-export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const createApiKey = refuseForbidden(async function createApiKey(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = keySchema.safeParse({
+  const parsed = await localeParse(keySchema(tv), {
     name: String(form.get('name') ?? '').trim(),
     customerId: String(form.get('customerId') ?? ''),
     branchId: String(form.get('branchId') ?? ''),
@@ -116,7 +138,8 @@ export async function createApiKey(_previous: ActionState, form: FormData): Prom
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  // In that branch, not anywhere — FR-ID-02, A2.
+  assertCanIn(session, 'admin.api_keys.write', data.branchId)
 
   /*
     Two halves, and the split is what makes a key identifiable without being
@@ -155,15 +178,27 @@ export async function createApiKey(_previous: ActionState, form: FormData): Prom
     reads everything before the last colon.
   */
   return succeed(`${prefix}.${secret}`)
-}
+})
 
 /** Revoke a key. Never deletes it — see the module docstring. */
-export async function revokeApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const revokeApiKey = refuseForbidden(async function revokeApiKey(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const keyId = String(form.get('keyId') ?? '')
-  if (!keyId) return failWith('Nothing to revoke.')
+  const tv = await getTranslations('adminValidation')
+  if (!keyId) return failWith(tv('nothingToRevoke'))
+  const scope = await scopeOf(session, apiKeys, keyId)
+  // A key the caller may not touch reads exactly like one that is not there,
+  // which is how an unknown key has always read (FR-ID-04).
+  if (!scope || !(await mayScope(session, scope.branchId))) {
+    return failWith(tv('alreadyRevoked'))
+  }
 
   const revoked = await withActor(session.actor, (tx) =>
     tx
@@ -175,11 +210,11 @@ export async function revokeApiKey(_previous: ActionState, form: FormData): Prom
       .returning({ id: apiKeys.id }),
   )
 
-  if (revoked.length === 0) return failWith('That key was already revoked.')
+  if (revoked.length === 0) return failWith(tv('alreadyRevoked'))
 
   revalidatePath('/settings/api-keys')
   return succeed(keyId)
-}
+})
 
 /* ------------------------------------------------------ outbound webhooks */
 
@@ -187,6 +222,7 @@ export interface WebhookEndpointRow {
   readonly id: string
   readonly url: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly events: string[]
   readonly isActive: boolean
   readonly disabledAt: Date | null
@@ -212,7 +248,8 @@ export async function listWebhookEndpoints(): Promise<WebhookEndpointRow[]> {
 
   const rows = await withActor(session.actor, (tx) =>
     tx.execute(sql`
-      select e.id, e.url, c.legal_name_en as "customerName", e.events,
+      select e.id, e.url, c.legal_name_en as "customerName",
+             c.legal_name_ar as "customerNameAr", e.events,
              e.is_active as "isActive", e.disabled_at as "disabledAt",
              e.disabled_reason as "disabledReason",
              (select count(*) from webhook_deliveries d
@@ -231,12 +268,13 @@ export async function listWebhookEndpoints(): Promise<WebhookEndpointRow[]> {
   return rows.rows as unknown as WebhookEndpointRow[]
 }
 
-const endpointSchema = z.object({
-  url: z.url('A URL we can post to').max(500),
-  customerId: z.union([z.uuid(), z.literal('')]).optional(),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  events: z.string().trim().max(2000).optional(),
-})
+const endpointSchema = (tv: Translate) =>
+  z.object({
+    url: z.url(tv('postUrl')).max(500),
+    customerId: z.union([z.uuid(), z.literal('')]).optional(),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    events: z.string().trim().max(2000).optional(),
+  })
 
 /**
  * Subscribe a URL to events, and hand back its signing secret once.
@@ -247,14 +285,17 @@ const endpointSchema = z.object({
  * that this is a shared secret, not a credential the receiver proves identity
  * with.
  */
-export async function createWebhookEndpoint(
+export const createWebhookEndpoint = refuseForbidden(async function createWebhookEndpoint(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = endpointSchema.safeParse({
+  const parsed = await localeParse(endpointSchema(tv), {
     url: String(form.get('url') ?? '').trim(),
     customerId: String(form.get('customerId') ?? ''),
     branchId: String(form.get('branchId') ?? ''),
@@ -263,14 +304,27 @@ export async function createWebhookEndpoint(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  if (data.branchId) assertInBranch(session, data.branchId)
 
   /*
     Only over TLS. A signature proves who sent a payload and does nothing to
     stop anyone reading it, and these carry shipment and customer detail.
   */
   if (!data.url.startsWith('https://')) {
-    return fail({ url: 'Must be https — these carry customer data.' }, echo(form))
+    return fail({ url: tv('httpsOnly') }, echo(form))
+  }
+
+  /*
+    No branch means every branch's events, and every customer's — the worker
+    treats null/null as deployment-wide (`webhook-delivery.ts`). That used to
+    be one empty select away for an administrator of a single branch (A4), who
+    could then stream another branch's shipments to a URL of their choosing.
+    Deployment-wide is for somebody who administers every branch.
+  */
+  if (!(await mayScope(session, data.branchId || null))) {
+    return fail(
+      { branchId: data.branchId ? tv('apiAccessNotAdministered') : tv('webhookEveryBranch') },
+      echo(form),
+    )
   }
 
   const secret = randomBytes(32).toString('hex')
@@ -294,18 +348,25 @@ export async function createWebhookEndpoint(
 
   revalidatePath('/settings/api-keys')
   return succeed(secret)
-}
+})
 
 /** Switch a subscriber off, or back on after their URL is fixed. */
-export async function setWebhookEndpointActive(
+export const setWebhookEndpointActive = refuseForbidden(async function setWebhookEndpointActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const endpointId = String(form.get('endpointId') ?? '')
-  if (!endpointId) return failWith('Nothing to change.')
+  const tv = await getTranslations('adminValidation')
+  if (!endpointId) return failWith(tv('nothingToChange'))
+  const scope = await scopeOf(session, webhookEndpoints, endpointId)
+  if (!scope || !(await mayScope(session, scope.branchId))) {
+    return failWith(tv('nothingToChange'))
+  }
   const isActive = form.get('isActive') !== null
 
   await withActor(session.actor, (tx) =>
@@ -316,7 +377,8 @@ export async function setWebhookEndpointActive(
         // Cleared on re-enable, so a stale "disabled because…" does not sit
         // under a live endpoint.
         disabledAt: isActive ? null : new Date(),
-        disabledReason: isActive ? null : 'Switched off by an administrator',
+        // A code, translated where it is shown (U1) — see the settings page.
+        disabledReason: isActive ? null : 'switched_off',
         updatedAt: new Date(),
       })
       .where(eq(webhookEndpoints.id, endpointId)),
@@ -324,4 +386,36 @@ export async function setWebhookEndpointActive(
 
   revalidatePath('/settings/api-keys')
   return succeed(endpointId)
+})
+
+/**
+ * May this administrator act on a key or endpoint scoped to `branchId` —
+ * FR-ID-02, A2, A4.
+ *
+ * A branch asks for `admin.api_keys.write` in that branch. Null is every
+ * branch, so it asks for the permission in every active one: the authority to
+ * hand an outsider the whole deployment's events is the sum of the authority
+ * over each part of it.
+ */
+async function mayScope(session: Session, branchId: string | null): Promise<boolean> {
+  if (branchId) return canIn(session, 'admin.api_keys.write', branchId)
+  const all = await withActor(session.actor, (tx) =>
+    tx.select({ id: branches.id }).from(branches).where(eq(branches.isActive, true)),
+  )
+  return all.length > 0 && all.every((branch) => canIn(session, 'admin.api_keys.write', branch.id))
+}
+
+/**
+ * The branch a key or endpoint is scoped to, or undefined for a row the actor
+ * cannot see — which the caller answers as not found (FR-ID-04).
+ */
+async function scopeOf(
+  session: Session,
+  table: typeof apiKeys | typeof webhookEndpoints,
+  id: string,
+): Promise<{ branchId: string | null } | undefined> {
+  const [row] = await withActor(session.actor, (tx) =>
+    tx.select({ branchId: table.branchId }).from(table).where(eq(table.id, id)).limit(1),
+  )
+  return row
 }

@@ -69,6 +69,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
         taxAmount: invoices.taxAmount,
         total: invoices.total,
         amountPaid: invoices.amountPaid,
+        amountCredited: invoices.amountCredited,
         notes: invoices.notes,
         customerEn: customers.legalNameEn,
         customerAr: customers.legalNameAr,
@@ -124,6 +125,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       taxAmount: row.taxAmount,
       total: row.total,
       amountPaid: row.amountPaid,
+      amountCredited: row.amountCredited,
       notes: row.notes,
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
       branch: {
@@ -339,8 +341,13 @@ export async function renderQuotationPdf(
 
   // The reference, because that is what the customer quotes back on the phone.
   // Revisions carry their version, so v1 and v2 do not overwrite each other in
-  // the recipient's downloads folder.
-  const stem = view.version > 1 ? `${view.reference}-v${view.version}` : view.reference
+  // the recipient's downloads folder. A revision's reference already ends in
+  // `-vN`, and appending it again named the file `…-v2-v2-en.pdf` (S6); only a
+  // reference without it (older, hand-numbered rows) gets one added.
+  const stem =
+    view.version > 1 && !view.reference.endsWith(`-v${view.version}`)
+      ? `${view.reference}-v${view.version}`
+      : view.reference
 
   return { pdf, filename: `${stem}-${locale}.pdf` }
 }

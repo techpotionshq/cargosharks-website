@@ -27,6 +27,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotCustomsCounts,
@@ -44,6 +45,7 @@ export interface ExceptionRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly code: string
   readonly nameEn: string
   readonly nameAr: string
@@ -67,8 +69,9 @@ export interface ExceptionRow {
 export async function listExceptions(
   actor: Actor,
   scope: 'open' | 'closed' | 'all' = 'open',
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ExceptionRow[]> {
-  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope)
+  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope, locale)
 
   return withActor(actor, async (tx) => {
     const filter =
@@ -78,32 +81,49 @@ export async function listExceptions(
           ? isNotNull(exceptions.closedAt)
           : undefined
 
-    return tx
-      .select({
-        id: exceptions.id,
-        jobId: exceptions.jobId,
-        jobReference: jobs.reference,
-        customerName: customers.legalNameEn,
-        code: exceptionCodes.code,
-        nameEn: exceptionCodes.nameEn,
-        nameAr: exceptionCodes.nameAr,
-        severity: exceptions.severity,
-        description: exceptions.description,
-        openedAt: exceptions.openedAt,
-        dueAt: exceptions.dueAt,
-        closedAt: exceptions.closedAt,
-        owner: principals.nameEn,
-        costImpact: exceptions.costImpact,
-        costCurrency: exceptions.costCurrency,
-      })
-      .from(exceptions)
-      .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-      .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(principals, eq(principals.id, exceptions.ownerId))
-      .where(filter)
-      .orderBy(asc(exceptions.openedAt))
-      .limit(200)
+    return (
+      tx
+        .select({
+          id: exceptions.id,
+          jobId: exceptions.jobId,
+          jobReference: jobs.reference,
+          customerName: customers.legalNameEn,
+          customerNameAr: customers.legalNameAr,
+          code: exceptionCodes.code,
+          nameEn: exceptionCodes.nameEn,
+          nameAr: exceptionCodes.nameAr,
+          severity: exceptions.severity,
+          description: exceptions.description,
+          openedAt: exceptions.openedAt,
+          dueAt: exceptions.dueAt,
+          closedAt: exceptions.closedAt,
+          // The owner as they write their own name — principals.name_ar (F27).
+          owner: named(locale, principals.nameEn, principals.nameAr),
+          costImpact: exceptions.costImpact,
+          costCurrency: exceptions.costCurrency,
+        })
+        .from(exceptions)
+        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+        .innerJoin(jobs, eq(jobs.id, exceptions.jobId))
+        .leftJoin(customers, eq(customers.id, jobs.customerId))
+        .leftJoin(principals, eq(principals.id, exceptions.ownerId))
+        .where(filter)
+        /*
+        Oldest first is right for the open ones and wrong for the closed (O18):
+        with more than 200 closed, the newest closures — the ones anybody is
+        looking for — never made the page. Closed ones read newest-closed
+        first; "all" lists the open ones (oldest first) and then the closed.
+      */
+        .orderBy(
+          ...(scope === 'open'
+            ? [asc(exceptions.openedAt)]
+            : [
+                desc(sql`coalesce(${exceptions.closedAt}, 'infinity'::timestamptz)`),
+                asc(exceptions.openedAt),
+              ]),
+        )
+        .limit(200)
+    )
   })
 }
 
@@ -133,6 +153,7 @@ export interface CustomsRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly status: string
   readonly declarationType: string | null
   readonly declarationNo: string | null
@@ -143,6 +164,7 @@ export interface CustomsRow {
   readonly dutyAmount: string | null
   readonly dutyCurrency: string | null
   readonly brokerName: string | null
+  readonly brokerNameAr: string | null
 }
 
 export async function listCustoms(
@@ -159,30 +181,42 @@ export async function listCustoms(
           ? isNotNull(customsStages.releasedAt)
           : undefined
 
-    return tx
-      .select({
-        id: customsStages.id,
-        jobId: customsStages.jobId,
-        jobReference: jobs.reference,
-        customerName: customers.legalNameEn,
-        status: customsStages.status,
-        declarationType: customsStages.declarationType,
-        declarationNo: customsStages.declarationNo,
-        filedAt: customsStages.filedAt,
-        releasedAt: customsStages.releasedAt,
-        slaDueAt: customsStages.slaDueAt,
-        inspectionRequired: customsStages.inspectionRequired,
-        dutyAmount: customsStages.dutyAmount,
-        dutyCurrency: customsStages.dutyCurrency,
-        brokerName: partners.legalNameEn,
-      })
-      .from(customsStages)
-      .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
-      .where(filter)
-      .orderBy(asc(customsStages.slaDueAt))
-      .limit(200)
+    return (
+      tx
+        .select({
+          id: customsStages.id,
+          jobId: customsStages.jobId,
+          jobReference: jobs.reference,
+          customerName: customers.legalNameEn,
+          customerNameAr: customers.legalNameAr,
+          status: customsStages.status,
+          declarationType: customsStages.declarationType,
+          declarationNo: customsStages.declarationNo,
+          filedAt: customsStages.filedAt,
+          releasedAt: customsStages.releasedAt,
+          slaDueAt: customsStages.slaDueAt,
+          inspectionRequired: customsStages.inspectionRequired,
+          dutyAmount: customsStages.dutyAmount,
+          dutyCurrency: customsStages.dutyCurrency,
+          brokerName: partners.legalNameEn,
+          brokerNameAr: partners.legalNameAr,
+        })
+        .from(customsStages)
+        .innerJoin(jobs, eq(jobs.id, customsStages.jobId))
+        .leftJoin(customers, eq(customers.id, jobs.customerId))
+        .leftJoin(partners, eq(partners.id, customsStages.brokerPartnerId))
+        .where(filter)
+        // Released ones newest first, for the reason the exceptions give (O18).
+        .orderBy(
+          ...(scope === 'live'
+            ? [asc(customsStages.slaDueAt)]
+            : [
+                desc(sql`coalesce(${customsStages.releasedAt}, 'infinity'::timestamptz)`),
+                asc(customsStages.slaDueAt),
+              ]),
+        )
+        .limit(200)
+    )
   })
 }
 
@@ -212,6 +246,7 @@ export interface DocumentRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly typeCode: string
   readonly typeNameEn: string
   readonly typeNameAr: string
@@ -230,8 +265,11 @@ export interface DocumentRow {
  * bill that was reissued is exactly the thing someone needs to find when the
  * customer is holding the old one.
  */
-export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
-  if (usePilotFixtures()) return pilotDocumentRows()
+export async function listDocuments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<DocumentRow[]> {
+  if (usePilotFixtures()) return pilotDocumentRows(Date.now(), locale)
 
   return withActor(actor, async (tx) =>
     tx
@@ -240,13 +278,14 @@ export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
         jobId: documents.jobId,
         jobReference: jobs.reference,
         customerName: customers.legalNameEn,
+        customerNameAr: customers.legalNameAr,
         typeCode: documentTypes.code,
         typeNameEn: documentTypes.nameEn,
         typeNameAr: documentTypes.nameAr,
         category: documentTypes.category,
         version: documents.version,
         releasedAt: documents.releasedAt,
-        authorName: principals.nameEn,
+        authorName: named(locale, principals.nameEn, principals.nameAr),
         createdAt: documents.createdAt,
         isSuperseded: sql<boolean>`${documents.supersededById} is not null`,
       })

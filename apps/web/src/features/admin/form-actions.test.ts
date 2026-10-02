@@ -20,13 +20,40 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const harness = vi.hoisted(() => ({ session: null as unknown }))
+const harness = vi.hoisted(() => ({
+  session: null as unknown,
+  /** The mail outcome a sign-in link reports — the service is not running here. */
+  linkOutcome: 'not_configured' as string,
+  linksSent: [] as string[],
+}))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/*
+  The reset flow runs inside Better Auth and mails through the service, neither
+  of which this suite stands up. What is asserted is that an invitation asks for
+  the link, and that the administrator is told what became of it.
+*/
+vi.mock('./sign-in-link', () => ({
+  sendSignInLink: async (email: string) => {
+    harness.linksSent.push(email)
+    return harness.linkOutcome
+  },
+}))
+
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   authAccount,
+  authUser,
   branches,
   chargeTypes,
   commodities,
@@ -38,8 +65,10 @@ const {
   withActor,
 } = await import('@qabandi/db')
 
-const { ADMIN_PRINCIPAL, AWAY_BRANCH, HOME_BRANCH, adminActor, world } =
+const { ADMIN_PRINCIPAL, AWAY_BRANCH, CUSTOMER, HOME_BRANCH, adminActor, world } =
   await import('@/lib/testing/fixtures')
+
+const { listReferenceRecords } = await import('./queries')
 
 const {
   saveUser,
@@ -48,6 +77,7 @@ const {
   saveReferenceRecord,
   listAssignableRoles,
   getUserGrants,
+  sendUserSignInLink,
 } = await import('./form-actions')
 
 const session = {
@@ -120,6 +150,121 @@ describe.skipIf(!enabled)('administration', () => {
     harness.session = null
   })
 
+  /**
+   * QA P1-3. The users page had no way to change anyone once invited. The
+   * edit form submits a role per branch, blank for none.
+   */
+  describe('editing a user', () => {
+    async function grantsOf(principalId: string) {
+      const rows = await withActor(adminActor, (tx) =>
+        tx
+          .select({
+            branchId: principalBranchRoles.branchId,
+            roleId: principalBranchRoles.roleId,
+            isActive: principalBranchRoles.isActive,
+          })
+          .from(principalBranchRoles)
+          .where(eq(principalBranchRoles.principalId, principalId)),
+      )
+      return Object.fromEntries(
+        rows.filter((r) => r.isActive).map((r) => [r.branchId, r.roleId]),
+      ) as Record<string, string>
+    }
+
+    it('sets a different role in each branch, and removes one left blank', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Edited Person',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+
+      const edited = await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Edited Person Renamed',
+          email,
+          locale: 'ar',
+          [`role:${HOME_BRANCH}`]: financeRoleId,
+          [`role:${AWAY_BRANCH}`]: coordinatorRoleId,
+          isActive: 'on',
+        }),
+      )
+      expect(edited.errors).toBeUndefined()
+      expect(edited.message).toBeUndefined()
+      expect((await principalByEmail(email))?.nameEn).toBe('Edited Person Renamed')
+      expect(await grantsOf(principal!.id)).toEqual({
+        [HOME_BRANCH]: financeRoleId,
+        [AWAY_BRANCH]: coordinatorRoleId,
+      })
+
+      await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Edited Person Renamed',
+          email,
+          locale: 'ar',
+          [`role:${HOME_BRANCH}`]: '',
+          [`role:${AWAY_BRANCH}`]: coordinatorRoleId,
+          isActive: 'on',
+        }),
+      )
+      expect(await grantsOf(principal!.id)).toEqual({ [AWAY_BRANCH]: coordinatorRoleId })
+    })
+
+    it('refuses an edit that leaves no branch at all', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Nowhere',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+      const state = await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Nowhere',
+          email,
+          locale: 'en',
+          [`role:${HOME_BRANCH}`]: '',
+          [`role:${AWAY_BRANCH}`]: '',
+          isActive: 'on',
+        }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('refuses to let an administrator suspend themselves from the edit form', async () => {
+      const state = await saveUser(
+        {},
+        form({
+          principalId: ADMIN_PRINCIPAL,
+          nameEn: 'Fixture Administrator',
+          email: 'fixtures-admin@qabandi.test',
+          locale: 'en',
+          [`role:${HOME_BRANCH}`]: financeRoleId,
+        }),
+      )
+      expect(state.message).toBe('adminValidation.cannotSuspendSelf')
+    })
+  })
+
   describe('inviting a user', () => {
     it('creates the identity', async () => {
       const email = nextEmail()
@@ -140,11 +285,16 @@ describe.skipIf(!enabled)('administration', () => {
     })
 
     /**
-     * No credential, deliberately. Passwords are set by the person who owns
-     * them — through `db:create-user` on day one or a reset link after that.
+     * A login, and no password — A7.
+     *
+     * The invitation used to write a principal and nothing else, so the
+     * person invited could never sign in. Now it creates the `auth_user` and
+     * mails a link through the reset flow; the password is still set only by
+     * the person who owns it, so there is still no credential row.
      */
-    it('leaves the new account with no credential to sign in with', async () => {
+    it('creates a login with no password, and sends the link to set one', async () => {
       const email = nextEmail()
+      harness.linksSent = []
       await saveUser(
         {},
         form({
@@ -158,11 +308,198 @@ describe.skipIf(!enabled)('administration', () => {
       )
 
       const principal = await principalByEmail(email)
-      const credentials = await withActor(adminActor, (tx) =>
-        tx.select({ id: authAccount.id }).from(authAccount).where(eq(authAccount.userId, email)),
+      const [login] = await withActor(adminActor, (tx) =>
+        tx.select({ id: authUser.id }).from(authUser).where(eq(authUser.email, email)),
       )
-      expect(principal).toBeDefined()
+      const credentials = await withActor(adminActor, (tx) =>
+        tx
+          .select({ id: authAccount.id })
+          .from(authAccount)
+          .where(eq(authAccount.userId, login!.id)),
+      )
+      const [linked] = await withActor(adminActor, (tx) =>
+        tx
+          .select({ authUserId: principals.authUserId })
+          .from(principals)
+          .where(eq(principals.id, principal!.id)),
+      )
+      expect(linked?.authUserId).toBe(login!.id)
       expect(credentials).toEqual([])
+      expect(harness.linksSent).toEqual([email])
+    })
+
+    /**
+     * QA P1-3. Every branch switch submitted "on", so the action received
+     * ["on", "on"], failed a uuid check, and the dialog showed nothing. The
+     * failure now lands on `branchIds`, which the dialog draws.
+     */
+    it('reports a branch list that is not branch ids against the branch field', async () => {
+      const state = await saveUser(
+        {},
+        form({
+          nameEn: 'Switch Values',
+          email: nextEmail(),
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: ['on', 'on'],
+          isActive: 'on',
+        }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('asks for a branch when none was ticked', async () => {
+      const state = await saveUser(
+        {},
+        form({ nameEn: 'No Branch', email: nextEmail(), locale: 'en', roleId: coordinatorRoleId }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('asks for a role against the role field', async () => {
+      const state = await saveUser(
+        {},
+        form({ nameEn: 'No Role', email: nextEmail(), locale: 'en', branchIds: [HOME_BRANCH] }),
+      )
+      expect(state.errors?.roleId).toBe('adminValidation.chooseRole')
+    })
+
+    /** "Sent" is said only when the mail service took it. */
+    it('tells the administrator honestly when the link could not be mailed', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Unmailed',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+
+      harness.linkOutcome = 'not_configured'
+      const unsent = await sendUserSignInLink({}, form({ principalId: principal!.id }))
+      expect(unsent.ok).toBeUndefined()
+      expect(unsent.message).toBe('adminValidation.signInLink.not_configured')
+
+      harness.linkOutcome = 'sent'
+      const sent = await sendUserSignInLink({}, form({ principalId: principal!.id }))
+      expect(sent.ok).toBeDefined()
+      expect(sent.message).toBe(`adminValidation.signInLinkSent:${JSON.stringify({ email })}`)
+      harness.linkOutcome = 'not_configured'
+    })
+
+    /**
+     * A2. Administrator in one branch, read-only in the other: the pooled
+     * permission set said "can write users" and the role in the second branch
+     * said "works there", and together they let this person make themselves
+     * administrator there.
+     */
+    it('refuses a grant in a branch the administrator only holds a lesser role in', async () => {
+      harness.session = {
+        ...session,
+        branchRoles: new Map([
+          [HOME_BRANCH, 'administrator'],
+          [AWAY_BRANCH, 'read_only'],
+        ]),
+        branchPermissions: new Map([
+          [HOME_BRANCH, new Set(['admin.users.write'])],
+          [AWAY_BRANCH, new Set(['job.read'])],
+        ]),
+      }
+      try {
+        const state = await saveUser(
+          {},
+          form({
+            principalId: ADMIN_PRINCIPAL,
+            nameEn: 'Fixture Administrator',
+            email: 'fixtures-admin@qabandi.test',
+            locale: 'en',
+            roleId: financeRoleId,
+            branchIds: [HOME_BRANCH, AWAY_BRANCH],
+            isActive: 'on',
+          }),
+        )
+        expect(state.errors?.branchIds).toBe('adminValidation.grantOwnBranchesOnly')
+      } finally {
+        harness.session = session
+      }
+    })
+
+    /**
+     * A2. The form shows only the branches the administrator administers, so
+     * saving it must not revoke the person's grant in a branch it never
+     * showed — editing a phone number from Kuwait used to cost them Dubai.
+     */
+    it('leaves a grant in a branch the administrator does not administer alone', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Two Places',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH, AWAY_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+
+      harness.session = {
+        ...session,
+        branchPermissions: new Map([
+          [HOME_BRANCH, new Set(['admin.users.write'])],
+          [AWAY_BRANCH, new Set<string>()],
+        ]),
+      }
+      try {
+        const state = await saveUser(
+          {},
+          form({
+            principalId: principal!.id,
+            nameEn: 'Two Places',
+            email,
+            locale: 'en',
+            roleId: financeRoleId,
+            branchIds: [HOME_BRANCH],
+            isActive: 'on',
+          }),
+        )
+        expect(state.errors).toBeUndefined()
+
+        // A person-level change from here is refused: they work elsewhere too.
+        const renamed = await saveUser(
+          {},
+          form({
+            principalId: principal!.id,
+            nameEn: 'Renamed From Home',
+            email,
+            locale: 'en',
+            roleId: financeRoleId,
+            branchIds: [HOME_BRANCH],
+            isActive: 'on',
+          }),
+        )
+        expect(renamed.message).toBe('adminValidation.personSpansOtherBranches')
+      } finally {
+        harness.session = session
+      }
+
+      const grants = await withActor(adminActor, (tx) =>
+        tx
+          .select({
+            branchId: principalBranchRoles.branchId,
+            isActive: principalBranchRoles.isActive,
+          })
+          .from(principalBranchRoles)
+          .where(eq(principalBranchRoles.principalId, principal!.id)),
+      )
+      expect(grants.find((g) => g.branchId === AWAY_BRANCH)?.isActive).toBe(true)
+      expect(grants.find((g) => g.branchId === HOME_BRANCH)?.isActive).toBe(true)
     })
 
     /** FR-ID-02 — the grant is a row per branch, not a column on the user. */
@@ -237,7 +574,7 @@ describe.skipIf(!enabled)('administration', () => {
 
       const again = await saveUser({}, form({ ...fields, nameEn: 'Second' }))
 
-      expect(again.errors?.email).toContain('already has that email')
+      expect(again.errors?.email).toBe('adminValidation.emailTaken')
     })
 
     it('lower-cases the address, so one person is one identity', async () => {
@@ -254,6 +591,45 @@ describe.skipIf(!enabled)('administration', () => {
         }),
       )
       expect(await principalByEmail(email)).toBeDefined()
+    })
+  })
+
+  /*
+    A7. Nothing could create a customer-portal login: the portal and its RLS
+    arm existed, and the only way in was a database client.
+  */
+  describe('giving a customer contact portal access', () => {
+    it('creates a portal login scoped to that customer, and sends the link', async () => {
+      const { inviteCustomerContact } = await import('./portal-contacts')
+      const { listPortalContacts } = await import('./queries')
+      const email = nextEmail()
+      harness.linksSent = []
+
+      const state = await inviteCustomerContact(
+        {},
+        form({ customerId: CUSTOMER, nameEn: 'Portal Person', email, locale: 'ar' }),
+      )
+
+      expect(state.errors).toBeUndefined()
+      const [row] = await withActor(adminActor, (tx) =>
+        tx
+          .select({
+            type: principals.type,
+            customerId: principals.customerId,
+            authUserId: principals.authUserId,
+            locale: principals.locale,
+          })
+          .from(principals)
+          .where(eq(principals.email, email)),
+      )
+      expect(row).toMatchObject({ type: 'customer_contact', customerId: CUSTOMER, locale: 'ar' })
+      expect(row?.authUserId).toBeTruthy()
+      expect(harness.linksSent).toEqual([email])
+
+      // And the customer page can see it — a portal login with no branch role
+      // used to be invisible to every member of staff.
+      const listed = await listPortalContacts(adminActor, CUSTOMER)
+      expect(listed.find((c) => c.email === email)?.hasPassword).toBe(false)
     })
   })
 
@@ -289,7 +665,7 @@ describe.skipIf(!enabled)('administration', () => {
     /** Locking yourself out of the only administrator account. */
     it('refuses to suspend your own account', async () => {
       const state = await setUserActive({}, form({ principalId: ADMIN_PRINCIPAL }))
-      expect(state.message).toContain('your own account')
+      expect(state.message).toBe('adminValidation.cannotSuspendSelf')
     })
 
     it('says so plainly when nobody was chosen', async () => {
@@ -549,6 +925,37 @@ describe.skipIf(!enabled)('administration', () => {
     })
 
     /**
+     * QA P2-13. The screen's lists skipped inactive rows and never showed
+     * commodities, so a retired row could not be found to bring back. The
+     * editable list carries every row, active or not, with what the edit
+     * dialog needs.
+     */
+    it('lists a retired record for editing, flagged inactive', async () => {
+      const code = `REF-COM-${RUN}-${(seq += 1)}`
+      await saveReferenceRecord({}, reference({ table: 'commodity', code, hsCode: '0901' }))
+      const created = await rowByCode('commodity', code)
+      await saveReferenceRecord(
+        {},
+        form({
+          table: 'commodity',
+          recordId: created!.id as string,
+          code,
+          nameEn: 'Fixture',
+          nameAr: 'نموذج',
+          hsCode: '0901',
+        }),
+      )
+
+      const listed = (await listReferenceRecords(adminActor)).find((row) => row.code === code)
+      expect(listed).toMatchObject({
+        table: 'commodity',
+        id: created!.id,
+        hsCode: '0901',
+        isActive: false,
+      })
+    })
+
+    /**
      * Through `isUniqueViolation`, which until recently never fired because
      * Drizzle wraps the driver's error — so this asserts the sentence rather
      * than the 500 an administrator would otherwise see.
@@ -559,7 +966,7 @@ describe.skipIf(!enabled)('administration', () => {
 
       const state = await saveReferenceRecord({}, reference({ table: 'commodity', code }))
 
-      expect(state.errors?.code).toMatch(/already used/)
+      expect(state.errors?.code).toBe('adminValidation.codeInUseInTable')
     })
 
     it('insists on the Arabic name, because it appears on Arabic documents', async () => {
@@ -577,7 +984,7 @@ describe.skipIf(!enabled)('administration', () => {
         reference({ table: 'commodity', code: 'tiles & fittings' }),
       )
 
-      expect(state.errors?.code).toMatch(/Letters, numbers/)
+      expect(state.errors?.code).toBe('adminValidation.lettersDigitsHyphens')
     })
 
     it('refuses a caller without the reference key', async () => {
@@ -585,7 +992,7 @@ describe.skipIf(!enabled)('administration', () => {
 
       await expect(
         saveReferenceRecord({}, reference({ table: 'commodity', code: `REF-COM-${RUN}-Y` })),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
 
       harness.session = session
     })

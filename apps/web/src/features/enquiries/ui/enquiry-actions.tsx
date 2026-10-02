@@ -15,7 +15,8 @@
  * interface — neither should happen on a stray click.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { assertTransition, canTransition, enquiryMachine, type EnquiryStatus } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -43,19 +44,44 @@ export async function EnquiryActions({
   const session = await requireSession()
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('enquiryActions'),
     getTranslations('common'),
   ])
 
   const mayAssign = can(session, 'enquiry.assign')
   const mayClose = can(session, 'enquiry.close')
-  const mayRate = can(session, 'enquiry.rate')
+  /*
+    Back to rating is two different moves with two different keys: pricing an
+    assigned enquiry (`enquiry.rate`) and reopening a quoted one for revision
+    (`quote.revise`). The transition knows which; the button asks it.
+  */
+  const rateFrom = status as EnquiryStatus | undefined
+  const rateMove =
+    rateFrom && canTransition(enquiryMachine, rateFrom, 'rating')
+      ? assertTransition(enquiryMachine, rateFrom, 'rating')
+      : undefined
+  const mayRate = Boolean(rateMove && (!rateMove.requires || can(session, rateMove.requires)))
   const mayCancel = can(session, 'enquiry.cancel')
 
   // A closed enquiry is a record, not a queue item. Offering actions on it
   // would be offering to reopen something the state machine will refuse.
   if (isClosed) return null
+
+  /*
+    Only the outcomes the machine allows from here (S1). Won is legal only
+    from `quoted` and lost not from `new`; both were offered in every open
+    state, and choosing one the machine refused crashed the action. With no
+    status known (an older caller), both stay offered and the action refuses.
+  */
+  const closeOutcomes = [
+    ...(!status || canTransition(enquiryMachine, status as EnquiryStatus, 'won')
+      ? [{ value: 'won', label: t('won'), icon: 'check' as const, hint: t('wonHint') }]
+      : []),
+    ...(!status || canTransition(enquiryMachine, status as EnquiryStatus, 'lost')
+      ? [{ value: 'lost', label: t('lost'), icon: 'close' as const, hint: t('lostHint') }]
+      : []),
+  ]
 
   return (
     <>
@@ -77,6 +103,7 @@ export async function EnquiryActions({
             submit: t('respondSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('respondDone'),
           }}
         />
       ) : null}
@@ -107,6 +134,7 @@ export async function EnquiryActions({
             submit: t('assignSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('assignDone'),
           }}
         />
       ) : null}
@@ -120,7 +148,7 @@ export async function EnquiryActions({
         elsewhere before we quoted, which is neither won nor lost and was
         previously chased for ever.
       */}
-      {mayRate && status === 'assigned' ? (
+      {mayRate ? (
         <RecordDialog
           action={advanceEnquiry}
           icon="rates"
@@ -131,14 +159,25 @@ export async function EnquiryActions({
             { kind: 'hidden', name: 'to', value: 'rating' },
             { kind: 'note', text: t('ratingNote') },
           ]}
-          labels={{
-            open: t('startRating'),
-            title: t('startRatingTitle'),
-            description: t('startRatingDescription'),
-            submit: t('startRating'),
-            submitting: tc('saving'),
-            cancel: tc('cancel'),
-          }}
+          labels={
+            status === 'quoted'
+              ? {
+                  open: t('reopenRating'),
+                  title: t('reopenRatingTitle'),
+                  description: t('reopenRatingDescription'),
+                  submit: t('reopenRating'),
+                  submitting: tc('saving'),
+                  cancel: tc('cancel'),
+                }
+              : {
+                  open: t('startRating'),
+                  title: t('startRatingTitle'),
+                  description: t('startRatingDescription'),
+                  submit: t('startRating'),
+                  submitting: tc('saving'),
+                  cancel: tc('cancel'),
+                }
+          }
         />
       ) : null}
 
@@ -147,7 +186,9 @@ export async function EnquiryActions({
           action={advanceEnquiry}
           icon="close"
           size="sm"
-          variant="ghost"
+          // Ends the enquiry: drawn as the menu's destructive row, and its
+          // confirm button is the filled red.
+          variant="danger"
           fields={[
             { kind: 'hidden', name: 'enquiryId', value: enquiryId },
             { kind: 'hidden', name: 'to', value: 'cancelled' },
@@ -172,7 +213,7 @@ export async function EnquiryActions({
         />
       ) : null}
 
-      {mayClose ? (
+      {mayClose && closeOutcomes.length > 0 ? (
         <RecordDialog
           action={closeEnquiryAction}
           icon="sealed"
@@ -186,10 +227,7 @@ export async function EnquiryActions({
               label: t('outcome'),
               span: 12,
               required: true,
-              options: [
-                { value: 'won', label: t('won'), icon: 'check', hint: t('wonHint') },
-                { value: 'lost', label: t('lost'), icon: 'close', hint: t('lostHint') },
-              ],
+              options: closeOutcomes,
             },
             {
               kind: 'textarea',
@@ -213,6 +251,7 @@ export async function EnquiryActions({
             submit: t('closeSubmit'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t('closeDone'),
           }}
         />
       ) : null}

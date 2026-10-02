@@ -1,0 +1,1 @@
+ALTER TABLE "enquiries" ADD COLUMN "container_count" integer;

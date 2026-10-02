@@ -9,19 +9,21 @@
 
 import { z } from 'zod'
 import { insertCustomer } from '@qabandi/db'
+import type { Translate } from '@/lib/form-state'
 
 /**
  * The customer code is a human key — it goes on a quotation, gets read down a
  * phone and gets typed into a search box. Constrained rather than free text so
  * it cannot arrive with a space in it and quietly stop matching.
  */
-const customerCode = z
-  .string()
-  .trim()
-  .min(2, 'At least two characters')
-  .max(16, 'At most sixteen characters')
-  .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, 'Letters, numbers and hyphens only')
-  .transform((value) => value.toUpperCase())
+const customerCode = (tv: Translate<'customersValidation'>) =>
+  z
+    .string()
+    .trim()
+    .min(2, tv('minTwoChars'))
+    .max(16, tv('maxSixteenChars'))
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, tv('lettersDigitsHyphens'))
+    .transform((value) => value.toUpperCase())
 
 const optionalText = z
   .string()
@@ -30,60 +32,67 @@ const optionalText = z
   .optional()
   .transform((value) => (value ? value : null))
 
-export const customerFormSchema = insertCustomer
-  .pick({
-    legalNameEn: true,
-    legalNameAr: true,
-    registration: true,
-    taxRegistration: true,
-    countryCode: true,
-    primaryBranchId: true,
-    isActive: true,
-  })
-  .extend({
-    code: customerCode,
-    legalNameEn: z.string().trim().min(2, 'Required').max(200),
-    legalNameAr: optionalText,
-    registration: optionalText,
-    taxRegistration: optionalText,
-    countryCode: z
-      .string()
-      .trim()
-      .length(2)
-      .toUpperCase()
-      .optional()
-      .or(z.literal('').transform(() => undefined)),
-    primaryBranchId: z.uuid('Choose a branch'),
-    isActive: z.coerce.boolean().default(true),
+/*
+  Factories rather than constants: the messages are catalogue keys, and a
+  locale only exists per request. The action binds `customersValidation` and
+  hands the translator in.
+*/
+export const customerFormSchema = (tv: Translate<'customersValidation'>) =>
+  insertCustomer
+    .pick({
+      legalNameEn: true,
+      legalNameAr: true,
+      registration: true,
+      taxRegistration: true,
+      countryCode: true,
+      primaryBranchId: true,
+      isActive: true,
+    })
+    .extend({
+      code: customerCode(tv),
+      legalNameEn: z.string().trim().min(2, tv('required')).max(200),
+      legalNameAr: optionalText,
+      registration: optionalText,
+      taxRegistration: optionalText,
+      countryCode: z
+        .string()
+        .trim()
+        .length(2)
+        .toUpperCase()
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      primaryBranchId: z.uuid(tv('chooseBranch')),
+      isActive: z.coerce.boolean().default(true),
 
-    /**
-     * Per-branch terms, captured with the customer.
-     *
-     * A customer with no payment terms is not a customer you can invoice, and
-     * making it a second screen is how the field ends up empty on every record
-     * the pilot creates.
-     */
-    paymentTermsDays: z.coerce.number().int().min(0).max(365).default(30),
-    creditLimit: z
-      .string()
-      .trim()
-      .regex(/^\d*\.?\d*$/, 'Numbers only')
-      .optional()
-      .transform((value) => (value ? value : null)),
-    creditCurrency: z
-      .string()
-      .trim()
-      .length(3)
-      .toUpperCase()
-      .optional()
-      .or(z.literal('').transform(() => undefined)),
-    freeTimeDays: z.coerce.number().int().min(0).max(120).optional(),
-    defaultIncoterm: optionalText,
-  })
+      /**
+       * Per-branch terms, captured with the customer.
+       *
+       * A customer with no payment terms is not a customer you can invoice, and
+       * making it a second screen is how the field ends up empty on every record
+       * the pilot creates.
+       */
+      paymentTermsDays: z.coerce.number().int().min(0).max(365).default(30),
+      creditLimit: z
+        .string()
+        .trim()
+        .regex(/^\d*\.?\d*$/, tv('numbersOnly'))
+        .optional()
+        .transform((value) => (value ? value : null)),
+      creditCurrency: z
+        .string()
+        .trim()
+        .length(3)
+        .toUpperCase()
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      freeTimeDays: z.coerce.number().int().min(0).max(120).optional(),
+      defaultIncoterm: optionalText,
+    })
 
-export const updateCustomerSchema = customerFormSchema.extend({
-  customerId: z.uuid(),
-})
+export const updateCustomerSchema = (tv: Translate<'customersValidation'>) =>
+  customerFormSchema(tv).extend({
+    customerId: z.uuid(),
+  })
 
 /** Parses a `FormData` into the shape the schema expects. */
 export function customerFormData(form: FormData): Record<string, unknown> {

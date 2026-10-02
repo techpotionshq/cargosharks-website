@@ -66,6 +66,8 @@ export interface EnquiryDialogLabels {
   readonly weight: string
   readonly volume: string
   readonly pieces: string
+  readonly containers: string
+  readonly containersHint: string
   readonly dangerous: string
   readonly dangerousHint: string
   readonly notes: string
@@ -118,8 +120,8 @@ export function EnquiryDialog({
           onClick={onClick}
           className={
             variant === 'primary'
-              ? 'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover'
-              : 'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken'
+              ? 'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-body font-semibold text-on-brand transition-colors hover:bg-brand-hover'
+              : 'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-body font-medium text-ink transition-colors hover:bg-surface-sunken'
           }
         >
           <Icon name="plus" size={16} weight="bold" />
@@ -289,7 +291,7 @@ export function EnquiryDialog({
               type="number"
               step="0.001"
               min={0}
-              span={4}
+              span={3}
               suffix="kg"
               defaultValue={value('grossWeightKg')}
               error={error('grossWeightKg')}
@@ -300,7 +302,7 @@ export function EnquiryDialog({
               type="number"
               step="0.001"
               min={0}
-              span={4}
+              span={3}
               suffix="cbm"
               defaultValue={value('volumeCbm')}
               error={error('volumeCbm')}
@@ -310,9 +312,26 @@ export function EnquiryDialog({
               name="pieces"
               type="number"
               min={0}
-              span={4}
+              span={3}
               defaultValue={value('pieces')}
               error={error('pieces')}
+            />
+            {/*
+              Shown for every mode, like the rest of this section — the form has
+              no mode-dependent fields and the hint says who needs it. Separate
+              from pieces because a FCL quotation is priced per container, and
+              pricing off the package count quoted 200 cartons as 200 × 40HC.
+            */}
+            <Input
+              label={labels.containers}
+              name="containerCount"
+              type="number"
+              step="1"
+              min={1}
+              span={3}
+              hint={labels.containersHint}
+              defaultValue={value('containerCount')}
+              error={error('containerCount')}
             />
             <Switch
               label={labels.dangerous}

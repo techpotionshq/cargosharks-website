@@ -30,14 +30,23 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { aiInvocations, enquiries, extractionProposals, locations, withActor } =
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const { aiInvocations, enquiries, extractionProposals, locationCodes, locations, withActor } =
   await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, ORIGIN, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { acceptProposal, rejectProposal } = await import('./form-actions')
-const { enquiryProposals } = await import('./proposals')
+const { acceptAllProposals, acceptProposal, rejectProposal } = await import('./form-actions')
+const { enquiryProposals, resolveProposal } = await import('./proposals')
 
 const session = {
   actor: bothBranchesActor,
@@ -206,7 +215,9 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/not a place or commodity on file/)
+    expect(state.message).toBe(
+      'enquiriesValidation.suggestionNotOnFile:{"value":"Port of Nowhere"}',
+    )
     expect((await readEnquiry(enquiryId))?.originId).toBeNull()
     expect((await readProposal(proposalId))?.status).toBe('proposed')
   })
@@ -230,7 +241,9 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
     const proposalId = await aProposal(enquiryId, 'destination', ambiguous)
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/matches 2 records/)
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionAmbiguous:${JSON.stringify({ value: ambiguous, count: 2 })}`,
+    )
     expect((await readEnquiry(enquiryId))?.destinationId).toBeNull()
   })
 
@@ -251,7 +264,7 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/filled in since/)
+    expect(state.message).toBe('enquiriesValidation.suggestionFieldFilled')
     expect((await readEnquiry(enquiryId))?.incoterm).toBe('CIF')
   })
 
@@ -261,7 +274,18 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/sea_fcl/)
+    /*
+      The expected kind is translated in its own right and nested, so neither
+      half of the sentence is English on an Arabic screen. The list itself
+      stays as the stored codes — what the proposal row beside it shows.
+    */
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionInvalid:${JSON.stringify({
+        value: 'hovercraft',
+        expected:
+          'enquiriesValidation.expectedOneOf:{"values":"sea_fcl, sea_lcl, air, land, courier"}',
+      })}`,
+    )
     expect((await readEnquiry(enquiryId))?.mode).toBeNull()
   })
 
@@ -271,7 +295,12 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const state = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(state.message).toMatch(/YYYY-MM-DD/)
+    expect(state.message).toBe(
+      `enquiriesValidation.suggestionInvalid:${JSON.stringify({
+        value: 'next Tuesday',
+        expected: 'enquiriesValidation.expectedDate',
+      })}`,
+    )
     expect((await readEnquiry(enquiryId))?.readyOn).toBeNull()
   })
 
@@ -304,6 +333,31 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
     expect(rows[0]?.promptVersion).toBe('enquiry-extract@1')
   })
 
+  /*
+    ai-17: "Accept all" applied what it could and left the rest with no word of
+    why — the message lived in a button that disappeared once fewer than two
+    suggestions were left. The panel now reads each row's refusal in advance.
+  */
+  it('says, on the row, why a suggestion left after "Accept all" will not apply', async () => {
+    const enquiryId = await anEnquiry()
+    const unplaceable = await aProposal(enquiryId, 'destination', 'Port of Nowhere')
+    const filled = await aProposal(enquiryId, 'incoterm', 'FOB')
+    await aProposal(enquiryId, 'volumeCbm', '12.5')
+    await withActor(bothBranchesActor, (tx) =>
+      tx.update(enquiries).set({ incoterm: 'EXW' }).where(eq(enquiries.id, enquiryId)),
+    )
+
+    await acceptAllProposals({}, form({ enquiryId }))
+    const rows = await enquiryProposals(bothBranchesActor, enquiryId)
+
+    expect(rows.map((r) => r.id).sort()).toEqual([unplaceable, filled].sort())
+    expect(rows.find((r) => r.id === unplaceable)?.blocked).toEqual({
+      kind: 'not_found',
+      value: 'Port of Nowhere',
+    })
+    expect(rows.find((r) => r.id === filled)?.occupied).toBe(true)
+  })
+
   /** A settled proposal cannot be applied twice — the second click says so. */
   it('refuses a proposal somebody has already decided', async () => {
     const enquiryId = await anEnquiry()
@@ -312,6 +366,128 @@ describe.skipIf(!enabled)('accepting what a model read', () => {
 
     const again = await acceptProposal({}, form({ proposalId, enquiryId }))
 
-    expect(again.message).toMatch(/already decided/)
+    expect(again.message).toBe('enquiriesValidation.suggestionSettled')
+  })
+})
+
+/*
+  F60: the model writes places the way an address is written — "Shuwaikh Port,
+  Kuwait" — and a trailing country used to defeat the exact match. It is
+  dropped only when it is the location's own country, and what is left must
+  still match exactly. Every place here is created by this file under a name no
+  other run can share, because the test database is never emptied and the seed's
+  own ports would otherwise decide the one-match rule for us.
+*/
+describe.skipIf(!enabled)('a place written with its country', () => {
+  const tag = Math.random().toString(36).slice(2, 8)
+  const near = `Nearharbour${tag}`
+  const far = `Farharbour${tag}`
+  const twin = `Twinquay${tag}`
+  const ids = new Map<string, string>()
+
+  beforeAll(async () => {
+    await world()
+    await withActor(bothBranchesActor, async (tx) => {
+      const rows = await tx
+        .insert(locations)
+        .values([
+          { kind: 'seaport', nameEn: `${near} Port`, nameAr: `ميناء ${tag}`, countryCode: 'KW' },
+          { kind: 'seaport', nameEn: `${far} Port`, countryCode: 'KW' },
+          // One name in two countries: the country is what tells them apart.
+          { kind: 'seaport', nameEn: twin, countryCode: 'KW' },
+          { kind: 'seaport', nameEn: twin, countryCode: 'CN' },
+          // An Emirati port with a code, for the short forms and the lane check.
+          {
+            kind: 'seaport',
+            nameEn: `Emquay${tag}`,
+            nameAr: `ميناء إم${tag}`,
+            countryCode: 'AE',
+            unlocode: `AE${tag.slice(0, 3).toUpperCase()}`,
+          },
+        ])
+        .returning({ id: locations.id, nameEn: locations.nameEn, country: locations.countryCode })
+      for (const r of rows) ids.set(`${r.nameEn}|${r.country}`, r.id)
+    })
+  })
+
+  const resolve = (value: string) =>
+    withActor(bothBranchesActor, (tx) => resolveProposal(tx, 'origin', value))
+
+  it.each([
+    ['English country name', (n: string) => `${n} Port, Kuwait`],
+    ['country code', (n: string) => `${n} Port, KW`],
+    ['generic suffix dropped as well', (n: string) => `${n}, kuwait`],
+    ['Arabic comma and country name', (n: string) => `${n} Port، الكويت`],
+  ])('drops the location’s own country (%s)', async (_label, write) => {
+    expect(await resolve(write(near))).toEqual({
+      ok: true,
+      column: 'originId',
+      value: ids.get(`${near} Port|KW`),
+    })
+  })
+
+  it('matches the Arabic name with its country', async () => {
+    expect(await resolve(`ميناء ${tag}، الكويت`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${near} Port|KW`),
+    })
+  })
+
+  it('never lets the country make a different port match', async () => {
+    // The Shuaiba-for-Shuwaikh case: same country, different name.
+    expect(await resolve(`${far} Port, Kuwait`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${far} Port|KW`),
+    })
+  })
+
+  it('refuses a place written with a country that is not its own', async () => {
+    expect(await resolve(`${near} Port, China`)).toEqual({
+      ok: false,
+      failure: { kind: 'not_found', value: `${near} Port, China` },
+    })
+  })
+
+  it('lets the country settle a name two countries share, and refuses without it', async () => {
+    expect(await resolve(`${twin}, CN`)).toMatchObject({
+      ok: true,
+      value: ids.get(`${twin}|CN`),
+    })
+    expect(await resolve(twin)).toEqual({
+      ok: false,
+      failure: { kind: 'ambiguous', value: twin, count: 2 },
+    })
+  })
+
+  /*
+    ai-17: "Jebel Ali, UAE" — the trade's short form for the country matched
+    neither the code nor the name in `countries`, so the route stayed
+    incomplete. ai-4: the same matching answers the rate-reply lane check, and
+    an Arabic email names a port without its ميناء as often as with it.
+  */
+  it.each([
+    ['UAE', (n: string) => `${n}, UAE`],
+    ['U.A.E.', (n: string) => `${n}, U.A.E.`],
+    ['Arabic short form', (n: string) => `${n}، الامارات`],
+    ['Port of …', (n: string) => `Port of ${n}`],
+  ])('understands the country or port written as %s', async (_label, write) => {
+    expect(await resolve(write(`Emquay${tag}`))).toMatchObject({ ok: true })
+  })
+
+  it('matches an Arabic port name written without ميناء', async () => {
+    expect(await resolve(`إم${tag}`)).toMatchObject({ ok: true })
+  })
+
+  it('still refuses a short form for a country the place is not in', async () => {
+    expect(await resolve(`Emquay${tag}, KSA`)).toMatchObject({ ok: false })
+  })
+
+  it('gives the lane check every code a name stands for', async () => {
+    const code = `AE${tag.slice(0, 3).toUpperCase()}`
+    const codes = (value: string) => withActor(bothBranchesActor, (tx) => locationCodes(tx, value))
+    expect(await codes(`Emquay${tag}`)).toEqual([code])
+    expect(await codes(`إم${tag}`)).toEqual([code])
+    expect(await codes(code.toLowerCase())).toEqual([code])
+    expect(await codes(`Nowhere${tag}`)).toEqual([])
   })
 })

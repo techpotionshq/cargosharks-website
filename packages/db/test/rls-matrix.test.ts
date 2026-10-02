@@ -75,6 +75,12 @@ const CHARGE_KWI = '00000000-0000-7000-8000-000000000201'
 const MILESTONE_INTERNAL = '00000000-0000-7000-8000-000000000211'
 
 const REVOKED_ADMIN = '00000000-0000-7000-8000-0000000001a9'
+/** Administrator in Kuwait, read-only in Dubai — the FR-ID-02 shape (A2, A3). */
+const SPLIT_ADMIN = '00000000-0000-7000-8000-0000000001aa'
+/** Read-only in Kuwait, and nothing else. */
+const CLERK = '00000000-0000-7000-8000-0000000001ab'
+/** A portal contact that exists as a row, so its own update can be attempted. */
+const PORTAL_SELF = '00000000-0000-7000-8000-0000000001ac'
 
 const kuwaitStaff: Actor = {
   principalId: '00000000-0000-7000-8000-0000000001a1',
@@ -103,6 +109,23 @@ const revokedAdmin: Actor = {
   principalId: REVOKED_ADMIN,
   type: 'internal',
   branchIds: [KUWAIT],
+}
+
+const splitAdmin: Actor = {
+  principalId: SPLIT_ADMIN,
+  type: 'internal',
+  branchIds: [KUWAIT, DUBAI],
+}
+const clerk: Actor = {
+  principalId: CLERK,
+  type: 'internal',
+  branchIds: [KUWAIT],
+}
+const portalSelf: Actor = {
+  principalId: PORTAL_SELF,
+  type: 'customer_contact',
+  branchIds: [],
+  customerId: CUSTOMER_A,
 }
 
 /**
@@ -151,6 +174,8 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
   let migrator: Database
   let chargeTypeId: string
   let currencyCode: string
+  let readOnlyRoleId: string
+  let adminRoleId: string
 
   beforeAll(async () => {
     app = createDatabase({ connectionString: APP_URL!, max: 4 })
@@ -331,6 +356,51 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
             },
           ])
           .onConflictDoNothing()
+
+        const [readOnlyRole] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(eq(roles.key, 'read_only'))
+          .limit(1)
+        if (!readOnlyRole) throw new Error('Run `pnpm db:seed` before the RLS matrix')
+        readOnlyRoleId = readOnlyRole.id
+        adminRoleId = adminRole.id
+
+        await tx
+          .insert(principals)
+          .values([
+            {
+              id: SPLIT_ADMIN,
+              type: 'internal',
+              email: 'split@matrix.test',
+              nameEn: 'Split Administrator',
+            },
+            { id: CLERK, type: 'internal', email: 'clerk@matrix.test', nameEn: 'Clerk' },
+            {
+              id: PORTAL_SELF,
+              type: 'customer_contact',
+              email: 'portal@matrix.test',
+              nameEn: 'Portal Contact',
+              customerId: CUSTOMER_A,
+            },
+          ])
+          .onConflictDoNothing()
+
+        // Upserted, so a re-run against a database an earlier run left in
+        // another state starts from the same grants.
+        for (const grant of [
+          { principalId: SPLIT_ADMIN, branchId: KUWAIT, roleId: adminRole.id },
+          { principalId: SPLIT_ADMIN, branchId: DUBAI, roleId: readOnlyRole.id },
+          { principalId: CLERK, branchId: KUWAIT, roleId: readOnlyRole.id },
+        ]) {
+          await tx
+            .insert(principalBranchRoles)
+            .values({ ...grant, isActive: true })
+            .onConflictDoUpdate({
+              target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
+              set: { roleId: grant.roleId, isActive: true },
+            })
+        }
       },
       app,
     )
@@ -681,6 +751,124 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
       app,
     )
     expectNoRowsAffected(attempt, 'a revoked administrator still wrote to branches')
+  })
+
+  // ------------------------------------------------------------------------
+  // Granting roles — A3, FR-ID-02
+  // ------------------------------------------------------------------------
+
+  /**
+   * Regression test for the self-grant hole.
+   *
+   * `principal_branch_roles_scope` was `for all` with `principal_id =
+   * app.principal_id()` as its first arm, so any principal could write a grant
+   * naming themselves. A read-only clerk could make themselves administrator.
+   */
+  it('refuses a principal granting themselves a role', async () => {
+    await expectRlsViolation(
+      withActor(
+        clerk,
+        async (tx) =>
+          tx.execute(
+            sql`insert into principal_branch_roles (principal_id, branch_id, role_id)
+                values (${CLERK}, ${DUBAI}, ${adminRoleId})`,
+          ),
+        app,
+      ),
+    )
+  })
+
+  /** Nor promoting an existing grant of their own. */
+  it('refuses a principal upgrading their own grant', async () => {
+    const attempt = await withActor(
+      clerk,
+      async (tx) =>
+        tx.execute(
+          sql`update principal_branch_roles set role_id = ${adminRoleId}
+               where principal_id = ${CLERK} and branch_id = ${KUWAIT}`,
+        ),
+      app,
+    )
+    expectNoRowsAffected(attempt, 'a read-only principal promoted their own grant')
+  })
+
+  /**
+   * Holding `admin.users.write` in one branch is not holding it in another.
+   * This is the database half of A2; the web app checks it per branch too.
+   */
+  it('refuses an administrator of one branch granting in another', async () => {
+    await expectRlsViolation(
+      withActor(
+        splitAdmin,
+        async (tx) =>
+          tx.execute(
+            sql`insert into principal_branch_roles (principal_id, branch_id, role_id)
+                values (${CLERK}, ${DUBAI}, ${readOnlyRoleId})`,
+          ),
+        app,
+      ),
+    )
+
+    const promote = await withActor(
+      splitAdmin,
+      async (tx) =>
+        tx.execute(
+          sql`update principal_branch_roles set role_id = ${adminRoleId}
+               where principal_id = ${SPLIT_ADMIN} and branch_id = ${DUBAI}`,
+        ),
+      app,
+    )
+    expectNoRowsAffected(promote, 'a Kuwait administrator promoted their own Dubai grant')
+  })
+
+  /** And the branch they do administer still works — the positive control. */
+  it('lets an administrator grant in the branch they administer', async () => {
+    const result = await withActor(
+      splitAdmin,
+      async (tx) =>
+        tx.execute(
+          sql`update principal_branch_roles set role_id = ${readOnlyRoleId}, is_active = true
+               where principal_id = ${CLERK} and branch_id = ${KUWAIT}`,
+        ),
+      app,
+    )
+    expect(result.rowCount).toBe(1)
+  })
+
+  /**
+   * A portal contact pointing itself at another customer would read that
+   * customer's invoices on the next request. RLS cannot see the old value, so
+   * the trigger does.
+   */
+  it('refuses a principal changing its own type, customer or partner', async () => {
+    await expectRlsViolation(
+      withActor(
+        portalSelf,
+        async (tx) =>
+          tx.execute(
+            sql`update principals set customer_id = ${CUSTOMER_B} where id = ${PORTAL_SELF}`,
+          ),
+        app,
+      ),
+    )
+    await expectRlsViolation(
+      withActor(
+        clerk,
+        async (tx) => tx.execute(sql`update principals set type = 'system' where id = ${CLERK}`),
+        app,
+      ),
+    )
+  })
+
+  /** Saving a preference is still a self-update, and still allowed. */
+  it('still lets a principal save their own time zone', async () => {
+    const result = await withActor(
+      portalSelf,
+      async (tx) =>
+        tx.execute(sql`update principals set timezone = 'Asia/Dubai' where id = ${PORTAL_SELF}`),
+      app,
+    )
+    expect(result.rowCount).toBe(1)
   })
 
   /** Configuration is administrator-written — FR-AD-03, checked negatively. */

@@ -68,12 +68,22 @@ import {
 } from '@qabandi/db'
 import { fileStore } from '../adapters/index'
 
+/**
+ * A refusal the finance manager can act on.
+ *
+ * `code` is what the web app translates; `message` is the same fact in English
+ * for the log and the 422 body. `values` carries whatever the sentence names —
+ * so the screen can say it in the reader's language rather than lifting the
+ * English one whole.
+ */
 export class ExportError extends Error {
   readonly code: string
-  constructor(code: string, message: string) {
+  readonly values?: Readonly<Record<string, string>>
+  constructor(code: string, message: string, values?: Readonly<Record<string, string>>) {
     super(message)
     this.name = 'ExportError'
     this.code = code
+    if (values) this.values = values
   }
 }
 
@@ -109,6 +119,52 @@ const spec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
 
 /**
+ * Each invoice's rate to base.
+ *
+ * The invoice's own `fx_rate` where it was raised by hand, and otherwise the
+ * rate on the charge lines behind it, captured at pricing time (FR-RT-06) — a
+ * single invoice is never split across two rates. An invoice with neither is
+ * left out of the map, and `rateOrRefuse` decides what that means.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function invoiceRates(tx: any, ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+
+  const lineRates: { invoiceId: string | null; fxRate: string }[] = await tx
+    .select({ invoiceId: chargeLines.invoiceId, fxRate: chargeLines.fxRate })
+    .from(chargeLines)
+    .where(inArray(chargeLines.invoiceId, ids as string[]))
+  const own: { id: string; fxRate: string | null }[] = await tx
+    .select({ id: invoices.id, fxRate: invoices.fxRate })
+    .from(invoices)
+    .where(inArray(invoices.id, ids as string[]))
+
+  const rates = new Map<string, string>()
+  for (const r of lineRates) if (r.invoiceId) rates.set(r.invoiceId, r.fxRate)
+  for (const r of own) if (r.fxRate) rates.set(r.id, r.fxRate)
+  return rates
+}
+
+/**
+ * The rate, or a refusal that names the invoice.
+ *
+ * The fallback used to be `'1'`, which posted a USD 10,000 invoice as 10,000
+ * KWD and imported cleanly. The engine refuses rather than guesses; so does
+ * this.
+ */
+function rateOrRefuse(rates: ReadonlyMap<string, string>, id: string, reference: string): string {
+  const rate = rates.get(id)
+  if (!rate) {
+    throw new ExportError(
+      'invoice_without_rate',
+      `Invoice ${reference} is in a foreign currency and carries no exchange rate, so it cannot post.`,
+      { reference },
+    )
+  }
+  return rate
+}
+
+/**
  * Everything unposted in the window, assembled into the engine's input.
  *
  * `isNull(accountingExportId)` on all three is what makes a second export of
@@ -142,10 +198,12 @@ async function collect(actor: Actor, request: ExportRequest) {
         chargeTypeId: chargeTypes.id,
         key: chargeTypes.key,
         nameEn: chargeTypes.nameEn,
+        // Not the engine's — only the unmapped refusal below reads it.
+        nameAr: chargeTypes.nameAr,
         revenueAccountCode: chargeTypes.revenueAccountCode,
         costAccountCode: chargeTypes.costAccountCode,
       })
-      .from(chargeTypes)) as AccountMapping[]
+      .from(chargeTypes)) as (AccountMapping & { readonly nameAr: string })[]
 
     /*
       Issued invoices only, by issue date rather than creation date.
@@ -192,28 +250,7 @@ async function collect(actor: Actor, request: ExportRequest) {
             .orderBy(asc(invoiceLines.sortOrder))
         : []
 
-    /*
-      The invoice's rate to base.
-
-      An invoice has no `fx_rate` column — the rate lives on the charge lines
-      behind it, captured at pricing time (FR-RT-06). Where the invoice is in
-      the base currency this is 1 and the query is skipped; where it is not,
-      the rate on any of its lines is the rate the whole document was priced
-      at, because a single invoice is never split across two rates.
-    */
-    const rateRows =
-      invoiceIds.length > 0
-        ? await tx
-            .select({ invoiceId: chargeLines.invoiceId, fxRate: chargeLines.fxRate })
-            .from(chargeLines)
-            .where(inArray(chargeLines.invoiceId, invoiceIds))
-        : []
-
-    const rateByInvoice = new Map(
-      rateRows
-        .filter((r) => r.invoiceId !== null)
-        .map((r) => [r.invoiceId as string, r.fxRate ?? '1']),
-    )
+    const rateByInvoice = await invoiceRates(tx, invoiceIds)
 
     const invoiceInputs: InvoiceInput[] = invoiceRows.map((row) => ({
       id: row.id,
@@ -221,7 +258,10 @@ async function collect(actor: Actor, request: ExportRequest) {
       issuedAt: row.issuedAt ?? new Date(request.from),
       customerName: row.customerName,
       currency: row.currency,
-      fxRate: row.currency === branch.baseCurrency ? '1' : (rateByInvoice.get(row.id) ?? '1'),
+      fxRate:
+        row.currency === branch.baseCurrency
+          ? '1'
+          : rateOrRefuse(rateByInvoice, row.id, row.seriesNo ?? row.id.slice(0, 8)),
       isCreditNote: row.isCreditNote,
       lines: lineRows
         .filter((l) => l.invoiceId === row.id)
@@ -300,6 +340,7 @@ async function collect(actor: Actor, request: ExportRequest) {
         ? await tx
             .select({
               paymentId: paymentAllocations.paymentId,
+              invoiceId: paymentAllocations.invoiceId,
               amount: paymentAllocations.amount,
               seriesNo: invoices.seriesNo,
               invoiceCurrency: invoices.currency,
@@ -308,6 +349,21 @@ async function collect(actor: Actor, request: ExportRequest) {
             .innerJoin(invoices, eq(invoices.id, paymentAllocations.invoiceId))
             .where(inArray(paymentAllocations.paymentId, paymentIds))
         : []
+
+    /*
+      The rate each *allocated* invoice was raised at — which is not the
+      period's invoices. A receipt in April settling a March invoice needs
+      March's rate, and the lookup used to be keyed by the payment's own id
+      against a map of this period's invoices only, so it always missed and
+      every foreign receipt cleared AR at 1.
+    */
+    const allocatedRates = await invoiceRates(tx, [
+      ...new Set(
+        allocationRows
+          .filter((a) => a.invoiceCurrency !== branch.baseCurrency)
+          .map((a) => a.invoiceId),
+      ),
+    ])
 
     const paymentInputs: PaymentInput[] = paymentRows.map((row) => ({
       id: row.id,
@@ -322,6 +378,9 @@ async function collect(actor: Actor, request: ExportRequest) {
         .filter((a) => a.paymentId === row.id)
         .map((a) => ({
           invoiceSeriesNo: a.seriesNo ?? '—',
+          // In the invoice's currency, which `recordPayment` holds equal to the
+          // receipt's — so the engine can tell on-account money from FX.
+          amount: a.amount,
           /*
             The allocation is recorded in the invoice's currency. Converting it
             to base at the *invoice's* rate is what makes the FX variance fall
@@ -338,7 +397,7 @@ async function collect(actor: Actor, request: ExportRequest) {
             a.invoiceCurrency === branch.baseCurrency
               ? a.amount
               : dec(a.amount)
-                  .times(dec(rateByInvoice.get(row.id) ?? 1))
+                  .times(dec(rateOrRefuse(allocatedRates, a.invoiceId, a.seriesNo ?? '—')))
                   .toFixed(),
         })),
     }))
@@ -363,6 +422,7 @@ async function collect(actor: Actor, request: ExportRequest) {
         invoiceDate: supplierInvoices.invoiceDate,
         currency: supplierInvoices.currency,
         fxRate: supplierInvoices.fxRate,
+        taxAmount: supplierInvoices.taxAmount,
         partnerName: partners.legalNameEn,
       })
       .from(supplierInvoices)
@@ -408,22 +468,34 @@ async function collect(actor: Actor, request: ExportRequest) {
             .orderBy(asc(supplierInvoiceLines.sortOrder))
         : []
 
-    const supplierInvoiceInputs: SupplierInvoiceInput[] = supplierRows.map((row) => ({
-      id: row.id,
-      reference: row.reference,
-      invoiceDate: new Date(row.invoiceDate),
-      partnerName: row.partnerName,
-      currency: row.currency,
-      fxRate: row.fxRate,
-      lines: supplierLineRows
-        .filter((l) => l.supplierInvoiceId === row.id)
-        .map((l) => ({
-          chargeTypeId: l.chargeTypeId,
-          description: l.description,
-          amount: l.amount,
-          billed: l.amount,
-          taxAmount: l.taxAmount,
-          /*
+    const supplierInvoiceInputs: SupplierInvoiceInput[] = supplierRows.map((row) => {
+      const ownLines = supplierLineRows.filter((l) => l.supplierInvoiceId === row.id)
+      /*
+        Tax stated once on the bill rather than per line.
+
+        The bill's tax is its lines' where they carry any and the captured
+        header figure where they do not (`rollBillTotals`). The engine reads
+        tax from lines, so header-only tax travels as one more line that
+        bills nothing and was accrued nothing — it posts input tax and the
+        payable, and no variance.
+      */
+      const linesTax = ownLines.reduce((acc, l) => acc.plus(dec(l.taxAmount)), dec(0))
+      const headerOnlyTax = dec(row.taxAmount).minus(linesTax)
+      return {
+        id: row.id,
+        reference: row.reference,
+        invoiceDate: new Date(row.invoiceDate),
+        partnerName: row.partnerName,
+        currency: row.currency,
+        fxRate: row.fxRate,
+        lines: [
+          ...ownLines.map((l) => ({
+            chargeTypeId: l.chargeTypeId,
+            description: l.description,
+            amount: l.amount,
+            billed: l.amount,
+            taxAmount: l.taxAmount,
+            /*
             The accrual, divided back through the bill's own rate.
 
             `core/accounting.ts` multiplies both figures by that rate, so
@@ -436,9 +508,22 @@ async function collect(actor: Actor, request: ExportRequest) {
             FX movement between the two dates, and the journal would not
             balance.
           */
-          accrued: dec(l.accruedBase).div(dec(row.fxRate)).toFixed(),
-        })),
-    }))
+            accrued: dec(l.accruedBase).div(dec(row.fxRate)).toFixed(),
+          })),
+          ...(headerOnlyTax.greaterThan(0)
+            ? [
+                {
+                  chargeTypeId: null,
+                  description: 'Tax',
+                  billed: '0',
+                  accrued: '0',
+                  taxAmount: headerOnlyTax.toFixed(),
+                },
+              ]
+            : []),
+        ],
+      }
+    })
 
     const supplierPaymentRows = await tx
       .select({
@@ -494,6 +579,7 @@ async function collect(actor: Actor, request: ExportRequest) {
         .filter((a) => a.supplierPaymentId === row.id)
         .map((a) => ({
           supplierReference: a.reference,
+          amount: a.amount,
           /*
             At the rate the *bill* posted at, not the payment's — this is what
             makes realised FX fall out of the entry. `Decimal`, never
@@ -592,11 +678,20 @@ export async function buildAccountingExport(
   })
 
   if (unmapped.length > 0) {
+    /*
+      Both names travel, joined for each language, because the web action
+      renders the sentence in the reader's language and the list sits inside
+      it — an Arabic sentence naming "Ocean Freight" reads as a half-finished
+      translation. `unmappedChargeTypes` hands back the engine's shape, so the
+      Arabic name is looked up again from the rows that carry it.
+    */
+    const arabic = new Map(mappings.map((m) => [m.chargeTypeId, m.nameAr]))
+    const namesEn = unmapped.map((m) => m.nameEn).join(', ')
+    const namesAr = unmapped.map((m) => arabic.get(m.chargeTypeId) || m.nameEn).join('، ')
     throw new ExportError(
       'unmapped_charge_types',
-      `These charge types have no account against them: ${unmapped
-        .map((m) => m.nameEn)
-        .join(', ')}. Map them under Reference → Charge types and run the export again.`,
+      `These charge types have no account against them: ${namesEn}. Map them under Reference → Charge types and run the export again.`,
+      { namesEn, namesAr },
     )
   }
 
@@ -709,8 +804,26 @@ export async function buildAccountingExport(
         invoices at its own export and the first month would post twice.
       */
       const exportId = row!.id
+      /*
+        Every source this journal carries must be claimed by *this* export.
+
+        The \`is null\` guard stops a second poster re-pointing the rows, but on
+        its own the loser still committed an export row marked \`posted\` and a
+        file that duplicates the winner's. The second update waits on the
+        first's row locks and then matches nothing, so a short count is exactly
+        "somebody posted part of this period while it was being built" — and
+        throwing rolls this export back whole.
+      */
+      const claimed = (marked: number, expected: number) => {
+        if (marked !== expected) {
+          throw new ExportError(
+            'period_changed',
+            'Part of this period was posted by somebody else while this export was being built. Run it again.',
+          )
+        }
+      }
       if (journal.invoiceIds.length > 0) {
-        await tx
+        const marked = await tx
           .update(invoices)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -719,9 +832,11 @@ export async function buildAccountingExport(
               isNull(invoices.accountingExportId),
             ),
           )
+          .returning({ id: invoices.id })
+        claimed(marked.length, journal.invoiceIds.length)
       }
       if (costInputs.length > 0) {
-        await tx
+        const marked = await tx
           .update(chargeLines)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -733,9 +848,11 @@ export async function buildAccountingExport(
               isNull(chargeLines.accountingExportId),
             ),
           )
+          .returning({ id: chargeLines.id })
+        claimed(marked.length, costInputs.length)
       }
       if (journal.paymentIds.length > 0) {
-        await tx
+        const marked = await tx
           .update(payments)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -744,6 +861,8 @@ export async function buildAccountingExport(
               isNull(payments.accountingExportId),
             ),
           )
+          .returning({ id: payments.id })
+        claimed(marked.length, journal.paymentIds.length)
       }
       /*
         The payables side is marked even where it posted nothing.
@@ -755,7 +874,7 @@ export async function buildAccountingExport(
         variance would post into whichever month happened to be open.
       */
       if (journal.supplierInvoiceIds.length > 0) {
-        await tx
+        const marked = await tx
           .update(supplierInvoices)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -764,9 +883,11 @@ export async function buildAccountingExport(
               isNull(supplierInvoices.accountingExportId),
             ),
           )
+          .returning({ id: supplierInvoices.id })
+        claimed(marked.length, journal.supplierInvoiceIds.length)
       }
       if (journal.supplierPaymentIds.length > 0) {
-        await tx
+        const marked = await tx
           .update(supplierPayments)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -775,9 +896,11 @@ export async function buildAccountingExport(
               isNull(supplierPayments.accountingExportId),
             ),
           )
+          .returning({ id: supplierPayments.id })
+        claimed(marked.length, journal.supplierPaymentIds.length)
       }
       if (journal.settlementIds.length > 0) {
-        await tx
+        const marked = await tx
           .update(partnerSettlements)
           .set({ accountingExportId: exportId, updatedAt: new Date() })
           .where(
@@ -786,6 +909,8 @@ export async function buildAccountingExport(
               isNull(partnerSettlements.accountingExportId),
             ),
           )
+          .returning({ id: partnerSettlements.id })
+        claimed(marked.length, journal.settlementIds.length)
       }
     }
 

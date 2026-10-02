@@ -34,8 +34,12 @@ const app = Fastify({
     config.NODE_ENV === 'development'
       ? { transport: { target: 'pino-pretty' }, level: 'debug' }
       : { level: 'info' },
-  // Trust the proxy so `x-forwarded-for` reaches the audit trail intact (§5.4).
-  trustProxy: true,
+  // Trust exactly the proxies we run, so `x-forwarded-for` reaches the audit
+  // trail and the rate limiter as our proxy wrote it, not as the caller did
+  // (§5.4, A15 — `TRUSTED_PROXY_HOPS` in `config.ts`). Written as the function
+  // proxy-addr compiles a hop count into: fastify 5.12.5's types dropped the
+  // number overload, and the function is the same rule — trust the nearest N.
+  trustProxy: (_address: string, hop: number) => hop < config.TRUSTED_PROXY_HOPS,
 })
 
 await app.register(helmet)

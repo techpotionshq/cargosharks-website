@@ -13,9 +13,9 @@
  * this form actually uses ships fifty strings.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { EnquiryDialog } from './enquiry-dialog'
 
@@ -37,7 +37,7 @@ export async function NewEnquiryButton({
   if (!can(session, 'enquiry.assign')) return null
 
   const [options, t, tMode, tDirection] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('enquiryForm'),
     getTranslations('mode'),
     getTranslations('direction'),
@@ -46,14 +46,16 @@ export async function NewEnquiryButton({
   // The branch someone works in most of the time. With one branch there is no
   // decision to make, so it is preselected and the field becomes a
   // confirmation rather than a question.
-  const defaultBranchId = [...session.branchRoles.keys()][0]
+  // Only branches the enquiry can be raised in (`enquiry.assign`, which is
+  // what `submitEnquiry` asks there) — QA P2-4.
+  const defaultBranchId = branchesWhere(session, 'enquiry.assign')[0]
 
   return (
     <EnquiryDialog
       variant={variant}
       defaultBranchId={defaultBranchId}
       options={{
-        branches: options.branches,
+        branches: permittedBranches(session, 'enquiry.assign', options.branches),
         customers: options.customers,
         locations: options.locations,
         commodities: options.commodities,
@@ -89,6 +91,8 @@ export async function NewEnquiryButton({
         weight: t('weight'),
         volume: t('volume'),
         pieces: t('pieces'),
+        containers: t('containers'),
+        containersHint: t('containersHint'),
         dangerous: t('dangerous'),
         dangerousHint: t('dangerousHint'),
         notes: t('notes'),

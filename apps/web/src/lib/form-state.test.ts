@@ -83,6 +83,14 @@ describe('echo', () => {
     expect(echo(form)).toEqual({ kind: 'house_bill' })
   })
 
+  /** QA P1-3: a rejected invitation kept only the last ticked branch. */
+  it('keeps every value of a name submitted more than once', () => {
+    const form = new FormData()
+    form.append('branchIds', 'a')
+    form.append('branchIds', 'b')
+    expect(echo(form)).toEqual({ branchIds: 'a\nb' })
+  })
+
   it('returns an empty object for an empty form', () => {
     expect(echo(new FormData())).toEqual({})
   })

@@ -406,7 +406,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
 
     it('carries the shipment’s own identifiers onto the document', async () => {
       const id = await job({
-        houseBillNumber: 'QBD-DOC-2026-00001',
+        houseBillNumber: `QBD-DOC-2026-${RUN}`,
         masterBillNumber: 'MSCU7654321',
         bookingNumber: 'BK-DOC-1',
         customerReference: 'PO-8814',
@@ -417,7 +417,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
 
       const view = await loadJobDocumentView(actor, id)
 
-      expect(view.houseBillNumber).toBe('QBD-DOC-2026-00001')
+      expect(view.houseBillNumber).toBe(`QBD-DOC-2026-${RUN}`)
       expect(view.masterBillNumber).toBe('MSCU7654321')
       expect(view.bookingNumber).toBe('BK-DOC-1')
       expect(view.customerReference).toBe('PO-8814')
@@ -1041,7 +1041,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
      */
     it('sums a house’s cargo onto one manifest line', async () => {
       const master = await consolidation()
-      const house = await job({ consolidationId: master, houseBillNumber: 'QBD-DOC-M-1' })
+      const house = await job({ consolidationId: master, houseBillNumber: `QBD-DOC-M-${RUN}` })
       await cargo(house, {
         descriptionEn: 'Steel pipes',
         packageCount: 10,
@@ -1119,23 +1119,23 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
      * carriage for the same shipment.
      */
     it('prints a bill of lading for a sea shipment', async () => {
-      const id = await job({ houseBillNumber: 'QBD-DOC-SEA-1' })
+      const id = await job({ houseBillNumber: `QBD-DOC-SEA-${RUN}` })
 
       const result = await renderJobDocumentPdf(actor, id, 'house_bill', 'en')
 
       expect(result.html).toContain('House Bill of Lading')
-      expect(result.filename).toBe('QBD-DOC-SEA-1-house_bill-en.pdf')
+      expect(result.filename).toBe(`QBD-DOC-SEA-${RUN}-house_bill-en.pdf`)
     })
 
     it('prints an air waybill for the same kind on an air shipment', async () => {
-      const id = await job({ mode: 'air', houseBillNumber: '176-DOC0001' })
+      const id = await job({ mode: 'air', houseBillNumber: `176-DOC${RUN}` })
 
       const result = await renderJobDocumentPdf(actor, id, 'house_bill', 'en')
 
       expect(result.html).toContain('House Air Waybill')
       // Filed as what it is. `house_bill` stays the stored key, but a folder
       // of `-house_bill.pdf` files for air jobs is a folder nobody can search.
-      expect(result.filename).toBe('176-DOC0001-air_waybill-en.pdf')
+      expect(result.filename).toBe(`176-DOC${RUN}-air_waybill-en.pdf`)
     })
 
     it('falls back to the job reference where no bill number is allocated', async () => {
@@ -1147,11 +1147,11 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
     })
 
     it('strips anything a filesystem would object to out of the name', async () => {
-      const id = await job({ houseBillNumber: 'QBD/DOC 2026:01' })
+      const id = await job({ houseBillNumber: `QBD/DOC 2026:${RUN}` })
 
       const result = await renderJobDocumentPdf(actor, id, 'house_bill', 'en')
 
-      expect(result.filename).toBe('QBD-DOC-2026-01-house_bill-en.pdf')
+      expect(result.filename).toBe(`QBD-DOC-2026-${RUN}-house_bill-en.pdf`)
     })
 
     it('prints a delivery order', async () => {
@@ -1308,6 +1308,51 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
       expect(v2?.supersededById).toBeNull()
     })
 
+    /**
+     * O13. The Arabic copy is its own document. Versioned with the English,
+     * issuing it superseded the released English bill, which then vanished
+     * from the customer's portal.
+     */
+    it('versions each language on its own', async () => {
+      const id = await job()
+
+      const english = await storeJobDocument(
+        actor,
+        id,
+        'house_bill',
+        'en',
+        Buffer.from('a'),
+        'a.pdf',
+      )
+      const arabic = await storeJobDocument(
+        actor,
+        id,
+        'house_bill',
+        'ar',
+        Buffer.from('b'),
+        'b.pdf',
+      )
+
+      expect(arabic.version).toBe(1)
+      const rows = await versionsOf(id)
+      expect(rows.find((r) => r.id === english.documentId)?.supersededById).toBeNull()
+    })
+
+    /** O13. Two issues at once both computed the same version and stored it twice. */
+    it('gives two simultaneous issues two versions', async () => {
+      const id = await job()
+
+      const [a, b] = await Promise.all([
+        storeJobDocument(actor, id, 'house_bill', 'en', Buffer.from('a'), 'a.pdf'),
+        storeJobDocument(actor, id, 'house_bill', 'en', Buffer.from('bb'), 'b.pdf'),
+      ])
+
+      expect([a.version, b.version].sort()).toEqual([1, 2])
+      expect(a.storageKey).not.toBe(b.storageKey)
+      const rows = await versionsOf(id)
+      expect(rows.filter((r) => r.supersededById === null)).toHaveLength(1)
+    })
+
     /** Versions are per document type, not per job. */
     it('versions each kind on its own', async () => {
       const id = await job()
@@ -1343,7 +1388,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
     })
 
     it('stores what was rendered, end to end', async () => {
-      const id = await job({ houseBillNumber: 'QBD-DOC-E2E-1' })
+      const id = await job({ houseBillNumber: `QBD-DOC-E2E-${RUN}` })
       const rendered = await renderJobDocumentPdf(actor, id, 'house_bill', 'en')
 
       const stored = await storeJobDocument(
@@ -1355,7 +1400,7 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
         rendered.filename,
       )
 
-      expect(stored.filename).toBe('QBD-DOC-E2E-1-house_bill-en.pdf')
+      expect(stored.filename).toBe(`QBD-DOC-E2E-${RUN}-house_bill-en.pdf`)
       // The bucket is keyed by the shipment, not by the bill number: an
       // operator with bucket access finds a job's documents without joining
       // anything, and a bill number can be reallocated.

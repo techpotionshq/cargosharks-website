@@ -9,9 +9,10 @@
  * whoever happens to click allocate.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addConsolCharge, saveConsolidation } from '../form-actions'
@@ -38,6 +39,13 @@ export interface ConsolidationDefaults {
   readonly voyageNumber?: string | null
   readonly flightNumber?: string | null
   readonly notes?: string | null
+  readonly carrierPartnerId?: string | null
+  readonly coloadPartnerId?: string | null
+  readonly originId?: string | null
+  readonly destinationId?: string | null
+  /** `datetime-local` values in the branch's zone — `localInputValue`. */
+  readonly etd?: string | null
+  readonly eta?: string | null
 }
 
 export async function ConsolidationDialog({
@@ -51,7 +59,7 @@ export async function ConsolidationDialog({
   if (!can(session, 'consol.write')) return null
 
   const [options, t, tc, tMode, tDirection] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('consolidations'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -74,8 +82,8 @@ export async function ConsolidationDialog({
           label: t('branch'),
           span: 6,
           required: true,
-          options: options.branches,
-          defaultValue: defaults?.branchId ?? [...session.branchRoles.keys()][0],
+          options: permittedBranches(session, 'consol.write', options.branches),
+          defaultValue: defaults?.branchId ?? branchesWhere(session, 'consol.write')[0],
         },
         {
           kind: 'select',
@@ -126,6 +134,7 @@ export async function ConsolidationDialog({
           span: 6,
           options: options.partners,
           placeholder: tc('choose'),
+          defaultValue: defaults?.carrierPartnerId,
         },
         {
           kind: 'select',
@@ -135,6 +144,7 @@ export async function ConsolidationDialog({
           hint: t('coloaderHint'),
           options: options.partners,
           placeholder: tc('choose'),
+          defaultValue: defaults?.coloadPartnerId,
         },
         {
           kind: 'text',
@@ -172,6 +182,7 @@ export async function ConsolidationDialog({
           span: 6,
           options: options.locations,
           placeholder: tc('choose'),
+          defaultValue: defaults?.originId,
         },
         {
           kind: 'select',
@@ -180,9 +191,22 @@ export async function ConsolidationDialog({
           span: 6,
           options: options.locations,
           placeholder: tc('choose'),
+          defaultValue: defaults?.destinationId,
         },
-        { kind: 'datetime-local', name: 'etd', label: t('etd'), span: 6 },
-        { kind: 'datetime-local', name: 'eta', label: t('eta'), span: 6 },
+        {
+          kind: 'datetime-local',
+          name: 'etd',
+          label: t('etd'),
+          span: 6,
+          defaultValue: defaults?.etd,
+        },
+        {
+          kind: 'datetime-local',
+          name: 'eta',
+          label: t('eta'),
+          span: 6,
+          defaultValue: defaults?.eta,
+        },
         {
           kind: 'textarea',
           name: 'notes',
@@ -214,22 +238,42 @@ export async function ConsolidationDialog({
   )
 }
 
+/** An unsplit cost being corrected (O12) — its stored values. */
+export interface ConsolChargeDefaults {
+  readonly id: string
+  readonly direction: string
+  readonly chargeTypeId: string
+  readonly counterpartyPartnerId: string | null
+  readonly amount: string
+  readonly currency: string
+  readonly fxRate: string
+  readonly allocationBasis: string
+  readonly description: string | null
+}
+
 export async function ConsolChargeDialog({
   consolidationId,
+  defaults,
 }: {
   readonly consolidationId: string
+  readonly defaults?: ConsolChargeDefaults
 }) {
   const session = await requireSession()
   if (!can(session, 'consol.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('consolidations'),
     getTranslations('common'),
   ])
 
+  const editing = Boolean(defaults)
+
   const fields: FieldSpec[] = [
     { kind: 'hidden', name: 'consolidationId', value: consolidationId },
+    ...(defaults
+      ? [{ kind: 'hidden' as const, name: 'consolChargeLineId', value: defaults.id }]
+      : []),
     {
       kind: 'choices',
       name: 'direction',
@@ -241,7 +285,7 @@ export async function ConsolChargeDialog({
         { value: 'cost', label: t('cost') },
         { value: 'revenue', label: t('revenue') },
       ],
-      defaultValue: 'cost',
+      defaultValue: defaults?.direction ?? 'cost',
     },
     {
       kind: 'select',
@@ -251,6 +295,7 @@ export async function ConsolChargeDialog({
       required: true,
       options: options.chargeTypes,
       placeholder: tc('choose'),
+      defaultValue: defaults?.chargeTypeId,
     },
     {
       kind: 'select',
@@ -259,8 +304,17 @@ export async function ConsolChargeDialog({
       span: 6,
       options: options.partners,
       placeholder: tc('choose'),
+      defaultValue: defaults?.counterpartyPartnerId,
     },
-    { kind: 'text', name: 'amount', label: t('amount'), span: 4, required: true, mono: true },
+    {
+      kind: 'text',
+      name: 'amount',
+      label: t('amount'),
+      span: 4,
+      required: true,
+      mono: true,
+      defaultValue: amountInput(defaults?.amount, defaults?.currency),
+    },
     {
       kind: 'select',
       name: 'currency',
@@ -268,7 +322,7 @@ export async function ConsolChargeDialog({
       span: 4,
       required: true,
       options: options.currencies,
-      defaultValue: 'KWD',
+      defaultValue: defaults?.currency ?? 'KWD',
     },
     {
       kind: 'text',
@@ -277,7 +331,9 @@ export async function ConsolChargeDialog({
       span: 4,
       mono: true,
       hint: t('fxRateHint'),
-      defaultValue: '1',
+      // Blank is looked up from `fx_rates`; a default of 1 booked a foreign
+      // cost at face value in base.
+      defaultValue: defaults?.fxRate,
     },
     {
       kind: 'select',
@@ -290,9 +346,15 @@ export async function ConsolChargeDialog({
         value: basis,
         label: t(`bases.${basis}` as 'bases.volume'),
       })),
-      defaultValue: 'volume',
+      defaultValue: defaults?.allocationBasis ?? 'volume',
     },
-    { kind: 'text', name: 'description', label: tc('description'), span: 12 },
+    {
+      kind: 'text',
+      name: 'description',
+      label: tc('description'),
+      span: 12,
+      defaultValue: defaults?.description,
+    },
   ]
 
   // `lg`, not the default: the currency picker sits in a span-4 column, and
@@ -304,9 +366,10 @@ export async function ConsolChargeDialog({
       fields={fields}
       icon="finance"
       variant="ghost"
+      iconOnly={editing}
       labels={{
-        open: t('addCharge'),
-        title: t('addChargeTitle'),
+        open: editing ? tc('edit') : t('addCharge'),
+        title: editing ? t('editChargeTitle') : t('addChargeTitle'),
         description: t('addChargeDescription'),
         submit: tc('save'),
         submitting: tc('saving'),

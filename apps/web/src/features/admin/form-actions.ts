@@ -18,11 +18,14 @@
  *     rather than a column on the user.
  */
 
+import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { NOTIFICATION_EVENTS, unknownMergeFields } from '@qabandi/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
+  authUser,
   branches,
   chargeTypes,
   commodities,
@@ -33,10 +36,13 @@ import {
   principalBranchRoles,
   principals,
   roles,
+  systemActor,
   withActor,
+  type Tx,
 } from '@qabandi/db'
-import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { requireSession, type Session } from '@/lib/session'
+import { assertCan, assertCanIn, branchesWhere } from '@/lib/permissions'
+import { sendSignInLink, type SignInLinkOutcome } from './sign-in-link'
 import {
   echo,
   fail,
@@ -45,7 +51,12 @@ import {
   isUniqueViolation,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -66,52 +77,122 @@ const optional = (max = 200) =>
 
 // --- people ----------------------------------------------------------------
 
-const userSchema = z.object({
-  principalId: z.uuid().optional(),
-  nameEn: z.string().trim().min(2, 'Required').max(160),
-  nameAr: optional(160),
-  email: z.email('A valid email address').transform((v) => v.toLowerCase()),
-  phone: optional(40),
-  locale: z.enum(['en', 'ar']),
-  roleId: z.uuid('Choose a role'),
-  branchIds: z.array(z.uuid()).min(1, 'Give them access to at least one branch'),
-  isActive: z.coerce.boolean(),
-})
+const userSchema = (tv: Translate) =>
+  z.object({
+    principalId: z.uuid().optional(),
+    nameEn: z.string().trim().min(2, tv('required')).max(160),
+    nameAr: optional(160),
+    email: z.email(tv('validEmail')).transform((v) => v.toLowerCase()),
+    phone: optional(40),
+    locale: z.enum(['en', 'ar']),
+    /*
+      One branch-and-role pair per grant. An invitation submits one role and
+      the branches ticked; an edit submits a role per branch (`role:<id>`).
+      Both arrive here as the same list, so the rules below are written once.
+    */
+    grants: z
+      .array(
+        z.object({ branchId: z.uuid(tv('atLeastOneBranch')), roleId: z.uuid(tv('chooseRole')) }),
+      )
+      .min(1, tv('atLeastOneBranch')),
+    isActive: z.coerce.boolean(),
+  })
 
-export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
+/**
+ * The grants a user form asks for, whichever shape it was.
+ *
+ * The edit form names a select per branch `role:<branchId>`, blank for no
+ * access. The invitation names one `roleId` and ticks `branchIds`. A blank
+ * role on the invitation still produces its pairs, so the schema reports
+ * "choose a role" against the field rather than "choose a branch".
+ */
+function readGrants(form: FormData): { branchId: string; roleId: string }[] {
+  const perBranch = [...form.keys()].filter((key) => key.startsWith('role:'))
+  if (perBranch.length) {
+    return [...new Set(perBranch)]
+      .map((key) => ({ branchId: key.slice('role:'.length), roleId: read(form, key) ?? '' }))
+      .filter((grant) => grant.roleId !== '')
+  }
+  const roleId = read(form, 'roleId') ?? ''
+  return readAll(form, 'branchIds').map((branchId) => ({ branchId, roleId }))
+}
+
+/** The schema's errors, moved onto the controls that draw them. */
+function userFieldErrors(error: Parameters<typeof fieldErrors>[0]): Record<string, string> {
+  const errors = fieldErrors(error)
+  const grant = error.issues.find((issue) => issue.path[0] === 'grants')
+  if (grant) {
+    delete errors.grants
+    // A role missing on a pair is the role picker's to say; anything else
+    // about the list is "which branches".
+    if (grant.path[2] === 'roleId') errors.roleId = grant.message
+    else errors.branchIds = grant.message
+  }
+  return errors
+}
+
+export const saveUser = refuseForbidden(async function saveUser(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = userSchema.safeParse({
+  const parsed = await localeParse(userSchema(tv), {
     principalId: read(form, 'principalId'),
     nameEn: read(form, 'nameEn') ?? '',
     nameAr: read(form, 'nameAr'),
     email: read(form, 'email') ?? '',
     phone: read(form, 'phone'),
     locale: read(form, 'locale') ?? 'en',
-    roleId: read(form, 'roleId'),
-    branchIds: readAll(form, 'branchIds'),
+    grants: readGrants(form),
     isActive: form.get('isActive') !== null,
   })
-  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+  if (!parsed.success) return fail(userFieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
 
   /**
-   * An administrator cannot grant access to a branch they do not hold.
+   * An administrator grants only in branches they *administer* — FR-ID-02, A2.
    *
-   * Without this, `admin.users.write` in one branch is a route to every branch
-   * in the system — grant yourself a colleague, sign in, done. The permission
-   * is about managing *people*, not about widening your own reach.
+   * This used to check that the administrator held *some* role in each
+   * branch, against a permission set pooled across all of them. So somebody
+   * who was administrator in Dubai and read-only in Kuwait passed both halves
+   * and could make themselves administrator in Kuwait. The question is per
+   * branch: does this person hold `admin.users.write` *there*. The database
+   * asks the same thing (`app.has_permission_in`, A3) and refuses the row if
+   * this is ever skipped.
    */
-  const ownBranches = new Set(session.branchRoles.keys())
-  const reaching = data.branchIds.filter((id) => !ownBranches.has(id))
-  if (reaching.length) {
-    return fail(
-      { branchIds: 'You can only grant access to branches you work in yourself.' },
-      echo(form),
-    )
+  const administered = new Set(branchesWhere(session, 'admin.users.write'))
+  if (data.grants.some((grant) => !administered.has(grant.branchId))) {
+    return fail({ branchIds: tv('grantOwnBranchesOnly') }, echo(form))
   }
+
+  // Suspending yourself from the edit form is the same lock-out as from the
+  // suspend button, and is refused for the same reason.
+  if (data.principalId === session.principal.id && !data.isActive) {
+    return failWith(tv('cannotSuspendSelf'), echo(form))
+  }
+
+  /*
+    Editing somebody who also works in a branch this administrator does not
+    administer. Their grants there are left exactly as they are (below), and
+    the person-level fields — name, address, language, whether they can sign
+    in at all — are refused, because those change the person in *every*
+    branch. Suspending a Kuwait administrator is a decision for somebody who
+    administers Kuwait.
+  */
+  if (data.principalId) {
+    const elsewhere = await grantsOutside(data.principalId, administered)
+    if (elsewhere.length && (await personChanged(session, data))) {
+      return failWith(tv('personSpansOtherBranches'), echo(form))
+    }
+  }
+
+  let invitedEmail: string | null = null
 
   try {
     await withActor(session.actor, async (tx) => {
@@ -152,6 +233,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
         await tx.insert(principals).values({
           id: principalId,
           type: 'internal',
+          authUserId: await loginFor(tx, data.email, data.nameEn),
           nameEn: data.nameEn,
           nameAr: data.nameAr,
           email: data.email,
@@ -159,40 +241,155 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
           locale: data.locale,
           isActive: data.isActive,
         })
+        invitedEmail = data.email
       }
 
       /**
-       * Grants are replaced, not merged.
+       * Grants are replaced, not merged — within the branches this
+       * administrator administers.
        *
-       * The form shows the complete set of branches, so what it submits *is*
-       * the intended state — merging would make removing a branch impossible
-       * through the only interface that offers it. `app_user` holds no
-       * DELETE (§5.5), so revocation is a deactivation of the grant row.
+       * The form shows the complete set of *those* branches, so what it
+       * submits is the intended state there; merging would make removing a
+       * branch impossible through the only interface that offers it. A grant
+       * in a branch the form never showed is not the form's to remove, and
+       * used to be: editing a colleague's phone number from Kuwait silently
+       * revoked their Dubai role. `app_user` holds no DELETE (§5.5), so
+       * revocation is a deactivation of the grant row.
        */
-      await tx
-        .update(principalBranchRoles)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(principalBranchRoles.principalId, principalId))
+      if (administered.size) {
+        await tx
+          .update(principalBranchRoles)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(principalBranchRoles.principalId, principalId),
+              inArray(principalBranchRoles.branchId, [...administered]),
+            ),
+          )
+      }
 
-      for (const branchId of data.branchIds) {
+      for (const { branchId, roleId } of data.grants) {
         await tx
           .insert(principalBranchRoles)
-          .values({ principalId, branchId, roleId: data.roleId, isActive: true })
+          .values({ principalId, branchId, roleId, isActive: true })
           .onConflictDoUpdate({
             target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
-            set: { roleId: data.roleId, isActive: true, updatedAt: new Date() },
+            set: { roleId, isActive: true, updatedAt: new Date() },
           })
       }
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ email: 'Someone already has that email address.' }, echo(form))
+      return fail({ email: tv('emailTaken') }, echo(form))
     }
     throw error
   }
 
+  /*
+    The first password, through the reset flow — A7, `sign-in-link.ts`.
+
+    After the commit, never inside it: the link names an `auth_user` that has
+    to exist when the person clicks it, and a mail sent from a transaction that
+    then rolled back is an invitation to an account that never was. What
+    became of the mail is shown on the people list, where the administrator
+    can send it again.
+  */
+  if (invitedEmail) await sendSignInLink(invitedEmail)
+
   revalidatePath('/settings/users')
   return succeed(data.email)
+})
+
+/**
+ * The login behind a new principal — A7.
+ *
+ * An `auth_user` with no credential row: nobody can sign in as it until the
+ * owner of the mailbox follows the link and sets a password, which is when
+ * Better Auth writes the credential. Reused if one already exists for the
+ * address — an earlier invitation that was rolled back, or `db:create-user` —
+ * so an invitation can never fork one person into two logins.
+ *
+ * `email_verified` is true for the reason `create-user.ts` gives: the
+ * invitation *is* the verification, and following the emailed link proves the
+ * mailbox before any password exists.
+ */
+async function loginFor(tx: Tx, email: string, name: string): Promise<string> {
+  const [existing] = await tx
+    .select({ id: authUser.id })
+    .from(authUser)
+    .where(eq(authUser.email, email))
+    .limit(1)
+  if (existing) return existing.id
+
+  const id = randomUUID()
+  const now = new Date()
+  await tx
+    .insert(authUser)
+    .values({ id, name, email, emailVerified: true, createdAt: now, updatedAt: now })
+  return id
+}
+
+/**
+ * Branches the person holds an active role in that `administered` does not
+ * cover.
+ *
+ * Read as the system principal, because the point is to find grants the
+ * administrator *cannot* see: `principal_branch_roles` shows them only their
+ * own branches, so their own read would always answer "none". It reads branch
+ * ids for one named principal and returns nothing to the caller but whether
+ * there are any — the same narrow widening the session lookup argues for.
+ */
+async function grantsOutside(principalId: string, administered: Set<string>): Promise<string[]> {
+  const rows = await withActor(systemActor(), (tx) =>
+    tx
+      .select({ branchId: principalBranchRoles.branchId })
+      .from(principalBranchRoles)
+      .where(
+        and(
+          eq(principalBranchRoles.principalId, principalId),
+          eq(principalBranchRoles.isActive, true),
+        ),
+      ),
+  )
+  return rows.map((row) => row.branchId).filter((id) => !administered.has(id))
+}
+
+/** Would saving this change the person rather than only their grants? */
+async function personChanged(
+  session: Session,
+  data: {
+    principalId?: string
+    nameEn: string
+    nameAr: string | null
+    email: string
+    phone: string | null
+    locale: string
+    isActive: boolean
+  },
+): Promise<boolean> {
+  const [row] = await withActor(session.actor, (tx) =>
+    tx
+      .select({
+        nameEn: principals.nameEn,
+        nameAr: principals.nameAr,
+        email: principals.email,
+        phone: principals.phone,
+        locale: principals.locale,
+        isActive: principals.isActive,
+      })
+      .from(principals)
+      .where(eq(principals.id, data.principalId!))
+      .limit(1),
+  )
+  if (!row) return true
+  return (
+    row.nameEn !== data.nameEn ||
+    (row.nameAr ?? null) !== data.nameAr ||
+    row.email !== data.email ||
+    (row.phone ?? null) !== data.phone ||
+    row.locale !== data.locale ||
+    row.isActive !== data.isActive
+  )
 }
 
 /**
@@ -202,18 +399,33 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
  * the session lookup re-reads `is_active` every time rather than trusting a
  * claim baked into a token. That is the difference between revocation and a
  * note in a table.
+ *
+ * Suspension is of the person, in every branch at once, so it needs
+ * `admin.users.write` in every branch they hold a role in (A2). An
+ * administrator of one branch can still take away the grant in theirs.
  */
-export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setUserActive = refuseForbidden(async function setUserActive(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
-  if (!principalId) return fail({ _: 'Nothing to update.' })
+  if (!principalId) return fail({ _: tv('nothingToUpdate') })
 
   // Suspending yourself locks you out with no way back in through the
   // interface — the recovery is shell access, so refuse it here.
   if (principalId === session.principal.id) {
-    return failWith('You cannot suspend your own account.')
+    return failWith(tv('cannotSuspendSelf'))
+  }
+
+  const administered = new Set(branchesWhere(session, 'admin.users.write'))
+  if ((await grantsOutside(principalId, administered)).length) {
+    return failWith(tv('personSpansOtherBranches'))
   }
 
   const isActive = form.get('isActive') !== null
@@ -226,50 +438,128 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
 
   revalidatePath('/settings/users')
   return succeed(principalId)
+})
+
+/**
+ * Send a person the link that sets their password — A7.
+ *
+ * For an invitation whose mail did not go (the service was down, or not yet
+ * configured), for a link that expired after its hour, and for the accounts
+ * invited before invitations created a login at all: those get their
+ * `auth_user` here. The message says what actually happened to the mail.
+ */
+export const sendUserSignInLink = refuseForbidden(async function sendUserSignInLink(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
+
+  const principalId = read(form, 'principalId')
+  if (!principalId) return fail({ _: tv('nothingToUpdate') })
+
+  const target = await withActor(session.actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        email: principals.email,
+        nameEn: principals.nameEn,
+        authUserId: principals.authUserId,
+        isActive: principals.isActive,
+        type: principals.type,
+      })
+      .from(principals)
+      .where(eq(principals.id, principalId))
+      .limit(1)
+    return row
+  })
+  // Not visible is not found — an administrator cannot mail somebody outside
+  // their own branches into an account.
+  if (!target) return failWith(tv('nothingToUpdate'))
+  if (!target.isActive) return failWith(tv('signInLinkSuspended'))
+
+  if (target.type === 'internal') {
+    const administered = new Set(branchesWhere(session, 'admin.users.write'))
+    const reachable = await withActor(session.actor, (tx) =>
+      tx
+        .select({ branchId: principalBranchRoles.branchId })
+        .from(principalBranchRoles)
+        .where(
+          and(
+            eq(principalBranchRoles.principalId, principalId),
+            eq(principalBranchRoles.isActive, true),
+          ),
+        ),
+    )
+    if (!reachable.some((row) => administered.has(row.branchId))) {
+      return failWith(tv('grantOwnBranchesOnly'))
+    }
+  }
+
+  if (!target.authUserId) {
+    await withActor(session.actor, async (tx) => {
+      const authUserId = await loginFor(tx, target.email, target.nameEn)
+      await tx
+        .update(principals)
+        .set({ authUserId, updatedAt: new Date() })
+        .where(eq(principals.id, principalId))
+    })
+  }
+
+  return signInLinkState(tv, await sendSignInLink(target.email), target.email)
+})
+
+/** The sentence for what became of a link, as an `ActionState`. */
+function signInLinkState(tv: Translate, outcome: SignInLinkOutcome, email: string): ActionState {
+  if (outcome === 'sent') return { ...succeed(email), message: tv('signInLinkSent', { email }) }
+  return failWith(tv(`signInLink.${outcome}` as 'signInLink.refused'))
 }
 
 // --- branches --------------------------------------------------------------
 
-const branchSchema = z.object({
-  branchId: z.uuid().optional(),
-  code: z
-    .string()
-    .trim()
-    .min(2, 'At least two characters')
-    .max(8, 'At most eight characters')
-    .regex(/^[A-Za-z0-9]+$/, 'Letters and numbers only')
-    .transform((v) => v.toUpperCase()),
-  legalNameEn: z.string().trim().min(2, 'Required').max(200),
-  /**
-   * Required, not optional.
-   *
-   * Every invoice and quotation this branch issues can be rendered in Arabic,
-   * and the entity's legal name is the one string on those documents that
-   * cannot be machine-translated at render time. A branch with no Arabic name
-   * is a branch that cannot issue an Arabic invoice.
-   */
-  legalNameAr: z.string().trim().min(2, 'Required — it appears on Arabic invoices').max(200),
-  baseCurrency: z
-    .string()
-    .trim()
-    .length(3, 'A three-letter code')
-    .transform((v) => v.toUpperCase()),
-  country: z
-    .string()
-    .trim()
-    .length(2, 'Choose a country')
-    .transform((v) => v.toUpperCase()),
-  calendarId: z.uuid('Every branch needs a working calendar'),
-  timeZone: z.string().trim().min(3, 'Choose a time zone').max(64),
-  /**
-   * Who notifications from this entity come from — FR-NT-01.
-   *
-   * Optional: a branch that has not been given its own address sends from the
-   * deployment's, which is the state every branch starts in. A display name is
-   * understood, and only the bare address goes in the SMTP envelope.
-   */
-  mailFrom: optional(200),
-  /*
+const branchSchema = (tv: Translate) =>
+  z.object({
+    branchId: z.uuid().optional(),
+    code: z
+      .string()
+      .trim()
+      .min(2, tv('minTwoChars'))
+      .max(8, tv('maxEightChars'))
+      .regex(/^[A-Za-z0-9]+$/, tv('lettersDigits'))
+      .transform((v) => v.toUpperCase()),
+    legalNameEn: z.string().trim().min(2, tv('required')).max(200),
+    /**
+     * Required, not optional.
+     *
+     * Every invoice and quotation this branch issues can be rendered in Arabic,
+     * and the entity's legal name is the one string on those documents that
+     * cannot be machine-translated at render time. A branch with no Arabic name
+     * is a branch that cannot issue an Arabic invoice.
+     */
+    legalNameAr: z.string().trim().min(2, tv('requiredArInvoices')).max(200),
+    baseCurrency: z
+      .string()
+      .trim()
+      .length(3, tv('threeLetterCode'))
+      .transform((v) => v.toUpperCase()),
+    country: z
+      .string()
+      .trim()
+      .length(2, tv('chooseCountry'))
+      .transform((v) => v.toUpperCase()),
+    calendarId: z.uuid(tv('branchNeedsCalendar')),
+    timeZone: z.string().trim().min(3, tv('chooseTimeZone')).max(64),
+    /**
+     * Who notifications from this entity come from — FR-NT-01.
+     *
+     * Optional: a branch that has not been given its own address sends from the
+     * deployment's, which is the state every branch starts in. A display name is
+     * understood, and only the bare address goes in the SMTP envelope.
+     */
+    mailFrom: optional(200),
+    /*
     Quiet hours — FR-NT-07, in this branch's local time.
 
     Refused when the two hours are equal, because that has two defensible
@@ -278,66 +568,71 @@ const branchSchema = z.object({
     administrator turns the window off. The database says the same thing in
     `branches_quiet_hours_window`; this says it where somebody can read it.
   */
-  quietHoursEnabled: z.boolean(),
-  quietHoursFromHour: z.coerce.number().int().min(0).max(23),
-  quietHoursToHour: z.coerce.number().int().min(0).max(23),
-  /** The prefix on this branch's invoice numbers. Defaults to the code. */
-  invoiceSeries: z
-    .string()
-    .trim()
-    .max(12)
-    .optional()
-    .transform((v) => (v ? v.toUpperCase() : null)),
-  taxRegistration: optional(60),
-  /**
-   * The house-bill series, and the chart of accounts this entity posts to.
-   *
-   * All optional, and checked at the point of use rather than here: a branch
-   * that issues no house bills should not be made to invent a prefix, and a
-   * branch that has not been mapped to a chart of accounts should be able to
-   * exist. The accounting export names what is missing when somebody tries to
-   * close a period, which is a better error than a required field on a form
-   * they filled in six months earlier.
-   */
-  houseBillSeries: z
-    .string()
-    .trim()
-    .max(12)
-    .optional()
-    .transform((v) => (v ? v.toUpperCase() : null)),
-  arAccountCode: optional(30),
-  apAccountCode: optional(30),
-  taxAccountCode: optional(30),
-  bankAccountCode: optional(30),
-  fxVarianceAccountCode: optional(30),
-  roundingAccountCode: optional(30),
-  /**
-   * Standard trading conditions, as they print on this entity's quotations —
-   * FR-EQ-08.
-   *
-   * Long, and optional in both languages. A branch that has not supplied them
-   * issues a quotation without the footer rather than being unable to issue
-   * one, which matches how the chart of accounts above is treated: the missing
-   * piece is named at the point it matters, not demanded on a form somebody
-   * filled in months earlier.
-   */
-  tradingConditionsEn: optional(8000),
-  tradingConditionsAr: optional(8000),
-  /*
+    quietHoursEnabled: z.boolean(),
+    quietHoursFromHour: z.coerce.number().int().min(0).max(23),
+    quietHoursToHour: z.coerce.number().int().min(0).max(23),
+    /** The prefix on this branch's invoice numbers. Defaults to the code. */
+    invoiceSeries: z
+      .string()
+      .trim()
+      .max(12)
+      .optional()
+      .transform((v) => (v ? v.toUpperCase() : null)),
+    taxRegistration: optional(60),
+    /**
+     * The house-bill series, and the chart of accounts this entity posts to.
+     *
+     * All optional, and checked at the point of use rather than here: a branch
+     * that issues no house bills should not be made to invent a prefix, and a
+     * branch that has not been mapped to a chart of accounts should be able to
+     * exist. The accounting export names what is missing when somebody tries to
+     * close a period, which is a better error than a required field on a form
+     * they filled in six months earlier.
+     */
+    houseBillSeries: z
+      .string()
+      .trim()
+      .max(12)
+      .optional()
+      .transform((v) => (v ? v.toUpperCase() : null)),
+    arAccountCode: optional(30),
+    apAccountCode: optional(30),
+    taxAccountCode: optional(30),
+    bankAccountCode: optional(30),
+    fxVarianceAccountCode: optional(30),
+    roundingAccountCode: optional(30),
+    /**
+     * Standard trading conditions, as they print on this entity's quotations —
+     * FR-EQ-08.
+     *
+     * Long, and optional in both languages. A branch that has not supplied them
+     * issues a quotation without the footer rather than being unable to issue
+     * one, which matches how the chart of accounts above is treated: the missing
+     * piece is named at the point it matters, not demanded on a form somebody
+     * filled in months earlier.
+     */
+    tradingConditionsEn: optional(8000),
+    tradingConditionsAr: optional(8000),
+    /*
     Large, because the back of a bill is large: a full set of conditions of
     carriage runs to thirty clauses and twenty thousand characters, and a cap
     that fits a quotation footer would cut a clause in half.
   */
-  billOfLadingTermsEn: optional(60000),
-  billOfLadingTermsAr: optional(60000),
-  /** One exclusion per line — see the column comment. */
-  defaultExclusionsEn: optional(4000),
-  defaultExclusionsAr: optional(4000),
-  isActive: z.coerce.boolean(),
-})
+    billOfLadingTermsEn: optional(60000),
+    billOfLadingTermsAr: optional(60000),
+    /** One exclusion per line — see the column comment. */
+    defaultExclusionsEn: optional(4000),
+    defaultExclusionsAr: optional(4000),
+    isActive: z.coerce.boolean(),
+  })
 
-export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveBranch = refuseForbidden(async function saveBranch(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   /*
     Not `admin.reference.write`, which is what this used to be.
 
@@ -348,8 +643,9 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     auditor finds rather than the kind a developer notices.
   */
   assertCan(session, 'admin.branches.write')
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = branchSchema.safeParse({
+  const parsed = await localeParse(branchSchema(tv), {
     branchId: read(form, 'branchId'),
     code: read(form, 'code') ?? '',
     legalNameEn: read(form, 'legalNameEn') ?? '',
@@ -386,9 +682,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
   if (data.quietHoursEnabled && data.quietHoursFromHour === data.quietHoursToHour) {
     return fail(
       {
-        quietHoursToHour:
-          'Quiet hours have to start and end at different times. Turn the switch ' +
-          'off to send at any hour.',
+        quietHoursToHour: tv('quietHoursDiffer'),
       },
       echo(form),
     )
@@ -470,14 +764,14 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That branch code is already in use.' }, echo(form))
+      return fail({ code: tv('branchCodeInUse') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/settings/branches')
   return succeed(data.code)
-}
+})
 
 // --- reference tables ------------------------------------------------------
 
@@ -499,36 +793,40 @@ const REFERENCE_TABLES = {
 
 type ReferenceTable = keyof typeof REFERENCE_TABLES
 
-const referenceSchema = z.object({
-  table: z.enum(['commodity', 'charge_type', 'document_type', 'exception_code']),
-  recordId: z.uuid().optional(),
-  code: z
-    .string()
-    .trim()
-    .min(2, 'At least two characters')
-    .max(40)
-    .regex(/^[A-Za-z0-9_-]+$/, 'Letters, numbers, hyphens and underscores'),
-  nameEn: z.string().trim().min(2, 'Required').max(160),
-  nameAr: z.string().trim().min(1, 'Required — this appears on Arabic documents').max(160),
-  category: optional(60),
-  defaultBasis: z
-    .enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'])
-    .optional(),
-  defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
-  hsCode: optional(20),
-  revenueAccountCode: optional(30),
-  costAccountCode: optional(30),
-  isActive: z.coerce.boolean(),
-})
+const referenceSchema = (tv: Translate) =>
+  z.object({
+    table: z.enum(['commodity', 'charge_type', 'document_type', 'exception_code']),
+    recordId: z.uuid().optional(),
+    code: z
+      .string()
+      .trim()
+      .min(2, tv('minTwoChars'))
+      .max(40)
+      .regex(/^[A-Za-z0-9_-]+$/, tv('lettersDigitsHyphens')),
+    nameEn: z.string().trim().min(2, tv('required')).max(160),
+    nameAr: z.string().trim().min(1, tv('requiredArDocuments')).max(160),
+    category: optional(60),
+    defaultBasis: z
+      .enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'])
+      .optional(),
+    defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+    hsCode: optional(20),
+    revenueAccountCode: optional(30),
+    costAccountCode: optional(30),
+    isActive: z.coerce.boolean(),
+  })
 
-export async function saveReferenceRecord(
+export const saveReferenceRecord = refuseForbidden(async function saveReferenceRecord(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = referenceSchema.safeParse({
+  const parsed = await localeParse(referenceSchema(tv), {
     table: read(form, 'table'),
     recordId: read(form, 'recordId'),
     code: read(form, 'code') ?? '',
@@ -594,19 +892,21 @@ export async function saveReferenceRecord(
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That code is already used in this table.' }, echo(form))
+      return fail({ code: tv('codeInUseInTable') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/reference')
   return succeed(data.code)
-}
+})
 
 /** The roles a user can be given, for the invite form's select. */
 export async function listAssignableRoles(): Promise<{ id: string; key: string; name: string }[]> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  // The demo grants nothing, so it offers nothing to grant.
+  if (usePilotFixtures()) return []
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -634,6 +934,7 @@ export async function getUserGrants(principalId: string): Promise<{
 }> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  if (usePilotFixtures()) return { roleId: null, branchIds: [] }
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -654,15 +955,16 @@ export async function getUserGrants(principalId: string): Promise<{
 
 /* ---------------------------------------------------- notification wording */
 
-const templateSchema = z.object({
-  templateId: z.uuid().optional(),
-  eventKey: z.string().trim().min(3),
-  locale: z.enum(['en', 'ar']),
-  branchId: z.union([z.uuid(), z.literal('')]).optional(),
-  subject: optional(200),
-  body: z.string().trim().min(5, 'A template needs something to say').max(8000),
-  isActive: z.coerce.boolean(),
-})
+const templateSchema = (tv: Translate) =>
+  z.object({
+    templateId: z.uuid().optional(),
+    eventKey: z.string().trim().min(3),
+    locale: z.enum(['en', 'ar']),
+    branchId: z.union([z.uuid(), z.literal('')]).optional(),
+    subject: optional(200),
+    body: z.string().trim().min(5, tv('templateBody')).max(8000),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * Edit the wording a notification goes out in — FR-NT-03.
@@ -678,14 +980,17 @@ const templateSchema = z.object({
  * updates that branch's own copy and leaves the default alone, which is what
  * makes "Dubai says it differently" a row rather than a release.
  */
-export async function saveNotificationTemplate(
+export const saveNotificationTemplate = refuseForbidden(async function saveNotificationTemplate(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('adminValidation')
 
-  const parsed = templateSchema.safeParse({
+  const parsed = await localeParse(templateSchema(tv), {
     templateId: read(form, 'templateId'),
     eventKey: read(form, 'eventKey') ?? '',
     locale: read(form, 'locale') ?? 'en',
@@ -698,7 +1003,7 @@ export async function saveNotificationTemplate(
 
   const data = parsed.data
   const branchId = data.branchId ? data.branchId : null
-  if (branchId) assertInBranch(session, branchId)
+  if (branchId) assertCanIn(session, 'admin.reference.write', branchId)
 
   /*
     Merge fields, checked before the row is written.
@@ -719,7 +1024,7 @@ export async function saveNotificationTemplate(
   if (unknown.length > 0) {
     return fail(
       {
-        body: `This event does not supply ${unknown.map((f) => `{{${f}}}`).join(', ')}. It would send as blank.`,
+        body: tv('unknownMergeFields', { fields: unknown.map((f) => `{{${f}}}`).join(', ') }),
       },
       echo(form),
     )
@@ -767,7 +1072,7 @@ export async function saveNotificationTemplate(
 
   revalidatePath('/settings/notifications')
   return succeed(`${data.eventKey}:${data.locale}`)
-}
+})
 
 // --- which notifications send at all ---------------------------------------
 
@@ -806,6 +1111,7 @@ export async function saveNotificationTemplate(
 export async function saveNotificationSwitches(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   /*
     An unchecked checkbox posts nothing, so the switches are read as

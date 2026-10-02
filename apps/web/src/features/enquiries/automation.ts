@@ -8,6 +8,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { PILOT_RFQ_ENQUIRY } from '@/lib/pilot/fixtures'
 
 /**
  * What the automations have done to one enquiry, for the activity strip.
@@ -36,17 +37,35 @@ export async function enquiryAutomation(
   enquiryId: string,
 ): Promise<EnquiryAutomation> {
   if (usePilotFixtures()) {
-    // The demo enquiry, shown mid-automation: acknowledged, read, two RFQs out.
+    // Only the enquiry the model read has anything to show; the strip draws
+    // nothing for the rest, as it does for a hand-keyed enquiry on a database.
+    if (enquiryId !== PILOT_RFQ_ENQUIRY) {
+      return {
+        acknowledgedAt: null,
+        fieldsRead: 0,
+        fieldsPending: 0,
+        rateRequestsSent: 0,
+        rateRepliesIn: 0,
+      }
+    }
+    // The demo enquiry, shown mid-automation: acknowledged, read, RFQs out.
     return {
       acknowledgedAt: new Date(Date.now() - 1000 * 60 * 18),
       fieldsRead: 9,
       fieldsPending: 3,
+      // The four on its rate-request panel: two quotes and a decline back.
       rateRequestsSent: 4,
-      rateRepliesIn: 2,
+      rateRepliesIn: 3,
     }
   }
   if (!enquiryId) {
-    return { acknowledgedAt: null, fieldsRead: 0, fieldsPending: 0, rateRequestsSent: 0, rateRepliesIn: 0 }
+    return {
+      acknowledgedAt: null,
+      fieldsRead: 0,
+      fieldsPending: 0,
+      rateRequestsSent: 0,
+      rateRepliesIn: 0,
+    }
   }
 
   return withActor(actor, async (tx) => {

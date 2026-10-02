@@ -189,6 +189,16 @@ clicks, stopping one step short of the customer:
 - **Auto-draft** (`quoteAutoDraft`). A covered enquiry is priced against the
   customer's house margin and lands a **draft** quotation, covering note alongside.
   It never sends.
+- **Needs review.** Pricing marks a draft for review — frozen as
+  `priced_snapshot.review` and shown above the figures on the quotation — when,
+  compared per charge type against the buy side it was costed on, any charge
+  **sells below its cost**, or a charge is **sold with no buy cost at all**: a
+  service outside the scope the awarded rate quoted, like haulage on a
+  port-to-port award. The draft is still written as the coordinator's starting
+  point and the sweep counts it as `flagged`; nothing sends it. With no buy side
+  (a sell-card-only price a person chose) nothing is flagged. The rule is
+  `draftConcerns` in `core/margin.ts`; a live draft that sold a delivery order at
+  −48.1% under a healthy-looking headline is why it reads line by line.
 
 **The line.** A person is left only where one is owed — the ambiguous
 port/commodity, and the send to the customer. Everything between runs on a minute

@@ -7,21 +7,24 @@
  * settlement recorded before the agent has seen it, or a statement that keeps
  * changing until the money lands.
  *
- * Both are forms rather than links: a `GET` that claims a month's invoices
- * could be fired by a link preview in somebody's chat client.
+ * All three are confirmed dialogs posting forms rather than links: a `GET`
+ * that claims a month's invoices could be fired by a link preview in
+ * somebody's chat client, and a bare button could be fired by a stray click.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
+import { recordId } from '@/lib/ids'
 import { getSettlement } from '@/features/payables/queries'
-import { advanceSettlement } from '@/features/payables/form-actions'
+import { SettlementActions } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
-import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 
@@ -38,23 +41,36 @@ const DIRECTION_TONE: Record<string, Tone> = {
   square: 'muted',
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const settlement = await getSettlement(session.actor, recordId((await params).id))
+  const t = await getTranslations('settlements')
+  return { title: settlement?.reference ?? t('title') }
+}
+
 export default async function SettlementPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'payable.read')) notFound()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const id = recordId((await params).id)
 
-  const settlement = await getSettlement(session.actor, id)
+  const settlement = await getSettlement(session.actor, id, locale)
   if (!settlement) notFound()
 
   const [t, tc] = await Promise.all([getTranslations('settlements'), getTranslations('common')])
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string) =>
-    formatMoney({ amount: Number(amount), currency: settlement.currency }, locale)
-
-  const mayRun = can(session, 'settlement.run')
+    formatMoney({ amount: amount, currency: settlement.currency }, locale)
 
   return (
     <>
@@ -72,42 +88,33 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
         }
         title={settlement.reference}
         actions={
-          mayRun ? (
-            <span className="flex flex-wrap items-center gap-2">
-              {settlement.status === 'draft' ? (
-                <form action={advanceSettlement}>
-                  <input type="hidden" name="settlementId" value={id} />
-                  <input type="hidden" name="action" value="agree" />
-                  <Button type="submit" icon="check">
-                    {t('agree')}
-                  </Button>
-                </form>
-              ) : null}
-              {settlement.status === 'agreed' ? (
-                <form action={advanceSettlement}>
-                  <input type="hidden" name="settlementId" value={id} />
-                  <input type="hidden" name="action" value="settle" />
-                  <Button type="submit" icon="sealed">
-                    {t('markSettled')}
-                  </Button>
-                </form>
-              ) : null}
-            </span>
-          ) : null
+          <SettlementActions
+            settlementId={id}
+            status={settlement.status}
+            residual={money(settlement.residualAmount)}
+            direction={settlement.residualDirection}
+          />
         }
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @5xl:grid-cols-6">
             <Field label={tc('status')}>
               <Badge tone={STATUS_TONE[settlement.status] ?? 'muted'}>
                 {t(`statuses.${settlement.status}` as 'statuses.draft')}
               </Badge>
             </Field>
             <Field label={t('period')}>
-              {formatDate(settlement.periodFrom, locale, timeZone)} —{' '}
-              {formatDate(settlement.periodTo, locale, timeZone)}
+              {/* Each date isolated: unmarked, "30 سبتمبر 2026 — 01 أكتوبر 2026"
+                  reordered its digits across the dash in Arabic. */}
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodFrom, locale, timeZone)}
+              </bdi>{' '}
+              —{' '}
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodTo, locale, timeZone)}
+              </bdi>
             </Field>
             <Field label={t('theyOweUs')}>{money(settlement.receivableTotal)}</Field>
             <Field label={t('weOweThem')}>{money(settlement.payableTotal)}</Field>
@@ -128,7 +135,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
           </dl>
 
           {settlement.agreedAt ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-ink-muted">
               {t('agreedOn', { when: formatDateTime(settlement.agreedAt, locale, timeZone) })}
               {settlement.settledAt
                 ? ` · ${t('settledOn', { when: formatDateTime(settlement.settledAt, locale, timeZone) })}`
@@ -136,13 +143,13 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
             </p>
           ) : null}
           {settlement.voidReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-critical">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-critical">
               <span className="font-medium">{t('voided')}</span> {settlement.voidReason}
             </p>
           ) : null}
         </Card>
 
-        <Card className="lg:col-span-12" padding="none">
+        <Card className="@4xl:col-span-12" padding="none">
           <div className="p-5 pb-3">
             <CardHeader icon="invoices" eyebrow={t('documentsEyebrow')} title={t('documents')} />
           </div>
@@ -154,7 +161,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
               description={t('noDocumentsHint')}
             />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('side')}</TH>
@@ -177,7 +184,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                             ? `/invoices/${line.documentId}`
                             : `/payables/${line.documentId}`
                         }
-                        className="ref numeric hover:text-brand"
+                        className="ref numeric hover:text-accent"
                       >
                         {line.reference}
                       </Link>

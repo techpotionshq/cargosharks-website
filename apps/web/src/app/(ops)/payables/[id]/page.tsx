@@ -12,10 +12,12 @@
  * reason, and a bare button cannot collect either.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import { getSupplierInvoice } from '@/features/payables/queries'
 import { listMatchCandidates } from '@/features/costing/queries'
@@ -30,6 +32,7 @@ import { formatDate, formatMoney, trimDecimal } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
+import { MoreMenu } from '@/ui/menu'
 
 const STATUS_TONE: Record<string, Tone> = {
   received: 'info',
@@ -40,13 +43,30 @@ const STATUS_TONE: Record<string, Tone> = {
   void: 'muted',
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const bill = await getSupplierInvoice(session.actor, recordId((await params).id))
+  const t = await getTranslations('payables')
+  return { title: bill?.reference ?? t('title') }
+}
+
 export default async function SupplierInvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'payable.read')) notFound()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const id = recordId((await params).id)
 
-  const bill = await getSupplierInvoice(session.actor, id)
+  const bill = await getSupplierInvoice(session.actor, id, locale)
   if (!bill) notFound()
 
   const [candidateRows, t, tc] = await Promise.all([
@@ -58,21 +78,23 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
       twelve. Costs with no counterparty recorded stay in the list — those are
       exactly the ones most in need of matching.
     */
-    listMatchCandidates(session.actor, { partnerId: bill.partnerId }),
+    listMatchCandidates(session.actor, { partnerId: bill.partnerId }, locale),
     getTranslations('payables'),
     getTranslations('common'),
   ])
 
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
+    formatMoney({ amount: amount, currency }, locale)
 
+  /*
+    The shipment in the label as well as the group heading (QA P2-9): a
+    native picker shows only the chosen option's own text once closed, so
+    "Ocean Freight — US$150.00" alone did not say which of thirty jobs it was.
+  */
   const candidates: MatchCandidateOption[] = candidateRows.map((c) => ({
     id: c.id,
     group: c.jobReference,
-    label: `${c.chargeTypeName} — ${money(c.amount, c.currency)}${
+    label: `${c.jobReference} · ${c.chargeTypeName} — ${money(c.amount, c.currency)}${
       Number(c.matchedAmount) > 0 ? ` (${t('alreadyMatched')})` : ''
     }`,
   }))
@@ -95,42 +117,46 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
           </span>
         }
         title={bill.reference}
+        /*
+          Approve is the one primary; editing and disputing the bill sit
+          behind More, disputing as the destructive row it is.
+        */
         actions={
           <span className="flex flex-wrap items-center gap-2">
-            {editable && can(session, 'payable.record') ? (
-              <SupplierInvoiceDialog
-                variant="secondary"
-                defaults={{
-                  id: bill.id,
-                  branchId: bill.branchId,
-                  partnerId: bill.partnerId,
-                  reference: bill.reference,
-                  currency: bill.currency,
-                  fxRate: trimDecimal(bill.fxRate),
-                  invoiceDate: bill.invoiceDate,
-                  dueOn: bill.dueOn,
-                  taxAmount: trimDecimal(bill.taxAmount),
-                  notes: bill.notes,
-                }}
+            {editable ? (
+              <BillDecisionDialog
+                billId={bill.id}
+                action="approve"
+                needsReview={!bill.summary.clean}
               />
             ) : null}
-            {editable ? (
-              <>
-                <BillDecisionDialog billId={bill.id} action="dispute" />
-                <BillDecisionDialog
-                  billId={bill.id}
-                  action="approve"
-                  needsReview={!bill.summary.clean}
+            <MoreMenu label={tc('more')}>
+              {editable && can(session, 'payable.record') ? (
+                <SupplierInvoiceDialog
+                  variant="secondary"
+                  defaults={{
+                    id: bill.id,
+                    branchId: bill.branchId,
+                    partnerId: bill.partnerId,
+                    reference: bill.reference,
+                    currency: bill.currency,
+                    fxRate: trimDecimal(bill.fxRate),
+                    invoiceDate: bill.invoiceDate,
+                    dueOn: bill.dueOn,
+                    taxAmount: trimDecimal(bill.taxAmount),
+                    notes: bill.notes,
+                  }}
                 />
-              </>
-            ) : null}
+              ) : null}
+              {editable ? <BillDecisionDialog billId={bill.id} action="dispute" /> : null}
+            </MoreMenu>
           </span>
         }
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @5xl:grid-cols-6">
             <Field label={tc('status')}>
               <Badge tone={STATUS_TONE[bill.status] ?? 'muted'}>
                 {t(`statuses.${bill.status}` as 'statuses.received')}
@@ -156,19 +182,23 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
           </dl>
 
           {bill.varianceAcceptedReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-ink-muted">
               <span className="font-medium text-ink">{t('varianceAccepted')}</span>{' '}
               {bill.varianceAcceptedReason}
             </p>
           ) : null}
           {bill.disputeReason ? (
-            <p className="mt-4 border-t border-line pt-3 text-[0.8125rem] text-critical">
+            <p className="mt-4 border-t border-line pt-3 text-body-sm text-critical">
               <span className="font-medium">{t('disputed')}</span> {bill.disputeReason}
             </p>
           ) : null}
         </Card>
 
-        <SupplierInvoiceLinesCard className="lg:col-span-12" bill={bill} candidates={candidates} />
+        <SupplierInvoiceLinesCard
+          className="@4xl:col-span-12"
+          bill={bill}
+          candidates={candidates}
+        />
       </Grid>
     </>
   )

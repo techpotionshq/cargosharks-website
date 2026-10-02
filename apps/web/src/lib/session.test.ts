@@ -371,10 +371,14 @@ describe.skipIf(!enabled)('resolving a session', () => {
   })
 
   describe('the actor it hands on', () => {
-    /** Stamped into the audit trail, so the first hop is the one that counts. */
-    it('takes the client address from the front of the forwarded chain', async () => {
+    /**
+     * Stamped into the audit trail, so it must be the entry our own proxy
+     * wrote — not the leftmost, which the caller can type (A15,
+     * `lib/client-address.ts`). One trusted hop by default.
+     */
+    it('takes the client address our proxy appended, not the one the caller sent', async () => {
       present(await signedIn(PRINCIPAL))
-      harness.headers.set('x-forwarded-for', '203.0.113.9, 10.0.0.1, 10.0.0.2')
+      harness.headers.set('x-forwarded-for', '6.6.6.6, 203.0.113.9')
 
       expect((await getSession())?.actor.ip).toBe('203.0.113.9')
     })

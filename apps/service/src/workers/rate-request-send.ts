@@ -26,7 +26,7 @@
  * rule guards against cannot start here either.
  */
 
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import {
   enquiries,
   locations,
@@ -51,6 +51,20 @@ import { rfqSubjectTag } from './rfq-routing'
  */
 const SEND_BATCH = 200
 
+/**
+ * How many times a request is tried before the drain stops on it.
+ *
+ * With the backoff below, eight tries spread over about four hours: enough to
+ * ride out a relay outage or a contact added the same morning, few enough that
+ * a relay which accepts the mail and then times out — so every "failure" was
+ * in fact delivered — sends an agent eight copies rather than one a minute
+ * for ever. After the last, the row keeps `sent_at` null and its `send_error`,
+ * and a person chases it.
+ */
+export const MAX_SEND_ATTEMPTS = 8
+/** The wait after the n-th failed try is 2^n minutes, capped here. */
+const MAX_BACKOFF_MINUTES = 120
+
 export interface SendRateRequestsResult {
   readonly sent: number
   /** Requests with no agent contact on file — left for a person to chase. */
@@ -62,6 +76,14 @@ export interface SendRateRequestsResult {
 export interface SendRateRequestsDeps {
   /** Injected in tests; resolved from the deployment's SMTP settings otherwise. */
   readonly channel?: NotificationChannel
+  /**
+   * Where the log mail driver writes what it did not send (ai-21).
+   *
+   * This was a no-op, so under `MAIL_DRIVER=log` an RFQ was stamped sent and
+   * left no trace anywhere — the one driver whose whole job is to show what
+   * would have gone out showed nothing. The worker passes its logger.
+   */
+  readonly log?: (o: unknown, m: string) => void
 }
 
 /**
@@ -73,12 +95,16 @@ export interface SendRateRequestsDeps {
  * the seam that needs none, and stamping `sent_at` on a success is what stops
  * the next sweep re-sending. A minute's latency to an agent's inbox is nothing.
  */
-export async function sendRateRequests(deps: SendRateRequestsDeps = {}): Promise<SendRateRequestsResult> {
+export async function sendRateRequests(
+  deps: SendRateRequestsDeps = {},
+): Promise<SendRateRequestsResult> {
   const actor = systemActor()
   const rows = await loadPending(actor)
   if (rows.length === 0) return { sent: 0, skipped: 0, failed: 0 }
 
-  const channel = deps.channel ?? (await resolveEmailChannel(() => {}))
+  const channel =
+    deps.channel ??
+    (await resolveEmailChannel(deps.log ?? ((o, m) => console.info(m, JSON.stringify(o)))))
 
   let sent = 0
   let skipped = 0
@@ -87,6 +113,7 @@ export async function sendRateRequests(deps: SendRateRequestsDeps = {}): Promise
   for (const row of rows) {
     if (!row.contactEmail) {
       skipped += 1
+      await recordAttempt(actor, row.id, 'No agent contact with an email address is on file.')
       continue
     }
 
@@ -99,11 +126,15 @@ export async function sendRateRequests(deps: SendRateRequestsDeps = {}): Promise
 
     if (!result.accepted) {
       failed += 1
+      await recordAttempt(actor, row.id, result.error ?? 'The mail relay refused the message.')
       continue
     }
 
     await withActor(actor, async (tx: Tx) => {
-      await tx.update(rateRequests).set({ sentAt: new Date() }).where(eq(rateRequests.id, row.id))
+      await tx
+        .update(rateRequests)
+        .set({ sentAt: new Date(), sendError: null })
+        .where(eq(rateRequests.id, row.id))
     })
     sent += 1
   }
@@ -111,7 +142,35 @@ export async function sendRateRequests(deps: SendRateRequestsDeps = {}): Promise
   return { sent, skipped, failed }
 }
 
-interface SendRow {
+/**
+ * One more failed try, and why — what the backoff and the ceiling read.
+ *
+ * Best-effort in the sense that matters: a failure to record it costs one
+ * extra try a minute early, never a lost request.
+ */
+async function recordAttempt(
+  actor: ReturnType<typeof systemActor>,
+  id: string,
+  reason: string,
+): Promise<void> {
+  await withActor(actor, async (tx: Tx) => {
+    await tx
+      .update(rateRequests)
+      .set({
+        sendAttempts: sql`${rateRequests.sendAttempts} + 1`,
+        lastSendAttemptAt: new Date(),
+        sendError: reason.slice(0, 500),
+      })
+      .where(eq(rateRequests.id, id))
+  }).catch((error: unknown) => {
+    console.error(
+      { rateRequestId: id, error: error instanceof Error ? error.message : String(error) },
+      'rate request send: could not record the failed attempt',
+    )
+  })
+}
+
+export interface SendRow {
   readonly id: string
   readonly token: string
   readonly mode: string | null
@@ -123,6 +182,7 @@ interface SendRow {
   readonly grossWeightKg: string | null
   readonly volumeCbm: string | null
   readonly pieces: number | null
+  readonly containerCount: number | null
   readonly incoterm: string | null
   readonly reference: string | null
   readonly contactEmail: string | null
@@ -149,7 +209,28 @@ async function loadPending(actor: ReturnType<typeof systemActor>): Promise<SendR
         sourceRateCardId: rateRequests.sourceRateCardId,
       })
       .from(rateRequests)
-      .where(and(eq(rateRequests.status, 'sent'), isNull(rateRequests.sentAt)))
+      .where(
+        and(
+          eq(rateRequests.status, 'sent'),
+          isNull(rateRequests.sentAt),
+          lt(rateRequests.sendAttempts, MAX_SEND_ATTEMPTS),
+          /*
+            Due: never tried, or tried long enough ago. 2^attempts minutes,
+            capped — a row that failed once waits two minutes, one that failed
+            six times waits two hours.
+          */
+          or(
+            isNull(rateRequests.lastSendAttemptAt),
+            sql`${rateRequests.lastSendAttemptAt} <= now() - make_interval(mins => least(power(2, ${rateRequests.sendAttempts})::int, ${MAX_BACKOFF_MINUTES}))`,
+          ),
+        ),
+      )
+      /*
+        Untried first, then the longest-waiting, then the oldest. The query
+        had no order at all, so with more than a batch of unsendable rows the
+        same two hundred came back every minute and a new request never went.
+      */
+      .orderBy(sql`${rateRequests.lastSendAttemptAt} asc nulls first`, asc(rateRequests.createdAt))
       .limit(SEND_BATCH)
 
     const out: SendRow[] = []
@@ -175,6 +256,7 @@ async function loadPending(actor: ReturnType<typeof systemActor>): Promise<SendR
         grossWeightKg: enquiry?.grossWeightKg ?? null,
         volumeCbm: enquiry?.volumeCbm ?? null,
         pieces: enquiry?.pieces ?? null,
+        containerCount: enquiry?.containerCount ?? null,
         incoterm: enquiry?.incoterm ?? null,
         reference: enquiry?.reference ?? null,
         contactEmail: contact?.email ?? null,
@@ -195,6 +277,7 @@ async function enquiryFor(tx: Tx, enquiryId: string) {
       grossWeightKg: enquiries.grossWeightKg,
       volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
+      containerCount: enquiries.containerCount,
       incoterm: enquiries.incoterm,
       reference: enquiries.reference,
     })
@@ -217,6 +300,7 @@ async function enquiryFor(tx: Tx, enquiryId: string) {
     grossWeightKg: e.grossWeightKg,
     volumeCbm: e.volumeCbm,
     pieces: e.pieces,
+    containerCount: e.containerCount,
     incoterm: e.incoterm,
     reference: e.reference,
   }
@@ -249,6 +333,7 @@ async function cardLaneFor(tx: Tx, rateCardId: string) {
     grossWeightKg: null,
     volumeCbm: null,
     pieces: null,
+    containerCount: null,
     incoterm: null,
     reference: null,
   }
@@ -287,7 +372,9 @@ const MODE_LABEL: Record<string, string> = {
 }
 
 function laneText(row: SendRow): string {
-  const from = row.originName ? `${row.originName} (${row.originCode ?? '?'})` : (row.originCode ?? '?')
+  const from = row.originName
+    ? `${row.originName} (${row.originCode ?? '?'})`
+    : (row.originCode ?? '?')
   const to = row.destinationName
     ? `${row.destinationName} (${row.destinationCode ?? '?'})`
     : (row.destinationCode ?? '?')
@@ -295,7 +382,7 @@ function laneText(row: SendRow): string {
 }
 
 function rfqSubject(row: SendRow): string {
-  const mode = row.mode ? MODE_LABEL[row.mode] ?? row.mode : 'freight'
+  const mode = row.mode ? (MODE_LABEL[row.mode] ?? row.mode) : 'freight'
   return `Rate request ${rfqSubjectTag(row.token)} — ${laneText(row)} (${mode})`
 }
 
@@ -309,7 +396,7 @@ function rfqSubject(row: SendRow): string {
  * "reply keeping the subject" instruction: the token in the subject is how the
  * reply finds its way home.
  */
-function rfqBody(row: SendRow): string {
+export function rfqBody(row: SendRow): string {
   const lines: string[] = []
   lines.push(row.contactName ? `Dear ${row.contactName},` : 'Dear partner,')
   lines.push('')
@@ -317,11 +404,20 @@ function rfqBody(row: SendRow): string {
   lines.push('')
   lines.push(`  Lane:      ${laneText(row)}`)
   if (row.mode) lines.push(`  Mode:      ${MODE_LABEL[row.mode] ?? row.mode}`)
+  /*
+    The count an FCL rate is priced by (F72). Without it the RFQ gave lane,
+    date and weight and the agent had to write back to ask how many boxes —
+    the one figure every per-container charge multiplies. The enquiry holds a
+    count and no equipment type, so the type is the agent's to state.
+  */
+  if (row.mode === 'sea_fcl' && row.containerCount != null) {
+    lines.push(`  Containers: ${row.containerCount}`)
+  }
   if (row.readyOn) lines.push(`  Ready on:  ${row.readyOn}`)
   if (row.incoterm) lines.push(`  Incoterm:  ${row.incoterm}`)
   if (row.pieces != null) lines.push(`  Pieces:    ${row.pieces}`)
-  if (row.grossWeightKg) lines.push(`  Weight:    ${row.grossWeightKg} kg`)
-  if (row.volumeCbm) lines.push(`  Volume:    ${row.volumeCbm} cbm`)
+  if (row.grossWeightKg) lines.push(`  Weight:    ${quantity(row.grossWeightKg)} kg`)
+  if (row.volumeCbm) lines.push(`  Volume:    ${quantity(row.volumeCbm)} cbm`)
   lines.push('')
   lines.push('Kindly reply to this email, keeping the subject line, with your charges,')
   lines.push('currency, and how long the rate is valid. Please break the charges out')
@@ -329,4 +425,23 @@ function rfqBody(row: SendRow): string {
   lines.push('')
   lines.push('Thank you.')
   return lines.join('\n')
+}
+
+/**
+ * A `numeric` quantity as a person writes it: "12500.000000" → "12,500",
+ * "1.200000" → "1.2" (F71).
+ *
+ * The column's six decimal places reached the agent verbatim. Done on the
+ * string, not through `Number`, so a large or precise figure is never
+ * rounded on its way into an email — the digits that print are the digits
+ * stored, minus trailing zeros, with the thousands grouped.
+ */
+export function quantity(value: string): string {
+  const trimmed = value.trim()
+  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(trimmed)
+  if (!match) return trimmed
+  const [, sign, whole, fraction = ''] = match
+  const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const decimals = fraction.replace(/0+$/, '')
+  return `${sign}${grouped}${decimals ? `.${decimals}` : ''}`
 }

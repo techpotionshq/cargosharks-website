@@ -70,6 +70,21 @@ const schema = z.object({
    * route reaching this prefix.
    */
   INTERNAL_API_TRUST_PROXY: z.coerce.boolean().default(false),
+  /**
+   * How many proxies in front of this process append to `X-Forwarded-For` —
+   * A15. The web app reads the same variable (`lib/client-address.ts`).
+   *
+   * Handed to Fastify's `trustProxy` as a hop count, which takes the client to
+   * be that many entries from the right. `true` — what this was — takes the
+   * leftmost, which is whatever the caller typed, so the rate limit keyed on
+   * it could be dodged by changing a header per request.
+   *
+   * 1 is the shipped topology. Traefik appends the client and the web
+   * container's `service-proxy.ts` forwards the header as it arrived, so from
+   * here the socket is the web container and the rightmost entry is the one
+   * Traefik wrote.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
 
   /*
     Inbound mail — FR-EQ-02, the other direction.

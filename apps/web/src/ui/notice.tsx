@@ -48,14 +48,26 @@ export function Notice({
   readonly className?: string
 }) {
   return (
-    <p
+    <div
+      /*
+        A live region with the right urgency, and a `div` so it may hold more
+        than a phrase.
+
+        It was a bare `<p>`: nothing announced it, so a refusal that arrived
+        after a click — "this lane has no rate card" — was silent to anyone
+        not looking at that strip, and a notice wrapping a list was invalid
+        markup. Critical interrupts (`alert`); everything else waits its turn
+        (`status`), because a page that opens with three alerts has taught its
+        reader to ignore them.
+      */
+      role={tone === 'critical' ? 'alert' : 'status'}
       /*
         `items-start`, not `items-center`: a refusal is often two lines long,
         and a centred glyph beside wrapped text floats in the middle of the
         block instead of marking where it begins.
       */
       className={[
-        'flex items-start gap-2 rounded-card border px-4 py-3 text-[0.875rem]',
+        'flex items-start gap-2 rounded-card border px-4 py-3 text-body',
         TONE_CLASS[tone],
         className,
       ]
@@ -63,7 +75,9 @@ export function Notice({
         .join(' ')}
     >
       <Icon name={icon ?? TONE_ICON[tone]} size={16} className="mt-0.5 shrink-0" />
-      <span className="min-w-0">{children}</span>
-    </p>
+      {/* `break-words`: an error code or an address with no spaces in it
+          pushed the integrations screen 63px past a phone's edge. */}
+      <div className="min-w-0 break-words">{children}</div>
+    </div>
   )
 }

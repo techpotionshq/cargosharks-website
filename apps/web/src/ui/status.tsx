@@ -22,7 +22,14 @@ const PILL_CLASS: Record<Tone, string> = {
   critical: 'bg-critical-soft text-critical ring-critical/30',
   info: 'bg-info-soft text-info ring-info/25',
   muted: 'bg-muted-soft text-ink-muted ring-line',
-  brand: 'bg-brand-soft text-brand-soft-ink ring-brand/20',
+  /*
+    The accent, despite the name. `brand` is the tone for "new" and
+    "approved" — states that want to be noticed and are not problems — and in
+    the brand red they were the same pill as `lost` and `credited` beside
+    them. The name stays because it is the *role* (the house highlight); the
+    colour is whichever ramp can carry that role without reading as alarm.
+  */
+  brand: 'bg-accent-soft text-accent ring-accent/20',
 }
 
 const DOT_CLASS: Record<Tone, string> = {
@@ -31,7 +38,7 @@ const DOT_CLASS: Record<Tone, string> = {
   critical: 'bg-critical',
   info: 'bg-info',
   muted: 'bg-muted',
-  brand: 'bg-brand',
+  brand: 'bg-accent',
 }
 
 export interface BadgeProps {
@@ -46,16 +53,26 @@ export interface BadgeProps {
 export function Badge({ children, tone = 'muted', icon, dot = false, className }: BadgeProps) {
   return (
     <span
+      // A hook for `TD`, which lets a pill wrap on a phone — see table.tsx.
+      data-badge=""
+      /*
+        …except a short one. "غير نشط" wrapped a word per line inside its own
+        outline; a label of a couple of words is never what pushed a row off
+        a phone, a sentence-length one ("Standing until 23 Oct 2026") is.
+      */
+      data-short={typeof children === 'string' && children.length <= 16 ? '' : undefined}
       className={[
-        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.75rem] font-medium ring-1 ring-inset whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium ring-1 ring-inset whitespace-nowrap',
         PILL_CLASS[tone],
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      {dot ? <span className={`size-1.5 rounded-full ${DOT_CLASS[tone]}`} /> : null}
-      {icon ? <Icon name={icon} size={13} strokeWidth={2} /> : null}
+      {dot ? (
+        <span data-dot="" className={`size-1.5 shrink-0 rounded-full ${DOT_CLASS[tone]}`} />
+      ) : null}
+      {icon ? <Icon name={icon} size={13} strokeWidth={2} className="shrink-0" /> : null}
       {children}
     </span>
   )
@@ -79,8 +96,10 @@ export function enquiryTone(status: string): Tone {
   switch (status) {
     case 'won':
       return 'positive'
+    // Arrived and untouched: news, not trouble. It was `brand`, which for a
+    // red brand put every fresh enquiry in the colour of a lost one.
     case 'new':
-      return 'brand'
+      return 'info'
     case 'assigned':
     case 'rating':
       return 'caution'
@@ -179,8 +198,10 @@ export function invoiceTone(status: string): Tone {
       return 'brand'
     case 'part_paid':
       return 'caution'
+    // Replaced by a credit note — finished business, not a fault. Red here
+    // made every credited invoice look like an overdue one.
     case 'credited':
-      return 'critical'
+      return 'muted'
     default:
       return 'muted'
   }

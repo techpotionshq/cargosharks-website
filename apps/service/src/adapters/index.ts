@@ -55,8 +55,9 @@ import { eq } from 'drizzle-orm'
 import { hasSecretKey, mailboxes, openSecret, systemActor, withActor } from '@qabandi/db'
 import type { InboundMailSource, NotificationChannel } from '../ports/index'
 import { integration, noteIntegrationResult, type LiveIntegration } from '../settings'
+import { config } from '../config'
 import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
-import { imapSource } from './imap'
+import { imapSource, type UidCursorStore } from './imap'
 import {
   CARRIER_SETTINGS_KEYS,
   manualCarrierTracking,
@@ -68,10 +69,20 @@ import { noTransmit, resolveEInvoiceTransmit } from './einvoice'
 import { resolveFileStore, unavailableFileStore } from './file-store'
 import { manualFxSource, resolveFxSource } from './fx'
 import { modelProviderFrom, noModel } from './model'
+import { KAPSO_DEFAULT_BASE_URL } from './whatsapp'
 
 export { sendMail } from './smtp'
 export { inAppChannel } from './in-app'
-export { kapsoChannel, resolveWhatsAppChannel, KAPSO_DEFAULT_BASE_URL } from './whatsapp'
+export {
+  kapsoChannel,
+  kapsoMediaSource,
+  resolveWhatsAppChannel,
+  resolveWhatsAppMedia,
+  KAPSO_DEFAULT_BASE_URL,
+  WHATSAPP_MEDIA_MAX_BYTES,
+  type WhatsAppMediaRef,
+  type WhatsAppMediaSource,
+} from './whatsapp'
 
 /**
  * A resolver that must not be able to take the deployment down.
@@ -246,7 +257,7 @@ async function eInvoiceTransmit(log?: (o: unknown, m: string) => void): Promise<
  */
 export async function modelProvider(log?: (o: unknown, m: string) => void): Promise<ModelProvider> {
   const settings = await integration('ai')
-  return safely('ai', noModel, () => modelProviderFrom(settings), log)
+  return safely('ai', noModel, () => modelProviderFrom(settings, config.WEB_URL), log)
 }
 
 /**
@@ -317,6 +328,7 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
       */
       batch: row.pollBatch,
       maxAttachmentBytes: row.maxAttachmentMb * 1024 * 1024,
+      cursor: mailboxCursor(row.id),
     })
 
     /*
@@ -347,6 +359,43 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
   }
 
   return sources
+}
+
+/**
+ * The poll's position in one mailbox, kept on its row — see `UidCursor`.
+ *
+ * Read fresh on every poll rather than carried in memory, so a restart, a
+ * second instance or a folder changed on the settings screen all start from
+ * what the database says.
+ */
+function mailboxCursor(id: string): UidCursorStore {
+  return {
+    async load() {
+      const [row] = await withActor(systemActor(), (tx) =>
+        tx
+          .select({ uidCursor: mailboxes.uidCursor })
+          .from(mailboxes)
+          .where(eq(mailboxes.id, id))
+          .limit(1),
+      )
+      return row?.uidCursor ?? null
+    },
+    async save(cursor) {
+      await withActor(systemActor(), async (tx) => {
+        await tx
+          .update(mailboxes)
+          .set({
+            uidCursor: {
+              folder: cursor.folder,
+              uidValidity: cursor.uidValidity,
+              uidNext: cursor.uidNext,
+              pending: { ...cursor.pending },
+            },
+          })
+          .where(eq(mailboxes.id, id))
+      })
+    },
+  }
 }
 
 /** Records why a mailbox produced nothing, for the settings screen to show. */
@@ -430,13 +479,14 @@ export async function describeAdapters(): Promise<Record<string, string>> {
     resolver here falls back to the environment — so this cannot be the thing
     that prevents a service from starting and saying why.
   */
-  const [mail, fx, carrier, einvoice, model, store] = await Promise.all([
+  const [mail, fx, carrier, einvoice, model, store, whatsapp] = await Promise.all([
     integration('smtp'),
     fxSource(),
     carrierTracking(),
     eInvoiceTransmit(),
     modelProvider(),
     fileStore(),
+    integration('whatsapp'),
   ])
 
   return {
@@ -482,5 +532,16 @@ export async function describeAdapters(): Promise<Record<string, string>> {
       expensive surprise if it was not the intended one.
     */
     model: model.key,
+    /*
+      Missing until ai-22: a deployment replying to customers on WhatsApp had
+      no line saying so, and "kapso, no key" — every acknowledgement silently
+      skipped — looked exactly like WhatsApp being off by choice.
+    */
+    whatsapp:
+      whatsapp.driver !== 'kapso'
+        ? 'off'
+        : whatsapp.secret('kapsoApiKey')
+          ? `kapso ${whatsapp.text('baseUrl') || KAPSO_DEFAULT_BASE_URL}`
+          : 'kapso — no API key, nothing will be sent',
   }
 }

@@ -26,18 +26,23 @@
  */
 
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { INTEGRATION_GROUPS } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { integrationKeyProblem, listIntegrations } from '@/features/admin/integrations'
+import { SECRET_KEY_COMMAND } from '@qabandi/db'
 import { IntegrationDialog, ToggleIntegrationButton } from '@/features/admin/ui/integration-dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDateTime } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
+import { Notice } from '@/ui/notice'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { Breakable } from '@/ui/breakable'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('integrations')
@@ -57,17 +62,25 @@ export default async function IntegrationsPage() {
   */
   if (!can(session, 'admin.integrations.write')) notFound()
 
-  const [integrations, keyProblem, t, tc] = await Promise.all([
+  const [integrations, keyProblem, t, tc, tv] = await Promise.all([
     listIntegrations(),
     integrationKeyProblem(),
     getTranslations('integrations'),
     getTranslations('common'),
+    getTranslations('adminValidation'),
   ])
 
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const failing = integrations.filter((row) => row.lastError).length
+
+  // The reason in the reader's language, for the banner and for each dialog.
+  const keyProblemText = keyProblem
+    ? keyProblem.reason === 'missing'
+      ? tv('keyMissing')
+      : tv('keyWrongLength', { bytes: keyProblem.bytes, expected: keyProblem.expected })
+    : null
 
   return (
     <>
@@ -83,13 +96,34 @@ export default async function IntegrationsPage() {
         carries the byte count and the command that generates a valid key.
       */}
       {keyProblem ? (
-        <div className="mb-5 rounded-sm border border-critical/30 bg-critical-soft p-3">
-          <p className="text-[0.8125rem] font-medium text-ink">{t('noKeyBanner')}</p>
-          <p className="mt-1 whitespace-pre-line text-[0.8125rem] text-ink-muted">{keyProblem}</p>
+        /*
+          The reason from the catalogue and the command on a line of its own
+          (U1, U2). This printed `secrets.ts`'s English message whole, command
+          included, so the Arabic page carried a paragraph of English and the
+          one long unbreakable line pushed the page 63px past a phone's width.
+          The command scrolls inside its own box; the page does not.
+        */
+        <div className="mb-5 min-w-0 rounded-sm border border-critical/30 bg-critical-soft p-3">
+          <p className="text-body-sm font-medium text-ink">{t('noKeyBanner')}</p>
+          <p className="mt-1 text-body-sm text-ink-muted">{keyProblemText}</p>
+          <p className="mt-2 text-caption text-ink-muted">{t('keyCommand')}</p>
+          <pre
+            dir="ltr"
+            className="ref mt-1 max-w-full overflow-x-auto rounded-sm bg-surface p-2 text-caption text-ink"
+          >
+            {SECRET_KEY_COMMAND}
+          </pre>
         </div>
       ) : null}
 
-      {failing > 0 ? <p className="mb-4 text-sm text-muted">{t('failingHint')}</p> : null}
+      {/* The demo says what it is, where a real instance would show its key status. */}
+      {usePilotFixtures() ? (
+        <Notice tone="info" className="mb-5">
+          {t('demoNote')}
+        </Notice>
+      ) : null}
+
+      {failing > 0 ? <p className="mb-4 text-body text-muted">{t('failingHint')}</p> : null}
 
       <div className="space-y-8">
         {INTEGRATION_GROUPS.map((group) => {
@@ -108,12 +142,24 @@ export default async function IntegrationsPage() {
                 them is looking inside one of four short lists rather than
                 scanning all twelve.
               */}
-              <h2 className="mb-1 text-[0.8125rem] font-semibold tracking-wide text-ink uppercase">
+              <h2 className="mb-1 text-body-sm font-semibold tracking-wide text-ink uppercase">
                 {t(`groups.${group}` as 'groups.platform')}
               </h2>
-              <p className="mb-3 text-[0.8125rem] text-ink-muted">
+              <p className="mb-3 text-body-sm text-ink-muted">
                 {t(`groupHints.${group}` as 'groupHints.platform')}
               </p>
+              {/*
+                The intake agent is configured per branch, so it cannot be a card
+                on this deployment-wide screen; it is where somebody looking at
+                the automations will look for it, so the way there is here.
+              */}
+              {group === 'intelligence' && can(session, 'admin.mailboxes.write') ? (
+                <p className="mb-3 text-body-sm">
+                  <Link href="/settings/intake-agent" className="text-accent hover:underline">
+                    {t('intakeAgentLink')}
+                  </Link>
+                </p>
+              ) : null}
 
               <div className="space-y-4">
                 {inGroup.map((integration) => {
@@ -154,11 +200,11 @@ export default async function IntegrationsPage() {
                         title={name}
                         description={t(`descriptions.${integration.key}` as 'descriptions.smtp')}
                         actions={
-                          <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                             <Badge tone={status.tone}>{status.label}</Badge>
                             <IntegrationDialog
                               integration={integration}
-                              keyProblem={keyProblem}
+                              keyProblem={keyProblemText}
                               variant="secondary"
                             />
                             {integration.hasRow ? (
@@ -182,7 +228,7 @@ export default async function IntegrationsPage() {
                         {integration.live ? (
                           <Grid className="gap-y-3">
                             {driverLabel ? (
-                              <Field label={t('driver')} className="lg:col-span-3">
+                              <Field label={t('driver')} className="@4xl:col-span-3">
                                 {driverLabel}
                               </Field>
                             ) : null}
@@ -193,11 +239,26 @@ export default async function IntegrationsPage() {
                                 label={t(
                                   `fields.${integration.key}.${field.name}` as 'fields.smtp.host',
                                 )}
-                                className="lg:col-span-3"
+                                className="@4xl:col-span-3"
                               >
                                 <span className="flex flex-wrap items-baseline gap-1.5">
-                                  <span className={field.value ? '' : 'text-muted'}>
-                                    {field.value ?? '—'}
+                                  {/* A switch stored as text reads as a word, not "true". */}
+                                  {/*
+                                    An address breaks at its seams rather than
+                                    being cut off at the field's edge with no
+                                    ellipsis, which is how a provider URL read
+                                    at 1440.
+                                  */}
+                                  <span className={`min-w-0 ${field.value ? '' : 'text-muted'}`}>
+                                    {field.value === 'true' ? (
+                                      tc('yes')
+                                    ) : field.value === 'false' ? (
+                                      tc('no')
+                                    ) : field.value && /^[a-z]+:\/\/|@/.test(field.value) ? (
+                                      <Breakable text={field.value} />
+                                    ) : (
+                                      (field.value ?? '—')
+                                    )}
                                   </span>
                                   {/*
                                     Which layer answered, per field rather than
@@ -212,7 +273,7 @@ export default async function IntegrationsPage() {
                                     reads.
                                   */}
                                   {field.source === 'env' ? (
-                                    <span className="text-[0.6875rem] text-ink-subtle">
+                                    <span className="text-micro text-ink-subtle">
                                       {t('sourceEnv')}
                                     </span>
                                   ) : null}
@@ -226,7 +287,7 @@ export default async function IntegrationsPage() {
                                 label={t(
                                   `secrets.${integration.key}.${secret.name}` as 'secrets.smtp.password',
                                 )}
-                                className="lg:col-span-3"
+                                className="@4xl:col-span-3"
                               >
                                 {/* Whether it is set, never what it is. */}
                                 <Badge tone={secret.isSet ? 'positive' : 'muted'}>
@@ -236,17 +297,17 @@ export default async function IntegrationsPage() {
                             ))}
 
                             {integration.callsPerHour !== null ? (
-                              <Field label={t('callsPerHour')} className="lg:col-span-3">
+                              <Field label={t('callsPerHour')} className="@4xl:col-span-3">
                                 <span className="numeric">{integration.callsPerHour}</span>
                               </Field>
                             ) : integration.key === 'carrierPoll' ? (
-                              <Field label={t('callsPerHour')} className="lg:col-span-3">
+                              <Field label={t('callsPerHour')} className="@4xl:col-span-3">
                                 <span className="text-muted">{t('callsUnknown')}</span>
                               </Field>
                             ) : null}
 
                             {integration.lastOkAt ? (
-                              <Field label={t('lastOk')} className="lg:col-span-3">
+                              <Field label={t('lastOk')} className="@4xl:col-span-3">
                                 {formatDateTime(integration.lastOkAt, locale, timeZone)}
                               </Field>
                             ) : null}
@@ -263,7 +324,7 @@ export default async function IntegrationsPage() {
                             worth showing, and it is the fact that explains the
                             emptiness.
                           */
-                          <p className="text-[0.8125rem] text-ink-muted">
+                          <p className="text-body-sm text-ink-muted">
                             {driverLabel
                               ? t('offHint', { driver: driverLabel })
                               : t('offHintPlain')}
@@ -271,7 +332,7 @@ export default async function IntegrationsPage() {
                         )}
 
                         {integration.missing.length > 0 && !integration.lastError ? (
-                          <p className="mt-3 text-[0.8125rem] text-ink-muted">
+                          <p className="mt-3 text-body-sm text-ink-muted">
                             {t('missingHint', { fields: integration.missing.join(', ') })}
                           </p>
                         ) : null}
@@ -285,9 +346,7 @@ export default async function IntegrationsPage() {
                             support ticket instead. The text is the provider's,
                             so it is rendered as data — never as markup.
                           */
-                          <p className="mt-3 text-[0.8125rem] text-critical">
-                            {integration.lastError}
-                          </p>
+                          <p className="mt-3 text-body-sm text-critical">{integration.lastError}</p>
                         ) : null}
                       </div>
                     </Card>

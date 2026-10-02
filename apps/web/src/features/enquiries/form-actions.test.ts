@@ -36,8 +36,23 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { aiInvocations, enquiries, extractionProposals, notificationOutbox, withActor } =
-  await import('@qabandi/db')
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const {
+  aiInvocations,
+  enquiries,
+  extractionProposals,
+  notificationOutbox,
+  rateRequests,
+  withActor,
+} = await import('@qabandi/db')
 
 const {
   AWAY_BRANCH,
@@ -45,6 +60,7 @@ const {
   DESTINATION,
   HOME_BRANCH,
   ORIGIN,
+  PARTNER,
   PRINCIPAL,
   bothBranchesActor,
   world,
@@ -55,7 +71,10 @@ const {
   assignEnquiryAction,
   respondEnquiryAction,
   closeEnquiryAction,
+  advanceEnquiry,
+  acceptProposal,
   acceptAllProposals,
+  setEnquiryContainerCount,
 } = await import('./form-actions')
 
 const session = {
@@ -231,6 +250,12 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(state.errors?.destinationId).toBeDefined()
     })
 
+    /** U6. "1e3" was answered with "not a floating-point number", in English. */
+    it('refuses an exponent as a weight, in the catalogue’s words', async () => {
+      const state = await submitEnquiry({}, enquiryForm({ grossWeightKg: '1e3' }))
+      expect(state.errors?.grossWeightKg).toBe('enquiriesValidation.weightAmount')
+    })
+
     it('accepts a lane with two different ends', async () => {
       const state = await submitEnquiry(
         {},
@@ -263,6 +288,128 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(row!.dangerous).toBe(true)
     })
 
+    /*
+      Sea FCL is priced per container and refuses without a count. An enquiry
+      that arrived by email or WhatsApp has no other way to get one than this
+      field on its page.
+    */
+    it('records a container count set on the enquiry page', async () => {
+      const raised = await raise()
+      const count = async () =>
+        (
+          await withActor(bothBranchesActor, (tx) =>
+            tx
+              .select({ n: enquiries.containerCount })
+              .from(enquiries)
+              .where(eq(enquiries.id, raised.id)),
+          )
+        )[0]!.n
+
+      const state = await setEnquiryContainerCount(
+        {},
+        form({ enquiryId: raised.id, containerCount: '3' }),
+      )
+      expect(state.errors).toBeUndefined()
+      expect(await count()).toBe(3)
+
+      for (const bad of ['0', '2.5', 'two', '']) {
+        const refused = await setEnquiryContainerCount(
+          {},
+          form({ enquiryId: raised.id, containerCount: bad }),
+        )
+        expect(refused.errors?.containerCount).toBe('enquiriesValidation.containerCountWhole')
+      }
+      expect(await count()).toBe(3)
+    })
+
+    /** The form is only shown on an open sea FCL enquiry; the action agrees (R6). */
+    it('refuses a container count on an enquiry that is not sea FCL', async () => {
+      const raised = await raise({ mode: 'air' })
+
+      const state = await setEnquiryContainerCount(
+        {},
+        form({ enquiryId: raised.id, containerCount: '2' }),
+      )
+
+      expect(state.message).toBe('enquiriesValidation.containerCountNotHere')
+    })
+
+    it('refuses a count past the ceiling the other paths keep', async () => {
+      const state = await submitEnquiry({}, enquiryForm({ containerCount: '3000000000' }))
+      expect(state.errors?.containerCount).toBe('enquiriesValidation.containerCountWhole')
+    })
+
+    /**
+     * A reply read before the count was entered had every per-container line
+     * unpriced, and stayed "partial" — unranked — after the count was set (R1).
+     * Setting the count re-prices it from the lines it stored.
+     */
+    it('re-prices the replies already read when the count is entered', async () => {
+      const raised = await raise()
+      const token = `r1-${Date.now().toString(36)}`
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId: raised.id,
+          partnerId: PARTNER,
+          status: 'parsed',
+          token,
+          quotedTotal: '60',
+          quotedCurrency: 'USD',
+          response: {
+            ok: true,
+            unpriced: 1,
+            rows: [
+              {
+                mode: 'sea_fcl',
+                originCode: 'KWFX1',
+                destinationCode: 'AEFX1',
+                currency: 'USD',
+                validFrom: '2035-01-01',
+                validTo: null,
+                chargeCode: 'ocean_freight',
+                basis: 'per_container',
+                rate: '1850',
+                minimum: null,
+                maximum: null,
+                containerType: null,
+                transitDays: null,
+                notes: null,
+              },
+              {
+                mode: 'sea_fcl',
+                originCode: 'KWFX1',
+                destinationCode: 'AEFX1',
+                currency: 'USD',
+                validFrom: '2035-01-01',
+                validTo: null,
+                chargeCode: 'documentation',
+                basis: 'flat',
+                rate: '60',
+                minimum: null,
+                maximum: null,
+                containerType: null,
+                transitDays: null,
+                notes: null,
+              },
+            ],
+          },
+        }),
+      )
+
+      await setEnquiryContainerCount({}, form({ enquiryId: raised.id, containerCount: '2' }))
+
+      const [stored] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ total: rateRequests.quotedTotal, response: rateRequests.response })
+          .from(rateRequests)
+          .where(eq(rateRequests.token, token)),
+      )
+      // 2 × 1,850 + 60 — was the 60 flat fee alone.
+      expect(stored!.total).toBe('3760.000000')
+      expect(stored!.response).toMatchObject({ unpriced: 0, partial: 0 })
+    })
+
     /** An unchecked box arrives absent, not as `false` — the usual HTML trap. */
     it('reads an absent dangerous-goods box as not dangerous', async () => {
       const row = await raise()
@@ -278,7 +425,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     it('refuses a branch the desk does not hold', async () => {
       await expect(
         submitEnquiry({}, enquiryForm({ branchId: '00000000-0000-7000-8000-0000000000fb' })),
-      ).rejects.toThrow('branch:')
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {
@@ -398,16 +545,31 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
 
     /**
      * `won` is only reachable from `quoted` — a customer cannot accept a price
-     * nobody sent them. The machine refuses it and the action lets that throw
-     * rather than dressing a broken screen up as a field error.
+     * nobody sent them. The machine refuses it, and the action says so against
+     * the field (S1): thrown, it reached the error page, which production
+     * redacts to "something went wrong".
      */
-    it('refuses a win on an enquiry nobody has quoted', async () => {
+    it('refuses a win on an enquiry nobody has quoted, with a sentence', async () => {
       const row = await raise()
       await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
 
-      await expect(
-        closeEnquiryAction({}, form({ enquiryId: row.id, outcome: 'won' })),
-      ).rejects.toThrow()
+      const state = await closeEnquiryAction({}, form({ enquiryId: row.id, outcome: 'won' }))
+
+      expect(state.errors?.outcome).toBe('enquiriesValidation.wonNeedsQuoted')
+      expect((await readEnquiry(row.id)).status).toBe('assigned')
+    })
+
+    /** `new → lost` is not a move the machine has; it crashed the same way (S1). */
+    it('refuses to close a new enquiry as lost, with a sentence', async () => {
+      const row = await raise()
+
+      const state = await closeEnquiryAction(
+        {},
+        form({ enquiryId: row.id, outcome: 'lost', reason: 'Went elsewhere' }),
+      )
+
+      expect(state.errors?.outcome).toBe('enquiriesValidation.lostNotYet')
+      expect((await readEnquiry(row.id)).status).toBe('new')
     })
 
     it('records a win once the price has been quoted', async () => {
@@ -423,6 +585,64 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(after.status).toBe('won')
       // Nothing was lost, so there is nothing to explain.
       expect(after.lostReason).toBeNull()
+    })
+  })
+
+  /**
+   * Back to rating — reached from two states, on two different keys.
+   *
+   * `entryPermission` cannot answer "what does reaching rating need" because
+   * the answer depends on where from, and asking it anyway made "Start rating"
+   * a 500 for everyone (QA P1-1). The transition taken decides.
+   */
+  describe('starting to price it', () => {
+    const toQuoted = (id: string) =>
+      withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.update(enquiries).set({ status: 'quoted' }).where(eq(enquiries.id, id)),
+      )
+
+    it('starts rating an assigned enquiry on enquiry.rate', async () => {
+      const row = await raise()
+      await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
+
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+
+      expect(state.message).toBeUndefined()
+      expect(state.ok).toBeDefined()
+      expect((await readEnquiry(row.id)).status).toBe('rating')
+    })
+
+    it('refuses to reopen a quoted enquiry without quote.revise, with a sentence', async () => {
+      const row = await raise()
+      await toQuoted(row.id)
+
+      // enquiry.rate is held, and it is not the key for this move.
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+
+      expect(state.message).toBe('enquiriesValidation.notPermitted')
+      expect((await readEnquiry(row.id)).status).toBe('quoted')
+    })
+
+    it('reopens a quoted enquiry for revision on quote.revise', async () => {
+      const row = await raise()
+      await toQuoted(row.id)
+      harness.session = {
+        ...session,
+        permissions: new Set(['enquiry.assign', 'quote.revise']),
+      }
+      try {
+        const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+        expect(state.ok).toBeDefined()
+      } finally {
+        harness.session = session
+      }
+      expect((await readEnquiry(row.id)).status).toBe('rating')
+    })
+
+    it('refuses rating from new, which the machine does not allow', async () => {
+      const row = await raise()
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+      expect(state.message).toBe('enquiriesValidation.illegalTransition')
     })
   })
 
@@ -455,7 +675,10 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       })
     })
 
-    async function propose(enquiryId: string, entries: readonly { field: string; value: string }[]) {
+    async function propose(
+      enquiryId: string,
+      entries: readonly { field: string; value: string }[],
+    ) {
       await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
         for (const entry of entries) {
           await tx.insert(extractionProposals).values({
@@ -478,6 +701,7 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
           .select({
             incoterm: enquiries.incoterm,
             pieces: enquiries.pieces,
+            containerCount: enquiries.containerCount,
             grossWeightKg: enquiries.grossWeightKg,
           })
           .from(enquiries)
@@ -534,6 +758,30 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(fields.pieces).toBe(5)
     })
 
+    /**
+     * A dangerous-goods flag a person set is not cleared by a model reading
+     * "not dangerous" (S20) — the column was never read, so it always looked
+     * empty. An unset flag can still be raised.
+     */
+    it('never clears a dangerous-goods flag a person set, but can raise one', async () => {
+      const flagged = await raise({ isDangerous: 'on' })
+      await propose(flagged.id, [{ field: 'isDangerous', value: 'false' }])
+      const plain = await raise()
+      await propose(plain.id, [{ field: 'isDangerous', value: 'true' }])
+
+      await acceptAllProposals({}, form({ enquiryId: flagged.id }))
+      await acceptAllProposals({}, form({ enquiryId: plain.id }))
+
+      const dangerous = async (id: string) =>
+        (
+          await withActor(bothBranchesActor, (tx) =>
+            tx.select({ d: enquiries.isDangerous }).from(enquiries).where(eq(enquiries.id, id)),
+          )
+        )[0]!.d
+      expect(await dangerous(flagged.id)).toBe(true)
+      expect(await dangerous(plain.id)).toBe(true)
+    })
+
     /** A suggestion that will not resolve is skipped, not fatal to the rest. */
     it('skips an unresolvable suggestion and applies the others', async () => {
       const row = await raise()
@@ -548,6 +796,48 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect((await fieldsOf(row.id)).pieces).toBe(7)
     })
 
+    /**
+     * F50: a container count the model read lands in `container_count`, which
+     * is what FCL pricing multiplies by — not in `pieces`, which counts packages.
+     */
+    it('writes an accepted container count to the container column', async () => {
+      const row = await raise()
+      await propose(row.id, [{ field: 'containerCount', value: '2' }])
+      const [open] = await statuses(row.id)
+      expect(open?.field).toBe('containerCount')
+      const [proposal] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: extractionProposals.id })
+          .from(extractionProposals)
+          .where(eq(extractionProposals.targetId, row.id))
+          .limit(1),
+      )
+
+      const state = await acceptProposal({}, form({ proposalId: proposal!.id, enquiryId: row.id }))
+
+      expect(state.errors).toBeUndefined()
+      expect(state.message).toBeUndefined()
+      const fields = await fieldsOf(row.id)
+      expect(fields.containerCount).toBe(2)
+      expect(fields.pieces).toBeNull()
+      expect((await statuses(row.id))[0]?.status).toBe('applied')
+    })
+
+    /**
+     * Zero is refused before the write rather than by the 0048 constraint, so
+     * the coordinator reads a sentence instead of a server error.
+     */
+    it('refuses a container count of zero and leaves the suggestion open', async () => {
+      const row = await raise()
+      await propose(row.id, [{ field: 'containerCount', value: '0' }])
+
+      const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
+
+      expect(state.message).toBe('enquiriesValidation.noneApplied')
+      expect((await fieldsOf(row.id)).containerCount).toBeNull()
+      expect((await statuses(row.id))[0]?.status).toBe('proposed')
+    })
+
     /** When nothing could be applied, it says so rather than claiming success. */
     it('reports when every suggestion was already overtaken', async () => {
       const row = await raise({ incoterm: 'FOB' })
@@ -556,12 +846,12 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       const state = await acceptAllProposals({}, form({ enquiryId: row.id }))
 
       expect(state.ok).toBeUndefined()
-      expect(state.message).toMatch(/None could be applied/)
+      expect(state.message).toBe('enquiriesValidation.noneApplied')
     })
 
     it('asks for an enquiry when none was named', async () => {
       const state = await acceptAllProposals({}, form({}))
-      expect(state.message).toBe('Nothing to do.')
+      expect(state.message).toBe('enquiriesValidation.nothingToDo')
     })
   })
 })

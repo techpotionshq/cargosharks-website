@@ -33,12 +33,23 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => harness.session,
 }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   branches,
   customers,
   customsStages,
+  equipment,
   exceptionCodes,
   exceptions,
+  freeTimeClocks,
   jobMilestones,
   jobs,
   principalBranchRoles,
@@ -55,6 +66,7 @@ const {
   completeMilestone,
   addContainer,
   setJobStatus,
+  saveFreeTimeClock,
 } = await import('./form-actions')
 
 const BRANCH = '00000000-0000-7000-8000-00000000d001'
@@ -236,6 +248,30 @@ describe.skipIf(!enabled)('operations mutations', () => {
       expect(new Date(row!.at as Date).toISOString()).toContain('2026-08-01')
     })
 
+    /** O4. 09:15 typed in Kuwait is 06:15 UTC — not 09:15 UTC, read as noon. */
+    it("reads the typed time in the branch's zone", async () => {
+      const jobId = await job()
+      const milestoneId = await milestone(jobId, false)
+
+      await completeMilestone({}, form({ milestoneId, jobId, actualAt: '2026-08-01T09:15' }))
+
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ at: jobMilestones.actualAt })
+          .from(jobMilestones)
+          .where(eq(jobMilestones.id, milestoneId)),
+      )
+      expect(row!.at!.toISOString()).toBe('2026-08-01T06:15:00.000Z')
+    })
+
+    /** O17. An Invalid Date reached the database and came back as a 500. */
+    it('refuses a time that is not one, on the field', async () => {
+      const jobId = await job()
+      const milestoneId = await milestone(jobId, false)
+      const state = await completeMilestone({}, form({ milestoneId, jobId, actualAt: 'soon' }))
+      expect(state.errors?.actualAt).toBe('operationsValidation.invalidDateTime')
+    })
+
     /** Un-ticking clears both the time and the attribution. */
     it('undoes a tick', async () => {
       const jobId = await job()
@@ -356,7 +392,7 @@ describe.skipIf(!enabled)('operations mutations', () => {
 
       const state = await saveCustomsStage({}, form({ jobId, status: 'released' }))
 
-      expect(state.errors?.status).toContain('not a step')
+      expect(state.errors?.status).toBe('operationsValidation.customsIllegalStep')
       const [row] = await withActor(actor, (tx) =>
         tx
           .select({ status: customsStages.status })
@@ -399,7 +435,7 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await withoutKey('customs.file', async () => {
           await expect(
             saveCustomsStage({}, form({ jobId, status: 'declaration_filed' })),
-          ).rejects.toThrow('customs.file')
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -410,9 +446,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await saveCustomsStage({}, form({ jobId, status: 'assessed' }))
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -438,9 +474,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         const jobId = await job()
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
     })
@@ -470,6 +506,29 @@ describe.skipIf(!enabled)('operations mutations', () => {
       )
       expect(rows).toHaveLength(1)
       expect(rows[0]!.severity).toBe('high')
+    })
+
+    /** O17. A lone "." passed the old money rule and failed in `numeric`. */
+    it('refuses a lone point as a cost impact, on the field', async () => {
+      const jobId = await job()
+      const state = await raiseException(
+        {},
+        form({ jobId, exceptionCodeId, severity: 'low', costImpact: '.', costCurrency: 'KWD' }),
+      )
+      expect(state.errors?.costImpact).toBe('operationsValidation.numbersOnly')
+    })
+
+    /** O4. The due time is the branch's wall clock. */
+    it("stores the due time in the branch's zone", async () => {
+      const jobId = await job()
+      await raiseException(
+        {},
+        form({ jobId, exceptionCodeId, severity: 'low', dueAt: '2026-10-05T17:00' }),
+      )
+      const [row] = await withActor(actor, (tx) =>
+        tx.select({ dueAt: exceptions.dueAt }).from(exceptions).where(eq(exceptions.jobId, jobId)),
+      )
+      expect(row!.dueAt!.toISOString()).toBe('2026-10-05T14:00:00.000Z')
     })
 
     it('refuses an unknown severity', async () => {
@@ -518,6 +577,23 @@ describe.skipIf(!enabled)('operations mutations', () => {
       expect(state.errors?.containerNo).toBeDefined()
     })
 
+    /** QA P3: an empty form saved a blank equipment row nobody could name. */
+    it('refuses a container with neither a number nor a type', async () => {
+      const jobId = await job()
+      const state = await addContainer({}, form({ jobId }))
+      expect(state.errors?.containerNo).toBe('operationsValidation.containerNeedsNumberOrType')
+      const rows = await withActor(actor, (tx) =>
+        tx.select().from(equipment).where(eq(equipment.jobId, jobId)),
+      )
+      expect(rows).toEqual([])
+    })
+
+    it('accepts a box booked by type before its number is known', async () => {
+      const jobId = await job()
+      const state = await addContainer({}, form({ jobId, containerType: '40HC' }))
+      expect(state.errors).toBeUndefined()
+    })
+
     /**
      * The check digit is deliberately *not* verified — a number typed off a
      * photograph of a rusty door is routinely one character out, and refusing
@@ -527,6 +603,53 @@ describe.skipIf(!enabled)('operations mutations', () => {
       const jobId = await job()
       const state = await addContainer({}, form({ jobId, containerNo: 'MSKU4419519' }))
       expect(state.errors).toBeUndefined()
+    })
+  })
+
+  /** O2. A clock could be started and never stopped. */
+  describe('free-time clocks', () => {
+    it('stops a clock by giving it an end date', async () => {
+      const jobId = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = {
+        jobId,
+        kind: 'demurrage',
+        startsOn: today,
+        freeDays: '5',
+        perDiem: '25.000',
+        currency: 'KWD',
+      }
+      expect((await saveFreeTimeClock({}, form(clock))).errors).toBeUndefined()
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, jobId)),
+      )
+
+      const state = await saveFreeTimeClock({}, form({ ...clock, clockId: row!.id, endsOn: today }))
+      expect(state.errors).toBeUndefined()
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.endsOn).toBe(today)
+    })
+
+    it("will not move another job's clock", async () => {
+      const mine = await job('arrived')
+      const theirs = await job('arrived')
+      const today = new Date().toISOString().slice(0, 10)
+      const clock = { kind: 'demurrage', startsOn: today, freeDays: '5', perDiem: '25.000' }
+      await saveFreeTimeClock({}, form({ ...clock, jobId: theirs }))
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.jobId, theirs)),
+      )
+
+      await saveFreeTimeClock({}, form({ ...clock, jobId: mine, clockId: row!.id, endsOn: today }))
+
+      const [after] = await withActor(actor, (tx) =>
+        tx.select().from(freeTimeClocks).where(eq(freeTimeClocks.id, row!.id)),
+      )
+      expect(after!.jobId).toBe(theirs)
+      expect(after!.endsOn).toBeNull()
     })
   })
 

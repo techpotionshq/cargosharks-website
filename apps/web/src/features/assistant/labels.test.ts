@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { ASSISTANT_TOOLS } from '@qabandi/core'
+import { ASSISTANT_TOOLS, LABELS, LABEL_SOURCES } from '@qabandi/core'
 import { assistantLabels } from './labels'
 
 /*
@@ -124,5 +124,41 @@ describe('a tool with no label', () => {
     expect(labels.tools.search).toBe('the registers')
     expect(labels.tools.list_overdue_invoices).toBeUndefined()
     expect(labels.toolUnknown).toBeTruthy()
+  })
+})
+
+/*
+  The words the assistant's tool results carry beside a code (`statusLabel`)
+  are copied into `core/labels.ts`, because core imports nothing. This is what
+  keeps the copy honest: every word must be the catalogue's, in both
+  languages, and every code the catalogue names must be there.
+*/
+describe('the labels beside codes in tool results', () => {
+  const at = (catalogue: Record<string, unknown>, path: string) =>
+    path
+      .split('.')
+      .reduce<unknown>(
+        (node, part) => (node as Record<string, unknown>)[part],
+        catalogue,
+      ) as Record<string, unknown>
+
+  it('are the catalogue’s own words, in both languages', () => {
+    for (const [vocabulary, path] of Object.entries(LABEL_SOURCES)) {
+      const words = LABELS[vocabulary as keyof typeof LABEL_SOURCES]
+      const enWords = at(en, path)
+      const arWords = at(ar, path)
+      for (const [code, value] of Object.entries(enWords)) {
+        if (typeof value !== 'string') continue
+        expect(words[code], `${vocabulary}.${code} missing from core/labels.ts`).toEqual({
+          en: value,
+          ar: arWords[code],
+        })
+      }
+      expect(Object.keys(words).sort()).toEqual(
+        Object.keys(enWords)
+          .filter((code) => typeof enWords[code] === 'string')
+          .sort(),
+      )
+    }
   })
 })

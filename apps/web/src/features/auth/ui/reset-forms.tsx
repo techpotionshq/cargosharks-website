@@ -20,9 +20,9 @@ import {
   type ResetRequestState,
   type ResetState,
 } from '../actions'
+import { FOCUS_RING } from '@/ui/control'
 
-const FIELD =
-  'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
+const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink focus:bg-surface ${FOCUS_RING}`
 
 function Submit({
   label,
@@ -36,7 +36,7 @@ function Submit({
     <button
       type="submit"
       disabled={pending}
-      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
+      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
     >
       {pending ? pendingLabel : label}
     </button>
@@ -52,7 +52,7 @@ function Alert({ children, tone }: { readonly children: string; readonly tone: '
   return (
     <p
       role={tone === 'error' ? 'alert' : 'status'}
-      className={`rounded-sm px-3 py-2.5 text-[0.8125rem] leading-snug font-medium ring-1 ring-inset ${classes}`}
+      className={`rounded-sm px-3 py-2.5 text-body-sm leading-snug font-medium ring-1 ring-inset ${classes}`}
     >
       {children}
     </p>
@@ -144,7 +144,7 @@ export function ResetPasswordForm({
           dir="ltr"
           className={FIELD}
         />
-        <span className="text-[0.75rem] text-ink-subtle">{labels.hint}</span>
+        <span className="text-caption text-ink-subtle">{labels.hint}</span>
       </label>
 
       <label className="flex flex-col gap-1.5">

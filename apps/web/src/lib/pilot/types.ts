@@ -92,6 +92,19 @@ export interface ClockView {
   readonly accrued: Money
   readonly counterparty: string | null
   readonly chargeLineWritten: boolean
+  /*
+    What the edit form needs to open on the stored clock (O2). It could only
+    ever start one: nothing rendered it with defaults, so nothing set
+    `ends_on`, and a clock ran until the 730-day guard tripped.
+  */
+  readonly equipmentId: string | null
+  readonly counterpartyId: string | null
+  /** `YYYY-MM-DD`, as the date input and the column hold it. */
+  readonly startsOnDay: string
+  /** When it was stopped — the box came back. Null while it runs. */
+  readonly endsOn: string | null
+  /** The per-diem as stored, for the form; `perDiem` is for display. */
+  readonly perDiemText: string
 }
 
 export interface ExceptionView {
@@ -107,6 +120,8 @@ export interface ExceptionView {
   readonly owner: string | null
   readonly description: string | null
   readonly customerName: string
+  /** Falls back to `customerName` — the Arabic legal name is optional. */
+  readonly customerNameAr: string
 }
 
 /**
@@ -120,6 +135,8 @@ export interface JobPartnerView {
   readonly id: string
   readonly partnerId: string
   readonly name: string
+  /** Falls back to `name` — few partners have an Arabic legal name yet. */
+  readonly nameAr: string
   readonly role: string
   readonly reference: string | null
 }
@@ -179,6 +196,21 @@ export interface JobDetail extends JobSummary {
   readonly originId: string | null
   readonly destinationId: string | null
   readonly commodityId: string | null
+  /*
+    The raw columns behind `vesselOrFlight`, and the owner and quotation ids.
+
+    The edit form was given the combined display string as the vessel name and
+    nothing for the rest, and saving wrote what it was given: the voyage was
+    appended to the vessel on every save, and the owner, flight, voyage and
+    quotation were blanked.
+  */
+  readonly ownerId: string | null
+  readonly quoteId: string | null
+  /** The branch's zone — the one its times are typed and edited in. */
+  readonly branchTimeZone: string
+  readonly vesselName: string | null
+  readonly voyageNumber: string | null
+  readonly flightNumber: string | null
   readonly customerReference: string | null
   readonly masterBillNumber: string | null
   readonly houseBillNumber: string | null
@@ -190,6 +222,8 @@ export interface JobDetail extends JobSummary {
   readonly placeOfDelivery: string | null
   readonly incoterm: string | null
   readonly commodity: string
+  /** The commodity's Arabic name, where the row has one; the page falls back to `commodity`. */
+  readonly commodityAr?: string | null
   readonly grossWeightKg: number | null
   readonly chargeableWeightKg: number | null
   readonly volumeCbm: number | null
@@ -257,7 +291,8 @@ interface QuoteLineView {
   readonly nameAr: string
   readonly basis: string
   readonly quantity: number
-  readonly buyRate: number
+  /** Null where nothing recorded the buy side of this line — a card-priced quotation. */
+  readonly buyRate: number | null
   readonly sellRate: number
   readonly amount: Money
 }
@@ -265,13 +300,23 @@ interface QuoteLineView {
 export interface QuoteComparison {
   /** The enquiry's own status — decides which transitions are offered. */
   readonly status?: string
+  /**
+   * Where the options' prices came from — a rate card, typed by hand, or both
+   * (QA P3). The page's subtitle said "priced from the imported rate card" for
+   * a quotation somebody typed. Absent reads as the rate card, the pilot's case.
+   */
+  readonly pricedFrom?: 'rate_card' | 'manual' | 'mixed'
   readonly enquiryReference: string
-  readonly customerName: string
+  /** Null for an enquiry nobody has matched to a customer yet — a WhatsApp number, an unknown sender. */
+  readonly customerName: string | null
   readonly lane: string | null
-  readonly mode: Mode
+  /** Null until someone — or the model — records it; an emailed enquiry starts without one. */
+  readonly mode: Mode | null
+  /** Sea FCL's container count — pricing refuses without it. Null until recorded. */
+  readonly containerCount: number | null
   readonly containerType: string | null
   readonly incoterm: string | null
-  readonly preparedBy: string
+  readonly preparedBy: string | null
   readonly pricedAt: Date
   /**
    * How long the same enquiry took by hand — Moment 2's punchline — and how
@@ -291,6 +336,18 @@ export interface QuoteComparison {
    */
   readonly hasResponded: boolean
   readonly isClosed: boolean
+  /**
+   * The enquiry's branch and its base currency — what a manual "New
+   * quotation" defaults to, rather than the session's first branch and USD
+   * (S7). Optional, so a fixture without them still renders.
+   */
+  readonly branchId?: string
+  readonly baseCurrency?: string
+  /**
+   * Whether the customer accepted a version. An accepted quotation is never
+   * superseded, so "Price it" and "New quotation" are withdrawn (S2).
+   */
+  readonly hasAccepted?: boolean
   readonly options: readonly QuoteOptionView[]
 }
 
@@ -337,18 +394,20 @@ export interface OpsOverview {
     readonly sentThisMonth: number
     readonly winRatePct: number
     readonly averageMarginPct: number
-    readonly quotedValue: Money
+    /** One figure per currency — amounts in two currencies do not add. */
+    readonly quotedValue: readonly { readonly currency: string; readonly amount: string }[]
     readonly medianResponseMinutes: number
   }
   readonly clocks: {
     readonly running: number
-    readonly accruing: Money
+    readonly accruing: readonly { readonly currency: string; readonly amount: string }[]
     readonly containersAtRisk: number
   }
   readonly exceptions: readonly ExceptionView[]
   readonly slaWatch: readonly EnquirySummary[]
   readonly arrivals: readonly JobSummary[]
-  readonly topLanes: readonly { lane: string; count: number; value: Money }[]
+  /** `laneAr` runs ← because an RTL line puts the origin on the right. */
+  readonly topLanes: readonly { lane: string; laneAr: string; count: number; value: Money }[]
 }
 
 export interface PortalShipment {
@@ -417,6 +476,7 @@ export interface InvoiceRow {
   readonly taxAmount: string | null
   readonly total: string | null
   readonly amountPaid: string | null
+  readonly amountCredited: string | null
   readonly issuedAt: Date | null
   /** A `date` column, so a `YYYY-MM-DD` string rather than a `Date`. */
   readonly dueOn: string | null
@@ -430,8 +490,8 @@ export interface InvoiceSummary {
   readonly issued: number
   readonly paid: number
   readonly overdue: number
-  readonly outstanding: string
-  readonly currency: string | null
+  /** One entry per currency, largest balance first — see `invoiceSummary`. */
+  readonly outstanding: readonly { readonly currency: string; readonly amount: string }[]
 }
 
 /** Mirrors `PaymentRow`. */
@@ -452,9 +512,9 @@ export interface PaymentRow {
 /** Mirrors the anonymous return of `paymentSummary`. */
 export interface PaymentSummary {
   readonly count: number
-  readonly received: string
+  /** One entry per currency, largest first — see `paymentSummary`. */
+  readonly received: readonly { readonly currency: string; readonly amount: string }[]
   readonly unallocated: number
-  readonly currency: string | null
 }
 
 /** Mirrors `AgeingBucket`. The keys are the query's, not new ones. */
@@ -466,9 +526,13 @@ export interface AgeingBucket {
 
 /** Mirrors the anonymous return of `receivablesAgeing`. */
 export interface ReceivablesAgeing {
-  readonly buckets: AgeingBucket[]
-  readonly total: string
-  readonly currency: string | null
+  /** One ageing per currency, largest book first — see `receivablesAgeing`. */
+  readonly byCurrency: {
+    readonly currency: string
+    readonly buckets: AgeingBucket[]
+    readonly total: string
+    readonly overdue: string
+  }[]
 }
 
 /** Mirrors `DebtorRow`. */
@@ -645,6 +709,8 @@ export interface PartnerDetail {
   readonly contacts: readonly {
     id: string
     nameEn: string
+    /** `partner_contacts.name_ar` — shown on an Arabic screen where set. */
+    nameAr: string | null
     email: string | null
     phone: string | null
     role: string | null
@@ -694,6 +760,7 @@ export interface ExceptionRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly code: string
   readonly nameEn: string
   readonly nameAr: string
@@ -713,6 +780,7 @@ export interface CustomsRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly status: string
   readonly declarationType: string | null
   readonly declarationNo: string | null
@@ -723,6 +791,7 @@ export interface CustomsRow {
   readonly dutyAmount: string | null
   readonly dutyCurrency: string | null
   readonly brokerName: string | null
+  readonly brokerNameAr: string | null
 }
 
 /**
@@ -736,6 +805,7 @@ export interface DocumentRow {
   readonly jobId: string
   readonly jobReference: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly typeCode: string
   readonly typeNameEn: string
   readonly typeNameAr: string
@@ -886,6 +956,8 @@ export interface UserRow {
   readonly isActive: boolean
   readonly lastSeenAt: Date | null
   readonly hasLogin: boolean
+  /** Whether the login has a password yet — see `features/admin/queries.ts`. */
+  readonly hasPassword: boolean
   readonly assignments: { branchCode: string; roleKey: string; requiresTwoFactor: boolean }[]
 }
 
@@ -930,6 +1002,7 @@ export interface BranchRow {
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
+  readonly calendarNameAr: string | null
   readonly people: number
   readonly openJobs: number
 }
@@ -954,13 +1027,13 @@ export interface ChargeTypeRow {
 
 /** Mirrors the anonymous return of `listReferenceSample`. */
 export interface ReferenceSample {
-  readonly incoterms: { code: string; nameEn: string }[]
-  readonly containers: { code: string; nameEn: string; teu: string | null }[]
-  readonly exceptions: { code: string; nameEn: string; slaHours: number | null }[]
-  readonly documents: { code: string; nameEn: string; category: string }[]
-  readonly calendars: { key: string; nameEn: string; timeZone: string }[]
-  readonly currencies: { code: string; nameEn: string | null }[]
-  readonly countries: { code: string; nameEn: string }[]
+  readonly incoterms: { code: string; name: string }[]
+  readonly containers: { code: string; name: string; teu: string | null }[]
+  readonly exceptions: { code: string; name: string; slaHours: number | null }[]
+  readonly documents: { code: string; name: string; category: string }[]
+  readonly calendars: { key: string; name: string; timeZone: string }[]
+  readonly currencies: { code: string; name: string | null }[]
+  readonly countries: { code: string; name: string }[]
   readonly milestones: number
 }
 
@@ -1007,12 +1080,19 @@ export interface DutyRateRow {
   readonly isActive: boolean
 }
 
+/** The newest rate for one currency pair — the reference page's FX panel (S12). */
+export interface FxRateRow {
+  readonly fromCurrency: string
+  readonly toCurrency: string
+  readonly rate: string
+  readonly effectiveOn: string
+  /** `manual`, or the feed that wrote it. */
+  readonly source: string
+}
+
 /** Mirrors `EngineRuleRow`. `raw` pre-fills the edit dialog. */
 export interface EngineRuleRow {
   readonly id: string
-  readonly label: string
-  readonly scope: string
-  readonly detail: string
   readonly isActive: boolean
   readonly raw: Record<string, unknown>
 }
@@ -1284,6 +1364,7 @@ export interface InvoiceDetail {
   readonly taxAmount: string
   readonly total: string
   readonly amountPaid: string
+  readonly amountCredited: string
   readonly taxTreatment: TaxTreatment
   readonly taxRatePercent: string
   /** Which of the bilingual columns the PDF renders, and which way it runs. */
@@ -1295,14 +1376,15 @@ export interface InvoiceDetail {
   /**
    * `invoice_lines`, in `sort_order`.
    *
-   * English only, because that is what the read selects. The table carries a
-   * `description_ar` the PDF uses; the screen does not ask for it, and a
-   * fixture returning a column the query does not would be inventing a shape
-   * the database cannot produce.
+   * Both descriptions. This read only the English one, so an Arabic screen
+   * listed "Customs clearance" under Arabic headings while the table carried
+   * the `description_ar` the PDF prints; the screen now shows it where it
+   * exists and falls back to English where an operator left it blank.
    */
   readonly lines: readonly {
     id: string
     descriptionEn: string
+    descriptionAr: string | null
     quantity: string
     unitPrice: string
     amount: string
@@ -1316,6 +1398,15 @@ export interface InvoiceDetail {
     reference: string | null
     method: PaymentMethod
   }[]
+  /** Credit notes raised against it (F9). None in the pilot set. */
+  readonly creditNotes: readonly {
+    id: string
+    seriesNo: string | null
+    total: string
+    issuedAt: string | null
+  }[]
+  readonly isCreditNote: boolean
+  readonly creditsInvoiceId: string | null
 }
 
 /* ===========================================================================
@@ -1357,6 +1448,9 @@ export interface LedgerLineRow {
   readonly amountBase: string
   readonly baseCurrency: string
   readonly fxRate: string
+  /** The ids behind `counterpartyName`, so the edit form can pre-select it. */
+  readonly counterpartyPartnerId: string | null
+  readonly counterpartyCustomerId: string | null
   readonly counterpartyName: string | null
   readonly isAccrual: boolean
   /**
@@ -1574,6 +1668,9 @@ export interface ConsolidationHouseRow {
 export interface ConsolidationChargeRow {
   readonly id: string
   readonly direction: 'cost' | 'revenue'
+  readonly chargeTypeId: string
+  readonly counterpartyPartnerId: string | null
+  readonly fxRate: string
   readonly chargeTypeName: string
   readonly description: string | null
   readonly amount: string
@@ -1583,6 +1680,7 @@ export interface ConsolidationChargeRow {
   readonly allocationBasis:
     'chargeable_weight' | 'volume' | 'gross_weight' | 'packages' | 'equal' | 'manual'
   readonly allocatedAt: Date | null
+  readonly withdrawnAt: Date | null
   readonly counterpartyName: string | null
   readonly shareCount: number
 }
@@ -1600,6 +1698,11 @@ export interface ConsolidationDetailRows {
   readonly row: {
     readonly id: string
     readonly branchId: string
+    readonly branchTimeZone: string
+    readonly carrierPartnerId: string | null
+    readonly coloadPartnerId: string | null
+    readonly originId: string | null
+    readonly destinationId: string | null
     readonly reference: string
     readonly status: 'open' | 'closed' | 'cancelled'
     readonly mode: string
@@ -1691,8 +1794,8 @@ export interface OpenEnquiryRow {
 /** Mirrors the statement in `loadOutstandingInvoices`. */
 export interface OutstandingInvoiceRow {
   readonly id: string
-  /** `series_no`, or the literal `(draft)` the query coalesces to. */
-  readonly label: string
+  /** `series_no`; null until the invoice is numbered — the dialog labels it in the operator's language. */
+  readonly label: string | null
   readonly customer: string
   readonly balance: string
   readonly currency: string
@@ -1703,6 +1806,7 @@ export interface OpenShipmentRow {
   readonly id: string
   readonly reference: string
   readonly customer: string | null
+  readonly customerAr: string | null
 }
 
 /**
@@ -1761,6 +1865,7 @@ export interface ApiKeyRowLike {
   readonly prefix: string
   readonly name: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly branchId: string | null
   readonly scopes: string[]
   readonly createdBy: string | null
@@ -1775,6 +1880,7 @@ export interface WebhookEndpointRowLike {
   readonly id: string
   readonly url: string
   readonly customerName: string | null
+  readonly customerNameAr: string | null
   readonly events: string[]
   readonly isActive: boolean
   readonly disabledAt: Date | null
@@ -1837,7 +1943,8 @@ export interface RateRequestView {
   readonly id: string
   readonly partnerId: string
   readonly partnerName: string
-  readonly status: 'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired' | 'superseded'
+  readonly status:
+    'sent' | 'responded' | 'parsed' | 'accepted' | 'declined' | 'expired' | 'superseded'
   readonly sentAt: Date | null
   readonly respondedAt: Date | null
   /** The broker's own figure, in their own currency. */
@@ -1854,6 +1961,11 @@ export interface RateRequestView {
   readonly isCheapest: boolean
   /** Rate lines the model read that validated — what an accept would promote. */
   readonly lineCount: number
+  /**
+   * Lines the total could not price, so `quotedTotal` is partial and the reply
+   * is left out of the cheapest comparison (F69).
+   */
+  readonly unpricedLines: number
   /** Set where the model read a lane that disagreed with the one we asked about. */
   readonly laneMismatch: string | null
   readonly declinedReason: string | null
@@ -1868,7 +1980,7 @@ export interface RateRequestsView {
   readonly requests: readonly RateRequestView[]
   /** Requests sent, still awaiting a reply. */
   readonly awaiting: number
-  /** Requests with a reply in — responded or parsed. */
+  /** Requests the agent replied to — responded, parsed, accepted or declined. */
   readonly answered: number
 }
 
@@ -1899,4 +2011,83 @@ export interface CoveringAgent {
   readonly hasEmail: boolean
   /** An RFQ is already out to this agent for this enquiry. */
   readonly alreadyRequested: boolean
+}
+
+/**
+ * One turn of the intake agent, as the enquiry screen lists it — mirrors a row
+ * of `intake_turns` joined to the reply it sent, if it sent one.
+ */
+export interface IntakeTurnLike {
+  readonly id: string
+  readonly at: Date
+  /** `confirm`, `clarify`, `handoff` or `none`. */
+  readonly action: string
+  /** One of `INTAKE_REASONS`. */
+  readonly reason: string
+  readonly missing: readonly string[]
+  readonly messagesRead: number
+  readonly modelCalled: boolean
+  readonly replyBody: string | null
+  readonly sendError: string | null
+}
+
+/** Where the intake agent is with one enquiry — `intake_conversations`, for the panel. */
+export interface EnquiryIntakeLike {
+  readonly conversationId: string
+  readonly branchId: string
+  readonly channel: 'whatsapp' | 'email'
+  /** `collecting`, `awaiting_customer`, `complete` or `handed_off`. */
+  readonly state: string
+  readonly agentEnabled: boolean
+  readonly locale: 'en' | 'ar' | null
+  /** What the latest turn still found missing — requirement keys. */
+  readonly missing: readonly string[]
+  readonly turnDueAt: Date | null
+  readonly turns: number
+  readonly modelCalls: number
+  readonly clarifications: number
+  readonly readyAt: Date | null
+  /** Newest first, at most a handful. */
+  readonly recent: readonly IntakeTurnLike[]
+}
+
+/** One branch's intake-agent settings, for Settings › Intake agent. */
+export interface IntakeSettingsRowLike {
+  readonly branchId: string
+  readonly branchCode: string
+  /** True where the branch has no row of its own and the default answers. */
+  readonly inherited: boolean
+  readonly enabled: boolean
+  readonly whatsappQuietSeconds: number
+  readonly whatsappMaxWaitSeconds: number
+  readonly emailQuietSeconds: number
+  readonly emailMaxWaitSeconds: number
+  readonly clarifyCooldownHours: number
+  readonly clarifyCap: number
+  readonly humanTakeoverHours: number
+  /** True where the requirement rows are the branch's own. */
+  readonly ownRequirements: boolean
+  readonly requirements: readonly {
+    readonly mode: string | null
+    readonly key: string
+    readonly fields: readonly string[]
+  }[]
+}
+
+/** A supplier's mail filed on no record, for the partner page's list. */
+export interface PartnerMailLike {
+  readonly id: string
+  readonly branchId: string
+  readonly receivedAt: Date
+  readonly fromAddress: string | null
+  readonly subject: string | null
+  readonly excerpt: string
+  readonly attachments: readonly {
+    readonly assetId: string
+    readonly fileName: string
+    /** A PDF or an image — something "Read as a bill" can send to the model. */
+    readonly readable: boolean
+    /** The bill already captured from this file, where one was. */
+    readonly billId: string | null
+  }[]
 }

@@ -20,14 +20,70 @@ import {
   formatDay,
   formatLane,
   formatMoney,
+  formatMoneyParts,
   formatNumber,
   formatPercent,
   formatRelative,
   formatTime,
   trimDecimal,
+  amountInput,
 } from './format'
 
+describe('formatMoneyParts', () => {
+  /**
+   * The pieces a money column needs, and the figure in them is the very one
+   * `formatMoney` prints — only the code and its space are lifted out.
+   */
+  it('splits the code from the figure without changing either', () => {
+    expect(formatMoneyParts({ amount: '980.250000', currency: 'KWD' }, 'en')).toEqual({
+      currency: 'KWD',
+      amount: '980.250',
+      pad: '',
+    })
+    expect(formatMoneyParts({ amount: '-1500', currency: 'KWD' }, 'en')?.amount).toBe('-1,500.000')
+  })
+
+  /**
+   * "AED 5,502.00" above "KWD 980.250" ends a digit short; the pad is one
+   * figure space, the width of a tabular digit, so both end on the same place.
+   */
+  it('pads a short minor unit to the three-place width', () => {
+    expect(formatMoneyParts({ amount: '5502', currency: 'AED' }, 'en')?.pad).toBe('\u2007')
+    expect(formatMoneyParts({ amount: '5502', currency: 'JPY' }, 'en')?.pad).toBe(
+      '\u2008\u2007\u2007\u2007',
+    )
+    expect(
+      formatMoneyParts({ amount: '25000', currency: 'AED' }, 'en', { compact: true })?.pad,
+    ).toBe('')
+  })
+
+  /** Arabic: the localised symbol, and the figure without ICU's bidi marks. */
+  it('keeps the Arabic symbol and drops the marks around the figure', () => {
+    const parts = formatMoneyParts({ amount: '1500.5', currency: 'KWD' }, 'ar')
+    expect(parts?.currency).toBe('د.ك.')
+    expect(parts?.amount).toBe('1,500.500')
+  })
+
+  it('returns null for no value, where formatMoney prints a dash', () => {
+    expect(formatMoneyParts(null, 'en')).toBeNull()
+  })
+})
+
 describe('formatMoney', () => {
+  /**
+   * The database's own string, straight through. A `numeric(19,6)` arrives as
+   * `"1840.500000"`, and it is formatted at the currency's precision without
+   * ever becoming a float — including a value a float cannot hold exactly.
+   */
+  it('formats a decimal string without converting it to a number', () => {
+    expect(formatMoney({ amount: '1840.500000', currency: 'KWD' }, 'en')).toMatch(
+      /^KWD\s1,840\.500$/,
+    )
+    expect(formatMoney({ amount: '9007199254740993.125', currency: 'KWD' }, 'en')).toMatch(
+      /^KWD\s9,007,199,254,740,993\.125$/,
+    )
+  })
+
   /**
    * The trap the module exists for. KWD carries three decimals — 1.5 KWD is
    * `1.500`, and a quotation printing `1.50` looks wrong to everyone reading
@@ -39,6 +95,13 @@ describe('formatMoney', () => {
 
   it('gives USD two', () => {
     expect(formatMoney({ amount: 1.5, currency: 'USD' }, 'en')).toContain('1.50')
+  })
+
+  /** "$US 1,850.00" on Arabic rate requests: the Latin symbol was reordered. */
+  it('isolates a Latin symbol in Arabic, and leaves an Arabic one alone', () => {
+    expect(formatMoney({ amount: 1850, currency: 'USD' }, 'ar')).toContain('\u2066US$\u2069')
+    expect(formatMoney({ amount: 1840, currency: 'KWD' }, 'ar')).not.toContain('\u2066')
+    expect(formatMoney({ amount: 1850, currency: 'USD' }, 'en')).not.toContain('\u2066')
   })
 
   it('gives JPY none', () => {
@@ -64,6 +127,19 @@ describe('formatMoney', () => {
     const without = formatMoney({ amount: 1234.5, currency: 'KWD' }, 'en', { showCurrency: false })
     expect(without).not.toMatch(/KWD|د\.ك/)
     expect(without).toContain('1,234.5')
+  })
+
+  /*
+    Without the code the figure still keeps its currency's places. Decimal
+    style ignored the currency: a dinar column printed "1,145.69" beside
+    "110.495", and a dollar figure printed three places.
+  */
+  it("keeps the currency's places when the code is dropped", () => {
+    const bare = (amount: number, currency: string) =>
+      formatMoney({ amount, currency }, 'en', { showCurrency: false })
+    expect(bare(1145.69, 'KWD')).toBe('1,145.690')
+    expect(bare(1595486.978, 'USD')).toBe('1,595,486.98')
+    expect(bare(1500, 'JPY')).toBe('1,500')
   })
 
   /** Compact only above ten thousand — below it, the exact figure is wanted. */
@@ -290,5 +366,26 @@ describe('formatLane', () => {
   it('joins with a real arrow', () => {
     expect(formatLane('Shuwaikh', 'Jebel Ali')).toBe('Shuwaikh → Jebel Ali')
     expect(formatLane('Shuwaikh', 'Jebel Ali')).not.toContain('->')
+    // Arabic reorders the names, so the arrow has to point the other way.
+    expect(formatLane('الشويخ', 'جبل علي', 'ar')).toBe('الشويخ ← جبل علي')
+  })
+})
+
+/** QA P3: edit dialogs showed "25.000000" and a dollar balance as "4350.000". */
+describe('amountInput', () => {
+  it("puts a stored amount back at its currency's places", () => {
+    expect(amountInput('25.000000', 'KWD')).toBe('25.000')
+    expect(amountInput('4350.000', 'USD')).toBe('4350.00')
+    expect(amountInput('0.5', 'KWD')).toBe('0.500')
+  })
+
+  it('trims an amount whose currency it does not know', () => {
+    expect(amountInput('25.000000', 'XTS')).toBe('25')
+    expect(amountInput('25.000000', null)).toBe('25')
+  })
+
+  it('leaves an empty value empty', () => {
+    expect(amountInput(null, 'KWD')).toBeUndefined()
+    expect(amountInput('', 'KWD')).toBeUndefined()
   })
 })

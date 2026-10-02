@@ -103,8 +103,82 @@ describe('readExtractedRateReply', () => {
     expect(result.laneMismatch).toContain('CNSHA')
   })
 
+  /*
+    ai-4. The model writes places the way the agent did — "Shanghai",
+    "Shuwaikh" — and comparing that text with our codes flagged correct replies
+    as a different lane, which drops them from ranking and auto-award. Names
+    are resolved through `locations` first (the caller passes what they
+    resolved to), and only a resolvable difference is a mismatch.
+  */
+  describe('the lane a reply names', () => {
+    const asked: RateReplyLane = {
+      mode: 'sea_fcl',
+      originCode: 'CNSHA',
+      destinationCode: 'KWSWK',
+      places: {
+        shanghai: ['CNSHA'],
+        shuwaikh: ['KWSWK'],
+        'ميناء الشويخ': ['KWSWK'],
+        'jebel ali, uae': ['AEJEA'],
+        ningbo: ['CNNGB'],
+      },
+    }
+
+    it('accepts place names that resolve to the ports we asked about', () => {
+      const result = readExtractedRateReply(
+        reply({ origin: 'Shanghai', destination: 'Shuwaikh' }),
+        lookups,
+        asked,
+      )
+      expect(result.laneMismatch).toBeUndefined()
+      expect(result.headerIssues).toEqual([])
+    })
+
+    it('accepts an Arabic name and a code written in lower case with a space', () => {
+      const result = readExtractedRateReply(
+        reply({ origin: 'cn sha', destination: 'ميناء الشويخ' }),
+        lookups,
+        asked,
+      )
+      expect(result.laneMismatch).toBeUndefined()
+    })
+
+    it('flags a name that resolves to a different port', () => {
+      const result = readExtractedRateReply(
+        reply({ origin: 'Ningbo', destination: 'Shuwaikh' }),
+        lookups,
+        asked,
+      )
+      expect(result.laneMismatch).toContain('Ningbo')
+      expect(result.laneMismatch).toContain('CNSHA')
+    })
+
+    it('flags a different code even when no name was resolved', () => {
+      const result = readExtractedRateReply(
+        reply({ origin: 'CNSHA', destination: 'AEJEA' }),
+        lookups,
+        asked,
+      )
+      expect(result.laneMismatch).toBeDefined()
+    })
+
+    it('reports a name it cannot resolve without calling it a mismatch', () => {
+      const result = readExtractedRateReply(
+        reply({ origin: 'Dubai', destination: 'Shuwaikh' }),
+        lookups,
+        asked,
+      )
+      expect(result.laneMismatch).toBeUndefined()
+      expect(result.headerIssues.join(' ')).toContain('Dubai')
+    })
+  })
+
   it('refuses a charge code we do not hold', () => {
-    const result = readExtractedRateReply(reply({ lines: [rline({ chargeType: 'BRIBE' })] }), lookups, lane)
+    const result = readExtractedRateReply(
+      reply({ lines: [rline({ chargeType: 'BRIBE' })] }),
+      lookups,
+      lane,
+    )
     expect(result.lines.ok).toBe(false)
   })
 
@@ -141,7 +215,13 @@ describe('summariseRateReply', () => {
       reply({
         lines: [
           rline({ chargeType: 'OFR', currency: 'USD', basis: 'per_container', rate: '900.000' }),
-          rline({ chargeType: 'THC', currency: 'KWD', basis: 'flat', rate: '35.000', containerType: null }),
+          rline({
+            chargeType: 'THC',
+            currency: 'KWD',
+            basis: 'flat',
+            rate: '35.000',
+            containerType: null,
+          }),
         ],
       }),
       lookups,

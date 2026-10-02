@@ -86,6 +86,24 @@ export default async function AuditPage({
 
   const filters = { table, op, q, from, to }
 
+  /*
+    Names, not identifiers. The log printed `free_time_clocks`, `INSERT` and
+    `internal` in both languages; an auditor reading it is not a DBA. Every
+    audited table has a label (check-messages holds the list to the schema);
+    a value the catalogue does not know — a table added since, an operation
+    from a future trigger — still shows as itself rather than as a key path.
+  */
+  const tableLabel = (name: string) =>
+    t.has(`tables.${name}`) ? t(`tables.${name}` as 'tables.jobs') : name
+  const opLabel = (value: string) =>
+    t.has(`ops.${value}`) ? t(`ops.${value}` as 'ops.INSERT') : value
+  const principalTypeLabel = (value: string | null) =>
+    value === null
+      ? ''
+      : t.has(`principalTypes.${value}`)
+        ? t(`principalTypes.${value}` as 'principalTypes.internal')
+        : value
+
   const [rows, tables] = await Promise.all([
     listAudit(session.actor, filters),
     auditTableCounts(session.actor),
@@ -167,7 +185,7 @@ export default async function AuditPage({
       filters={[
         { label: tc('all'), href: href({ table: undefined }), active: !table },
         ...tables.map((row) => ({
-          label: row.tableName,
+          label: tableLabel(row.tableName),
           href: href({ table: row.tableName }),
           count: row.count,
           active: table === row.tableName,
@@ -193,26 +211,31 @@ export default async function AuditPage({
                 the table for them would cost more room than the column it
                 filters. Clicking the active one clears it.
               */}
-              <span className="flex items-center gap-1.5">
+              <span className="flex flex-wrap items-center gap-1.5">
                 {t('operation')}
+                {/* The word, not "I U D": three initials of SQL verbs read as
+                    nothing in English and as Latin noise on an Arabic header. */}
                 {OPERATIONS.map((value) => (
                   <a
                     key={value}
                     href={href({ op: op === value ? undefined : value })}
-                    className={`rounded-sm px-1 text-[0.6875rem] ${
+                    aria-pressed={op === value}
+                    className={`rounded-sm px-1 text-micro normal-case tracking-normal ${
                       op === value ? 'bg-brand text-on-brand' : 'text-ink-subtle hover:text-ink'
                     }`}
                   >
-                    {value.charAt(0)}
+                    {opLabel(value)}
                   </a>
                 ))}
               </span>
             </TH>
             <TH>{t('table')}</TH>
-            <TH>{t('who')}</TH>
-            <TH>{t('branch')}</TH>
-            <TH>{t('record')}</TH>
-            <TH>{t('ip')}</TH>
+            {/* When, what and to which table; who did it follows the table
+                name on a phone (below), and the forensic columns wait. */}
+            <TH priority="low">{t('who')}</TH>
+            <TH priority="low">{t('branch')}</TH>
+            <TH priority="low">{t('record')}</TH>
+            <TH priority="low">{t('ip')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -220,29 +243,42 @@ export default async function AuditPage({
             <TR key={row.id}>
               <TD className="whitespace-nowrap">
                 <span className="text-ink">{formatRelative(row.at, locale, now)}</span>
-                <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
+                <span className="mt-0.5 block text-caption text-ink-subtle">
                   {formatDateTime(row.at, locale, timeZone)}
                 </span>
               </TD>
               <TD>
-                <Badge tone={OP_TONE[row.op as keyof typeof OP_TONE] ?? 'muted'}>{row.op}</Badge>
+                <Badge tone={OP_TONE[row.op as keyof typeof OP_TONE] ?? 'muted'}>
+                  {opLabel(row.op)}
+                </Badge>
               </TD>
-              <TD className="ref whitespace-nowrap text-ink">{row.tableName}</TD>
-              <TD className="whitespace-nowrap">
+              <TD className="text-ink">
+                {tableLabel(row.tableName)}
+                <span className="block text-caption text-ink-muted @3xl:hidden">
+                  {(locale === 'ar' && row.principalNameAr
+                    ? row.principalNameAr
+                    : row.principalName) ?? t('system')}
+                </span>
+              </TD>
+              <TD priority="low" className="whitespace-nowrap">
                 <span className="text-ink">
                   {(locale === 'ar' && row.principalNameAr
                     ? row.principalNameAr
                     : row.principalName) ?? t('system')}
                 </span>
-                <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">
-                  {row.principalType}
+                <span className="mt-0.5 block text-caption text-ink-subtle">
+                  {principalTypeLabel(row.principalType)}
                 </span>
               </TD>
-              <TD className="ref whitespace-nowrap text-ink-muted">{row.branchCode ?? '—'}</TD>
-              <TD className="ref max-w-40 truncate text-[0.75rem] text-ink-subtle">
+              <TD priority="low" className="ref whitespace-nowrap text-ink-muted">
+                {row.branchCode ?? '—'}
+              </TD>
+              <TD priority="low" className="ref max-w-40 truncate text-caption text-ink-subtle">
                 {row.rowId ?? '—'}
               </TD>
-              <TD className="ref whitespace-nowrap text-ink-subtle">{row.ip ?? '—'}</TD>
+              <TD priority="low" className="ref whitespace-nowrap text-ink-subtle">
+                {row.ip ?? '—'}
+              </TD>
             </TR>
           ))}
         </TBody>

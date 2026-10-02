@@ -17,10 +17,11 @@
 import Link from 'next/link'
 import { getTimeZone, getTranslations } from 'next-intl/server'
 import type { EnquirySummary } from '@/lib/pilot/types'
-import { formatDateTime, formatMoney, formatRelative } from '@/lib/format'
+import { formatDateTime, formatRelative } from '@/lib/format'
 import { Badge, enquiryTone, slaTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { EmptyState, Lane } from '@/ui/layout'
 
 export async function EnquiryTable({
@@ -53,13 +54,23 @@ export async function EnquiryTable({
       <THead>
         <TR>
           <TH>{t('reference')}</TH>
-          <TH>{t('customer')}</TH>
-          <TH>{t('lane')}</TH>
-          <TH>{t('mode')}</TH>
-          <TH>{t('owner')}</TH>
+          <TH priority="low">{t('customer')}</TH>
+          <TH priority="low">{t('lane')}</TH>
+          <TH priority="low">{t('mode')}</TH>
+          <TH priority="low">{t('owner')}</TH>
           <TH>{t('status')}</TH>
-          {showMargin ? <TH align="end">{t('value')}</TH> : null}
-          {showMargin ? <TH align="end">{t('margin')}</TH> : null}
+          {showMargin ? (
+            <TH priority="low" align="end">
+              {t('value')}
+            </TH>
+          ) : null}
+          {/* The queue is worked by its clock: on a phone the SLA column is
+              the figure that stays, and margin waits for a wider screen. */}
+          {showMargin ? (
+            <TH priority="low" align="end">
+              {t('margin')}
+            </TH>
+          ) : null}
           <TH align="end">{t('slaDue')}</TH>
         </TR>
       </THead>
@@ -70,16 +81,16 @@ export async function EnquiryTable({
 
           return (
             <TR key={row.id} flag={breached ? 'critical' : undefined}>
-              {/* A reference and an owner name are identifiers: wrapping them
-                  across two lines costs a row of height on every row. */}
+              {/* A reference is an identifier and never breaks. An owner's
+                  name may: the row is two lines tall already. */}
               <TD className="whitespace-nowrap">
                 <Link
                   href={`/enquiries/${row.id}`}
-                  className="ref numeric font-medium text-brand hover:underline"
+                  className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                 >
                   {row.reference}
                 </Link>
-                <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                <span className="mt-0.5 block text-micro text-ink-subtle">
                   {t(`channels.${row.channel}` as 'channels.email')}
                 </span>
               </TD>
@@ -88,28 +99,37 @@ export async function EnquiryTable({
                 Both name columns exist on every entity a document renders
                 (§11); the Arabic one is preferred when the user reads Arabic.
               */}
-              <TD className="max-w-56 truncate">
+              {/* Wraps rather than truncates: the reference cell is already
+                  two lines tall, so a two-line name costs no height, and a
+                  truncated one held the column at its full one-line width
+                  anyway — the table sizes a cell to its unbroken text. */}
+              <TD priority="low" className="min-w-28">
                 {locale === 'ar' ? row.customerNameAr : row.customerName}
               </TD>
 
-              <TD className="text-ink-muted">
+              <TD priority="low" className="text-ink-muted">
                 <Lane origin={row.originName} destination={row.destinationName} />
               </TD>
 
-              <TD>
+              <TD priority="low">
                 {row.mode ? (
-                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-muted">
+                  // The name joins the icon only at 2xl. Between lg and 2xl
+                  // "Sea FCL" was 50px the queue could not spare; the icon
+                  // says the mode, and the title and screen-reader text keep
+                  // the word reachable.
+                  <span
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-muted"
+                    title={tMode(row.mode)}
+                  >
                     <Icon name={modeIcon(row.mode)} size={15} />
-                    <span className="hidden lg:inline">{tMode(row.mode)}</span>
+                    <span className="sr-only 2xl:not-sr-only">{tMode(row.mode)}</span>
                   </span>
                 ) : (
                   '—'
                 )}
               </TD>
 
-              <TD
-                className={`whitespace-nowrap ${row.owner ? 'text-ink' : 'text-ink-subtle italic'}`}
-              >
+              <TD priority="low" className={row.owner ? 'text-ink' : 'text-ink-subtle italic'}>
                 {row.owner ?? tc('unassigned')}
               </TD>
 
@@ -120,13 +140,15 @@ export async function EnquiryTable({
               </TD>
 
               {showMargin ? (
-                <TD align="end" numeric className="text-ink-muted">
-                  {formatMoney(row.quotedSell, locale, { showCurrency: false })}
+                <TD priority="low" align="end" numeric className="text-ink-muted">
+                  {/* With its currency (QA P3): one queue carries AED and KWD
+                      quotes, and a bare 1,250 read the same in both. */}
+                  <Money value={row.quotedSell} locale={locale} />
                 </TD>
               ) : null}
 
               {showMargin ? (
-                <TD align="end" numeric>
+                <TD priority="low" align="end" numeric>
                   {row.quotedMargin === null ? (
                     <span className="text-ink-subtle">—</span>
                   ) : (
@@ -164,7 +186,15 @@ export async function EnquiryTable({
                     title={formatDateTime(row.slaDueAt, locale, timeZone)}
                   >
                     {formatRelative(row.slaDueAt, locale, now)}
-                    {breached ? ` · ${t('overdue')}` : ''}
+                    {/* Its own line below 2xl, where "6 hours ago · Overdue"
+                        on one line was wider than the column could be — on a
+                        phone, and again at 1280 with every column showing. */}
+                    {breached ? (
+                      <>
+                        <span className="hidden 2xl:inline"> · </span>
+                        <span className="block 2xl:inline">{t('overdue')}</span>
+                      </>
+                    ) : null}
                   </span>
                 ) : (
                   <span className="text-ink-subtle">—</span>

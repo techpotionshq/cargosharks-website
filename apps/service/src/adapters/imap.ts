@@ -35,12 +35,141 @@
  *
  * The alternative — flag first, then work — cannot lose a duplicate but can
  * lose an enquiry, and this is a business whose enquiries are its pipeline.
+ *
+ * ## What is new is decided by UID, not by `\Seen`
+ *
+ * These are live office mailboxes, and people read them. The poll used to
+ * search for unseen mail, so a message a coordinator opened before the next
+ * minute — or any mail that arrived while the service was down and was read in
+ * the meantime — was never ingested and left no trace anywhere. `\Seen` is a
+ * person's flag; it cannot also be the machine's.
+ *
+ * So the mailbox row keeps a cursor (`UidCursor`): the folder and UIDVALIDITY
+ * it belongs to, the next UID not yet looked at, and the UIDs below that still
+ * owed a filing. Every UID at or past the cursor is new whatever its flags; a
+ * UID below it is done unless it is in `pending`. The flag is still set after
+ * a filing, as a courtesy to the people reading the same mailbox.
+ *
+ * A first poll — or a new UIDVALIDITY, or a different folder — has no history
+ * to go on, and falls back to exactly the old rule once: what is unseen now is
+ * owed, what is seen is history, and from then on the cursor decides.
+ *
+ * ## A failing message waits its turn
+ *
+ * A message whose filing throws goes into `pending` with a growing wait, and
+ * pending messages take at most half a batch while new mail is waiting. Before,
+ * failures stayed unseen and the search handed them back oldest first, so
+ * `poll_batch` failing messages — twenty-five PDFs behind a misconfigured
+ * bucket — filled every poll and the plain-text mail behind them was never
+ * read (R5). There is still no retry cap, for the reason given at the end of
+ * `collect`.
  */
 
 import { createHash } from 'node:crypto'
 import { ImapFlow } from 'imapflow'
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser'
 import type { InboundAttachment, InboundMailSource, InboundMessage } from '../ports/index'
+
+/**
+ * Where the poll has got to in one folder — kept on the mailbox row.
+ *
+ * `uidValidity` is a decimal string because IMAP's is an unsigned 32-bit
+ * number that imapflow hands over as a `bigint`.
+ */
+export interface UidCursor {
+  readonly folder: string
+  readonly uidValidity: string
+  /** Every UID below this has been looked at once. */
+  readonly uidNext: number
+  /** UIDs below `uidNext` still owed a filing, and how often they have failed. */
+  readonly pending: Readonly<Record<string, PendingUid>>
+}
+
+export interface PendingUid {
+  readonly attempts: number
+  /** When it last failed; null for one owed since the first poll and never tried. */
+  readonly failedAt: string | null
+}
+
+/** Loads and saves a mailbox's cursor. Absent, the poll keeps no history. */
+export interface UidCursorStore {
+  load(): Promise<UidCursor | null>
+  save(cursor: UidCursor): Promise<void>
+}
+
+/** The longest a failing message waits between attempts. */
+const MAX_RETRY_WAIT_MINUTES = 60
+
+/**
+ * Whether a pending UID is due another attempt: at once if never tried, then
+ * after 1, 2, 4 … minutes, capped at an hour.
+ */
+export function pendingDue(entry: PendingUid, now: Date): boolean {
+  if (entry.attempts === 0 || entry.failedAt === null) return true
+  const wait = Math.min(2 ** (entry.attempts - 1), MAX_RETRY_WAIT_MINUTES) * 60_000
+  return now.getTime() - new Date(entry.failedAt).getTime() >= wait
+}
+
+/**
+ * Which UIDs this poll takes.
+ *
+ * New mail first, in arrival order, but never the whole batch while pending
+ * messages are due: they get up to half, so neither starves the other. Slots
+ * either side leaves empty go to the other.
+ */
+export function planBatch(
+  fresh: readonly number[],
+  pending: UidCursor['pending'],
+  batch: number,
+  now: Date,
+): { fresh: number[]; retry: number[] } {
+  const due = Object.entries(pending)
+    .filter(([, entry]) => pendingDue(entry, now))
+    // Never-tried first, then the longest since a failure, then by UID.
+    .sort(([ua, a], [ub, b]) => {
+      const ta = a.failedAt ? new Date(a.failedAt).getTime() : 0
+      const tb = b.failedAt ? new Date(b.failedAt).getTime() : 0
+      return ta - tb || Number(ua) - Number(ub)
+    })
+    .map(([uid]) => Number(uid))
+
+  const sortedFresh = [...fresh].sort((a, b) => a - b)
+  const retryShare = sortedFresh.length > 0 ? Math.ceil(batch / 2) : batch
+  const retry = due.slice(0, Math.min(retryShare, due.length))
+  const freshTaken = sortedFresh.slice(0, batch - retry.length)
+  // Fresh left room: hand it back to the pending queue.
+  const more = due.slice(retry.length, retry.length + (batch - retry.length - freshTaken.length))
+  return { fresh: freshTaken, retry: [...retry, ...more] }
+}
+
+/** What happened to one UID this poll. */
+export type UidOutcome = 'filed' | 'failed' | 'gone'
+
+/**
+ * The cursor after a poll.
+ *
+ * `uidNext` moves past every fresh UID taken — they were taken lowest first,
+ * so nothing below the new mark was skipped — and a fresh one that failed is
+ * carried in `pending` instead. A filed or vanished pending UID leaves it.
+ */
+export function advanceCursor(
+  cursor: UidCursor,
+  freshTaken: readonly number[],
+  outcomes: ReadonlyMap<number, UidOutcome>,
+  now: Date,
+): UidCursor {
+  const pending: Record<string, PendingUid> = { ...cursor.pending }
+  for (const [uid, outcome] of outcomes) {
+    const key = String(uid)
+    if (outcome === 'failed') {
+      pending[key] = { attempts: (pending[key]?.attempts ?? 0) + 1, failedAt: now.toISOString() }
+    } else {
+      delete pending[key]
+    }
+  }
+  const highest = freshTaken.length > 0 ? Math.max(...freshTaken) : 0
+  return { ...cursor, uidNext: Math.max(cursor.uidNext, highest + 1), pending }
+}
 
 export interface ImapOptions {
   readonly host: string
@@ -56,6 +185,11 @@ export interface ImapOptions {
   readonly batch: number
   /** Attachments above this are recorded by name and their bytes dropped. */
   readonly maxAttachmentBytes: number
+  /**
+   * Where the cursor lives — the mailbox row. Without one (a test, a one-off
+   * script) the poll falls back to taking unseen mail, as it always did.
+   */
+  readonly cursor?: UidCursorStore
 }
 
 /**
@@ -150,14 +284,7 @@ export function flattenHtml(html: string): string {
  * in `inbound-routing.ts`, and either side alone is enough.
  */
 function automaticByHeaders(parsed: ParsedMail): boolean {
-  const header = (name: string): string => {
-    const value = parsed.headers.get(name)
-    if (value === undefined || value === null) return ''
-    if (typeof value === 'string') return value.trim()
-    // mailparser gives structured headers as `{ value, params }`.
-    const structured = value as { value?: unknown; text?: unknown }
-    return String(structured.value ?? structured.text ?? '').trim()
-  }
+  const header = (name: string): string => headerOf(parsed, name)
 
   const auto = header('auto-submitted').toLowerCase()
   if (auto !== '' && auto !== 'no') return true
@@ -173,6 +300,152 @@ function automaticByHeaders(parsed: ParsedMail): boolean {
   }
 
   return header('content-type').toLowerCase().startsWith('multipart/report')
+}
+
+/** One header as text, whether mailparser kept it as a string or structured it. */
+function headerOf(parsed: ParsedMail, name: string): string {
+  const value = parsed.headers.get(name)
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value.trim()
+  // mailparser gives structured headers as `{ value, params }`.
+  const structured = value as { value?: unknown; text?: unknown }
+  return String(structured.value ?? structured.text ?? '').trim()
+}
+
+/**
+ * The MIME parts a bounce carries its evidence in.
+ *
+ * `message/delivery-status` is the machine-readable report (RFC 3464) — though
+ * mailparser folds it into `text` rather than listing it, so both are read.
+ * `message/rfc822` and `text/rfc822-headers` are the original message, or its
+ * headers alone, which is where the `Message-ID` we sent is quoted back. The
+ * `global` variants are the same thing for an SMTPUTF8 message (RFC 6533).
+ */
+export const BOUNCE_PARTS =
+  /^(message\/(rfc822|global|delivery-status|global-delivery-status|global-headers)|text\/rfc822-headers)$/i
+
+export const DAEMON_SENDERS = new Set(['mailer-daemon', 'postmaster', 'mail-daemon', 'maildaemon'])
+
+/**
+ * Which message of ours this bounce reports undeliverable, and why — FR-NT-06.
+ *
+ * Two shapes of bounce, because MTAs send two:
+ *
+ *   - a **DSN** (RFC 3464): `multipart/report; report-type=delivery-status`,
+ *     with per-recipient `Action:` fields and the original attached. Postfix,
+ *     Exchange, Gmail and most hosted mail send this.
+ *   - a **daemon's letter**: plain text from `MAILER-DAEMON` or `postmaster`,
+ *     the original quoted in the body. qmail's "failure notice" and older Exim.
+ *
+ * What it must never do is call a delay a failure. A DSN reporting `Action:
+ * delayed` quotes the original exactly as a bounce does, and the mail usually
+ * arrives an hour later — marking that row `failed` would tell an operator a
+ * customer was never told something they were. So a DSN counts only when some
+ * recipient's action is `failed`, and a daemon's letter only when its subject
+ * does not read as a warning. An out-of-office quoting our message is neither
+ * shape and is never a bounce.
+ *
+ * Undefined whenever the original `Message-ID` cannot be found, because a
+ * failure we cannot tie to a row changes nothing downstream.
+ */
+export function bounceOf(parsed: ParsedMail): InboundMessage['bounceOf'] {
+  const contentType = parsed.headers.get('content-type') as
+    { value?: string; params?: Record<string, string> } | string | undefined
+  const isReport =
+    typeof contentType === 'object' &&
+    contentType !== null &&
+    String(contentType.value ?? '').toLowerCase() === 'multipart/report' &&
+    String(contentType.params?.['report-type'] ?? '').toLowerCase() === 'delivery-status'
+
+  const local = (parsed.from?.value[0]?.address ?? '').toLowerCase().split('@')[0] ?? ''
+  const fromDaemon = DAEMON_SENDERS.has(local) || headerOf(parsed, 'x-failed-recipients') !== ''
+  if (!isReport && !fromDaemon) return undefined
+
+  const parts = parsed.attachments
+    .filter((part) => BOUNCE_PARTS.test(part.contentType ?? ''))
+    .map((part) => (part.content as Buffer).toString('utf8'))
+  const threaded = parsed.references
+    ? Array.isArray(parsed.references)
+      ? parsed.references.at(-1)
+      : parsed.references
+    : undefined
+  return readBounce({
+    fromDaemon,
+    text: parsed.text ?? '',
+    parts,
+    subject: parsed.subject ?? '',
+    inReplyTo: parsed.inReplyTo,
+    threaded,
+  })
+}
+
+/**
+ * The reading half of `bounceOf`, on plain strings — shared with the webhook.
+ *
+ * A bounce that reaches us through a provider's inbound webhook
+ * (`inbound-email-webhook.ts`) arrives as JSON, not as a parsed MIME tree, and
+ * it used to be ignored as automatic mail without ever marking the delivery it
+ * reports failed. Both paths now hand the same strings to this one reader, so
+ * a bounce means the same thing whichever door it came through.
+ */
+export function readBounce(input: {
+  readonly fromDaemon: boolean
+  readonly text: string
+  /** The report and original parts, decoded — `BOUNCE_PARTS` content types. */
+  readonly parts: readonly string[]
+  readonly subject: string
+  readonly inReplyTo?: string
+  readonly threaded?: string
+}): InboundMessage['bounceOf'] {
+  const { fromDaemon, parts } = input
+  // Folded lines unfolded, so a `Diagnostic-Code` the MTA wrapped reads whole.
+  const text = [input.text, ...parts].join('\n').replace(/\r?\n[ \t]+/g, ' ')
+
+  const actions = [...text.matchAll(/^Action:\s*([a-z-]+)/gim)].map((m) => m[1]!.toLowerCase())
+  if (actions.length > 0) {
+    if (!actions.includes('failed')) return undefined
+  } else if (!fromDaemon) {
+    // A report with no per-recipient actions says nothing about failure.
+    return undefined
+  } else if (/\b(delay(ed)?|warning|will (be )?retr(y|ied))\b/i.test(input.subject)) {
+    return undefined
+  }
+
+  /*
+    The original id: from the attached original first, then from the text, and
+    only then from threading headers.
+
+    The attached part is the strongest evidence — it *is* our message. The text
+    comes next because a daemon's letter quotes the original's headers inline.
+    `In-Reply-To` and `References` last: few MTAs set them on a bounce, but the
+    ones that do point at exactly the message that failed.
+  */
+  const idIn = (source: string): string | undefined =>
+    /^Message-ID:\s*(<[^<>\s]+>)/im.exec(source)?.[1]
+  const messageId =
+    parts.map(idIn).find(Boolean) ?? idIn(input.text) ?? input.inReplyTo ?? input.threaded
+  if (!messageId) return undefined
+
+  /*
+    Why, in the MTA's own words, and short.
+
+    `Diagnostic-Code` is the remote server's reply — "550 5.1.1 User unknown" —
+    and is what an operator needs to tell a typo from a full mailbox. `Status`
+    alone is the bare enhanced code. A daemon's letter has neither, so the first
+    line carrying an SMTP reply code stands in, and failing that the subject,
+    which at least says it bounced.
+  */
+  const diagnostic = /^Diagnostic-Code:\s*(?:[a-z-]+;\s*)?(.+)$/im.exec(text)?.[1]
+  const status = /^Status:\s*([245]\.\d{1,3}\.\d{1,3})/im.exec(text)?.[1]
+  const replyLine = /^.*\b[45]\d\d[ -].*$/m.exec(input.text)?.[0]
+  const reason = (diagnostic ?? (status ? `status ${status}` : undefined) ?? replyLine ?? '')
+    .trim()
+    .slice(0, 500)
+
+  return {
+    messageId: messageId.startsWith('<') ? messageId : `<${messageId}>`,
+    reason: reason || input.subject.trim() || 'returned as undeliverable',
+  }
 }
 
 function synthesiseId(parsed: ParsedMail, mailbox: string): string {
@@ -243,7 +516,41 @@ export function toInboundMessage(
     references,
     attachments,
     automatic: automaticByHeaders(parsed),
+    bounceOf: bounceOf(parsed),
   }
+}
+
+/**
+ * Each item in turn, with one item's failure costing that item and no other.
+ *
+ * The loop `collect` runs, pulled out so it can be tested without an IMAP
+ * server. The rule it holds: a message whose handler throws is left
+ * unacknowledged for the next poll, and the rest of the batch is still read.
+ * Before this the first throw ended the batch — and because the failed message
+ * stays unread and the search hands unseen mail back oldest first, it was
+ * first in line again a minute later. One PDF that could not be stored held
+ * every mail behind it until somebody configured the bucket.
+ *
+ * Failures come back as text, first one first, for `collect` to put in front
+ * of an administrator.
+ */
+export async function eachIsolated<T>(
+  items: readonly T[],
+  step: (item: T) => Promise<void>,
+): Promise<{ handled: number; failures: string[] }> {
+  let handled = 0
+  const failures: string[] = []
+
+  for (const item of items) {
+    try {
+      await step(item)
+      handled++
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  return { handled, failures }
 }
 
 /**
@@ -298,6 +605,8 @@ export function imapSource(options: ImapOptions): InboundMailSource {
       }
 
       let handled = 0
+      let attempted = 0
+      let failures: string[] = []
 
       try {
         const lock = await client.getMailboxLock(options.folder)
@@ -312,12 +621,58 @@ export function imapSource(options: ImapOptions): InboundMailSource {
             it, and the flag would land on the wrong mail. Silently, and on
             somebody else's correspondence.
           */
-          const uids = await client.search({ seen: false }, { uid: true })
+          const now = new Date()
+          const box = client.mailbox
+          const stored = options.cursor ? await options.cursor.load() : null
 
-          // imapflow answers `false` where the server refused the search.
-          for (const uid of (uids || []).slice(0, options.batch)) {
+          let cursor: UidCursor | null = null
+          let fresh: number[]
+          if (options.cursor && box) {
+            const uidValidity = String(box.uidValidity)
+            if (stored && stored.folder === options.folder && stored.uidValidity === uidValidity) {
+              cursor = stored
+              // `N:*` always answers with the highest UID even when it is below N.
+              const found = await client.search({ uid: `${stored.uidNext}:*` }, { uid: true })
+              fresh = (found || []).filter((uid) => uid >= stored.uidNext)
+            } else {
+              /*
+                No history for this folder: what is unseen now is owed, what is
+                seen is history, and everything from the next UID on is new.
+              */
+              const unseen = (await client.search({ seen: false }, { uid: true })) || []
+              cursor = {
+                folder: options.folder,
+                uidValidity,
+                uidNext: unseen.reduce(
+                  (next, uid) => Math.max(next, uid + 1),
+                  Math.max(box.uidNext, 1),
+                ),
+                pending: Object.fromEntries(
+                  unseen.map((uid) => [String(uid), { attempts: 0, failedAt: null }]),
+                ),
+              }
+              fresh = []
+            }
+          } else {
+            // imapflow answers `false` where the server refused the search.
+            fresh = (await client.search({ seen: false }, { uid: true })) || []
+          }
+
+          const plan = cursor
+            ? planBatch(fresh, cursor.pending, options.batch, now)
+            : { fresh: [...fresh].sort((a, b) => a - b).slice(0, options.batch), retry: [] }
+          const batch = [...plan.retry, ...plan.fresh]
+          attempted = batch.length
+          const outcomes = new Map<number, UidOutcome>()
+
+          const outcome = await eachIsolated(batch, async (uid) => {
+            outcomes.set(uid, 'failed')
             const fetched = await client.fetchOne(String(uid), { source: true }, { uid: true })
-            if (!fetched || !fetched.source) continue
+            if (!fetched || !fetched.source) {
+              // Moved or expunged since the search; nothing left to file.
+              outcomes.set(uid, 'gone')
+              return
+            }
 
             const parsed = await simpleParser(fetched.source)
             const message = toInboundMessage(parsed, options.user, options.maxAttachmentBytes)
@@ -329,16 +684,48 @@ export function imapSource(options: ImapOptions): InboundMailSource {
               next run picks it up again. The duplicate that risks is refused
               upstream on the `Message-ID`; the alternative ordering risks an
               enquiry that no longer exists anywhere.
+
+              `eachIsolated` catches the throw and moves on to the next
+              message. It is relabelled with the `Message-ID` first, because
+              that is what an administrator can search the mailbox and
+              `inbound_webhook_events` for; a UID means nothing to anyone.
             */
-            await handler(message)
+            try {
+              await handler(message)
+            } catch (error) {
+              throw new Error(
+                `${message.externalId}: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
+
+            // Filed. The flag and the move below are courtesy for the people
+            // reading this mailbox; the cursor is what stops a second filing.
+            outcomes.set(uid, 'filed')
 
             await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true })
 
             if (options.archiveFolder) {
               await client.messageMove(String(uid), options.archiveFolder, { uid: true })
             }
+          })
 
-            handled++
+          handled = outcome.handled
+          failures = outcome.failures
+
+          /*
+            The cursor, saved whatever happened above. A save that fails costs
+            a re-read next poll, which the receipt's unique key turns into a
+            duplicate — never a lost message — and it is reported with the
+            rest so the mailbox row shows it.
+          */
+          if (cursor && options.cursor) {
+            try {
+              await options.cursor.save(advanceCursor(cursor, plan.fresh, outcomes, now))
+            } catch (error) {
+              failures.push(
+                `the poll position could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
           }
         } finally {
           lock.release()
@@ -352,6 +739,31 @@ export function imapSource(options: ImapOptions): InboundMailSource {
           one unreachable mailbox holding the worker past the next tick.
         */
         await client.logout().catch(() => client.close())
+      }
+
+      /*
+        The batch is done; now say what did not get through.
+
+        Rejecting is what puts it on `mailboxes.last_error` — the wrapper in
+        `adapters/index.ts` writes any rejection there and clears it after a
+        clean poll — so the mailbox reads red on the settings screen for as
+        long as a message keeps failing, and clears itself on the poll after
+        the cause is fixed. The messages that *were* filed are already
+        flagged; rejecting afterwards cannot un-file them.
+
+        No retry cap, deliberately. A cap would end in flagging `\Seen` a
+        message nothing ever filed — losing an enquiry, the one outcome this
+        adapter is built to refuse — and the retries it would save are cheap:
+        one fetch and one fast failure a minute. What a cap would really buy
+        is somebody noticing, and the red row, with the reason on the
+        message's own receipt, is that.
+      */
+      if (failures.length > 0) {
+        throw new ImapError(
+          `${failures.length} of ${attempted} message(s) in ${options.user} could not be ` +
+            `filed and stay unread for the next poll to retry. First: ${failures[0]}`,
+          options.user,
+        )
       }
 
       return handled

@@ -73,11 +73,11 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
             )}
 
             {/*
-              Done is green; the step in progress is the brand colour.
+              Done is green; the step in progress is the accent.
 
               A completed milestone used to be a white tick on a red disc, and
               on a board where red means *alarm* a column of six red ticks
-              reads as six problems. Green says finished, the brand ring says
+              reads as six problems. Green says finished, the accent ring says
               "this is where it is now", and the two together let someone see
               progress without reading a word.
             */}
@@ -87,7 +87,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                 done
                   ? 'border-positive bg-positive text-on-brand'
                   : current
-                    ? 'border-brand bg-surface text-brand ring-4 ring-brand/15'
+                    ? 'border-accent bg-surface text-accent ring-4 ring-accent/15'
                     : 'border-line bg-surface text-ink-subtle',
               ].join(' ')}
             >
@@ -95,7 +95,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                 <Icon name="check" size={13} strokeWidth={2.75} />
               ) : (
                 <span
-                  className={`size-1.5 rounded-full ${current ? 'bg-brand' : 'bg-line-strong'}`}
+                  className={`size-1.5 rounded-full ${current ? 'bg-accent' : 'bg-line-strong'}`}
                 />
               )}
             </span>
@@ -103,7 +103,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
             <div className="min-w-0 flex-1 pt-0.5">
               <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
                 <p
-                  className={`text-[0.875rem] ${
+                  className={`text-body ${
                     current
                       ? 'font-semibold text-ink'
                       : done
@@ -114,12 +114,12 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                   {milestone.name}
                 </p>
                 {milestone.actualAt ? (
-                  <time className="numeric shrink-0 text-[0.75rem] font-medium text-ink-muted">
+                  <time className="numeric shrink-0 text-caption font-medium text-ink-muted">
                     {formatDate(milestone.actualAt)}
                   </time>
                 ) : (milestone.revisedAt ?? milestone.plannedAt) ? (
                   <time
-                    className={`numeric shrink-0 text-[0.75rem] ${
+                    className={`numeric shrink-0 text-caption ${
                       slipped ? 'font-medium text-caution' : 'text-ink-subtle'
                     }`}
                   >
@@ -128,7 +128,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                 ) : null}
               </div>
 
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.6875rem] text-ink-subtle">
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-micro text-ink-subtle">
                 <span>{done ? labels.completed : current ? labels.next : labels.pending}</span>
                 {/*
                   The promise is kept on screen next to the revision. Dropping
@@ -142,7 +142,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
               </p>
 
               {milestone.note ? (
-                <p className="mt-1 text-[0.75rem] text-ink-muted">{milestone.note}</p>
+                <p className="mt-1 text-caption text-ink-muted">{milestone.note}</p>
               ) : null}
             </div>
           </li>

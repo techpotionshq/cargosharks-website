@@ -136,9 +136,7 @@ async function raised(invoiceNumber: string) {
       .from(notificationOutbox)
       .where(eq(notificationOutbox.eventKey, 'supplier_invoice.variance_flagged')),
   )
-  return rows.filter(
-    (row) => (row.payload as Record<string, unknown>).reference === invoiceNumber,
-  )
+  return rows.filter((row) => (row.payload as Record<string, unknown>).reference === invoiceNumber)
 }
 
 describe.skipIf(!enabled)('the supplier-invoice variance flag', () => {
@@ -197,22 +195,20 @@ describe.skipIf(!enabled)('the supplier-invoice variance flag', () => {
 
       // The accrual: 400 KWD of cost booked to this partner for this charge
       // type. The bills below are measured against it.
-      await tx
-        .insert(chargeLines)
-        .values({
-          id: CHARGE,
-          jobId: JOB,
-          branchId: BRANCH,
-          direction: 'cost',
-          chargeTypeId: accruedTypeId,
-          basis: 'flat',
-          rate: '400.000000',
-          amount: '400.000000',
-          currency: 'KWD',
-          amountBase: '400.000000',
-          baseCurrency: 'KWD',
-          counterpartyPartnerId: PARTNER,
-        })
+      await tx.insert(chargeLines).values({
+        id: CHARGE,
+        jobId: JOB,
+        branchId: BRANCH,
+        direction: 'cost',
+        chargeTypeId: accruedTypeId,
+        basis: 'flat',
+        rate: '400.000000',
+        amount: '400.000000',
+        currency: 'KWD',
+        amountBase: '400.000000',
+        baseCurrency: 'KWD',
+        counterpartyPartnerId: PARTNER,
+      })
     })
   })
 

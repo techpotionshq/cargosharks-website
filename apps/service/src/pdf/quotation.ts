@@ -206,7 +206,19 @@ export function hasExpired(validUntil: string | null, on: Date): boolean {
   return validUntil < today
 }
 
-export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale): string {
+/**
+ * A quantity as a person writes it: `numeric(19,6)` arrives as "2.000000", and
+ * the quotation printed exactly that. Trailing zeros go; a real fraction stays.
+ */
+function quantity(value: string): string {
+  return value.includes('.') ? value.replace(/\.?0+$/, '') : value
+}
+
+export function renderQuotationHtml(
+  quote: QuotationView,
+  locale: DocumentLocale,
+  printedAt: Date = new Date(),
+): string {
   const t = STRINGS[locale]
   const money = (value: string): string => esc(formatMoney(value, quote.currency, locale))
   const name = (line: QuotationLineView): string =>
@@ -226,6 +238,22 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
     locale === 'ar' && quote.exclusionsAr.length > 0 ? quote.exclusionsAr : quote.exclusions
 
   /*
+    The inclusions are the charged lines' names, frozen in English in the
+    priced snapshot — so the Arabic quotation listed "Ocean Freight" and
+    "Haulage" under يشمل. Each is shown by its Arabic name where one of the
+    lines carries it; a name no line matches (typed by hand) stays as written.
+  */
+  const arabicNames = new Map(
+    quote.lines.flatMap((line) =>
+      line.chargeNameAr ? [[line.chargeNameEn, line.chargeNameAr] as const] : [],
+    ),
+  )
+  const inclusions =
+    locale === 'ar'
+      ? quote.inclusions.map((item) => arabicNames.get(item) ?? item)
+      : quote.inclusions
+
+  /*
     One overlay, and the order is the order of consequence.
 
     A superseded quotation is the dangerous one — it was a real offer and there
@@ -241,7 +269,13 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
   const overlay =
     quote.status === 'superseded'
       ? t.superseded
-      : hasExpired(quote.validUntil, quote.issuedAt)
+      : /*
+          Against the day it is printed, as `hasExpired` says (S11). It was
+          the issue date — the day it was sent — and a quotation is always
+          valid on the day it is sent, so the overlay could never appear on
+          the very copies it exists for: one printed after it lapsed.
+        */
+        hasExpired(quote.validUntil, printedAt)
         ? t.expired
         : quote.status === 'draft'
           ? t.draft
@@ -252,7 +286,7 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
       (line) => `<tr>
   <td>${esc(name(line))}</td>
   <td>${esc(word(BASES, line.basis, locale))}</td>
-  <td class="n">${esc(line.quantity)}</td>
+  <td class="n">${esc(quantity(line.quantity))}</td>
   <td class="n">${money(line.rate)}</td>
   <td class="n">${money(line.amount)}</td>
 </tr>`,
@@ -263,8 +297,8 @@ export function renderQuotationHtml(quote: QuotationView, locale: DocumentLocale
     items.map((item) => `<li>${esc(item)}</li>`).join('')
 
   const terms = [
-    quote.inclusions.length > 0
-      ? `<div class="col"><h2>${esc(t.inclusions)}</h2><ul>${bullets(quote.inclusions)}</ul></div>`
+    inclusions.length > 0
+      ? `<div class="col"><h2>${esc(t.inclusions)}</h2><ul>${bullets(inclusions)}</ul></div>`
       : '',
     exclusions.length > 0
       ? `<div class="col"><h2>${esc(t.exclusions)}</h2><ul>${bullets(exclusions)}</ul></div>`

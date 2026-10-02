@@ -17,40 +17,59 @@
  * filtered out downstream, but by living only in this slice.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { currencyLabel, formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Field } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
 import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automation-strip'
+import { IntakeAgentPanel } from '@/features/enquiries/ui/intake-agent-panel'
 import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
+import { MoreMenu } from '@/ui/menu'
+import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const comparison = await getQuoteComparison(session.actor, recordId((await params).id))
+  const t = await getTranslations('enquiry')
+  return { title: comparison?.enquiryReference ?? t('title') }
+}
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
-  const comparison = await getQuoteComparison(session.actor, id)
+  const id = recordId((await params).id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  // The locale names the customer and the lane in the reader's language (F27).
+  const comparison = await getQuoteComparison(session.actor, id, locale)
   if (!comparison) notFound()
 
   const t = await getTranslations('quote')
   const tEnq = await getTranslations('enquiry')
+  const tForm = await getTranslations('enquiryForm')
   const tMode = await getTranslations('mode')
   const tc = await getTranslations('common')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   // A new enquiry has no quote yet; the panels above the options still apply.
   const hasOptions = comparison.options.length > 0
@@ -87,8 +106,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const optionColumns = solo
     ? ''
     : comparison.options.length === 2
-      ? 'sm:grid-cols-2'
-      : 'sm:grid-cols-2 lg:grid-cols-3'
+      ? '@2xl:grid-cols-2'
+      : '@2xl:grid-cols-2 @5xl:grid-cols-3'
 
   return (
     <>
@@ -105,7 +124,9 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       */}
       <EnquiryPricingHeader
         enquiryId={id}
-        canPrice={!comparison.isClosed}
+        // An accepted quotation is never superseded, so neither re-pricing nor
+        // a new version is offered once the customer has said yes (S2).
+        canPrice={!comparison.isClosed && !comparison.hasAccepted}
         labels={{ price: t('priceIt'), pricing: t('pricing') }}
         eyebrow={
           <span className="inline-flex items-center gap-2">
@@ -117,16 +138,56 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
           </span>
         }
         title={hasOptions ? t('title') : t('awaitingTitle')}
-        description={hasOptions ? t('subtitle') : t('awaitingSubtitle')}
-        actionsBefore={
-          <EnquiryActions
-            enquiryId={id}
-            hasResponded={comparison.hasResponded}
-            isClosed={comparison.isClosed}
-            status={comparison.status}
-          />
+        description={
+          !hasOptions
+            ? t('awaitingSubtitle')
+            : comparison.pricedFrom === 'manual'
+              ? t('subtitleManual')
+              : comparison.pricedFrom === 'mixed'
+                ? t('subtitleMixed')
+                : t('subtitle')
         }
-        actionsAfter={<QuoteDialog enquiryId={id} variant="secondary" />}
+        /*
+          One primary action — Price it — and everything else behind More.
+
+          This header used to carry six equal buttons: Mark replied, Assign,
+          Cancel it, Close, Price it, New quotation. The one that moves an
+          enquiry on was the fifth and no louder than the one that ends it.
+          The menu keeps every move one click away in the same order, with
+          cancelling drawn as the destructive row it is.
+        */
+        actionsAfter={
+          comparison.isClosed ? null : (
+            <MoreMenu label={tc('more')}>
+              <EnquiryActions
+                enquiryId={id}
+                hasResponded={comparison.hasResponded}
+                isClosed={comparison.isClosed}
+                status={comparison.status}
+              />
+              {comparison.hasAccepted ? null : (
+                /*
+                  Defaults from the enquiry and its current quotation (S7): the
+                  enquiry's branch and base currency, and the figures already
+                  priced, so a revision starts from the offer it revises rather
+                  than from DXB, USD and two empty boxes.
+                */
+                <QuoteDialog
+                  enquiryId={id}
+                  branchId={comparison.branchId}
+                  currency={comparison.options[0]?.sell.currency ?? comparison.baseCurrency}
+                  totalSell={
+                    comparison.options[0] ? String(comparison.options[0].sell.amount) : undefined
+                  }
+                  totalCost={
+                    comparison.options[0] ? String(comparison.options[0].buy.amount) : undefined
+                  }
+                  variant="secondary"
+                />
+              )}
+            </MoreMenu>
+          )
+        }
       />
 
       {/*
@@ -136,50 +197,90 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       */}
       <Card className="mb-4" tone="brand">
         {/*
-          Two groups, kept adjacent rather than pushed to opposite edges.
+          Rows, not one wrapping line.
 
-          `justify-between` looked right at 1280 and fell apart above it: on a
-          wide monitor it opened a hand's width of nothing down the middle and
-          the timing and the consignment read as two unrelated things sharing a
-          box. The metadata instead takes the remaining width as an even
-          four-column grid, so it spreads without drifting, and drops under a
-          rule when the row can no longer hold both.
+          The timing, the four facts and the container form used to share a
+          `flex-wrap` row, with the facts as a `sm:grid-cols-4` grid squeezed
+          into whatever width the other two left. At 768 the sidebar leaves the
+          card ~440px, the grid still went four-up, and the labels overlapped
+          values cut to single letters ("Sea FCL · 1 × 40HC" broke per word at
+          every width). Each group now takes its own row, and the facts lay
+          out against the card's width (`@container`), not the window's: two
+          columns with customer and lane given the whole line until there is
+          room for four, the timing beside them only on a wide card.
         */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-          {timing ? (
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-brand text-on-brand">
-                <Icon name="clock" size={18} />
-              </span>
-              <div>
-                <p className="text-[0.9375rem] font-semibold text-ink">
-                  {t('pricedIn', { ms: formatNumber(comparison.pricingMs ?? 0, locale) })}
-                </p>
-                {comparison.manualTurnaroundHours ? (
-                  <p className="text-[0.8125rem] text-ink-muted">
-                    {t('manualComparison', { hours: comparison.manualTurnaroundHours })}
+        <div className="@container">
+          <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:gap-6">
+            {timing ? (
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent text-on-brand">
+                  <Icon name="clock" size={18} />
+                </span>
+                <div>
+                  <p className="text-title font-semibold text-ink">
+                    {t('pricedIn', { ms: formatNumber(comparison.pricingMs ?? 0, locale) })}
                   </p>
-                ) : null}
+                  {comparison.manualTurnaroundHours ? (
+                    <p className="text-body-sm text-ink-muted">
+                      {t('manualComparison', { hours: comparison.manualTurnaroundHours })}
+                    </p>
+                  ) : null}
+                </div>
               </div>
+            ) : null}
+
+            <dl
+              className={`grid min-w-0 flex-1 grid-cols-2 gap-x-6 gap-y-3 @3xl:grid-cols-4 ${
+                timing ? 'border-line/60 @4xl:border-s @4xl:ps-6' : ''
+              }`}
+            >
+              <Field label={tEnq('customer')} className="col-span-2 @3xl:col-span-1">
+                {orNotRecorded(comparison.customerName)}
+              </Field>
+              <Field label={tEnq('lane')} className="col-span-2 @3xl:col-span-1">
+                {orNotRecorded(comparison.lane)}
+              </Field>
+              <Field label={tEnq('mode')}>
+                {comparison.mode ? (
+                  // Two unbreakable halves: the mode and the equipment wrap as
+                  // units, never "Sea / FCL / · / 1 / × / 40HC".
+                  <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <Icon name={modeIcon(comparison.mode)} size={15} />
+                      {tMode(comparison.mode)}
+                    </span>
+                    {comparison.containerType ? (
+                      <span className="whitespace-nowrap" dir="ltr">
+                        · {comparison.containerType}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  tc('notRecorded')
+                )}
+              </Field>
+              <Field label={tEnq('incoterm')}>{orNotRecorded(comparison.incoterm)}</Field>
+            </dl>
+          </div>
+          {/*
+            Sea FCL is priced per container and refuses without a count; an
+            enquiry that arrived by email or WhatsApp has no other way to get
+            one. Under the facts, ruled off, rather than as a third item in
+            their row.
+          */}
+          {comparison.mode === 'sea_fcl' && !comparison.isClosed ? (
+            <div className="mt-4 border-t border-line/60 pt-4">
+              <ContainerCountForm
+                enquiryId={id}
+                current={comparison.containerCount}
+                labels={{
+                  field: tForm('containers'),
+                  save: tc('save'),
+                  hint: tForm('containersHint'),
+                }}
+              />
             </div>
           ) : null}
-
-          <dl
-            className={`grid min-w-0 flex-1 grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 ${
-              timing ? 'border-line/60 lg:border-s lg:ps-6' : ''
-            }`}
-          >
-            <Field label={tEnq('customer')}>{comparison.customerName}</Field>
-            <Field label={tEnq('lane')}>{orNotRecorded(comparison.lane)}</Field>
-            <Field label={tEnq('mode')}>
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name={modeIcon(comparison.mode)} size={15} />
-                {tMode(comparison.mode)}
-                {comparison.containerType ? ` · ${comparison.containerType}` : ''}
-              </span>
-            </Field>
-            <Field label={tEnq('incoterm')}>{orNotRecorded(comparison.incoterm)}</Field>
-          </dl>
         </div>
       </Card>
 
@@ -199,6 +300,13 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       */}
       <EnquiryAutomationStrip enquiryId={id} />
 
+      {/*
+        The intake agent's conversation with the customer — its state, what it
+        is still waiting for, and the reason behind every reply and every
+        silence. Above the proposals, because it is what produced them.
+      */}
+      <IntakeAgentPanel enquiryId={id} />
+
       <ProposalsPanel enquiryId={id} />
 
       {/*
@@ -210,25 +318,28 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       <RateRequestsPanel enquiryId={id} />
 
       {hasOptions ? (
-        <>
+        <div className="@container">
           {/* --- the options, side by side where there is a side by side ----- */}
+          {/* Columns by the width the page has, not the window — see the facts card. */}
           <div className={`mb-4 grid grid-cols-1 gap-4 ${optionColumns}`}>
             {comparison.options.map((option) => (
               <Card
                 key={option.id}
-                className={option.isRecommended ? 'ring-2 ring-brand/30' : undefined}
+                className={option.isRecommended ? 'ring-2 ring-accent/30' : undefined}
               >
-                <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
+                <div
+                  className={solo ? '@2xl:grid @2xl:grid-cols-2 @2xl:items-center @2xl:gap-8' : ''}
+                >
                   <div className="min-w-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         {/* Wraps rather than clips: a carrier name is the first thing
                         compared across the three cards. */}
-                        <p className="text-[0.9375rem] font-semibold text-balance text-ink">
+                        <p className="text-title font-semibold text-balance text-ink">
                           {orNotRecorded(option.carrier)}
                         </p>
                         {option.service ? (
-                          <p className="mt-0.5 text-[0.75rem] text-ink-muted">{option.service}</p>
+                          <p className="mt-0.5 text-caption text-ink-muted">{option.service}</p>
                         ) : null}
                       </div>
                       {/* Nothing to recommend it over when it is the only one. */}
@@ -240,14 +351,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     </div>
 
                     <div className="mt-4 flex items-baseline gap-2">
-                      <span className="numeric font-display text-[1.75rem] leading-none font-semibold tracking-tight text-ink">
+                      <span className="numeric font-display text-display-lg leading-none font-semibold tracking-tight text-ink">
                         {formatMoney(option.sell, locale, { showCurrency: false })}
                       </span>
-                      <span className="text-[0.8125rem] font-medium text-ink-subtle">
-                        {option.sell.currency}
+                      <span className="text-body-sm font-medium text-ink-subtle">
+                        {currencyLabel(option.sell.currency, locale)}
                       </span>
                     </div>
-                    <p className="mt-1 text-[0.75rem] text-ink-subtle">{t('sell')}</p>
+                    <p className="mt-1 text-caption text-ink-subtle">{t('sell')}</p>
                   </div>
 
                   <div className="min-w-0">
@@ -262,19 +373,19 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 */}
                     <dl
                       className={`mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 ${
-                        solo ? 'md:mt-0 md:border-t-0 md:border-s md:pt-0 md:ps-8' : ''
+                        solo ? '@2xl:mt-0 @2xl:border-t-0 @2xl:border-s @2xl:pt-0 @2xl:ps-8' : ''
                       }`}
                     >
                       <div>
                         <dt className="eyebrow mb-1">{t('buy')}</dt>
-                        <dd className="numeric text-[0.875rem] font-medium text-ink-muted">
+                        <dd className="numeric text-body font-medium text-ink-muted">
                           {formatMoney(option.buy, locale, { showCurrency: false })}
                         </dd>
                       </div>
                       <div>
                         <dt className="eyebrow mb-1">{t('margin')}</dt>
                         <dd
-                          className={`numeric text-[0.875rem] font-semibold ${
+                          className={`numeric text-body font-semibold ${
                             option.marginPct >= 18
                               ? 'text-positive'
                               : option.marginPct < 12
@@ -288,7 +399,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                       {option.transitDays ? (
                         <div>
                           <dt className="eyebrow mb-1">{t('transit')}</dt>
-                          <dd className="numeric text-[0.875rem] font-medium text-ink">
+                          <dd className="numeric text-body font-medium text-ink">
                             {option.transitDays}
                             <span className="text-ink-subtle"> {tc('days')}</span>
                           </dd>
@@ -297,14 +408,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     </dl>
 
                     <Meter
-                      className={`mt-3 ${solo ? 'md:ms-8' : ''}`}
+                      className={`mt-3 ${solo ? '@2xl:ms-8' : ''}`}
                       value={option.marginPct}
                       max={maxMargin}
                       tone={option.id === best?.id ? 'var(--qb-positive)' : 'var(--qb-chart-1)'}
                       label={`${t('margin')} ${option.marginPct}%`}
                     />
 
-                    <p className={`mt-3 text-[0.6875rem] text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
+                    <p className={`mt-3 text-micro text-ink-subtle ${solo ? '@2xl:ms-8' : ''}`}>
                       {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
                     </p>
                   </div>
@@ -337,38 +448,79 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <THead>
                 <TR>
                   <TH>{t('charge')}</TH>
-                  <TH>{t('basis')}</TH>
-                  <TH align="end">{t('quantity')}</TH>
-                  <TH align="end">{t('buy')}</TH>
-                  <TH align="end">{t('sell')}</TH>
+                  {/* On a phone a line is its charge, its margin and its
+                      amount; the arithmetic behind them waits for a wider
+                      screen, and the totals row below follows suit. */}
+                  <TH priority="low">{t('basis')}</TH>
+                  <TH priority="low" align="end">
+                    {t('quantity')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('buy')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('sell')}
+                  </TH>
                   <TH align="end">{t('margin')}</TH>
                   <TH align="end">{t('amount')}</TH>
                 </TR>
               </THead>
               <TBody>
                 {(comparison.options[0]?.lines ?? []).map((line) => {
+                  /*
+                    A line's buy rate is known only where something recorded it —
+                    the pilot fixtures do, and a quotation priced from a card does
+                    since `priced_snapshot.lineCosts`; older ones do not. It used
+                    to render as 0.00 with a 100% margin on every line, on the one
+                    screen whose job is to show buy beside sell. Unknown now says
+                    so; the totals row, which is known, is unaffected.
+
+                    Rates format in the line's currency, not `toFixed(2)`: a KWD
+                    rate has three decimals, and two rounded 250.125 to 250.13.
+                  */
+                  const currency = line.amount.currency
                   const margin =
-                    line.sellRate === 0 ? 0 : ((line.sellRate - line.buyRate) / line.sellRate) * 100
+                    line.buyRate === null || line.sellRate === 0
+                      ? null
+                      : ((line.sellRate - line.buyRate) / line.sellRate) * 100
                   return (
                     <TR key={line.chargeCode}>
                       <TD className="font-medium">{locale === 'ar' ? line.nameAr : line.nameEn}</TD>
-                      <TD className="text-ink-muted">{t(`bases.${line.basis}` as 'bases.flat')}</TD>
-                      <TD align="end" numeric>
+                      <TD priority="low" className="text-ink-muted">
+                        {t(`bases.${line.basis}` as 'bases.flat')}
+                      </TD>
+                      <TD priority="low" align="end" numeric>
                         {line.quantity}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
-                        {line.buyRate.toFixed(2)}
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
+                        {line.buyRate === null ? (
+                          tc('notRecorded')
+                        ) : (
+                          <Money
+                            value={{ amount: line.buyRate, currency }}
+                            locale={locale}
+                            showCurrency={false}
+                          />
+                        )}
+                      </TD>
+                      <TD priority="low" align="end" numeric>
+                        <Money
+                          value={{ amount: line.sellRate, currency }}
+                          locale={locale}
+                          showCurrency={false}
+                        />
                       </TD>
                       <TD align="end" numeric>
-                        {line.sellRate.toFixed(2)}
-                      </TD>
-                      <TD align="end" numeric>
-                        <span className={margin < 12 ? 'text-caution' : 'text-ink-muted'}>
-                          {margin.toFixed(1)}%
-                        </span>
+                        {margin === null ? (
+                          <span className="text-ink-subtle">{tc('notRecorded')}</span>
+                        ) : (
+                          <span className={margin < 12 ? 'text-caution' : 'text-ink-muted'}>
+                            {margin.toFixed(1)}%
+                          </span>
+                        )}
                       </TD>
                       <TD align="end" numeric className="font-semibold">
-                        {formatMoney(line.amount, locale, { showCurrency: false })}
+                        <Money value={line.amount} locale={locale} showCurrency={false} />
                       </TD>
                     </TR>
                   )
@@ -377,25 +529,33 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <tfoot>
                 <tr className="border-t-2 border-line-strong bg-surface-sunken">
                   <TD className="font-semibold">{t('total')}</TD>
-                  <TD />
-                  <TD />
-                  <TD align="end" numeric className="font-medium text-ink-muted">
-                    {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
+                  <TD priority="low" />
+                  <TD priority="low" />
+                  <TD priority="low" align="end" numeric className="font-medium text-ink-muted">
+                    <Money
+                      value={comparison.options[0]?.buy}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
-                  <TD align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
+                  <TD priority="low" align="end" numeric className="font-semibold">
+                    <Money
+                      value={comparison.options[0]?.sell}
+                      locale={locale}
+                      showCurrency={false}
+                    />
                   </TD>
                   <TD align="end" numeric className="font-semibold text-positive">
                     {comparison.options[0]?.marginPct.toFixed(1)}%
                   </TD>
                   <TD align="end" numeric className="font-semibold">
-                    {formatMoney(comparison.options[0]?.sell, locale)}
+                    <Money value={comparison.options[0]?.sell} locale={locale} />
                   </TD>
                 </tr>
               </tfoot>
             </TableShell>
           </Card>
-        </>
+        </div>
       ) : null}
     </>
   )

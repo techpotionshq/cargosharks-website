@@ -25,6 +25,7 @@ import { Card, CardHeader } from '@/ui/card'
 import { EmptyState, Field } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { CreditOverrideDialog } from './dialogs'
 import type { CreditView } from '../queries'
 
@@ -56,7 +57,14 @@ export async function CreditStandingCard({
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const mayOverride = can(session, 'credit.override')
 
-  const amount = (value: string) => `${value} ${view.currency}`
+  /*
+    Through `Money`, like every other figure. This was the raw column and the
+    code glued together — "1890.500 KWD" — with no grouping, a dot where an
+    Arabic reader expects the locale's figure, and the code on the wrong side.
+  */
+  const amount = (value: string) => (
+    <Money value={{ amount: value, currency: view.currency }} locale={lang} />
+  )
 
   return (
     <Card className={className}>
@@ -126,14 +134,14 @@ export async function CreditStandingCard({
         should not be.
       */}
       {view.unconvertible.length > 0 ? (
-        <p className="mt-3 text-[0.75rem] text-critical">
+        <p className="mt-3 text-caption text-critical">
           {t('unconvertible', {
             list: view.unconvertible.map((u) => `${u.amount} ${u.currency}`).join(', '),
           })}
         </p>
       ) : null}
 
-      <h3 className="mt-6 text-[0.8125rem] font-medium text-ink">{t('overridesTitle')}</h3>
+      <h3 className="mt-6 text-body-sm font-medium text-ink">{t('overridesTitle')}</h3>
 
       {view.overrides.length === 0 ? (
         <EmptyState className="mt-1.5" variant="inline" icon="check" title={t('noOverrides')} />
@@ -142,21 +150,41 @@ export async function CreditStandingCard({
           <THead>
             <TR>
               <TH>{t('approvedAt')}</TH>
-              <TH>{t('approvedBy')}</TH>
+              {/* When, its scope and the exposure it let through stay across
+                  a phone; who approved it and why follow the date there
+                  (below) rather than leaving the record. */}
+              <TH priority="low">{t('approvedBy')}</TH>
               <TH>{t('scope')}</TH>
               <TH align="end">{t('exposureThen')}</TH>
-              <TH>{t('reason')}</TH>
+              <TH priority="low">{t('reason')}</TH>
             </TR>
           </THead>
           <TBody>
             {view.overrides.map((o) => (
               <TR key={o.id}>
-                <TD>{formatDate(o.approvedAt, lang, timeZone)}</TD>
-                <TD>{lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}</TD>
+                <TD>
+                  {/* Held to one line from md only: this table sits inside a
+                      padded card, 40px narrower than a register on a phone. */}
+                  <span className="@3xl:whitespace-nowrap">
+                    {formatDate(o.approvedAt, lang, timeZone)}
+                  </span>
+                  <span className="block text-caption text-ink-muted @3xl:hidden">
+                    {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
+                  </span>
+                  <span className="mt-0.5 block text-caption break-words text-ink-subtle @3xl:hidden">
+                    {o.reason}
+                  </span>
+                </TD>
+                <TD priority="low">
+                  {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
+                </TD>
                 <TD>
                   {o.expiresOn ? (
                     <Badge tone={o.isLive ? 'caution' : 'muted'}>
-                      {t(o.isLive ? 'standingUntil' : 'lapsedOn', { date: o.expiresOn })}
+                      {/* A calendar day, as the reader writes one — not "2026-10-23". */}
+                      {t(o.isLive ? 'standingUntil' : 'lapsedOn', {
+                        date: formatDate(o.expiresOn, lang, 'UTC'),
+                      })}
                     </Badge>
                   ) : (
                     <Badge tone="muted">
@@ -164,10 +192,24 @@ export async function CreditStandingCard({
                     </Badge>
                   )}
                 </TD>
+                {/*
+                  At the currency's precision — the raw columns printed
+                  "20550.000000 / 120000.000000 KWD". The limit takes its own
+                  line on a phone, where the pair on one line was the table's
+                  whole overflow.
+                */}
                 <TD align="end" numeric>
-                  {o.exposure} / {o.creditLimit} {o.currency}
+                  <span className="block @3xl:inline">
+                    <Money value={{ amount: o.exposure, currency: o.currency }} locale={lang} />
+                  </span>
+                  <span className="block text-ink-muted @3xl:inline">
+                    <span className="hidden @3xl:inline"> </span>/{' '}
+                    <Money value={{ amount: o.creditLimit, currency: o.currency }} locale={lang} />
+                  </span>
                 </TD>
-                <TD className="max-w-[22rem] whitespace-normal text-ink-muted">{o.reason}</TD>
+                <TD priority="low" className="max-w-[22rem] whitespace-normal text-ink-muted">
+                  {o.reason}
+                </TD>
               </TR>
             ))}
           </TBody>

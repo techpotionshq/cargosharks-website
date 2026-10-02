@@ -39,7 +39,7 @@ export default async function DocumentsPage() {
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const [rows, counts] = await Promise.all([
-    listDocuments(session.actor),
+    listDocuments(session.actor, locale),
     documentCounts(session.actor),
   ])
 
@@ -61,16 +61,28 @@ export default async function DocumentsPage() {
           <TR>
             <TH>{t('shipment')}</TH>
             <TH>{t('type')}</TH>
-            <TH>{t('customer')}</TH>
-            <TH align="end">{t('version')}</TH>
+            <TH priority="low">{t('customer')}</TH>
+            <TH priority="low" align="end">
+              {t('version')}
+            </TH>
             <TH>{tc('status')}</TH>
-            <TH>{t('author')}</TH>
-            <TH>{t('created')}</TH>
+            <TH priority="low">{t('author')}</TH>
+            <TH priority="low">{t('created')}</TH>
           </TR>
         </THead>
         <TBody>
           {rows.map((row) => (
-            <TR key={row.id} className={row.isSuperseded ? 'opacity-55' : undefined}>
+            /*
+              A superseded version is set back by a sunken row and muted ink,
+              and says so in its status pill — not by fading the whole row to
+              55% opacity, which took every badge in it to 2.2:1.
+            */
+            <TR
+              key={row.id}
+              className={
+                row.isSuperseded ? 'bg-surface-sunken/60 [&_td]:text-ink-muted' : undefined
+              }
+            >
               <TD>
                 <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
               </TD>
@@ -85,13 +97,17 @@ export default async function DocumentsPage() {
                   {t(`categories.${row.category}`)}
                 </Badge>
               </TD>
-              <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
-              <TD align="end" numeric>
+              <TD priority="low" className="text-ink-muted">
+                {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+              </TD>
+              <TD priority="low" align="end" numeric>
                 v{row.version}
               </TD>
               <TD>
                 {row.isSuperseded ? (
-                  <Badge tone="muted">{t('superseded')}</Badge>
+                  <Badge tone="muted" icon="clock">
+                    {t('superseded')}
+                  </Badge>
                 ) : row.releasedAt ? (
                   <Badge tone="positive" icon="check">
                     {t('released')}
@@ -100,8 +116,10 @@ export default async function DocumentsPage() {
                   <Badge tone="caution">{t('draft')}</Badge>
                 )}
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.authorName ?? '—'}</TD>
-              <TD className="whitespace-nowrap text-ink-muted">
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.authorName ?? '—'}
+              </TD>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
                 {formatDateTime(row.createdAt, locale, timeZone)}
               </TD>
             </TR>

@@ -26,6 +26,8 @@ export interface PodCaptureModalProps {
   readonly equipment: readonly { value: string; label: string }[]
   /** Set when this capture replaces an earlier record. */
   readonly supersedesId?: string
+  /** The job's branch zone, for the delivery time's default. */
+  readonly timeZone: string
   readonly variant?: 'primary' | 'secondary' | 'ghost'
 }
 
@@ -33,6 +35,7 @@ export function PodCaptureModal({
   jobId,
   equipment,
   supersedesId,
+  timeZone,
   variant = 'primary',
 }: PodCaptureModalProps) {
   const t = useTranslations('pod')
@@ -50,7 +53,7 @@ export function PodCaptureModal({
           type="button"
           onClick={onClick}
           className={[
-            'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-[0.875rem] font-medium transition-colors',
+            'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-body font-medium transition-colors',
             variant === 'primary'
               ? 'bg-brand text-on-brand hover:bg-brand-hover'
               : 'border border-line bg-surface text-ink hover:bg-surface-sunken',
@@ -60,7 +63,12 @@ export function PodCaptureModal({
         </button>
       )}
     >
-      <CaptureForm jobId={jobId} equipment={equipment} supersedesId={supersedesId} />
+      <CaptureForm
+        jobId={jobId}
+        equipment={equipment}
+        supersedesId={supersedesId}
+        timeZone={timeZone}
+      />
     </Modal>
   )
 }
@@ -71,7 +79,12 @@ export function PodCaptureModal({
  * so `useDialog()` finds the real `close()`; the action has already revalidated
  * `/jobs/:id` by the time it runs, so the new record is behind the dialog.
  */
-function CaptureForm({ jobId, equipment, supersedesId }: Omit<PodCaptureModalProps, 'variant'>) {
+function CaptureForm({
+  jobId,
+  equipment,
+  supersedesId,
+  timeZone,
+}: Omit<PodCaptureModalProps, 'variant'>) {
   const { close } = useDialog()
 
   return (
@@ -80,6 +93,7 @@ function CaptureForm({ jobId, equipment, supersedesId }: Omit<PodCaptureModalPro
       jobId={jobId}
       equipment={equipment}
       supersedesId={supersedesId}
+      timeZone={timeZone}
       onDone={close}
     />
   )

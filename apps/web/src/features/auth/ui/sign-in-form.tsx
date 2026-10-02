@@ -12,6 +12,7 @@
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { signIn, type SignInState } from '../actions'
+import { FOCUS_RING } from '@/ui/control'
 
 interface Labels {
   readonly email: string
@@ -31,8 +32,7 @@ interface Defaults {
   readonly password: string
 }
 
-const FIELD =
-  'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
+const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-title text-ink focus:bg-surface ${FOCUS_RING}`
 
 function Submit({ labels }: { readonly labels: Labels }) {
   const { pending } = useFormStatus()
@@ -40,7 +40,7 @@ function Submit({ labels }: { readonly labels: Labels }) {
     <button
       type="submit"
       disabled={pending}
-      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-[0.9375rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
+      className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-sm bg-brand px-4 text-title font-semibold text-on-brand transition-colors hover:bg-brand-hover disabled:opacity-60"
     >
       {pending ? labels.submitting : labels.submit}
     </button>
@@ -61,7 +61,7 @@ export function SignInForm({
       {state.error ? (
         <p
           role="alert"
-          className="rounded-sm bg-critical-soft px-3 py-2 text-[0.8125rem] font-medium text-critical ring-1 ring-critical/25 ring-inset"
+          className="rounded-sm bg-critical-soft px-3 py-2 text-body-sm font-medium text-critical ring-1 ring-critical/25 ring-inset"
         >
           {state.error}
         </p>

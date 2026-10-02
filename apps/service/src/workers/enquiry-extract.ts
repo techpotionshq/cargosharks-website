@@ -64,10 +64,12 @@
  * in a millisecond against no infrastructure.
  */
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import {
+  assets,
   enquiries,
   extractionProposals,
+  messageAttachments,
   incoterms as incotermsTable,
   inSeries,
   messages,
@@ -84,13 +86,22 @@ import {
   ENQUIRY_FIELDS,
   parseModelJson,
   readExtractedEnquiry,
+  withoutStrayContainerCount,
   type EnquiryField,
   type FieldProposal,
 } from '@qabandi/core'
 import { ENQUIRY_EXTRACTION_SCHEMA } from '@qabandi/core'
 import { invoke } from '../ai/ledger'
 import { integration, type LiveIntegration } from '../settings'
-import { ENQUIRY_PROMPT_VERSION, ENQUIRY_USER_PROMPT, enquirySystemPrompt } from '../ai/prompts'
+import {
+  ENQUIRY_DOCUMENTS_NOTE,
+  ENQUIRY_PROMPT_VERSION,
+  ENQUIRY_USER_PROMPT,
+  enquirySystemPrompt,
+} from '../ai/prompts'
+import { fileStore } from '../adapters/index'
+import type { ModelContent } from '../ports/index'
+import { documentPart } from './invoice-extract'
 
 /**
  * The vocabularies the prompt names, and the modes are a constant here.
@@ -119,7 +130,28 @@ export interface ExtractEnquiryInput {
   readonly enquiryId: string
   readonly branchId: string
   /** The inbound message this enquiry was opened from — `messages.id`. */
-  readonly messageId: string
+  readonly messageId?: string
+  /**
+   * The text to read instead of one message — the intake agent's transcript of
+   * the whole conversation so far (`intake-turn.ts`).
+   *
+   * Everything after the read is unchanged: the same allowlist, the same
+   * skip-what-is-already-there, the same proposals. That is the point of
+   * passing text rather than writing a second extractor — a conversation read
+   * in one call must merge into the enquiry by exactly the rules a single
+   * mail does, or the two paths start disagreeing about what a model may
+   * write.
+   */
+  readonly source?: string
+  /**
+   * Messages whose readable attachments — PDFs and images — are read with the
+   * text: a packing list, a commercial invoice, a photo of a booking sheet.
+   * Defaults to `messageId` alone. The intake turn passes only the messages it
+   * has not read before, because an attachment a previous turn read has
+   * already proposed what it says, and sending a 4MB scan on every turn of a
+   * conversation is the easiest way to make this surface expensive.
+   */
+  readonly attachmentMessageIds?: readonly string[]
 }
 
 export interface ExtractEnquiryResult {
@@ -173,6 +205,8 @@ const COLUMN: Readonly<Record<EnquiryField, string>> = {
   grossWeightKg: 'gross_weight_kg',
   volumeCbm: 'volume_cbm',
   pieces: 'pieces',
+  containerCount: 'container_count',
+  containerType: 'container_type',
   dimensions: 'dimensions',
   isDangerous: 'is_dangerous',
 }
@@ -196,10 +230,15 @@ export async function extractEnquiry(
     return { proposed: 0, applied: 0, refused: [], occupied: [], skipped: 'enquiry_not_found' }
   }
 
-  const source = mailFor(context.subject, context.body)
+  const source = input.source ?? mailFor(context.subject, context.body)
   if (source.trim() === '') {
     return { proposed: 0, applied: 0, refused: [], occupied: [], skipped: 'nothing_to_read' }
   }
+
+  const documents = await attachmentParts(
+    actor,
+    input.attachmentMessageIds ?? (input.messageId ? [input.messageId] : []),
+  )
 
   /*
     The mail is a separate user turn and is never interpolated into the
@@ -235,7 +274,16 @@ export async function extractEnquiry(
         },
         {
           role: 'user',
-          content: [{ type: 'text', text: `${ENQUIRY_USER_PROMPT}\n\n${source}` }],
+          content: [
+            {
+              type: 'text',
+              text:
+                documents.length > 0
+                  ? `${ENQUIRY_USER_PROMPT} ${ENQUIRY_DOCUMENTS_NOTE}\n\n${source}`
+                  : `${ENQUIRY_USER_PROMPT}\n\n${source}`,
+            },
+            ...documents,
+          ],
         },
       ],
     },
@@ -252,7 +300,13 @@ export async function extractEnquiry(
     `unknownFields` covers names the schema's own enum did not admit; `refused`
     covers names it did and the allowlist did not.
   */
-  const { allowed, refused } = admissible('enquiry_extract', extracted.fields)
+  /*
+    The mail's own mode already ruled a stray count out in `readExtractedEnquiry`;
+    this is the other half, the mode a coordinator has already put on the row. A
+    count proposed onto an enquiry somebody has marked air is noise in the queue.
+  */
+  const fields = withoutStrayContainerCount(extracted.fields, context.current.mode)
+  const { allowed, refused } = admissible('enquiry_extract', fields)
   const refusedNames = [...refused.map((p) => p.field), ...extracted.unknownFields]
 
   const occupied: string[] = []
@@ -466,17 +520,22 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
             grossWeightKg: enquiries.grossWeightKg,
             volumeCbm: enquiries.volumeCbm,
             pieces: enquiries.pieces,
+            containerCount: enquiries.containerCount,
+            containerType: enquiries.containerType,
             dimensions: enquiries.dimensions,
           })
           .from(enquiries)
           .where(eq(enquiries.id, input.enquiryId))
           .limit(1),
       () =>
-        tx
-          .select({ subject: messages.subject, body: messages.body })
-          .from(messages)
-          .where(eq(messages.id, input.messageId))
-          .limit(1),
+        input.messageId
+          ? tx
+              .select({ subject: messages.subject, body: messages.body })
+              .from(messages)
+              .where(eq(messages.id, input.messageId))
+              .limit(1)
+          : // A transcript arrives as `source`; there is no one message to load.
+            Promise.resolve([{ subject: null, body: '' }]),
       () =>
         tx
           .select({ code: incotermsTable.code })
@@ -518,6 +577,8 @@ async function load(actor: Actor, input: ExtractEnquiryInput): Promise<Loaded | 
         grossWeightKg: asText(row.grossWeightKg),
         volumeCbm: asText(row.volumeCbm),
         pieces: asText(row.pieces),
+        containerCount: asText(row.containerCount),
+        containerType: asText(row.containerType),
         dimensions: asText(row.dimensions),
         /*
           `is_dangerous` is `not null default false`, so it is never *empty* in
@@ -546,3 +607,57 @@ export function mailFor(subject: string | null, body: string): string {
 }
 
 export { ENQUIRY_FIELDS }
+
+/** What an enquiry's attachment has to be before it is worth sending to a model. */
+const READABLE_DOCUMENT = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
+/** Documents per read, and bytes per document — a quotation request, not an archive. */
+const MAX_DOCUMENTS = 3
+const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
+
+/**
+ * The readable attachments on these messages, as model content parts.
+ *
+ * The same `documentPart` the invoice and rate readers use, so a PDF reaches
+ * the provider the one way this codebase sends one. An attachment that cannot
+ * be fetched, is too large or was stored as an oversized stub is skipped, not
+ * fatal: the words usually carry the enquiry, and the file is still on the
+ * message for a person.
+ */
+async function attachmentParts(
+  actor: Actor,
+  messageIds: readonly string[],
+): Promise<ModelContent[]> {
+  if (messageIds.length === 0) return []
+  const rows = await withActor(actor, (tx) =>
+    tx
+      .select({
+        storageKey: assets.storageKey,
+        contentType: assets.contentType,
+        fileName: assets.fileName,
+        byteSize: assets.byteSize,
+      })
+      .from(messageAttachments)
+      .innerJoin(assets, eq(assets.id, messageAttachments.assetId))
+      .where(inArray(messageAttachments.messageId, [...messageIds])),
+  )
+  const readable = rows.filter(
+    (row) =>
+      READABLE_DOCUMENT.has(row.contentType) &&
+      !row.storageKey.startsWith('oversized:') &&
+      (row.byteSize ?? 0) <= MAX_DOCUMENT_BYTES,
+  )
+  if (readable.length === 0) return []
+
+  const store = await fileStore()
+  const parts: ModelContent[] = []
+  for (const row of readable.slice(0, MAX_DOCUMENTS)) {
+    try {
+      const bytes = await store.get(row.storageKey)
+      if (bytes.byteLength > MAX_DOCUMENT_BYTES) continue
+      parts.push(documentPart(bytes, row.contentType, row.fileName))
+    } catch {
+      // Unfetchable or unreadable: skipped, as above.
+    }
+  }
+  return parts
+}

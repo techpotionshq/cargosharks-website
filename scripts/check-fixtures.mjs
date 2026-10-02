@@ -44,11 +44,6 @@ const USE_SERVER = /^\s*['"]use server['"]/m
  */
 const ALLOWED = new Map([
   [
-    'apps/web/src/features/imports/queries.ts',
-    'guarded one level up: imports/page.tsx tests usePilotFixtures() and says there is ' +
-      'nothing to import into, rather than offering a form whose submit fails.',
-  ],
-  [
     'apps/web/src/app/api/assets/[id]/route.ts',
     'streams a stored object. Fixture mode has no object store, and a download route ' +
       'that answered with an invented file would be worse than one that 404s.',
@@ -103,12 +98,81 @@ for (const file of files) {
   somebody reads when they add a branch.
 */
 
-if (failures > 0) {
-  console.error(`\n${failures} read(s) with no fixture branch.`)
+/*
+  Writes have their own half of the rule.
+
+  Exempting write paths above was right about *reads* and wrong about the
+  visitor: fixture mode has nothing to write into, and an action that reached
+  `withActor` threw "DATABASE_URL is not set", so every create dialog on the
+  demo answered a filled-in form with an error page. Twenty-five modules did.
+
+  So every exported function in a `'use server'` file must say what it does in
+  fixture mode — `demoReadOnly()` (lib/pilot/read-only.ts) for a form, or its
+  own `usePilotFixtures()` branch — before the closing brace of its body.
+  Per function rather than per file, because the regression is always one new
+  action added beside guarded ones.
+*/
+const WRITE_EXEMPT = new Map([
+  [
+    'apps/web/src/lib/preferences.ts#setLocalePreference',
+    'writes a cookie and nothing else, which works in every mode.',
+  ],
+  ['apps/web/src/lib/preferences.ts#setThemePreference', 'the same: a cookie.'],
+  [
+    'apps/web/src/features/admin/intake-settings.ts#intakeFieldChoices',
+    'returns a constant menu; it reads and writes nothing.',
+  ],
+  [
+    'apps/web/src/features/notifications/actions.ts#openNotification',
+    'delegates to markRead in queries.ts, which branches on fixtures itself.',
+  ],
+  [
+    'apps/web/src/features/notifications/actions.ts#clearNotifications',
+    'the same, through markAllRead.',
+  ],
+])
+
+let unguarded = 0
+let actions = 0
+for (const file of files) {
+  const source = readFileSync(file, 'utf8')
+  if (!USE_SERVER.test(source)) continue
+
+  /*
+    Both shapes of an action: the bare declaration, and the one wrapped in
+    `refuseForbidden(async function name(…) {…})` (lib/refuse-forbidden.ts),
+    whose body closes on `})` instead. Matching only the first let every
+    wrapped action — nearly all of them — through unread.
+  */
+  for (const match of source.matchAll(
+    /^export (?:async function (\w+)|const (\w+) = refuseForbidden\(async function )/gm,
+  )) {
+    const name = match[1] ?? match[2]
+    const end = source.indexOf(match[1] ? '\n}\n' : '\n})\n', match.index)
+    const body = source.slice(match.index, end === -1 ? undefined : end)
+    actions++
+    if (/\b(?:demoReadOnly|demoReadOnlyMessage|usePilotFixtures|useDemoLogin)\s*\(/.test(body))
+      continue
+    if (WRITE_EXEMPT.has(`${file}#${name}`)) continue
+
+    console.error(
+      `${file}: server action ${name}() has no fixture-mode answer.\n` +
+        '  In fixture mode it reaches the database that is not there and the form\n' +
+        '  becomes an error page. Return `await demoReadOnly(form)` when it is set\n' +
+        '  (lib/pilot/read-only.ts), branch on usePilotFixtures(), or add it to\n' +
+        '  WRITE_EXEMPT in this file with a reason.',
+    )
+    unguarded++
+  }
+}
+
+if (failures > 0 || unguarded > 0) {
+  if (failures > 0) console.error(`\n${failures} read(s) with no fixture branch.`)
+  if (unguarded > 0) console.error(`\n${unguarded} server action(s) with no fixture answer.`)
   process.exit(1)
 }
 
 console.log(
   `fixtures: ${branched} read file(s) branched, ${writes} write path(s) exempt, ` +
-    `${ALLOWED.size} allowed — every screen renders with no database`,
+    `${ALLOWED.size} allowed, ${actions} action(s) answer in fixture mode — every screen renders with no database`,
 )

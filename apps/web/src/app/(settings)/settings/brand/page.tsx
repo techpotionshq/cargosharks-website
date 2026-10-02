@@ -12,6 +12,7 @@
  * these variables, or add one file under `packages/brand/src/brands/`.
  */
 
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { markSvg } from '@qabandi/brand'
@@ -53,9 +54,15 @@ function Swatch({ color, label }: { readonly color: string; readonly label: stri
         style={{ backgroundColor: color }}
         title={color}
       />
-      <p className="numeric mt-1 truncate text-[0.625rem] text-ink-subtle">{label}</p>
+      <p className="numeric mt-1 truncate text-micro text-ink-subtle">{label}</p>
     </div>
   )
+}
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('brand') }
 }
 
 export default async function BrandPage() {
@@ -109,7 +116,7 @@ export default async function BrandPage() {
 
       <Grid className="mb-4">
         {/* --- the mark, at the sizes it actually ships at -------------- */}
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader icon="admin" eyebrow={t('identity')} title={t('logo')} />
 
           <div className="mt-5 flex flex-wrap items-end gap-6">
@@ -147,7 +154,7 @@ export default async function BrandPage() {
         </Card>
 
         {/* --- the ramps ------------------------------------------------ */}
-        <Card className="lg:col-span-7">
+        <Card className="@4xl:col-span-7">
           <CardHeader icon="rates" eyebrow={t('palette')} title={t('palette')} />
 
           <p className="eyebrow mt-5 mb-2">primary</p>
@@ -174,7 +181,7 @@ export default async function BrandPage() {
       </Grid>
 
       <Grid className="mb-4">
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="dashboard" eyebrow={t('surfaces')} title={t('surfaces')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {semantic.map((token) => (
@@ -187,7 +194,7 @@ export default async function BrandPage() {
           </div>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="alert" eyebrow={t('statusColours')} title={t('statusColours')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {statuses.map((token) => (
@@ -198,12 +205,12 @@ export default async function BrandPage() {
               />
             ))}
           </div>
-          <p className="mt-4 text-[0.75rem] text-ink-muted">
+          <p className="mt-4 text-caption text-ink-muted">
             Reserved for state. A chart series never wears one of these.
           </p>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="trend" eyebrow={t('chartColours')} title={t('chartColours')} />
           <div className="mt-5 grid grid-cols-4 gap-2">
             {series.map((token) => (
@@ -214,7 +221,7 @@ export default async function BrandPage() {
               />
             ))}
           </div>
-          <p className="mt-4 text-[0.75rem] text-ink-muted">
+          <p className="mt-4 text-caption text-ink-muted">
             Assigned in order, never cycled. Validated for colour-blind separation and surface
             contrast in both themes.
           </p>
@@ -222,7 +229,7 @@ export default async function BrandPage() {
       </Grid>
 
       <Grid>
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="admin"
@@ -232,13 +239,13 @@ export default async function BrandPage() {
             />
           </div>
           <div className="w-full overflow-x-auto border-t border-line">
-            <table className="w-full border-collapse text-[0.8125rem]">
+            <table className="w-full border-collapse text-body-sm">
               <thead>
                 <tr className="border-b border-line">
-                  <th className="px-5 py-2.5 text-start text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('variable')}
                   </th>
-                  <th className="px-5 py-2.5 text-start text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('value')}
                   </th>
                 </tr>
@@ -246,8 +253,13 @@ export default async function BrandPage() {
               <tbody className="divide-y divide-line">
                 {ENV_OVERRIDES.map((row) => (
                   <tr key={row.variable} className="hover:bg-surface-sunken">
-                    <td className="ref px-5 py-2 text-ink">{row.variable}</td>
-                    <td className="numeric px-5 py-2 text-ink-muted">{row.describe(brand)}</td>
+                    {/* Narrower padding and a variable name that may break
+                        anywhere on a phone: `QABANDI_BRAND_…` has no space to
+                        break at, and held whole it pushed its value off-screen. */}
+                    <td className="ref px-3 py-2 text-ink wrap-anywhere md:px-5">{row.variable}</td>
+                    <td className="numeric px-3 py-2 break-words text-ink-muted md:px-5">
+                      {row.describe(brand)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -255,30 +267,30 @@ export default async function BrandPage() {
           </div>
         </Card>
 
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader icon="document" eyebrow={t('typography')} title={t('typography')} />
           <dl className="mt-5 flex flex-col gap-4">
             <div>
               <dt className="eyebrow mb-1">sans</dt>
-              <dd className="font-sans text-[1.125rem] text-ink">
+              <dd className="font-sans text-heading text-ink">
                 Shuwaikh → Jebel Ali · 1,284.500 KWD
               </dd>
             </div>
             <div>
               <dt className="eyebrow mb-1">arabic</dt>
-              <dd className="font-arabic text-[1.125rem] text-ink" lang="ar" dir="rtl">
+              <dd className="font-arabic text-heading text-ink" lang="ar" dir="rtl">
                 الشويخ ← جبل علي · التخليص الجمركي
               </dd>
             </div>
             <div>
               <dt className="eyebrow mb-1">mono</dt>
-              <dd className="ref numeric text-[1.125rem] text-ink">ONEU0413471 · KWI-2026-01041</dd>
+              <dd className="ref numeric text-heading text-ink">ONEU0413471 · KWI-2026-01041</dd>
             </div>
           </dl>
 
           <div className="mt-5 border-t border-line pt-4">
             <p className="eyebrow mb-2">{t('referenceData')}</p>
-            <p className="text-[0.8125rem] text-ink-muted">{t('referenceDataHint')}</p>
+            <p className="text-body-sm text-ink-muted">{t('referenceDataHint')}</p>
           </div>
         </Card>
       </Grid>

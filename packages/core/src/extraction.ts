@@ -45,6 +45,7 @@ import {
   integer,
   isoDate,
   lookup,
+  normaliseDigits,
   oneOf,
   optional,
   text,
@@ -52,11 +53,14 @@ import {
   withDefault,
   type CellParser,
   type ImportDescriptor,
+  type ImportIssueCode,
   type ImportLookups,
   type ImportReport,
   type ImportRow,
+  type IssueValues,
   type RateRowValues,
 } from './import'
+import { containerTypeCode, statesContainerKind } from './intake'
 import {
   abs,
   add,
@@ -321,13 +325,72 @@ export interface ExtractedInvoice {
   readonly confidence: number
   /** Header problems, in the same shape a row issue takes. */
   readonly headerIssues: readonly string[]
+  /**
+   * The same header problems, coded — see `InvoiceReadingIssue`. Parallel to
+   * `headerIssues` rather than replacing it, because the worker log and the
+   * model check print the English and have no catalogue to word a code with.
+   */
+  readonly headerIssueDetails: readonly InvoiceReadingIssue[]
+}
+
+/** The header fields a reading can fail on; `lines` is "there were none". */
+export type InvoiceHeaderField =
+  | 'invoiceNumber'
+  | 'invoiceDate'
+  | 'currency'
+  | 'dueOn'
+  | 'subtotal'
+  | 'taxAmount'
+  | 'total'
+  | 'lines'
+
+/** The one problem a reading has that no cell parser reports. */
+export type InvoiceReadingCode = ImportIssueCode | 'noLines'
+
+/**
+ * One reason a bill could not be read, as data.
+ *
+ * `core` holds no messages (§4), so a screen needs the code, the field and the
+ * line to say this in the reader's language; `message` is English, for logs
+ * and tests. `field` is an `InvoiceHeaderField` on a header issue and the
+ * descriptor's field key (`invoiceLineDescriptor`) on a line issue. `line` is
+ * the row number `validateImport` gives — the same number the arithmetic
+ * findings carry, so the two kinds of problem point at the same line.
+ */
+export interface InvoiceReadingIssue {
+  readonly where: 'header' | 'line'
+  readonly field: string
+  readonly line?: number
+  readonly code: InvoiceReadingCode
+  readonly values?: IssueValues
+  readonly message: string
+}
+
+/**
+ * Every reading problem on a bill, header first, as data.
+ *
+ * The lines' issues already carry a code from `validateImport`; this puts the
+ * header's beside them in one shape, so a caller translates one list.
+ */
+export function invoiceReadingIssues(extracted: ExtractedInvoice): InvoiceReadingIssue[] {
+  return [
+    ...extracted.headerIssueDetails,
+    ...extracted.lines.issues.map((issue): InvoiceReadingIssue => ({
+      where: 'line',
+      field: issue.field ?? '',
+      line: issue.line,
+      code: issue.code,
+      ...(issue.values === undefined ? {} : { values: issue.values }),
+      message: issue.message,
+    })),
+  ]
 }
 
 /* --- the header, checked by hand because it is not a row ---------------- */
 
 const required = <T>(parser: CellParser<T>, label: string): CellParser<T> => {
   return (raw, context) =>
-    raw.trim() === '' ? cellFail(`${label} is required`) : parser(raw, context)
+    raw.trim() === '' ? cellFail('required', `${label} is required`) : parser(raw, context)
 }
 
 const currencyCode = lookup('currencies', { label: 'currency', length: 3 })
@@ -351,6 +414,7 @@ export function readExtractedInvoice(
   lookups: ImportLookups,
 ): ExtractedInvoice {
   const headerIssues: string[] = []
+  const headerIssueDetails: InvoiceReadingIssue[] = []
 
   /*
     `optional()` answers `null` for a blank cell and this answers `undefined`
@@ -363,10 +427,18 @@ export function readExtractedInvoice(
     parser: CellParser<T>,
     value: unknown,
     label: string,
+    field: InvoiceHeaderField,
   ): NonNullable<T> | undefined => {
     const result = parser(value === null || value === undefined ? '' : String(value), { lookups })
     if (result.ok) return result.value ?? undefined
     headerIssues.push(`${label}: ${result.message}`)
+    headerIssueDetails.push({
+      where: 'header',
+      field,
+      code: result.code,
+      ...(result.values === undefined ? {} : { values: result.values }),
+      message: result.message,
+    })
     return undefined
   }
 
@@ -374,16 +446,30 @@ export function readExtractedInvoice(
     required(text({ min: 1, max: 100 }), 'Invoice number'),
     raw.invoiceNumber,
     'Invoice number',
+    'invoiceNumber',
   )
-  const invoiceDate = read(required(isoDate, 'Invoice date'), raw.invoiceDate, 'Invoice date')
-  const currency = read(required(currencyCode, 'Currency'), raw.currency, 'Currency')
-  const dueOn = read(optional(isoDate), raw.dueOn, 'Due date')
-  const subtotal = read(optional(money6), raw.subtotal, 'Subtotal')
-  const taxAmount = read(optional(money6), raw.taxAmount, 'Tax')
-  const total = read(optional(money6), raw.total, 'Total')
+  const invoiceDate = read(
+    required(isoDate, 'Invoice date'),
+    raw.invoiceDate,
+    'Invoice date',
+    'invoiceDate',
+  )
+  const currency = read(required(currencyCode, 'Currency'), raw.currency, 'Currency', 'currency')
+  const dueOn = read(optional(isoDate), raw.dueOn, 'Due date', 'dueOn')
+  const subtotal = read(optional(money6), raw.subtotal, 'Subtotal', 'subtotal')
+  const taxAmount = read(optional(money6), raw.taxAmount, 'Tax', 'taxAmount')
+  const total = read(optional(money6), raw.total, 'Total', 'total')
 
   const lines = Array.isArray(raw.lines) ? (raw.lines as RawInvoiceLine[]) : []
-  if (lines.length === 0) headerIssues.push('Lines: the model found no invoice lines')
+  if (lines.length === 0) {
+    headerIssues.push('Lines: the model found no invoice lines')
+    headerIssueDetails.push({
+      where: 'header',
+      field: 'lines',
+      code: 'noLines',
+      message: 'the model found no invoice lines',
+    })
+  }
 
   const report = validateImport<InvoiceLineValues>(invoiceLinesGrid(lines), invoiceLineDescriptor, {
     lookups,
@@ -410,6 +496,7 @@ export function readExtractedInvoice(
     lines: report,
     confidence,
     headerIssues,
+    headerIssueDetails,
   }
 }
 
@@ -655,7 +742,7 @@ export function driftMagnitude(findings: readonly ArithmeticFinding[], spec: Cur
 /**
  * The fields an enquiry extraction may speak to, in the order a form asks them.
  *
- * The same twelve as `EXTRACTABLE_FIELDS.enquiry_extract` in `ai.ts`, and that
+ * The same list as `EXTRACTABLE_FIELDS.enquiry_extract` in `ai.ts`, and that
  * duplication is deliberate: this list is what the *provider* is told, the
  * other is what the *system* will accept, and `extraction.test.ts` asserts
  * they agree. One list would be tidier and would remove the only check that
@@ -672,6 +759,22 @@ export const ENQUIRY_FIELDS = [
   'grossWeightKg',
   'volumeCbm',
   'pieces',
+  /*
+    How many containers, which is not `pieces`: a FCL quotation multiplies every
+    per-container rate by this and refuses without it (F39), and before the
+    model could propose it every mailed enquiry reached pricing with the one
+    number pricing cannot guess. Offered after `pieces` so the two sit side by
+    side in the prompt the model reads, which is where they get confused.
+  */
+  'containerCount',
+  /*
+    Which box — 20GP, 40HC. The count alone does not price a FCL lane: a 40'
+    high cube and a 20' general purpose are different rates on the same card,
+    and the intake agent cannot call an FCL enquiry complete without it.
+    Proposed as our code (`containerTypeCode` in `intake.ts`), never the
+    customer's wording, so the accept path only has to check the row exists.
+  */
+  'containerType',
   'dimensions',
   'isDangerous',
 ] as const
@@ -778,15 +881,18 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     }
 
     /*
-      A value is text and it is trimmed, and nothing else is done to it here.
-
-      Normalisation belongs to `import.ts` — Arabic-Indic digits, thousands
-      separators, the lot — because that is where every other untrusted row in
-      this system is normalised and a second implementation would drift from
-      it. What this loop decides is only whether there is a proposal at all.
+      A value is text and it is trimmed. The four quantities are then reduced
+      to the one number they state, or the proposal is dropped — see
+      `proposedQuantity`. Everything else is left as the model wrote it, for
+      the accept path to refuse with a sentence if it must.
     */
-    const value = typeof cell.value === 'string' ? cell.value.trim() : ''
-    if (value === '') continue
+    const trimmed = typeof cell.value === 'string' ? cell.value.trim() : ''
+    const value = QUANTITY_FIELDS.has(field)
+      ? proposedQuantity(field, trimmed)
+      : field === 'containerType'
+        ? containerTypeCode(trimmed)
+        : trimmed
+    if (value === null || value === '') continue
 
     let scored: Confidence
     try {
@@ -797,14 +903,145 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     }
 
     const evidence = typeof cell.evidence === 'string' ? cell.evidence.trim() : ''
+    /*
+      A box the quoted words do not name is a guess. Read live: "حاويتين ٤٠ قدم"
+      ("two 40-foot containers") came back as 40GP with exactly that evidence —
+      a forty-footer is general purpose or high cube and the price differs, so
+      the agent must ask rather than the model choose. Where the evidence can be
+      checked and states no kind, the proposal is dropped. Only the kind: the
+      size is often in an earlier message ("normal ones, not high cube").
+    */
+    if (field === 'containerType' && evidence !== '' && !statesContainerKind(evidence)) {
+      continue
+    }
     fields.push({ field, value, confidence: scored, ...(evidence === '' ? {} : { evidence }) })
   }
 
+  /*
+    A container count only means something on a FCL shipment. Where the same
+    reading says the mode is something else, the count is the model mistaking
+    "2 pallets in a shared container" for an equipment order, and proposing it
+    would put a number on an air enquiry that nothing ever reads.
+  */
+  const statedMode = fields.find((proposal) => proposal.field === 'mode')?.value
+
   return {
-    fields,
+    fields: withoutStrayContainerCount(fields, statedMode),
     confidence: confidence(body.confidence ?? 0),
     unknownFields,
   }
+}
+
+/**
+ * The enquiry fields that are numbers, and whether each must be whole.
+ *
+ * `false` is a decimal quantity (`numeric` on the enquiry), `true` a count.
+ */
+const QUANTITY_FIELDS = new Map<string, boolean>([
+  ['grossWeightKg', false],
+  ['volumeCbm', false],
+  ['pieces', true],
+  ['containerCount', true],
+])
+
+/*
+  The unit a field may carry beside its figure, and nothing else. A unit that is
+  not the column's own — "18 tonnes" in a kilogram column, "40 ft" as a count —
+  is not stripped, so the leftover text fails the check below and the proposal
+  is dropped rather than stored a thousand times too small. Stripped *before*
+  the figure is looked for, because "m3" carries a digit of its own.
+*/
+const QUANTITY_UNITS: Readonly<Record<string, RegExp>> = {
+  grossWeightKg: /(kgs?|kilos?|kilograms?|كغ|كجم|كيلو(غرام)?)(?![\p{L}\p{N}])/giu,
+  volumeCbm: /(cbm|m3|m³|cubic\s+met(er|re)s?|م3|م³|متر\s+مكعب)(?![\p{L}\p{N}])/giu,
+  pieces:
+    /(pcs?|pieces?|pkgs?|packages?|ctns?|cartons?|pallets?|قطع(ة)?|طرود|طرد)(?![\p{L}\p{N}])/giu,
+  containerCount: /(containers?|cntrs?|ctrs?|units?|حاويات|حاوية)(?![\p{L}\p{N}])/giu,
+}
+
+/*
+  "2 x 40HC" is how equipment is written, and the model sometimes hands the
+  whole phrase back as the count. The figure before a single multiplication
+  sign is the count; the tail is the equipment type, which carries digits of
+  its own and is ignored. The tail must be one equipment code ("40HC", "40' HC",
+  "20GP", "HC") and nothing more: a mixed order like "2 x 20GP + 1 x 40HC" or
+  "2 x 40HC and 20GP" is not a count this can state, so it falls through to the
+  one-number rule and is dropped.
+*/
+const EQUIPMENT_ORDER = /^(\d+)\s*[x×*]\s*(\d{2}\s*['’]?\s*[a-z]{0,4}|[a-z]{2,4})?\s*$/iu
+
+/**
+ * One quantity the model proposed, reduced to the number it states — or `null`.
+ *
+ * F59: the model answered a container count of `":2"`. It was stored as-is,
+ * the accept path could never apply it, and the enquiry reached pricing
+ * without the one number FCL refuses to guess. The accept path is right to
+ * refuse; the mistake was proposing it.
+ *
+ * Deliberately conservative. The text may hold exactly **one** figure, plus
+ * whitespace, punctuation and the field's own unit; anything else — two
+ * figures ("2-3 pallets"), a word ("about 18"), a unit that is not ours — drops
+ * the proposal. A dropped proposal costs a coordinator one typed field; a
+ * guessed one puts a wrong weight on a quotation. The figure itself goes
+ * through `import.ts`'s `decimal`, so Arabic-Indic digits and thousands
+ * separators ("18,000") are read the way every spreadsheet row is, and the
+ * value stays a string — never a JS number — on its way to `numeric`.
+ */
+export function proposedQuantity(field: string, raw: string): string | null {
+  const whole = QUANTITY_FIELDS.get(field)
+  if (whole === undefined) return raw
+
+  let value = normaliseDigits(raw).trim()
+  if (field === 'containerCount') {
+    const order = EQUIPMENT_ORDER.exec(value)
+    if (order) value = order[1]!
+  }
+  const unit = QUANTITY_UNITS[field]
+  if (unit) value = value.replace(unit, ' ')
+
+  // A figure starts and ends with a digit, so ":2." yields "2", not "2.".
+  const figures = value.match(/\d(?:[\d.,]*\d)?/g) ?? []
+  if (figures.length !== 1) return null
+  const figure = figures[0]!
+
+  // What is left must be punctuation and space only. A minus sign is not
+  // punctuation here: a negative weight is not a weight.
+  const rest = value.replace(figure, '')
+  if (!/^[\s\p{P}]*$/u.test(rest) || /[-−]/u.test(rest)) return null
+
+  const parsed = decimal({ min: 0 })(figure, { lookups: {} })
+  if (!parsed.ok) return null
+  if (whole && !/^\d+$/.test(parsed.value)) return null
+  return parsed.value
+}
+
+/**
+ * Whether a container count belongs on an enquiry of this mode.
+ *
+ * An unknown mode is a yes: the text stated a count, and a count with no mode
+ * beside it is the "2 x 40HC" enquiry whose mode is proposed separately or
+ * typed later. Only a mode we *know* is not sea FCL rules it out.
+ */
+export function containerCountFitsMode(mode: string | null | undefined): boolean {
+  return mode === null || mode === undefined || mode.trim() === '' || mode.trim() === 'sea_fcl'
+}
+
+/**
+ * The proposals, less a `containerCount` that the known mode says cannot apply.
+ *
+ * One rule for both places a mode can be known — what the model read in the
+ * same mail (`readExtractedEnquiry`) and what the enquiry already holds (the
+ * worker) — so the two cannot disagree about what "FCL only" means.
+ */
+export function withoutStrayContainerCount(
+  fields: readonly FieldProposal[],
+  mode: string | null | undefined,
+): FieldProposal[] {
+  if (containerCountFitsMode(mode)) return [...fields]
+  // The box goes with the count: neither means anything off a FCL shipment.
+  return fields.filter(
+    (proposal) => proposal.field !== 'containerCount' && proposal.field !== 'containerType',
+  )
 }
 
 /* -------------------------------------------------------------------------
@@ -837,7 +1074,15 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
   // cannot tell "no charges yet" from "no thanks". See the invoice schema note
   // above: a model may drop any key not on this list, and silence here is the
   // expensive kind.
-  required: ['declined', 'declinedReason', 'currency', 'validFrom', 'validTo', 'lines', 'confidence'],
+  required: [
+    'declined',
+    'declinedReason',
+    'currency',
+    'validFrom',
+    'validTo',
+    'lines',
+    'confidence',
+  ],
   properties: {
     declined: {
       type: 'boolean',
@@ -860,7 +1105,10 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       description: 'ISO 8601 date the rate expires, or null for open-ended.',
     },
     /** The lane the model believes it read — restated for a mismatch check, never stored. */
-    origin: { type: ['string', 'null'], description: 'Origin the model read, for cross-check only.' },
+    origin: {
+      type: ['string', 'null'],
+      description: 'Origin the model read, for cross-check only.',
+    },
     destination: {
       type: ['string', 'null'],
       description: 'Destination the model read, for cross-check only.',
@@ -871,7 +1119,15 @@ export const RATE_EXTRACTION_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['chargeType', 'basis', 'rate', 'currency', 'minimum', 'maximum', 'containerType'],
+        required: [
+          'chargeType',
+          'basis',
+          'rate',
+          'currency',
+          'minimum',
+          'maximum',
+          'containerType',
+        ],
         properties: {
           chargeType: {
             type: ['string', 'null'],
@@ -928,6 +1184,120 @@ export interface RateReplyLane {
   readonly mode: string
   readonly originCode: string
   readonly destinationCode: string
+  /**
+   * What the reply's own place names resolve to, read from `locations` by the
+   * caller: the name as the model wrote it, lower-cased, to the UN/LOCODEs of
+   * every place it matches (by code, English or Arabic name, with the port
+   * suffix and a trailing country forgiven — `locationCodes` in `@qabandi/db`).
+   *
+   * Core does no I/O, so the caller resolves and hands the answers in. Absent
+   * or missing a name, that name is simply unresolved — see `compareLane`.
+   */
+  readonly places?: Readonly<Record<string, readonly string[]>>
+}
+
+/**
+ * What people write for a country instead of its name (ai-17).
+ *
+ * "Jebel Ali, UAE" is how an enquiry names the port, and `countries` holds
+ * "United Arab Emirates" and "AE" — so the trailing country matched nothing and
+ * the route stayed incomplete. These are the abbreviations and short forms of
+ * the trade, keyed lower-case to the ISO code; the code is then checked
+ * against `countries` like any other, so an alias for a country this
+ * deployment does not hold resolves to nothing rather than to a guess.
+ *
+ * In code rather than rows because they are not configuration: nobody's
+ * deployment calls the Emirates something else, and an administrator adding a
+ * country adds its name and code, which already match.
+ */
+export const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
+  uae: 'AE',
+  'u.a.e.': 'AE',
+  'u.a.e': 'AE',
+  emirates: 'AE',
+  'the emirates': 'AE',
+  الامارات: 'AE',
+  'الإمارات العربية المتحدة': 'AE',
+  ksa: 'SA',
+  'k.s.a.': 'SA',
+  saudi: 'SA',
+  'المملكة العربية السعودية': 'SA',
+  uk: 'GB',
+  'u.k.': 'GB',
+  'great britain': 'GB',
+  britain: 'GB',
+  england: 'GB',
+  usa: 'US',
+  'u.s.a.': 'US',
+  us: 'US',
+  'u.s.': 'US',
+  america: 'US',
+  prc: 'CN',
+  turkey: 'TR',
+  holland: 'NL',
+  'the netherlands': 'NL',
+}
+
+/** The ISO code a written country stands for, where it is a known short form. */
+export function countryAliasCode(written: string): string | undefined {
+  return COUNTRY_ALIASES[written.trim().toLowerCase()]
+}
+
+/**
+ * A UN/LOCODE as people write it: country, optional space, three characters.
+ *
+ * Capitals only. Case-insensitive, "Dubai" and "Basra" are LOCODE-shaped, and
+ * an unresolved five-letter city would be read as a code we did not ask for.
+ */
+const LOCODE = /^[A-Z]{2}\s?[A-Z2-9]{3}$/
+
+const asLocode = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+
+/**
+ * Whether the lane a reply names is the lane we asked about (ai-4).
+ *
+ * This compared the model's free text with our code, so a reply that said
+ * "Shanghai → Shuwaikh" for an RFQ on CNSHA → KWSWK was flagged "different
+ * lane" — and a flagged reply is excluded from ranking and from auto-award, so
+ * correct quotes were thrown away for spelling the port as a person would.
+ *
+ * Now each side is a mismatch only when we can *show* it is one:
+ *
+ *   - the text is the code (any case, a space allowed) — the same place;
+ *   - the text resolves through `locations` — the same place if any of the
+ *     places it names is ours, a different one if none is;
+ *   - the text is LOCODE-shaped and not ours — a different place;
+ *   - anything else is unresolved, and reported as such rather than called a
+ *     mismatch. A name we do not hold is not evidence the agent priced
+ *     elsewhere, and treating it as evidence is what discarded good replies.
+ */
+export function compareLane(
+  claimed: { readonly origin?: string; readonly destination?: string },
+  lane: RateReplyLane,
+): { readonly mismatch?: string; readonly unresolved: readonly string[] } {
+  const unresolved: string[] = []
+
+  const differs = (text: string | undefined, code: string, side: string): boolean => {
+    if (!text) return false
+    if (asLocode(text) === asLocode(code)) return false
+    const codes = lane.places?.[text.trim().toLowerCase()]
+    if (codes && codes.length > 0) return !codes.some((c) => asLocode(c) === asLocode(code))
+    if (LOCODE.test(text.trim())) return true
+    unresolved.push(`${side} "${text}" is not a place we hold; check it is ${code}`)
+    return false
+  }
+
+  const originDiffers = differs(claimed.origin, lane.originCode, 'Origin')
+  const destinationDiffers = differs(claimed.destination, lane.destinationCode, 'Destination')
+
+  return {
+    ...(originDiffers || destinationDiffers
+      ? {
+          mismatch: `reply reads ${claimed.origin ?? '?'}→${claimed.destination ?? '?'}, we asked ${lane.originCode}→${lane.destinationCode}`,
+        }
+      : {}),
+    unresolved,
+  }
 }
 
 /**
@@ -984,7 +1354,12 @@ export const rateReplyDescriptor: ImportDescriptor = {
       required: false,
       parse: optional(text({ max: 10 })),
     },
-    { key: 'transitDays', label: 'Transit days', required: false, parse: optional(integer({ min: 0, max: 400 })) },
+    {
+      key: 'transitDays',
+      label: 'Transit days',
+      required: false,
+      parse: optional(integer({ min: 0, max: 400 })),
+    },
     { key: 'notes', label: 'Notes', required: false, parse: optional(text({ max: 500 })) },
   ],
 }
@@ -1074,15 +1449,14 @@ export function readExtractedRateReply(
   // A lane the model read that is not the one we asked about — surfaced, never
   // acted on. "We asked JEA→KWI and the reply prices NSA→KWI" is a sentence a
   // coordinator wants; silently pricing the wrong lane is the trap.
-  const claimedOrigin = asCode(raw.origin)
-  const claimedDestination = asCode(raw.destination)
-  let laneMismatch: string | undefined
-  if (
-    (claimedOrigin && claimedOrigin.toUpperCase() !== lane.originCode.toUpperCase()) ||
-    (claimedDestination && claimedDestination.toUpperCase() !== lane.destinationCode.toUpperCase())
-  ) {
-    laneMismatch = `reply reads ${claimedOrigin ?? '?'}→${claimedDestination ?? '?'}, we asked ${lane.originCode}→${lane.destinationCode}`
-  }
+  // Names are resolved through `locations` by the caller first (ai-4) — see
+  // `compareLane` for why free text is never compared with a code directly.
+  const compared = compareLane(
+    { origin: asCode(raw.origin), destination: asCode(raw.destination) },
+    lane,
+  )
+  const laneMismatch = compared.mismatch
+  headerIssues.push(...compared.unresolved)
 
   const rawLines = Array.isArray(raw.lines) ? (raw.lines as RawRateLine[]) : []
   if (!declined && rawLines.length === 0) {
@@ -1153,6 +1527,67 @@ export interface RateReplySummary {
   readonly primary?: { readonly currency: string; readonly amount: Money }
   /** Lines whose basis needed context the enquiry did not supply. */
   readonly unpriced: number
+  /**
+   * The unpriced lines that make the total *partial*: those missing a
+   * quantity of the consignment itself — weight, units or containers.
+   *
+   * Not every unpriced line does (R1). A `percent` line (insurance at 0.3%)
+   * needs a base no enquiry supplies, so it is unpriced on every reply alike;
+   * counted as partial, any FCL reply quoting insurance could never be ranked
+   * or auto-awarded, whatever the enquiry held. It leaves every rival short by
+   * the same kind of line, so the totals still rank. A per-container line
+   * with no container count is different: one reply's total is missing its
+   * biggest figure and another's may not be, which is what ranking it
+   * "Cheapest" on its flat fees got wrong (F69).
+   */
+  readonly partial: number
+}
+
+/**
+ * Whether a stored reply's total is partial — the gate the comparison and the
+ * auto-award both rank on, read from `rate_requests.response`.
+ *
+ * `partial` where the reply was summarised since it existed; older rows carry
+ * only `unpriced`, which is the stricter reading and is kept for them rather
+ * than guessing which of their lines were which. Re-summarising (a container
+ * count entered) writes `partial`.
+ */
+export function replyIsPartial(response: unknown): boolean {
+  const r = (response ?? {}) as { partial?: unknown; unpriced?: unknown }
+  const count = typeof r.partial === 'number' ? r.partial : r.unpriced
+  return typeof count === 'number' && count > 0
+}
+
+/** The context fields that are quantities of the consignment — see `partial`. */
+const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'containers'])
+
+/**
+ * The quantities a rate reply is priced against, from the enquiry's figures.
+ *
+ * Shared by the service, which summarises a reply when it is read, and the web,
+ * which re-summarises the replies already read when a coordinator enters the
+ * container count — so both price a reply against the same context (R1).
+ *
+ * Approximate by design: the figure is a *sort key* for the comparison view,
+ * not the quote, which is struck later when `priceEnquiry` runs against the
+ * promoted card. Weight is the gross. On a FCL lane the container count is the
+ * enquiry's own `container_count` — never `pieces`, which counts packages (F39,
+ * F66) — and with no count at all the per-container lines stay unpriced:
+ * counted, not guessed. `days` is one, exactly as `pricing.ts` prices a
+ * `per_day` line, so the two engines agree on what "priceable" means; a storage
+ * charge per day costs one day in both.
+ */
+export function rateReplyContext(e: {
+  readonly mode: string | null
+  readonly grossWeightKg: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+}): ChargeContext {
+  const ctx: { -readonly [K in keyof ChargeContext]: ChargeContext[K] } = { days: 1 }
+  if (e.grossWeightKg != null) ctx.kg = e.grossWeightKg
+  if (e.pieces != null) ctx.units = e.pieces
+  if (e.mode === 'sea_fcl' && e.containerCount != null) ctx.containers = e.containerCount
+  return ctx
 }
 
 export function summariseRateReply(
@@ -1161,6 +1596,7 @@ export function summariseRateReply(
 ): RateReplySummary {
   const byCurrency = new Map<string, Money>()
   let unpriced = 0
+  let partial = 0
 
   for (const { values } of rows) {
     let amount: Money
@@ -1179,6 +1615,7 @@ export function summariseRateReply(
       // Only a missing-context refusal is swallowed; a genuine bug still throws.
       if (error instanceof MissingChargeContextError) {
         unpriced += 1
+        if (CONSIGNMENT_FIELDS.has(error.field)) partial += 1
         continue
       }
       throw error
@@ -1193,5 +1630,6 @@ export function summariseRateReply(
     totals,
     ...(totals.length === 1 ? { primary: totals[0] } : {}),
     unpriced,
+    partial,
   }
 }

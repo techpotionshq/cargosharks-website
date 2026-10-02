@@ -23,7 +23,7 @@
  * `unconvertible` and the caller shows it.
  */
 
-import { and, desc, eq, isNotNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import {
   add,
   assessCredit,
@@ -44,8 +44,8 @@ import { withActor, type Actor } from './actor'
 import { customerBranchTerms } from './schema/commercial'
 import { creditOverrides } from './schema/commercial'
 import { branches } from './schema/identity'
-import { fxRates } from './schema/reference'
 import { invoices } from './schema/finance'
+import { latestFxRate } from './fx-latest'
 
 export interface CreditStanding extends CreditPosition {
   readonly customerId: string
@@ -114,7 +114,12 @@ export async function creditStanding(
       .select({
         currency: invoices.currency,
         total: invoices.total,
-        amountPaid: invoices.amountPaid,
+        /*
+          Receipts and partial credit notes together (F9): the engine's
+          `amountPaid` is "what is no longer owed", and a note for part of an
+          invoice leaves it issued or part paid with that much less owed.
+        */
+        amountPaid: sql<string>`(${invoices.amountPaid} + ${invoices.amountCredited})::text`,
       })
       .from(invoices)
       .where(
@@ -149,7 +154,7 @@ export async function creditStanding(
       )
       if (isZero(owed)) continue
 
-      const rate = await latestRate(tx, invoice.currency, currency)
+      const rate = await latestFxRate(tx, invoice.currency, currency)
       if (!rate) {
         unconvertible.push({ currency: invoice.currency, amount: owed.amount.toFixed() })
         continue
@@ -171,57 +176,6 @@ export async function creditStanding(
       unconvertible,
     }
   })
-}
-
-/**
- * The most recent rate on or before today, in either direction.
- *
- * Feeds publish one direction and the reverse is arithmetic, so a deployment
- * holding USD→KWD can answer KWD→USD without a second row. Taking the latest
- * rather than the exact day's is deliberate: a credit check on a Friday must
- * not fail because the feed does not publish at the weekend.
- */
-async function latestRate(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tx: any,
-  from: string,
-  to: string,
-): Promise<string | null> {
-  const today = new Date().toISOString().slice(0, 10)
-
-  const [direct] = await tx
-    .select({ rate: fxRates.rate })
-    .from(fxRates)
-    .where(
-      and(
-        eq(fxRates.fromCurrency, from),
-        eq(fxRates.toCurrency, to),
-        lte(fxRates.effectiveOn, today),
-      ),
-    )
-    .orderBy(desc(fxRates.effectiveOn))
-    .limit(1)
-
-  if (direct) return direct.rate
-
-  const [inverse] = await tx
-    .select({ rate: fxRates.rate })
-    .from(fxRates)
-    .where(
-      and(
-        eq(fxRates.fromCurrency, to),
-        eq(fxRates.toCurrency, from),
-        lte(fxRates.effectiveOn, today),
-        // A zero rate would divide by zero below. Feeds do not publish them;
-        // a hand-entered override can.
-        sql`${fxRates.rate} <> 0`,
-      ),
-    )
-    .orderBy(desc(fxRates.effectiveOn))
-    .limit(1)
-
-  if (!inverse) return null
-  return money('1', to).amount.dividedBy(money(inverse.rate, to).amount).toFixed()
 }
 
 /**
@@ -298,6 +252,12 @@ export async function checkCredit(
     readonly invoiceId?: string | null
     /** `YYYY-MM-DD`. Passed in so the caller owns the clock (§4). */
     readonly today?: string
+    /**
+     * Block, rather than wave through, a proposal whose currency has no rate
+     * to the limit's. Opt-in so the booking screen keeps its own judgement;
+     * the invoice gate sets it — see `unconverted`.
+     */
+    readonly refuseUnconvertible?: boolean
   },
 ): Promise<{
   standing: CreditStanding
@@ -306,6 +266,11 @@ export async function checkCredit(
   override: Awaited<ReturnType<typeof creditOverridesFor>>[number] | null
   /** False only where the rule blocks *and* nothing authorises it. */
   allowed: boolean
+  /**
+   * The proposal's currency, where it could not be converted to the limit's
+   * and so was not measured at all. Null when it was measured.
+   */
+  unconverted: string | null
 }> {
   const standing = await creditStanding(actor, input.customerId, input.branchId)
 
@@ -318,18 +283,32 @@ export async function checkCredit(
     the exposure and is measured against the limit on identical terms.
   */
   let proposed = input.proposed ?? null
+  let unconverted: string | null = null
   if (proposed && proposed.currency !== standing.currency) {
     const rate = await withActor(actor, (tx) =>
-      latestRate(tx, proposed!.currency, standing.currency),
+      latestFxRate(tx, proposed!.currency, standing.currency),
     )
+    if (!rate) unconverted = proposed.currency
     proposed = rate
       ? convert(proposed, fxRate(proposed.currency, standing.currency, rate, new Date()))
       : null
   }
 
   const assessment = assessCredit(standing, proposed)
-  if (!assessment.blocked) {
-    return { standing, assessment, override: null, allowed: true }
+
+  /*
+    A proposal that could not be measured is not a proposal that fits.
+
+    Converted to null, it used to be assessed as nothing at all — so a USD
+    1,000,000 invoice issued against a 40,000 KWD limit the day the feed had
+    no USD rate. Where there is a limit to measure against and the caller
+    asked, it is blocked like an excess: a manager's override still releases
+    it, and a rate on file makes the question go away.
+  */
+  const unmeasurable =
+    input.refuseUnconvertible === true && unconverted !== null && standing.limit !== null
+  if (!assessment.blocked && !unmeasurable) {
+    return { standing, assessment, override: null, allowed: true, unconverted }
   }
 
   /*
@@ -341,7 +320,7 @@ export async function checkCredit(
     set it, not slipping one shipment past it.
   */
   if (assessment.outcome === 'on_hold') {
-    return { standing, assessment, override: null, allowed: false }
+    return { standing, assessment, override: null, allowed: false, unconverted }
   }
 
   const today = input.today ?? new Date().toISOString().slice(0, 10)
@@ -352,5 +331,5 @@ export async function checkCredit(
     today,
   )
 
-  return { standing, assessment, override, allowed: override !== null }
+  return { standing, assessment, override, allowed: override !== null, unconverted }
 }

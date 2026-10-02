@@ -33,7 +33,7 @@ export default async function PublicLayout({ children }: { children: React.React
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-4 px-4 py-2 sm:px-6">
           {/*
             The mark goes to tracking, not to the root.
 
@@ -42,14 +42,22 @@ export default async function PublicLayout({ children }: { children: React.React
             form they have no account for. Tracking is the only thing in this
             shell and the only thing they came for.
           */}
-          <Link href="/track" className="rounded-sm outline-offset-4">
-            <Logo brand={brand} locale={locale} size="md" />
+          {/* The small wordmark on a phone, as in the portal header. */}
+          <Link href="/track" className="min-w-0 rounded-sm outline-offset-4">
+            <Logo
+              brand={brand}
+              locale={locale}
+              size="sm"
+              showTagline={false}
+              className="sm:hidden"
+            />
+            <Logo brand={brand} locale={locale} size="md" className="hidden sm:flex" />
           </Link>
 
           <nav className="ms-auto flex items-center gap-1">
             <Link
               href="/track"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="tracking" size={16} />
               <span className="hidden sm:inline">{t('tracking')}</span>
@@ -57,7 +65,8 @@ export default async function PublicLayout({ children }: { children: React.React
             <LanguageSwitch />
             <Link
               href="/sign-in"
-              className="ms-1 inline-flex h-9 items-center rounded-sm bg-brand px-3.5 text-[0.875rem] font-medium text-on-brand transition-colors hover:bg-brand-hover"
+              // One line, always: "Sign in" wrapped out of its own pill at 390.
+              className="ms-1 inline-flex h-9 shrink-0 items-center rounded-sm bg-brand px-3.5 text-body font-medium whitespace-nowrap text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('signIn')}
             </Link>
@@ -65,30 +74,30 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="@container flex-1">{children}</main>
 
       <footer className="border-t border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 md:flex-row md:items-start md:justify-between">
           <div className="max-w-sm">
             <Logo brand={brand} locale={locale} size="sm" />
-            <p className="mt-3 text-[0.8125rem] text-ink-muted">{legalName}</p>
-            <p className="mt-1 text-[0.8125rem] text-ink-subtle">
+            <p className="mt-3 text-body-sm text-ink-muted">{legalName}</p>
+            <p className="mt-1 text-body-sm text-ink-subtle">
               {locale === 'ar' ? brand.contact.addressAr : brand.contact.addressEn}
             </p>
           </div>
 
-          <dl className="flex flex-col gap-2 text-[0.8125rem]">
+          <dl className="flex flex-col gap-2 text-body-sm">
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="enquiries" size={15} className="text-ink-subtle" />
-              <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-brand">
-                {brand.contact.supportEmail}
+              <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-accent">
+                <bdi>{brand.contact.supportEmail}</bdi>
               </a>
             </div>
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="partners" size={15} className="text-ink-subtle" />
               <a
                 href={`tel:${brand.contact.supportPhone.replace(/\s/g, '')}`}
-                className="numeric hover:text-brand"
+                className="numeric hover:text-accent"
                 dir="ltr"
               >
                 {brand.contact.supportPhone}
@@ -96,7 +105,7 @@ export default async function PublicLayout({ children }: { children: React.React
             </div>
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="tracking" size={15} className="text-ink-subtle" />
-              <Link href="/track" className="hover:text-brand">
+              <Link href="/track" className="hover:text-accent">
                 {t('tracking')}
               </Link>
             </div>
@@ -104,7 +113,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
 
         <div className="border-t border-line">
-          <p className="mx-auto max-w-6xl px-4 py-4 text-[0.75rem] text-ink-subtle sm:px-6">
+          <p className="mx-auto max-w-6xl px-4 py-4 text-caption text-ink-subtle sm:px-6">
             © {year} {name}. {tp('footerRights')}
           </p>
         </div>

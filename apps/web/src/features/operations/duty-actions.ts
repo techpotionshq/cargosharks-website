@@ -23,7 +23,8 @@
  */
 
 import { revalidatePath } from 'next/cache'
-import { eq } from 'drizzle-orm'
+import { getTranslations } from 'next-intl/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   SEED_CURRENCIES,
@@ -39,7 +40,11 @@ import {
 import { branches, customsStages, dutyRates, jobCargo, jobs, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { failWith, succeed, type ActionState } from '@/lib/form-state'
+import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -49,43 +54,54 @@ function read(form: FormData, key: string): string | undefined {
 const spec = (code: string): CurrencySpec =>
   SEED_CURRENCIES.find((c) => c.code === code) ?? { code, minorUnits: 2 }
 
-const schema = z.object({
-  jobId: z.uuid('Choose a shipment'),
-  goodsValue: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,6})?$/, 'The goods value must be a number'),
-  freightValue: z
-    .string()
-    .trim()
-    .regex(/^\d*\.?\d*$/, 'Numbers only')
-    .optional()
-    .transform((v) => v || '0'),
-  insuranceValue: z
-    .string()
-    .trim()
-    .regex(/^\d*\.?\d*$/, 'Numbers only')
-    .optional()
-    .transform((v) => v || '0'),
-  currency: z.string().trim().length(3),
-  /**
-   * The GCC general rate, applied only where the operator says so.
-   *
-   * Off by default. Applying 5% to a code the tariff has no row for produces a
-   * number that looks researched and is a guess, and the customer told "5%" on
-   * a code that turns out to be exempt has been mis-sold.
-   */
-  useGeneralRate: z.coerce.boolean().optional(),
-})
+const schema = (tv: Translate) =>
+  z.object({
+    jobId: z.uuid(tv('chooseShipment')),
+    goodsValue: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('goodsValueNumber')),
+    /*
+      The same shape as the goods value. `^\d*\.?\d*$` let a lone "." through,
+      and decimal.js threw on it — a 500 instead of a message.
+    */
+    freightValue: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
+      .optional()
+      .transform((v) => v || '0'),
+    insuranceValue: z
+      .string()
+      .trim()
+      .overwrite(normaliseAmount)
+      .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
+      .optional()
+      .transform((v) => v || '0'),
+    currency: z.string().trim().length(3),
+    /**
+     * The GCC general rate, applied only where the operator says so.
+     *
+     * Off by default. Applying 5% to a code the tariff has no row for produces a
+     * number that looks researched and is a guess, and the customer told "5%" on
+     * a code that turns out to be exempt has been mis-sold.
+     */
+    useGeneralRate: z.coerce.boolean().optional(),
+  })
 
-export async function estimateJobDuty(
+export const estimateJobDuty = refuseForbidden(async function estimateJobDuty(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'customs.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('operationsValidation')
 
-  const parsed = schema.safeParse({
+  const parsed = await localeParse(schema(tv), {
     jobId: read(form, 'jobId'),
     goodsValue: read(form, 'goodsValue'),
     freightValue: read(form, 'freightValue'),
@@ -95,7 +111,7 @@ export async function estimateJobDuty(
   })
 
   if (!parsed.success) {
-    return failWith(parsed.error.issues[0]?.message ?? 'Check the figures.')
+    return failWith(parsed.error.issues[0]?.message ?? tv('checkFigures'))
   }
 
   const data = parsed.data
@@ -104,7 +120,7 @@ export async function estimateJobDuty(
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [job] = await tx
-      .select({ id: jobs.id, branchCountry: branches.country })
+      .select({ id: jobs.id, branchCountry: branches.country, timeZone: branches.timeZone })
       .from(jobs)
       .innerJoin(branches, eq(branches.id, jobs.branchId))
       .where(eq(jobs.id, data.jobId))
@@ -126,7 +142,9 @@ export async function estimateJobDuty(
     const tariff = (await tx
       .select()
       .from(dutyRates)
-      .where(eq(dutyRates.country, job.branchCountry))) as unknown as TariffLine[]
+      .where(
+        and(eq(dutyRates.country, job.branchCountry), eq(dutyRates.isActive, true)),
+      )) as unknown as TariffLine[]
 
     /*
       CIF, not the commercial invoice.
@@ -205,6 +223,7 @@ export async function estimateJobDuty(
       currency,
       on,
       spec: currencySpec,
+      timeZone: job.timeZone,
       ...(data.useGeneralRate
         ? { generalRatePercent: '5', generalRateDescription: 'GCC general rate' }
         : {}),
@@ -269,9 +288,7 @@ export async function estimateJobDuty(
   })
 
   if (outcome.kind === 'no_cargo') {
-    return failWith(
-      'This shipment has no cargo lines yet, so there is nothing to classify. Add them under Cargo.',
-    )
+    return failWith(tv('noCargoToClassify'))
   }
 
   revalidatePath(`/jobs/${data.jobId}`)
@@ -279,10 +296,9 @@ export async function estimateJobDuty(
 
   if (outcome.unmatched > 0) {
     return failWith(
-      `Estimated ${outcome.duty} ${currency}, but ${outcome.unmatched} line(s) had no tariff row. ` +
-        'Add the HS codes, or add the rates under Reference → Duty rates.',
+      tv('estimateUnmatched', { duty: outcome.duty, currency, count: outcome.unmatched }),
     )
   }
 
   return succeed(outcome.duty)
-}
+})

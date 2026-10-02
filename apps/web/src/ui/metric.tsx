@@ -39,7 +39,8 @@ const CHIP_TONE: Record<MetricTone, string> = {
   positive: 'bg-positive-soft text-positive',
   caution: 'bg-caution-soft text-caution',
   critical: 'bg-critical-soft text-critical',
-  brand: 'bg-brand-soft text-brand-soft-ink',
+  // The accent, for the reason `Card`'s `brand` tone gives.
+  brand: 'bg-accent-soft text-accent',
   info: 'bg-info-soft text-info',
 }
 
@@ -79,7 +80,7 @@ export function Metric({
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[0.8125rem] leading-tight font-medium text-ink-muted">{label}</p>
+        <p className="text-body-sm leading-tight font-medium text-ink-muted">{label}</p>
         {icon ? (
           <span
             className={`flex size-8 shrink-0 items-center justify-center rounded-full ${CHIP_TONE[tone]}`}
@@ -89,24 +90,42 @@ export function Metric({
         ) : null}
       </div>
 
-      <p className="mt-3 flex items-baseline gap-1.5">
+      {/*
+        Sized by the tile, not the window (the tile is a size container).
+
+        Two tiles share a 390px phone, and "KWD 5,000.000" at the desktop size
+        was wider than its tile and pushed the page sideways. Window
+        breakpoints then chased the tile around: smaller below sm, larger from
+        sm, smaller again from lg where four share a row beside the sidebar,
+        larger at 2xl — and still the quotation's figures ran out of their
+        tiles at 390 and at 768, where the sidebar leaves a half-width tile
+        narrower than a phone's. The tile knows its own width; the figure
+        steps up only when the tile has room for it. The unit may drop under
+        the figure rather than overflow.
+      */}
+      <p className="mt-3 flex min-w-0 flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric font-display text-[1.875rem] leading-none font-semibold tracking-tight text-ink ${
+          className={`numeric min-w-0 font-display text-headline leading-none font-semibold tracking-tight text-ink @[13rem]:text-display @[17rem]:text-display-lg ${
             live ? 'accruing' : ''
           }`}
         >
           {value}
         </span>
-        {of ? <span className="numeric text-[0.9375rem] text-ink-subtle">/{of}</span> : null}
+        {of ? <span className="numeric text-title text-ink-subtle">/{of}</span> : null}
         {unit ? (
-          <span className="text-[0.75rem] font-medium tracking-wide text-ink-subtle uppercase">
+          // `dir="auto"` for the reason `Money` gives: "US$" in an Arabic tile read "$US".
+          <span
+            dir="auto"
+            className="text-caption font-medium tracking-wide text-ink-muted uppercase"
+          >
             {unit}
           </span>
         ) : null}
       </p>
 
       {children ? <div className="mt-3">{children}</div> : null}
-      {hint ? <p className="mt-2 text-[0.75rem] leading-snug text-ink-subtle">{hint}</p> : null}
+      {/* Muted, not subtle: 12px subtle ink on a tinted tile measured 4.3–4.5:1. */}
+      {hint ? <p className="mt-2 text-caption leading-snug text-ink-muted">{hint}</p> : null}
     </>
   )
 
@@ -124,12 +143,12 @@ export function Metric({
     positive: 'border-positive/25 bg-positive-soft/25',
     caution: 'border-caution/30 bg-caution-soft/30',
     critical: 'border-critical/30 bg-critical-soft/30',
-    brand: 'border-brand/25 bg-brand-soft/40',
+    brand: 'border-accent/20 bg-accent-soft/50',
     info: 'border-info/25 bg-info-soft/25',
   }
 
   const classes = [
-    'rounded-card border p-4 transition-colors',
+    '@container min-w-0 rounded-card border p-4 transition-colors',
     SURFACE[tone],
     href ? 'hover:border-line-strong hover:brightness-[0.985]' : '',
     className,
@@ -181,7 +200,7 @@ export function Delta({
   return (
     <p className="flex items-center gap-2">
       <span
-        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[0.75rem] font-semibold ${tone}`}
+        className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-caption font-semibold ${tone}`}
       >
         {flat ? null : (
           <Icon name={up ? 'arrow-up-end' : 'arrow-down-end'} size={12} weight="bold" />
@@ -192,7 +211,7 @@ export function Delta({
           {suffix}
         </span>
       </span>
-      {caption ? <span className="truncate text-[0.75rem] text-ink-subtle">{caption}</span> : null}
+      {caption ? <span className="truncate text-caption text-ink-subtle">{caption}</span> : null}
     </p>
   )
 }
@@ -221,7 +240,8 @@ export function Spark({
 }) {
   const width = 120
   const stroke = {
-    brand: 'var(--qb-brand)',
+    // Accent: a trend line in the brand red reads as a falling one.
+    brand: 'var(--qb-accent)',
     positive: 'var(--qb-positive)',
     critical: 'var(--qb-critical)',
     caution: 'var(--qb-caution)',
@@ -326,7 +346,7 @@ export function TickMeter({
     positive: 'bg-positive',
     caution: 'bg-caution',
     critical: 'bg-critical',
-    brand: 'bg-brand',
+    brand: 'bg-accent',
     info: 'bg-info',
   }
 
@@ -355,7 +375,8 @@ export function TickMeter({
           )
         })}
       </div>
-      {label ? <p className="mt-1.5 text-[0.75rem] text-ink-subtle">{label}</p> : null}
+      {/* Muted for the reason the tile's hint is: subtle ink on a tint is under AA. */}
+      {label ? <p className="mt-1.5 text-caption text-ink-muted">{label}</p> : null}
     </div>
   )
 }

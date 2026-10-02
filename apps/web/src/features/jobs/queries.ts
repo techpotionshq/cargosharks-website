@@ -13,15 +13,19 @@
  */
 
 import 'server-only'
-import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { KUWAIT_CALENDAR, accrue, dec, type WorkingCalendar, type Weekday } from '@qabandi/core'
 import {
   assets,
   branches,
+  calendarHolidays,
+  commodities,
   customers,
   customsStages,
   documentTypes,
   documents,
+  enquiries,
   equipment,
   exceptionCodes,
   exceptions,
@@ -33,7 +37,9 @@ import {
   locations,
   partners,
   principals,
+  quotes,
   withActor,
+  workingCalendars,
   type Actor,
 } from '@qabandi/db'
 import type {
@@ -46,6 +52,7 @@ import type {
 } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotExceptions, pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
+import { named, pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -57,6 +64,8 @@ export interface JobListFilters {
   /** Only jobs carrying an open exception or a customs hold. */
   readonly exceptionsOnly?: boolean
   readonly limit?: number
+  /** Names the owner as they write it — `principals.name_ar` on an Arabic screen. */
+  readonly locale?: 'en' | 'ar'
 }
 
 /** Statuses that put a job on the live board — everything else is history. */
@@ -87,14 +96,27 @@ const openExceptions = sql<number>`(
    where ${exceptions.jobId} = "jobs"."id" and ${exceptions.closedAt} is null
 )`
 
-const accruingAmount = sql<string | null>`(
-  select sum(${freeTimeClocks.accruedAmount}) from ${freeTimeClocks}
-   where ${freeTimeClocks.jobId} = "jobs"."id" and ${freeTimeClocks.endsOn} is null
+/*
+  The running clocks' accrual, in one currency (O15).
+
+  This summed every clock's amount and the row labelled it KWD, so a USD
+  per-diem and a KWD one added up as dinars. Grouped by currency instead, and
+  the largest group returned with its own code: the figure is what it says it
+  is, and on the rare job with clocks in two currencies it is the larger one
+  rather than an invented total.
+*/
+const accruingAmount = sql<{ amount: string; currency: string } | null>`(
+  select json_build_object('amount', sum(c.accrued_amount)::text, 'currency', c.currency)
+    from free_time_clocks c
+   where c.job_id = "jobs"."id" and c.ends_on is null
+   group by c.currency
+   order by sum(c.accrued_amount) desc nulls last
+   limit 1
 )`
 
 export async function listJobs(actor: Actor, filters: JobListFilters = {}): Promise<JobSummary[]> {
   if (usePilotFixtures()) {
-    let rows = pilotJobs()
+    let rows = pilotJobs(Date.now(), filters.locale)
     if (filters.status === 'live') {
       rows = rows.filter((r) => (LIVE_STATUSES as readonly string[]).includes(r.status))
     } else if (filters.status) {
@@ -145,7 +167,7 @@ export async function listJobs(actor: Actor, filters: JobListFilters = {}): Prom
         destinationName: destination.nameEn,
         destinationNameAr: destination.nameAr,
         destinationCode: destination.unlocode,
-        owner: principals.nameEn,
+        owner: named(filters.locale ?? 'en', principals.nameEn, principals.nameAr),
         customsStatus: customsStages.status,
         containerCount,
         milestonesTotal,
@@ -215,7 +237,7 @@ type JobRow = {
   milestonesTotal: number
   milestonesDone: number
   openExceptions: number
-  accruingAmount: string | null
+  accruingAmount: { amount: string | null; currency: string } | null
 }
 
 function toJobSummary(row: JobRow): JobSummary {
@@ -237,12 +259,12 @@ function toJobSummary(row: JobRow): JobSummary {
     mode: row.mode as Mode,
     direction: row.direction as Direction,
     customerName: row.customerName ?? '—',
-    customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+    customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
     originName: row.originName ?? '—',
-    originNameAr: row.originNameAr ?? row.originName ?? '—',
+    originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
     originCode: row.originCode ?? '',
     destinationName: row.destinationName ?? '—',
-    destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+    destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
     destinationCode: row.destinationCode ?? '',
     vesselOrFlight:
       row.flightNumber ??
@@ -264,7 +286,9 @@ function toJobSummary(row: JobRow): JobSummary {
      * `core/money`'s job.
      */
     accruing:
-      row.accruingAmount === null ? null : { amount: Number(row.accruingAmount), currency: 'KWD' },
+      row.accruingAmount === null || row.accruingAmount.amount === null
+        ? null
+        : { amount: Number(row.accruingAmount.amount), currency: row.accruingAmount.currency },
     updatedAt: row.updatedAt,
   }
 }
@@ -276,8 +300,12 @@ function toJobSummary(row: JobRow): JobSummary {
  * because the row is invisible to the query. `FR-ID-04` satisfied literally:
  * not-found rather than forbidden, with no enumeration signal.
  */
-export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail | undefined> {
-  if (usePilotFixtures()) return pilotJob(id)
+export async function getJobDetail(
+  actor: Actor,
+  id: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<JobDetail | undefined> {
+  if (usePilotFixtures()) return pilotJob(id, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -291,6 +319,9 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         originId: jobs.originId,
         destinationId: jobs.destinationId,
         commodityId: jobs.commodityId,
+        ownerId: jobs.ownerId,
+        quoteId: jobs.quoteId,
+        branchTimeZone: branches.timeZone,
         status: jobs.status,
         mode: jobs.mode,
         direction: jobs.tradeDirection,
@@ -316,13 +347,15 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         pieces: jobs.pieces,
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
+        commodityName: commodities.nameEn,
+        commodityNameAr: commodities.nameAr,
         originName: origin.nameEn,
         originNameAr: origin.nameAr,
         originCode: origin.unlocode,
         destinationName: destination.nameEn,
         destinationNameAr: destination.nameAr,
         destinationCode: destination.unlocode,
-        owner: principals.nameEn,
+        owner: named(locale, principals.nameEn, principals.nameAr),
         customsStatus: customsStages.status,
         customsNote: customsStages.notes,
         containerCount,
@@ -332,8 +365,10 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         accruingAmount,
       })
       .from(jobs)
+      .innerJoin(branches, eq(branches.id, jobs.branchId))
       .leftJoin(customers, eq(customers.id, jobs.customerId))
       .leftJoin(principals, eq(principals.id, jobs.ownerId))
+      .leftJoin(commodities, eq(commodities.id, jobs.commodityId))
       .leftJoin(origin, eq(origin.id, jobs.originId))
       .leftJoin(destination, eq(destination.id, jobs.destinationId))
       .leftJoin(customsStages, eq(customsStages.jobId, jobs.id))
@@ -372,7 +407,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
             .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
             .innerJoin(assets, eq(assets.id, documents.assetId))
             .where(and(eq(documents.jobId, id), isNull(documents.supersededById))),
-        () => listExceptionRows(tx, id),
+        () => listExceptionRows(tx, id, locale),
         /*
           Who we engaged, as against who is named on the bill.
 
@@ -387,6 +422,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
               id: jobPartners.id,
               partnerId: jobPartners.partnerId,
               name: partners.legalNameEn,
+              nameAr: partners.legalNameAr,
               role: jobPartners.role,
               reference: jobPartners.reference,
             })
@@ -397,6 +433,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       ])
 
     const summary = toJobSummary(row as JobRow)
+    const calendar = await clockCalendar(tx, row.branchId)
 
     return {
       ...summary,
@@ -407,6 +444,12 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       originId: row.originId,
       destinationId: row.destinationId,
       commodityId: row.commodityId,
+      ownerId: row.ownerId,
+      quoteId: row.quoteId,
+      branchTimeZone: row.branchTimeZone,
+      vesselName: row.vesselName,
+      voyageNumber: row.voyageNumber,
+      flightNumber: row.flightNumber,
       customerReference: row.customerReference,
       masterBillNumber: row.masterBillNumber,
       houseBillNumber: row.houseBillNumber,
@@ -415,7 +458,10 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
       placeOfReceipt: row.placeOfReceipt,
       placeOfDelivery: row.placeOfDelivery,
       incoterm: row.incoterm,
-      commodity: '—',
+      // Read off the row it names. It was the literal '—' whatever the job
+      // carried, so a commodity chosen on the booking never showed (QA P3).
+      commodity: row.commodityName ?? '—',
+      commodityAr: row.commodityNameAr,
       grossWeightKg: row.grossWeightKg === null ? null : Number(row.grossWeightKg),
       chargeableWeightKg: row.chargeableWeightKg === null ? null : Number(row.chargeableWeightKg),
       volumeCbm: row.volumeCbm === null ? null : Number(row.volumeCbm),
@@ -425,6 +471,8 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         id: p.id,
         partnerId: p.partnerId,
         name: p.name,
+        // `||`, not `??`: an empty Arabic name is as unset as a null one.
+        nameAr: p.nameAr || p.name,
         role: p.role,
         reference: p.reference,
       })),
@@ -448,7 +496,7 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
         gateOutAt: c.gateOutAt,
         emptyReturnedAt: c.emptyReturnedAt,
       })),
-      clocks: clockRows.map(toClockView),
+      clocks: clockRows.map((clock) => toClockView(clock, calendar)),
       documents: documentRows.map((d) => ({
         id: d.id,
         code: d.code,
@@ -463,12 +511,66 @@ export async function getJobDetail(actor: Actor, id: string): Promise<JobDetail 
   })
 }
 
-function toClockView(row: typeof freeTimeClocks.$inferSelect): ClockView {
+type Tx = Parameters<Parameters<typeof withActor>[1]>[0]
+
+/**
+ * The branch's working calendar, as `accrue` reads it — zone, weekend and
+ * holidays. A branch with none falls back to Kuwait's, which is what every
+ * clock was counted in before branches had calendars.
+ */
+async function clockCalendar(tx: Tx, branchId: string): Promise<WorkingCalendar> {
+  const [cal] = await tx
+    .select({
+      id: workingCalendars.id,
+      timeZone: workingCalendars.timeZone,
+      weekend: workingCalendars.weekend,
+    })
+    .from(branches)
+    .innerJoin(workingCalendars, eq(workingCalendars.id, branches.calendarId))
+    .where(eq(branches.id, branchId))
+    .limit(1)
+  if (!cal) return KUWAIT_CALENDAR
+  const holidays = await tx
+    .select({ on: calendarHolidays.onDate })
+    .from(calendarHolidays)
+    .where(eq(calendarHolidays.calendarId, cal.id))
+  return {
+    ...KUWAIT_CALENDAR,
+    id: cal.id,
+    timeZone: cal.timeZone,
+    weekend: cal.weekend as Weekday[],
+    holidays: new Set(holidays.map((h) => h.on)),
+  }
+}
+
+function toClockView(
+  row: typeof freeTimeClocks.$inferSelect,
+  calendar: WorkingCalendar = KUWAIT_CALENDAR,
+): ClockView {
   const startsOn = new Date(row.startsOn)
-  const elapsedDays = Math.max(
-    0,
-    Math.floor((Date.now() - startsOn.getTime()) / (24 * 60 * 60 * 1000)),
+  /*
+    The meter counts the way the accrual does (O15): the start day is day one,
+    working days on a working-day clock, and a stopped clock stops at its end
+    date. It counted whole 24-hour periods from midnight UTC — a day short of
+    `accrue` from the first morning, still counting after the box came back,
+    and counting weekends the bill did not.
+  */
+  const accrual = accrue(
+    {
+      kind: row.kind,
+      freeDays: row.freeDays,
+      perDiem: dec(row.perDiem),
+      currency: row.currency,
+      dayBasis: row.dayBasis,
+    },
+    {
+      startedOn: new Date(`${row.startsOn}T12:00:00Z`),
+      endedOn: row.endsOn ? new Date(`${row.endsOn}T12:00:00Z`) : null,
+    },
+    calendar,
+    new Date(),
   )
+  const elapsedDays = accrual.freeDaysUsed + accrual.chargeableDays
   return {
     id: row.id,
     kind: row.kind,
@@ -482,12 +584,19 @@ function toClockView(row: typeof freeTimeClocks.$inferSelect): ClockView {
     counterparty: null,
     /** The line the nightly accrual wrote — `FR-FN-03`. */
     chargeLineWritten: row.chargeLineId !== null,
+    equipmentId: row.equipmentId,
+    counterpartyId: row.counterpartyId,
+    startsOnDay: row.startsOn,
+    endsOn: row.endsOn,
+    perDiemText: row.perDiem,
   }
 }
 
-type Tx = Parameters<Parameters<typeof withActor>[1]>[0]
-
-async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[]> {
+async function listExceptionRows(
+  tx: Tx,
+  jobId?: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<ExceptionView[]> {
   const rows = await tx
     .select({
       id: exceptions.id,
@@ -500,8 +609,9 @@ async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[
       code: exceptionCodes.code,
       nameEn: exceptionCodes.nameEn,
       nameAr: exceptionCodes.nameAr,
-      owner: principals.nameEn,
+      owner: named(locale, principals.nameEn, principals.nameAr),
       customerName: customers.legalNameEn,
+      customerNameAr: customers.legalNameAr,
     })
     .from(exceptions)
     .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
@@ -526,6 +636,7 @@ async function listExceptionRows(tx: Tx, jobId?: string): Promise<ExceptionView[
     owner: row.owner,
     description: row.description,
     customerName: row.customerName ?? '—',
+    customerNameAr: row.customerNameAr || row.customerName || '—',
   }))
 }
 
@@ -557,6 +668,7 @@ export async function listRunningClocks(
       .select({
         clock: freeTimeClocks,
         jobReference: jobs.reference,
+        branchId: jobs.branchId,
         containerNo: equipment.containerNo,
       })
       .from(freeTimeClocks)
@@ -566,12 +678,99 @@ export async function listRunningClocks(
       .orderBy(desc(freeTimeClocks.accruedAmount))
       .limit(20)
 
+    // One calendar per branch on the list, not one per clock.
+    const calendars = new Map<string, WorkingCalendar>()
+    for (const row of rows) {
+      if (!calendars.has(row.branchId)) {
+        calendars.set(row.branchId, await clockCalendar(tx, row.branchId))
+      }
+    }
+
     return rows.map((row) => ({
-      ...toClockView(row.clock),
+      ...toClockView(row.clock, calendars.get(row.branchId)),
       containerNo: row.containerNo,
       jobId: row.clock.jobId,
       jobReference: row.jobReference,
     }))
+  })
+}
+
+/**
+ * What a shipment booked from this quotation starts with — S8.
+ *
+ * Null unless the quotation can be booked: accepted, its enquiry has a known
+ * customer, and no live shipment already carries it. That is the same rule
+ * `saveJob` enforces under a lock; asking it here only decides whether the
+ * quote page offers the button, so a page opened twice never invites a second
+ * booking that the action would then refuse.
+ *
+ * The pilot fixtures never write, so they never offer it.
+ */
+export async function quoteBookingDefaults(
+  actor: Actor,
+  quoteId: string,
+): Promise<{
+  readonly quoteId: string
+  readonly branchId: string
+  readonly customerId: string
+  readonly ownerId: string | null
+  readonly mode: string | null
+  readonly tradeDirection: string | null
+  readonly originId: string | null
+  readonly destinationId: string | null
+  readonly commodityId: string | null
+  readonly incoterm: string | null
+  readonly grossWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly pieces: number | null
+} | null> {
+  if (usePilotFixtures()) return null
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        status: quotes.status,
+        branchId: quotes.branchId,
+        customerId: enquiries.customerId,
+        ownerId: enquiries.ownerId,
+        mode: enquiries.mode,
+        tradeDirection: enquiries.tradeDirection,
+        originId: enquiries.originId,
+        destinationId: enquiries.destinationId,
+        commodityId: enquiries.commodityId,
+        incoterm: enquiries.incoterm,
+        grossWeightKg: enquiries.grossWeightKg,
+        volumeCbm: enquiries.volumeCbm,
+        pieces: enquiries.pieces,
+      })
+      .from(quotes)
+      .innerJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+      .where(eq(quotes.id, quoteId))
+      .limit(1)
+    if (!row || row.status !== 'accepted' || !row.customerId) return null
+
+    const [booked] = await tx
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.quoteId, quoteId), ne(jobs.status, 'cancelled')))
+      .limit(1)
+    if (booked) return null
+
+    return {
+      quoteId,
+      branchId: row.branchId,
+      customerId: row.customerId,
+      ownerId: row.ownerId,
+      mode: row.mode,
+      tradeDirection: row.tradeDirection,
+      originId: row.originId,
+      destinationId: row.destinationId,
+      commodityId: row.commodityId,
+      incoterm: row.incoterm,
+      grossWeightKg: row.grossWeightKg,
+      volumeCbm: row.volumeCbm,
+      pieces: row.pieces,
+    }
   })
 }
 

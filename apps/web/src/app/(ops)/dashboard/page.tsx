@@ -26,6 +26,7 @@
  * own: RLS applies it (§5.3).
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -35,6 +36,7 @@ import { SetupChecklist } from '@/features/onboarding/ui/setup-checklist'
 import { NewEnquiryButton } from '@/features/enquiries/ui/new-enquiry-dialog'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay, formatMoney, formatNumber, formatRelative, formatTime } from '@/lib/format'
+import { formatByCurrency } from '@/lib/by-currency'
 import { BarList, CompositionBar, TrendColumns } from '@/ui/chart'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Button, EmptyState, Grid, Lane } from '@/ui/layout'
@@ -43,6 +45,7 @@ import { LaneMap, LaneMapLegend } from '@/ui/lane-map'
 import { EventRow, Panel, Readout } from '@/ui/panel'
 import { Badge, ToneDot, jobTone, severityTone, slaTone } from '@/ui/status'
 import { Term } from '@/ui/term'
+import { pickName } from '@/lib/named'
 
 /**
  * Morning, afternoon or evening — in Kuwait, not in the server's zone.
@@ -60,11 +63,21 @@ function partOfDay(now: Date, timeZone: string): 'morning' | 'afternoon' | 'even
   return 'evening'
 }
 
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('dashboard') }
+}
+
 export default async function DashboardPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const overview = await getOpsOverview(session.actor)
+  const resolvedLocale = await getLocale()
+  const overview = await getOpsOverview(
+    session.actor,
+    isLocale(resolvedLocale) ? resolvedLocale : DEFAULT_LOCALE,
+  )
   const setup = await getSetupState(session.actor)
   const map = await getMapData(session.actor)
 
@@ -80,7 +93,8 @@ export default async function DashboardPage() {
   const nowDate = new Date()
   const now = nowDate.getTime()
 
-  const nameOf = (en: string, ar: string) => (locale === 'ar' ? ar : en)
+  // An empty Arabic name falls back to English rather than rendering blank (F52).
+  const nameOf = (en: string, ar: string | null) => pickName(locale, en, ar)
   const firstName = (
     locale === 'ar' && session.principal.nameAr
       ? session.principal.nameAr
@@ -119,13 +133,13 @@ export default async function DashboardPage() {
           wrong?" before they have read a single figure. */}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+          <h1 className="font-display text-display leading-tight font-semibold tracking-tight text-ink">
             {t(`greeting.${partOfDay(nowDate, 'Asia/Kuwait')}`, { name: firstName })}
           </h1>
-          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.9375rem] text-ink-muted">
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-title text-ink-muted">
             {needsAction > 0 ? (
               <>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-critical-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-critical">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-critical-soft px-2.5 py-1 text-body-sm font-semibold text-critical">
                   <Icon name="alert" size={13} weight="fill" />
                   {t('needsYou', { count: needsAction })}
                 </span>
@@ -140,7 +154,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
           <Button href="/jobs" icon="jobs">
             {tNav('jobs')}
           </Button>
@@ -176,7 +190,7 @@ export default async function DashboardPage() {
       {/* ---- the four numbers -------------------------------------------
           Only the two that represent a live cost carry a tone. A row where
           everything is coloured says nothing at a glance. */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
         <Metric
           label={t('overdueReplies')}
           value={formatNumber(overview.enquiries.breached, locale)}
@@ -189,7 +203,7 @@ export default async function DashboardPage() {
             </>
           }
         >
-          <p className="text-[0.8125rem] text-ink-muted">
+          <p className="text-body-sm text-ink-muted">
             <span className="numeric font-semibold text-ink">{overview.enquiries.dueToday}</span>{' '}
             {t('dueTodayCaption')}
           </p>
@@ -197,21 +211,28 @@ export default async function DashboardPage() {
 
         <Metric
           label={<Term name="demurrage">{t('accruing')}</Term>}
-          value={formatMoney(overview.clocks.accruing, locale, { showCurrency: false })}
-          unit={overview.clocks.accruing.currency}
+          // One figure per currency: a USD per-diem summed into dinars was
+          // printed as dinars.
+          value={formatByCurrency(overview.clocks.accruing, locale)}
           icon="clock"
-          tone={overview.clocks.accruing.amount > 0 ? 'caution' : 'neutral'}
+          tone={overview.clocks.accruing.length > 0 ? 'caution' : 'neutral'}
           // The one number on the page that is genuinely still moving.
-          live={overview.clocks.accruing.amount > 0}
+          live={overview.clocks.accruing.length > 0}
           href="/jobs?filter=exceptions"
         >
           <TickMeter
             value={overview.clocks.containersAtRisk}
             max={Math.max(overview.clocks.running, overview.clocks.containersAtRisk, 1)}
             tone="caution"
+            /*
+              The denominator is the meter's own maximum. Containers at risk
+              are counted per box and running clocks per clock, so a job with
+              three boxes on one clock read "3 of 1 container past their free
+              days" — a fraction over one, and the wrong plural.
+            */
             label={t('containersLabel', {
               atRisk: overview.clocks.containersAtRisk,
-              running: overview.clocks.running,
+              running: Math.max(overview.clocks.running, overview.clocks.containersAtRisk),
             })}
           />
         </Metric>
@@ -247,21 +268,18 @@ export default async function DashboardPage() {
           The one graphic anybody understands without being told: this is
           where our cargo comes from and where it goes. Every line is a live
           shipment and every dot is a port we are currently using. */}
-      <Panel
-        className="mb-4"
-        icon="globe"
-        title={t('map')}
-        explain={t('mapExplain')}
-        actions={
-          <LaneMapLegend
-            modes={overview.jobs.byMode.map((row) => ({
-              mode: row.mode,
-              label: tMode(row.mode),
-              count: row.count,
-            }))}
-          />
-        }
-      >
+      <Panel className="mb-4" icon="globe" title={t('map')} explain={t('mapExplain')}>
+        {/* In the body rather than the header's actions slot, which does not
+            shrink: at 390px the Arabic legend pushed the page 58px sideways.
+            Here it wraps under the title instead. */}
+        <LaneMapLegend
+          className="mb-3"
+          modes={overview.jobs.byMode.map((row) => ({
+            mode: row.mode,
+            label: tMode(row.mode),
+            count: row.count,
+          }))}
+        />
         {map.lanes.length === 0 ? (
           <EmptyState icon="globe" title={t('noLanes')} description={t('mapEmptyHint')} />
         ) : (
@@ -277,7 +295,7 @@ export default async function DashboardPage() {
             The widest panel on the board, because it is the only one that
             changes what somebody does next. */}
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="alert"
           title={t('attention')}
@@ -309,19 +327,23 @@ export default async function DashboardPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="text-[0.875rem] font-medium text-ink">
+                          <span className="text-body font-medium text-ink">
                             {nameOf(exception.nameEn, exception.nameAr)}
                           </span>
-                          <span className="ref numeric text-[0.75rem] text-brand">
+                          <span className="ref numeric text-caption font-medium text-ink">
                             {exception.jobReference}
                           </span>
                         </div>
                         {/* The description is the human sentence — "container
                             held for inspection, broker notified". Falling back
                             to the customer name keeps the row informative when
-                            nobody has written one. */}
-                        <p className="mt-0.5 truncate text-[0.8125rem] text-ink-muted">
-                          {exception.description ?? exception.customerName}
+                            nobody has written one. `dir="auto"` because it
+                            is free text: an English sentence in the Arabic
+                            board truncated from its start ("…hamber
+                            attestation before release"). */}
+                        <p dir="auto" className="mt-0.5 truncate text-body-sm text-ink-muted">
+                          {exception.description ??
+                            nameOf(exception.customerName, exception.customerNameAr)}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
@@ -329,7 +351,7 @@ export default async function DashboardPage() {
                           {tJob(`severities.${exception.severity}` as 'severities.high')}
                         </Badge>
                         <span
-                          className={`numeric text-[0.6875rem] ${
+                          className={`numeric text-micro ${
                             overdue ? 'font-medium text-critical' : 'text-ink-subtle'
                           }`}
                         >
@@ -350,7 +372,7 @@ export default async function DashboardPage() {
             value here is showing a newcomer what a shipment's life looks
             like — a list of ten teaches nothing. */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="ship"
           title={t('nextArrival')}
           explain={t('nextArrivalExplain')}
@@ -366,16 +388,16 @@ export default async function DashboardPage() {
                   <Icon name={modeIcon(nextArrival.mode)} size={18} />
                 </span>
                 <div className="min-w-0">
-                  <p className="ref numeric truncate text-[0.875rem] font-semibold text-ink">
+                  <p className="ref numeric truncate text-body font-semibold text-ink">
                     {nextArrival.reference}
                   </p>
-                  <p className="truncate text-[0.75rem] text-ink-muted">
+                  <p className="truncate text-caption text-ink-muted">
                     {nameOf(nextArrival.customerName, nextArrival.customerNameAr)}
                   </p>
                 </div>
               </div>
 
-              <p className="mt-3 text-[0.8125rem] text-ink-muted">
+              <p className="mt-3 text-body-sm text-ink-muted">
                 <Lane
                   origin={nameOf(nextArrival.originName, nextArrival.originNameAr)}
                   destination={nameOf(nextArrival.destinationName, nextArrival.destinationNameAr)}
@@ -421,18 +443,22 @@ export default async function DashboardPage() {
       <Grid className="mb-4">
         {/* ---- intake, with the facts written out ---------------------- */}
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           icon="trend"
           title={t('enquiryTrend')}
           explain={t('enquiryTrendExplain')}
           bodyClassName="flex"
         >
-          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_15rem]">
+          {/* 17rem for the readout: at 15 its labels clipped to "Received this …". */}
+          <div className="grid flex-1 gap-6 @4xl:grid-cols-[1fr_17rem]">
             <TrendColumns
               className="flex flex-1 flex-col justify-end"
               height={190}
               points={overview.enquiries.trend.map((point, index) => ({
                 ...point,
+                // The query hands over the day; it is worded here so the axis
+                // reads in Arabic on the Arabic page.
+                label: formatDay(`${point.label}T00:00:00Z`, locale, 'UTC'),
                 emphasis: index === overview.enquiries.trend.length - 1,
               }))}
               label={t('enquiryTrend')}
@@ -442,7 +468,7 @@ export default async function DashboardPage() {
                 superlative off a bar chart is a skill; stating it is free. */}
             <div className="lg:border-s lg:border-line lg:ps-6">
               {intakeDelta === null ? (
-                <p className="text-[0.8125rem] text-ink-subtle">{t('noBaseline')}</p>
+                <p className="text-body-sm text-ink-subtle">{t('noBaseline')}</p>
               ) : (
                 <Delta value={intakeDelta} goodWhen="up" caption={t('vsLastWeek')} />
               )}
@@ -475,7 +501,7 @@ export default async function DashboardPage() {
                         {
                           icon: 'locations' as const,
                           label: t('readout.busiestLane'),
-                          value: busiestLane.lane,
+                          value: nameOf(busiestLane.lane, busiestLane.laneAr),
                         },
                       ]
                     : []),
@@ -487,7 +513,7 @@ export default async function DashboardPage() {
 
         {/* ---- who is still waiting ------------------------------------ */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           padding="none"
           icon="clock"
           title={t('slaWatch')}
@@ -509,15 +535,15 @@ export default async function DashboardPage() {
                     >
                       <ToneDot tone={tone} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.8125rem] font-medium text-ink">
+                        <p className="truncate text-body-sm font-medium text-ink">
                           {nameOf(enquiry.customerName, enquiry.customerNameAr)}
                         </p>
-                        <p className="truncate text-[0.6875rem] text-ink-subtle">
+                        <p className="truncate text-micro text-ink-subtle">
                           {enquiry.owner ?? tc('unassigned')}
                         </p>
                       </div>
                       <span
-                        className={`numeric shrink-0 text-[0.75rem] font-medium ${
+                        className={`numeric shrink-0 text-caption font-medium ${
                           tone === 'critical' ? 'text-critical' : 'text-ink-muted'
                         }`}
                       >
@@ -535,14 +561,14 @@ export default async function DashboardPage() {
       <Grid>
         {/* ---- what it is worth ---------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="finance"
           title={t('avgMargin')}
           explain={t('avgMarginExplain')}
         >
-          <p className="numeric font-display text-[2.5rem] leading-none font-semibold tracking-tight text-ink">
+          <p className="numeric font-display text-hero leading-none font-semibold tracking-tight text-ink">
             {overview.quotes.averageMarginPct.toFixed(1)}
-            <span className="text-[1.25rem] text-ink-subtle">%</span>
+            <span className="text-headline leading-none text-ink-subtle">%</span>
           </p>
           <Readout
             className="mt-4 border-t border-line pt-4"
@@ -550,7 +576,7 @@ export default async function DashboardPage() {
               { label: t('winRate'), value: `${overview.quotes.winRatePct}%` },
               {
                 label: t('winRateHint', { quoted: overview.quotes.sentThisMonth }),
-                value: formatMoney(overview.quotes.quotedValue, locale, { compact: true }),
+                value: formatByCurrency(overview.quotes.quotedValue, locale, { compact: true }),
               },
               {
                 label: t('medianResponse'),
@@ -562,7 +588,7 @@ export default async function DashboardPage() {
 
         {/* ---- how it moves -------------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="container"
           title={t('jobsByMode')}
           explain={t('jobsByModeExplain')}
@@ -574,7 +600,7 @@ export default async function DashboardPage() {
             }))}
           />
           {biggestMode ? (
-            <p className="mt-4 text-[0.8125rem] text-ink-muted">
+            <p className="mt-4 text-body-sm text-ink-muted">
               {t('modeReadout', {
                 mode: tMode(biggestMode.mode),
                 share: Math.round((biggestMode.count / Math.max(overview.jobs.live, 1)) * 100),
@@ -603,7 +629,7 @@ export default async function DashboardPage() {
 
         {/* ---- where it goes ------------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="locations"
           title={t('topLanes')}
           explain={t('topLanesExplain')}
@@ -615,7 +641,7 @@ export default async function DashboardPage() {
           ) : (
             <BarList
               data={overview.topLanes.slice(0, 6).map((lane) => ({
-                label: lane.lane,
+                label: nameOf(lane.lane, lane.laneAr),
                 value: lane.count,
                 hint: formatMoney(lane.value, locale, { compact: true }),
               }))}

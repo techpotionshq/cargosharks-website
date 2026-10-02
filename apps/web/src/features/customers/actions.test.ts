@@ -29,6 +29,15 @@ const harness = vi.hoisted(() => ({ session: null as unknown, redirected: null a
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 /*
   `redirect()` throws in Next — that is how it unwinds the render — so a stub
   that returned normally would let `createCustomer` fall off the end and hide
@@ -190,7 +199,7 @@ describe.skipIf(!enabled)('customers', () => {
 
       const { state } = await create(customerForm({ code }))
 
-      expect(state?.errors?.code).toContain('already in use')
+      expect(state?.errors?.code).toBe('customersValidation.codeInUse')
       expect(state?.values?.code).toBe(code)
     })
 
@@ -220,13 +229,15 @@ describe.skipIf(!enabled)('customers', () => {
           {},
           customerForm({ primaryBranchId: '00000000-0000-7000-8000-0000000000cb' }),
         ),
-      ).rejects.toThrow('branch:')
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('refuses a caller who may not write customers', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(createCustomer({}, customerForm())).rejects.toThrow('customer.write')
+        await expect(createCustomer({}, customerForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['customer.write'])
       }
@@ -293,7 +304,7 @@ describe.skipIf(!enabled)('customers', () => {
         customerForm({ customerId: second.row.id, code: first.code }),
       )
 
-      expect(state.errors?.code).toContain('already in use')
+      expect(state.errors?.code).toBe('customersValidation.codeInUse')
     })
 
     it('needs an identifier to edit anything', async () => {
@@ -346,15 +357,15 @@ describe.skipIf(!enabled)('customers', () => {
     it('says so plainly when no customer was named', async () => {
       const state = await setCustomerActive({}, form({}))
 
-      expect(state.message).toContain('Nothing to update')
+      expect(state.message).toBe('customersValidation.nothingToUpdate')
     })
 
     it('refuses a caller who may not write customers', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(retire('00000000-0000-7000-8000-0000000000cd')).rejects.toThrow(
-          'customer.write',
-        )
+        await expect(retire('00000000-0000-7000-8000-0000000000cd')).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['customer.write'])
       }

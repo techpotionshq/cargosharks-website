@@ -8,13 +8,14 @@
  * an issued document's effect and crediting replaces it with another.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { invoiceMachine, nextStates, type InvoiceStatus } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { can, canIn } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog } from '@/ui/record-dialog'
-import { addInvoiceLine, setInvoiceStatus } from '../form-actions'
+import { formatMoney } from '@/lib/format'
+import { addInvoiceLine, creditInvoice, setInvoiceStatus } from '../form-actions'
 
 const MOVES: Partial<
   Record<
@@ -34,19 +35,28 @@ const MOVES: Partial<
   credited: { permission: 'invoice.credit', variant: 'secondary', icon: 'close', grave: true },
 }
 
+/** The moves that take the record forward, as opposed to ending it. */
+const FORWARD: readonly InvoiceStatus[] = ['approved', 'issued']
+
 export async function InvoiceStatusActions({
   invoiceId,
   status,
+  part = 'all',
 }: {
   readonly invoiceId: string
   readonly status: string
+  /**
+   * Which half of the moves to render.
+   *
+   * A detail page header shows the move that takes the record *forward* as
+   * its one primary button and folds the rest — voiding, crediting,
+   * rejecting — into its More menu, so the page is split by the caller and
+   * each half asks for its own. `all` is the old behaviour.
+   */
+  readonly part?: 'forward' | 'other' | 'all'
 }) {
   const session = await requireSession()
-  const [t, tc, ti] = await Promise.all([
-    getTranslations('invoiceDetail'),
-    getTranslations('common'),
-    getTranslations('invoices'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('invoiceDetail'), getTranslations('common')])
 
   const allowed = nextStates(invoiceMachine, status as InvoiceStatus)
     .map((next) => ({ next, move: MOVES[next] }))
@@ -55,17 +65,30 @@ export async function InvoiceStatusActions({
         Boolean(entry.move) && can(session, entry.move!.permission),
     )
 
-  if (allowed.length === 0) return null
+  // One forward move at most: the first the machine offers. Anything after
+  // it is still offered, in the menu.
+  const lead = allowed.find(({ next }) => FORWARD.includes(next))
+  const shown =
+    part === 'all'
+      ? allowed
+      : part === 'forward'
+        ? lead
+          ? [lead]
+          : []
+        : allowed.filter((entry) => entry !== lead)
+
+  if (shown.length === 0) return null
 
   return (
     <>
-      {allowed.map(({ next, move }) => (
+      {shown.map(({ next, move }) => (
         <RecordDialog
           key={next}
           action={setInvoiceStatus}
           icon={move.icon}
           size="sm"
-          variant={move.variant}
+          // The forward move is the header's one primary button.
+          variant={part === 'forward' ? 'primary' : move.variant}
           submitIcon={move.icon}
           fields={[
             { kind: 'hidden', name: 'invoiceId', value: invoiceId },
@@ -77,12 +100,19 @@ export async function InvoiceStatusActions({
             },
           ]}
           labels={{
-            open: ti(`statuses.${next}` as 'statuses.issued'),
+            /*
+              A verb, not the status it leads to. The button read "Issued"
+              on a draft — which looks like a label saying it already is,
+              and nobody clicks a label. `moveOpen` says what pressing it
+              does; the status name stays on the pill.
+            */
+            open: t(`moveOpen.${next}` as 'moveOpen.issued'),
             title: t(`moveTitle.${next}` as 'moveTitle.issued'),
             description: t(`moveDescription.${next}` as 'moveDescription.issued'),
             submit: t(`moveSubmit.${next}` as 'moveSubmit.issued'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t(`moveDone.${next}` as 'moveDone.issued'),
           }}
         />
       ))}
@@ -103,7 +133,7 @@ export async function InvoiceLineDialog({ invoiceId }: { readonly invoiceId: str
   if (!can(session, 'invoice.approve')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('invoiceDetail'),
     getTranslations('common'),
   ])
@@ -152,6 +182,88 @@ export async function InvoiceLineDialog({ invoiceId }: { readonly invoiceId: str
         submit: t('addLineSubmit'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Credit part of an issued or part-paid invoice — F9.
+ *
+ * Beside "Credit note raised", which credits everything still owed, rather
+ * than instead of it: the whole-invoice correction is the common case and
+ * should stay one confirmation. This one asks for the amount, opens on the
+ * most it can be, and says that figure in words so a clerk crediting a
+ * disputed line can see the ceiling before the server refuses past it.
+ *
+ * Rendered only where the action would accept it: the right state, not a
+ * credit note itself, and `invoice.credit` in the invoice's own branch.
+ */
+export async function CreditNoteDialog({
+  invoiceId,
+  branchId,
+  status,
+  isCreditNote,
+  currency,
+  creditable,
+}: {
+  readonly invoiceId: string
+  readonly branchId: string
+  readonly status: string
+  readonly isCreditNote: boolean
+  readonly currency: string
+  /** What is still owed, as a decimal string — the ceiling. */
+  readonly creditable: string
+}) {
+  if (isCreditNote || !['issued', 'part_paid'].includes(status)) return null
+  const session = await requireSession()
+  if (!canIn(session, 'invoice.credit', branchId)) return null
+
+  const [t, tc, locale] = await Promise.all([
+    getTranslations('invoiceDetail'),
+    getTranslations('common'),
+    getLocale(),
+  ])
+  const ceiling = formatMoney({ amount: creditable, currency }, locale === 'ar' ? 'ar' : 'en')
+
+  return (
+    <RecordDialog
+      action={creditInvoice}
+      icon="close"
+      size="md"
+      variant="secondary"
+      submitIcon="check"
+      fields={[
+        { kind: 'hidden', name: 'invoiceId', value: invoiceId },
+        { kind: 'note', text: t('partialCredit.note', { ceiling }), tone: 'caution' },
+        {
+          kind: 'text',
+          name: 'amount',
+          label: t('partialCredit.amount'),
+          span: 12,
+          required: true,
+          mono: true,
+          suffix: currency,
+          defaultValue: creditable,
+          hint: t('partialCredit.amountHint'),
+        },
+        {
+          kind: 'textarea',
+          name: 'notes',
+          label: t('partialCredit.reason'),
+          span: 12,
+          rows: 2,
+          hint: t('partialCredit.reasonHint'),
+        },
+      ]}
+      labels={{
+        open: t('partialCredit.open'),
+        title: t('partialCredit.title'),
+        description: t('partialCredit.description'),
+        submit: t('partialCredit.submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+        success: t('partialCredit.done'),
       }}
     />
   )

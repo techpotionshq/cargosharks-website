@@ -17,8 +17,10 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { AWAY_JOB, HOME_JOB, bothBranchesActor, homeActor, world } =
+const { AWAY_JOB, CUSTOMER, HOME_BRANCH, HOME_JOB, bothBranchesActor, homeActor, world } =
   await import('@/lib/testing/fixtures')
+const { commodities, freeTimeClocks, jobs, withActor } = await import('@qabandi/db')
+const { shiftDay, todayIn } = await import('@qabandi/core')
 const { listJobs, getJobDetail, listOpenExceptions, listRunningClocks } = await import('./queries')
 
 describe.skipIf(!enabled)('job register', () => {
@@ -145,8 +147,95 @@ describe.skipIf(!enabled)('job register', () => {
       expect(detail?.reference).toBe('FXH-JOB-FIXTURE-1')
     })
 
+    /** QA P3: the commodity was the literal '—' whatever the job carried. */
+    it('names the commodity the job carries, in both languages', async () => {
+      const code = `QAC-${Date.now()}`
+      const job = await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        const [commodity] = await tx
+          .insert(commodities)
+          .values({ code, nameEn: 'Dates, packed', nameAr: 'تمور معبأة' })
+          .returning({ id: commodities.id })
+        const [row] = await tx
+          .insert(jobs)
+          .values({
+            reference: `FXH-COM-${Date.now()}`,
+            branchId: HOME_BRANCH,
+            customerId: CUSTOMER,
+            commodityId: commodity!.id,
+            mode: 'sea_fcl',
+            tradeDirection: 'import',
+            status: 'booked',
+          })
+          .returning({ id: jobs.id })
+        return row!
+      })
+
+      const detail = await getJobDetail(bothBranchesActor, job.id)
+      expect(detail?.commodity).toBe('Dates, packed')
+      expect(detail?.commodityAr).toBe('تمور معبأة')
+    })
+
     it('returns nothing for an id that does not exist', async () => {
       expect(await getJobDetail(homeActor, '00000000-0000-7000-8000-0000000000fe')).toBeUndefined()
+    })
+  })
+
+  /*
+    O15. The register summed every clock and called it KWD, and the job-file
+    meter counted 24-hour periods from midnight UTC — a day short of `accrue`
+    and still counting after the box came back.
+  */
+  describe('free-time clocks on the job file', () => {
+    it('counts the way the accrual does, and stops at the end date', async () => {
+      const today = todayIn()
+      const [job] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .insert(jobs)
+          .values({
+            reference: `FXH-CLK-${Date.now()}`,
+            branchId: HOME_BRANCH,
+            customerId: CUSTOMER,
+            mode: 'sea_fcl',
+            tradeDirection: 'import',
+            status: 'arrived',
+          })
+          .returning({ id: jobs.id }),
+      )
+      await withActor(bothBranchesActor, (tx) =>
+        tx.insert(freeTimeClocks).values([
+          {
+            jobId: job!.id,
+            kind: 'demurrage',
+            freeDays: 5,
+            startsOn: shiftDay(today, -2),
+            perDiem: '10.000',
+            currency: 'USD',
+            accruedAmount: '50.000',
+          },
+          {
+            jobId: job!.id,
+            kind: 'storage',
+            freeDays: 5,
+            startsOn: shiftDay(today, -9),
+            endsOn: shiftDay(today, -8),
+            perDiem: '5.000',
+            currency: 'KWD',
+            accruedAmount: '10.000',
+          },
+        ]),
+      )
+
+      const detail = await getJobDetail(bothBranchesActor, job!.id)
+      const running = detail!.clocks.find((clock) => clock.kind === 'demurrage')!
+      const stopped = detail!.clocks.find((clock) => clock.kind === 'storage')!
+      // Started the day before yesterday: that day, yesterday and today.
+      expect(running.elapsedDays).toBe(3)
+      // Two days, then the box came back — a week ago, not counting since.
+      expect(stopped.elapsedDays).toBe(2)
+      expect(stopped.endsOn).toBe(shiftDay(today, -8))
+
+      // Only the running clock accrues, and in its own currency.
+      expect(detail!.accruing).toEqual({ amount: 50, currency: 'USD' })
     })
   })
 

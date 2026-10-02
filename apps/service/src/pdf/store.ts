@@ -24,12 +24,28 @@
  * which one the consignee is holding.
  */
 
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { assets, documentTypes, documents, jobs, withActor, type Actor } from '@qabandi/db'
 import { fileStore } from '../adapters/index'
 import { DocumentNotFoundError } from './documents'
 import type { DocumentLocale } from './document-kit'
 import { DOCUMENT_TYPE_KEYS, type JobDocumentKind } from './job-documents'
+
+/**
+ * The deployment has no `document_types` row for this kind — never seeded, or
+ * the row was retired.
+ *
+ * A `DocumentNotFoundError` still, so a caller that only knows that class
+ * keeps treating it as a 404; its own class so the route can answer with a
+ * code the screen words differently from "no such shipment", which sends the
+ * operator looking for a job that is right there.
+ */
+export class DocumentTypeNotSeededError extends DocumentNotFoundError {
+  constructor(readonly kind: JobDocumentKind) {
+    super(`${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`, 'seeded document type')
+    this.name = 'DocumentTypeNotSeededError'
+  }
+}
 
 export interface StoredDocument {
   readonly documentId: string
@@ -76,9 +92,21 @@ export async function storeJobDocument(
     A row pointing at bytes that were never written is a download that 404s
     from a screen that says the document exists. Bytes with no row are an
     orphan in a bucket, which costs pennies and confuses nobody. So storage
-    goes first and the transaction second.
+    goes before the rows.
+
+    All three in one transaction, under a lock on (job, kind, locale) — O13.
+    The version was read in one transaction and written in another, so two
+    issues at once both computed v3, both wrote the same storage key (the
+    second render over the first's bytes and checksum) and both recorded v3.
+    The lock makes the second wait and then read v3 as the previous version;
+    the unique index on (job, type, locale, version) is the backstop, and a
+    clash that still reaches it is refused rather than recorded twice.
   */
-  const context = await withActor(actor, async (tx) => {
+  return withActor(actor, async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`${jobId}:${kind}:${locale}`}, 0))`,
+    )
+
     const [job] = await tx
       .select({ reference: jobs.reference, branchId: jobs.branchId })
       .from(jobs)
@@ -95,45 +123,50 @@ export async function storeJobDocument(
 
     /*
       A missing type is a deployment that was never seeded, not a shipment
-      nobody may see — but it is raised as the same error because the route
-      turns it into the same 404 either way, and a second class would only
-      change which line of the log says so. The message is what makes the
-      difference legible, so it names the fix.
+      nobody may see. Still a 404 at the route, but its own subclass, so the
+      route can send a code of its own: the screen used to show this English
+      message verbatim, and a translated "no such shipment" would send the
+      operator looking for a job that is right there.
     */
-    if (!type) {
-      throw new DocumentNotFoundError(
-        `${DOCUMENT_TYPE_KEYS[kind]} — run pnpm db:seed`,
-        'seeded document type',
-      )
-    }
+    if (!type) throw new DocumentTypeNotSeededError(kind)
 
+    /*
+      Per language. The Arabic and the English copy of a bill are two
+      documents, each with its own history: versioned together, issuing the
+      Arabic copy superseded the released English one, and it vanished from
+      the customer's portal.
+    */
     const [previous] = await tx
       .select({ id: documents.id, version: documents.version })
       .from(documents)
-      .where(and(eq(documents.jobId, jobId), eq(documents.documentTypeId, type.id)))
+      .where(
+        and(
+          eq(documents.jobId, jobId),
+          eq(documents.documentTypeId, type.id),
+          eq(documents.locale, locale),
+        ),
+      )
       .orderBy(desc(documents.version))
       .limit(1)
 
-    return {
+    const context = {
       reference: job.reference,
       branchId: job.branchId,
       documentTypeId: type.id,
       previousId: previous?.id ?? null,
       version: (previous?.version ?? 0) + 1,
     }
-  })
 
-  const storageKey = storageKeyFor(
-    context.branchId.slice(0, 8),
-    context.reference,
-    kind,
-    context.version,
-    locale,
-  )
+    const storageKey = storageKeyFor(
+      context.branchId.slice(0, 8),
+      context.reference,
+      kind,
+      context.version,
+      locale,
+    )
 
-  const stored = await store.put(storageKey, pdf, 'application/pdf')
+    const stored = await store.put(storageKey, pdf, 'application/pdf')
 
-  return withActor(actor, async (tx) => {
     const [asset] = await tx
       .insert(assets)
       .values({
@@ -172,7 +205,7 @@ export async function storeJobDocument(
       await tx
         .update(documents)
         .set({ supersededById: document!.id, updatedAt: new Date() })
-        .where(eq(documents.id, context.previousId))
+        .where(and(eq(documents.id, context.previousId), isNull(documents.supersededById)))
     }
 
     return {

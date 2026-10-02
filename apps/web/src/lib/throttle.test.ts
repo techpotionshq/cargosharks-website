@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { __resetThrottle, clearSignInAttempts, recordSignInAttempt } from './throttle'
+import {
+  __resetThrottle,
+  clearSignInAttempts,
+  recordSignInAttempt,
+  recordTrackingLookup,
+  recordTrackingMiss,
+} from './throttle'
 
 const IP = '203.0.113.7'
 const OTHER = '203.0.113.8'
@@ -109,5 +115,45 @@ describe('the ceiling on tracked addresses', () => {
       expect(recordSignInAttempt(IP, now).allowed).toBe(true)
     }
     expect(recordSignInAttempt(IP, now).allowed).toBe(false)
+  })
+})
+
+/*
+  Public tracking — A10. The attack in the report: one shared LCL container
+  number, walked against sequential references, from as many addresses as it
+  takes.
+*/
+describe('the tracking budgets', () => {
+  it('stops one container number being walked across references, whatever the address', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 10; i += 1) {
+      const reference = `KWI-2026-0${1000 + i}`
+      expect(recordTrackingLookup(`198.51.100.${i}`, reference, 'MSCU1234567', now).allowed).toBe(
+        true,
+      )
+      recordTrackingMiss(reference, 'MSCU1234567', now)
+    }
+    expect(
+      recordTrackingLookup('198.51.100.99', 'KWI-2026-01999', 'MSCU1234567', now).allowed,
+    ).toBe(false)
+  })
+
+  it('stops one reference being tried against guessed verifiers', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 10; i += 1) recordTrackingMiss('KWI-2026-01041', `GUESS${i}`, now)
+    expect(recordTrackingLookup(IP, 'KWI-2026-01041', 'GUESS99', now).allowed).toBe(false)
+  })
+
+  it('never spends the miss budgets on a customer who finds their shipment', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 25; i += 1) {
+      expect(recordTrackingLookup(IP, 'KWI-2026-01041', 'MSCU1234567', now).allowed).toBe(true)
+    }
+  })
+
+  it('bounds the lookups from one address', () => {
+    const now = 1_000_000
+    for (let i = 0; i < 30; i += 1) recordTrackingLookup(IP, `R${i}`, `V${i}`, now)
+    expect(recordTrackingLookup(IP, 'R99', 'V99', now).allowed).toBe(false)
   })
 })

@@ -23,16 +23,20 @@
  * zero-amount accrual against a container that is still free reads, to anyone
  * looking at the job, as a container that has started costing money.
  *
- * **A closed clock is never touched again.** The container has gone; whatever
- * it accrued is now history, and a later run must not extend it.
+ * **A stopped clock is settled at its end, never extended past it.** The
+ * container has gone; a later run must not extend the bill — but a stop entered
+ * late, or corrected backwards, must take back the days after it.
  *
  * **Every line carries an FX rate and a timestamp**, even the same-currency
- * ones where the rate is 1 (FR-RT-06). A line with no rate is a line the
- * accounting export cannot convert later.
+ * ones where the rate is 1 (FR-RT-06), and a foreign-currency clock is
+ * converted at a real rate, never at parity.
+ *
+ * **A finished job, or a line already invoiced or matched to a bill, is left
+ * alone.**
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { Actor } from '@qabandi/db'
 
 const APP_URL = process.env.TEST_DATABASE_URL
@@ -45,9 +49,13 @@ const {
   chargeTypes,
   customers,
   freeTimeClocks,
+  fxRates,
   jobs,
   partners,
   principals,
+  supplierInvoiceLines,
+  supplierInvoiceMatches,
+  supplierInvoices,
   withActor,
   workingCalendars,
 } = await import('@qabandi/db')
@@ -62,6 +70,8 @@ const CUSTOMER = '00000000-0000-7000-8000-00000000fa02'
 const PARTNER = '00000000-0000-7000-8000-00000000fa03'
 const PRINCIPAL = '00000000-0000-7000-8000-00000000fa04'
 const JOB = '00000000-0000-7000-8000-00000000fa05'
+/** A job that has been closed — nothing accrues against it any more. */
+const CLOSED_JOB = '00000000-0000-7000-8000-00000000fa06'
 
 const actor: Actor = { principalId: PRINCIPAL, type: 'internal', branchIds: [BRANCH] }
 const systemActor = { ...actor, type: 'system' as const }
@@ -188,6 +198,36 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
           status: 'arrived',
         })
         .onConflictDoNothing()
+
+      await tx
+        .insert(jobs)
+        .values({
+          id: CLOSED_JOB,
+          reference: `FTA-CLOSED-${RUN}`,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          mode: 'sea_fcl',
+          tradeDirection: 'import',
+          status: 'closed',
+        })
+        .onConflictDoNothing()
+
+      /*
+        One OMR rate, dated inside the suite's 2033 window and identical on
+        every run, so whichever run's row is "latest" the figure is the same.
+        OMR, because no other suite converts it — a USD row dated 2033 would
+        become every other suite's latest dollar.
+      */
+      await tx
+        .insert(fxRates)
+        .values({
+          fromCurrency: 'OMR',
+          toCurrency: 'KWD',
+          rate: '0.79800000',
+          source: 'fta-fixture',
+          effectiveOn: '2033-04-01',
+        })
+        .onConflictDoNothing()
     })
   })
 
@@ -202,7 +242,10 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
     */
     if (!enabled) return
     await withActor(systemActor, (tx) =>
-      tx.update(freeTimeClocks).set({ endsOn: '2033-12-31' }).where(eq(freeTimeClocks.jobId, JOB)),
+      tx
+        .update(freeTimeClocks)
+        .set({ endsOn: '2033-12-31' })
+        .where(inArray(freeTimeClocks.jobId, [JOB, CLOSED_JOB])),
     )
   })
 
@@ -329,6 +372,43 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
       expect(line?.amountBase).toBe(line?.amount)
     })
 
+    /*
+      A carrier's USD or OMR per-diem was written at rate 1, so USD 750 sat in
+      margin and reports as KWD 750 (V3). Converted at the latest rate on or
+      before the day.
+    */
+    it('converts a foreign-currency clock to the branch base at a real rate', async () => {
+      const id = await clock({
+        freeDays: 0,
+        startsOn: '2033-04-01',
+        perDiem: '10.000',
+        currency: 'OMR',
+      })
+
+      await runFreeTimeAccrual(at('2033-04-03'))
+
+      const [line] = await linesFor(id)
+      expect(line?.currency).toBe('OMR')
+      expect(line?.amount).toBe('30.000000')
+      expect(Number(line?.fxRate)).toBe(0.798)
+      expect(line?.baseCurrency).toBe('KWD')
+      expect(line?.amountBase).toBe('23.940000')
+    })
+
+    it('writes nothing at parity when there is no rate to the base', async () => {
+      const id = await clock({
+        freeDays: 0,
+        startsOn: '2033-04-01',
+        perDiem: '10.000',
+        currency: 'SAR',
+      })
+
+      const result = await runFreeTimeAccrual(at('2033-04-03'))
+
+      expect(await linesFor(id)).toEqual([])
+      expect(result.unconvertible).toBeGreaterThan(0)
+    })
+
     it('resolves the charge type from the kind of clock', async () => {
       const id = await clock({ kind: 'storage', freeDays: 0, startsOn: '2033-04-01' })
 
@@ -413,13 +493,113 @@ describe.skipIf(!enabled)('the nightly free-time accrual', () => {
      * The container has gone. Whatever it accrued is history now, and a run a
      * week later must not quietly extend the bill.
      */
-    it('never touches a clock that has been closed', async () => {
-      const id = await clock({ freeDays: 0, startsOn: '2033-04-01', endsOn: '2033-04-03' })
+    it('settles a clock closed before it ever ran at its end, not at today', async () => {
+      const id = await clock({
+        freeDays: 0,
+        startsOn: '2033-04-01',
+        endsOn: '2033-04-03',
+        perDiem: '20.000',
+      })
 
       await runFreeTimeAccrual(at('2033-05-01'))
 
+      const [line] = await linesFor(id)
+      // 1–3 April, not 1 April to 1 May.
+      expect(line?.quantity).toBe('3.000000')
+      expect(line?.amount).toBe('60.000000')
+    })
+
+    /*
+      A container returned on the 7th, entered on the 10th: the three nights
+      after the return were billed and stayed billed, because a stopped clock
+      dropped out of the sweep with what it had (V4).
+    */
+    it('takes back the days after a stop that was entered late', async () => {
+      const id = await clock({ freeDays: 0, startsOn: '2033-04-01', perDiem: '20.000' })
+      await runFreeTimeAccrual(at('2033-04-10'))
+      expect((await linesFor(id))[0]!.amount).toBe('200.000000')
+
+      await withActor(systemActor, (tx) =>
+        tx.update(freeTimeClocks).set({ endsOn: '2033-04-07' }).where(eq(freeTimeClocks.id, id)),
+      )
+      await runFreeTimeAccrual(at('2033-04-11'))
+
+      const lines = await linesFor(id)
+      expect(lines).toHaveLength(1)
+      expect(lines[0]!.quantity).toBe('7.000000')
+      expect(lines[0]!.amount).toBe('140.000000')
+      expect((await clockRow(id)).accruedDays).toBe(7)
+    })
+
+    it('runs to today, not to a stop dated in the future', async () => {
+      const id = await clock({
+        freeDays: 0,
+        startsOn: '2033-04-01',
+        endsOn: '2033-04-20',
+        perDiem: '20.000',
+      })
+
+      await runFreeTimeAccrual(at('2033-04-05'))
+
+      expect((await linesFor(id))[0]!.quantity).toBe('5.000000')
+    })
+
+    /* O2: a job that is closed is finished, whatever its clocks say. */
+    it('accrues nothing against a closed job', async () => {
+      const id = await clock({ jobId: CLOSED_JOB, freeDays: 0, startsOn: '2033-04-01' })
+
+      await runFreeTimeAccrual(at('2033-04-10'))
+
       expect(await linesFor(id)).toEqual([])
-      expect((await clockRow(id)).lastAccruedAt).toBeNull()
+    })
+
+    /*
+      O2: a line matched to the carrier's bill is a figure the payable agrees
+      with. Re-pricing it underneath the match would make the two disagree with
+      nobody having changed either.
+    */
+    it('does not re-price a line already matched to a supplier bill', async () => {
+      const id = await clock({ freeDays: 0, startsOn: '2033-04-01', perDiem: '20.000' })
+      await runFreeTimeAccrual(at('2033-04-03'))
+      const [line] = await linesFor(id)
+      expect(line!.amount).toBe('60.000000')
+
+      await withActor(systemActor, async (tx) => {
+        const [bill] = await tx
+          .insert(supplierInvoices)
+          .values({
+            branchId: BRANCH,
+            partnerId: PARTNER,
+            reference: `FTA-BILL-${RUN}-${seq}`,
+            currency: 'KWD',
+            invoiceDate: '2033-04-04',
+            subtotal: '60.000',
+            total: '60.000',
+          })
+          .returning({ id: supplierInvoices.id })
+        const [billLine] = await tx
+          .insert(supplierInvoiceLines)
+          .values({
+            supplierInvoiceId: bill!.id,
+            branchId: BRANCH,
+            jobId: JOB,
+            description: 'Demurrage',
+            unitPrice: '60.000',
+            amount: '60.000',
+          })
+          .returning({ id: supplierInvoiceLines.id })
+        await tx.insert(supplierInvoiceMatches).values({
+          supplierInvoiceLineId: billLine!.id,
+          chargeLineId: line!.id,
+          branchId: BRANCH,
+          amount: '60.000',
+        })
+      })
+
+      const result = await runFreeTimeAccrual(at('2033-04-10'))
+
+      expect((await linesFor(id))[0]!.amount).toBe('60.000000')
+      expect(result.frozen).toBeGreaterThan(0)
     })
 
     it('stops extending a line once the clock is closed', async () => {

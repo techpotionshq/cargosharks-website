@@ -40,9 +40,11 @@ import {
   ASSISTANT_LIMITS,
   assistantTool,
   isProposableEntity,
+  normaliseToolArgs,
   proposableTransitions,
   proposeTransition,
   toolsFor,
+  withLabels,
   type TransitionProposal,
 } from '@qabandi/core'
 import { AiError } from '@qabandi/core'
@@ -60,15 +62,141 @@ export interface AssistantQuestion {
   readonly locale: 'en' | 'ar'
   readonly question: string
   /**
-   * Earlier turns, oldest first.
+   * Earlier turns, oldest first, with the lookups behind each answer.
    *
-   * Plain text only. Tool calls and their results are deliberately *not*
-   * carried across turns: they are the largest thing in the transcript, they
-   * go stale the moment anything moves, and a model reasoning from last
-   * Tuesday's row counts will state them as today's. Re-asking is cheap and
-   * correct; remembering is neither.
+   * This used to be plain text only, on the reasoning that tool results are
+   * large and go stale. The live cost of that was worse than either (ai-2): a
+   * follow-up — "and which of those has free time running out?" — reached a
+   * model holding its own earlier prose and none of the rows behind it, and it
+   * answered from the prose, inventing references and balances with no lookup
+   * at all. A model shown a transcript of answers-without-evidence learns that
+   * answers do not need evidence.
+   *
+   * So the calls and their results are replayed (`historyMessages`), stamped
+   * with when they were read, and the prompt says to look again for anything
+   * they do not contain or that may have moved.
    */
-  readonly history?: readonly { role: 'user' | 'assistant'; content: string }[]
+  readonly history?: readonly HistoryTurn[]
+}
+
+/**
+ * One lookup, as it ran — kept with the answer so a follow-up can see it.
+ *
+ * `result` is what the model was shown, or a truncation note in its place when
+ * it was too long to keep (`keepable`). `at` is when it was read, which is
+ * what lets the next turn tell "the list I was shown at 10:02" from "now".
+ */
+export interface ToolTrace {
+  readonly id: string
+  readonly name: string
+  readonly args: ToolArgs
+  readonly result: unknown
+  readonly at: string
+}
+
+export interface HistoryTurn {
+  readonly role: 'user' | 'assistant'
+  readonly content: string
+  readonly calls?: readonly ToolTrace[]
+}
+
+/**
+ * How many earlier answers have their lookups replayed, newest first.
+ *
+ * Three, because a follow-up is about the last answer or the one before it,
+ * and every replayed result is input tokens on every later turn. Older turns
+ * still go back as words; a question about them is a question the model is
+ * told to look up again.
+ */
+export const REPLAYED_ANSWERS = 3
+
+/** The longest result kept for replay, in characters of JSON. */
+export const KEPT_RESULT_CHARS = 6_000
+
+/**
+ * A tool result small enough to store and replay, or a note saying it was not.
+ *
+ * A preview rather than nothing, so the model can still see what kind of rows
+ * came back, and an explicit instruction so it does not mistake the cut-off
+ * preview for the whole list.
+ */
+export function keepable(result: unknown): unknown {
+  const json = JSON.stringify(result) ?? 'null'
+  if (json.length <= KEPT_RESULT_CHARS) return result
+  return {
+    truncated: true,
+    note: 'This result was too long to keep. Call the tool again for the full figures.',
+    preview: json.slice(0, KEPT_RESULT_CHARS),
+  }
+}
+
+/**
+ * The earlier conversation, in the shape the provider expects.
+ *
+ * An answer that used tools goes back as the model's own request, our results
+ * to it, then its words — the same three-step shape the loop builds live, so
+ * the model reads its earlier turns exactly as it would have seen them. Each
+ * result is wrapped with `retrievedAt` so it is evidence of a moment, not of
+ * now.
+ *
+ * Only the last `REPLAYED_ANSWERS` answers carry their lookups; earlier ones
+ * are words alone. A call with no id (a row stored before ids were kept) is
+ * given one: the provider pairs a result to its call by id, and an unpaired
+ * result is refused outright.
+ */
+export function historyMessages(history: readonly HistoryTurn[]): ModelMessage[] {
+  const withCalls = history
+    .map((turn, index) => ({ turn, index }))
+    .filter(({ turn }) => turn.role === 'assistant' && (turn.calls?.length ?? 0) > 0)
+    .slice(-REPLAYED_ANSWERS)
+  const replay = new Set(withCalls.map(({ index }) => index))
+
+  const messages: ModelMessage[] = []
+  history.forEach((turn, index) => {
+    if (turn.role === 'assistant' && replay.has(index)) {
+      const calls = (turn.calls ?? []).map((call, n) => ({
+        ...call,
+        id: call.id || `h${index}-${n}`,
+      }))
+      messages.push({
+        role: 'assistant',
+        content: '',
+        toolCalls: calls.map((call) => ({
+          id: call.id,
+          name: call.name,
+          arguments: JSON.stringify(call.args ?? {}),
+        })),
+      })
+      for (const call of calls) {
+        messages.push({
+          role: 'tool',
+          toolCallId: call.id,
+          content: JSON.stringify({ retrievedAt: call.at, result: call.result }),
+        })
+      }
+    }
+    messages.push({ role: turn.role, content: turn.content })
+  })
+  return messages
+}
+
+/**
+ * Which language to answer in: the question's, then the screen's (ai-14).
+ *
+ * The prompt said "Answer in English." on an English screen, so a person who
+ * asked in Arabic got English — and on an Arabic screen, a model reading
+ * English tool results drifted back into English after the first lookup.
+ * Deciding here, by script, makes the instruction one fixed sentence the
+ * model cannot weigh against the results' language. Majority of letters
+ * rather than "any Arabic", because an English question can quote an Arabic
+ * name and an Arabic one nearly always carries a Latin reference.
+ */
+export function answerLanguage(question: string, locale: 'en' | 'ar'): 'en' | 'ar' {
+  const arabic = (question.match(/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/g) ?? [])
+    .length
+  const latin = (question.match(/[A-Za-z]/g) ?? []).length
+  if (arabic === 0 && latin === 0) return locale
+  return arabic >= latin ? 'ar' : 'en'
 }
 
 export interface AssistantAnswer {
@@ -77,6 +205,8 @@ export interface AssistantAnswer {
   readonly proposals: readonly TransitionProposal[]
   /** What was looked at, so the interface can show its working. */
   readonly used: readonly { name: string; args: ToolArgs }[]
+  /** The same lookups with their results, for the thread to keep (ai-2). */
+  readonly calls: readonly ToolTrace[]
   /** Every ledger row this answer produced, for cost and for audit. */
   readonly invocationIds: readonly string[]
   /** Why the loop stopped, where it did not stop by answering. */
@@ -104,6 +234,8 @@ export type AssistantEvent =
       readonly reply: string
       readonly proposals: readonly TransitionProposal[]
       readonly used: readonly string[]
+      /** Every lookup with its result, for the thread to keep (ai-2). */
+      readonly calls: readonly ToolTrace[]
       readonly invocationIds: readonly string[]
       readonly truncated?: 'turns' | 'tool_calls'
     }
@@ -153,14 +285,15 @@ export async function ask(input: AssistantQuestion): Promise<AssistantAnswer> {
   const { actor, branchId, permissions, locale, question } = input
 
   const messages: ModelMessage[] = [
-    { role: 'system', content: assistantSystemPrompt(locale) },
-    ...(input.history ?? []).map((turn) => ({ role: turn.role, content: turn.content }) as const),
+    { role: 'system', content: assistantSystemPrompt(answerLanguage(question, locale)) },
+    ...historyMessages(input.history ?? []),
     { role: 'user', content: question },
   ]
 
   const tools = wireTools(permissions)
   const proposals: TransitionProposal[] = []
   const used: { name: string; args: ToolArgs }[] = []
+  const trace: ToolTrace[] = []
   const invocationIds: string[] = []
 
   let calls = 0
@@ -220,17 +353,24 @@ export async function ask(input: AssistantQuestion): Promise<AssistantAnswer> {
     if (response.toolCalls.length === 0 && response.text.trim() === '') {
       empty++
       if (empty <= 1) continue
-      return { reply: answer(), proposals, used, invocationIds }
+      return { reply: answer(), proposals, used, calls: trace, invocationIds }
     }
 
     if (response.toolCalls.length === 0) {
       if (response.text.trim()) said.push(response.text.trim())
-      return { reply: answer(), proposals, used, invocationIds }
+      return { reply: answer(), proposals, used, calls: trace, invocationIds }
     }
 
     if (calls + response.toolCalls.length > ASSISTANT_LIMITS.maxToolCalls) {
       if (response.text.trim()) said.push(response.text.trim())
-      return { reply: answer(), proposals, used, invocationIds, truncated: 'tool_calls' }
+      return {
+        reply: answer(),
+        proposals,
+        used,
+        calls: trace,
+        invocationIds,
+        truncated: 'tool_calls',
+      }
     }
 
     /*
@@ -247,6 +387,7 @@ export async function ask(input: AssistantQuestion): Promise<AssistantAnswer> {
       calls++
       const result = await execute(input, call, proposals)
       used.push({ name: call.name, args: result.args })
+      trace.push(traced(call, result))
       messages.push({
         role: 'tool',
         toolCallId: call.id,
@@ -275,7 +416,7 @@ export async function ask(input: AssistantQuestion): Promise<AssistantAnswer> {
   invocationIds.push(invocationId)
   if (response.text.trim()) said.push(response.text.trim())
 
-  return { reply: answer(), proposals, used, invocationIds, truncated: 'turns' }
+  return { reply: answer(), proposals, used, calls: trace, invocationIds, truncated: 'turns' }
 }
 
 /**
@@ -294,14 +435,15 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
   const { actor, branchId, permissions, locale, question } = input
 
   const messages: ModelMessage[] = [
-    { role: 'system', content: assistantSystemPrompt(locale) },
-    ...(input.history ?? []).map((turn) => ({ role: turn.role, content: turn.content }) as const),
+    { role: 'system', content: assistantSystemPrompt(answerLanguage(question, locale)) },
+    ...historyMessages(input.history ?? []),
     { role: 'user', content: question },
   ]
 
   const tools = wireTools(permissions)
   const proposals: TransitionProposal[] = []
   const used: string[] = []
+  const trace: ToolTrace[] = []
   const invocationIds: string[] = []
   const said: string[] = []
   const answer = (): string => joinFragments(said)
@@ -340,7 +482,7 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
         empty++
         if (empty <= 1) continue
       }
-      yield { type: 'done', reply: answer(), proposals, used, invocationIds }
+      yield { type: 'done', reply: answer(), proposals, used, calls: trace, invocationIds }
       return
     }
 
@@ -350,6 +492,7 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
         reply: answer(),
         proposals,
         used,
+        calls: trace,
         invocationIds,
         truncated: 'tool_calls',
       }
@@ -366,6 +509,7 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
 
       const result = await execute(input, call, proposals)
       if (!used.includes(call.name)) used.push(call.name)
+      trace.push(traced(call, result))
       messages.push({
         role: 'tool',
         toolCallId: call.id,
@@ -397,7 +541,15 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
     if (text) said.push(text)
   }
 
-  yield { type: 'done', reply: answer(), proposals, used, invocationIds, truncated: 'turns' }
+  yield {
+    type: 'done',
+    reply: answer(),
+    proposals,
+    used,
+    calls: trace,
+    invocationIds,
+    truncated: 'turns',
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -407,6 +559,16 @@ export async function* askStreaming(input: AssistantQuestion): AsyncGenerator<As
 interface Executed {
   readonly args: ToolArgs
   readonly value: unknown
+}
+
+function traced(call: ModelToolCall, result: Executed): ToolTrace {
+  return {
+    id: call.id,
+    name: call.name,
+    args: result.args,
+    result: keepable(result.value),
+    at: new Date().toISOString(),
+  }
 }
 
 /**
@@ -447,12 +609,33 @@ async function execute(
     return { args, value: { error: 'You do not have permission to do that.' } }
   }
 
+  /*
+    Closed parameters held to their enums before anything runs (ai-1). A
+    refusal goes back as data naming the values that would work, so the model's
+    next turn is a corrected call rather than an empty list reported as fact.
+  */
+  const normalised = normaliseToolArgs(declared, args)
+  if (!normalised.ok) return { args, value: { error: normalised.error } }
+  args = normalised.args
+
   if (declared.kind === 'propose') {
     return { args, value: await propose(input, args, proposals) }
   }
 
   try {
-    return { args, value: await runTool(input.actor, call.name, args) }
+    const value = await runTool(input.actor, call.name, args)
+    /*
+      The label beside every code, in the answer's language. A model shown only
+      `in_transit` writes `in_transit` — a live Arabic answer put it in a table
+      under Arabic headings — and the prompt can only say "use the label" if
+      there is one to use.
+    */
+    return {
+      args,
+      value: declared.labels
+        ? withLabels(value, declared.labels, answerLanguage(input.question, input.locale))
+        : value,
+    }
   } catch (error) {
     return {
       args,

@@ -35,6 +35,7 @@
  */
 
 import { eq } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 import { branches, currencies, fxRates, systemActor, withActor } from '@qabandi/db'
 import { fxSource } from '../adapters/index'
 
@@ -135,20 +136,82 @@ export async function runFxRefresh(): Promise<FxRefreshResult> {
 
   if (usable.length === 0) return { source: source.key, written: 0, skipped, bases }
 
-  return withActor(systemActor(), async (tx) => {
-    await tx
-      .insert(fxRates)
-      .values(
-        usable.map((quote) => ({
-          fromCurrency: quote.from,
-          toCurrency: quote.to,
-          rate: quote.rate,
-          source: quote.source,
-          effectiveOn: quote.effectiveOn,
-        })),
-      )
-      .onConflictDoNothing()
+  /*
+    Each rate is stored both ways.
 
-    return { source: source.key, written: usable.length, skipped, bases }
+    A feed answers from the base outwards — "1 KWD = 3.24 USD" — and that was
+    the only row written. But every reader asks the other question: pricing,
+    the rate-reply comparison and the auto-promote sweep all look for
+    `to_currency = base` ("1 USD = ? KWD"), because a USD card is converted
+    *into* the entity's currency. With only the outward row they found nothing,
+    and a USD rate card refused to price on any deployment that switched the
+    feed on — while the tests, which insert the inward row by hand, passed.
+
+    The inward rate is the exact reciprocal in decimal arithmetic, rounded to
+    the column's fourteen places — eight kept only six significant figures of
+    a weak currency's reciprocal; never a JS number. The outward row stays,
+    for `credit.ts`, which reads either direction.
+
+    A quote the feed gave directly beats a reciprocal of the same pair. With
+    two branch bases — KWD and AED — the KWD feed's reciprocal for AED→KWD and
+    the AED feed's own AED→KWD quote share one unique key, and under `ON
+    CONFLICT DO NOTHING` whichever came first won; the bases are fetched in
+    sorted order, so that was the derived one. Reciprocals are dropped where
+    the batch holds the direct quote, and inserted after the direct quotes in
+    any case.
+  */
+  const key = (r: {
+    fromCurrency: string
+    toCurrency: string
+    effectiveOn: string
+    source: string
+  }) => `${r.fromCurrency}|${r.toCurrency}|${r.effectiveOn}|${r.source}`
+
+  const direct = usable.map((quote) => ({
+    fromCurrency: quote.from,
+    toCurrency: quote.to,
+    rate: quote.rate,
+    source: quote.source,
+    effectiveOn: quote.effectiveOn,
+  }))
+  const quoted = new Set(direct.map(key))
+  const reciprocal = direct.flatMap((outward) => {
+    const rate = new D(outward.rate)
+    if (rate.lte(0)) return []
+    const inward = {
+      ...outward,
+      fromCurrency: outward.toCurrency,
+      toCurrency: outward.fromCurrency,
+      rate: new D(1).div(rate).toDecimalPlaces(14).toFixed(14),
+    }
+    return quoted.has(key(inward)) ? [] : [inward]
+  })
+
+  return withActor(systemActor(), async (tx) => {
+    /*
+      `written` is what was inserted, counted from the rows that came back. It
+      reported the number of quotes, while twice as many rows were written on
+      a first run and none at all on a same-day re-run.
+    */
+    const directRows = await tx
+      .insert(fxRates)
+      .values(direct)
+      .onConflictDoNothing()
+      .returning({ id: fxRates.id })
+    const inwardRows =
+      reciprocal.length > 0
+        ? await tx
+            .insert(fxRates)
+            .values(reciprocal)
+            .onConflictDoNothing()
+            .returning({ id: fxRates.id })
+        : []
+
+    return {
+      source: source.key,
+      written: directRows.length + inwardRows.length,
+      skipped,
+      bases,
+    }
   })
 }

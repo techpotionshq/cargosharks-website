@@ -34,7 +34,7 @@
  */
 
 import { and, eq, gt, isNotNull, lt, lte, sql } from 'drizzle-orm'
-import { fromDb, subtract, toScale } from '@qabandi/core'
+import { fromDb, subtract, toScale, todayIn } from '@qabandi/core'
 import {
   branches,
   enquiries,
@@ -79,6 +79,12 @@ export async function runQuoteExpiryWarnings(asOf = new Date()): Promise<Reminde
       .where(
         and(
           eq(quotes.status, 'sent'),
+          /*
+            An enquiry already closed lost or cancelled has had its answer, and
+            "your quotation expires in three days" to a customer who said no
+            last week reads as a system nobody watches (S9).
+          */
+          sql`${enquiries.status} not in ('won', 'lost', 'cancelled', 'expired')`,
           isNotNull(quotes.validUntil),
           lte(quotes.validUntil, isoDate(horizon)),
           // Not already lapsed — a quotation that expired last week needs a
@@ -107,6 +113,66 @@ export async function runQuoteExpiryWarnings(asOf = new Date()): Promise<Reminde
   })
 }
 
+export interface LapseResult {
+  /** Sent quotations moved to `expired`. */
+  readonly quotes: number
+  /** Quoted enquiries whose current quotation lapsed, moved to `expired`. */
+  readonly enquiries: number
+}
+
+/**
+ * Quotations past their validity, and the enquiries they leave unanswered —
+ * the two `expired` transitions the machines declare and nothing performed (S9).
+ *
+ * The screens said "after this it expires by itself", and nothing ever did: a
+ * quotation a month past its date was still `sent`, could still be accepted,
+ * and its enquiry sat in `quoted` for good. Run from the same morning job as
+ * the expiry warning, first, so a quotation is either warned about or expired
+ * and never both, and needing no cron of its own.
+ *
+ * - A `sent` quotation whose last valid day is before today, in Kuwait time —
+ *   the reading the PDF and the send guard give `valid_until` — becomes
+ *   `expired` (`sent → expired` needs no permission: time did it). Drafts are
+ *   left alone; nobody was offered them.
+ * - A `quoted` enquiry whose *current* quotation (the one nothing superseded)
+ *   is now `expired`, and that was never accepted, becomes `expired` too
+ *   (`quoted → expired`). One with a fresh draft or a newer version in flight
+ *   is somebody's work in progress and stays put.
+ *
+ * Both are ordinary audited updates under the system actor; nothing is deleted.
+ */
+export async function runQuoteLapse(asOf = new Date()): Promise<LapseResult> {
+  const today = todayIn(undefined, asOf)
+
+  return withActor(systemActor(), async (tx) => {
+    const lapsed = await tx
+      .update(quotes)
+      .set({ status: 'expired', updatedAt: new Date() })
+      .where(
+        and(eq(quotes.status, 'sent'), isNotNull(quotes.validUntil), lt(quotes.validUntil, today)),
+      )
+      .returning({ id: quotes.id })
+
+    const closed = await tx.execute(sql`
+      update enquiries e
+         set status = 'expired', closed_at = now(), updated_at = now()
+       where e.status = 'quoted'
+         and exists (
+           select 1 from quotes q
+            where q.enquiry_id = e.id and q.superseded_by_id is null and q.status = 'expired'
+         )
+         and not exists (
+           select 1 from quotes q
+            where q.enquiry_id = e.id
+              and (q.status = 'accepted' or (q.superseded_by_id is null and q.status <> 'expired'))
+         )
+      returning e.id
+    `)
+
+    return { quotes: lapsed.length, enquiries: closed.rows.length }
+  })
+}
+
 /**
  * Issued invoices past their due date with money still outstanding.
  *
@@ -126,7 +192,8 @@ export async function runInvoiceOverdueNotices(asOf = new Date()): Promise<Remin
         customerId: invoices.customerId,
         currency: invoices.currency,
         total: invoices.total,
-        amountPaid: invoices.amountPaid,
+        // Receipts and partial credit notes (F9): both are off what is owed.
+        amountPaid: sql<string>`(${invoices.amountPaid} + ${invoices.amountCredited})::text`,
         dueOn: invoices.dueOn,
       })
       .from(invoices)
@@ -141,7 +208,7 @@ export async function runInvoiceOverdueNotices(asOf = new Date()): Promise<Remin
           lt(invoices.dueOn, isoDate(cutoff)),
           // Compared as `numeric`, never in JavaScript. KWD has three decimals
           // and a float loses the third — see §11 and `core/money.ts`.
-          sql`${invoices.amountPaid} < ${invoices.total}`,
+          sql`${invoices.amountPaid} + ${invoices.amountCredited} < ${invoices.total}`,
           notAlreadyAnnounced('invoice.overdue', 'seriesNo', invoices.seriesNo),
         ),
       )

@@ -17,6 +17,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, eq, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
@@ -36,16 +37,21 @@ import {
   isUniqueViolation,
   succeed,
   type ActionState,
+  type Translate,
 } from '@/lib/form-state'
+import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** Uppercase, URL-safe, and never containing a space that breaks a search. */
-const entityCode = z
-  .string()
-  .trim()
-  .min(2, 'At least two characters')
-  .max(16, 'At most sixteen characters')
-  .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, 'Letters, numbers and hyphens only')
-  .transform((value) => value.toUpperCase())
+const entityCode = (tv: Translate) =>
+  z
+    .string()
+    .trim()
+    .min(2, tv('minTwoChars'))
+    .max(16, tv('maxSixteenChars'))
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, tv('lettersDigitsHyphens'))
+    .transform((value) => value.toUpperCase())
 
 const optional = (max = 200) =>
   z
@@ -55,14 +61,14 @@ const optional = (max = 200) =>
     .optional()
     .transform((value) => (value ? value : null))
 
-const optionalCode = (length: number) =>
+const optionalCode = (tv: Translate, length: number) =>
   z
     .string()
     .trim()
     .optional()
     .transform((value) => (value ? value.toUpperCase() : null))
     .refine((value) => value === null || value.length === length, {
-      message: `Must be ${length} characters`,
+      message: tv('exactLength', { length }),
     })
 
 function read(form: FormData, key: string): string | undefined {
@@ -72,16 +78,17 @@ function read(form: FormData, key: string): string | undefined {
 
 // --- partners --------------------------------------------------------------
 
-const partnerSchema = z.object({
-  partnerId: z.uuid().optional(),
-  code: entityCode,
-  type: z.enum(['agent', 'haulier', 'carrier', 'broker', 'terminal']),
-  legalNameEn: z.string().trim().min(2, 'Required').max(200),
-  legalNameAr: optional(),
-  countryCode: optionalCode(2),
-  currency: optionalCode(3),
-  paymentTermsDays: z.coerce.number().int().min(0).max(365).optional(),
-  /*
+const partnerSchema = (tv: Translate) =>
+  z.object({
+    partnerId: z.uuid().optional(),
+    code: entityCode(tv),
+    type: z.enum(['agent', 'haulier', 'carrier', 'broker', 'terminal']),
+    legalNameEn: z.string().trim().min(2, tv('required')).max(200),
+    legalNameAr: optional(),
+    countryCode: optionalCode(tv, 2),
+    currency: optionalCode(tv, 3),
+    paymentTermsDays: z.coerce.number().int().min(0).max(365).optional(),
+    /*
     Four letters, and the reason the carrier feed can find this partner.
 
     `optionalCode` uppercases before it measures, because an operator types
@@ -89,15 +96,21 @@ const partnerSchema = z.object({
     rather than at every read is what keeps the poll worker's lookup a plain
     equality.
   */
-  scac: optionalCode(4),
-  isActive: z.coerce.boolean(),
-})
+    scac: optionalCode(tv, 4),
+    isActive: z.coerce.boolean(),
+  })
 
-export async function savePartner(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const savePartner = refuseForbidden(async function savePartner(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('networkValidation')
 
-  const parsed = partnerSchema.safeParse({
+  const parsed = await localeParse(partnerSchema(tv), {
     partnerId: read(form, 'partnerId'),
     code: read(form, 'code') ?? '',
     type: read(form, 'type') ?? 'agent',
@@ -140,53 +153,60 @@ export async function savePartner(_previous: ActionState, form: FormData): Promi
     // operator actually hits. Caught rather than pre-checked: a select before
     // an insert is a race the database is already handling correctly.
     if (isUniqueViolation(error)) {
-      return fail({ code: 'That code is already in use by another partner.' }, echo(form))
+      return fail({ code: tv('partnerCodeInUse') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/partners')
   return succeed(data.code)
-}
+})
 
 // --- places ----------------------------------------------------------------
 
-const locationSchema = z.object({
-  locationId: z.uuid().optional(),
-  /**
-   * The UN/LOCODE, five characters — `KWSWK`, `AEJEA`.
-   *
-   * Optional because an inland depot or a customer's own yard has no code, and
-   * refusing to record one until somebody invents a code is how a place ends
-   * up typed as free text into a notes field.
-   */
-  unlocode: z
-    .string()
-    .trim()
-    .optional()
-    .transform((value) => (value ? value.toUpperCase() : null))
-    .refine((value) => value === null || /^[A-Z]{2}[A-Z0-9]{3}$/.test(value), {
-      message: 'Five characters: two-letter country then three for the place, e.g. KWSWK',
-    }),
-  nameEn: z.string().trim().min(2, 'Required').max(160),
-  nameAr: optional(160),
-  countryCode: z
-    .string()
-    .trim()
-    .length(2, 'Choose a country')
-    .transform((value) => value.toUpperCase()),
-  kind: z.enum(['seaport', 'airport', 'inland', 'border', 'depot', 'warehouse']),
-  isActive: z.coerce.boolean(),
-})
+const locationSchema = (tv: Translate) =>
+  z.object({
+    locationId: z.uuid().optional(),
+    /**
+     * The UN/LOCODE, five characters — `KWSWK`, `AEJEA`.
+     *
+     * Optional because an inland depot or a customer's own yard has no code, and
+     * refusing to record one until somebody invents a code is how a place ends
+     * up typed as free text into a notes field.
+     */
+    unlocode: z
+      .string()
+      .trim()
+      .optional()
+      .transform((value) => (value ? value.toUpperCase() : null))
+      .refine((value) => value === null || /^[A-Z]{2}[A-Z0-9]{3}$/.test(value), {
+        message: tv('unlocodeFormat'),
+      }),
+    nameEn: z.string().trim().min(2, tv('required')).max(160),
+    nameAr: optional(160),
+    countryCode: z
+      .string()
+      .trim()
+      .length(2, tv('chooseCountry'))
+      .transform((value) => value.toUpperCase()),
+    kind: z.enum(['seaport', 'airport', 'inland', 'border', 'depot', 'warehouse']),
+    isActive: z.coerce.boolean(),
+  })
 
-export async function saveLocation(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveLocation = refuseForbidden(async function saveLocation(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Places are reference data, so they sit behind the reference permission
   // rather than a places-specific one — the same gate as commodities and
   // charge types, which are the same kind of thing.
   assertCan(session, 'admin.reference.write')
+  const tv = await getTranslations('networkValidation')
 
-  const parsed = locationSchema.safeParse({
+  const parsed = await localeParse(locationSchema(tv), {
     locationId: read(form, 'locationId'),
     unlocode: read(form, 'unlocode'),
     nameEn: read(form, 'nameEn') ?? '',
@@ -220,14 +240,14 @@ export async function saveLocation(_previous: ActionState, form: FormData): Prom
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return fail({ unlocode: 'That UN/LOCODE is already recorded.' }, echo(form))
+      return fail({ unlocode: tv('unlocodeRecorded') }, echo(form))
     }
     throw error
   }
 
   revalidatePath('/locations')
   return succeed(data.nameEn)
-}
+})
 
 /**
  * Retire a record rather than delete it — §5.5, FR-ID-09.
@@ -235,17 +255,22 @@ export async function saveLocation(_previous: ActionState, form: FormData): Prom
  * Exposed as one action for both tables because the semantics are identical
  * and the alternative is two functions that differ by a table name.
  */
-export async function setNetworkActive(
+export const setNetworkActive = refuseForbidden(async function setNetworkActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  // Bound before the permission check only because the refusal below comes
+  // first: which permission applies depends on the kind being valid.
+  const tv = await getTranslations('networkValidation')
 
   const kind = read(form, 'kind')
   const id = read(form, 'id')
   const isActive = form.get('isActive') !== null
   if (!id || (kind !== 'partner' && kind !== 'location')) {
-    return fail({ _: 'Nothing to update.' })
+    return fail({ _: tv('nothingToUpdate') })
   }
 
   assertCan(session, kind === 'partner' ? 'partner.write' : 'admin.reference.write')
@@ -263,21 +288,22 @@ export async function setNetworkActive(
 
   revalidatePath(kind === 'partner' ? '/partners' : '/locations')
   return succeed(id)
-}
+})
 
 /* ------------------------------------------------ what a partner is made of */
 
-const contactSchema = z.object({
-  contactId: z.uuid().optional(),
-  partnerId: z.uuid(),
-  nameEn: z.string().trim().min(2, 'Required').max(200),
-  nameAr: optional(200),
-  email: z.union([z.email('Not an email address'), z.literal('')]).optional(),
-  phone: optional(40),
-  role: optional(80),
-  isPrimary: z.coerce.boolean(),
-  isActive: z.coerce.boolean(),
-})
+const contactSchema = (tv: Translate) =>
+  z.object({
+    contactId: z.uuid().optional(),
+    partnerId: z.uuid(),
+    nameEn: z.string().trim().min(2, tv('required')).max(200),
+    nameAr: optional(200),
+    email: z.union([z.email(tv('notEmail')), z.literal('')]).optional(),
+    phone: optional(40),
+    role: optional(80),
+    isPrimary: z.coerce.boolean(),
+    isActive: z.coerce.boolean(),
+  })
 
 /**
  * A person at the agent — FR-MD-04.
@@ -289,14 +315,17 @@ const contactSchema = z.object({
  * — you know the operations manager's mobile long before you invite them to
  * anything.
  */
-export async function savePartnerContact(
+export const savePartnerContact = refuseForbidden(async function savePartnerContact(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('networkValidation')
 
-  const parsed = contactSchema.safeParse({
+  const parsed = await localeParse(contactSchema(tv), {
     contactId: read(form, 'contactId'),
     partnerId: read(form, 'partnerId'),
     nameEn: read(form, 'nameEn') ?? '',
@@ -355,7 +384,7 @@ export async function savePartnerContact(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.nameEn)
-}
+})
 
 const coverageSchema = z.object({
   coverageId: z.uuid().optional(),
@@ -382,14 +411,17 @@ const coverageSchema = z.object({
  * PostgreSQL 18's skip scan is what lets a query that leaves `mode` open still
  * use it.
  */
-export async function savePartnerCoverage(
+export const savePartnerCoverage = refuseForbidden(async function savePartnerCoverage(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('networkValidation')
 
-  const parsed = coverageSchema.safeParse({
+  const parsed = await localeParse(coverageSchema, {
     coverageId: read(form, 'coverageId'),
     partnerId: read(form, 'partnerId'),
     mode: read(form, 'mode') ?? 'sea_fcl',
@@ -409,7 +441,7 @@ export async function savePartnerCoverage(
     later — the RFQ would go to this agent for every enquiry in the system.
   */
   if (!data.originId && !data.destinationId && !data.originCountry && !data.destinationCountry) {
-    return fail({ originId: 'Name at least one end — a port, or a country.' }, echo(form))
+    return fail({ originId: tv('coverageOneEnd') }, echo(form))
   }
 
   await withActor(session.actor, async (tx) => {
@@ -435,22 +467,23 @@ export async function savePartnerCoverage(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.mode)
-}
-
-const complianceSchema = z.object({
-  partnerId: z.uuid(),
-  documentTypeId: z.uuid('Choose a document type'),
-  reference: optional(120),
-  issuedOn: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-  expiresOn: z
-    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'), z.literal('')])
-    .optional()
-    .transform((v) => v || null),
-  supersedesId: z.union([z.uuid(), z.literal('')]).optional(),
 })
+
+const complianceSchema = (tv: Translate) =>
+  z.object({
+    partnerId: z.uuid(),
+    documentTypeId: z.uuid(tv('chooseDocumentType')),
+    reference: optional(120),
+    issuedOn: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+    expiresOn: z
+      .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/, tv('dateFormat')), z.literal('')])
+      .optional()
+      .transform((v) => v || null),
+    supersedesId: z.union([z.uuid(), z.literal('')]).optional(),
+  })
 
 /**
  * A licence, an insurance certificate, a trade registration — FR-MD-05.
@@ -463,14 +496,17 @@ const complianceSchema = z.object({
  * is what proves the agent was covered on the day the shipment moved, which is
  * the only day anybody ever asks about.
  */
-export async function savePartnerCompliance(
+export const savePartnerCompliance = refuseForbidden(async function savePartnerCompliance(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('networkValidation')
 
-  const parsed = complianceSchema.safeParse({
+  const parsed = await localeParse(complianceSchema(tv), {
     partnerId: read(form, 'partnerId'),
     documentTypeId: read(form, 'documentTypeId') ?? '',
     reference: read(form, 'reference'),
@@ -482,7 +518,7 @@ export async function savePartnerCompliance(
 
   const data = parsed.data
   if (data.issuedOn && data.expiresOn && data.expiresOn < data.issuedOn) {
-    return fail({ expiresOn: 'It cannot expire before it was issued.' }, echo(form))
+    return fail({ expiresOn: tv('expiresBeforeIssued') }, echo(form))
   }
 
   await withActor(session.actor, async (tx) => {
@@ -508,4 +544,4 @@ export async function savePartnerCompliance(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.documentTypeId)
-}
+})

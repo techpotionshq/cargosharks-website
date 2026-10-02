@@ -34,7 +34,7 @@ import 'server-only'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { Session } from '@/lib/session'
-import { PILOT_PORTAL_CUSTOMER } from '@/lib/pilot/fixtures'
+import { PILOT_AGENT_PARTNER, PILOT_PORTAL_CUSTOMER } from '@/lib/pilot/fixtures'
 import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type DemoPersonaKey = 'operations' | 'customer' | 'agent'
@@ -54,19 +54,18 @@ export interface DemoPersona {
 /**
  * The agency the demo agent contact works for.
  *
- * `partnersFor()` in the fixtures names Hongqiao as the origin agent on
- * every import, so this is the partner an agent contact would actually be
- * looking at jobs through. The id is invented: the fixture jobs carry partner
- * ids of their own (`kwi-3-p2` and so on) that mean nothing outside the job
- * they hang off, and nothing in fixture mode ever resolves this one — it exists
- * so the actor is the shape a real `agent_contact` actor is, `partner_id` and
- * all, rather than a `null` that would quietly take a different branch through
- * every policy this demo is meant to illustrate.
+ * `partnersFor()` in the fixtures names Hongqiao as the origin agent on the
+ * China imports, so this is the partner an agent contact would actually be
+ * looking at jobs through — and its id is the partner register's own, the one
+ * the job's partner panel carries. It used to be an invented uuid "so the
+ * actor had the right shape", and since `pilotAgentShipments` filters on
+ * exactly that id, the demo's agent login opened on "Nothing assigned to you".
+ * The shape that matters is that the actor names a partner the jobs name too.
  */
 const DEMO_PARTNER = {
-  id: '00000000-0000-7000-8000-0000000000d2',
-  nameEn: 'Hongqiao Logistics (Shanghai)',
-  nameAr: 'هونغتشياو للخدمات اللوجستية (شنغهاي)',
+  id: PILOT_AGENT_PARTNER.id,
+  nameEn: PILOT_AGENT_PARTNER.en,
+  nameAr: PILOT_AGENT_PARTNER.ar,
 } as const
 
 /** Likewise for the customer — `pilotPortalShipments()` filters on the name. */

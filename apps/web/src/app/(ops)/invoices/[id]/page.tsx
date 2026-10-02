@@ -24,18 +24,27 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
+import { pickName } from '@/lib/named'
+import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
-import { InvoiceLineDialog, InvoiceStatusActions } from '@/features/ledger/ui/invoice-actions'
+import {
+  CreditNoteDialog,
+  InvoiceLineDialog,
+  InvoiceStatusActions,
+} from '@/features/ledger/ui/invoice-actions'
 import { PaymentDialog } from '@/features/ledger/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
+import { currencyLabel, formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon } from '@/ui/icon'
-import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Notice } from '@/ui/notice'
 import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { MoreMenu } from '@/ui/menu'
+import { dec } from '@qabandi/core'
 
 export async function generateMetadata({
   params,
@@ -43,33 +52,61 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const invoice = await getInvoiceDetail(session.actor, id)
-  return { title: invoice?.seriesNo ?? 'Invoice' }
+  // A draft has no number yet; it is titled as the page calls it.
+  const t = await getTranslations('invoiceDetail')
+  return { title: invoice?.seriesNo ?? t('unnumbered') }
 }
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
-  const invoice = await getInvoiceDetail(session.actor, id)
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'receivable.read')) notFound()
+  const id = recordId((await params).id)
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const invoice = await getInvoiceDetail(session.actor, id, locale)
   if (!invoice) notFound()
 
   const t = await getTranslations('invoiceDetail')
   const tc = await getTranslations('common')
   const ti = await getTranslations('invoices')
   const tp = await getTranslations('paymentForm')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const money = (amount: string | number) =>
-    formatMoney({ amount: Number(amount), currency: invoice.currency }, locale)
+    formatMoney({ amount: amount, currency: invoice.currency }, locale)
+  /*
+    The tiles carry the figure alone and the currency as the tile's unit,
+    which wraps beneath it. With the Arabic currency name inside the figure
+    the amounts ran past the tile edge at 1280px.
+  */
+  const figure = (amount: string | number) =>
+    formatMoney({ amount: amount, currency: invoice.currency }, locale, {
+      showCurrency: false,
+    })
 
-  const balance = Number(invoice.total) - Number(invoice.amountPaid)
-  const overdue =
-    balance > 0 && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
+  // Decimal, then a string for display: money minus money is never a float.
+  // A partial credit note (F9) is off the balance as surely as a receipt.
+  const credited = dec(invoice.amountCredited ?? 0)
+  const owed = dec(invoice.total ?? 0)
+    .minus(dec(invoice.amountPaid ?? 0))
+    .minus(credited)
+  const balance = owed.toFixed()
+  const owing = owed.gt(0)
   const isDraft = invoice.status === 'draft'
+  // Owed by somebody: a credited or voided invoice keeps a balance on paper
+  // and is overdue for nobody.
+  const payable = invoice.status === 'issued' || invoice.status === 'part_paid'
+  const overdue =
+    payable && owing && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
+  // Built here rather than inline: `check-links.mjs` reads an interpolated
+  // href only up to its first `${`.
+  const pdf = `/api/invoices/${invoice.id}/pdf`
 
   return (
     <>
@@ -93,20 +130,57 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )
         }
         description={t('issuedTo', { customer: invoice.customerName ?? '—' })}
+        status={
+          <Badge tone={invoiceTone(invoice.status)} dot>
+            {ti(`statuses.${invoice.status}` as 'statuses.issued')}
+          </Badge>
+        }
+        /*
+          The next state is the one primary button — approve a draft, issue an
+          approved one — and the rest (add a line, record a receipt, void,
+          credit) sit behind More. An issued invoice has no forward move left,
+          so recording the receipt that pays it takes the primary slot.
+        */
         actions={
           <>
-            <Badge tone={invoiceTone(invoice.status)} dot>
-              {ti(`statuses.${invoice.status}` as 'statuses.issued')}
-            </Badge>
-            {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
-            {balance > 0 && !isDraft ? (
+            <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} part="forward" />
+            {owing && payable ? (
               <PaymentDialog
                 customerId={invoice.customerId}
                 invoiceId={invoice.id}
-                variant="secondary"
+                branchId={invoice.branchId}
+                currency={invoice.currency}
+                variant="primary"
               />
             ) : null}
-            <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} />
+            <MoreMenu label={tc('more')}>
+              {/*
+                The document the customer receives, in both languages (QA
+                P2-7). The route always existed and nothing linked to it, so an
+                issued invoice could not be printed from its own page. A draft
+                prints too, marked as one, which is how it is checked before
+                issue.
+              */}
+              <Button variant="menu" href={pdf} download icon="download">
+                {t('pdf')}
+              </Button>
+              <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
+                {t('pdfAr')}
+              </Button>
+              {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
+              {/* Only where a receipt can land: issued and still owed. A draft,
+                an approved-but-unnumbered, a credited or a voided invoice was
+                offered "Record a receipt" and every one failed with a 500. */}
+              <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} part="other" />
+              <CreditNoteDialog
+                invoiceId={invoice.id}
+                branchId={invoice.branchId}
+                status={invoice.status}
+                isCreditNote={invoice.isCreditNote}
+                currency={invoice.currency}
+                creditable={owing ? balance : '0'}
+              />
+            </MoreMenu>
           </>
         }
       />
@@ -117,19 +191,27 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </Notice>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Metric label={t('total')} value={money(invoice.total)} icon="invoices" tone="brand" />
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
+        <Metric
+          label={t('total')}
+          value={figure(invoice.total)}
+          unit={currencyLabel(invoice.currency, locale)}
+          icon="invoices"
+          tone="brand"
+        />
         <Metric
           label={t('paid')}
-          value={money(invoice.amountPaid)}
+          value={figure(invoice.amountPaid)}
+          unit={currencyLabel(invoice.currency, locale)}
           icon="payments"
           tone={Number(invoice.amountPaid) > 0 ? 'positive' : 'neutral'}
         />
         <Metric
           label={t('balance')}
-          value={money(balance)}
-          icon={balance > 0 ? 'alert' : 'check'}
-          tone={balance <= 0 ? 'positive' : overdue ? 'critical' : 'caution'}
+          value={figure(balance)}
+          unit={currencyLabel(invoice.currency, locale)}
+          icon={owing ? 'alert' : 'check'}
+          tone={!owing ? 'positive' : overdue ? 'critical' : 'caution'}
           hint={t('balanceHint')}
         />
         <Metric
@@ -142,7 +224,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       <Grid className="mb-4">
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="finance"
           title={t('lines')}
@@ -156,27 +238,37 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             />
           ) : (
             <>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{t('description')}</TH>
-                    <TH align="end">{t('quantity')}</TH>
-                    <TH align="end">{t('unitPrice')}</TH>
-                    <TH align="end">{t('tax')}</TH>
+                    {/* A line and its amount on a phone; the invoice PDF
+                        and a wider screen carry the working. */}
+                    <TH priority="low" align="end">
+                      {t('quantity')}
+                    </TH>
+                    <TH priority="low" align="end">
+                      {t('unitPrice')}
+                    </TH>
+                    <TH priority="low" align="end">
+                      {t('tax')}
+                    </TH>
                     <TH align="end">{t('amount')}</TH>
                   </TR>
                 </THead>
                 <TBody>
                   {invoice.lines.map((line) => (
                     <TR key={line.id}>
-                      <TD className="font-medium text-ink">{line.descriptionEn}</TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD className="font-medium text-ink">
+                        {pickName(locale, line.descriptionEn, line.descriptionAr)}
+                      </TD>
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {Number(line.quantity)}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {money(line.unitPrice)}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {Number(line.taxAmount) === 0 ? '—' : money(line.taxAmount)}
                       </TD>
                       <TD align="end" numeric className="font-semibold">
@@ -190,26 +282,32 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               {/* The totals, derived from the lines rather than stored beside
                   them — so the header cannot drift from what it sums. */}
               <dl className="flex flex-col gap-2 border-t border-line px-5 py-4">
-                <div className="flex justify-between text-[0.875rem]">
+                <div className="flex justify-between text-body">
                   <dt className="text-ink-muted">{t('subtotal')}</dt>
                   <dd className="numeric text-ink">{money(invoice.subtotal)}</dd>
                 </div>
-                <div className="flex justify-between text-[0.875rem]">
+                <div className="flex justify-between text-body">
                   <dt className="text-ink-muted">
                     {t('taxAt', { rate: Number(invoice.taxRatePercent) })}
                   </dt>
                   <dd className="numeric text-ink">{money(invoice.taxAmount)}</dd>
                 </div>
-                <div className="flex justify-between border-t border-line pt-2 text-[0.9375rem] font-semibold">
+                <div className="flex justify-between border-t border-line pt-2 text-title font-semibold">
                   <dt className="text-ink">{t('total')}</dt>
                   <dd className="numeric text-ink">{money(invoice.total)}</dd>
                 </div>
+                {credited.gt(0) ? (
+                  <div className="flex justify-between text-body">
+                    <dt className="text-ink-muted">{t('credited')}</dt>
+                    <dd className="numeric text-ink">{money(credited.toFixed())}</dd>
+                  </div>
+                ) : null}
               </dl>
             </>
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4 lg:col-span-4">
+        <div className="flex flex-col gap-4 @4xl:col-span-4">
           <Panel icon="invoices" title={t('about')}>
             <dl className="grid grid-cols-2 gap-4">
               <Field label={t('branch')}>{invoice.branchCode ?? '—'}</Field>
@@ -227,11 +325,59 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <Field label={t('issuedBy')}>{invoice.issuedBy ?? '—'}</Field>
             </dl>
             {invoice.notes ? (
-              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">
+              // Free text, in whatever language it was typed: its own direction.
+              <p dir="auto" className="mt-4 border-t border-line pt-4 text-body-sm text-ink-muted">
                 {invoice.notes}
               </p>
             ) : null}
+            {invoice.isCreditNote && invoice.creditsInvoiceId ? (
+              <p className="mt-4 border-t border-line pt-4 text-body-sm">
+                <Link
+                  href={`/invoices/${invoice.creditsInvoiceId}`}
+                  className="text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+                >
+                  {t('creditsInvoice')}
+                </Link>
+              </p>
+            ) : null}
           </Panel>
+
+          {/*
+            The notes raised against it (F9). Listed only where there are
+            any: most invoices are never credited, and an empty panel would
+            say "nothing here" about a thing nobody was looking for.
+          */}
+          {invoice.creditNotes.length > 0 ? (
+            <Panel
+              padding="none"
+              icon="invoices"
+              title={t('creditNotes')}
+              explain={t('creditNotesExplain')}
+            >
+              <ul className="divide-y divide-line">
+                {invoice.creditNotes.map((note) => (
+                  <li key={note.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/invoices/${note.id}`}
+                        className="ref numeric truncate text-body-sm text-ink hover:underline"
+                      >
+                        {note.seriesNo ?? t('unnumbered')}
+                      </Link>
+                      {note.issuedAt ? (
+                        <p className="text-caption text-ink-subtle">
+                          {formatDate(new Date(note.issuedAt), locale, timeZone)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="numeric shrink-0 text-body font-semibold">
+                      {money(note.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
 
           <Panel
             padding="none"
@@ -251,15 +397,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                     className="flex items-center justify-between gap-3 px-5 py-3"
                   >
                     <div className="min-w-0">
-                      <p className="ref numeric truncate text-[0.8125rem] text-ink">
+                      <p className="ref numeric truncate text-body-sm text-ink">
                         {allocation.reference ?? t('noReference')}
                       </p>
-                      <p className="text-[0.75rem] text-ink-subtle">
+                      <p className="text-caption text-ink-subtle">
                         {formatDate(new Date(allocation.receivedOn), locale, timeZone)} ·{' '}
                         {tp(`methods.${allocation.method}` as 'methods.cash')}
                       </p>
                     </div>
-                    <span className="numeric shrink-0 text-[0.875rem] font-semibold text-positive">
+                    <span className="numeric shrink-0 text-body font-semibold text-positive">
                       {money(allocation.amount)}
                     </span>
                   </li>

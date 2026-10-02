@@ -30,9 +30,7 @@ export function AcceptAllProposals({
       <Button type="submit" variant="secondary" size="sm" icon="check" disabled={pending}>
         {label}
       </Button>
-      {state.message ? (
-        <span className="ms-2 text-[0.6875rem] text-caution">{state.message}</span>
-      ) : null}
+      {state.message ? <span className="ms-2 text-micro text-caution">{state.message}</span> : null}
     </form>
   )
 }

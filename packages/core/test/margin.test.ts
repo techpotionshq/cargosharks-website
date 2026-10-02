@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   belowFloor,
+  draftConcerns,
   emptyLedgerMargin,
   jobMargin,
   money,
@@ -106,5 +107,66 @@ describe('estimate against actual', () => {
 
   it('has no percentage against an estimate of nothing', () => {
     expect(variancePercent(kwd('0'), kwd('75.000'))).toBeNull()
+  })
+})
+
+/*
+  ai-13. A live auto-draft sold a delivery order at −48.1% against the agent's
+  figure and sold destination THC and haulage nobody had bought, under a
+  headline margin that looked healthy. The review is line by line.
+*/
+describe('draftConcerns', () => {
+  const line = (chargeTypeKey: string, amount: string) => ({
+    chargeTypeKey,
+    amountInBase: money(amount, 'KWD'),
+  })
+
+  it('flags a charge sold below its cost, with its margin', () => {
+    const concerns = draftConcerns({
+      revenue: [line('ocean_freight', '600'), line('delivery_order', '27')],
+      cost: [line('ocean_freight', '500'), line('delivery_order', '40')],
+    })
+    expect(concerns).toEqual([
+      {
+        kind: 'negative_margin',
+        chargeTypeKey: 'delivery_order',
+        sell: '27',
+        cost: '40',
+        marginPercent: '-48.1',
+      },
+    ])
+  })
+
+  it('flags a charge sold with nothing bought for it — the haulage on a port-to-port award', () => {
+    const concerns = draftConcerns({
+      revenue: [line('ocean_freight', '600'), line('thc_destination', '60'), line('haulage', '70')],
+      cost: [line('ocean_freight', '500'), line('delivery_order', '40')],
+    })
+    expect(concerns).toEqual([
+      { kind: 'unbacked_charge', chargeTypeKey: 'thc_destination' },
+      { kind: 'unbacked_charge', chargeTypeKey: 'haulage' },
+    ])
+  })
+
+  it('compares per charge type, summing split lines', () => {
+    expect(
+      draftConcerns({
+        revenue: [line('ocean_freight', '300'), line('ocean_freight', '300')],
+        cost: [line('ocean_freight', '550')],
+      }),
+    ).toEqual([])
+  })
+
+  it('passes a draft whose every charge is bought and sold above cost', () => {
+    expect(
+      draftConcerns({
+        revenue: [line('ocean_freight', '600'), line('thc_origin', '50')],
+        cost: [line('ocean_freight', '500'), line('thc_origin', '45')],
+      }),
+    ).toEqual([])
+  })
+
+  it('has nothing to compare with when nothing was bought', () => {
+    expect(draftConcerns({ revenue: [line('ocean_freight', '600')], cost: [] })).toEqual([])
   })
 })

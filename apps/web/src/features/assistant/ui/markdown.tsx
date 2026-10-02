@@ -150,7 +150,7 @@ export function Markdown({ text }: { readonly text: string }) {
       blocks.push(
         <pre
           key={`code-${key++}`}
-          className="overflow-x-auto rounded-md bg-surface-sunken p-3 font-mono text-[0.75rem] text-ink"
+          className="overflow-x-auto rounded-md bg-surface-sunken p-3 font-mono text-caption text-ink"
         >
           <code>{body.join('\n')}</code>
         </pre>,
@@ -190,7 +190,7 @@ export function Markdown({ text }: { readonly text: string }) {
           screen.
         */
         <div key={`t-${key++}`} className="overflow-x-auto rounded-md border border-line">
-          <table className="w-full border-collapse text-[0.8125rem]">
+          <table className="w-full border-collapse text-body-sm">
             <thead>
               <tr className="bg-surface-sunken">
                 {header.map((cell, column) => (
@@ -271,5 +271,5 @@ export function Markdown({ text }: { readonly text: string }) {
 
   flush()
 
-  return <div className="flex flex-col gap-2.5 text-[0.875rem] leading-relaxed">{blocks}</div>
+  return <div className="flex flex-col gap-2.5 text-body leading-relaxed">{blocks}</div>
 }

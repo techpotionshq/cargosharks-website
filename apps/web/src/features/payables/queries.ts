@@ -64,6 +64,7 @@ import {
   type Statement,
   type StatementEntry,
 } from '@qabandi/core'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotPartnerAccount,
@@ -101,9 +102,11 @@ export interface SupplierInvoiceRow {
   readonly unmatchedCount: number
 }
 
+/** `locale` names the partner in the reader's language (F27). */
 export async function listSupplierInvoices(
   actor: Actor,
   filters: { readonly status?: string; readonly partnerId?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<SupplierInvoiceRow[]> {
   /*
     Narrowed before the fixtures branch, not after.
@@ -116,7 +119,7 @@ export async function listSupplierInvoices(
   const status = enumFilter(supplierInvoiceStatusEnum.enumValues, filters.status)
   const partnerId = uuidFilter(filters.partnerId)
 
-  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), { status, partnerId })
+  if (usePilotFixtures()) return pilotSupplierInvoices(Date.now(), { status, partnerId }, locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -124,7 +127,7 @@ export async function listSupplierInvoices(
         id: supplierInvoices.id,
         reference: supplierInvoices.reference,
         partnerId: supplierInvoices.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         status: supplierInvoices.status,
         currency: supplierInvoices.currency,
         total: supplierInvoices.total,
@@ -264,7 +267,9 @@ export async function payablesSummary(actor: Actor): Promise<PayablesSummary> {
 export async function payablesAgeing(
   actor: Actor,
   asOf = new Date(),
-): Promise<{ readonly currency: string; readonly ageing: Ageing }> {
+): Promise<{
+  readonly byCurrency: readonly { readonly currency: string; readonly ageing: Ageing }[]
+}> {
   /*
     The fixture stops at the items and `ageItems` still runs, exactly as it
     does below. The bucketing is the part a finance manager is being shown, so
@@ -276,16 +281,21 @@ export async function payablesAgeing(
     today's buckets under yesterday's heading.
   */
   if (usePilotFixtures()) {
-    return { currency: 'KWD', ageing: ageItems(pilotPayableAgeing(asOf.getTime()), 'KWD', asOf) }
+    return {
+      byCurrency: [
+        { currency: 'KWD', ageing: ageItems(pilotPayableAgeing(asOf.getTime()), 'KWD', asOf) },
+      ],
+    }
   }
 
   return withActor(actor, async (tx) => {
-    const [branch] = await tx
-      .select({ baseCurrency: branches.baseCurrency })
-      .from(branches)
-      .limit(1)
-    const base = branch?.baseCurrency ?? 'KWD'
+    /*
+      One ageing per base currency, each bill in its own branch's base.
 
+      It took the base of whichever branch came back first and aged every
+      visible bill in it — a DXB bill converted to dirhams counted as dinars
+      for a principal who sees both branches.
+    */
     const rows = await tx
       .select({
         outstanding: sql<string>`(
@@ -293,20 +303,27 @@ export async function payablesAgeing(
           * "supplier_invoices"."fx_rate"
         )::text`,
         dueOn: supplierInvoices.dueOn,
+        base: branches.baseCurrency,
       })
       .from(supplierInvoices)
+      .innerJoin(branches, eq(branches.id, supplierInvoices.branchId))
       .where(inArray(supplierInvoices.status, ['received', 'approved', 'part_paid']))
 
+    const bases = [...new Set(rows.map((r) => r.base))].sort()
     return {
-      currency: base,
-      ageing: ageItems(
-        rows.map((r) => ({
-          outstanding: r.outstanding,
-          dueOn: r.dueOn ? new Date(r.dueOn) : null,
-        })),
-        base,
-        asOf,
-      ),
+      byCurrency: bases.map((base) => ({
+        currency: base,
+        ageing: ageItems(
+          rows
+            .filter((r) => r.base === base)
+            .map((r) => ({
+              outstanding: r.outstanding,
+              dueOn: r.dueOn ? new Date(r.dueOn) : null,
+            })),
+          base,
+          asOf,
+        ),
+      })),
     }
   })
 }
@@ -373,9 +390,11 @@ export interface SupplierInvoiceDetail {
   readonly summary: InvoiceMatchSummary
 }
 
+/** `locale` names the partner and the charge types in the reader's language (F27). */
 export async function getSupplierInvoice(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<SupplierInvoiceDetail | undefined> {
   /*
     The fixture stops at the three selects, and `compareToAccrual` and
@@ -384,7 +403,7 @@ export async function getSupplierInvoice(
     stated one would be showing a judgement the product did not make.
   */
   if (usePilotFixtures()) {
-    const rows = pilotSupplierInvoice(id)
+    const rows = pilotSupplierInvoice(id, Date.now(), locale)
     return rows === undefined
       ? undefined
       : composeSupplierInvoice(rows.bill, rows.lines, rows.matches)
@@ -397,7 +416,7 @@ export async function getSupplierInvoice(
         reference: supplierInvoices.reference,
         branchId: supplierInvoices.branchId,
         partnerId: supplierInvoices.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         partnerTolerancePercent: partners.varianceTolerancePercent,
         partnerToleranceAbsolute: partners.varianceToleranceAbsolute,
         status: supplierInvoices.status,
@@ -430,7 +449,7 @@ export async function getSupplierInvoice(
         id: supplierInvoiceLines.id,
         description: supplierInvoiceLines.description,
         chargeTypeId: supplierInvoiceLines.chargeTypeId,
-        chargeTypeName: chargeTypes.nameEn,
+        chargeTypeName: named(locale, chargeTypes.nameEn, chargeTypes.nameAr),
         tolerancePercent: chargeTypes.varianceTolerancePercent,
         toleranceAbsolute: chargeTypes.varianceToleranceAbsolute,
         jobId: supplierInvoiceLines.jobId,
@@ -458,7 +477,7 @@ export async function getSupplierInvoice(
               claimed: supplierInvoiceMatches.amount,
               jobId: chargeLines.jobId,
               jobReference: jobs.reference,
-              chargeTypeName: chargeTypes.nameEn,
+              chargeTypeName: named(locale, chargeTypes.nameEn, chargeTypes.nameAr),
               accruedBase: chargeLines.amountBase,
               accruedAmount: chargeLines.amount,
               accruedCurrency: chargeLines.currency,
@@ -631,15 +650,19 @@ export interface SupplierPaymentRow {
   readonly allocated: string
 }
 
-export async function listSupplierPayments(actor: Actor): Promise<SupplierPaymentRow[]> {
-  if (usePilotFixtures()) return pilotSupplierPayments()
+/** `locale` names the partner in the reader's language (F27). */
+export async function listSupplierPayments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<SupplierPaymentRow[]> {
+  if (usePilotFixtures()) return pilotSupplierPayments(Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
       .select({
         id: supplierPayments.id,
         partnerId: supplierPayments.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         amount: supplierPayments.amount,
         currency: supplierPayments.currency,
         paidOn: supplierPayments.paidOn,
@@ -714,6 +737,8 @@ export async function getPartnerAccount(
   actor: Actor,
   partnerId: string,
   asOf = new Date(),
+  // Names the partner in the reader's language (F27).
+  locale: 'en' | 'ar' = 'en',
 ): Promise<PartnerAccount | undefined> {
   /*
     The fixture stops at the entries. `buildStatement`, `netPosition` and
@@ -722,7 +747,7 @@ export async function getPartnerAccount(
     already computed would be making it on the product's behalf.
   */
   if (usePilotFixtures()) {
-    const rows = pilotPartnerAccount(partnerId)
+    const rows = pilotPartnerAccount(partnerId, Date.now(), locale)
     return rows === undefined
       ? undefined
       : accountOf(
@@ -739,7 +764,7 @@ export async function getPartnerAccount(
     const [partner] = await tx
       .select({
         id: partners.id,
-        name: partners.legalNameEn,
+        name: named(locale, partners.legalNameEn, partners.legalNameAr),
         customerId: partners.settlementCustomerId,
         settlementCurrency: partners.settlementCurrency,
         currency: partners.currency,
@@ -787,6 +812,7 @@ export async function getPartnerAccount(
             dueOn: invoices.dueOn,
             total: invoices.total,
             amountPaid: invoices.amountPaid,
+            amountCredited: invoices.amountCredited,
             isCreditNote: invoices.isCreditNote,
           })
           .from(invoices)
@@ -812,7 +838,8 @@ export async function getPartnerAccount(
         reference: i.reference ?? i.id.slice(0, 8),
         description: i.isCreditNote ? 'Credit note' : 'Invoice',
         amount: i.total,
-        outstanding: subtractStrings(i.total, i.amountPaid),
+        // Less partial credit notes (F9); a note itself is born settled.
+        outstanding: subtractStrings(subtractStrings(i.total, i.amountPaid), i.amountCredited),
         dueOn: i.dueOn ? new Date(i.dueOn) : null,
       })),
       ...bills.map((b): StatementEntry => ({
@@ -889,14 +916,16 @@ export interface SettlementRow {
   readonly settledAt: Date | null
 }
 
+/** `locale` names the partner in the reader's language (F27). */
 export async function listSettlements(
   actor: Actor,
   filters: { readonly partnerId?: string; readonly status?: string } = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<SettlementRow[]> {
   const status = enumFilter(settlementStatusEnum.enumValues, filters.status)
   const partnerId = uuidFilter(filters.partnerId)
 
-  if (usePilotFixtures()) return pilotSettlements(Date.now(), { status, partnerId })
+  if (usePilotFixtures()) return pilotSettlements(Date.now(), { status, partnerId }, locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
@@ -904,7 +933,7 @@ export async function listSettlements(
         id: partnerSettlements.id,
         reference: partnerSettlements.reference,
         partnerId: partnerSettlements.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         status: partnerSettlements.status,
         currency: partnerSettlements.currency,
         periodFrom: partnerSettlements.periodFrom,
@@ -950,9 +979,11 @@ export interface SettlementDetail extends SettlementRow {
   readonly lines: readonly SettlementLineRow[]
 }
 
+/** `locale` names the partner in the reader's language (F27). */
 export async function getSettlement(
   actor: Actor,
   id: string,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<SettlementDetail | undefined> {
   /*
     No core call behind this one: `settlement.ts` did its arithmetic when the
@@ -961,7 +992,7 @@ export async function getSettlement(
     register row came from, which is what stops the header of this page
     disagreeing with the row the reader clicked a second ago.
   */
-  if (usePilotFixtures()) return pilotSettlement(id)
+  if (usePilotFixtures()) return pilotSettlement(id, Date.now(), locale)
 
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -970,7 +1001,7 @@ export async function getSettlement(
         reference: partnerSettlements.reference,
         branchId: partnerSettlements.branchId,
         partnerId: partnerSettlements.partnerId,
-        partnerName: partners.legalNameEn,
+        partnerName: named(locale, partners.legalNameEn, partners.legalNameAr),
         status: partnerSettlements.status,
         currency: partnerSettlements.currency,
         periodFrom: partnerSettlements.periodFrom,
@@ -1024,23 +1055,26 @@ export async function getSettlement(
 }
 
 /** Partners with a current account configured — the ones a set-off can run for. */
+/** `locale` names, and orders, the partners in the reader's language (F27). */
 export async function listSettleablePartners(
   actor: Actor,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ readonly id: string; readonly name: string; readonly currency: string }[]> {
-  if (usePilotFixtures()) return pilotSettleablePartners()
+  if (usePilotFixtures()) return pilotSettleablePartners(locale)
 
+  const name = named(locale, partners.legalNameEn, partners.legalNameAr)
   return withActor(actor, async (tx) =>
     tx
       .select({
         id: partners.id,
-        name: partners.legalNameEn,
+        name,
         currency: sql<string>`coalesce(
           "partners"."settlement_currency", "partners"."currency", 'KWD'
         )`,
       })
       .from(partners)
       .where(and(eq(partners.isActive, true), sql`${partners.settlementCustomerId} is not null`))
-      .orderBy(asc(partners.legalNameEn)),
+      .orderBy(asc(name)),
   )
 }
 
@@ -1076,4 +1110,70 @@ function sumStrings(values: readonly string[]): string {
 
 function subtractStrings(a: string, b: string): string {
   return toDecimal(a).minus(toDecimal(b)).toFixed()
+}
+
+/**
+ * The branch "Capture bill" opens on — U5.
+ *
+ * It opened on none for anyone in more than one branch, so a clerk who only
+ * ever keys Kuwait's bills picked Kuwait every time, and the one time they
+ * did not, the bill went to Dubai. In order:
+ *
+ *   1. the only branch where they hold `payable.record`, if there is one;
+ *   2. the branch of the last bill they captured themselves, if it is still
+ *      one they may record in;
+ *   3. the first branch they may record in, in the order the picker lists
+ *      them.
+ *
+ * Still a default, never a decision: the field stays editable and the action
+ * checks the branch it is handed. `permitted` is the caller's
+ * `branchesWhere(session, 'payable.record')`; `listed` the picker's order.
+ */
+export async function defaultBillBranch(
+  actor: Actor,
+  permitted: readonly string[],
+  listed: readonly string[],
+): Promise<string | undefined> {
+  if (permitted.length <= 1) return permitted[0]
+  const first = listed.find((id) => permitted.includes(id)) ?? permitted[0]
+
+  // The pilot has no bill anybody captured, so there is no last one to read.
+  if (usePilotFixtures()) return first
+
+  const [last] = await withActor(actor, (tx) =>
+    tx
+      .select({ branchId: supplierInvoices.branchId })
+      .from(supplierInvoices)
+      .where(
+        and(
+          eq(supplierInvoices.recordedById, actor.principalId),
+          inArray(supplierInvoices.branchId, [...permitted]),
+        ),
+      )
+      .orderBy(desc(supplierInvoices.createdAt))
+      .limit(1),
+  )
+  return last?.branchId ?? first
+}
+
+/**
+ * The currency a branch keeps its books in, to default a money form to.
+ *
+ * The payment form defaulted to KWD for every branch, so a Dubai payment in
+ * dirhams had to be re-chosen by hand and one that was not went in as dinars.
+ * Undefined offline — the pilot form keeps the deployment's first currency.
+ */
+export async function branchBaseCurrency(
+  actor: Actor,
+  branchId: string | undefined,
+): Promise<string | undefined> {
+  if (!branchId || usePilotFixtures()) return undefined
+  const [row] = await withActor(actor, (tx) =>
+    tx
+      .select({ base: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, branchId))
+      .limit(1),
+  )
+  return row?.base
 }

@@ -3,7 +3,7 @@
 *What personal data this system holds, why, on whose instruction, and for how
 long.*
 
-Last reviewed: **2026-08-25**. Derived from the schema, not from memory — the
+Last reviewed: **2026-10-02**. Derived from the schema, not from memory — the
 tables named in each row are real and greppable with `pnpm q table <name>`.
 
 Two roles, and the distinction runs through everything below:
@@ -49,17 +49,17 @@ engineering one — see the note at the foot.
 | **Lawful basis** | Necessary for the contract, and legitimate interest in securing the system |
 | **Retention** | Sessions expire at twelve hours. Credentials last as long as the account. **Deactivation is `is_active = false`, never deletion** |
 | **Where** | `auth_user`, `auth_session`, `auth_account`, `auth_two_factor`, `principals`, `principal_branch_roles` |
-| **Note** | These tables sit outside row-level security and outside the audit trigger by design: an audit trigger over credential rows would copy secrets into the log |
+| **Note** | The `auth_*` tables sit outside row-level security and outside the audit trigger by design: an audit trigger over credential rows would copy secrets into the log. `principals` and `principal_branch_roles` are under both, and writing a grant needs `admin.users.write` in that branch. An invited person's login is created with their principal and they set the first password from a one-hour emailed link; nobody else ever knows it |
 
 ## 3. Audit trail *(role: processor)*
 
 | | |
 | --- | --- |
 | **Purpose** | Accountability. Who changed what, when |
-| **Categories of data** | Principal id, table, row id, action, timestamp, before/after values — which will include personal data wherever the audited row did |
+| **Categories of data** | Principal id, table, row id, operation, timestamp, client IP address, before/after values — which will include personal data wherever the audited row did |
 | **Lawful basis** | Legal obligation and legitimate interest; an audit trail is itself a security measure |
-| **Retention** | **Not set.** NFR-10 requires a minimum of twelve months, searchable and exportable. Neither the search nor the export is built |
-| **Where** | `audit_log`, written by 80 triggers |
+| **Retention** | **Not set.** NFR-10 requires a minimum of twelve months, searchable and exportable. The search and the CSV export are built (`Security_Measures.md` §6); the retention period is not |
+| **Where** | `audit_log`, written by 85 triggers |
 | **Note** | Insert-only. `DELETE` is revoked. This is the table that collides hardest with erasure rights |
 
 ## 4. Vendor support access *(role: processor)*
@@ -71,25 +71,25 @@ engineering one — see the note at the foot.
 | **Lawful basis** | The support contract; the customer grants each access explicitly |
 | **Retention** | **Not set** |
 | **Where** | `support_grants`, `support_access_log` |
-| **Note** | Granted by the customer, time-boxed, revocable, read-only by structure, and logged per transaction. A banner shows the customer while a session is open |
+| **Note** | Granted by the customer, time-boxed, revocable, read-only unless the customer grants write scope, and logged per transaction. A banner shows the customer while a session is open |
 
 ## 5. Inbound enquiry mail *(role: processor)*
 
 | | |
 | --- | --- |
-| **Purpose** | Turning emailed enquiries into structured records |
-| **Categories of data** | Sender address, message body, attachments — uncontrolled, because anyone may write in |
+| **Purpose** | Turning emailed and WhatsApp enquiries into structured records — and, where a branch switches the intake agent on, answering the sender: at most one confirmation and a capped number of clarifications per enquiry |
+| **Categories of data** | Sender address or phone number, message body, attachments (WhatsApp images and documents are fetched through Kapso and stored like email attachments), and the business's own WhatsApp replies sent from outside the product — uncontrolled, because anyone may write in |
 | **Lawful basis** | The controller's legitimate interest in answering enquiries |
 | **Retention** | **Not set** |
-| **Where** | `mailboxes`, `messages`, `message_attachments` |
-| **Note** | The mailbox is on the open internet. Mailbox passwords are sealed with AES-256-GCM under a key held outside the database |
+| **Where** | `mailboxes`, `whatsapp_numbers`, `messages`, `message_attachments`, `intake_conversations`, `intake_turns` |
+| **Note** | The mailbox is on the open internet. Mailbox passwords are sealed with AES-256-GCM under a key held outside the database. The intake agent ships off per branch; when on, its replies are stored as outbound messages and every decision — including a decision not to reply — is recorded in `intake_turns` |
 
 ## 6. The AI surface *(role: processor)*
 
 | | |
 | --- | --- |
 | **Purpose** | Extracting structure from enquiries and documents; answering operator questions |
-| **Categories of data** | Enquiry and document text, which may contain any of the above |
+| **Categories of data** | Enquiry and document text, which may contain any of the above. The intake agent sends every customer message in a conversation, and any PDF or image attached to the new ones, in one request per turn |
 | **Recipient** | OpenRouter, and the model provider it routes to |
 | **Transfers** | Outside the Gulf. **The mechanism is not settled** — item 17 |
 | **Retention** | `ai_invocations` stores the verbatim request and response. **Not set**, and whether it should be truncated or redacted is item 28 |

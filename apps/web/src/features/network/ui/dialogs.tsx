@@ -11,7 +11,7 @@
  * control is a courtesy, never a boundary.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -54,7 +54,7 @@ export async function PartnerDialog({
   if (!can(session, 'partner.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('partnerForm'),
     getTranslations('common'),
   ])
@@ -202,7 +202,7 @@ export async function LocationDialog({
   if (!can(session, 'admin.reference.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('locationForm'),
     getTranslations('common'),
   ])
@@ -471,7 +471,7 @@ export async function PartnerCoverageDialog({
   if (!can(session, 'partner.write')) return null
 
   const [options, t, tc, tMode] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('partnerCoverageForm'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -573,7 +573,7 @@ export async function PartnerComplianceDialog({
   if (!can(session, 'partner.write')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('partnerComplianceForm'),
     getTranslations('common'),
   ])

@@ -18,6 +18,7 @@ import {
   unique,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { amount, pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable } from './table'
 import {
@@ -80,6 +81,21 @@ export const enquiries = pgTable(
     grossWeightKg: quantity('gross_weight_kg'),
     volumeCbm: quantity('volume_cbm'),
     pieces: integer('pieces'),
+    /**
+     * How many containers a sea FCL enquiry asks for. Separate from `pieces`
+     * (packages) because pricing a FCL lane multiplies every per-container
+     * rate by it — 200 cartons priced as 200 × 40HC was the bug (F39). Null
+     * means not stated, and FCL pricing refuses rather than guess.
+     */
+    containerCount: integer('container_count'),
+    /**
+     * Which box a sea FCL enquiry asks for — `20GP`, `40HC`. The count without
+     * it does not price a lane (a 40' high cube and a 20' are different rates),
+     * and the intake agent cannot call an FCL enquiry complete without both.
+     * A code we hold, never the customer's wording — `containerTypeCode` in
+     * `core/intake.ts` folds "40ft high cube" to `40HC` before it is proposed.
+     */
+    containerType: text('container_type').references(() => containerTypes.code),
     /** Per-piece dimensions, where the customer supplied them. */
     dimensions:
       jsonb('dimensions').$type<
@@ -269,6 +285,11 @@ export const jobs = pgTable(
     index('jobs_customer_idx').on(t.customerId, t.status),
     index('jobs_owner_idx').on(t.ownerId, t.status),
     index('jobs_consolidation_idx').on(t.consolidationId),
+    // One house bill per branch — the number we issue names one consignment.
+    // The master bill is not unique: consolidated houses share it.
+    uniqueIndex('jobs_house_bill_unique')
+      .on(t.branchId, t.houseBillNumber)
+      .where(sql`${t.houseBillNumber} is not null`),
   ],
 )
 
@@ -608,6 +629,8 @@ export const documents = pgTable(
   },
   (t) => [
     index('documents_job_idx').on(t.jobId, t.documentTypeId, t.version),
+    // One row per version per language — the backstop under the issue lock.
+    uniqueIndex('documents_version_unique').on(t.jobId, t.documentTypeId, t.locale, t.version),
     index('documents_released_idx').on(t.releasedAt),
   ],
 )

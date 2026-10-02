@@ -12,9 +12,9 @@
  * obvious choice, which is the one thing nobody wants to post.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { createAccountingExport, voidAccountingExportAction } from '../export-actions'
@@ -39,7 +39,7 @@ export async function AccountingExportDialog({
   if (!can(session, 'finance.export')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('accountingExport'),
     getTranslations('common'),
   ])
@@ -55,8 +55,8 @@ export async function AccountingExportDialog({
       span: 12,
       required: true,
       hint: t('branchHint'),
-      options: options.branches,
-      defaultValue: [...session.branchRoles.keys()][0],
+      options: permittedBranches(session, 'finance.export', options.branches),
+      defaultValue: branchesWhere(session, 'finance.export')[0],
     },
     {
       kind: 'date',

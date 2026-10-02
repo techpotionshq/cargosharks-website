@@ -36,7 +36,7 @@ export function AcceptRateButton({
         </Button>
       </form>
       {state.message ? (
-        <span className="max-w-xs text-end text-[0.6875rem] text-caution">{state.message}</span>
+        <span className="max-w-xs text-end text-micro text-caution">{state.message}</span>
       ) : null}
     </div>
   )

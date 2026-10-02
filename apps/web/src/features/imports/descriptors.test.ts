@@ -33,6 +33,7 @@ import {
   openReceivableDescriptor,
   partnerDescriptor,
   rateCardDescriptor,
+  type ImportCheckCode,
 } from './descriptors'
 
 const lookups = {
@@ -187,7 +188,11 @@ describe('the customer sheet', () => {
       { lookups },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('Not a known currency')
+    expect(report.issues[0]).toMatchObject({
+      code: 'unknownReference',
+      values: { set: 'currencies', value: 'XYZ' },
+      label: 'Credit currency',
+    })
   })
 })
 
@@ -220,7 +225,8 @@ describe('the partner sheet', () => {
       { lookups },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('agent')
+    expect(report.issues[0]!.code).toBe('notOneOf')
+    expect(report.issues[0]!.values?.options).toContain('agent')
   })
 })
 
@@ -293,7 +299,10 @@ describe('the rate card sheet', () => {
       { lookups },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('Not a known location')
+    expect(report.issues[0]).toMatchObject({
+      code: 'unknownReference',
+      values: { set: 'locations' },
+    })
   })
 
   it('rejects a charge type the catalogue does not have', () => {
@@ -303,14 +312,17 @@ describe('the rate card sheet', () => {
       { lookups },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toContain('Not a known charge type')
+    expect(report.issues[0]).toMatchObject({
+      code: 'unknownReference',
+      values: { set: 'chargeTypes' },
+    })
   })
 
   it('composes end to end: a multi-lane tariff becomes cards and lines', () => {
     // The closest thing to the real path without a database — the shape the
     // write step in `actions.ts` iterates over. Everything above tests one
     // stage; this tests that they fit together.
-    const report = readImport<RateRowValues>(
+    const report = readImport<RateRowValues, ImportCheckCode>(
       header +
         'FCL,AEJEA,KWSWK,USD,01/03/2026,31/03/2026,OCEAN,Per Container,850,,,40HC,18,Weekly service\n' +
         'FCL,AEJEA,KWSWK,USD,01/03/2026,31/03/2026,THC,Per Container,120,,,40HC,,\n' +
@@ -387,28 +399,26 @@ describe('the rate card sheet', () => {
     it('rejects a validity window that ends before it starts', () => {
       const report = check(row({ validFrom: '01/03/2026', validTo: '01/02/2026' }))
       expect(report.ok).toBe(false)
-      expect(report.issues[0]!.message).toBe('Valid to is before valid from.')
+      expect(report.issues[0]!.code).toBe('validToBeforeFrom')
     })
 
     it('rejects a maximum below the minimum', () => {
       const report = check(row({ minimum: '500', maximum: '100' }))
       expect(report.ok).toBe(false)
-      expect(report.issues[0]!.message).toBe('Maximum is below minimum.')
+      expect(report.issues[0]!.code).toBe('maximumBelowMinimum')
     })
 
     it('rejects a per-container rate with no container type', () => {
       // It would price nothing: the rating engine has no equipment to match.
       const report = check(row({ container: '' }))
       expect(report.ok).toBe(false)
-      expect(report.issues[0]!.message).toBe('A per-container rate needs a container type.')
+      expect(report.issues[0]!.code).toBe('containerTypeNeeded')
     })
 
     it('rejects a zero rate with no minimum', () => {
       const report = check(row({ rate: '0' }))
       expect(report.ok).toBe(false)
-      expect(report.issues[0]!.message).toBe(
-        'A zero rate needs a minimum charge, or it prices nothing.',
-      )
+      expect(report.issues[0]!.code).toBe('zeroRateNeedsMinimum')
     })
 
     it('allows a zero rate that carries a minimum', () => {
@@ -467,7 +477,7 @@ describe('open jobs', () => {
       { lookups: cutoverLookups, existing: {} },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toMatch(/before ETD/i)
+    expect(report.issues[0]!.code).toBe('etaBeforeEtd')
   })
 
   /**
@@ -531,7 +541,11 @@ describe('open receivables', () => {
       { lookups: cutoverLookups, existing: {} },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toMatch(/does not equal total/i)
+    // The figures as typed, not as a JS number reprints them — '1000.00', not 1000.
+    expect(report.issues[0]).toMatchObject({
+      code: 'totalMismatch',
+      values: { net: '1000.00', tax: '50.00', total: '1000.00' },
+    })
   })
 
   /** A settled invoice is not an open receivable, and imports as noise. */
@@ -542,7 +556,7 @@ describe('open receivables', () => {
       { lookups: cutoverLookups, existing: {} },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toMatch(/nothing outstanding/i)
+    expect(report.issues[0]!.code).toBe('nothingOutstanding')
   })
 
   /** An overpayment is a credit note nobody raised, not a negative balance. */
@@ -553,7 +567,10 @@ describe('open receivables', () => {
       { lookups: cutoverLookups, existing: {} },
     )
     expect(report.ok).toBe(false)
-    expect(report.issues[0]!.message).toMatch(/credit note/i)
+    expect(report.issues[0]).toMatchObject({
+      code: 'overpaid',
+      values: { paid: '600.000', total: '500.000' },
+    })
   })
 
   /**

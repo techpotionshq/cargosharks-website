@@ -126,6 +126,19 @@ export const SETTINGS_AREAS = [
     icon: 'enquiries',
   },
   /*
+    How the intake agent behind those numbers and mailboxes answers — FR-EQ-02.
+
+    On `admin.mailboxes.write` for the same reason the WhatsApp numbers are: it
+    is the next step of one decision, per branch — which doors feed this
+    branch's board, and what the agent behind them says to its customers.
+  */
+  {
+    key: 'intakeAgent',
+    href: '/settings/intake-agent',
+    permission: 'admin.mailboxes.write',
+    icon: 'assistant',
+  },
+  /*
     The credentials this deployment reaches its suppliers with — FR-AD-03.
 
     Its own key, and the strictest reasoning on this list. The mailbox entry
@@ -170,6 +183,56 @@ export function inBranch(session: Session, branchId: string): boolean {
 
 export function assertInBranch(session: Session, branchId: string): void {
   if (!inBranch(session, branchId)) throw new ForbiddenError(`branch:${branchId}`)
+}
+
+/**
+ * Does the principal hold `permission` *in this branch* — FR-ID-02, A2.
+ *
+ * `can` pools every branch's permissions, so an administrator in Dubai who is
+ * read-only in Kuwait "can" `admin.users.write`, and `inBranch` only says they
+ * hold *some* role in Kuwait. Together they let that person make themselves
+ * administrator in Kuwait. A write against a branch's record asks this
+ * instead, and `app.has_permission_in` is the same question in the database.
+ *
+ * A session with no `branchPermissions` was built by hand with one role
+ * everywhere (see the field's comment in `session.ts`), so the pooled set is
+ * that role's set in every branch it names.
+ */
+export function canIn(session: Session, permission: string, branchId: string): boolean {
+  if (!session.branchRoles.has(branchId)) return false
+  const scoped = session.branchPermissions
+  if (!scoped) return session.permissions.has(permission)
+  return scoped.get(branchId)?.has(permission) ?? false
+}
+
+export function assertCanIn(session: Session, permission: string, branchId: string): void {
+  if (!canIn(session, permission, branchId)) {
+    throw new ForbiddenError(`${permission}@branch:${branchId}`)
+  }
+}
+
+/** The branches in which the principal holds `permission`, for pickers and filters. */
+export function branchesWhere(session: Session, permission: string): string[] {
+  return [...session.branchRoles.keys()].filter((id) => canIn(session, permission, id))
+}
+
+/**
+ * A branch picker's options, narrowed to the branches this person may do the
+ * form's work in — QA P2-4.
+ *
+ * Pickers listed every active branch, and the action's `assertCanIn` refused
+ * the ones the person only reads, as a 500: a Kuwait finance user who could
+ * see Dubai was offered Dubai on "New invoice" and crashed the form choosing
+ * it. The list now asks the action's own question. A picker that ends up
+ * empty is a dialog the caller should not render.
+ */
+export function permittedBranches<T extends { readonly value: string }>(
+  session: Session,
+  permission: string,
+  choices: readonly T[],
+): T[] {
+  const allowed = new Set(branchesWhere(session, permission))
+  return choices.filter((choice) => allowed.has(choice.value))
 }
 
 /**

@@ -27,7 +27,7 @@ import {
   rateCardSummary,
 } from '@/features/rates/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { formatDate, formatNumber } from '@/lib/format'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Lane } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
@@ -35,6 +35,7 @@ import { Panel } from '@/ui/panel'
 import { Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { RenewalsPanel } from '@/features/rates/ui/renewals-panel'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -50,15 +51,18 @@ export default async function RatesPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const { direction } = await searchParams
 
   const [rows, summary, margins, expiring] = await Promise.all([
     listRateCards(
       session.actor,
       direction === 'buy' || direction === 'sell' ? direction : undefined,
+      locale,
     ),
     rateCardSummary(session.actor),
-    laneMargins(session.actor),
+    laneMargins(session.actor, locale),
     listExpiringRateCards(session.actor),
   ])
 
@@ -67,15 +71,13 @@ export default async function RatesPage({
   const tMode = await getTranslations('mode')
   const tEnq = await getTranslations('enquiry')
   const tDash = await getTranslations('dashboard')
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   const buyCount = rows.filter((row) => row.direction === 'buy').length
   const sellCount = rows.filter((row) => row.direction === 'sell').length
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric
           label={t('liveCards')}
           value={formatNumber(summary.live, locale)}
@@ -123,9 +125,9 @@ export default async function RatesPage({
             <THead>
               <TR>
                 <TH>{t('lane')}</TH>
-                <TH>{tEnq('mode')}</TH>
+                <TH priority="low">{tEnq('mode')}</TH>
                 <TH>{t('direction')}</TH>
-                <TH>{t('counterparty')}</TH>
+                <TH priority="low">{t('counterparty')}</TH>
                 <TH>{t('validity')}</TH>
                 <TH align="end">{t('daysLeft')}</TH>
               </TR>
@@ -139,7 +141,7 @@ export default async function RatesPage({
                   <TD className="font-medium text-ink">
                     {locale === 'ar' ? card.laneAr : card.lane}
                   </TD>
-                  <TD>
+                  <TD priority="low">
                     <span className="inline-flex items-center gap-1.5 text-ink-muted">
                       <Icon name={modeIcon(card.mode)} size={14} />
                       {tMode(card.mode as 'air')}
@@ -150,7 +152,7 @@ export default async function RatesPage({
                       {card.direction === 'buy' ? t('buy') : t('sell')}
                     </Badge>
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {locale === 'ar' ? card.counterpartyAr : card.counterparty}
                   </TD>
                   <TD className="text-ink-muted">{formatDate(card.validTo, locale, timeZone)}</TD>
@@ -193,8 +195,10 @@ export default async function RatesPage({
             <THead>
               <TR>
                 <TH>{t('lane')}</TH>
-                <TH>{tEnq('mode')}</TH>
-                <TH align="end">{t('buyTotal')}</TH>
+                <TH priority="low">{tEnq('mode')}</TH>
+                <TH priority="low" align="end">
+                  {t('buyTotal')}
+                </TH>
                 <TH align="end">{t('sellTotal')}</TH>
                 <TH align="end">{tEnq('margin')}</TH>
               </TR>
@@ -203,7 +207,7 @@ export default async function RatesPage({
               {margins.map((row, index) => (
                 <TR key={`${row.lane}-${row.mode}-${index}`}>
                   <TD className="font-medium text-ink">{row.lane}</TD>
-                  <TD>
+                  <TD priority="low">
                     <span className="inline-flex items-center gap-1.5 text-ink-muted">
                       <Icon name={modeIcon(row.mode)} size={14} />
                       {tMode(row.mode as 'air')}
@@ -211,27 +215,31 @@ export default async function RatesPage({
                   </TD>
                   {/* `numeric` arrives as a six-decimal string; rendering it
                       raw put "USD 1690.000000" in a money column. */}
-                  <TD align="end" numeric className="text-ink-muted">
-                    {row.buyTotal
-                      ? formatMoney(
-                          { amount: Number(row.buyTotal), currency: row.currency ?? 'USD' },
-                          locale,
-                        )
-                      : '—'}
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
+                    <Money
+                      value={
+                        row.buyTotal
+                          ? { amount: row.buyTotal, currency: row.currency ?? 'USD' }
+                          : null
+                      }
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
-                    {row.sellTotal
-                      ? formatMoney(
-                          { amount: Number(row.sellTotal), currency: row.currency ?? 'USD' },
-                          locale,
-                        )
-                      : '—'}
+                    <Money
+                      value={
+                        row.sellTotal
+                          ? { amount: row.sellTotal, currency: row.currency ?? 'USD' }
+                          : null
+                      }
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
                     {row.marginPct === null ? (
                       // Unknown, not zero. A missing sell card is a gap in the
                       // rate book, and showing it as 0% hides that.
-                      <span className="text-[0.75rem] text-ink-subtle">{t('noSellCard')}</span>
+                      <span className="text-caption text-ink-subtle">{t('noSellCard')}</span>
                     ) : (
                       <span
                         className={
@@ -285,10 +293,14 @@ export default async function RatesPage({
             <TR>
               <TH>{t('direction')}</TH>
               <TH>{t('lane')}</TH>
-              <TH>{tEnq('mode')}</TH>
-              <TH>{t('counterparty')}</TH>
-              <TH align="end">{t('lines')}</TH>
-              <TH>{t('validity')}</TH>
+              <TH priority="low">{tEnq('mode')}</TH>
+              <TH priority="low">{t('counterparty')}</TH>
+              <TH priority="low" align="end">
+                {t('lines')}
+              </TH>
+              {/* Live / expiring already answers "can I price on it" on a
+                  phone; the exact dates wait for a wider screen. */}
+              <TH priority="low">{t('validity')}</TH>
               <TH>{tc('status')}</TH>
             </TR>
           </THead>
@@ -307,16 +319,16 @@ export default async function RatesPage({
                     t('anyLane')
                   )}
                 </TD>
-                <TD>
+                <TD priority="low">
                   <span className="inline-flex items-center gap-1.5 text-ink-muted">
                     <Icon name={modeIcon(row.mode)} size={14} />
                     {tMode(row.mode as 'air')}
                   </span>
                 </TD>
-                <TD className="text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {row.partnerName ?? row.customerName ?? t('anyone')}
                 </TD>
-                <TD align="end" numeric>
+                <TD priority="low" align="end" numeric>
                   {row.lineCount === 0 ? (
                     // A card with no lines prices nothing. It is the most
                     // common half-finished state and worth flagging.
@@ -325,7 +337,7 @@ export default async function RatesPage({
                     row.lineCount
                   )}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {formatDate(new Date(row.validFrom), locale, timeZone)}
                   {row.validTo
                     ? ` — ${formatDate(new Date(row.validTo), locale, timeZone)}`

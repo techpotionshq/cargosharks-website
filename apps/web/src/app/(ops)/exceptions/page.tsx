@@ -18,6 +18,7 @@ import { formatRelative, trimDecimal } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, severityTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { RaiseExceptionDialog } from '@/features/operations/ui/dialogs'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -41,7 +42,7 @@ export default async function ExceptionsPage({
   const now = Date.now()
 
   const [rows, counts] = await Promise.all([
-    listExceptions(session.actor, view),
+    listExceptions(session.actor, view, locale),
     exceptionCounts(session.actor),
   ])
 
@@ -76,14 +77,19 @@ export default async function ExceptionsPage({
       <TableShell>
         <THead>
           <TR>
-            <TH>{t('shipment')}</TH>
+            {/* On a phone the shipment reference moves under the problem
+                (below), so the row is problem, severity and due — what a
+                person paged about an exception needs first. */}
+            <TH priority="low">{t('shipment')}</TH>
             <TH>{t('problem')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{t('severity')}</TH>
-            <TH>{t('opened')}</TH>
+            <TH priority="low">{t('opened')}</TH>
             <TH>{t('due')}</TH>
-            <TH>{t('owner')}</TH>
-            <TH align="end">{t('cost')}</TH>
+            <TH priority="low">{t('owner')}</TH>
+            <TH priority="low" align="end">
+              {t('cost')}
+            </TH>
           </TR>
         </THead>
         <TBody>
@@ -91,26 +97,41 @@ export default async function ExceptionsPage({
             const overdue = !row.closedAt && row.dueAt !== null && row.dueAt.getTime() < now
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
-                <TD>
+                <TD priority="low">
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
                 <TD>
+                  <span className="block @3xl:hidden">
+                    <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
+                  </span>
                   <span className="font-medium text-ink">
                     {locale === 'ar' ? row.nameAr : row.nameEn}
                   </span>
                   {row.description ? (
-                    <span className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted">
+                    <span
+                      dir="auto"
+                      // Two wrapped lines at every width. A one-line
+                      // truncation shows four words on a phone, and on a
+                      // desktop it held the column at 374px — a truncated
+                      // cell still asks the table for its unbroken width —
+                      // which is what made the register scroll at 1280. The
+                      // title keeps the whole description a hover away.
+                      title={row.description}
+                      className="mt-0.5 line-clamp-2 max-w-md text-caption break-words text-ink-muted"
+                    >
                       {row.description}
                     </span>
                   ) : null}
                 </TD>
-                <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="text-ink-muted">
+                  {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+                </TD>
                 <TD>
                   <Badge tone={severityTone(row.severity)} dot>
                     {t(`severities.${row.severity}`)}
                   </Badge>
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {formatRelative(row.openedAt, locale, now)}
                 </TD>
                 <TD
@@ -118,11 +139,25 @@ export default async function ExceptionsPage({
                 >
                   {row.dueAt ? formatRelative(row.dueAt, locale, now) : '—'}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.owner ?? t('unassigned')}</TD>
-                <TD align="end" numeric>
-                  {row.costImpact
-                    ? `${trimDecimal(row.costImpact)} ${row.costCurrency ?? ''}`.trim()
-                    : '—'}
+                <TD priority="low" className="text-ink-muted">
+                  {row.owner ?? t('unassigned')}
+                </TD>
+                <TD priority="low" align="end" numeric>
+                  {/* At the currency's own places, through the column's money
+                      cell: trimmed, a dinar impact of 450.500 read "450.5 KWD"
+                      beside "1,420.500"-style figures everywhere else. */}
+                  {row.costImpact && !row.costCurrency ? (
+                    trimDecimal(row.costImpact)
+                  ) : (
+                    <Money
+                      value={
+                        row.costImpact && row.costCurrency
+                          ? { amount: row.costImpact, currency: row.costCurrency }
+                          : null
+                      }
+                      locale={locale}
+                    />
+                  )}
                 </TD>
               </TR>
             )

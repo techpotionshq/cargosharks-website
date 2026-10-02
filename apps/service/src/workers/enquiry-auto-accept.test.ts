@@ -18,8 +18,15 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { aiInvocations, branches, enquiries, extractionProposals, systemActor, withActor, workingCalendars } =
-  await import('@qabandi/db')
+const {
+  aiInvocations,
+  branches,
+  enquiries,
+  extractionProposals,
+  systemActor,
+  withActor,
+  workingCalendars,
+} = await import('@qabandi/db')
 
 const { autoApplyProposals } = await import('./enquiry-extract')
 
@@ -102,7 +109,11 @@ const statuses = (enquiryId: string) =>
 describe.skipIf(!enabled)('autoApplyProposals', () => {
   beforeAll(async () => {
     const [calendar] = await withActor(actor, (tx) =>
-      tx.select({ id: workingCalendars.id }).from(workingCalendars).where(eq(workingCalendars.key, 'kuwait')).limit(1),
+      tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .where(eq(workingCalendars.key, 'kuwait'))
+        .limit(1),
     )
     if (!calendar) throw new Error('Run `pnpm db:seed` before the auto-accept tests')
 

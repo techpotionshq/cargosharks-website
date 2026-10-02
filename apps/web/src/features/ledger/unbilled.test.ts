@@ -25,6 +25,7 @@
 
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { D } from '@qabandi/core'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -35,12 +36,22 @@ const harness = vi.hoisted(() => ({ session: null as unknown }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session }))
 
-const { chargeLines, invoiceLines, invoices, jobs, withActor } = await import('@qabandi/db')
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
+const { chargeLines, chargeTypes, invoiceLines, invoices, jobs, withActor } =
+  await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { billJob } = await import('./form-actions')
+const { billJob, setInvoiceStatus } = await import('./form-actions')
 const { unbilledRevenue, unbilledLinesFor } = await import('./unbilled')
 
 const session = {
@@ -52,7 +63,7 @@ const session = {
     email: 'finance@qabandi.test',
     locale: 'en' as const,
   },
-  permissions: new Set(['invoice.approve']),
+  permissions: new Set(['invoice.approve', 'invoice.void']),
   branchRoles: new Map([
     [HOME_BRANCH, 'finance'],
     [AWAY_BRANCH, 'finance'],
@@ -186,6 +197,30 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
   })
 
   /**
+   * QA P2-6. A line with no description of its own went onto the invoice as
+   * the shipment reference, in English only; the Arabic invoice printed an
+   * empty description. The charge type names it, in both languages.
+   */
+  it('names an undescribed line by its charge, in both languages', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId, { description: null })
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const [drafted] = await withActor(bothBranchesActor, (tx) =>
+      tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoiceId)),
+    )
+    const [charge] = await withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({ nameEn: chargeTypes.nameEn, nameAr: chargeTypes.nameAr })
+        .from(chargeTypes)
+        .where(eq(chargeTypes.id, chargeTypeId)),
+    )
+    expect(drafted?.descriptionEn).toBe(charge!.nameEn)
+    expect(drafted?.descriptionAr).toBe(charge!.nameAr)
+  })
+
+  /**
    * The property that stops the same money reaching two documents.
    *
    * `invoice_id` is set in the same transaction as the insert, so a crash
@@ -199,18 +234,51 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const again = await billJob({}, form({ jobId }))
 
-    expect(again.message).toMatch(/Nothing unbilled/)
+    expect(again.message).toBe('ledgerValidation.nothingUnbilled')
     expect(await unbilledLinesFor(bothBranchesActor, jobId)).toEqual([])
   })
 
   /** Our own estimate of a cost to come is not a thing to bill a customer for. */
+  /*
+    F11. Voiding the draft left \`charge_lines.invoice_id\` pointing at it, so
+    the revenue left the register and could never be billed again.
+  */
+  it('gives the revenue back when the draft is voided', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId)
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const voided = await setInvoiceStatus({}, form({ invoiceId, status: 'void' }))
+
+    expect(voided.message).toBeUndefined()
+    expect((await readLine(line))?.invoiceId).toBeNull()
+    const again = await billJob({}, form({ jobId }))
+    expect(again.message).toBeUndefined()
+    expect((await readLine(line))?.invoiceId).toBeTruthy()
+  })
+
+  /** F11. No due date meant no ageing bucket, and never overdue. */
+  it('gives the draft a due date from the terms, and a note in the reader’s language', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId)
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const [invoice] = await withActor(bothBranchesActor, (tx) =>
+      tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1),
+    )
+    expect(invoice?.dueOn).toBeTruthy()
+    expect(invoice?.notes).toMatch(/^invoices\.billedFrom:/)
+  })
+
   it('leaves an accrual alone', async () => {
     const jobId = await aJob()
     const accrual = await aLine(jobId, { isAccrual: true })
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/Nothing unbilled/)
+    expect(state.message).toBe('ledgerValidation.nothingUnbilled')
     expect((await readLine(accrual))?.invoiceId).toBeNull()
   })
 
@@ -221,7 +289,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/Nothing unbilled/)
+    expect(state.message).toBe('ledgerValidation.nothingUnbilled')
     expect((await readLine(cost))?.invoiceId).toBeNull()
   })
 
@@ -245,7 +313,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
 
     const state = await billJob({}, form({ jobId }))
 
-    expect(state.message).toMatch(/one currency/)
+    expect(state.message).toContain('ledgerValidation.mixedCurrency')
     expect((await readLine(kwd))?.invoiceId).toBeNull()
     expect((await readLine(usd))?.invoiceId).toBeNull()
   })
@@ -274,6 +342,42 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
     const summary = await unbilledRevenue(bothBranchesActor)
 
     expect(summary.jobs.find((job) => job.jobId === jobId)).toBeUndefined()
+  })
+
+  /*
+    The header total is one figure per base currency. It used to be a single
+    `Number` sum over every row, `toFixed(3)`, labelled with the first row's
+    currency — so a Dubai branch's dirhams were added to Kuwait's dinars.
+
+    A wide limit so this job is on the page however much the register holds.
+  */
+  it('totals each base currency on its own, as strings', async () => {
+    const kwdJob = await aJob()
+    await aLine(kwdJob)
+    const aedJob = await aJob()
+    await aLine(aedJob, {
+      currency: 'AED',
+      rate: '120.00',
+      amount: '120.00',
+      amountBase: '120.00',
+      baseCurrency: 'AED',
+    })
+
+    const summary = await unbilledRevenue(bothBranchesActor, 100_000)
+    const total = (currency: string) =>
+      summary.totals.find((entry) => entry.currency === currency)?.amount
+
+    const codes = summary.totals.map((entry) => entry.currency)
+    expect(new Set(codes).size).toBe(codes.length)
+    for (const entry of summary.totals) expect(typeof entry.amount).toBe('string')
+
+    // Each total is exactly the sum of its own rows, and of nothing else.
+    for (const currency of ['KWD', 'AED']) {
+      const rows = summary.jobs.filter((job) => job.baseCurrency === currency)
+      const expected = rows.reduce((acc, job) => acc.plus(job.amountBase), new D(0))
+      expect(new D(total(currency)!).equals(expected)).toBe(true)
+    }
+    expect(new D(total('AED')!).greaterThanOrEqualTo('120')).toBe(true)
   })
 
   it('names the mixed currencies on the register so the refusal is visible first', async () => {

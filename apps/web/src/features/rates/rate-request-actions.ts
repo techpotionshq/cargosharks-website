@@ -14,11 +14,26 @@
 
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { and, eq, ne } from 'drizzle-orm'
-import { enquiries, promoteRateReply, rateRequests, withActor } from '@qabandi/db'
+import {
+  enquiries,
+  promoteRateReply,
+  rateRequests,
+  withActor,
+  type PromoteRefusal,
+} from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { failWith, succeed, type ActionState } from '@/lib/form-state'
+import {
+  failWith,
+  isOverlapViolation,
+  succeed,
+  type ActionState,
+  type Translate,
+} from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** A token that survives a mail round-trip — hex, matched by `rfq-routing.ts`. */
 function newToken(): string {
@@ -32,9 +47,15 @@ function newToken(): string {
  * this enquiry is skipped rather than asked twice — the picker greys them out,
  * and this is the guard behind that in case two coordinators pick at once.
  */
-export async function requestRates(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const requestRates = refuseForbidden(async function requestRates(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'rate.card.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('ratesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '').trim()
   const partnerIds = form
@@ -42,8 +63,8 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
     .map((v) => String(v).trim())
     .filter(Boolean)
 
-  if (!enquiryId) return failWith('This enquiry is missing.')
-  if (partnerIds.length === 0) return failWith('Pick at least one agent to ask.')
+  if (!enquiryId) return failWith(tv('enquiryMissing'))
+  if (partnerIds.length === 0) return failWith(tv('pickAgent'))
 
   const count = await withActor(session.actor, async (tx) => {
     const [enquiry] = await tx
@@ -58,9 +79,7 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
         await tx
           .select({ partnerId: rateRequests.partnerId })
           .from(rateRequests)
-          .where(
-            and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')),
-          )
+          .where(and(eq(rateRequests.enquiryId, enquiryId), ne(rateRequests.status, 'superseded')))
       ).map((r) => r.partnerId),
     )
 
@@ -81,7 +100,7 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(String(count))
-}
+})
 
 /**
  * Promote a parsed reply into a versioned buy card, and mark it accepted.
@@ -92,21 +111,88 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
  * awarded it or the machine did. This is the thin half a click needs: the
  * permission, and turning the result into a form state.
  */
-export async function acceptRateReply(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const acceptRateReply = refuseForbidden(async function acceptRateReply(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'rate.card.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('ratesValidation')
 
   const rateRequestId = String(form.get('rateRequestId') ?? '').trim()
   const enquiryId = String(form.get('enquiryId') ?? '').trim()
-  if (!rateRequestId) return failWith('This rate request is missing.')
+  if (!rateRequestId) return failWith(tv('rateRequestMissing'))
 
-  const result = await withActor(session.actor, (tx) =>
-    promoteRateReply(tx, rateRequestId, session.principal.id),
-  )
+  let result: Awaited<ReturnType<typeof promoteRateReply>>
+  try {
+    result = await withActor(session.actor, (tx) =>
+      promoteRateReply(tx, rateRequestId, session.principal.id),
+    )
+  } catch (error) {
+    /*
+      The promotion ends the agent's own earlier card and refuses a later one
+      (S5), so an overlap reaching the constraint is a race or a card it could
+      not see. A sentence rather than the error page either way.
+    */
+    if (isOverlapViolation(error)) return failWith(tv('promoteOverlap'))
+    throw error
+  }
 
-  if (!result.ok) return failWith(result.message)
+  /*
+    The code, not `result.message`. That sentence is English and is kept for
+    the service's sweep and its logs; a coordinator reads the catalogue's.
+  */
+  if (!result.ok) return failWith(refusal(tv, result.reason, result.values ?? {}))
 
   if (enquiryId) revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/rates')
   return succeed(result.cardId)
+})
+
+/**
+ * A promotion refusal, in the reader's language.
+ *
+ * The `never` default is the point: a code added to `PromoteRefusal` without a
+ * sentence here fails the typecheck rather than reaching a coordinator as
+ * nothing at all. An absent value prints as empty rather than as "undefined".
+ */
+function refusal(
+  tv: Translate<'ratesValidation'>,
+  reason: PromoteRefusal,
+  values: Readonly<Record<string, string>>,
+): string {
+  switch (reason) {
+    case 'request_gone':
+      return tv('promoteRequestGone')
+    case 'already_promoted':
+      return tv('promoteAlreadyCard')
+    case 'not_parsed':
+      return tv('promoteNotParsed')
+    case 'declined':
+      return tv('promoteDeclined')
+    case 'no_clean_lines':
+      return tv('promoteNoCleanLines')
+    case 'port_missing':
+      return tv('promotePortMissing', {
+        origin: values.origin ?? '',
+        destination: values.destination ?? '',
+      })
+    case 'renewal_ends_early':
+      return tv('promoteRenewalEndsEarly', {
+        validTo: values.validTo ?? '',
+        lapses: values.lapses ?? '',
+      })
+    case 'charge_missing':
+      return tv('promoteChargeMissing', { charge: values.charge ?? '' })
+    case 'lane_mismatch':
+      return tv('promoteLaneMismatch', { lane: values.lane ?? '' })
+    case 'overlaps_card':
+      return tv('promoteOverlapsCard', { validFrom: values.validFrom ?? '' })
+    default: {
+      const unhandled: never = reason
+      return unhandled
+    }
+  }
 }

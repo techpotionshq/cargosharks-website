@@ -30,6 +30,7 @@
  */
 export const TIME_ZONE = DEFAULT_TIME_ZONE
 
+import { fromDb, toScale } from '@qabandi/core'
 import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type Locale = 'en' | 'ar'
@@ -39,18 +40,87 @@ function intlLocale(locale: Locale): string {
   return locale === 'ar' ? 'ar-KW-u-nu-latn' : 'en-GB'
 }
 
+/**
+ * `amount` takes the decimal string the database hands back, and should.
+ *
+ * It used to take only a `number`, so every call site wrote
+ * `Number(row.total)` first — a float conversion on the way to the screen,
+ * harmless at today's figures and exactly the habit the money rule forbids.
+ * `Intl.NumberFormat` formats a numeric *string* at full precision (it is
+ * specified to, since ES2023), so the string goes straight through and the
+ * `number` form stays for amounts that are genuinely computed for display.
+ */
 export function formatMoney(
-  value: { amount: number; currency: string } | null | undefined,
+  value: { amount: number | string; currency: string } | null | undefined,
   locale: Locale,
   options: { compact?: boolean; showCurrency?: boolean } = {},
 ): string {
   if (!value) return '—'
-  const { compact = false, showCurrency = true } = options
+  const { formatter } = moneyFormat(value, locale, options)
+  if (locale !== 'ar') return formatter.format(moneyOperand(value.amount))
+  /*
+    A Latin symbol in an Arabic figure is isolated left-to-right.
 
-  return new Intl.NumberFormat(intlLocale(locale), {
+    ICU writes "‏1,850.00 US$" for Arabic, and in a right-to-left line the
+    bidi algorithm reorders the Latin letters and the dollar sign around each
+    other: rate requests, renewals, bills and settlements all read "$US
+    1,850.00". `Money` already isolates its currency span (`dir="auto"`); this
+    is the same isolation for the string form, so every inline figure and
+    every sentence a figure is interpolated into gets it without a call site
+    having to remember. An Arabic symbol (د.ك.) needs nothing and gets nothing.
+  */
+  return formatter
+    .formatToParts(moneyOperand(value.amount))
+    .map((part) =>
+      part.type === 'currency' && /[A-Za-z]/.test(part.value)
+        ? `${LTR_ISOLATE}${part.value}${POP_ISOLATE}`
+        : part.value,
+    )
+    .join('')
+}
+
+const LTR_ISOLATE = '\u2066'
+const POP_ISOLATE = '\u2069'
+
+/** A string goes to `Intl` as a string, so it is never a float on the way. */
+function moneyOperand(amount: number | string): number | Intl.StringNumericLiteral {
+  return typeof amount === 'string' ? (amount as Intl.StringNumericLiteral) : amount
+}
+
+/**
+ * The one `Intl.NumberFormat` behind both `formatMoney` and
+ * `formatMoneyParts`, so the text and the table cell cannot drift apart.
+ */
+function moneyFormat(
+  value: { amount: number | string; currency: string },
+  locale: Locale,
+  options: { compact?: boolean; showCurrency?: boolean },
+): { formatter: Intl.NumberFormat; compacted: boolean } {
+  const { compact = false, showCurrency = true } = options
+  // Only the size test needs a number; the formatted figure never passes
+  // through one.
+  const magnitude = Math.abs(Number(value.amount))
+  const compacted = compact && magnitude >= 10_000
+
+  /*
+    The currency's own places, also when the code is not printed.
+
+    `style: 'decimal'` ignores `currency`, so `showCurrency: false` fell back
+    to decimal defaults — zero to three places. A dinar figure lost its last
+    zero ("1,145.69" beside "110.495" in one column) and a dollar figure gained
+    a third place ("1,595,486.978 USD"). CLDR knows each currency's places; ask
+    it rather than keep a table.
+  */
+  const places = new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency: value.currency,
+  }).resolvedOptions().maximumFractionDigits
+
+  const formatter = new Intl.NumberFormat(intlLocale(locale), {
     style: showCurrency ? 'currency' : 'decimal',
     currency: value.currency,
-    notation: compact && Math.abs(value.amount) >= 10_000 ? 'compact' : 'standard',
+    ...(showCurrency ? {} : { minimumFractionDigits: places, maximumFractionDigits: places }),
+    notation: compacted ? 'compact' : 'standard',
     /*
       Compact notation and three-decimal currencies do not mix legibly.
 
@@ -63,10 +133,71 @@ export function formatMoney(
       the whole fix, and it makes the output the same under any ICU build
       instead of depending on how one resolves the conflict.
     */
-    ...(compact && Math.abs(value.amount) >= 10_000
-      ? { minimumFractionDigits: 0, maximumFractionDigits: 1 }
-      : {}),
-  }).format(value.amount)
+    ...(compacted ? { minimumFractionDigits: 0, maximumFractionDigits: 1 } : {}),
+  })
+  return { formatter, compacted }
+}
+
+/** The widest minor unit a column of money has to line up against (KWD). */
+const ALIGN_PLACES = 3
+const FIGURE_SPACE = '\u2007'
+const PUNCTUATION_SPACE = '\u2008'
+// Bidi marks ICU puts around an Arabic figure. The cell isolates the figure
+// itself, so left in they only shift it by a mark's width.
+const BIDI_MARKS = /[\u061c\u200e\u200f]/g
+
+/**
+ * The same figure as `formatMoney`, in the pieces a table column needs.
+ *
+ * A column of money reads against its decimal point, and mixed currencies
+ * broke that: "AED 5,502.00" above "KWD 980.250" ends one digit short, so
+ * every figure in the dirham row sat a place to the left of the dinar row.
+ * The code comes back on its own (a cell draws it muted, at the start), the
+ * figure without it, and `pad` is the blank a short minor unit needs to end
+ * where a three-place one does: a figure space per missing digit — the width
+ * of a tabular digit — and a punctuation space for a missing decimal point.
+ * Compact figures are not padded; they are not read against a column.
+ *
+ * `formatMoney` keeps its single string for every non-table use.
+ */
+export function formatMoneyParts(
+  value: { amount: number | string; currency: string } | null | undefined,
+  locale: Locale,
+  options: { compact?: boolean; showCurrency?: boolean } = {},
+): { currency: string | null; amount: string; pad: string } | null {
+  if (!value) return null
+  const { formatter, compacted } = moneyFormat(value, locale, options)
+  const parts = formatter.formatToParts(moneyOperand(value.amount))
+  const currency = parts.find((part) => part.type === 'currency')?.value ?? null
+  // The space that joined code and figure goes with the code, or a negative
+  // figure reads "- 1,500.000".
+  const amount = parts
+    .filter(
+      (part) =>
+        part.type !== 'currency' &&
+        !(part.type === 'literal' && part.value.replace(BIDI_MARKS, '').trim() === ''),
+    )
+    .map((part) => part.value)
+    .join('')
+    .replace(BIDI_MARKS, '')
+    .trim()
+  const fraction = parts.find((part) => part.type === 'fraction')?.value.length ?? 0
+  const pad = compacted
+    ? ''
+    : (fraction === 0 ? PUNCTUATION_SPACE : '') +
+      FIGURE_SPACE.repeat(Math.max(0, ALIGN_PLACES - fraction))
+  return { currency, amount, pad }
+}
+
+/**
+ * How a currency is written beside a figure in the reader's language — "KWD"
+ * in English, "د.ك." in Arabic — for a value and its unit set apart (a metric
+ * tile, an option card). These printed the ISO code, so an Arabic tile said
+ * KWD above a table that said د.ك. for the same money. Read off the same
+ * formatter as `formatMoney`, so the two cannot disagree.
+ */
+export function currencyLabel(currency: string, locale: Locale): string {
+  return formatMoneyParts({ amount: 0, currency }, locale)?.currency ?? currency
 }
 
 /**
@@ -82,6 +213,29 @@ export function trimDecimal(value: string | null | undefined): string | null {
   if (!value.includes('.')) return value
   const trimmed = value.replace(/\.?0+$/, '')
   return trimmed === '' || trimmed === '-' ? '0' : trimmed
+}
+
+/**
+ * A stored amount, put back into an editable field at its currency's places —
+ * QA P3.
+ *
+ * Edit dialogs were handed the column as stored, so a per-diem the operator
+ * typed as 25 came back as "25.000000", and a USD balance as "4350.000" (a
+ * hand-written `toFixed(3)`, KWD's places on a dollar figure). Rounded with
+ * the money engine at the currency's minor units, as Decimal, never through a
+ * float. A currency the seed does not know falls back to `trimDecimal`.
+ */
+export function amountInput(
+  value: string | null | undefined,
+  currency: string | null | undefined,
+): string | undefined {
+  if (value === null || value === undefined || value === '') return undefined
+  if (!currency) return trimDecimal(value) ?? undefined
+  try {
+    return toScale(fromDb(value, currency))
+  } catch {
+    return trimDecimal(value) ?? undefined
+  }
 }
 
 /**
@@ -218,9 +372,21 @@ export function formatPercent(value: number | null | undefined, locale: Locale):
   }).format(value / 100)
 }
 
-/** A lane, in the reader's language and in the reader's direction. */
-export function formatLane(originName: string, destinationName: string): string {
-  // U+2192 renders correctly under RTL because the surrounding text direction
-  // carries it; an ASCII "->" does not.
-  return `${originName} → ${destinationName}`
+/**
+ * A lane, in the reader's language and in the reader's direction.
+ *
+ * The arrow is chosen by locale because it is not a mirrored character.
+ * Under RTL the two names reorder — origin on the right, destination on the
+ * left — while U+2192 kept pointing right, back at the origin: every Arabic
+ * lane read as travelling backwards. `←` in Arabic points at the destination,
+ * which is what the slice queries already do (`ledger`, `network`); this is the
+ * same rule for the string a page builds itself. The drawn `Lane` component
+ * is still preferred wherever markup is allowed.
+ */
+export function formatLane(
+  originName: string,
+  destinationName: string,
+  locale: Locale = 'en',
+): string {
+  return `${originName} ${locale === 'ar' ? '←' : '→'} ${destinationName}`
 }

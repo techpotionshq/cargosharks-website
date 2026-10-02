@@ -38,6 +38,7 @@ import { renderTemplate } from '@qabandi/core'
 import type { NotificationView } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotNotifications } from '@/lib/pilot/fixtures'
+import { target } from './target'
 
 /** One alert as the bell shows it — subject collapsed, body when opened. */
 export type InboxItem = NotificationView
@@ -58,13 +59,6 @@ const LIMIT = 10
  * them keeps the filter honest rather than relying on that.
  */
 const ARRIVED = ['sent', 'delivered', 'read'] as const
-
-/** Job first, then enquiry — an alert rarely carries both, job wins if it does. */
-function target(jobId: string | null, enquiryId: string | null): string | null {
-  if (jobId) return `/jobs/${jobId}`
-  if (enquiryId) return `/enquiries/${enquiryId}`
-  return null
-}
 
 /*
   `locale` steers the demo and nothing else.
@@ -97,10 +91,7 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
           body: notificationTemplates.body,
         })
         .from(notificationDeliveries)
-        .innerJoin(
-          notificationOutbox,
-          eq(notificationOutbox.id, notificationDeliveries.outboxId),
-        )
+        .innerJoin(notificationOutbox, eq(notificationOutbox.id, notificationDeliveries.outboxId))
         .leftJoin(
           notificationTemplates,
           eq(notificationTemplates.id, notificationDeliveries.templateId),

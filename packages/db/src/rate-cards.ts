@@ -165,6 +165,15 @@ export interface LaneQuery {
   readonly on: string
   /** Prefers this customer's own card over the general one. */
   readonly customerId?: string | null
+  /**
+   * A card to take ahead of every other match — the buy card an agent reply
+   * was awarded as for this enquiry (F67). It is a preference *within* the
+   * matches, not an override: it still has to cover the mode, the lane and the
+   * day and not be superseded, so a reply that grouped into a card for some
+   * other lane, or one that lapses before the cargo is ready, falls back to the
+   * ordinary choice instead of pricing the shipment off the wrong tariff.
+   */
+  readonly preferCardId?: string | null
 }
 
 /**
@@ -230,7 +239,15 @@ export async function findCoveringRateCard(
            other customer's quotation the moment it covered the same lane.
          */
          and (rc.customer_id is null or rc.customer_id = ${query.customerId ?? null})
-       order by rc.customer_id nulls last, rc.partner_id nulls last, rc.valid_from desc
+       /*
+         The preferred card first. Without it two agents' buy cards on one
+         lane — the awarded SHACO rate and an older, cheaper MAERSK one — were
+         a tie the remaining keys broke arbitrarily, and a quotation was costed
+         off a rate nobody had awarded (F67). "is not distinct from" so a null
+         preference is false for every row and changes nothing.
+       */
+       order by (rc.id is not distinct from ${query.preferCardId ?? null}::uuid) desc,
+                rc.customer_id nulls last, rc.partner_id nulls last, rc.valid_from desc
        limit 1
     `)
 

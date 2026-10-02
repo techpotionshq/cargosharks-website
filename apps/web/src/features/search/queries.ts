@@ -21,10 +21,30 @@
 import 'server-only'
 import { asc, desc, eq, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import { customers, equipment, inSeries, jobs, locations, withActor, type Actor } from '@qabandi/db'
+import {
+  consolidations,
+  customers,
+  enquiries,
+  equipment,
+  inSeries,
+  invoices,
+  jobs,
+  locations,
+  quotes,
+  withActor,
+  type Actor,
+} from '@qabandi/db'
 import type { Mode } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotJob, pilotJobs } from '@/lib/pilot/fixtures'
+import {
+  pilotConsolidations,
+  pilotEnquiries,
+  pilotInvoices,
+  pilotJob,
+  pilotJobs,
+  pilotQuotes,
+} from '@/lib/pilot/fixtures'
+import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -79,13 +99,44 @@ interface CustomerHit {
   readonly openJobs: number
 }
 
+/**
+ * The other references a person holds — U4.
+ *
+ * The box promised "Reference" and found only a job's: an enquiry number off
+ * a customer's email, a quote number off a PDF, an invoice number off a
+ * remittance advice or a consolidation reference all answered "Nothing
+ * matches", and so did a master bill that belongs to a consolidation rather
+ * than to any one house.
+ */
+export type RecordKind = 'enquiry' | 'quote' | 'invoice' | 'consolidation'
+
+interface RecordHit {
+  readonly kind: RecordKind
+  readonly id: string
+  readonly reference: string
+  /** Set when the term matched something other than the reference — a master bill. */
+  readonly matchedValue: string | null
+}
+
 export interface SearchResults {
   readonly jobs: readonly JobHit[]
   readonly containers: readonly ContainerHit[]
   readonly customers: readonly CustomerHit[]
+  readonly records: readonly RecordHit[]
 }
 
-const EMPTY: SearchResults = { jobs: [], containers: [], customers: [] }
+const EMPTY: SearchResults = { jobs: [], containers: [], customers: [], records: [] }
+
+/** Where a record opens. */
+export function recordHref(kind: RecordKind, id: string): string {
+  const base = {
+    enquiry: 'enquiries',
+    quote: 'quotes',
+    invoice: 'invoices',
+    consolidation: 'consolidations',
+  }
+  return `/${base[kind]}/${id}`
+}
 
 /** Below this a query matches half the database and answers nothing. */
 export const MIN_QUERY_LENGTH = 2
@@ -93,7 +144,12 @@ export const MIN_QUERY_LENGTH = 2
 const LIMIT = 20
 
 export function totalHits(results: SearchResults): number {
-  return results.jobs.length + results.containers.length + results.customers.length
+  return (
+    results.jobs.length +
+    results.containers.length +
+    results.customers.length +
+    results.records.length
+  )
 }
 
 /**
@@ -131,106 +187,156 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
     perceived cost of the box.
   */
   return withActor(actor, async (tx) => {
-    const [jobRows, containerRows, customerRows] = await inSeries([
-      () =>
-        tx
-          .select({
-            id: jobs.id,
-            reference: jobs.reference,
-            status: jobs.status,
-            mode: jobs.mode,
-            eta: jobs.eta,
-            masterBillNumber: jobs.masterBillNumber,
-            houseBillNumber: jobs.houseBillNumber,
-            bookingNumber: jobs.bookingNumber,
-            customerReference: jobs.customerReference,
-            customerName: customers.legalNameEn,
-            customerNameAr: customers.legalNameAr,
-            originName: origin.nameEn,
-            originNameAr: origin.nameAr,
-            destinationName: destination.nameEn,
-            destinationNameAr: destination.nameAr,
-          })
-          .from(jobs)
-          .leftJoin(customers, eq(customers.id, jobs.customerId))
-          .leftJoin(origin, eq(origin.id, jobs.originId))
-          .leftJoin(destination, eq(destination.id, jobs.destinationId))
-          .where(
-            or(
-              sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
-              sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
-              sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
-              sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
-              sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
-              sql`${customers.legalNameEn} ilike ${loose}`,
-              sql`${customers.legalNameAr} ilike ${loose}`,
-            ),
-          )
-          // The live board's order: what is arriving soonest, then what moved last.
-          .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
-          .limit(LIMIT),
+    const [jobRows, containerRows, customerRows, enquiryRows, quoteRows, invoiceRows, consolRows] =
+      await inSeries([
+        () =>
+          tx
+            .select({
+              id: jobs.id,
+              reference: jobs.reference,
+              status: jobs.status,
+              mode: jobs.mode,
+              eta: jobs.eta,
+              masterBillNumber: jobs.masterBillNumber,
+              houseBillNumber: jobs.houseBillNumber,
+              bookingNumber: jobs.bookingNumber,
+              customerReference: jobs.customerReference,
+              customerName: customers.legalNameEn,
+              customerNameAr: customers.legalNameAr,
+              originName: origin.nameEn,
+              originNameAr: origin.nameAr,
+              destinationName: destination.nameEn,
+              destinationNameAr: destination.nameAr,
+            })
+            .from(jobs)
+            .leftJoin(customers, eq(customers.id, jobs.customerId))
+            .leftJoin(origin, eq(origin.id, jobs.originId))
+            .leftJoin(destination, eq(destination.id, jobs.destinationId))
+            .where(
+              or(
+                sql`replace(${jobs.reference}, ' ', '') ilike ${tight}`,
+                sql`replace(${jobs.masterBillNumber}, ' ', '') ilike ${tight}`,
+                sql`replace(${jobs.houseBillNumber}, ' ', '') ilike ${tight}`,
+                sql`replace(${jobs.bookingNumber}, ' ', '') ilike ${tight}`,
+                sql`replace(${jobs.customerReference}, ' ', '') ilike ${tight}`,
+                sql`${customers.legalNameEn} ilike ${loose}`,
+                sql`${customers.legalNameAr} ilike ${loose}`,
+              ),
+            )
+            // The live board's order: what is arriving soonest, then what moved last.
+            .orderBy(asc(jobs.eta), desc(jobs.updatedAt))
+            .limit(LIMIT),
 
-      () =>
-        tx
-          .select({
-            containerNo: equipment.containerNo,
-            type: equipment.containerType,
-            jobId: jobs.id,
-            jobReference: jobs.reference,
-            jobStatus: jobs.status,
-          })
-          .from(equipment)
-          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-          .where(sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`)
-          .orderBy(asc(equipment.containerNo))
-          .limit(LIMIT),
+        () =>
+          tx
+            .select({
+              containerNo: equipment.containerNo,
+              type: equipment.containerType,
+              jobId: jobs.id,
+              jobReference: jobs.reference,
+              jobStatus: jobs.status,
+            })
+            .from(equipment)
+            .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+            .where(sql`replace(${equipment.containerNo}, ' ', '') ilike ${tight}`)
+            .orderBy(asc(equipment.containerNo))
+            .limit(LIMIT),
 
-      () =>
-        tx
-          .select({
-            id: customers.id,
-            code: customers.code,
-            legalNameEn: customers.legalNameEn,
-            legalNameAr: customers.legalNameAr,
-            openJobs: sql<number>`(
+        () =>
+          tx
+            .select({
+              id: customers.id,
+              code: customers.code,
+              legalNameEn: customers.legalNameEn,
+              legalNameAr: customers.legalNameAr,
+              openJobs: sql<number>`(
             select count(*)::int from jobs j
              where j.customer_id = "customers"."id"
                and j.status not in ('closed', 'cancelled')
           )`,
-          })
-          .from(customers)
-          .where(
-            or(
-              sql`${customers.legalNameEn} ilike ${loose}`,
-              sql`${customers.legalNameAr} ilike ${loose}`,
-              sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
-            ),
-          )
-          .orderBy(asc(customers.legalNameEn))
-          .limit(LIMIT),
-    ])
+            })
+            .from(customers)
+            .where(
+              or(
+                sql`${customers.legalNameEn} ilike ${loose}`,
+                sql`${customers.legalNameAr} ilike ${loose}`,
+                sql`replace(${customers.code}, ' ', '') ilike ${tight}`,
+              ),
+            )
+            .orderBy(asc(customers.legalNameEn))
+            .limit(LIMIT),
+
+        () =>
+          tx
+            .select({ id: enquiries.id, reference: enquiries.reference })
+            .from(enquiries)
+            .where(sql`replace(${enquiries.reference}, ' ', '') ilike ${tight}`)
+            .orderBy(desc(enquiries.createdAt))
+            .limit(LIMIT),
+
+        () =>
+          tx
+            .select({ id: quotes.id, reference: quotes.reference })
+            .from(quotes)
+            .where(sql`replace(${quotes.reference}, ' ', '') ilike ${tight}`)
+            .orderBy(desc(quotes.createdAt))
+            .limit(LIMIT),
+
+        () =>
+          tx
+            .select({ id: invoices.id, reference: invoices.seriesNo })
+            .from(invoices)
+            // A draft has no number yet, so there is nothing for anyone to be holding.
+            .where(sql`replace(${invoices.seriesNo}, ' ', '') ilike ${tight}`)
+            .orderBy(desc(invoices.createdAt))
+            .limit(LIMIT),
+
+        () =>
+          tx
+            .select({
+              id: consolidations.id,
+              reference: consolidations.reference,
+              masterBillNumber: consolidations.masterBillNumber,
+            })
+            .from(consolidations)
+            .where(
+              or(
+                sql`replace(${consolidations.reference}, ' ', '') ilike ${tight}`,
+                sql`replace(${consolidations.masterBillNumber}, ' ', '') ilike ${tight}`,
+              ),
+            )
+            .orderBy(desc(consolidations.createdAt))
+            .limit(LIMIT),
+      ])
+
+    const matched = (reference: string, other: string | null) =>
+      tighten(reference).includes(tighten(term)) ? null : other
 
     return {
       jobs: jobRows.map((row) => {
-        const { matchedOn, matchedValue } = classify(term, {
-          reference: row.reference,
-          masterBill: row.masterBillNumber,
-          houseBill: row.houseBillNumber,
-          booking: row.bookingNumber,
-          customerReference: row.customerReference,
-          customer: row.customerName,
-        })
+        const { matchedOn, matchedValue } = classify(
+          term,
+          {
+            reference: row.reference,
+            masterBill: row.masterBillNumber,
+            houseBill: row.houseBillNumber,
+            booking: row.bookingNumber,
+            customerReference: row.customerReference,
+            customer: row.customerName,
+          },
+          row.customerNameAr,
+        )
         return {
           id: row.id,
           reference: row.reference,
           status: row.status,
           mode: row.mode as Mode,
           customerName: row.customerName ?? '—',
-          customerNameAr: row.customerNameAr ?? row.customerName ?? '—',
+          customerNameAr: pickName('ar', row.customerName, row.customerNameAr) ?? '—',
           originName: row.originName ?? '—',
-          originNameAr: row.originNameAr ?? row.originName ?? '—',
+          originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
           destinationName: row.destinationName ?? '—',
-          destinationNameAr: row.destinationNameAr ?? row.destinationName ?? '—',
+          destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
           eta: row.eta,
           matchedOn,
           matchedValue,
@@ -244,6 +350,22 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
         jobStatus: row.jobStatus,
       })),
       customers: customerRows,
+      records: [
+        ...enquiryRows.map((row) => ({ kind: 'enquiry' as const, ...row, matchedValue: null })),
+        ...quoteRows.map((row) => ({ kind: 'quote' as const, ...row, matchedValue: null })),
+        ...invoiceRows.map((row) => ({
+          kind: 'invoice' as const,
+          id: row.id,
+          reference: row.reference ?? '—',
+          matchedValue: null,
+        })),
+        ...consolRows.map((row) => ({
+          kind: 'consolidation' as const,
+          id: row.id,
+          reference: row.reference,
+          matchedValue: matched(row.reference, row.masterBillNumber),
+        })),
+      ].slice(0, LIMIT),
     }
   })
 }
@@ -258,6 +380,7 @@ export async function search(actor: Actor, query: string): Promise<SearchResults
 function classify(
   term: string,
   fields: Readonly<Record<JobMatch, string | null>>,
+  customerAr?: string | null,
 ): { matchedOn: JobMatch; matchedValue: string } {
   const tight = tighten(term)
   const loose = term.toLowerCase()
@@ -273,9 +396,12 @@ function classify(
     if (value && tighten(value).includes(tight)) return { matchedOn: key, matchedValue: value }
   }
 
-  const customer = fields.customer
-  if (customer && customer.toLowerCase().includes(loose)) {
-    return { matchedOn: 'customer', matchedValue: customer }
+  // Both names, because the `where` matches both: a job found by its
+  // customer's Arabic name otherwise fell through to "reference".
+  for (const customer of [fields.customer, customerAr]) {
+    if (customer && customer.toLowerCase().includes(loose)) {
+      return { matchedOn: 'customer', matchedValue: customer }
+    }
   }
 
   // The row came back, so something matched; the reference is the honest
@@ -363,7 +489,43 @@ function searchFixtures(term: string): SearchResults {
     })
   }
 
+  const records: RecordHit[] = [
+    ...pilotEnquiries()
+      .filter((row) => matchesTight(row.reference))
+      .map((row) => ({
+        kind: 'enquiry' as const,
+        id: row.id,
+        reference: row.reference,
+        matchedValue: null,
+      })),
+    ...pilotQuotes()
+      .filter((row) => matchesTight(row.reference))
+      .map((row) => ({
+        kind: 'quote' as const,
+        id: row.id,
+        reference: row.reference,
+        matchedValue: null,
+      })),
+    ...pilotInvoices()
+      .filter((row) => matchesTight(row.seriesNo))
+      .map((row) => ({
+        kind: 'invoice' as const,
+        id: row.id,
+        reference: row.seriesNo ?? '—',
+        matchedValue: null,
+      })),
+    ...pilotConsolidations()
+      .filter((row) => matchesTight(row.reference) || matchesTight(row.masterBillNumber))
+      .map((row) => ({
+        kind: 'consolidation' as const,
+        id: row.id,
+        reference: row.reference,
+        matchedValue: matchesTight(row.reference) ? null : row.masterBillNumber,
+      })),
+  ]
+
   return {
+    records: records.slice(0, LIMIT),
     jobs: jobHits
       .sort((a, b) => (a.eta?.getTime() ?? Infinity) - (b.eta?.getTime() ?? Infinity))
       .slice(0, LIMIT),

@@ -60,9 +60,9 @@ export function Panel({
             </span>
           ) : null}
           <div className="min-w-0">
-            <h2 className="text-[0.9375rem] leading-tight font-semibold text-ink">{title}</h2>
+            <h2 className="text-title leading-tight font-semibold text-ink">{title}</h2>
             {explain ? (
-              <p className="mt-1 text-[0.8125rem] leading-snug text-ink-muted">{explain}</p>
+              <p className="mt-1 text-body-sm leading-snug text-ink-muted">{explain}</p>
             ) : null}
           </div>
         </div>
@@ -85,7 +85,7 @@ export function Panel({
       {footerHref ? (
         <Link
           href={footerHref as Route}
-          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-brand"
+          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-body-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-accent"
         >
           {footerLabel}
           <Icon name="chevron-end" size={14} />
@@ -137,19 +137,21 @@ export function Readout({
         */
         const body = (
           <>
-            <dt className="flex min-w-0 max-w-[60%] items-center gap-2 text-[0.8125rem] text-ink-muted">
+            <dt className="flex min-w-0 max-w-[60%] items-center gap-2 text-body-sm text-ink-muted">
               {fact.icon ? (
                 <Icon name={fact.icon} size={14} className="shrink-0 text-ink-subtle" />
               ) : null}
+              {/* Two lines before an ellipsis: "Received this …" told nobody
+                  anything, and the panel had the height to spare. */}
               <span
-                className="truncate"
+                className="line-clamp-2"
                 title={typeof fact.label === 'string' ? fact.label : undefined}
               >
                 {fact.label}
               </span>
             </dt>
             <dd
-              className="min-w-0 truncate text-end text-[0.8125rem] font-semibold text-ink"
+              className="line-clamp-2 min-w-0 text-end text-body-sm font-semibold break-words text-ink"
               title={typeof fact.value === 'string' ? fact.value : undefined}
             >
               {fact.value}
@@ -200,7 +202,7 @@ export function EventRow({
   readonly last?: boolean
 }) {
   const dot = {
-    brand: 'bg-brand',
+    brand: 'bg-accent',
     positive: 'bg-positive',
     caution: 'bg-caution',
     critical: 'bg-critical',
@@ -210,8 +212,8 @@ export function EventRow({
   return (
     <li className="flex gap-3">
       <div className="w-14 shrink-0 pt-0.5 text-end">
-        <p className="numeric text-[0.75rem] font-semibold text-ink">{time}</p>
-        {date ? <p className="numeric text-[0.6875rem] text-ink-subtle">{date}</p> : null}
+        <p className="numeric text-caption font-semibold text-ink">{time}</p>
+        {date ? <p className="numeric text-micro text-ink-subtle">{date}</p> : null}
       </div>
 
       {/* The rule is drawn by the row, not between rows, so the last entry can
@@ -222,9 +224,9 @@ export function EventRow({
       </div>
 
       <div className={`min-w-0 flex-1 ${last ? 'pb-0' : 'pb-4'}`}>
-        <p className="text-[0.8125rem] leading-tight font-medium text-ink">{title}</p>
+        <p className="text-body-sm leading-tight font-medium text-ink">{title}</p>
         {detail ? (
-          <p className="mt-0.5 text-[0.75rem] leading-snug text-ink-muted">{detail}</p>
+          <p className="mt-0.5 text-caption leading-snug text-ink-muted">{detail}</p>
         ) : null}
       </div>
     </li>

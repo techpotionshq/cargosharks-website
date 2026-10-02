@@ -29,6 +29,7 @@
  * invoice is issued by whichever operator `BRAND` selects.
  */
 
+import { dec } from '@qabandi/core'
 import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
 
 interface InvoiceLineView {
@@ -49,6 +50,11 @@ export interface InvoiceView {
   readonly taxAmount: string
   readonly total: string
   readonly amountPaid: string
+  /**
+   * Partial credit notes against it (F9). Optional so a view built before
+   * partial credit existed still renders; absent reads as nothing credited.
+   */
+  readonly amountCredited?: string
   readonly notes: string | null
   readonly customer: { readonly nameEn: string; readonly nameAr: string | null }
   readonly branch: {
@@ -120,6 +126,7 @@ const STRINGS = {
     tax: 'Tax',
     total: 'Total',
     paid: 'Received',
+    credited: 'Credited',
     balance: 'Balance due',
     trn: 'Tax registration',
     draft: 'DRAFT — not a valid tax invoice',
@@ -137,6 +144,7 @@ const STRINGS = {
     tax: 'الضريبة',
     total: 'الإجمالي',
     paid: 'المدفوع',
+    credited: 'إشعارات دائنة',
     balance: 'الرصيد المستحق',
     trn: 'الرقم الضريبي',
     draft: 'مسودة — ليست فاتورة ضريبية صالحة',
@@ -148,7 +156,9 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
   const dir = locale === 'ar' ? 'rtl' : 'ltr'
   const money = (value: string): string => esc(formatMoney(value, invoice.currency, locale))
 
-  const balance = (Number(invoice.total) - Number(invoice.amountPaid)).toFixed(6)
+  // In decimal, as every other balance: KWD's third place does not survive a float.
+  const credited = invoice.amountCredited ?? '0'
+  const balance = dec(invoice.total).minus(dec(invoice.amountPaid)).minus(dec(credited)).toFixed(6)
   const customerName =
     locale === 'ar' ? (invoice.customer.nameAr ?? invoice.customer.nameEn) : invoice.customer.nameEn
   const entityName = locale === 'ar' ? invoice.branch.legalNameAr : invoice.branch.legalNameEn
@@ -171,9 +181,20 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
   */
   const draft = invoice.seriesNo ? '' : `<div class="draft">${t.draft}</div>`
 
+  /*
+    Received and credited on lines of their own: a customer reconciling the
+    balance against their remittances must be able to see which part of the
+    reduction was a credit note rather than money they sent (F9).
+  */
+  const paidRow = dec(invoice.amountPaid).greaterThan(0)
+    ? `<tr><td colspan="3" class="label">${t.paid}</td><td class="n">${money(invoice.amountPaid)}</td></tr>`
+    : ''
+  const creditedRow = dec(credited).greaterThan(0)
+    ? `<tr><td colspan="3" class="label">${t.credited}</td><td class="n">${money(credited)}</td></tr>`
+    : ''
   const settled =
-    Number(invoice.amountPaid) > 0
-      ? `<tr><td colspan="3" class="label">${t.paid}</td><td class="n">${money(invoice.amountPaid)}</td></tr>
+    paidRow || creditedRow
+      ? `${paidRow}${creditedRow}
          <tr class="grand"><td colspan="3" class="label">${t.balance}</td><td class="n">${money(balance)}</td></tr>`
       : ''
 

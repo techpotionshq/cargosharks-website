@@ -29,6 +29,7 @@ import {
   SYSTEM_PRINCIPAL_ID,
   type Tx,
 } from '@qabandi/db'
+import { replyIsPartial } from '@qabandi/core'
 import { integration, type LiveIntegration } from '../settings'
 
 const STRATEGIES = ['first', 'all', 'wait'] as const
@@ -57,7 +58,9 @@ export interface AutoPromoteDeps {
   readonly source?: LiveIntegration
 }
 
-export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promise<AutoPromoteResult> {
+export async function autoPromoteRateReplies(
+  deps: AutoPromoteDeps = {},
+): Promise<AutoPromoteResult> {
   const source = deps.source ?? (await integration('rateAutoPromote'))
   const strategy = source.driver as Strategy
   if (!STRATEGIES.includes(strategy)) return EMPTY
@@ -65,7 +68,7 @@ export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promis
   const waitHours = Math.max(source.number('waitHours', DEFAULT_WAIT_HOURS), 0)
   const actor = systemActor()
 
-  const candidates = await withActor(actor, (tx) => loadCandidates(tx))
+  const candidates = await withActor(actor, (tx) => loadCandidates(tx, strategy, waitHours))
 
   let promoted = 0
   let skipped = 0
@@ -93,18 +96,69 @@ export async function autoPromoteRateReplies(deps: AutoPromoteDeps = {}): Promis
   return { enabled: true, strategy, promoted, skipped }
 }
 
-/** Enquiries with a promotable parsed reply and nothing awarded yet. */
-async function loadCandidates(tx: Tx): Promise<{ enquiryId: string; branchId: string }[]> {
+/**
+ * Enquiries with a promotable parsed reply and nothing awarded yet.
+ *
+ * A reply the sweep cannot award stays a candidate, and with no order the same
+ * fifty came back every sweep: past fifty of them, nothing behind was ever
+ * awarded. Two guards. The strategy's readiness is asked here as well as per
+ * enquiry, so a reply still inside its window or still waiting on an agent
+ * does not hold a place in the batch; and the newest reply comes first, so a
+ * backlog of refusals cannot hold a fresh award back. `ready()` still decides
+ * inside the award's transaction — this only chooses who is looked at.
+ */
+async function loadCandidates(
+  tx: Tx,
+  strategy: Strategy,
+  waitHours: number,
+): Promise<{ enquiryId: string; branchId: string }[]> {
+  const readiness =
+    strategy === 'all'
+      ? sql`and not exists (
+              select 1 from rate_requests s
+               where s.enquiry_id = r.enquiry_id and s.status = 'sent'
+            )`
+      : strategy === 'wait'
+        ? sql`and (select min(w.created_at) from rate_requests w where w.enquiry_id = r.enquiry_id)
+                <= now() - ${waitHours} * interval '1 hour'`
+        : sql``
+  /*
+    Mirrors `cheapestReply`, so a set the award can only answer "none" never
+    takes a batch place (R4). Only promotable replies are grouped — parsed
+    clean, with rows, on the lane asked about — and a set of several is a
+    candidate only if at least one of them is whole and can be brought onto
+    the branch's base currency; otherwise it would be skipped every minute, and
+    fifty such sets starved every enquiry behind them again. Newest *reply*
+    first, by when it arrived: `created_at` is when the RFQ was sent, so an
+    agent answering a week late ranked behind everything sent since.
+  */
   const result = await tx.execute(sql`
-    select distinct r.enquiry_id as "enquiryId", r.branch_id as "branchId"
+    select r.enquiry_id as "enquiryId", r.branch_id as "branchId"
       from rate_requests r
+      join branches b on b.id = r.branch_id
      where r.status = 'parsed'
        and r.enquiry_id is not null
        and r.rate_card_id is null
+       and r.response->>'ok' = 'true'
+       and r.response->>'laneMismatch' is null
+       and case when jsonb_typeof(r.response->'rows') = 'array'
+                then jsonb_array_length(r.response->'rows') else 0 end > 0
        and not exists (
          select 1 from rate_requests a
           where a.enquiry_id = r.enquiry_id and a.status = 'accepted'
        )
+       ${readiness}
+     group by r.enquiry_id, r.branch_id
+    having count(*) = 1
+        or bool_or(
+             coalesce((r.response->>'partial')::int, (r.response->>'unpriced')::int, 0) = 0
+             and r.quoted_total is not null
+             and (r.quoted_currency = b.base_currency
+                  or exists (select 1 from fx_rates f
+                              where f.from_currency = r.quoted_currency
+                                and f.to_currency = b.base_currency))
+           )
+     order by max(coalesce(r.responded_at, r.updated_at)) desc
      limit ${ENQUIRY_BATCH}
   `)
   return result.rows as { enquiryId: string; branchId: string }[]
@@ -169,9 +223,24 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
     )
     .orderBy(rateRequests.createdAt)
 
+  /*
+    A reply that priced another lane is not promotable (S14): it would award a
+    card for a lane nobody asked about. `promoteRateReply` refuses it too; it
+    is dropped here so it neither wins the ranking nor counts as the lone
+    reply that is awarded without one.
+  */
   const promotable = rows.filter((r) => {
-    const response = (r.response ?? {}) as { ok?: boolean; rows?: unknown[] }
-    return response.ok === true && Array.isArray(response.rows) && response.rows.length > 0
+    const response = (r.response ?? {}) as {
+      ok?: boolean
+      rows?: unknown[]
+      laneMismatch?: string
+    }
+    return (
+      response.ok === true &&
+      !response.laneMismatch &&
+      Array.isArray(response.rows) &&
+      response.rows.length > 0
+    )
   })
 
   if (promotable.length === 0) return null
@@ -179,9 +248,7 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
 
   const currencies = [
     ...new Set(
-      promotable
-        .map((r) => r.quotedCurrency)
-        .filter((c): c is string => Boolean(c) && c !== base),
+      promotable.map((r) => r.quotedCurrency).filter((c): c is string => Boolean(c) && c !== base),
     ),
   ]
   const fx = await latestRates(tx, currencies, base)
@@ -189,6 +256,15 @@ async function cheapestReply(tx: Tx, enquiryId: string, branchId: string): Promi
   let bestId: string | null = null
   let bestValue = Infinity
   for (const r of promotable) {
+    /*
+      A reply whose total left lines unpriced is a partial figure, and ranked it
+      beats every whole reply on its flat fees alone (F69) — the same reason a
+      reply with no rate to the base is skipped below. Among several replies it
+      is left for a person; a lone reply above is still awarded, because there
+      is nothing to compare it against. "Partial" is a missing quantity of the
+      consignment, not a percent line every reply leaves unpriced alike (R1).
+    */
+    if (replyIsPartial(r.response)) continue
     const normalised = normalise(r.quotedTotal, r.quotedCurrency, base, fx)
     if (normalised === null) continue
     const value = Number(normalised)
@@ -210,7 +286,11 @@ async function latestRates(
   if (froms.length === 0) return map
 
   const rows = await tx
-    .select({ fromCurrency: fxRates.fromCurrency, rate: fxRates.rate, effectiveOn: fxRates.effectiveOn })
+    .select({
+      fromCurrency: fxRates.fromCurrency,
+      rate: fxRates.rate,
+      effectiveOn: fxRates.effectiveOn,
+    })
     .from(fxRates)
     .where(and(inCurrencies(froms), eq(fxRates.toCurrency, base)))
     .orderBy(sql`${fxRates.effectiveOn} desc`)

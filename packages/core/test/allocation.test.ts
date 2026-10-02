@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AllocationError,
   SEED_CURRENCIES,
   allocate,
   dec,
@@ -15,6 +16,17 @@ import {
 const spec = (code: string): CurrencySpec => SEED_CURRENCIES.find((c) => c.code === code)!
 const KWD = spec('KWD')
 const USD = spec('USD')
+
+/** The refusal a call throws, so its code and values can be asserted on. */
+function catchAllocation(run: () => unknown): AllocationError {
+  try {
+    run()
+  } catch (error) {
+    if (error instanceof AllocationError) return error
+    throw error
+  }
+  throw new Error('expected the allocation to be refused')
+}
 
 const house = (jobId: string, volumeCbm: number, extra: Partial<AllocationTarget> = {}) => ({
   jobId,
@@ -145,6 +157,19 @@ describe('refusals', () => {
     ).toThrow(/nothing to split by/)
   })
 
+  /*
+    The code and values are what the screen translates; the English above is
+    for the log. Pinned separately so a reworded message cannot quietly drop
+    the basis the Arabic sentence is chosen by.
+  */
+  it('says which basis came up empty, as data', () => {
+    const refused = catchAllocation(() =>
+      allocate(money('100', 'KWD'), [house('A', 0), house('B', 0)], 'volume', KWD),
+    )
+    expect(refused.code).toBe('allocation_zero_driver')
+    expect(refused.refusal).toEqual({ code: 'allocation_zero_driver', values: { basis: 'volume' } })
+  })
+
   it('refuses a negative driver', () => {
     expect(() =>
       allocate(money('100', 'KWD'), [house('A', -5), house('B', 5)], 'volume', KWD),
@@ -183,6 +208,23 @@ describe('manual shares', () => {
         ]),
       ),
     ).toThrow(/but the cost is/)
+  })
+
+  it('reports the two totals as strings to the currency’s places', () => {
+    const refused = catchAllocation(() =>
+      allocate(
+        money('100', 'KWD'),
+        targets,
+        'manual',
+        KWD,
+        new Map([
+          ['A', money('70', 'KWD')],
+          ['B', money('29.999', 'KWD')],
+        ]),
+      ),
+    )
+    // `100.000`, not `100` — the dinar keeps its third place on the screen.
+    expect(refused.values).toEqual({ stated: '99.999', expected: '100.000', currency: 'KWD' })
   })
 
   it('refuses when a house has no stated share', () => {

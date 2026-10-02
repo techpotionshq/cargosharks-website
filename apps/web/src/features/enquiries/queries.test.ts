@@ -122,18 +122,26 @@ describe.skipIf(!enabled)('the enquiry queue’s reads', () => {
   })
 
   describe('the quoted price on a row', () => {
-    async function quoteFor(enquiryId: string, sell: string, cost: string) {
+    async function quoteFor(enquiryId: string, sell: string, cost: string, currency = 'KWD') {
       await withActor(systemActor, (tx) =>
         tx.insert(quotes).values({
           reference: `FXH-QUO-Q${RUN}-${(seq += 1)}`,
           enquiryId,
           branchId: HOME_BRANCH,
-          currency: 'KWD',
+          currency,
           totalSell: sell,
           totalCost: cost,
         }),
       )
     }
+
+    /** The quote's own currency — every row said KWD (S16). */
+    it('labels the price in the quotation’s currency', async () => {
+      const id = await seed()
+      await quoteFor(id, '1000.00', '750.00', 'AED')
+
+      expect((await find(id))?.quotedSell?.currency).toBe('AED')
+    })
 
     it('carries the margin as a percentage of the sell', async () => {
       const id = await seed()

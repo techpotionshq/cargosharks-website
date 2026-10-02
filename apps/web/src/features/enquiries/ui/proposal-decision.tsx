@@ -54,7 +54,7 @@ export function ProposalDecision({
         </form>
       </div>
       {message ? (
-        <span className="max-w-xs text-end text-[0.6875rem] text-caution">{message}</span>
+        <span className="max-w-xs text-end text-micro text-caution">{message}</span>
       ) : null}
     </div>
   )

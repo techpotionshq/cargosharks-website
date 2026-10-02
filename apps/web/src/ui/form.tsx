@@ -25,9 +25,17 @@
  * forty-field job form stays as cheap to type into as a text box.
  */
 
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Icon, type IconName } from './icon'
+import {
+  CONTROL,
+  CONTROL_BAD,
+  CONTROL_BASE,
+  CONTROL_INVALID,
+  CONTROL_REST,
+  buttonClass,
+} from './control'
 
 // --- layout ----------------------------------------------------------------
 
@@ -70,9 +78,9 @@ export function FormSection({
   return (
     <section className="col-span-12">
       <div className="rule-title mb-3">
-        <h3 className="text-[0.8125rem] font-semibold tracking-wide text-ink uppercase">{title}</h3>
+        <h3 className="text-body-sm font-semibold tracking-wide text-ink uppercase">{title}</h3>
       </div>
-      {hint ? <p className="-mt-1 mb-3 text-[0.8125rem] text-ink-muted">{hint}</p> : null}
+      {hint ? <p className="-mt-1 mb-3 text-body-sm text-ink-muted">{hint}</p> : null}
       <FormGrid>{children}</FormGrid>
     </section>
   )
@@ -91,13 +99,22 @@ const SPAN: Record<Span, string> = {
 
 // --- controls --------------------------------------------------------------
 
-const CONTROL =
-  'h-10 w-full rounded-sm border bg-surface px-3 text-[0.875rem] text-ink transition-colors placeholder:text-ink-subtle focus:outline-none disabled:opacity-60'
-const CONTROL_REST = 'border-line hover:border-line-strong focus:border-brand'
-const CONTROL_BAD = 'border-critical bg-critical-soft/30 focus:border-critical'
-
+// The strings themselves live in `control.ts`, which says why focus is not
+// drawn in the brand colour and why they are not exported from here.
 function controlClass(invalid: boolean, extra?: string): string {
-  return [CONTROL, invalid ? CONTROL_BAD : CONTROL_REST, extra].filter(Boolean).join(' ')
+  return [invalid ? CONTROL_INVALID : CONTROL, extra].filter(Boolean).join(' ')
+}
+
+/**
+ * What a control is described by: its error when it has one, otherwise its
+ * hint.
+ *
+ * The hint used to be wired to nothing — `Field` gave it an id and no control
+ * pointed at it, so "Whoever will price and answer this enquiry" was read to
+ * a sighted person and never to anyone using a screen reader.
+ */
+function describedBy(field: { name: string; error?: string; hint?: ReactNode }) {
+  return field.error ? `${field.name}-error` : field.hint ? `${field.name}-hint` : undefined
 }
 
 export interface FieldProps {
@@ -146,7 +163,7 @@ export function Field({ label, name, span = 6, hint, error, required, children }
     <div className={`${SPAN[span]} ${FIELD_BAND}`}>
       <label
         htmlFor={name}
-        className="mb-1.5 block text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase"
+        className="mb-1.5 block text-caption font-semibold tracking-wide text-ink-muted uppercase"
       >
         {label}
         {required ? (
@@ -160,13 +177,13 @@ export function Field({ label, name, span = 6, hint, error, required, children }
         <p
           id={describedBy}
           role="alert"
-          className="mt-1.5 flex items-center gap-1 text-[0.75rem] font-medium text-critical"
+          className="mt-1.5 flex items-center gap-1 text-caption font-medium text-critical"
         >
           <Icon name="alert" size={12} weight="fill" />
           {error}
         </p>
       ) : hint ? (
-        <p id={describedBy} className="mt-1.5 text-[0.75rem] text-ink-subtle">
+        <p id={describedBy} className="mt-1.5 text-caption text-ink-subtle">
           {hint}
         </p>
       ) : null}
@@ -242,7 +259,7 @@ export function Input({
       autoFocus={autoFocus}
       required={field.required}
       aria-invalid={invalid || undefined}
-      aria-describedby={field.error ? `${field.name}-error` : undefined}
+      aria-describedby={describedBy(field)}
       className={controlClass(
         invalid,
         [mono ? 'ref' : '', type === 'number' ? 'numeric' : '', suffix ? 'pe-12' : '']
@@ -257,7 +274,7 @@ export function Input({
       {suffix ? (
         <div className="relative">
           {control}
-          <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[0.75rem] font-medium text-ink-subtle">
+          <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-caption font-medium text-ink-subtle">
             {suffix}
           </span>
         </div>
@@ -315,7 +332,7 @@ export function Select({
         defaultValue={defaultValue ?? ''}
         required={field.required}
         aria-invalid={invalid || undefined}
-        aria-describedby={field.error ? `${field.name}-error` : undefined}
+        aria-describedby={describedBy(field)}
         className={controlClass(invalid, 'appearance-none bg-no-repeat pe-9 qb-select')}
       >
         {placeholder !== undefined ? <option value="">{placeholder}</option> : null}
@@ -348,9 +365,10 @@ export function Textarea({
         placeholder={placeholder}
         required={field.required}
         aria-invalid={invalid || undefined}
-        aria-describedby={field.error ? `${field.name}-error` : undefined}
+        aria-describedby={describedBy(field)}
         className={[
-          'w-full resize-y rounded-sm border bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink transition-colors placeholder:text-ink-subtle focus:outline-none',
+          CONTROL_BASE,
+          'resize-y px-3 py-2 text-body leading-relaxed',
           invalid ? CONTROL_BAD : CONTROL_REST,
         ].join(' ')}
       />
@@ -369,16 +387,34 @@ export function Textarea({
 export function Switch({
   label,
   name,
+  value,
   hint,
   defaultChecked = false,
   span = 6,
 }: {
   readonly label: ReactNode
   readonly name: string
+  /*
+    What a checked box submits. Omitted, the browser sends "on", which is
+    right for a lone yes/no and wrong for a group: the branch switches on the
+    user form all submitted "on" under one name, so the server received
+    ["on", "on"] for "these two branches" and every invitation failed a uuid
+    check (QA P1-3). A grouped switch passes the option's own value.
+  */
+  readonly value?: string
   readonly hint?: ReactNode
   readonly defaultChecked?: boolean
   readonly span?: Span
 }) {
+  /*
+    One id per box, not per name. A group shared `id="branchIds"`, so every
+    label pointed at the first checkbox and clicking "DXB" toggled "KWI" — and
+    a page renders many dialogs at once, so every edit row's "Active" switch
+    was `id="isActive"` and its label toggled the first one in the document,
+    not its own (QA P1-3, P2-13). Scoped by `useId`, unique on the page.
+  */
+  const scope = useId()
+  const id = `${scope}-${name}${value === undefined ? '' : `-${value}`}`
   return (
     // `row-span-3` even though a switch has no label band of its own: it makes
     // the switch occupy the same three rows a `Field` does, so one sitting
@@ -397,12 +433,19 @@ export function Switch({
         twice. The grid cell already stretches; this is the label taking it.
       */}
       <label
-        htmlFor={name}
-        className="flex h-full cursor-pointer items-start gap-3 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-brand/40 has-checked:bg-brand-soft/40"
+        htmlFor={id}
+        /*
+          The ring is drawn on the label because the input is `sr-only`: a
+          visually hidden checkbox can take focus, but its own outline is a
+          one-pixel square nobody can see, so a keyboard user tabbing through a
+          dialog lost track of where they were the moment they reached a switch.
+        */
+        className="flex h-full cursor-pointer items-start gap-3 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-accent/40 has-checked:bg-accent-soft/50 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus"
       >
         <input
-          id={name}
+          id={id}
           name={name}
+          value={value}
           type="checkbox"
           defaultChecked={defaultChecked}
           className="peer sr-only"
@@ -415,15 +458,13 @@ export function Switch({
         */}
         <span
           aria-hidden
-          className="mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full bg-line-strong p-0.5 transition-colors peer-checked:bg-brand peer-checked:[&>span]:translate-x-4 rtl:peer-checked:[&>span]:-translate-x-4"
+          className="mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full bg-line-strong p-0.5 transition-colors peer-checked:bg-accent peer-checked:[&>span]:translate-x-4 rtl:peer-checked:[&>span]:-translate-x-4"
         >
           <span className="size-4 rounded-full bg-surface shadow-card transition-transform" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[0.875rem] font-medium text-ink">{label}</span>
-          {hint ? (
-            <span className="mt-0.5 block text-[0.75rem] text-ink-subtle">{hint}</span>
-          ) : null}
+          <span className="block text-body font-medium text-ink">{label}</span>
+          {hint ? <span className="mt-0.5 block text-caption text-ink-subtle">{hint}</span> : null}
         </span>
       </label>
     </div>
@@ -453,7 +494,13 @@ export function ChoiceCards({
         {options.map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer flex-col items-start gap-1 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-brand has-checked:bg-brand-soft/50 has-checked:ring-1 has-checked:ring-brand/30"
+            /*
+              Selected in the accent rather than the brand. A red card around
+              the chosen option read as the *wrong* choice — on "How did it
+              end?" the selected "Won" looked like an error — and the same
+              `has-focus-visible` ring as `Switch`, for the same reason.
+            */
+            className="flex cursor-pointer flex-col items-start gap-1 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-accent has-checked:bg-accent-soft/60 has-checked:ring-1 has-checked:ring-accent/30 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus"
           >
             <input
               type="radio"
@@ -463,10 +510,8 @@ export function ChoiceCards({
               className="sr-only"
             />
             {option.icon ? <Icon name={option.icon} size={18} className="text-ink-muted" /> : null}
-            <span className="text-[0.8125rem] font-medium text-ink">{option.label}</span>
-            {option.hint ? (
-              <span className="text-[0.6875rem] text-ink-subtle">{option.hint}</span>
-            ) : null}
+            <span className="text-body-sm font-medium text-ink">{option.label}</span>
+            {option.hint ? <span className="text-micro text-ink-subtle">{option.hint}</span> : null}
           </label>
         ))}
       </div>
@@ -477,15 +522,31 @@ export function ChoiceCards({
 // --- submission ------------------------------------------------------------
 
 /** The banner for a failure no single field owns. */
-export function FormError({ message }: { readonly message?: string }) {
+export function FormError({
+  message,
+  link,
+}: {
+  readonly message?: string
+  readonly link?: { readonly href: string; readonly label: string }
+}) {
   if (!message) return null
   return (
     <div
       role="alert"
-      className="col-span-12 flex items-start gap-2 rounded-sm border border-critical/40 bg-critical-soft/60 px-3 py-2.5 text-[0.8125rem] text-critical"
+      className="col-span-12 flex items-start gap-2 rounded-sm border border-critical/40 bg-critical-soft/60 px-3 py-2.5 text-body-sm text-critical"
     >
       <Icon name="alert" size={15} className="mt-px shrink-0" />
-      <span>{message}</span>
+      <span>
+        {message}
+        {link ? (
+          <>
+            {' '}
+            <a href={link.href} className="font-medium underline underline-offset-2">
+              {link.label}
+            </a>
+          </>
+        ) : null}
+      </span>
     </div>
   )
 }
@@ -527,12 +588,7 @@ export function Submit({
       type="submit"
       form={form}
       disabled={pending}
-      className={[
-        'inline-flex h-9 items-center gap-1.5 rounded-sm px-4 text-[0.875rem] font-semibold transition-colors disabled:opacity-60',
-        variant === 'danger'
-          ? 'bg-critical text-on-brand hover:opacity-90'
-          : 'bg-brand text-on-brand hover:bg-brand-hover',
-      ].join(' ')}
+      className={buttonClass(variant === 'danger' ? 'danger' : 'primary', 'md')}
     >
       {pending ? (
         <Icon name="clock" size={15} className="animate-spin" />
@@ -572,11 +628,11 @@ export function FileInput({
         accept={accept}
         required={field.required}
         aria-invalid={invalid || undefined}
-        aria-describedby={field.error ? `${field.name}-error` : undefined}
+        aria-describedby={describedBy(field)}
         className={controlClass(
           invalid,
           'py-1.5 file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken ' +
-            'file:px-3 file:py-1.5 file:text-[0.75rem] file:font-semibold file:text-ink-muted ' +
+            'file:px-3 file:py-1.5 file:text-caption file:font-semibold file:text-ink-muted ' +
             'hover:file:bg-line file:cursor-pointer',
         )}
       />

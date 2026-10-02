@@ -11,16 +11,20 @@
  */
 
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { invoiceSummary, listInvoices } from '@/features/ledger/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatMoney } from '@/lib/format'
 import { Register, RecordLink } from '@/ui/register'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
+import { dec } from '@qabandi/core'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -35,6 +39,10 @@ export default async function InvoicesPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'receivable.read')) notFound()
   const { status } = await searchParams
   const t = await getTranslations('invoices')
   const tc = await getTranslations('common')
@@ -42,10 +50,27 @@ export default async function InvoicesPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const today = todayIn()
 
-  const [rows, summary] = await Promise.all([
-    listInvoices(session.actor, status),
+  /*
+    `overdue` is not a status in the enum — it is a status *and* a date — so it
+    cannot be asked of the query. It reads every invoice and keeps the ones
+    the rule below flags, which is the same rule that draws the red rule on a
+    row, so the filter and the flags cannot disagree.
+  */
+  const overdueView = status === 'overdue'
+  const [all, summary] = await Promise.all([
+    listInvoices(session.actor, overdueView ? undefined : status, locale),
     invoiceSummary(session.actor),
   ])
+
+  // Decimal: a balance is money minus money (see the money rule in CLAUDE.md),
+  // and a partial credit note (F9) is off it as surely as a receipt.
+  const balanceOf = (row: (typeof all)[number]) =>
+    dec(row.total ?? 0)
+      .minus(dec(row.amountPaid ?? 0))
+      .minus(dec(row.amountCredited ?? 0))
+  const isOverdue = (row: (typeof all)[number]) =>
+    row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balanceOf(row).gt(0)
+  const rows = overdueView ? all.filter(isOverdue) : all
 
   return (
     <Register
@@ -56,12 +81,17 @@ export default async function InvoicesPage({
       summary={[
         {
           label: t('outstanding'),
-          value: summary.currency
-            ? formatMoney(
-                { amount: Number(summary.outstanding), currency: summary.currency },
-                locale,
-              )
-            : '—',
+          /*
+            One figure per currency, never one sum. Dinars and dirhams do not
+            add, and the single total this replaced was labelled with whichever
+            currency the newest invoice happened to be in.
+          */
+          value:
+            summary.outstanding.length > 0
+              ? summary.outstanding
+                  .map(({ currency, amount }) => formatMoney({ amount: amount, currency }, locale))
+                  .join(' · ')
+              : '—',
         },
         { label: t('issued'), value: summary.issued },
         { label: t('overdue'), value: summary.overdue },
@@ -74,6 +104,13 @@ export default async function InvoicesPage({
           href: '/invoices?status=issued',
           count: summary.issued,
           active: status === 'issued',
+        },
+        // The summary counts overdue, so the strip offers it.
+        {
+          label: t('statuses.overdue'),
+          href: '/invoices?status=overdue',
+          count: summary.overdue,
+          active: overdueView,
         },
         {
           label: t('statuses.paid'),
@@ -93,19 +130,26 @@ export default async function InvoicesPage({
         <THead>
           <TR>
             <TH>{t('number')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
-            <TH align="end">{t('total')}</TH>
+            {/*
+              On a phone the row is the reference, the state and what is still
+              owed: the balance is the figure anyone acts on, and the total and
+              due date are one tap away on the invoice itself. Four columns at
+              390px pushed the money off the edge of the screen.
+            */}
+            <TH align="end" priority="low">
+              {t('total')}
+            </TH>
             <TH align="end">{t('balance')}</TH>
-            <TH>{t('issued')}</TH>
-            <TH>{t('due')}</TH>
+            <TH priority="low">{t('issued')}</TH>
+            <TH priority="low">{t('due')}</TH>
           </TR>
         </THead>
         <TBody>
           {rows.map((row) => {
-            const balance = Number(row.total ?? 0) - Number(row.amountPaid ?? 0)
-            const overdue =
-              row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balance > 0
+            const balance = balanceOf(row)
+            const overdue = isOverdue(row)
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
                 <TD>
@@ -122,36 +166,53 @@ export default async function InvoicesPage({
                     word in SQL.
                   */}
                   <RecordLink href={`/invoices/${row.id}`}>
-                    {row.seriesNo ?? t('statuses.draft')}
+                    {/* The word stands in for a number, so it is set as a
+                        word: in the reference face, monospaced Arabic pulled
+                        "مسودة" apart into separate letters. */}
+                    {row.seriesNo ?? (
+                      <span className="font-sans tracking-normal rtl:font-arabic">
+                        {t('statuses.draft')}
+                      </span>
+                    )}
                   </RecordLink>
+                  {/* Under the number on a phone: inline, it wrapped there
+                      anyway and carried its 8px start margin onto the new
+                      line, so the pill sat indented under the number. */}
                   {row.isCreditNote ? (
-                    <Badge tone="caution" className="ms-2">
-                      {t('creditNote')}
-                    </Badge>
+                    <span className="mt-1 block @3xl:ms-2 @3xl:mt-0 @3xl:inline">
+                      <Badge tone="caution">{t('creditNote')}</Badge>
+                    </span>
                   ) : null}
                 </TD>
-                <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="font-medium text-ink">
+                  {row.customerName ?? '—'}
+                </TD>
                 <TD>
                   <Badge tone={overdue ? 'critical' : invoiceTone(row.status)} dot>
                     {overdue ? t('statuses.overdue') : t(`statuses.${row.status}`)}
                   </Badge>
                 </TD>
-                <TD align="end" numeric>
-                  {row.total
-                    ? formatMoney({ amount: Number(row.total), currency: row.currency }, locale)
-                    : '—'}
+                <TD align="end" numeric priority="low">
+                  <Money
+                    value={row.total ? { amount: row.total, currency: row.currency } : null}
+                    locale={locale}
+                  />
                 </TD>
                 <TD
                   align="end"
                   numeric
-                  className={balance > 0 ? 'font-semibold text-ink' : 'text-ink-subtle'}
+                  className={balance.gt(0) ? 'font-semibold text-ink' : 'text-ink-subtle'}
                 >
-                  {formatMoney({ amount: balance, currency: row.currency }, locale)}
+                  <Money
+                    value={{ amount: balance.toFixed(), currency: row.currency }}
+                    locale={locale}
+                  />
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD
+                  priority="low"
                   className={`whitespace-nowrap ${overdue ? 'font-semibold text-critical' : 'text-ink-muted'}`}
                 >
                   {row.dueOn ? formatDate(new Date(row.dueOn), locale, timeZone) : '—'}

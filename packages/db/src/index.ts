@@ -12,11 +12,15 @@ export * from './actor'
 export { createDatabase, createPool, db, type Database, type PoolConfig } from './client'
 export * from './validation'
 export * from './credit'
+export * from './settled'
+export * from './branch-time'
+export * from './fx-latest'
 export * from './chargeable'
 export * from './rate-cards'
 export * from './rate-promotion'
 export * from './pricing'
 export * from './enquiry-proposals'
+export * from './intake'
 export * from './integrations'
 export * from './schema-version'
 /*
@@ -29,6 +33,9 @@ export {
   open as openSecret,
   hasSecretKey,
   secretKeyProblem,
+  secretKeyStatus,
+  SECRET_KEY_COMMAND,
+  type SecretKeyStatus,
   SecretKeyError,
   SealedSecretError,
 } from './secrets'

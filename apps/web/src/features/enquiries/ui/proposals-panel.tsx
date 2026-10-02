@@ -31,6 +31,7 @@ import { can } from '@/lib/permissions'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { enquiryProposals, type EnquiryProposal } from '../proposals'
+import { describeFailure } from '../proposal-failures'
 import { ProposalDecision } from './proposal-decision'
 import { AcceptAllProposals } from './accept-all-proposals'
 
@@ -51,16 +52,40 @@ const FIELD_KEYS = [
   'grossWeightKg',
   'volumeCbm',
   'pieces',
+  'containerCount',
+  'containerType',
   'dimensions',
   'isDangerous',
 ] as const
 
+/**
+ * Fields whose value is a stored code with a label of its own (ai-16).
+ *
+ * `sea_fcl` is the column's word, not the coordinator's; the board says "Sea
+ * FCL" and so does this panel now. A value outside the catalogue — a model's
+ * misspelling, which the accept path will refuse — is shown as written, so the
+ * refusal beside it has something to point at.
+ */
+const VALUE_NAMESPACES: Readonly<Record<string, string>> = {
+  mode: 'mode',
+  tradeDirection: 'direction',
+}
+
 export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string }) {
   const session = await requireSession()
-  const [rows, t] = await Promise.all([
+  const [rows, t, tv, tMode, tDirection] = await Promise.all([
     enquiryProposals(session.actor, enquiryId),
     getTranslations('proposals'),
+    getTranslations('enquiriesValidation'),
+    getTranslations('mode'),
+    getTranslations('direction'),
   ])
+  const valueLabels: Record<string, typeof tMode> = { mode: tMode, direction: tDirection }
+  const shown = (field: string, value: string): string => {
+    const namespace = VALUE_NAMESPACES[field]
+    const translate = namespace ? valueLabels[namespace] : undefined
+    return translate && translate.has(value) ? translate(value) : value
+  }
 
   if (rows.length === 0) return null
 
@@ -88,11 +113,11 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
           <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-[0.75rem] font-semibold tracking-wide text-ink-muted uppercase">
+                <span className="text-caption font-semibold tracking-wide text-ink-muted uppercase">
                   {label(t, row.field)}
                 </span>
-                <span className="text-[0.9375rem] font-medium text-ink" dir="auto">
-                  {row.value}
+                <span className="text-title font-medium text-ink" dir="auto">
+                  {shown(row.field, row.value)}
                 </span>
                 {row.targetWasEmpty ? null : (
                   /*
@@ -107,15 +132,20 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
               </div>
               {row.evidence ? (
                 <p
-                  className="mt-1 border-s-2 border-line ps-2 text-[0.8125rem] text-ink-muted"
+                  className="mt-1 border-s-2 border-line ps-2 text-body-sm text-ink-muted"
                   dir="auto"
                 >
                   {row.evidence}
                 </p>
               ) : (
-                <p className="mt-1 text-[0.8125rem] text-ink-subtle">{t('noEvidence')}</p>
+                <p className="mt-1 text-body-sm text-ink-subtle">{t('noEvidence')}</p>
               )}
-              <p className="mt-1 text-[0.6875rem] text-ink-subtle">
+              {row.blocked || row.occupied ? (
+                <p className="mt-1 text-body-sm text-caution">
+                  {row.blocked ? describeFailure(tv, row.blocked) : tv('suggestionFieldFilled')}
+                </p>
+              ) : null}
+              <p className="mt-1 text-micro text-ink-subtle">
                 {t('provenance', {
                   model: row.model ?? '—',
                   prompt: row.promptVersion ?? '—',

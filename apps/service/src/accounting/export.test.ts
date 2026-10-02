@@ -44,8 +44,17 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 */
 process.env.FILE_STORE_DRIVER = 'memory'
 
-const { accountingExports, branches, chargeTypes, customers, invoiceLines, invoices, withActor } =
-  await import('@qabandi/db')
+const {
+  accountingExports,
+  branches,
+  chargeTypes,
+  customers,
+  invoiceLines,
+  invoices,
+  paymentAllocations,
+  payments,
+  withActor,
+} = await import('@qabandi/db')
 
 const { buildAccountingExport, voidAccountingExport, ExportError } = await import('./export')
 
@@ -277,6 +286,30 @@ describe.skipIf(!enabled)('the accounting export', () => {
       ).rejects.toMatchObject({ code: 'unmapped_charge_types' })
     })
 
+    /**
+     * The names travel as values, in both languages, because the screen says
+     * this sentence in the reader's language and the list sits inside it.
+     */
+    it('carries the names in both languages for the screen to translate', async () => {
+      await mapCharge(null)
+      await issuedInvoice()
+      const [charge] = await withActor(systemActor, (tx) =>
+        tx
+          .select({ nameEn: chargeTypes.nameEn, nameAr: chargeTypes.nameAr })
+          .from(chargeTypes)
+          .where(eq(chargeTypes.id, chargeTypeId)),
+      )
+
+      await expect(
+        buildAccountingExport(actor, { branchId: BRANCH, ...PERIOD }),
+      ).rejects.toMatchObject({
+        values: {
+          namesEn: expect.stringContaining(charge!.nameEn),
+          namesAr: expect.stringContaining(charge!.nameAr),
+        },
+      })
+    })
+
     it('says where to map them', async () => {
       await mapCharge(null)
       await issuedInvoice()
@@ -472,6 +505,235 @@ describe.skipIf(!enabled)('the accounting export', () => {
       await expect(
         voidAccountingExport(actor, '00000000-0000-7000-8000-00000000acda', 'Gone'),
       ).rejects.toMatchObject({ code: 'not_found' })
+    })
+  })
+
+  describe('foreign currency', () => {
+    /** A USD invoice raised by hand, with the rate it was raised at on itself. */
+    async function usdInvoice(issuedAt: string, fxRate: string | null): Promise<string> {
+      seq += 1
+      return withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `FXE-${RUN}-${seq}`,
+            status: 'issued',
+            currency: 'USD',
+            subtotal: '1000',
+            total: '1000',
+            fxRate,
+            issuedAt: new Date(issuedAt),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '1000',
+          amount: '1000',
+        })
+        return invoice!.id
+      })
+    }
+
+    /*
+      F1. The receipt's allocation was converted with a rate looked up by the
+      *payment's* id, in a map holding only this period's invoices — so it
+      always missed, and a USD receipt cleared AR at 1.
+    */
+    it('clears a receipt at the rate of the invoice it settles, from an earlier period', async () => {
+      await mapCharge('4100')
+      const invoiceId = await usdInvoice('2036-01-15T09:00:00Z', '0.307')
+      await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-01-01',
+        to: '2036-01-31',
+        post: true,
+      })
+
+      await withActor(systemActor, async (tx) => {
+        const [payment] = await tx
+          .insert(payments)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            amount: '1000',
+            currency: 'USD',
+            fxRate: '0.309',
+            receivedOn: '2036-02-10',
+            method: 'bank_transfer',
+            reference: `TT-${RUN}`,
+          })
+          .returning({ id: payments.id })
+        await tx
+          .insert(paymentAllocations)
+          .values({ paymentId: payment!.id, invoiceId, amount: '1000' })
+      })
+
+      const result = await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-02-01',
+        to: '2036-02-28',
+      })
+
+      const rows = result.csv.split('\r\n').map((line) => line.split(','))
+      const ar = rows.find((r) => r[1] === '1200')!
+      const fx = rows.find((r) => r[1] === '7800')!
+      expect(ar[5]).toBe('307')
+      expect(fx[5]).toBe('2')
+      expect(result.totalDebit).toBe(result.totalCredit)
+    })
+
+    /** F2. A foreign invoice with no rate anywhere used to post at 1. */
+    it('refuses a foreign invoice that carries no rate, and names it', async () => {
+      await mapCharge('4100')
+      await usdInvoice('2036-03-15T09:00:00Z', null)
+
+      await expect(
+        buildAccountingExport(actor, { branchId: BRANCH, from: '2036-03-01', to: '2036-03-31' }),
+      ).rejects.toMatchObject({ code: 'invoice_without_rate' })
+    })
+
+    it('posts a hand-raised foreign invoice at its own rate', async () => {
+      await mapCharge('4100')
+      await usdInvoice('2036-04-15T09:00:00Z', '0.307')
+
+      const result = await buildAccountingExport(actor, {
+        branchId: BRANCH,
+        from: '2036-04-01',
+        to: '2036-04-30',
+      })
+
+      const ar = result.csv
+        .split('\r\n')
+        .map((line) => line.split(','))
+        .find((r) => r[1] === '1200')!
+      expect(ar[4]).toBe('307')
+    })
+  })
+
+  /*
+    F9. A credit note for part of an invoice is the invoice's lines scaled to
+    the amount (`core/credit-note.ts`), born credited at the invoice's rate.
+    The export needs no second path for it: it reverses exactly that much
+    revenue and receivable, at the rate the original posted at.
+  */
+  describe('a partial credit note', () => {
+    it("reverses only the part credited, at the invoice's own rate", async () => {
+      await mapCharge('4100')
+      const period = { from: '2036-06-01', to: '2036-06-30' }
+      seq += 1
+      const original = `FXE-${RUN}-${seq}`
+      seq += 1
+      const note = `FXE-${RUN}-${seq}`
+
+      await withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: original,
+            status: 'issued',
+            currency: 'USD',
+            subtotal: '1000',
+            total: '1000',
+            amountCredited: '250',
+            fxRate: '0.307',
+            issuedAt: new Date('2036-06-10T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '1000',
+          amount: '1000',
+        })
+        const [credit] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: note,
+            status: 'credited',
+            isCreditNote: true,
+            creditsInvoiceId: invoice!.id,
+            currency: 'USD',
+            subtotal: '250',
+            total: '250',
+            amountPaid: '250',
+            fxRate: '0.307',
+            issuedAt: new Date('2036-06-20T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: credit!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '250',
+          amount: '250',
+        })
+      })
+
+      const result = await buildAccountingExport(actor, { branchId: BRANCH, ...period })
+      expect(result.totalDebit).toBe(result.totalCredit)
+
+      const rows = result.csv.split('\r\n').map((line) => line.split(','))
+      const ar = rows.filter((r) => r[1] === '1200')
+      const revenue = rows.filter((r) => r[1] === '4100')
+      // The invoice debits 307.000; the note credits a quarter of it back.
+      expect(ar.find((r) => r.includes(original))![4]).toBe('307')
+      expect(ar.find((r) => r.includes(note))![5]).toBe('76.75')
+      expect(revenue.find((r) => r.includes(note))![4]).toBe('76.75')
+    })
+  })
+
+  /*
+    F19. Two people posting the same month at once: the \`is null\` guard kept the
+    second from re-pointing the rows, but it still committed a second "posted"
+    export carrying the same journal.
+  */
+  describe('two posts of one period at once', () => {
+    it('never leaves two posted exports carrying the same invoice', async () => {
+      await mapCharge('4100')
+      const period = { from: '2036-05-01', to: '2036-05-31' }
+      seq += 1
+      await withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `FXE-${RUN}-${seq}`,
+            status: 'issued',
+            currency: 'KWD',
+            subtotal: '50',
+            total: '50',
+            issuedAt: new Date('2036-05-10T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '50',
+          amount: '50',
+        })
+      })
+
+      const outcomes = await Promise.allSettled([
+        buildAccountingExport(actor, { branchId: BRANCH, ...period, post: true }),
+        buildAccountingExport(actor, { branchId: BRANCH, ...period, post: true }),
+      ])
+
+      const posted = outcomes.filter((o) => o.status === 'fulfilled' && o.value.invoiceCount > 0)
+      expect(posted).toHaveLength(1)
+      for (const o of outcomes) {
+        if (o.status === 'rejected') expect(o.reason).toMatchObject({ code: 'period_changed' })
+      }
     })
   })
 })

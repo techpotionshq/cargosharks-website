@@ -45,8 +45,18 @@ vi.mock('@/lib/session', () => ({
   requireSession: async () => harness.session,
 }))
 
+/**
+ * The message keys stand in for the sentences, so an assertion names the case
+ * rather than a wording a translator is free to change — as in `auth/actions.test.ts`.
+ */
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: string) => (key: string, values?: Record<string, unknown>) =>
+    values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
+}))
+
 const {
   chargeTypes,
+  currencies,
   enquiries,
   invoiceLines,
   invoices,
@@ -62,12 +72,15 @@ const {
   roles,
   workingCalendars,
   withActor,
+  creditStanding,
 } = await import('@qabandi/db')
+const { invoiceSummary, receivablesAgeing } = await import('./queries')
 const {
   addInvoiceLine,
   addQuoteLine,
   allocatePayment,
   createInvoice,
+  creditInvoice,
   createQuote,
   draftQuoteCoverNote,
   recordPayment,
@@ -80,6 +93,15 @@ const {
 let freightChargeTypeId: string
 
 const BRANCH = '00000000-0000-7000-8000-00000000f001'
+
+/**
+ * A currency of this suite's own that no feed and no other suite ever rates —
+ * ISO 4217's code reserved for testing — so "no rate on file" stays true
+ * whatever ran before.
+ */
+// ISO 4217's "no currency": never given a rate by any suite. XTS is the
+// costing suite's *rated* test currency, so it cannot double as unrated here.
+const UNRATED = 'XXX'
 const CUSTOMER = '00000000-0000-7000-8000-00000000f002'
 const PRINCIPAL = '00000000-0000-7000-8000-00000000f003'
 
@@ -92,6 +114,7 @@ const PERMISSIONS = [
   'invoice.approve',
   'quote.send',
   'quote.accept',
+  'quote.revise',
   'quote.reject',
 ]
 
@@ -115,13 +138,22 @@ const form = (fields: Record<string, string>): FormData => {
   return data
 }
 
-/** A draft invoice for `total`, returning its id. */
+/**
+ * A draft invoice for `total`, with one line for it, returning its id. The
+ * line matters: approving or issuing an invoice with no lines is refused.
+ */
 async function draftInvoice(total: string, currency = 'KWD'): Promise<string> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
       .insert(invoices)
       .values({ branchId: BRANCH, customerId: CUSTOMER, currency, subtotal: total, total })
       .returning({ id: invoices.id })
+    await tx.insert(invoiceLines).values({
+      invoiceId: row!.id,
+      descriptionEn: 'Ocean freight',
+      unitPrice: total,
+      amount: total,
+    })
     return row!.id
   })
 }
@@ -230,6 +262,11 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
         .values({ principalId: PRINCIPAL, branchId: BRANCH, roleId: financeRole.id })
         .onConflictDoNothing()
 
+      await tx
+        .insert(currencies)
+        .values({ code: UNRATED, nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 })
+        .onConflictDoNothing()
+
       const [freight] = await tx
         .select({ id: chargeTypes.id })
         .from(chargeTypes)
@@ -300,7 +337,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       await allocatePayment({}, form({ paymentId, invoiceId, amount: '400.000' }))
       const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '200.000' }))
 
-      expect(state.errors?.amount).toContain('unallocated')
+      expect(state.errors?.amount).toBe('ledgerValidation.overAllocated')
     })
 
     it('refuses more than the invoice still owes', async () => {
@@ -309,7 +346,7 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
 
       const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '200.000' }))
 
-      expect(state.errors?.amount).toContain('outstanding')
+      expect(state.errors?.amount).toBe('ledgerValidation.overInvoiced')
       const row = await invoiceRow(invoiceId)
       expect(Number(row.paid)).toBe(0)
     })
@@ -421,13 +458,436 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
             method: 'cash',
           }),
         ),
-      ).rejects.toThrow()
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
     })
 
     it('reports field errors rather than throwing on a bad form', async () => {
       const state = await recordPayment({}, form({ branchId: BRANCH, customerId: CUSTOMER }))
       expect(state.errors).toBeDefined()
       expect(Object.keys(state.errors ?? {}).length).toBeGreaterThan(0)
+    })
+
+    const receiptFor = (invoiceId: string, fields: Record<string, string> = {}) =>
+      form({
+        branchId: BRANCH,
+        customerId: CUSTOMER,
+        amount: '50.000',
+        currency: 'KWD',
+        receivedOn: '2026-08-18',
+        method: 'bank_transfer',
+        invoiceId,
+        ...fields,
+      })
+
+    /** F4. This returned a 500: `recordPayment` caught none of the refusals. */
+    it('says so, rather than crashing, when the receipt is more than is owed', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await recordPayment({}, receiptFor(invoiceId))
+      expect(state.errors?.amount).toBe('ledgerValidation.overInvoiced')
+      expect(Number((await invoiceRow(invoiceId)).paid)).toBe(0)
+    })
+
+    it('refuses a receipt of nothing', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '0' }))
+      expect(state.errors?.amount).toBe('ledgerValidation.amountMustBePositive')
+    })
+
+    it('refuses to settle an invoice that has not been issued', async () => {
+      const invoiceId = await draftInvoice('40.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '40.000' }))
+      expect(state.errors?.invoiceId).toBe('ledgerValidation.invoiceNotPayable')
+    })
+
+    /*
+      F9. Crediting flipped the status and wrote nothing else, so the export
+      never reversed the revenue and the reports disagreed about what was owed.
+    */
+    it('raises a numbered credit note that reverses the invoice', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      const state = await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      expect(state.errors).toBeUndefined()
+
+      const [note] = await withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.creditsInvoiceId, invoiceId)),
+      )
+      expect(note).toMatchObject({ isCreditNote: true, status: 'credited' })
+      expect(note!.seriesNo).toBeTruthy()
+      expect(Number(note!.total)).toBe(40)
+      // Born settled, so no "what is owed" query ever counts it.
+      expect(Number(note!.amountPaid)).toBe(40)
+      const lines = await withActor(actor, (tx) =>
+        tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, note!.id)),
+      )
+      expect(lines.map((l) => Number(l.amount))).toEqual([40])
+    })
+
+    it('refuses to settle a credited invoice', async () => {
+      const invoiceId = await issuedInvoice('40.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      const state = await recordPayment({}, receiptFor(invoiceId, { amount: '40.000' }))
+      expect(state.errors?.invoiceId).toBe('ledgerValidation.invoiceNotPayable')
+    })
+
+    /** 500 KWD settling a 500 USD invoice. */
+    it("refuses a receipt in a currency other than the invoice's", async () => {
+      const invoiceId = await issuedInvoice('40.00', 'USD')
+      const state = await recordPayment(
+        {},
+        receiptFor(invoiceId, { amount: '40.000', currency: 'KWD' }),
+      )
+      expect(state.errors?.invoiceId).toBe(
+        'ledgerValidation.receiptCurrencyMismatch:{"received":"KWD","invoiced":"USD"}',
+      )
+    })
+
+    /** F2. A foreign receipt was always stored at rate 1. */
+    it('stores the rate a foreign receipt was typed at', async () => {
+      const state = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '100.00',
+          currency: 'USD',
+          fxRate: '0.3071',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          reference: 'FX-TYPED',
+        }),
+      )
+      expect(state.errors).toBeUndefined()
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ fxRate: payments.fxRate })
+          .from(payments)
+          .where(eq(payments.reference, 'FX-TYPED'))
+          .limit(1),
+      )
+      expect(Number(row!.fxRate)).toBeCloseTo(0.3071, 8)
+    })
+
+    it('asks for a rate where none is typed and none is on file', async () => {
+      const state = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '100.00',
+          currency: UNRATED,
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+        }),
+      )
+      expect(state.errors?.fxRate).toBe(
+        `ledgerValidation.fxRateNeeded:{"currency":"${UNRATED}","base":"KWD"}`,
+      )
+    })
+
+    /** F8. The second part of one receipt against the same invoice. */
+    it('adds a top-up to the allocation already there', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('100.000')
+
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '30.000' }))
+      const state = await allocatePayment({}, form({ paymentId, invoiceId, amount: '70.000' }))
+
+      expect(state.errors).toBeUndefined()
+      const rows = await withActor(actor, (tx) =>
+        tx
+          .select({ amount: paymentAllocations.amount })
+          .from(paymentAllocations)
+          .where(eq(paymentAllocations.paymentId, paymentId)),
+      )
+      expect(rows.map((r) => Number(r.amount))).toEqual([100])
+      expect((await invoiceRow(invoiceId)).status).toBe('paid')
+    })
+
+    /** F10. Two allocations against one invoice at once used to over-settle it. */
+    it('lets only one of two concurrent allocations settle the last of an invoice', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const first = await receipt('100.000')
+      const second = await receipt('100.000')
+
+      const states = await Promise.all([
+        allocatePayment({}, form({ paymentId: first, invoiceId, amount: '100.000' })),
+        allocatePayment({}, form({ paymentId: second, invoiceId, amount: '100.000' })),
+      ])
+
+      expect(states.filter((st) => st.errors === undefined)).toHaveLength(1)
+      expect(Number((await invoiceRow(invoiceId)).paid)).toBe(100)
+    })
+  })
+
+  /*
+    F9. A credit note reversed the whole invoice or nothing. Part of one is
+    now its own numbered note, the invoice owing less and staying open; the
+    register, the ageing and the credit exposure all count the reduction.
+  */
+  describe('creditInvoice — part of an invoice', () => {
+    const notesFor = (invoiceId: string) =>
+      withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.creditsInvoiceId, invoiceId)),
+      )
+    const credited = async (invoiceId: string) => {
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ status: invoices.status, credited: invoices.amountCredited })
+          .from(invoices)
+          .where(eq(invoices.id, invoiceId)),
+      )
+      return row!
+    }
+    const kwdOwed = async () =>
+      (await invoiceSummary(actor)).outstanding.find((o) => o.currency === 'KWD')?.amount ?? '0'
+    const kwdAgeing = async () => {
+      const kwd = (await receivablesAgeing(actor)).byCurrency.find((c) => c.currency === 'KWD')
+      return kwd ? JSON.stringify(kwd) : ''
+    }
+
+    it('raises a note for part of it, scaled across its lines, and leaves it issued', async () => {
+      // Two lines, one taxed, so the proration has something to split.
+      const invoiceId = await withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            currency: 'KWD',
+            subtotal: '100.000',
+            taxAmount: '5.000',
+            total: '105.000',
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values([
+          { invoiceId: row!.id, descriptionEn: 'Freight', unitPrice: '60', amount: '60.000' },
+          {
+            invoiceId: row!.id,
+            descriptionEn: 'Clearance',
+            unitPrice: '40',
+            amount: '40.000',
+            taxAmount: '5.000',
+            isTaxable: true,
+            sortOrder: 1,
+          },
+        ])
+        return row!.id
+      })
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      await setInvoiceStatus({}, form({ invoiceId, status: 'issued' }))
+
+      const owedBefore = await kwdOwed()
+      const exposureBefore = (await creditStanding(actor, CUSTOMER, BRANCH)).outstanding
+      const state = await creditInvoice(
+        {},
+        form({ invoiceId, amount: '21.000', notes: 'One pallet short' }),
+      )
+      expect(state.errors).toBeUndefined()
+      expect(state.ok).toBeTruthy()
+
+      const [note] = await notesFor(invoiceId)
+      expect(note).toMatchObject({
+        isCreditNote: true,
+        status: 'credited',
+        notes: 'One pallet short',
+      })
+      expect(state.ok!.split(':')[0]).toBe(note!.seriesNo)
+      expect(note!.total).toMatch(/^21\.0+$/)
+      expect(note!.amountPaid).toMatch(/^21\.0+$/)
+      const lines = await withActor(actor, (tx) =>
+        tx
+          .select({ amount: invoiceLines.amount, tax: invoiceLines.taxAmount })
+          .from(invoiceLines)
+          .where(eq(invoiceLines.invoiceId, note!.id))
+          .orderBy(invoiceLines.sortOrder),
+      )
+      // A fifth of each: 12 + 8 net, 1 tax.
+      expect(lines.map((l) => [Number(l.amount), Number(l.tax)])).toEqual([
+        [12, 0],
+        [8, 1],
+      ])
+
+      const after = await credited(invoiceId)
+      expect(after.status).toBe('issued')
+      expect(after.credited).toMatch(/^21\.0+$/)
+
+      // Owed less by exactly the note, on the register and in the exposure.
+      const owedAfter = await kwdOwed()
+      expect(
+        (
+          await withActor(actor, (tx) =>
+            tx.execute(sql`select (${owedBefore}::numeric - ${owedAfter}::numeric)::text as d`),
+          )
+        ).rows[0],
+      ).toMatchObject({ d: expect.stringMatching(/^21\.0+$/) })
+      const exposureAfter = (await creditStanding(actor, CUSTOMER, BRANCH)).outstanding
+      expect(exposureBefore.amount.minus(exposureAfter.amount).toFixed(3)).toBe('21.000')
+
+      // The rest is payable, and only the rest.
+      const over = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '84.001',
+          currency: 'KWD',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          invoiceId,
+        }),
+      )
+      expect(over.errors?.amount).toBe('ledgerValidation.overInvoiced')
+      const paid = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '84.000',
+          currency: 'KWD',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          invoiceId,
+        }),
+      )
+      expect(paid.errors).toBeUndefined()
+      expect((await credited(invoiceId)).status).toBe('paid')
+    })
+
+    it('refuses more than is still owed, and closes the invoice at exactly that', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('40.000')
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '40.000' }))
+      const ageingBefore = await kwdAgeing()
+
+      const tooMuch = await creditInvoice({}, form({ invoiceId, amount: '60.001' }))
+      expect(tooMuch.errors?.amount).toBe(
+        'ledgerValidation.creditExceedsOwed:{"creditable":"60.000","currency":"KWD"}',
+      )
+      expect((await creditInvoice({}, form({ invoiceId, amount: '1.0001' }))).errors?.amount).toBe(
+        'ledgerValidation.creditTooPrecise',
+      )
+      expect((await creditInvoice({}, form({ invoiceId, amount: 'ten' }))).errors?.amount).toBe(
+        'ledgerValidation.creditAmountNumber',
+      )
+      expect(await notesFor(invoiceId)).toHaveLength(0)
+
+      await creditInvoice({}, form({ invoiceId, amount: '25.000' }))
+      expect((await credited(invoiceId)).status).toBe('part_paid')
+      expect(await kwdAgeing()).not.toBe(ageingBefore)
+
+      await creditInvoice({}, form({ invoiceId, amount: '35.000' }))
+      const closed = await credited(invoiceId)
+      expect(closed.status).toBe('credited')
+      expect(closed.credited).toMatch(/^60\.0+$/)
+      expect(await notesFor(invoiceId)).toHaveLength(2)
+
+      // Nothing is left to credit.
+      const again = await creditInvoice({}, form({ invoiceId, amount: '1.000' }))
+      expect(again.message).toBe('ledgerValidation.invoiceBadTransition')
+    })
+
+    it('credits only what is still owed when crediting the whole of a part-paid invoice', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('30.000')
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '30.000' }))
+      await creditInvoice({}, form({ invoiceId, amount: '20.000' }))
+
+      await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      const notes = await notesFor(invoiceId)
+      expect(notes.map((n) => Number(n.total)).sort()).toEqual([20, 50])
+      expect(await credited(invoiceId)).toMatchObject({ status: 'credited' })
+    })
+
+    it('credits an older invoice whose total is finer than its currency', async () => {
+      // Totals written before line rounding can carry six places on a KWD invoice.
+      const invoiceId = await issuedInvoice('100.000650')
+      const state = await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      expect(state.message).toBeUndefined()
+      const notes = await notesFor(invoiceId)
+      expect(notes.map((n) => n.total)).toEqual([expect.stringMatching(/^100\.0+$/)])
+      expect(await credited(invoiceId)).toMatchObject({ status: 'credited' })
+    })
+
+    it('refuses a draft, a credit note, and an invoice in another branch', async () => {
+      const draft = await draftInvoice('10.000')
+      expect((await creditInvoice({}, form({ invoiceId: draft, amount: '1' }))).message).toBe(
+        'ledgerValidation.invoiceBadTransition',
+      )
+
+      const invoiceId = await issuedInvoice('10.000')
+      await creditInvoice({}, form({ invoiceId, amount: '1.000' }))
+      const [note] = await notesFor(invoiceId)
+      expect((await creditInvoice({}, form({ invoiceId: note!.id, amount: '1' }))).message).toBe(
+        'ledgerValidation.invoiceBadTransition',
+      )
+
+      // `invoice.credit` held elsewhere is not held here.
+      harness.session = {
+        ...session,
+        branchRoles: new Map([['00000000-0000-7000-8000-0000000000ff', 'finance']]),
+      }
+      try {
+        await expect(
+          creditInvoice({}, form({ invoiceId, amount: '1.000' })),
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
+      } finally {
+        harness.session = session
+      }
+    })
+  })
+
+  /*
+    F22. An open receivable imported at cutover carries what was paid before
+    it with no receipt behind it. Re-deriving paid-to-date from receipts alone
+    wiped it on the first receipt, and the customer owed it again.
+  */
+  describe('a payment made before cutover', () => {
+    /** Shaped as `writeOpenReceivables` writes it: numbered, part paid, opening set. */
+    const imported = () =>
+      withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `OPEN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            status: 'part_paid',
+            currency: 'KWD',
+            subtotal: '100.000',
+            total: '100.000',
+            amountPaid: '40.000',
+            amountPaidOpening: '40.000',
+            issuedAt: new Date('2026-01-15T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
+
+    it('keeps the opening payment through a receipt, and caps the receipt at the rest', async () => {
+      const invoiceId = await imported()
+      const over = await allocatePayment(
+        {},
+        form({ paymentId: await receipt('60.001'), invoiceId, amount: '60.001' }),
+      )
+      expect(over.errors?.amount).toBe('ledgerValidation.overInvoiced')
+
+      const part = await allocatePayment(
+        {},
+        form({ paymentId: await receipt('20.000'), invoiceId, amount: '20.000' }),
+      )
+      expect(part.errors).toBeUndefined()
+      let row = await invoiceRow(invoiceId)
+      expect(row.status).toBe('part_paid')
+      expect(row.paid).toMatch(/^60\.0+$/)
+
+      await allocatePayment(
+        {},
+        form({ paymentId: await receipt('40.000'), invoiceId, amount: '40.000' }),
+      )
+      row = await invoiceRow(invoiceId)
+      expect(row.status).toBe('paid')
+      expect(row.paid).toMatch(/^100\.0+$/)
     })
   })
 
@@ -516,6 +976,40 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
     })
 
     /** Issuing twice must not burn a second number. */
+    /** F10. Two clicks on Issue each allocated a number, leaving a gap. */
+    it('consumes one number when the same invoice is issued twice at once', async () => {
+      const counter = () =>
+        withActor(actor, async (tx) => {
+          const [row] = await tx
+            .select({ next: branches.invoiceSeriesNext })
+            .from(branches)
+            .where(eq(branches.id, BRANCH))
+          return Number(row!.next)
+        })
+      const id = await draftInvoice('10.000')
+      await setInvoiceStatus({}, form({ invoiceId: id, status: 'approved' }))
+      const before = await counter()
+
+      await Promise.all([
+        setInvoiceStatus({}, form({ invoiceId: id, status: 'issued' })),
+        setInvoiceStatus({}, form({ invoiceId: id, status: 'issued' })),
+      ])
+
+      expect(await counter()).toBe(before + 1)
+    })
+
+    it('refuses to approve an invoice with no lines', async () => {
+      const id = await withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({ branchId: BRANCH, customerId: CUSTOMER, currency: 'KWD' })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
+      const state = await setInvoiceStatus({}, form({ invoiceId: id, status: 'approved' }))
+      expect(state.message).toBe('ledgerValidation.invoiceNoLines')
+    })
+
     it('keeps the first number if issue is repeated', async () => {
       const invoiceId = await issuedInvoice('9.000')
       const [first] = await withActor(actor, (tx) =>
@@ -709,6 +1203,73 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(rows[1]?.status).toBe('draft')
       // Same document, second version.
       expect(rows[1]?.reference).toBe(`${rows[0]?.reference}-v2`)
+      // And the old one says what replaced it — every "current quotation"
+      // read filters on this, and nothing wrote it (S3).
+      expect(rows[0]?.supersededById).toBe(rows[1]?.id)
+      expect(rows[1]?.supersededById).toBeNull()
+    })
+
+    /** v3 is the first version's stem plus `-v3`, not `-v2-v3` (S6). */
+    it('numbers every revision from the first reference', async () => {
+      const id = await enquiry()
+      for (const sell of ['4250.00', '4300.00', '4400.00']) {
+        await createQuote(
+          {},
+          form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: sell }) }),
+        )
+      }
+
+      const rows = await quotesFor(id)
+      expect(rows[2]?.reference).toBe(`${rows[0]?.reference}-v3`)
+      expect(rows[1]?.supersededById).toBe(rows[2]?.id)
+    })
+
+    /** Superseding a quote the customer may hold is a revision — its own key (S6). */
+    it('asks quote.revise before superseding a version', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      harness.session = { ...session, permissions: new Set(['quote.send']) }
+
+      await expect(
+        createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() })),
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
+      harness.session = session
+
+      expect((await quotesFor(id)).map((r) => r.status)).toEqual(['draft'])
+    })
+
+    /**
+     * The customer said yes to that version. Re-quoting used to retire it
+     * whatever its status, and a job booked from it then pointed at a
+     * superseded quote (S2).
+     */
+    it('never supersedes an accepted quotation', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      await setQuoteStatus({}, form({ quoteId: first!.id, status: 'sent' }))
+      await setQuoteStatus({}, form({ quoteId: first!.id, status: 'accepted' }))
+
+      const state = await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+
+      expect(state.message).toBe('ledgerValidation.quoteAlreadyAccepted')
+      const rows = await quotesFor(id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]?.status).toBe('accepted')
+      expect(rows[0]?.supersededById).toBeNull()
+    })
+
+    /** A quotation already past its date is not an offer (S9). */
+    it('refuses an expiry date that has already passed', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ validUntil: '2020-01-01' }) }),
+      )
+
+      expect(state.errors?.validUntil).toBe('ledgerValidation.quoteExpiryInPast')
+      expect(await quotesFor(id)).toEqual([])
     })
 
     /**
@@ -728,7 +1289,7 @@ describe.skipIf(!enabled)('quotations', () => {
         }),
       )
 
-      expect(state.errors?.totalSell).toMatch(/below what it costs/)
+      expect(state.errors?.totalSell).toBe('ledgerValidation.priceBelowCost')
       expect(await quotesFor(id)).toEqual([])
     })
 
@@ -756,31 +1317,56 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(state.errors?.validUntil).toBeTruthy()
     })
 
-    /** Money is decimal all the way down; a thousand-separator is not a number. */
+    /**
+     * Money is decimal all the way down, and a figure that cannot be read
+     * unambiguously is refused — a comma as the decimal mark, say.
+     */
     it('refuses an amount that is not one', async () => {
       const state = await createQuote(
         {},
         form({
           enquiryId: await enquiry(),
           branchId: BRANCH,
-          ...priced({ totalSell: '4,250.00' }),
+          ...priced({ totalSell: '4.250,00' }),
         }),
       )
 
       expect(state.errors?.totalSell).toBeTruthy()
     })
 
-    it('refuses a branch the salesperson does not sit in', async () => {
-      await expect(
-        createQuote(
-          {},
-          form({
-            enquiryId: await enquiry(),
-            branchId: '00000000-0000-7000-8000-0000000000b2',
-            ...priced(),
-          }),
-        ),
-      ).rejects.toThrow()
+    /**
+     * QA P3. A thousands separator used to be refused as "not a number",
+     * although "4,250.00" is how every quotation in the business prints the
+     * figure. It reads as the figure it is, and stays a decimal string.
+     */
+    it('reads a grouped amount as the figure it is', async () => {
+      const id = await enquiry()
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: '4,250.00' }) }),
+      )
+
+      expect(state.errors).toBeUndefined()
+      const [row] = await quotesFor(id)
+      expect(row?.totalSell).toBe('4250.000000')
+    })
+
+    /**
+     * The branch is the enquiry's. The dialog defaulted to the session's
+     * first branch and the action trusted it, so a KWI enquiry got a DXB
+     * quotation (S7); a posted branch is now ignored, and one outside the
+     * salesperson's branches cannot reach it either.
+     */
+    it('takes the branch from the enquiry, not from the form', async () => {
+      const id = await enquiry()
+
+      const state = await createQuote(
+        {},
+        form({ enquiryId: id, branchId: '00000000-0000-7000-8000-0000000000b2', ...priced() }),
+      )
+
+      expect(state.ok).toBeTruthy()
+      expect((await quotesFor(id))[0]?.branchId).toBe(BRANCH)
     })
   })
 
@@ -837,6 +1423,71 @@ describe.skipIf(!enabled)('quotations', () => {
       expect((await linesOf(quoteId))[0]?.description).toBe('Ocean freight KWI/JEA, all-in')
     })
 
+    /**
+     * QA P2-5. "New quotation" on a priced enquiry made a v2 with no lines,
+     * so the revised offer printed a total over an empty table. The lines
+     * travel to the new draft, and the total is theirs.
+     */
+    it('copies the lines onto a revision, and the total follows them', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      for (const rate of ['1450.00', '250.50']) {
+        await addQuoteLine(
+          {},
+          form({
+            quoteId: first!.id,
+            chargeTypeId: freightChargeTypeId,
+            quantity: '1',
+            rate,
+            currency: 'USD',
+            description: `Line at ${rate}`,
+          }),
+        )
+      }
+
+      await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: '9999.00' }) }),
+      )
+
+      const [, second] = await quotesFor(id)
+      const lines = await linesOf(second!.id)
+      expect(lines.map((l) => l.description).sort()).toEqual(['Line at 1450.00', 'Line at 250.50'])
+      expect(second?.totalSell).toBe('1700.500000')
+      // The first version keeps its own lines — a revision copies, never moves.
+      expect(await linesOf(first!.id)).toHaveLength(2)
+    })
+
+    it('leaves the lines behind when the revision changes currency', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      await addQuoteLine(
+        {},
+        form({
+          quoteId: first!.id,
+          chargeTypeId: freightChargeTypeId,
+          quantity: '1',
+          rate: '100',
+          currency: 'USD',
+        }),
+      )
+
+      await createQuote(
+        {},
+        form({
+          enquiryId: id,
+          branchId: BRANCH,
+          ...priced({ currency: 'KWD', totalSell: '4300' }),
+        }),
+      )
+
+      const [, second] = await quotesFor(id)
+      expect(await linesOf(second!.id)).toHaveLength(0)
+      expect(second?.totalSell).toBe('4300.000000')
+    })
+
     it('asks which charge the line is', async () => {
       const state = await addQuoteLine({}, form({ quoteId: await draft(), rate: '100' }))
 
@@ -861,20 +1512,55 @@ describe.skipIf(!enabled)('quotations', () => {
       const quoteId = await draft()
       await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
 
-      await expect(
-        addQuoteLine(
-          {},
-          form({
-            quoteId,
-            chargeTypeId: freightChargeTypeId,
-            quantity: '1',
-            rate: '50',
-            currency: 'USD',
-          }),
-        ),
-      ).rejects.toThrow(/sent quotation cannot be edited/)
+      const state = await addQuoteLine(
+        {},
+        form({
+          quoteId,
+          chargeTypeId: freightChargeTypeId,
+          quantity: '1',
+          rate: '50',
+          currency: 'USD',
+        }),
+      )
 
+      // Returned rather than thrown, so the dialog can say it.
+      expect(state.message).toBe('ledgerValidation.quoteSentNoEdit')
       expect(await linesOf(quoteId)).toEqual([])
+    })
+
+    /** The hidden currency field was the only guard (S10). */
+    it('refuses a line in another currency than the quotation', async () => {
+      const quoteId = await draft()
+
+      const state = await addQuoteLine(
+        {},
+        form({ quoteId, chargeTypeId: freightChargeTypeId, rate: '100', currency: 'KWD' }),
+      )
+
+      expect(state.message).toBe('ledgerValidation.quoteLineCurrency')
+      expect(await linesOf(quoteId)).toEqual([])
+    })
+
+    /**
+     * Once a draft has lines they are the offer, and the total follows them.
+     * The typed total stood unreconciled beneath the lines on the PDF (S10).
+     */
+    it('keeps the total equal to its lines, rounded to the currency', async () => {
+      const quoteId = await draft()
+      for (const rate of ['1000.004', '250']) {
+        await addQuoteLine(
+          {},
+          form({ quoteId, chargeTypeId: freightChargeTypeId, rate, currency: 'USD' }),
+        )
+      }
+
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(quotes).where(eq(quotes.id, quoteId)),
+      )
+      // USD has two decimals: 1000.004 is 1000.00 on the line and in the sum.
+      expect(row?.totalSell).toBe('1250.000000')
+      // Restated against the frozen cost of 3600 — a loss, and it says so.
+      expect((row!.pricedSnapshot as { marginPct: number }).marginPct).toBe(-188)
     })
   })
 
@@ -933,6 +1619,58 @@ describe.skipIf(!enabled)('quotations', () => {
       expect(event?.customerId).toBe(CUSTOMER)
     })
 
+    /**
+     * Sending is what quotes the enquiry (S1). An enquiry that went through
+     * an RFQ sat in `rating` for good, and `won` is legal only from `quoted`.
+     */
+    it('moves an enquiry in rating to quoted when the quotation is sent', async () => {
+      const quoteId = await draft()
+      const enquiryId = (await quoteRow(quoteId))!.enquiryId
+
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+
+      const [row] = await withActor(actor, (tx) =>
+        tx.select({ status: enquiries.status }).from(enquiries).where(eq(enquiries.id, enquiryId)),
+      )
+      expect(row?.status).toBe('quoted')
+    })
+
+    /** A double-click is two sends; the customer gets one mail (S17). */
+    it('raises one quote.sent however many times Send is pressed at once', async () => {
+      const quoteId = await draft()
+      const { reference } = (await quoteRow(quoteId))!
+
+      await Promise.all([
+        setQuoteStatus({}, form({ quoteId, status: 'sent' })),
+        setQuoteStatus({}, form({ quoteId, status: 'sent' })),
+      ])
+
+      const events = await withActor(actor, (tx) =>
+        tx.execute(
+          sql`select 1 from notification_outbox
+               where event_key = 'quote.sent' and payload->>'reference' = ${reference}`,
+        ),
+      )
+      expect(events.rows).toHaveLength(1)
+    })
+
+    /** Past its last valid day it cannot be sent or accepted (S9). */
+    it('refuses to send or accept a lapsed quotation, but lets the customer say no', async () => {
+      const quoteId = await draft()
+      await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
+      await withActor({ ...actor, type: 'system' }, (tx) =>
+        tx.update(quotes).set({ validUntil: '2020-01-01' }).where(eq(quotes.id, quoteId)),
+      )
+
+      expect((await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))).message).toBe(
+        'ledgerValidation.quoteLapsed',
+      )
+      expect((await quoteRow(quoteId))?.status).toBe('sent')
+
+      await setQuoteStatus({}, form({ quoteId, status: 'rejected' }))
+      expect((await quoteRow(quoteId))?.status).toBe('rejected')
+    })
+
     it('records the decision date when the customer answers', async () => {
       const quoteId = await draft()
       await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
@@ -950,12 +1688,14 @@ describe.skipIf(!enabled)('quotations', () => {
 
       const state = await setQuoteStatus({}, form({ quoteId, status: 'accepted' }))
 
-      expect(state.message).toMatch(/cannot move to that state/)
+      expect(state.message).toBe('ledgerValidation.quoteBadTransition')
       expect((await quoteRow(quoteId))?.status).toBe('draft')
     })
 
     it('asks for something to update', async () => {
-      expect((await setQuoteStatus({}, form({}))).errors?._).toBe('Nothing to update.')
+      expect((await setQuoteStatus({}, form({}))).errors?._).toBe(
+        'ledgerValidation.nothingToUpdate',
+      )
       expect((await setQuoteStatus({}, form({ quoteId: 'x' }))).errors?._).toBeTruthy()
     })
 
@@ -969,8 +1709,12 @@ describe.skipIf(!enabled)('quotations', () => {
       await setQuoteStatus({}, form({ quoteId, status: 'sent' }))
       harness.session = { ...session, permissions: new Set(['quote.send']) }
 
-      await expect(setQuoteStatus({}, form({ quoteId, status: 'accepted' }))).rejects.toThrow()
-      await expect(setQuoteStatus({}, form({ quoteId, status: 'rejected' }))).rejects.toThrow()
+      await expect(
+        setQuoteStatus({}, form({ quoteId, status: 'accepted' })),
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
+      await expect(
+        setQuoteStatus({}, form({ quoteId, status: 'rejected' })),
+      ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
 
       harness.session = session
     })
@@ -1005,6 +1749,7 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
       customerId: CUSTOMER,
       currency: 'KWD',
       subtotal: '1000.000',
+      descriptionEn: 'Ocean freight',
       taxTreatment: 'out_of_scope',
       dueOn: '2035-12-31',
       language: 'en',
@@ -1047,6 +1792,45 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
     expect(row.seriesNo).toBeNull()
   })
 
+  /*
+    F5. The typed amount used to land on the header only: the export builds
+    the receivable from lines, so the invoice posted nothing, and the first
+    line added afterwards silently replaced the typed figure.
+  */
+  it('writes the amount as its first line, so the totals are a sum of lines', async () => {
+    await createInvoice({}, draft({ subtotal: '250.500', descriptionEn: 'Customs clearance' }))
+
+    const row = await newest()
+    const lines = await linesOf(row.id)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]!.descriptionEn).toBe('Customs clearance')
+    expect(Number(lines[0]!.amount)).toBeCloseTo(250.5, 6)
+    expect(Number(row.subtotal)).toBeCloseTo(250.5, 6)
+  })
+
+  /** F2. A hand-raised foreign invoice carries its rate for the export. */
+  it('records the rate a foreign invoice was raised at', async () => {
+    await createInvoice({}, draft({ currency: 'USD', subtotal: '100.00', fxRate: '0.307' }))
+    expect(Number((await newest()).fxRate)).toBeCloseTo(0.307, 8)
+  })
+
+  it('stores rate 1 for an invoice in the branch currency', async () => {
+    await createInvoice({}, draft())
+    expect(Number((await newest()).fxRate)).toBe(1)
+  })
+
+  it('asks for a rate for a foreign invoice with none on file', async () => {
+    const state = await createInvoice({}, draft({ currency: UNRATED, subtotal: '100.00' }))
+    expect(state.errors?.fxRate).toBe(
+      `ledgerValidation.fxRateNeeded:{"currency":"${UNRATED}","base":"KWD"}`,
+    )
+  })
+
+  it('refuses an invoice for nothing', async () => {
+    const state = await createInvoice({}, draft({ subtotal: '0' }))
+    expect(state.errors?.subtotal).toBe('ledgerValidation.amountMustBePositive')
+  })
+
   it('remembers which language the customer is invoiced in', async () => {
     await createInvoice({}, draft({ language: 'ar' }))
 
@@ -1072,14 +1856,83 @@ describe.skipIf(!enabled)('drafting an invoice', () => {
   it('refuses a branch the clerk does not sit in', async () => {
     await expect(
       createInvoice({}, draft({ branchId: '00000000-0000-7000-8000-0000000000b2' })),
-    ).rejects.toThrow()
+    ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
   })
 
   describe('its lines', () => {
+    /** A draft with no lines yet, at the given tax treatment. */
     async function drafted(fields: Record<string, string> = {}): Promise<string> {
-      await createInvoice({}, draft({ subtotal: '0', ...fields }))
-      return (await newest()).id
+      return withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            currency: 'KWD',
+            taxTreatment: (fields.taxTreatment ?? 'out_of_scope') as 'standard',
+            taxRatePercent: fields.taxRatePercent ?? '0',
+          })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
     }
+
+    /*
+      F4. The line amount was unrounded `qty × price` and tax was rounded to
+      six places: this invoice stored 1681.301650, showed 1,681.302, and paying
+      the figure shown was refused as more than was owed.
+    */
+    it('rounds each line, and its tax, to the currency', async () => {
+      const invoiceId = await drafted({ taxTreatment: 'standard', taxRatePercent: '5' })
+
+      await addInvoiceLine(
+        {},
+        form({
+          invoiceId,
+          descriptionEn: 'Ocean freight',
+          quantity: '3',
+          unitPrice: '533.746',
+          isTaxable: 'on',
+        }),
+      )
+
+      const [line] = await linesOf(invoiceId)
+      expect(line!.amount).toBe('1601.238000')
+      expect(line!.taxAmount).toBe('80.062000')
+      const [row] = await withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.id, invoiceId)),
+      )
+      expect(row!.total).toBe('1681.300000')
+    })
+
+    /** F6. The status was read and ignored, so an issued invoice took new lines. */
+    it('refuses a line on an invoice that is no longer a draft', async () => {
+      const invoiceId = await draftInvoice('10.000')
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      await setInvoiceStatus({}, form({ invoiceId, status: 'issued' }))
+
+      const state = await addInvoiceLine(
+        {},
+        form({ invoiceId, descriptionEn: 'Late extra', quantity: '1', unitPrice: '5.000' }),
+      )
+
+      expect(state.message).toBe('ledgerValidation.invoiceNotDraftNoEdit')
+      expect(await linesOf(invoiceId)).toHaveLength(1)
+    })
+
+    /** U6. "-1" is a number; being told otherwise sends the clerk hunting a typo. */
+    it('says a negative quantity must be more than zero', async () => {
+      const state = await addInvoiceLine(
+        {},
+        form({
+          invoiceId: await drafted(),
+          descriptionEn: 'Freight',
+          quantity: '-1',
+          unitPrice: '5.000',
+        }),
+      )
+      expect(state.errors?.quantity).toBe('ledgerValidation.quantityMoreThanZero')
+    })
 
     /**
      * Recomputed from the lines rather than incremented, so a corrected line
@@ -1289,7 +2142,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await setQuoteCoverNote({}, form({ quoteId, locale: 'en', note: 'Too late' }))
 
-      expect(state.message).toMatch(/draft quotation/)
+      expect(state.message).toBe('ledgerValidation.coverNoteEditDraftOnly')
       expect((await noteOf(quoteId)).en).toBeNull()
     })
 
@@ -1337,8 +2190,49 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/draft quotation/)
+      expect(state.message).toBe('ledgerValidation.coverNoteDraftOnly')
       expect(spy).not.toHaveBeenCalled()
+    })
+
+    /** The service's English is for its log; the code is what gets worded. */
+    it('words the service refusal code, never its English', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            note: null,
+            refusal: 'A covering note can only be drafted on a draft quote.',
+            refusalCode: 'not_draft',
+          }),
+        })),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toBe('ledgerValidation.coverNoteDraftOnly')
+    })
+
+    it('falls back to the generic sentence for a code it does not know', async () => {
+      const quoteId = await draftQuote()
+      process.env.SERVICE_URL = 'http://service.test'
+      process.env.INTERNAL_API_SECRET = 'secret'
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ note: null, refusal: 'Something new.', refusalCode: 'brand_new' }),
+        })),
+      )
+
+      const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
+
+      expect(state.message).toBe('ledgerValidation.nothingDrafted')
     })
 
     it('explains that no model is configured on a 503', async () => {
@@ -1352,7 +2246,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/model is configured/i)
+      expect(state.message).toBe('ledgerValidation.coverNoteNoModel')
     })
 
     it('falls back to writing by hand when the service is not wired up', async () => {
@@ -1360,7 +2254,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/needs the service|by hand/i)
+      expect(state.message).toMatch(/^ledgerValidation\.coverNote(NeedsService|Failed|TimedOut)$/)
     })
 
     it('reports a timeout rather than throwing when the service hangs', async () => {
@@ -1376,7 +2270,7 @@ describe.skipIf(!enabled)('quotation covering note', () => {
 
       const state = await draftQuoteCoverNote({}, form({ quoteId, locale: 'en' }))
 
-      expect(state.message).toMatch(/timed out|by hand/i)
+      expect(state.message).toMatch(/^ledgerValidation\.coverNote(TimedOut|NeedsService|Failed)$/)
     })
   })
 })

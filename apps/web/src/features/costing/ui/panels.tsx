@@ -25,6 +25,7 @@ import { Card, CardHeader } from '@/ui/card'
 import { EmptyState } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 import { ChargeLineDialog } from './dialogs'
 import type { ChargeLineRow, JobLedger } from '../queries'
 
@@ -37,7 +38,7 @@ import type { ChargeLineRow, JobLedger } from '../queries'
  * Every arithmetic step upstream of this line stayed exact.
  */
 function display(amount: string, currency: string, locale: 'en' | 'ar'): string {
-  return formatMoney({ amount: Number(amount), currency }, locale)
+  return formatMoney({ amount: amount, currency }, locale)
 }
 
 /**
@@ -98,28 +99,41 @@ export async function JobLedgerCard({
         for, what it cost, what is left, and how much of the cost is still our
         own estimate rather than a bill we have seen.
       */}
-      <dl className="grid grid-cols-2 gap-px border-y border-line bg-line md:grid-cols-4">
-        <Figure label={t('revenue')}>
-          {display(margin.revenue.amount.toString(), baseCurrency, locale)}
-        </Figure>
-        <Figure label={t('cost')}>
-          {display(margin.cost.amount.toString(), baseCurrency, locale)}
-        </Figure>
-        <Figure label={t('gross')} tone={marginTone}>
-          {display(margin.gross.amount.toString(), baseCurrency, locale)}
-          <span className="ms-2 text-[0.75rem] font-normal text-ink-subtle">
-            {margin.grossPercent === null
-              ? t('unpriced')
-              : formatPercent(Number(margin.grossPercent.toString()), locale)}
-          </span>
-        </Figure>
-        <Figure label={t('accrued')} hint={t('accruedHint')}>
-          {display(margin.accruedCost.amount.toString(), baseCurrency, locale)}
-        </Figure>
-      </dl>
+      {/*
+        Four across only when the panel has the room, measured on the panel:
+        it sits in two-thirds of the job file on a desktop and alone on a
+        tablet, and `md:grid-cols-4` cut its figures off at 768, where the
+        sidebar leaves the whole file narrower than the breakpoint implies.
+      */}
+      <div className="@container">
+        <dl className="grid grid-cols-2 gap-px border-y border-line bg-line @xl:grid-cols-4">
+          <Figure label={t('revenue')}>
+            {display(margin.revenue.amount.toString(), baseCurrency, locale)}
+          </Figure>
+          <Figure label={t('cost')}>
+            {display(margin.cost.amount.toString(), baseCurrency, locale)}
+          </Figure>
+          <Figure label={t('gross')} tone={marginTone}>
+            {display(margin.gross.amount.toString(), baseCurrency, locale)}
+            {/*
+            A real space, not only the margin: copied, read aloud or found with
+            the browser's search, the two ran together as "KWD 0.000not priced
+            yet" (U6).
+          */}{' '}
+            <span className="ms-1 text-caption font-normal text-ink-subtle">
+              {margin.grossPercent === null
+                ? t('unpriced')
+                : formatPercent(Number(margin.grossPercent.toString()), locale)}
+            </span>
+          </Figure>
+          <Figure label={t('accrued')} hint={t('accruedHint')}>
+            {display(margin.accruedCost.amount.toString(), baseCurrency, locale)}
+          </Figure>
+        </dl>
+      </div>
 
       {under ? (
-        <p className="border-b border-line bg-critical-soft px-5 py-2.5 text-[0.8125rem] text-critical">
+        <p className="border-b border-line bg-critical-soft px-5 py-2.5 text-body-sm text-critical">
           {t('belowFloor', { floor: trimDecimal(ledger.marginFloorPercent) ?? '0' })}
         </p>
       ) : null}
@@ -127,16 +141,29 @@ export async function JobLedgerCard({
       {ledger.lines.length === 0 ? (
         <EmptyState icon="finance" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell minWidth="none">
+        <TableShell>
           <THead>
             <TR>
-              <TH>{t('direction')}</TH>
+              {/*
+                A phone keeps the charge, its amount and whether it is verified.
+                Revenue or cost rides in front of the charge name there (below);
+                the counterparty, the base-currency figure and the edit button
+                wait for a wider screen — a charge line is edited in a form with
+                eleven fields, which is desk work.
+              */}
+              <TH priority="low">{t('direction')}</TH>
               <TH>{t('charge')}</TH>
-              <TH>{t('counterparty')}</TH>
+              <TH priority="low">{t('counterparty')}</TH>
               <TH align="end">{t('amount')}</TH>
-              <TH align="end">{t('inBase', { currency: baseCurrency })}</TH>
+              <TH priority="low" align="end">
+                {t('inBase', { currency: baseCurrency })}
+              </TH>
               <TH>{t('verified')}</TH>
-              {mayWrite ? <TH align="end">{tc('actions')}</TH> : null}
+              {mayWrite ? (
+                <TH priority="low" align="end">
+                  {tc('actions')}
+                </TH>
+              ) : null}
             </TR>
           </THead>
           <TBody>
@@ -146,15 +173,20 @@ export async function JobLedgerCard({
 
               return (
                 <TR key={line.id}>
-                  <TD>
+                  <TD priority="low">
                     <Badge tone={line.direction === 'revenue' ? 'info' : 'muted'}>
                       {t(line.direction === 'revenue' ? 'revenueShort' : 'costShort')}
                     </Badge>
                   </TD>
                   <TD>
+                    <span className="mb-1 block @3xl:hidden">
+                      <Badge tone={line.direction === 'revenue' ? 'info' : 'muted'}>
+                        {t(line.direction === 'revenue' ? 'revenueShort' : 'costShort')}
+                      </Badge>
+                    </span>
                     <span className="font-medium">{line.chargeTypeName}</span>
                     {line.description ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span dir="auto" className="mt-0.5 block text-micro text-ink-subtle">
                         {line.description}
                       </span>
                     ) : null}
@@ -164,32 +196,40 @@ export async function JobLedgerCard({
                       rather than by a join somebody has to think of.
                     */}
                     {line.sourceKind ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                      <span className="mt-0.5 block text-micro text-ink-subtle">
                         {isKnownSource(line.sourceKind)
                           ? t(`source.${line.sourceKind}`)
                           : line.sourceKind}
                       </span>
                     ) : null}
                   </TD>
-                  <TD className="text-ink-muted">{line.counterpartyName ?? '—'}</TD>
-                  <TD align="end" className="tabular-nums">
-                    {display(line.amount, line.currency, locale)}
+                  <TD priority="low" className="text-ink-muted">
+                    {line.counterpartyName ?? '—'}
                   </TD>
-                  <TD align="end" className="tabular-nums text-ink-muted">
-                    {display(line.amountBase, line.baseCurrency, locale)}
+                  <TD align="end" numeric>
+                    <Money
+                      value={{ amount: line.amount, currency: line.currency }}
+                      locale={locale}
+                    />
+                  </TD>
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
+                    <Money
+                      value={{ amount: line.amountBase, currency: line.baseCurrency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD>
                     <Badge tone={verdict.tone}>{t(`match.${verdict.key}` as 'match.agreed')}</Badge>
                     {line.matchCount > 0 ? (
-                      <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle tabular-nums">
+                      <span className="mt-0.5 block text-micro text-ink-subtle tabular-nums">
                         {display(line.matchedAmount, line.currency, locale)}
                       </span>
                     ) : null}
                   </TD>
                   {mayWrite ? (
-                    <TD align="end">
+                    <TD priority="low" align="end">
                       {frozen ? (
-                        <span className="text-[0.6875rem] text-ink-subtle">
+                        <span className="text-micro text-ink-subtle">
                           {t(line.isBilled ? 'frozenBilled' : 'frozenMatched')}
                         </span>
                       ) : (
@@ -206,6 +246,10 @@ export async function JobLedgerCard({
                             rate: trimDecimal(line.rate),
                             currency: line.currency,
                             fxRate: trimDecimal(line.fxRate),
+                            // Without it the select opened on "none" and the
+                            // save wrote null — payables matching and the
+                            // partner settlement both lost the line.
+                            counterpartyPartnerId: line.counterpartyPartnerId,
                           }}
                         />
                       )}
@@ -237,9 +281,9 @@ function Figure({
 
   return (
     <div className="bg-surface px-5 py-3.5">
-      <dt className="text-[0.75rem] font-medium text-ink-muted">{label}</dt>
-      <dd className={`mt-1 text-[1.0625rem] font-semibold tabular-nums ${colour}`}>{children}</dd>
-      {hint ? <p className="mt-0.5 text-[0.6875rem] text-ink-subtle">{hint}</p> : null}
+      <dt className="text-caption font-medium text-ink-muted">{label}</dt>
+      <dd className={`mt-1 text-heading font-semibold tabular-nums ${colour}`}>{children}</dd>
+      {hint ? <p className="mt-0.5 text-micro text-ink-subtle">{hint}</p> : null}
     </div>
   )
 }

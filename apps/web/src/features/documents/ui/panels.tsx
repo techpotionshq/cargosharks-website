@@ -24,7 +24,7 @@ import { Button, EmptyState } from '@/ui/layout'
 import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { CargoDialog, PartyDialog } from './dialogs'
-import { issueDocument, surrenderHouseBill } from '../form-actions'
+import { IssueDocumentButton, SurrenderBillButton } from './document-buttons'
 import type { CargoRow, PartyRow } from '../queries'
 
 export async function PartiesCard({
@@ -49,12 +49,13 @@ export async function PartiesCard({
       {parties.length === 0 ? (
         <EmptyState icon="partners" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell className="border-t border-line" minWidth="none">
+        <TableShell className="border-t border-line">
           <THead>
             <TR>
               <TH>{t('role')}</TH>
               <TH>{t('name')}</TH>
-              <TH>{t('where')}</TH>
+              {/* The city follows the name on a phone (below). */}
+              <TH priority="low">{t('where')}</TH>
               <TH align="end">{tc('actions')}</TH>
             </TR>
           </THead>
@@ -65,12 +66,15 @@ export async function PartiesCard({
                 <TD>
                   <span className="font-medium">{party.nameEn}</span>
                   {party.nameAr ? (
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
-                      {party.nameAr}
+                    <span className="mt-0.5 block text-micro text-ink-subtle">{party.nameAr}</span>
+                  ) : null}
+                  {party.city || party.country ? (
+                    <span className="mt-0.5 block text-micro text-ink-muted @3xl:hidden">
+                      {[party.city, party.country].filter(Boolean).join(', ')}
                     </span>
                   ) : null}
                 </TD>
-                <TD className="text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {[party.city, party.country].filter(Boolean).join(', ') || '—'}
                 </TD>
                 <TD align="end">
@@ -135,11 +139,15 @@ export async function CargoCard({
       {cargo.length === 0 ? (
         <EmptyState icon="container" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell className="border-t border-line" minWidth="none">
+        <TableShell className="border-t border-line">
           <THead>
             <TR>
               <TH>{t('description')}</TH>
-              <TH align="end">{t('packages')}</TH>
+              {/* Weight and volume stay across a phone; the package count
+                  follows the description there (below). */}
+              <TH priority="low" align="end">
+                {t('packages')}
+              </TH>
               <TH align="end">{t('gross')}</TH>
               <TH align="end">{t('volume')}</TH>
               <TH align="end">{tc('actions')}</TH>
@@ -150,12 +158,17 @@ export async function CargoCard({
               <TR key={line.id}>
                 <TD>
                   <span className="font-medium">{line.descriptionEn}</span>
-                  <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                  <span className="mt-0.5 block text-micro text-ink-subtle">
                     {[line.hsCode, line.containerNo].filter(Boolean).join(' · ') ||
                       t('unclassified')}
                   </span>
+                  {line.packageCount ? (
+                    <span className="numeric block text-micro text-ink-muted @3xl:hidden">
+                      {line.packageCount} {line.packageType ?? ''}
+                    </span>
+                  ) : null}
                 </TD>
-                <TD align="end" numeric className="text-ink-muted">
+                <TD priority="low" align="end" numeric className="text-ink-muted">
                   {line.packageCount ?? '—'} {line.packageType ?? ''}
                 </TD>
                 <TD align="end" numeric className="text-ink-muted">
@@ -189,7 +202,7 @@ export async function CargoCard({
             ))}
             <TR>
               <TD className="font-semibold">{t('totals')}</TD>
-              <TD align="end" numeric className="font-semibold">
+              <TD priority="low" align="end" numeric className="font-semibold">
                 {totals.packages}
               </TD>
               <TD align="end" numeric className="font-semibold">
@@ -264,7 +277,7 @@ export async function DocumentActionsCard({
       <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('title')} />
 
       {!hasCargo ? (
-        <p className="mt-3 rounded-sm bg-surface-sunken px-3 py-2 text-[0.8125rem] text-ink-muted">
+        <p className="mt-3 rounded-sm bg-surface-sunken px-3 py-2 text-body-sm text-ink-muted">
           {t('needsCargo')}
         </p>
       ) : null}
@@ -285,15 +298,15 @@ export async function DocumentActionsCard({
               className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5 last:border-0"
             >
               <div className="min-w-0">
-                <span className="block text-[0.875rem] font-medium text-ink">
+                <span className="block text-body font-medium text-ink">
                   {t(`kinds.${label}` as 'kinds.house_bill')}
                 </span>
-                <span className="block text-[0.6875rem] text-ink-subtle">
+                <span className="block text-micro text-ink-subtle">
                   {t(`hints.${label}` as 'hints.house_bill')}
                 </span>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
                 {/*
                   Both languages, as links. A `GET` renders and streams and
                   stores nothing, so opening one in a tab is safe and sharing
@@ -330,14 +343,7 @@ export async function DocumentActionsCard({
                 </span>
 
                 {mayIssue ? (
-                  <form action={issueDocument}>
-                    <input type="hidden" name="jobId" value={jobId} />
-                    <input type="hidden" name="kind" value={kind} />
-                    <input type="hidden" name="locale" value="en" />
-                    <Button size="sm" variant="secondary" type="submit" icon="check">
-                      {t('issue')}
-                    </Button>
-                  </form>
+                  <IssueDocumentButton jobId={jobId} kind={kind} label={t('issue')} />
                 ) : null}
               </div>
 
@@ -350,7 +356,7 @@ export async function DocumentActionsCard({
               */}
               {kind === 'house_bill' && surrenderable ? (
                 <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-1.5">
-                  <span className="text-[0.75rem] text-ink-muted">
+                  <span className="text-caption text-ink-muted">
                     {houseBillSurrenderedAt
                       ? t('surrenderedOn', {
                           date: formatDate(houseBillSurrenderedAt, lang, timeZone),
@@ -358,12 +364,7 @@ export async function DocumentActionsCard({
                       : t('surrenderHint')}
                   </span>
                   {!houseBillSurrenderedAt && mayRelease ? (
-                    <form action={surrenderHouseBill}>
-                      <input type="hidden" name="jobId" value={jobId} />
-                      <Button size="sm" variant="ghost" type="submit">
-                        {t('surrender')}
-                      </Button>
-                    </form>
+                    <SurrenderBillButton jobId={jobId} label={t('surrender')} />
                   ) : null}
                 </div>
               ) : null}
@@ -383,12 +384,12 @@ export async function DocumentActionsCard({
       */}
       {dutyAction ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-sm bg-surface-sunken px-3 py-2">
-          <span className="text-[0.8125rem] text-ink-muted">{t('dutyPrompt')}</span>
+          <span className="text-body-sm text-ink-muted">{t('dutyPrompt')}</span>
           {dutyAction}
         </div>
       ) : null}
 
-      <p className="mt-4 border-t border-line pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+      <p className="mt-4 border-t border-line pt-3 text-micro leading-relaxed text-ink-subtle">
         {t('issueNote')}
       </p>
     </Card>

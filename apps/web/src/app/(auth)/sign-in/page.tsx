@@ -153,18 +153,18 @@ export default async function SignInPage({
         </div>
 
         <div className="relative max-w-md">
-          <h2 className="font-display text-[1.75rem] leading-tight font-semibold tracking-tight text-balance text-ink">
+          <h2 className="font-display text-display-lg leading-tight font-semibold tracking-tight text-balance text-ink">
             {t('panelTitle')}
           </h2>
-          <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-muted">{t('panelBody')}</p>
+          <p className="mt-3 text-title leading-relaxed text-ink-muted">{t('panelBody')}</p>
 
           <ul className="mt-8 flex flex-col gap-3.5">
             {ASSURANCES.map((item) => (
               <li key={item.key} className="flex items-start gap-3">
-                <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink">
+                <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
                   <Icon name={item.icon} size={15} />
                 </span>
-                <span className="text-[0.875rem] leading-snug text-ink-muted">
+                <span className="text-body leading-snug text-ink-muted">
                   {t(`assurances.${item.key}`)}
                 </span>
               </li>
@@ -172,7 +172,7 @@ export default async function SignInPage({
           </ul>
         </div>
 
-        <p className="relative text-[0.75rem] text-ink-subtle">
+        <p className="relative text-caption text-ink-subtle">
           {locale === 'ar' ? brand.identity.legalNameAr : brand.identity.legalNameEn}
           {established ? <span className="numeric"> · {established}</span> : null}
         </p>
@@ -184,15 +184,15 @@ export default async function SignInPage({
           {/* The mark returns on a phone, where the left panel is gone. */}
           <Logo brand={brand} locale={locale} size="md" markOnly className="mb-5 lg:hidden" />
 
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
+          <h1 className="font-display text-display font-semibold tracking-tight text-ink">
             {t('title')}
           </h1>
-          <p className="mt-1.5 text-[0.9375rem] text-ink-muted">{t('subtitle')}</p>
+          <p className="mt-1.5 text-title text-ink-muted">{t('subtitle')}</p>
 
           {reset ? (
             <p
               role="status"
-              className="mt-5 rounded-sm bg-positive-soft px-3 py-2.5 text-[0.8125rem] leading-snug font-medium text-positive ring-1 ring-positive/25 ring-inset"
+              className="mt-5 rounded-sm bg-positive-soft px-3 py-2.5 text-body-sm leading-snug font-medium text-positive ring-1 ring-positive/25 ring-inset"
             >
               {t('resetDone')}
             </p>
@@ -232,24 +232,24 @@ export default async function SignInPage({
           <p className="mt-3 text-end">
             <Link
               href="/forgot-password"
-              className="text-[0.8125rem] font-medium text-brand hover:underline"
+              className="text-body-sm font-medium text-accent hover:underline"
             >
               {t('forgotPassword')}
             </Link>
           </p>
 
-          <p className="mt-4 flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2.5 text-[0.75rem] leading-snug text-ink-muted">
+          <p className="mt-4 flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2.5 text-caption leading-snug text-ink-muted">
             <Icon name="hold" size={14} className="mt-px shrink-0 text-ink-subtle" />
             {t('twoFactor')}
           </p>
 
-          <p className="mt-3 text-[0.75rem] text-ink-subtle">{t('invitationOnly')}</p>
+          <p className="mt-3 text-caption text-ink-subtle">{t('invitationOnly')}</p>
 
           <div className="mt-8 border-t border-line pt-6">
-            <p className="text-[0.8125rem] text-ink-muted">{t('customerPrompt')}</p>
+            <p className="text-body-sm text-ink-muted">{t('customerPrompt')}</p>
             <Link
               href="/track"
-              className="mt-1.5 inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-brand hover:underline"
+              className="mt-1.5 inline-flex items-center gap-1.5 text-body font-medium text-accent hover:underline"
             >
               <Icon name="tracking" size={15} />
               {t('customerLink')}

@@ -19,7 +19,8 @@
  * operator is looking at rather than one uploaded some minutes ago.
  */
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { issuesCsv } from '@qabandi/core/import'
 import { Button } from '@/ui/layout'
 import { Card, CardHeader } from '@/ui/card'
@@ -27,6 +28,7 @@ import { Submit } from '@/ui/form'
 import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { runImport, type ImportState } from '../actions'
+import { describeIssue } from '../issue-messages'
 
 interface FieldSummary {
   readonly key: string
@@ -67,6 +69,9 @@ export function ImportConsole({
   const [state, action] = useActionState<ImportState, FormData>(runImport, {})
   const [overrides, setOverrides] = useState<Record<string, number | null>>({})
   const [fileName, setFileName] = useState('')
+  const t = useTranslations('importsValidation')
+  const fileInput = useRef<HTMLInputElement>(null)
+  const chosen = useRef<File | null>(null)
 
   // The mapping the engine guessed, with anything the operator changed layered
   // on top. Reset whenever a different file is chosen.
@@ -76,13 +81,55 @@ export function ImportConsole({
     return { ...base, ...overrides }
   }, [fields, state.mapping, overrides])
 
+  /*
+    What is posted is what somebody decided, not every field (S13).
+
+    Before the first check this posted the whole table above — every field,
+    null — and the engine treats a posted mapping as the operator's word, so
+    `autoMap` never ran, not even on the template this screen offers for
+    download. Until the server has guessed, only the operator's own changes go;
+    after a check, the guess it returned plus those changes.
+  */
+  // A guess about a different file is no guess about this one.
+  const posted = state.mapping && state.fileName === fileName ? mapping : overrides
+
+  /*
+    React resets a form after its action, which empties the file input — so
+    after "Check" the screen still named the file, "Import" then had nothing to
+    send, and choosing it again threw the operator's mapping away (S13). The
+    chosen file is put back, and choosing the *same* file again keeps the
+    mapping; a different file starts afresh.
+  */
+  useEffect(() => {
+    const input = fileInput.current
+    if (!input || !chosen.current || (input.files && input.files.length > 0)) return
+    try {
+      const transfer = new DataTransfer()
+      transfer.items.add(chosen.current)
+      input.files = transfer.files
+    } catch {
+      // A browser without a constructible DataTransfer: the operator re-chooses.
+    }
+  }, [state])
+
   const headers = state.headers ?? []
   const checked = state.headers !== undefined
   const ready = state.ok === true && !state.committed
   const issues = state.issues ?? []
 
+  // Worded once, here, for both the table and the download: the file the
+  // operator opens next to their sheet says exactly what the screen said.
+  const worded = useMemo(
+    () => issues.map((issue) => ({ ...issue, message: describeIssue(t, issue) })),
+    [issues, t],
+  )
+
   const downloadIssues = (): void => {
-    const blob = new Blob([issuesCsv(issues)], { type: 'text/csv;charset=utf-8' })
+    const csv = issuesCsv(worded, [labels.line!, labels.column!, labels.problem!])
+    // A byte-order mark first, because without one Excel reads a CSV in the
+    // machine's ANSI code page and every Arabic problem arrives as mojibake —
+    // in the one file an Arabic-speaking operator is meant to work from.
+    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
@@ -94,7 +141,7 @@ export function ImportConsole({
   return (
     <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="kind" value={kind} />
-      <input type="hidden" name="mapping" value={JSON.stringify(mapping)} />
+      <input type="hidden" name="mapping" value={JSON.stringify(posted)} />
 
       {/* ---------------------------------------------------- 1. the file */}
       <Card>
@@ -102,23 +149,31 @@ export function ImportConsole({
 
         <div className="flex flex-col gap-4 pt-1">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken">
+            <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-body font-medium text-ink transition-colors hover:bg-surface-sunken">
               <Icon name="document" size={15} />
               {labels.chooseFile}
               <input
+                ref={fileInput}
                 type="file"
                 name="file"
                 accept=".csv,.tsv,.txt,text/csv,text/plain"
                 required
                 className="sr-only"
                 onChange={(event) => {
-                  setFileName(event.target.files?.[0]?.name ?? '')
-                  setOverrides({})
+                  const file = event.target.files?.[0] ?? null
+                  const same =
+                    file !== null &&
+                    chosen.current !== null &&
+                    file.name === chosen.current.name &&
+                    file.size === chosen.current.size
+                  chosen.current = file
+                  setFileName(file?.name ?? '')
+                  if (!same) setOverrides({})
                 }}
               />
             </label>
 
-            <span className="text-[0.8125rem] text-ink-muted">
+            <span className="text-body-sm text-ink-muted">
               {fileName || state.fileName || labels.noFile}
             </span>
 
@@ -129,14 +184,14 @@ export function ImportConsole({
 
           {needsBranch ? (
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="branchId" className="text-[0.8125rem] font-medium text-ink">
+              <label htmlFor="branchId" className="text-body-sm font-medium text-ink">
                 {labels.branch}
               </label>
               <select
                 id="branchId"
                 name="branchId"
                 required
-                className="h-10 w-full max-w-sm rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                className="h-10 w-full max-w-sm rounded-sm border border-line bg-surface px-3 text-body text-ink"
               >
                 <option value="">{labels.chooseBranch}</option>
                 {branches.map((branch) => (
@@ -145,34 +200,34 @@ export function ImportConsole({
                   </option>
                 ))}
               </select>
-              <p className="text-[0.75rem] text-ink-subtle">{labels.branchHint}</p>
+              <p className="text-caption text-ink-subtle">{labels.branchHint}</p>
             </div>
           ) : null}
 
           {needsPartner ? (
             <div className="flex flex-wrap gap-4">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="direction" className="text-[0.8125rem] font-medium text-ink">
+                <label htmlFor="direction" className="text-body-sm font-medium text-ink">
                   {labels.direction}
                 </label>
                 <select
                   id="direction"
                   name="direction"
                   defaultValue="buy"
-                  className="h-10 rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                  className="h-10 rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="buy">{labels.buy}</option>
                   <option value="sell">{labels.sell}</option>
                 </select>
               </div>
               <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-                <label htmlFor="partnerId" className="text-[0.8125rem] font-medium text-ink">
+                <label htmlFor="partnerId" className="text-body-sm font-medium text-ink">
                   {labels.partner}
                 </label>
                 <select
                   id="partnerId"
                   name="partnerId"
-                  className="h-10 w-full rounded-sm border border-line bg-surface px-3 text-[0.875rem] text-ink"
+                  className="h-10 w-full rounded-sm border border-line bg-surface px-3 text-body text-ink"
                 >
                   <option value="">{labels.choosePartner}</option>
                   {partners.map((partner) => (
@@ -181,7 +236,7 @@ export function ImportConsole({
                     </option>
                   ))}
                 </select>
-                <p className="text-[0.75rem] text-ink-subtle">{labels.partnerHint}</p>
+                <p className="text-caption text-ink-subtle">{labels.partnerHint}</p>
               </div>
             </div>
           ) : null}
@@ -191,13 +246,13 @@ export function ImportConsole({
               type="submit"
               name="intent"
               value="check"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-[0.875rem] font-semibold text-ink transition-colors hover:bg-surface-sunken"
+              className="inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-4 text-body font-semibold text-ink transition-colors hover:bg-surface-sunken"
             >
               <Icon name="search" size={15} weight="bold" />
               {labels.check}
             </button>
             {state.error ? (
-              <span className="text-[0.8125rem] font-medium text-critical">
+              <span className="text-body-sm font-medium text-critical">
                 {labels[`error_${state.error}`] ?? labels.error_unknown}
               </span>
             ) : null}
@@ -227,7 +282,7 @@ export function ImportConsole({
                       </span>
                     ) : null}
                     {field.hint ? (
-                      <span className="block text-[0.75rem] text-ink-subtle">{field.hint}</span>
+                      <span className="block text-caption text-ink-subtle">{field.hint}</span>
                     ) : null}
                   </TD>
                   <TD>
@@ -241,7 +296,7 @@ export function ImportConsole({
                         }))
                       }
                       className={[
-                        'h-8 w-full max-w-xs rounded-sm border bg-surface px-2 text-[0.8125rem]',
+                        'h-8 w-full max-w-xs rounded-sm border bg-surface px-2 text-body-sm',
                         field.required && mapping[field.key] === null
                           ? 'border-critical text-critical'
                           : 'border-line text-ink',
@@ -261,7 +316,7 @@ export function ImportConsole({
           </TableShell>
 
           {state.ignoredColumns && state.ignoredColumns.length > 0 ? (
-            <p className="pt-3 text-[0.75rem] text-ink-subtle">
+            <p className="pt-3 text-caption text-ink-subtle">
               {labels.ignored}: {state.ignoredColumns.join(', ')}
             </p>
           ) : null}
@@ -297,13 +352,13 @@ export function ImportConsole({
                   </TR>
                 </THead>
                 <TBody>
-                  {issues.slice(0, MAX_ROWS_SHOWN).map((issue, index) => (
+                  {worded.slice(0, MAX_ROWS_SHOWN).map((issue, index) => (
                     <TR key={`${issue.line}-${issue.field ?? index}`}>
                       <TD numeric className="ref text-ink">
                         {issue.line}
                       </TD>
                       <TD className="text-ink-muted">{issue.column ?? '—'}</TD>
-                      <TD className="text-ink">{issue.message}</TD>
+                      <TD className="break-words text-ink">{issue.message}</TD>
                     </TR>
                   ))}
                 </TBody>
@@ -311,14 +366,14 @@ export function ImportConsole({
 
               <div className="flex flex-wrap items-center gap-3 pt-3">
                 {issues.length > MAX_ROWS_SHOWN ? (
-                  <span className="text-[0.75rem] text-ink-subtle">
+                  <span className="text-caption text-ink-subtle">
                     {labels.showingFirst} {MAX_ROWS_SHOWN} / {state.issueCount}
                   </span>
                 ) : null}
                 <button
                   type="button"
                   onClick={downloadIssues}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-sm px-3 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-sm px-3 text-body-sm font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
                 >
                   <Icon name="download" size={15} />
                   {labels.downloadIssues}
@@ -342,10 +397,10 @@ export function ImportConsole({
       {state.committed ? (
         <Card tone="brand">
           <div className="flex items-center gap-3">
-            <Icon name="check" size={20} className="text-brand" />
+            <Icon name="check" size={20} className="text-accent" />
             <div>
               <p className="font-semibold text-ink">{labels.doneTitle}</p>
-              <p className="text-[0.8125rem] text-ink-muted">
+              <p className="text-body-sm text-ink-muted">
                 {state.committed.cards !== undefined
                   ? `${state.committed.cards} ${labels.doneCards} · ${state.committed.records} ${labels.doneLines}`
                   : `${state.committed.records} ${labels.doneRecords}`}
@@ -369,10 +424,10 @@ function Figure({
 }) {
   return (
     <div>
-      <p className="text-[0.75rem] uppercase tracking-wide text-ink-subtle">{label}</p>
+      <p className="text-caption uppercase tracking-wide text-ink-subtle">{label}</p>
       <p
         className={[
-          'text-[1.375rem] font-semibold tabular-nums',
+          'text-headline font-semibold tabular-nums',
           tone === 'critical' && value > 0 ? 'text-critical' : 'text-ink',
         ].join(' ')}
       >

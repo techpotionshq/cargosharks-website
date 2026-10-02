@@ -88,10 +88,14 @@ export default async function PartnersPage({
           <TR>
             <TH>{t('code')}</TH>
             <TH>{t('name')}</TH>
-            <TH>{t('type')}</TH>
-            <TH>{t('country')}</TH>
-            <TH align="end">{t('paymentTerms')}</TH>
-            <TH align="end">{t('openJobs')}</TH>
+            <TH priority="low">{t('type')}</TH>
+            <TH priority="low">{t('country')}</TH>
+            <TH priority="low" align="end">
+              {t('paymentTerms')}
+            </TH>
+            <TH priority="low" align="end">
+              {t('openJobs')}
+            </TH>
             <TH>{tc('status')}</TH>
             <TH align="end" />
           </TR>
@@ -105,14 +109,16 @@ export default async function PartnersPage({
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
               </TD>
-              <TD>
+              <TD priority="low">
                 <Badge tone="info">{t(`types.${row.type}`)}</Badge>
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.countryCode ?? '—'}</TD>
-              <TD align="end" numeric>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.countryCode ?? '—'}
+              </TD>
+              <TD priority="low" align="end" numeric>
                 {row.paymentTermsDays === null ? '—' : t('days', { count: row.paymentTermsDays })}
               </TD>
-              <TD align="end" numeric>
+              <TD priority="low" align="end" numeric>
                 {row.openJobs}
               </TD>
               <TD>
@@ -124,7 +130,7 @@ export default async function PartnersPage({
                 <RetireNetworkDialog
                   kind="partner"
                   id={row.id}
-                  name={row.legalNameEn}
+                  name={locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
                   isActive={row.isActive}
                 />
               </TD>

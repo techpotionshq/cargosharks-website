@@ -30,7 +30,7 @@
  * product without anyone having to remember to make it so.
  */
 
-import { useActionState, useId, type ReactNode } from 'react'
+import { useActionState, useId, useRef, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
@@ -48,6 +48,9 @@ import {
 } from './form'
 import { Icon, type IconName } from './icon'
 import { Modal, ModalCancel, type ModalSize } from './modal'
+import { MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
+import { useInMenu } from './menu'
+import { toast } from './toast'
 
 interface BaseField {
   readonly name: string
@@ -101,6 +104,11 @@ export type FieldSpec =
   | (BaseField & {
       readonly kind: 'switch'
       readonly defaultChecked?: boolean
+      /**
+       * For one switch of a group sharing a `name`: what this box submits.
+       * The form then posts the checked values as an array.
+       */
+      readonly value?: string
     })
   /**
    * A file the form posts as part of its `FormData`.
@@ -150,6 +158,12 @@ interface RecordDialogLabels {
   readonly submit: string
   readonly submitting: string
   readonly cancel: string
+  /**
+   * What the confirmation says once it worked — "Invoice issued", "Enquiry
+   * assigned". Omitted, the region's own "Saved." is used, which is right for
+   * an edit and too vague for a move that changes a record's state.
+   */
+  readonly success?: string
 }
 
 export interface RecordDialogProps {
@@ -167,24 +181,21 @@ export interface RecordDialogProps {
 }
 
 /*
-  All four triggers stand `h-9`, and that is the point of the map.
+  All four triggers are `Button`'s own `md`, and that is the point.
 
   These buttons share action bars with `Button` — the enquiry header alone
-  carries three of them next to "Price it" — and `Button`'s default size is
-  `h-9`. `ghost` used to be `h-8`, which is invisible in isolation and obvious
-  in a row: two dialogs, a link and a submit, none of them agreeing on a
-  baseline. Quiet is carried by colour and by the missing border; it is not
-  carried by being four pixels shorter than its neighbours.
+  carries three of them next to "Price it". `ghost` used to be `h-8`, which is
+  invisible in isolation and obvious in a row: two dialogs, a link and a
+  submit, none of them agreeing on a baseline. Quiet is carried by colour and
+  by the missing border; it is not carried by being four pixels shorter than
+  its neighbours. The shared `buttonClass` is what keeps it that way.
 */
-const TRIGGER: Record<string, string> = {
-  primary:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover',
-  secondary:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken',
-  ghost:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink',
-  danger:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm border border-critical/40 bg-surface px-3.5 text-[0.875rem] font-medium text-critical transition-colors hover:bg-critical-soft',
+const TRIGGER: Record<NonNullable<RecordDialogProps['variant']>, string> = {
+  primary: buttonClass('primary', 'md'),
+  secondary: buttonClass('secondary', 'md'),
+  ghost: buttonClass('ghost', 'md'),
+  // The trigger is outlined; the filled red is saved for the confirm inside.
+  danger: buttonClass('danger-outline', 'md'),
 }
 
 export function RecordDialog({
@@ -198,7 +209,26 @@ export function RecordDialog({
   iconOnly = false,
   trigger,
 }: RecordDialogProps) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {})
+  /*
+    Say so when it worked.
+
+    The dialog closing was the only acknowledgement there was, and a dialog
+    also closes when it is cancelled — so after a status move nothing on the
+    screen distinguished "issued" from "never mind". Announced as the action
+    resolves, not from an effect on the result: a move that changes what the
+    page offers (agree a settlement, start rating, book a quote) takes this
+    dialog away with the revalidation, and an effect on an unmounted dialog
+    never runs, so exactly those moves said nothing (QA P3).
+  */
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    async (previous, form) => {
+      const result = await action(previous, form)
+      if (result.ok) toast(labels.success)
+      return result
+    },
+    {},
+  )
+  const attempt = useAttemptKey(state)
   /*
     The form's id, so the submit button can sit outside it.
 
@@ -214,6 +244,7 @@ export function RecordDialog({
     one no longer is. `useActionState` already knows, so it is the source.
   */
   const formId = useId()
+  const inMenu = useInMenu()
 
   return (
     <Modal
@@ -246,20 +277,32 @@ export function RecordDialog({
             title={iconOnly ? labels.open : undefined}
             aria-label={iconOnly ? labels.open : undefined}
             className={
-              iconOnly
-                ? 'flex size-8 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink'
-                : TRIGGER[variant]!
+              inMenu
+                ? variant === 'danger'
+                  ? MENU_ITEM_DANGER
+                  : MENU_ITEM
+                : iconOnly
+                  ? 'flex size-9 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink max-md:size-10'
+                  : TRIGGER[variant]
             }
           >
-            <Icon name={icon ?? 'plus'} size={iconOnly ? 16 : 15} weight="bold" />
+            <Icon
+              name={icon ?? 'plus'}
+              size={iconOnly || inMenu ? 16 : 15}
+              weight={inMenu ? 'regular' : 'bold'}
+              className={inMenu && variant !== 'danger' ? 'text-ink-subtle' : undefined}
+            />
             {iconOnly ? null : labels.open}
           </button>
         ))
       }
     >
-      <form id={formId} action={formAction}>
+      <form key={attempt} id={formId} action={formAction}>
         <FormGrid>
-          <FormError message={state.message} />
+          <FormError message={state.message} link={state.link} />
+          {unplaced(fields, state).map((message) => (
+            <FormError key={message} message={message} />
+          ))}
           {fields.map((field, index) => (
             <RenderField key={fieldKey(field, index)} field={field} state={state} />
           ))}
@@ -267,6 +310,60 @@ export function RecordDialog({
       </form>
     </Modal>
   )
+}
+
+/**
+ * A fresh key for every answer the action gives — QA P1-3.
+ *
+ * After a form action React resets the form, and an uncontrolled `<select>`
+ * resets to the option it was *mounted* with, not to the echoed value the
+ * re-render asked for: an invitation refused for having no branch came back
+ * with its role picker blank, so ticking the branch and saving again failed a
+ * second time, on the role. Keying the form on the answer remounts the fields
+ * with the echoed values as their defaults, which every control honours.
+ *
+ * Keyed by the state object itself, so a re-render of the same answer keeps
+ * the same key and nothing the person is typing is thrown away.
+ */
+function useAttemptKey(state: ActionState): number {
+  const keys = useRef(new WeakMap<ActionState, number>())
+  const next = useRef(0)
+  let key = keys.current.get(state)
+  if (key === undefined) {
+    key = next.current++
+    keys.current.set(state, key)
+  }
+  return key
+}
+
+/**
+ * Field errors no rendered control will show.
+ *
+ * A switch has no message band, a hidden field has no face, and an action may
+ * key a refusal on `_`. Each of those errors used to be returned and then
+ * drawn nowhere: an invitation with no branch ticked came back with
+ * `branchIds: "Choose at least one branch"` and the dialog simply stayed open
+ * (QA P1-3). Anything a field will not draw is drawn once, at the top.
+ */
+function unplaced(fields: readonly FieldSpec[], state: ActionState): string[] {
+  if (!state.errors) return []
+  const drawn = new Set<string>()
+  const walk = (list: readonly FieldSpec[]) => {
+    for (const field of list) {
+      if (field.kind === 'section') walk(field.fields)
+      else if (field.kind !== 'note' && field.kind !== 'hidden' && field.kind !== 'switch') {
+        drawn.add(field.name)
+      }
+    }
+  }
+  walk(fields)
+  return [
+    ...new Set(
+      Object.entries(state.errors)
+        .filter(([name]) => !drawn.has(name))
+        .map(([, message]) => message),
+    ),
+  ]
 }
 
 /** Sections and notes have no `name`, so the index stands in for one. */
@@ -309,7 +406,7 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
     return (
       <p
         className={[
-          'col-span-12 flex items-start gap-2 rounded-sm px-3 py-2 text-[0.8125rem]',
+          'col-span-12 flex items-start gap-2 rounded-sm px-3 py-2 text-body-sm',
           field.tone === 'caution'
             ? 'bg-caution-soft/60 text-caution'
             : 'bg-surface-sunken text-ink-muted',
@@ -368,12 +465,18 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
         <Switch
           label={field.label}
           name={field.name}
+          value={field.value}
           hint={field.hint}
           span={field.span}
           // On a rejected submit an unchecked box is absent from the FormData
-          // entirely, so "present in values" is the only correct read.
+          // entirely, so "present in values" is the only correct read — and
+          // for a grouped switch, "its value among the echoed ones".
           defaultChecked={
-            state.values ? state.values[field.name] !== undefined : field.defaultChecked
+            state.values
+              ? field.value === undefined
+                ? echoed !== undefined
+                : (echoed?.split('\n').includes(field.value) ?? false)
+              : field.defaultChecked
           }
         />
       )

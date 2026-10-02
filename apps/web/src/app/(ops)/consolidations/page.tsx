@@ -7,6 +7,7 @@
  * three unallocated costs is a groupage margin nobody can state.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -14,25 +15,30 @@ import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import { CandidatesPanel } from '@/features/consolidation/ui/candidates-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatLane } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('consolidations') }
+}
+
 export default async function ConsolidationsPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const [rows, t, tc, tMode] = await Promise.all([
-    listConsolidations(session.actor),
+    listConsolidations(session.actor, {}, locale),
     getTranslations('consolidations'),
     getTranslations('common'),
     getTranslations('mode'),
   ])
-
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
   return (
     <>
@@ -62,11 +68,13 @@ export default async function ConsolidationsPage() {
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('masterBill')}</TH>
-                <TH>{t('carrier')}</TH>
-                <TH>{t('route')}</TH>
+                <TH priority="low">{t('masterBill')}</TH>
+                <TH priority="low">{t('carrier')}</TH>
+                <TH priority="low">{t('route')}</TH>
                 <TH align="end">{t('houses')}</TH>
-                <TH align="end">{t('volume')}</TH>
+                <TH priority="low" align="end">
+                  {t('volume')}
+                </TH>
                 <TH align="end">{t('etd')}</TH>
                 <TH align="end">{tc('status')}</TH>
               </TR>
@@ -77,36 +85,40 @@ export default async function ConsolidationsPage() {
                   <TD>
                     <Link
                       href={`/consolidations/${row.id}`}
-                      className="ref numeric font-medium hover:text-brand"
+                      className="ref numeric font-medium hover:text-accent"
                     >
                       {row.reference}
                     </Link>
-                    <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                    <span className="mt-0.5 block text-micro text-ink-subtle">
                       {tMode(row.mode as 'sea_lcl')}
                     </span>
                   </TD>
-                  <TD numeric className="text-ink-muted">
+                  <TD priority="low" numeric className="text-ink-muted">
                     {row.masterBillNumber ?? '—'}
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {[row.vesselName, row.voyageNumber].filter(Boolean).join(' / ') ||
                       row.flightNumber ||
                       '—'}
                   </TD>
-                  <TD className="text-ink-muted">
-                    {[row.originName, row.destinationName].filter(Boolean).join(' → ') || '—'}
+                  <TD priority="low" className="text-ink-muted">
+                    {row.originName && row.destinationName
+                      ? formatLane(row.originName, row.destinationName, locale)
+                      : row.originName || row.destinationName || '—'}
                   </TD>
                   <TD align="end" numeric>
                     {row.houseCount}
                   </TD>
-                  <TD align="end" numeric className="text-ink-muted">
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
                     {Number(row.volumeCbm).toFixed(2)}
                   </TD>
                   <TD align="end" numeric className="text-ink-muted">
                     {formatDate(row.etd, locale, timeZone)}
                   </TD>
                   <TD align="end">
-                    <span className="inline-flex items-center gap-1.5">
+                    {/* Wraps, so the two pills stack on a phone instead of
+                        holding the status off the screen's edge. */}
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                       {/*
                         An unallocated cost is the one thing on this row that
                         needs doing, so it is flagged beside the status rather

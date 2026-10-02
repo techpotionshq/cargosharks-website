@@ -17,6 +17,7 @@ import { Register, RecordLink } from '@/ui/register'
 import { Badge, customsTone } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('customs')
@@ -32,7 +33,8 @@ export default async function CustomsPage({
 
   const session = await requireSession()
   const { scope } = await searchParams
-  const view = scope === 'released' ? 'released' : scope === 'all' ? 'all' : 'live'
+  const view =
+    scope === 'released' ? 'released' : scope === 'all' ? 'all' : scope === 'held' ? 'held' : 'live'
 
   const t = await getTranslations('customs')
   const tc = await getTranslations('common')
@@ -40,10 +42,13 @@ export default async function CustomsPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const now = Date.now()
 
-  const [rows, counts] = await Promise.all([
-    listCustoms(session.actor, view),
+  // Held is a subset of live, so it reads the live list and keeps the holds —
+  // the summary has always counted them, and now the strip can show them.
+  const [live, counts] = await Promise.all([
+    listCustoms(session.actor, view === 'held' ? 'live' : view),
     customsCounts(session.actor),
   ])
+  const rows = view === 'held' ? live.filter((row) => row.status === 'held') : live
 
   return (
     <Register
@@ -57,6 +62,12 @@ export default async function CustomsPage({
       ]}
       filters={[
         { label: t('inClearance'), href: '/customs', count: counts.live, active: view === 'live' },
+        {
+          label: t('held'),
+          href: '/customs?scope=held',
+          count: counts.held,
+          active: view === 'held',
+        },
         {
           label: t('released'),
           href: '/customs?scope=released',
@@ -76,13 +87,17 @@ export default async function CustomsPage({
         <THead>
           <TR>
             <TH>{t('shipment')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
-            <TH>{t('declaration')}</TH>
-            <TH>{t('filed')}</TH>
+            <TH priority="low">{t('declaration')}</TH>
+            <TH priority="low">{t('filed')}</TH>
             <TH>{t('slaDue')}</TH>
-            <TH>{t('broker')}</TH>
-            <TH align="end">{t('duty')}</TH>
+            <TH priority="lowest">{t('broker')}</TH>
+            {/* The broker's question on a phone is "when is it due", not "how
+                much duty" — the duty is on the job. */}
+            <TH priority="low" align="end">
+              {t('duty')}
+            </TH>
           </TR>
         </THead>
         <TBody>
@@ -97,7 +112,9 @@ export default async function CustomsPage({
                 <TD>
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
-                <TD className="text-ink-muted">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="text-ink-muted">
+                  {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
+                </TD>
                 <TD>
                   <span className="inline-flex items-center gap-1.5">
                     <Badge tone={customsTone(row.status)} dot>
@@ -113,8 +130,13 @@ export default async function CustomsPage({
                     ) : null}
                   </span>
                 </TD>
-                <TD className="ref whitespace-nowrap text-ink">{row.declarationNo ?? '—'}</TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="ref whitespace-nowrap text-ink">
+                  {row.declarationNo ?? '—'}
+                </TD>
+                {/* May break between date and time: on one line "27 Sept,
+                    13:40" was the 25px by which this register scrolled at
+                    1280. */}
+                <TD priority="low" className="text-ink-muted">
                   {row.filedAt ? formatDateTime(row.filedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD
@@ -122,11 +144,24 @@ export default async function CustomsPage({
                 >
                   {row.slaDueAt ? formatRelative(row.slaDueAt, locale, now) : '—'}
                 </TD>
-                <TD className="text-ink-muted">{row.brokerName ?? '—'}</TD>
-                <TD align="end" numeric>
-                  {row.dutyAmount
-                    ? `${trimDecimal(row.dutyAmount)} ${row.dutyCurrency ?? ''}`.trim()
-                    : '—'}
+                <TD priority="lowest" className="text-ink-muted">
+                  {(locale === 'ar' && row.brokerNameAr) || row.brokerName || '—'}
+                </TD>
+                <TD priority="low" align="end" numeric>
+                  {/* At the currency's own precision: trimmed, a KWD duty of
+                      1840.500 read "1840.5 KWD". */}
+                  {row.dutyAmount && !row.dutyCurrency ? (
+                    trimDecimal(row.dutyAmount)
+                  ) : (
+                    <Money
+                      value={
+                        row.dutyAmount && row.dutyCurrency
+                          ? { amount: row.dutyAmount, currency: row.dutyCurrency }
+                          : null
+                      }
+                      locale={locale}
+                    />
+                  )}
                 </TD>
               </TR>
             )

@@ -18,11 +18,11 @@ import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { auth, MIN_PASSWORD_LENGTH } from '@/lib/auth'
-import { useDemoLogin } from '@/lib/pilot/source'
+import { useDemoLogin, usePilotFixtures } from '@/lib/pilot/source'
 import { demoPasswordMatches, demoPersonaByEmail, startDemoSession } from '@/lib/pilot/demo'
-import { clearSignInAttempts, recordSignInAttempt } from '@/lib/throttle'
-import { clearSignInFailures, readLockout, recordSignInFailure } from './lockout'
+import { AUTH_REFUSAL, refusalOf } from '@/lib/auth-guard'
 import { applySetCookie } from './cookies'
+import { demoReadOnlyMessage } from '@/lib/pilot/read-only'
 
 export interface SignInState {
   readonly error?: string
@@ -37,25 +37,6 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   const password = String(formData.get('password') ?? '')
 
   if (!email || !password) return { error: t('errorMissing'), email }
-
-  /*
-    The per-address budget, spent before anything else looks at the request —
-    FR-ID-05, `lib/throttle.ts`.
-
-    First, and counting every attempt rather than only the failures, because
-    what it bounds is the rate of the whole conversation. An attacker walking a
-    list of addresses to see which ones exist never causes a single failed
-    password check against a real account, so the lockout below would never
-    see them.
-
-    The message is safe to be specific about: it describes the caller, not the
-    account, and reveals nothing about whether the address was one of ours.
-  */
-  const address = await clientAddress()
-  const throttle = recordSignInAttempt(address)
-  if (!throttle.allowed) {
-    return { error: t('errorThrottled', { minutes: throttle.minutesRemaining }), email }
-  }
 
   /*
     The public demo's three personas — `QABANDI_DEMO_LOGIN=1`, off by default
@@ -82,24 +63,32 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   }
 
   /*
-    The account lock — FR-ID-05, policy in `core/lockout.ts`.
+    Fixture mode has no `auth_user` to check anything else against. Better
+    Auth would throw on the missing connection and the visitor would see an
+    error page instead of a sentence beside the form.
+  */
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo, email }
 
-    Checked *before* the password, which is the entire point: after five
-    failures the sixth guess must cost an attacker a refusal rather than a
-    comparison. Skipped under the pilot fixtures, where there is no database
-    and therefore no `auth_user` to read.
+  /*
+    The throttle and the account lock — FR-ID-05, A1.
 
-    ## The oracle this one does concede, and why
+    Both are enforced inside Better Auth now (`lib/auth-guard.ts`), so they
+    hold for a script posting to `/api/auth/sign-in/email` exactly as they hold
+    for this form. What is left here is translating the refusal into the
+    operator's language.
+
+    ## The oracle the lock message does concede, and why
 
     Everything else in this file works to make an unknown address
-    indistinguishable from a wrong password. This message breaks that: only a
-    real account can be locked, so being told about a lock confirms the address
-    exists.
+    indistinguishable from a wrong password. The lock message breaks that:
+    only a real account can be locked, so being told about a lock confirms the
+    address exists.
 
     It is conceded deliberately, for a price an attacker has to pay in full.
     Reaching the message costs five failed attempts against that one address,
-    and the per-address budget spent above allows ten in fifteen minutes — so
-    enumerating a list is slow, loud, and self-limiting.
+    and the per-address budget allows ten in fifteen minutes — so enumerating a
+    list is slow, loud, and self-limiting.
 
     The alternative is worse in a way that is easy to underrate: refusing a
     correct password with "wrong email or password" and no further explanation.
@@ -107,48 +96,29 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
     support call, and the fix somebody reaches for under that pressure is to
     turn the lockout off.
   */
-  const lock = await readLockout(email)
-  if (lock?.locked) {
-    return { error: t('errorLocked', { minutes: lock.minutesRemaining }), email }
-  }
-
   let response: Response
   try {
     // `asResponse` gives back the real Response, headers included, which is the
     // only way to get the session cookie out of Better Auth from server code.
+    // The request's headers go with it so the guard sees the caller's address.
     response = await auth.api.signInEmail({
       body: { email, password },
+      headers: await headers(),
       asResponse: true,
     })
-  } catch {
-    // Better Auth throws APIError for bad credentials. Deliberately one
-    // message for "no such user" and "wrong password": distinguishing them
-    // turns the form into an account-enumeration oracle (FR-ID-04).
-    await countFailure(email)
-    return { error: t('errorInvalid'), email }
+  } catch (error) {
+    // Deliberately one message for "no such user" and "wrong password":
+    // distinguishing them turns the form into an account-enumeration oracle
+    // (FR-ID-04). The failure was already counted by the guard.
+    return { error: refusalMessage(t, refusalOf(error)) ?? t('errorInvalid'), email }
   }
 
   if (!response.ok) {
-    await countFailure(email)
-    return { error: t('errorInvalid'), email }
+    return {
+      error: refusalMessage(t, refusalOf(await jsonOf(response))) ?? t('errorInvalid'),
+      email,
+    }
   }
-
-  /*
-    Cleared on the way through, not afterwards.
-
-    `redirect()` below throws to unwind, so anything placed after it never
-    runs — an operator would sign in successfully and stay one mistake from a
-    lock, permanently, and nothing would ever say so.
-
-    Cleared on a two-factor hand-off as well as on a completed sign-in, because
-    the password *was* right. The second factor keeps its own counters
-    (`auth_two_factor.failed_verification_count`), and holding a password
-    lockout open against somebody who has just proved the password would let a
-    stranger who knows only the address lock out an account that is, by this
-    point, demonstrably defended by something they do not have.
-  */
-  await clearSignInFailures(email)
-  clearSignInAttempts(address)
 
   const store = await cookies()
   // `getSetCookie` is the one accessor that keeps multiple Set-Cookie headers
@@ -176,52 +146,46 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
   redirect('/dashboard')
 }
 
+/**
+ * A response's JSON body, or null for one that is not JSON.
+ *
+ * Cloned: the body is a stream and reading it here must not consume the one
+ * the caller may still need. Guarded so a body that is not JSON — a proxy
+ * error page, a future version that answers differently — reads as nothing
+ * rather than throwing on the sign-in path.
+ */
+async function jsonOf(response: Response): Promise<unknown> {
+  try {
+    return await response.clone().json()
+  } catch {
+    return null
+  }
+}
+
 /** Did Better Auth ask for the second factor rather than open a session? */
 async function isTwoFactorChallenge(response: Response): Promise<boolean> {
-  try {
-    // Cloned: the body is a stream and reading it here must not consume the
-    // one the caller may still need.
-    const body: unknown = await response.clone().json()
-    return typeof body === 'object' && body !== null && 'twoFactorRedirect' in body
-      ? Boolean((body as { twoFactorRedirect?: unknown }).twoFactorRedirect)
-      : false
-  } catch {
-    return false
-  }
+  const body = await jsonOf(response)
+  return typeof body === 'object' && body !== null && 'twoFactorRedirect' in body
+    ? Boolean((body as { twoFactorRedirect?: unknown }).twoFactorRedirect)
+    : false
 }
 
 /**
- * Count a failure, and never let counting one break the sign-in form.
+ * The sentence for a refusal the guard raised, or null for anything else.
  *
- * Wrapped because this runs on the path that is already failing. If the
- * database is unreachable, the operator should get "wrong email or password"
- * — which is true, and which they can act on — rather than an unhandled
- * exception on the one screen that has to work before anything else does.
- *
- * A no-op under the pilot fixtures — `lockout.ts` guards that itself.
+ * Both messages are safe to be specific about except the lock, whose
+ * concession is argued in `signIn` above: the throttle describes the caller,
+ * not the account.
  */
-async function countFailure(email: string): Promise<void> {
-  try {
-    await recordSignInFailure(email)
-  } catch (error) {
-    // Logged rather than swallowed silently: a lockout that has quietly
-    // stopped counting is a control that reports itself as present and is not.
-    console.error({ error }, 'sign-in failure could not be recorded')
-  }
-}
-
-/**
- * The caller's address, as the proxy reported it.
- *
- * The same first-hop reading as `clientIp` in `lib/session.ts`. It is only as
- * trustworthy as the proxy in front of the application, which is why nothing
- * that matters rests on it alone — the durable half of FR-ID-05 is the account
- * lock, and that is keyed on the address that was typed, not the one that
- * connected.
- */
-async function clientAddress(): Promise<string | null> {
-  const store = await headers()
-  return store.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
+function refusalMessage(
+  t: (key: string, values?: Record<string, string | number>) => string,
+  refusal: ReturnType<typeof refusalOf>,
+): string | null {
+  if (!refusal) return null
+  const minutes = refusal.minutesRemaining
+  if (refusal.code === AUTH_REFUSAL.accountLocked) return t('errorLocked', { minutes })
+  if (refusal.code === AUTH_REFUSAL.signInThrottled) return t('errorThrottled', { minutes })
+  return null
 }
 
 /**
@@ -236,6 +200,27 @@ const SECURE_PREFIX = '__Secure-'
 const COOKIE_PREFIXES = ['qabandi.', `${SECURE_PREFIX}qabandi.`] as const
 
 export async function signOut(): Promise<void> {
+  /*
+    End the session row, not only the cookie — A5.
+
+    Clearing the cookie alone left `auth_session` live for the rest of its
+    twelve hours, so a token copied off a shared freight-desk machine (or out
+    of a proxy log) kept working after its owner had signed out. Better Auth's
+    `signOut` deletes the row the cookie names; the request's headers carry
+    that cookie to it.
+
+    Not awaited into a failure: an expired or already-revoked session makes it
+    throw, and the person pressing "sign out" must still end up signed out.
+    The pilot fixtures have no session table to revoke.
+  */
+  if (!usePilotFixtures()) {
+    try {
+      await auth.api.signOut({ headers: await headers() })
+    } catch (error) {
+      console.error({ error }, 'sign-out could not revoke the session row')
+    }
+  }
+
   const store = await cookies()
   for (const cookie of store.getAll()) {
     if (!COOKIE_PREFIXES.some((prefix) => cookie.name.startsWith(prefix))) continue
@@ -291,13 +276,26 @@ export async function requestPasswordReset(
 
   if (!email) return { error: t('errorMissing') }
 
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo, email }
+
   try {
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: '/reset-password' },
+      headers: await headers(),
     })
-  } catch {
+  } catch (error) {
     /*
-      Swallowed on purpose.
+      The reset budget — A1, `lib/auth-guard.ts`. Safe to say out loud: it is
+      spent per caller and per typed address, whether or not the address has
+      an account, so the refusal tells nobody anything about the account.
+    */
+    const refusal = refusalOf(error)
+    if (refusal?.code === AUTH_REFUSAL.resetThrottled) {
+      return { error: t('errorThrottled', { minutes: refusal.minutesRemaining }), email }
+    }
+    /*
+      Anything else is swallowed on purpose.
 
       Better Auth throws for an unknown address on some paths and not others,
       and the difference is exactly what must not be observable. Anything that
@@ -335,6 +333,9 @@ export async function resetPassword(
     return { error: t('errorTooShort', { length: MIN_PASSWORD_LENGTH }) }
   }
   if (password !== confirm) return { error: t('errorMismatch') }
+
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo }
 
   try {
     await auth.api.resetPassword({ body: { newPassword: password, token } })

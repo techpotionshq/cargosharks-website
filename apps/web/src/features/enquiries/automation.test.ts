@@ -20,11 +20,16 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 const pilot = vi.hoisted(() => ({ on: false }))
 vi.mock('@/lib/pilot/source', () => ({ usePilotFixtures: () => pilot.on }))
 
-const { aiInvocations, enquiries, extractionProposals, notificationOutbox, rateRequests, withActor } =
-  await import('@qabandi/db')
-const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } = await import(
-  '@/lib/testing/fixtures'
-)
+const {
+  aiInvocations,
+  enquiries,
+  extractionProposals,
+  notificationOutbox,
+  rateRequests,
+  withActor,
+} = await import('@qabandi/db')
+const { world, bothBranchesActor, HOME_BRANCH, CUSTOMER, PARTNER } =
+  await import('@/lib/testing/fixtures')
 const { enquiryAutomation } = await import('./automation')
 
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
@@ -198,11 +203,21 @@ describe.skipIf(!enabled)('enquiryAutomation', () => {
   it('returns the mid-automation fixture in pilot mode', async () => {
     pilot.on = true
 
-    const activity = await enquiryAutomation(bothBranchesActor, 'any-id')
+    const activity = await enquiryAutomation(bothBranchesActor, 'enq-318')
 
     expect(activity.acknowledgedAt).toBeInstanceOf(Date)
     expect(activity.fieldsRead).toBeGreaterThan(0)
     expect(activity.rateRequestsSent).toBeGreaterThan(0)
     expect(activity.rateRepliesIn).toBeGreaterThan(0)
+  })
+
+  /** …on the enquiry the model read, not on every enquiry on the board. */
+  it('shows nothing in pilot mode for an enquiry nobody automated', async () => {
+    pilot.on = true
+
+    const activity = await enquiryAutomation(bothBranchesActor, 'enq-316')
+
+    expect(activity.acknowledgedAt).toBeNull()
+    expect(activity.rateRequestsSent).toBe(0)
   })
 })

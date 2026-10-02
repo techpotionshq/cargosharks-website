@@ -17,11 +17,12 @@
  * here goes through `withActor`, and the trigger records it.
  */
 
-import { and, asc, desc, eq, gte, ilike, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, lt, notInArray, or, sql } from 'drizzle-orm'
 import {
   auditLog,
   branches,
   chargeTypes,
+  commodities,
   containerTypes,
   countries,
   currencies,
@@ -38,6 +39,8 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { named } from '@/lib/named'
+import type { FxRateRow } from '@/lib/pilot/types'
 import {
   pilotAudit,
   pilotAuditTableCounts,
@@ -47,6 +50,7 @@ import {
   pilotChargeTypes,
   pilotDutyRates,
   pilotEngineRules,
+  pilotFxRates,
   pilotMilestoneTemplates,
   pilotReferenceCounts,
   pilotReferenceSample,
@@ -61,13 +65,31 @@ export interface UserRow {
   readonly nameEn: string
   readonly nameAr: string | null
   readonly email: string
+  /** Carried into the edit form, so saving a name does not clear it. */
+  readonly phone?: string | null
   readonly type: string
   readonly locale: string
   readonly isActive: boolean
   readonly lastSeenAt: Date | null
   readonly hasLogin: boolean
+  /**
+   * Whether the login has a password yet — A7.
+   *
+   * An invitation creates the login and mails a link; the credential exists
+   * only once the person has followed it. Until then the register says so and
+   * offers to send the link again, instead of a tick that implied they could
+   * already sign in.
+   */
+  readonly hasPassword: boolean
   /** `KWI: Operations Manager`, one per branch — FR-ID-02. */
-  readonly assignments: { branchCode: string; roleKey: string; requiresTwoFactor: boolean }[]
+  readonly assignments: {
+    branchCode: string
+    roleKey: string
+    requiresTwoFactor: boolean
+    /** The ids the edit dialog pre-selects from; absent in the pilot fixtures. */
+    branchId?: string
+    roleId?: string
+  }[]
 }
 
 export async function listUsers(actor: Actor): Promise<UserRow[]> {
@@ -80,13 +102,24 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
         nameEn: principals.nameEn,
         nameAr: principals.nameAr,
         email: principals.email,
+        phone: principals.phone,
         type: principals.type,
         locale: principals.locale,
         isActive: principals.isActive,
         lastSeenAt: principals.lastSeenAt,
         hasLogin: sql<boolean>`${principals.authUserId} is not null`,
+        // `auth_account` sits outside RLS with the other `auth_*` tables, and
+        // only the existence of a credential leaves this query — never a hash.
+        hasPassword: sql<boolean>`exists (
+          select 1 from auth_account a
+           where a.user_id = "principals"."auth_user_id" and a.provider_id = 'credential'
+        )`,
       })
       .from(principals)
+      // Staff only. Portal and agent logins became readable to staff (A7) so
+      // the customer page can show who has access; they are managed there,
+      // per company, and listing them here would bury the staff register.
+      .where(notInArray(principals.type, ['customer_contact', 'agent_contact']))
       .orderBy(asc(principals.nameEn))
       .limit(200)
 
@@ -96,6 +129,8 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
     const assignments = await tx
       .select({
         principalId: principalBranchRoles.principalId,
+        branchId: principalBranchRoles.branchId,
+        roleId: principalBranchRoles.roleId,
         branchCode: branches.code,
         roleKey: roles.key,
         requiresTwoFactor: roles.requiresTwoFactor,
@@ -103,12 +138,17 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       .from(principalBranchRoles)
       .innerJoin(branches, eq(branches.id, principalBranchRoles.branchId))
       .innerJoin(roles, eq(roles.id, principalBranchRoles.roleId))
+      // A revoked grant is a deactivated row (nothing is deleted), and it
+      // was still drawn as a role pill after the branch had been taken away.
+      .where(eq(principalBranchRoles.isActive, true))
       .orderBy(asc(branches.code))
 
     const byPrincipal = new Map<string, UserRow['assignments']>()
     for (const row of assignments) {
       const list = byPrincipal.get(row.principalId) ?? []
       list.push({
+        branchId: row.branchId,
+        roleId: row.roleId,
         branchCode: row.branchCode,
         roleKey: row.roleKey,
         requiresTwoFactor: row.requiresTwoFactor,
@@ -121,6 +161,45 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       assignments: byPrincipal.get(person.id) ?? [],
     }))
   })
+}
+
+export interface PortalContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string
+  readonly isActive: boolean
+  readonly hasPassword: boolean
+  readonly lastSeenAt: Date | null
+}
+
+/** The portal logins one customer has. */
+export async function listPortalContacts(
+  actor: Actor,
+  customerId: string,
+): Promise<PortalContactRow[]> {
+  // The hosted demo's portal persona is not a row; the card offers the invite
+  // and lists nobody, which is the honest picture of a fixture deployment.
+  if (usePilotFixtures()) return []
+
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: principals.id,
+        nameEn: principals.nameEn,
+        nameAr: principals.nameAr,
+        email: principals.email,
+        isActive: principals.isActive,
+        lastSeenAt: principals.lastSeenAt,
+        hasPassword: sql<boolean>`exists (
+          select 1 from auth_account a
+           where a.user_id = "principals"."auth_user_id" and a.provider_id = 'credential'
+        )`,
+      })
+      .from(principals)
+      .where(and(eq(principals.type, 'customer_contact'), eq(principals.customerId, customerId)))
+      .orderBy(asc(principals.nameEn)),
+  )
 }
 
 /** The permission matrix as the interface renders it — role by permission. */
@@ -181,6 +260,7 @@ export interface BranchRow {
   readonly isActive: boolean
   readonly calendarId: string
   readonly calendarName: string | null
+  readonly calendarNameAr: string | null
   readonly people: number
   readonly openJobs: number
 }
@@ -221,6 +301,7 @@ export async function listBranches(actor: Actor): Promise<BranchRow[]> {
         isActive: branches.isActive,
         calendarId: branches.calendarId,
         calendarName: workingCalendars.nameEn,
+        calendarNameAr: workingCalendars.nameAr,
         people: sql<number>`(
           select count(*)::int from principal_branch_roles pbr
            where pbr.branch_id = "branches"."id"
@@ -311,17 +392,27 @@ export async function listChargeTypes(actor: Actor): Promise<
   )
 }
 
-export async function listReferenceSample(actor: Actor): Promise<{
-  incoterms: { code: string; nameEn: string }[]
-  containers: { code: string; nameEn: string; teu: string | null }[]
-  exceptions: { code: string; nameEn: string; slaHours: number | null }[]
-  documents: { code: string; nameEn: string; category: string }[]
-  calendars: { key: string; nameEn: string; timeZone: string }[]
-  currencies: { code: string; nameEn: string | null }[]
-  countries: { code: string; nameEn: string }[]
+/**
+ * The catalogues the reference screen lists, each row named in the reader's
+ * language (F27) — `name` is Arabic where the row has it and English where it
+ * is blank, so an Arabic screen stops listing "Ex Works" under Arabic headings.
+ */
+export async function listReferenceSample(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<{
+  incoterms: { code: string; name: string }[]
+  containers: { code: string; name: string; teu: string | null }[]
+  exceptions: { code: string; name: string; slaHours: number | null }[]
+  documents: { code: string; name: string; category: string }[]
+  calendars: { key: string; name: string; timeZone: string }[]
+  currencies: { code: string; name: string | null }[]
+  countries: { code: string; name: string }[]
   milestones: number
 }> {
-  if (usePilotFixtures()) return pilotReferenceSample()
+  if (usePilotFixtures()) return pilotReferenceSample(locale)
+
+  const countryName = named(locale, countries.nameEn, countries.nameAr)
 
   return withActor(actor, async (tx) => {
     const [
@@ -335,13 +426,13 @@ export async function listReferenceSample(actor: Actor): Promise<{
       milestoneRows,
     ] = [
       await tx
-        .select({ code: incoterms.code, nameEn: incoterms.nameEn })
+        .select({ code: incoterms.code, name: named(locale, incoterms.nameEn, incoterms.nameAr) })
         .from(incoterms)
         .orderBy(asc(incoterms.code)),
       await tx
         .select({
           code: containerTypes.code,
-          nameEn: containerTypes.nameEn,
+          name: named(locale, containerTypes.nameEn, containerTypes.nameAr),
           teu: containerTypes.teu,
         })
         .from(containerTypes)
@@ -349,7 +440,7 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           code: exceptionCodes.code,
-          nameEn: exceptionCodes.nameEn,
+          name: named(locale, exceptionCodes.nameEn, exceptionCodes.nameAr),
           slaHours: exceptionCodes.slaHours,
         })
         .from(exceptionCodes)
@@ -357,7 +448,7 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           code: documentTypes.code,
-          nameEn: documentTypes.nameEn,
+          name: named(locale, documentTypes.nameEn, documentTypes.nameAr),
           category: documentTypes.category,
         })
         .from(documentTypes)
@@ -365,19 +456,22 @@ export async function listReferenceSample(actor: Actor): Promise<{
       await tx
         .select({
           key: workingCalendars.key,
-          nameEn: workingCalendars.nameEn,
+          name: named(locale, workingCalendars.nameEn, workingCalendars.nameAr),
           timeZone: workingCalendars.timeZone,
         })
         .from(workingCalendars)
         .orderBy(asc(workingCalendars.key)),
       await tx
-        .select({ code: currencies.code, nameEn: currencies.nameEn })
+        .select({
+          code: currencies.code,
+          name: named(locale, currencies.nameEn, currencies.nameAr),
+        })
         .from(currencies)
         .orderBy(asc(currencies.code)),
       await tx
-        .select({ code: countries.code, nameEn: countries.nameEn })
+        .select({ code: countries.code, name: countryName })
         .from(countries)
-        .orderBy(asc(countries.nameEn)),
+        .orderBy(asc(countryName)),
       await tx.select({ count: sql<number>`count(*)::int` }).from(milestoneTemplates),
     ]
 
@@ -528,19 +622,28 @@ export async function auditTableCounts(
  * Its own query rather than part of `loadOptions`, because it is needed by
  * exactly one form and every page that called `loadOptions` would otherwise
  * pay for the join.
+ *
+ * Labelled in the reader's language, and sorted by the label shown — an Arabic
+ * list in English alphabetical order reads as unsorted.
  */
 export async function listCalendarOptions(
   actor: Actor,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<{ value: string; label: string }[]> {
-  if (usePilotFixtures()) return pilotCalendarOptions()
+  if (usePilotFixtures()) return pilotCalendarOptions(locale)
 
   return withActor(actor, async (tx) => {
     const rows = await tx
-      .select({ id: workingCalendars.id, name: workingCalendars.nameEn })
+      .select({
+        id: workingCalendars.id,
+        nameEn: workingCalendars.nameEn,
+        nameAr: workingCalendars.nameAr,
+      })
       .from(workingCalendars)
       .where(eq(workingCalendars.isActive, true))
-      .orderBy(asc(workingCalendars.nameEn))
-    return rows.map((row) => ({ value: row.id, label: row.name }))
+    return rows
+      .map((row) => ({ value: row.id, label: (locale === 'ar' && row.nameAr) || row.nameEn }))
+      .sort((a, b) => a.label.localeCompare(b.label, locale))
   })
 }
 
@@ -675,11 +778,36 @@ export async function listDutyRates(actor: Actor): Promise<DutyRateRow[]> {
   )
 }
 
+/**
+ * The newest rate for each currency pair, whatever its source — S12.
+ *
+ * What pricing would convert at today: it takes the newest rate on or before
+ * the pricing date, so the newest row per pair is the one that matters. Older
+ * days stay on the table and in the audit log; they are history, not choices.
+ */
+export async function listFxRates(actor: Actor): Promise<FxRateRow[]> {
+  if (usePilotFixtures()) return pilotFxRates()
+
+  return withActor(actor, async (tx) => {
+    const result = await tx.execute(sql`
+      select distinct on (from_currency, to_currency)
+             from_currency as "fromCurrency", to_currency as "toCurrency",
+             rate::text as rate, effective_on::text as "effectiveOn", source
+        from fx_rates
+       where effective_on <= current_date
+       order by from_currency, to_currency, effective_on desc, taken_at desc
+       limit 200
+    `)
+    return result.rows as unknown as FxRateRow[]
+  })
+}
+
+/**
+ * A rule as data. The page words it — mode, scope and terms in the reader's
+ * language — so this carries no sentence of its own; it used to, in English.
+ */
 export interface EngineRuleRow {
   readonly id: string
-  readonly label: string
-  readonly scope: string
-  readonly detail: string
   readonly isActive: boolean
   /** The row itself, so the edit dialog can pre-fill without a second read. */
   readonly raw: Record<string, unknown>
@@ -725,27 +853,107 @@ export async function listEngineRules(actor: Actor): Promise<{
     return {
       chargeable: (chargeable.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as string,
-        label: row.mode as string,
-        scope: (row.branchCode as string) ?? '—',
-        // Stated as the trade states it: a divisor, an increment, a floor. A
-        // null divisor is FCL, which is billed per container and never by
-        // volume.
-        detail:
-          row.divisorCm3PerKg === null
-            ? 'per container'
-            : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
         isActive: row.isActive as boolean,
         raw: row,
       })),
       freeTime: (freeTime.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as string,
-        label: row.kind as string,
-        // Absence is how a rule widens, so an empty scope is "everything".
-        scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
-        detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
         isActive: row.isActive as boolean,
         raw: row,
       })),
     }
+  })
+}
+
+/**
+ * The four catalogues an administrator edits, in full — QA P2-13.
+ *
+ * The reference screen could add a charge type, commodity, document type or
+ * exception code and change none of them: its lists carried no ids, skipped
+ * inactive rows, and never showed commodities at all. A row that is wrong, or
+ * no longer used, could only be lived with. Nothing is deleted — a retired row
+ * is `is_active = false` — so this returns inactive rows too: they are the ones
+ * somebody will want back. Empty offline; the pilot does not write.
+ */
+export interface ReferenceRecord {
+  readonly table: 'charge_type' | 'commodity' | 'document_type' | 'exception_code'
+  readonly id: string
+  readonly code: string
+  readonly nameEn: string
+  readonly nameAr: string
+  readonly category: string | null
+  readonly defaultBasis?: string
+  readonly defaultSeverity?: string
+  readonly hsCode: string | null
+  readonly revenueAccountCode: string | null
+  readonly costAccountCode: string | null
+  readonly isActive: boolean
+}
+
+export async function listReferenceRecords(actor: Actor): Promise<ReferenceRecord[]> {
+  if (usePilotFixtures()) return []
+
+  return withActor(actor, async (tx) => {
+    const charges = await tx
+      .select({
+        id: chargeTypes.id,
+        code: chargeTypes.key,
+        nameEn: chargeTypes.nameEn,
+        nameAr: chargeTypes.nameAr,
+        category: chargeTypes.category,
+        defaultBasis: chargeTypes.defaultBasis,
+        revenueAccountCode: chargeTypes.revenueAccountCode,
+        costAccountCode: chargeTypes.costAccountCode,
+        isActive: chargeTypes.isActive,
+      })
+      .from(chargeTypes)
+      .orderBy(asc(chargeTypes.sortOrder), asc(chargeTypes.key))
+    const goods = await tx
+      .select({
+        id: commodities.id,
+        code: commodities.code,
+        nameEn: commodities.nameEn,
+        nameAr: commodities.nameAr,
+        hsCode: commodities.hsCode,
+        isActive: commodities.isActive,
+      })
+      .from(commodities)
+      .orderBy(asc(commodities.code))
+      .limit(500)
+    const papers = await tx
+      .select({
+        id: documentTypes.id,
+        code: documentTypes.code,
+        nameEn: documentTypes.nameEn,
+        nameAr: documentTypes.nameAr,
+        category: documentTypes.category,
+        isActive: documentTypes.isActive,
+      })
+      .from(documentTypes)
+      .orderBy(asc(documentTypes.code))
+    const problems = await tx
+      .select({
+        id: exceptionCodes.id,
+        code: exceptionCodes.code,
+        nameEn: exceptionCodes.nameEn,
+        nameAr: exceptionCodes.nameAr,
+        defaultSeverity: exceptionCodes.defaultSeverity,
+        isActive: exceptionCodes.isActive,
+      })
+      .from(exceptionCodes)
+      .orderBy(asc(exceptionCodes.code))
+
+    const blank = { category: null, hsCode: null, revenueAccountCode: null, costAccountCode: null }
+    return [
+      ...charges.map((row) => ({ ...blank, ...row, table: 'charge_type' as const })),
+      ...goods.map((row) => ({
+        ...blank,
+        ...row,
+        nameAr: row.nameAr ?? '',
+        table: 'commodity' as const,
+      })),
+      ...papers.map((row) => ({ ...blank, ...row, table: 'document_type' as const })),
+      ...problems.map((row) => ({ ...blank, ...row, table: 'exception_code' as const })),
+    ]
   })
 }

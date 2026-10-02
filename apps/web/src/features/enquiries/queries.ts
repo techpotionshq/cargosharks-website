@@ -22,6 +22,7 @@ import {
   type Actor,
 } from '@qabandi/db'
 import type { EnquirySummary, Mode } from '@/lib/pilot/types'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotEnquiries } from '@/lib/pilot/fixtures'
 
@@ -40,15 +41,21 @@ export interface EnquiryListFilters {
 
 const OPEN = ['new', 'assigned', 'rating', 'quoted']
 
+/**
+ * `locale` names the ports in the reader's language (F27). The customer
+ * already arrives in both, as `customerName` and `customerNameAr`, because the
+ * dashboard shares this row shape and picks for itself.
+ */
 export async function listEnquiries(
   actor: Actor,
   filters: EnquiryListFilters = {},
+  locale: 'en' | 'ar' = 'en',
 ): Promise<EnquirySummary[]> {
   const limit = Math.min(filters.limit ?? 50, 200)
 
   if (usePilotFixtures()) {
     const now = Date.now()
-    let rows = pilotEnquiries(now)
+    let rows = pilotEnquiries(now, locale)
     if (filters.status === 'open') rows = rows.filter((r) => OPEN.includes(r.status))
     else if (filters.status) rows = rows.filter((r) => r.status === filters.status)
     if (filters.unassignedOnly) rows = rows.filter((r) => r.owner === null)
@@ -84,11 +91,12 @@ export async function listEnquiries(
         customerNameAr: customers.legalNameAr,
         contactName: enquiries.contactName,
         contactEmail: enquiries.contactEmail,
-        owner: principals.nameEn,
-        originName: origin.nameEn,
-        destinationName: destination.nameEn,
+        owner: named(locale, principals.nameEn, principals.nameAr),
+        originName: named(locale, origin.nameEn, origin.nameAr),
+        destinationName: named(locale, destination.nameEn, destination.nameAr),
         quotedSell: quotes.totalSell,
         quotedCost: quotes.totalCost,
+        quotedCurrency: quotes.currency,
       })
       .from(enquiries)
       .leftJoin(branches, eq(branches.id, enquiries.branchId))
@@ -158,15 +166,18 @@ export async function listEnquiries(
           interesting row in the queue as anonymous.
         */
         customerName: row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+        // `||` for the Arabic name: an empty one is as unset as a null one.
         customerNameAr:
-          row.customerNameAr ?? row.customerName ?? row.contactName ?? row.contactEmail ?? '—',
+          row.customerNameAr || row.customerName || row.contactName || row.contactEmail || '—',
         originName: row.originName ?? '—',
         destinationName: row.destinationName ?? '—',
         owner: row.owner,
         createdAt: row.createdAt,
         slaDueAt: row.slaDueAt,
         firstRespondedAt: row.firstRespondedAt,
-        quotedSell: sell === null ? null : { amount: sell, currency: 'KWD' },
+        // In the quotation's own currency. It was labelled KWD whatever the
+        // quote was in — a Dubai branch's AED quotes read as dinars (S16).
+        quotedSell: sell === null ? null : { amount: sell, currency: row.quotedCurrency ?? 'KWD' },
         quotedMargin:
           sell === null || cost === null || sell === 0
             ? null

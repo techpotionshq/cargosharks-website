@@ -29,6 +29,7 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import {
   INTEGRATIONS,
@@ -40,7 +41,8 @@ import {
 } from '@qabandi/core'
 import {
   integrationSettings,
-  secretKeyProblem,
+  secretKeyStatus,
+  type SecretKeyStatus,
   resolveIntegration,
   sealSecret,
   withActor,
@@ -50,9 +52,11 @@ import {
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { echo, fail, failWith, succeed, type ActionState } from '@/lib/form-state'
+import { echo, fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 interface IntegrationFieldView {
   readonly name: string
@@ -194,10 +198,35 @@ function callsPerHour(settings: Readonly<Record<string, string | undefined>>): n
  * screen used to report both as "not set on this deployment", which sends
  * somebody to check whether a variable exists when it plainly does.
  */
-export async function integrationKeyProblem(): Promise<string | null> {
+export async function integrationKeyProblem(): Promise<KeyProblem | null> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
-  return secretKeyProblem()
+  /*
+    The demo seals nothing — every save answers `demoReadOnly` — so a missing
+    key is not a problem there, and a red banner naming an environment
+    variable told a prospective customer the product was broken. The page
+    says "credentials are not stored in the demo" instead.
+  */
+  if (usePilotFixtures()) return null
+  const status = secretKeyStatus()
+  return status.ok ? null : status
+}
+
+/**
+ * Why credentials cannot be sealed, as data — U1.
+ *
+ * This returned `secretKeyProblem()`'s English sentence and the page printed
+ * it as-is, so the Arabic settings screen carried a paragraph of English and a
+ * shell command run together in one line wider than a phone. The page now
+ * words the reason from the catalogue and shows the command on its own.
+ */
+export type KeyProblem = Exclude<SecretKeyStatus, { ok: true }>
+
+/** The reason, in the reader's language. */
+function keyProblemText(problem: KeyProblem, tv: Translate): string {
+  return problem.reason === 'missing'
+    ? tv('keyMissing')
+    : tv('keyWrongLength', { bytes: problem.bytes, expected: problem.expected })
 }
 
 /** A form value, trimmed, with blank meaning absent rather than empty. */
@@ -222,11 +251,12 @@ function validate(
   settings: Record<string, string>,
   secretsProvided: Set<string>,
   alreadySet: Set<string>,
+  tv: Translate,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
 
   if (spec.drivers && driver && !spec.drivers.some((d) => d.value === driver)) {
-    errors.driver = `"${driver}" is not one of the drivers this integration has.`
+    errors.driver = tv('unknownDriver', { driver })
   }
 
   if (!isLiveDriver(spec, driver)) return errors
@@ -235,7 +265,7 @@ function validate(
     const value = settings[field.name]
 
     if (field.required && !value) {
-      errors[field.name] = 'This is needed before the integration can be switched on.'
+      errors[field.name] = tv('neededToSwitchOn')
       continue
     }
 
@@ -244,16 +274,16 @@ function validate(
     if (field.kind === 'number') {
       const parsed = Number(value)
       if (!Number.isFinite(parsed)) {
-        errors[field.name] = 'This has to be a number.'
+        errors[field.name] = tv('mustBeNumber')
       } else if (field.min !== undefined && parsed < field.min) {
-        errors[field.name] = `The smallest allowed value is ${field.min}.`
+        errors[field.name] = tv('minValue', { min: field.min })
       } else if (field.max !== undefined && parsed > field.max) {
-        errors[field.name] = `The largest allowed value is ${field.max}.`
+        errors[field.name] = tv('maxValue', { max: field.max })
       }
     }
 
     if (field.kind === 'url' && !/^https?:\/\//i.test(value)) {
-      errors[field.name] = 'This has to be a full URL, starting http:// or https://.'
+      errors[field.name] = tv('fullUrl')
     }
   }
 
@@ -261,7 +291,7 @@ function validate(
     // Provided now, or already stored — the second is what makes a blank field
     // on an edit mean "unchanged" rather than "clear it".
     if (secret.required && !secretsProvided.has(secret.name) && !alreadySet.has(secret.name)) {
-      errors[secret.name] = 'This is needed before the integration can be switched on.'
+      errors[secret.name] = tv('neededToSwitchOn')
     }
   }
 
@@ -281,9 +311,7 @@ function validate(
   */
   if (spec.key === 'carrierPoll' && settings.cron) {
     if (pollRunsPerHour(settings.cron) === null) {
-      errors.cron =
-        'This schedule cannot be read as calls per hour, so the carrier rate limit ' +
-        'cannot be checked against it. Use a shape like `30 * * * *` or `*/15 * * * *`.'
+      errors.cron = tv('cronUnreadable')
     }
   }
 
@@ -298,17 +326,20 @@ function validate(
  * administrators saving at once from producing a duplicate the constraint
  * would then reject with a message nobody can act on.
  */
-export async function saveIntegration(
+export const saveIntegration = refuseForbidden(async function saveIntegration(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const key = read(form, 'key')
   const spec = key ? integrationSpec(key) : undefined
+  const tv = await getTranslations('adminValidation')
 
-  if (!spec) return failWith('That is not an integration this deployment has.')
+  if (!spec) return failWith(tv('unknownIntegration'))
 
   /*
     The echo never carries a credential back.
@@ -384,12 +415,15 @@ export async function saveIntegration(
         .map((secret) => secret.name),
     )
 
-    const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet)
+    const errors = validate(spec, driver, settings, new Set(provided.keys()), alreadySet, tv)
     if (Object.keys(errors).length > 0) return fail(errors, safeEcho())
 
-    const keyProblem = secretKeyProblem()
-    if (provided.size > 0 && keyProblem) {
-      return failWith(`A credential cannot be sealed: ${keyProblem}`, safeEcho())
+    const keyStatus = secretKeyStatus()
+    if (provided.size > 0 && !keyStatus.ok) {
+      return failWith(
+        tv('credentialCannotBeSealed', { problem: keyProblemText(keyStatus, tv) }),
+        safeEcho(),
+      )
     }
 
     /*
@@ -441,7 +475,7 @@ export async function saveIntegration(
     revalidatePath('/settings/integrations')
     return state
   })
-}
+})
 
 /**
  * Stop using a row, or start again.
@@ -452,17 +486,19 @@ export async function saveIntegration(
  * different and much more useful operation than deleting, which §5.5 forbids
  * anyway.
  */
-export async function setIntegrationActive(
+export const setIntegrationActive = refuseForbidden(async function setIntegrationActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const key = read(form, 'key')
   const isActive = form.get('isActive') === 'true'
-  if (!key || !integrationSpec(key))
-    return failWith('That is not an integration this deployment has.')
+  const tv = await getTranslations('adminValidation')
+  if (!key || !integrationSpec(key)) return failWith(tv('unknownIntegration'))
 
   await withActor(session.actor, async (tx) => {
     await tx
@@ -473,4 +509,4 @@ export async function setIntegrationActive(
 
   revalidatePath('/settings/integrations')
   return succeed(key)
-}
+})

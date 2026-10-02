@@ -21,7 +21,34 @@ export interface ActionState {
   readonly ok?: string
   /** Echoed back so a rejected form does not lose what was typed. */
   readonly values?: Record<string, string>
+  /**
+   * Where the failure points, when it points somewhere — "this bill is already
+   * captured" is only half an answer without the way to it (ai-10).
+   */
+  readonly link?: { readonly href: string; readonly label: string }
 }
+
+/**
+ * A bound `next-intl` translator, as a schema factory receives it.
+ *
+ * Validation messages reach the operator verbatim, so they are catalogue keys
+ * like every other string — which means a schema that carries messages is built
+ * per request from `await getTranslations(…)` rather than once at module load,
+ * where no locale exists yet. Structural rather than `next-intl`'s own type so
+ * a test's stand-in translator satisfies it too.
+ *
+ * The type argument is the namespace, and it is for `check-messages` rather
+ * than the compiler: a schema file that never calls `getTranslations` itself
+ * types its translator parameter with the namespace name as the argument, and
+ * the check resolves that parameter's calls against it. Without it such a file
+ * is skipped. (Written without an example on purpose — the check reads
+ * comments too.)
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the parameter is read by scripts/check-messages.mjs
+export type Translate<Namespace extends string = string> = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string
 
 /** Zod's issues, flattened onto the field each one belongs to. */
 export function fieldErrors(error: {
@@ -37,11 +64,19 @@ export function fieldErrors(error: {
   return out
 }
 
-/** Everything the user typed, so a rejected form can be re-rendered intact. */
+/**
+ * Everything the user typed, so a rejected form can be re-rendered intact.
+ *
+ * A name submitted more than once — a group of switches — comes back as its
+ * values joined by newlines. Last-one-wins re-rendered a rejected invitation
+ * with only the last ticked branch still ticked. A newline because no value a
+ * grouped control submits (an id, a code) can contain one.
+ */
 export function echo(form: FormData): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [key, value] of form.entries()) {
-    if (typeof value === 'string') out[key] = value
+    if (typeof value !== 'string') continue
+    out[key] = key in out ? `${out[key]}\n${value}` : value
   }
   return out
 }
@@ -130,4 +165,12 @@ export function isUniqueViolation(error: unknown): boolean {
 /** A foreign key that does not resolve — usually a stale option in a select. */
 export function isForeignKeyViolation(error: unknown): boolean {
   return sqlState(error) === '23503'
+}
+
+/**
+ * An exclusion or temporal-uniqueness violation — `rate_cards_no_overlap`,
+ * the `WITHOUT OVERLAPS` key that refuses two cards for one lane and window.
+ */
+export function isOverlapViolation(error: unknown): boolean {
+  return sqlState(error) === '23P01'
 }

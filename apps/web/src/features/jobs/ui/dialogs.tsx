@@ -11,12 +11,13 @@
  * it is booked, and the bill number does not exist yet at that point.
  */
 
-import { getTranslations } from 'next-intl/server'
+import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addJobPartner, saveJob } from '../form-actions'
+import { quoteBookingDefaults } from '../queries'
 
 /** The roles a partner can hold on a shipment — `job_partners.role`. */
 const PARTNER_ROLES = [
@@ -30,16 +31,21 @@ const PARTNER_ROLES = [
 
 const MODES = ['sea_fcl', 'sea_lcl', 'air', 'land', 'courier'] as const
 const DIRECTIONS = ['import', 'export', 'cross_trade'] as const
-const STATUSES = [
+/*
+  The states a shipment can be opened in — what `saveJob` accepts.
+
+  Offered on creation only. Moving a shipment on is the status dialog's, which
+  checks hold, complete, close and cancel each on its own key; this form once
+  offered every state with none of those checks, and an edit of a cancelled job
+  (not in the list) silently saved it back as a draft.
+*/
+const OPENING_STATUSES = [
   'draft',
   'booked',
   'in_transit',
   'arrived',
   'customs',
   'delivered',
-  'completed',
-  'closed',
-  'on_hold',
 ] as const
 
 const MODE_ICON = {
@@ -93,7 +99,7 @@ export async function JobDialog({
   if (!can(session, editing ? 'job.update' : 'job.book')) return null
 
   const [options, t, tc, tMode, tDirection, tJob] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('jobForm'),
     getTranslations('common'),
     getTranslations('mode'),
@@ -101,10 +107,21 @@ export async function JobDialog({
     getTranslations('job'),
   ])
 
-  const defaultBranch = defaults?.branchId ?? [...session.branchRoles.keys()][0]
+  // The branches this person may book (or edit) in — QA P2-4. Every active
+  // branch was offered, and choosing one they only read was a 500.
+  const permission = editing ? 'job.update' : 'job.book'
+  const defaultBranch = defaults?.branchId ?? branchesWhere(session, permission)[0]
 
   const fields: FieldSpec[] = [
     ...(editing ? [{ kind: 'hidden' as const, name: 'jobId', value: defaults!.id! }] : []),
+    /*
+      The quotation travels only on a booking — the quote page's "Open
+      shipment" — where `saveJob` checks and claims it. An edit never sends
+      it, so it can never be re-pointed past those checks.
+    */
+    ...(!editing && defaults?.quoteId
+      ? [{ kind: 'hidden' as const, name: 'quoteId', value: defaults.quoteId }]
+      : []),
 
     {
       kind: 'section',
@@ -117,7 +134,7 @@ export async function JobDialog({
           label: t('branch'),
           span: 4,
           required: true,
-          options: options.branches,
+          options: permittedBranches(session, permission, options.branches),
           defaultValue: defaultBranch,
         },
         {
@@ -149,19 +166,23 @@ export async function JobDialog({
           mono: true,
           defaultValue: defaults?.customerReference,
         },
-        {
-          kind: 'select',
-          name: 'status',
-          label: tc('status'),
-          span: 6,
-          required: true,
-          hint: t('statusHint'),
-          options: STATUSES.map((key) => ({
-            value: key,
-            label: tJob(`statuses.${key}` as 'statuses.booked'),
-          })),
-          defaultValue: defaults?.status ?? 'booked',
-        },
+        ...(editing
+          ? []
+          : [
+              {
+                kind: 'select' as const,
+                name: 'status',
+                label: tc('status'),
+                span: 6 as const,
+                required: true,
+                hint: t('statusHint'),
+                options: OPENING_STATUSES.map((key) => ({
+                  value: key,
+                  label: tJob(`statuses.${key}` as 'statuses.booked'),
+                })),
+                defaultValue: defaults?.status ?? 'booked',
+              },
+            ]),
       ],
     },
 
@@ -391,6 +412,35 @@ export async function JobDialog({
 }
 
 /**
+ * "Open shipment" on an accepted quotation — S8.
+ *
+ * The accept dialog has always told the operator a shipment could now be
+ * opened, and there was no way to do it: `JobDialog` took a `quoteId` and
+ * never rendered one. This pre-fills the booking from the enquiry the quote
+ * answers and carries the quote id with it; `saveJob` checks it is accepted,
+ * this customer's and not already booked, and wins the enquiry. Renders
+ * nothing when the quote cannot be booked, or the reader cannot book.
+ */
+export async function OpenShipmentFromQuote({ quoteId }: { readonly quoteId: string }) {
+  const session = await requireSession()
+  if (!can(session, 'job.book')) return null
+  const defaults = await quoteBookingDefaults(session.actor, quoteId)
+  if (!defaults) return null
+
+  return (
+    <JobDialog
+      variant="primary"
+      defaults={{
+        ...defaults,
+        mode: defaults.mode ?? undefined,
+        tradeDirection: defaults.tradeDirection ?? undefined,
+        status: 'booked',
+      }}
+    />
+  )
+}
+
+/**
  * Engaging a partner on a shipment.
  *
  * `job_partners` is who *we* placed the work with — the carrier, the agent at
@@ -416,7 +466,7 @@ export async function JobPartnerDialog({
   if (!can(session, 'job.update')) return null
 
   const [options, t, tc] = await Promise.all([
-    loadOptions(session.actor),
+    getLocale().then((locale) => loadOptions(session.actor, locale === 'ar' ? 'ar' : 'en')),
     getTranslations('jobPartners'),
     getTranslations('common'),
   ])

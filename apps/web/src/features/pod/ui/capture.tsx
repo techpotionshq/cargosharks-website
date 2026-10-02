@@ -35,6 +35,7 @@ import { useTranslations } from 'next-intl'
 import { Field, FormError, Input, Select, Submit, Textarea } from '@/ui/form'
 import { Icon } from '@/ui/icon'
 import type { ActionState } from '@/lib/form-state'
+import { localInputValue } from '@qabandi/core'
 
 export interface PodCaptureProps {
   readonly action: (previous: ActionState, form: FormData) => Promise<ActionState>
@@ -42,14 +43,19 @@ export interface PodCaptureProps {
   readonly equipment: readonly { value: string; label: string }[]
   /** Set when this capture replaces an earlier record. */
   readonly supersedesId?: string
+  /** The job's branch zone — the one the action reads the time back in. */
+  readonly timeZone: string
   readonly onDone?: () => void
 }
 
-/** `datetime-local` wants local wall-clock, not an ISO instant. */
-function localNow(): string {
-  const now = new Date()
-  const offset = now.getTimezoneOffset() * 60_000
-  return new Date(now.getTime() - offset).toISOString().slice(0, 16)
+/**
+ * `datetime-local` wants wall-clock, not an ISO instant — and the branch's
+ * wall-clock, because that is how the action reads it. The device's own
+ * offset was used here, so a phone set to another zone pre-filled a time the
+ * server then stored hours out.
+ */
+function localNow(timeZone: string): string {
+  return localInputValue(new Date(), timeZone) ?? ''
 }
 
 export function PodCaptureForm({
@@ -57,6 +63,7 @@ export function PodCaptureForm({
   jobId,
   equipment,
   supersedesId,
+  timeZone,
   onDone,
 }: PodCaptureProps) {
   const t = useTranslations('pod')
@@ -181,7 +188,7 @@ export function PodCaptureForm({
           type="datetime-local"
           span={6}
           required
-          defaultValue={state.values?.deliveredAt ?? localNow()}
+          defaultValue={state.values?.deliveredAt ?? localNow(timeZone)}
           error={state.errors?.deliveredAt}
           hint={t('deliveredAtHint')}
         />
@@ -234,7 +241,7 @@ export function PodCaptureForm({
         <button
           type="button"
           onClick={clear}
-          className="mt-1.5 inline-flex items-center gap-1 text-[0.75rem] font-medium text-ink-muted hover:text-ink"
+          className="mt-1.5 inline-flex items-center gap-1 text-caption font-medium text-ink-muted hover:text-ink"
         >
           <Icon name="close" size={12} />
           {t('clearSignature')}
@@ -253,11 +260,11 @@ export function PodCaptureForm({
           multiple
           accept="image/jpeg,image/png,image/webp"
           capture="environment"
-          className="block w-full rounded-sm border border-line bg-surface px-3 py-2 text-[0.875rem] text-ink file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken file:px-3 file:py-1.5 file:text-[0.8125rem] file:font-medium file:text-ink"
+          className="block w-full rounded-sm border border-line bg-surface px-3 py-2 text-body text-ink file:me-3 file:rounded-sm file:border-0 file:bg-surface-sunken file:px-3 file:py-1.5 file:text-body-sm file:font-medium file:text-ink"
         />
       </Field>
 
-      <label className="flex items-center gap-2 text-[0.875rem] text-ink">
+      <label className="flex items-center gap-2 text-body text-ink">
         <input
           type="checkbox"
           name="hasException"
@@ -290,7 +297,7 @@ export function PodCaptureForm({
         error={state.errors?.notes}
       />
 
-      <p className="text-[0.75rem] text-ink-subtle">
+      <p className="text-caption text-ink-subtle">
         {locationState === 'got'
           ? t('locationCaptured', { accuracy: position?.acc ?? '' })
           : locationState === 'denied'

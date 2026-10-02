@@ -33,6 +33,64 @@ import {
   authVerification,
 } from '@qabandi/db'
 import { getBrand } from '@/lib/brand'
+import { authHooks } from '@/lib/auth-guard'
+import { BETTER_AUTH_IP_ADDRESS } from '@/lib/client-address'
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+/** What became of one reset email. */
+export type ResetMailOutcome = 'sent' | 'not_configured' | 'refused' | 'unreachable'
+
+/**
+ * Hand a reset email to the service — the only process holding SMTP
+ * credentials (§3).
+ *
+ * Returns what happened rather than throwing, because its two callers want
+ * opposite things from a failure. The public reset form must answer the same
+ * either way (FR-ID-04), so it logs and moves on. An administrator sending a
+ * colleague their first sign-in link (A7) must be told the truth, or "invite
+ * sent" becomes a sentence about an email that never left the building.
+ */
+export async function deliverResetMail(email: string, url: string): Promise<ResetMailOutcome> {
+  const serviceUrl = process.env.SERVICE_URL
+  const secret = process.env.INTERNAL_API_SECRET
+
+  if (!serviceUrl || !secret) {
+    console.error(
+      'password reset requested but SERVICE_URL / INTERNAL_API_SECRET are not set — ' +
+        'no email can be sent',
+    )
+    return 'not_configured'
+  }
+
+  try {
+    const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ email, url }),
+      signal: AbortSignal.timeout(20_000),
+    })
+
+    if (!response.ok) {
+      console.error(`password reset mail refused: ${response.status} ${response.statusText}`)
+      return 'refused'
+    }
+    return 'sent'
+  } catch (error) {
+    console.error({ error }, 'password reset mail could not be sent')
+    return 'unreachable'
+  }
+}
+
+/**
+ * Where `sendResetPassword` reports its outcome, for a caller that runs the
+ * reset flow inside `resetMailOutcome.run([], …)`.
+ *
+ * Better Auth calls `sendResetPassword` from inside its own endpoint and
+ * answers the caller the same sentence whatever it did — correct for the
+ * public form, and no way for an administrator to learn the mail never went.
+ * The store is per call, so nothing leaks between requests.
+ */
+export const resetMailOutcome = new AsyncLocalStorage<ResetMailOutcome[]>()
 
 /**
  * Stated once, so the policy and the message a person reads cannot drift.
@@ -122,36 +180,31 @@ export const auth = betterAuth({
      * it says so in the log rather than appearing to work.
      */
     sendResetPassword: async ({ user, url }) => {
-      const serviceUrl = process.env.SERVICE_URL
-      const secret = process.env.INTERNAL_API_SECRET
-
-      if (!serviceUrl || !secret) {
-        console.error(
-          'password reset requested but SERVICE_URL / INTERNAL_API_SECRET are not set — ' +
-            'no email can be sent',
-        )
-        return
-      }
-
-      try {
-        const response = await fetch(
-          `${serviceUrl.replace(/\/$/, '')}/internal/mail/password-reset`,
-          {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
-            body: JSON.stringify({ email: user.email, url }),
-            signal: AbortSignal.timeout(20_000),
-          },
-        )
-
-        if (!response.ok) {
-          console.error(`password reset mail refused: ${response.status} ${response.statusText}`)
-        }
-      } catch (error) {
-        console.error({ error }, 'password reset mail could not be sent')
-      }
+      const outcome = await deliverResetMail(user.email, url)
+      // Told to whoever asked to hear it — an administrator sending a sign-in
+      // link (A7). The public form never asks, for the reason above.
+      resetMailOutcome.getStore()?.push(outcome)
     },
+
+    /*
+      A reset ends every other session — A5.
+
+      Somebody resetting a password may be doing it because another person has
+      it, and the comment in `resetPassword` (`features/auth/actions.ts`) always
+      said this happened. It did not: Better Auth only deletes the account's
+      sessions when this is set, so the stranger with the old password kept
+      their session for up to twelve hours after the owner took the account
+      back.
+    */
+    revokeSessionsOnPasswordReset: true,
   },
+
+  /*
+    The sign-in lockout and the throttles, inside the library rather than in
+    one of its callers — A1, `lib/auth-guard.ts`. Hooks run for the raw
+    `/api/auth/*` route and for `auth.api.*` alike.
+  */
+  hooks: authHooks,
 
   session: {
     // Database-backed and opaque, never a stateless JWT: FR-ID-08 requires
@@ -165,6 +218,13 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: 'qabandi',
     useSecureCookies: process.env.NODE_ENV === 'production',
+    /*
+      The address Better Auth rate-limits by and stamps on a session is the
+      one `lib/client-address.ts` computes from the trusted proxy hops,
+      handed over in a header `proxy.ts` overwrites on every request. Its own
+      default read `X-Forwarded-For`, which a caller can write to.
+    */
+    ipAddress: BETTER_AUTH_IP_ADDRESS,
   },
 
   /**

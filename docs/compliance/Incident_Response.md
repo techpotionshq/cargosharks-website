@@ -2,7 +2,7 @@
 
 *What to do, in what order, and who decides.*
 
-Last reviewed: **2026-08-25**. Owner: **[TO CONFIRM — a named person, not a
+Last reviewed: **2026-10-02**. Owner: **[TO CONFIRM — a named person, not a
 team. An incident plan with no name on it produces a meeting, not a response.]**
 
 This plan is deliberately short. A twenty-page plan is not read at 02:00; this
@@ -55,9 +55,9 @@ before the next, because each is less damaging than the one after it.
 
 ```sql
 -- What did this principal touch, and when?
-select occurred_at, table_name, action, row_id
+select at, table_name, op, row_id, ip
   from audit_log where principal_id = $1
- order by occurred_at desc limit 500;
+ order by at desc limit 500;
 
 -- Every support session open or recently closed.
 select g.id, g.principal_id, g.reason, g.expires_at, g.revoked_at
@@ -65,7 +65,7 @@ select g.id, g.principal_id, g.reason, g.expires_at, g.revoked_at
  where g.revoked_at is null and g.expires_at > now() - interval '30 days';
 
 -- What a support engineer actually read.
-select * from support_access_log where grant_id = $1 order by occurred_at;
+select * from support_access_log where grant_id = $1 order by at;
 
 -- Live sessions for an account, to revoke.
 select id, token, ip_address, user_agent, expires_at
@@ -74,7 +74,11 @@ select id, token, ip_address, user_agent, expires_at
 
 Revoking a session is a delete from `auth_session`, and it takes effect on the
 principal's **next request** — sessions are database-backed and opaque, never
-JWTs, precisely so that this is true.
+JWTs, precisely so that this is true. A password reset revokes all of an
+account's sessions by itself, and signing out deletes the row. The
+`ip_address` on a session, like the `ip` on an audit row, is the address read
+from the trusted proxy hops (`TRUSTED_PROXY_HOPS`), not whatever the caller put
+in `X-Forwarded-For`.
 
 ## 3. Preserve evidence
 

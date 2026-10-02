@@ -26,12 +26,22 @@ import './globals.css'
 
 export async function generateMetadata(): Promise<Metadata> {
   const brand = getBrand()
+  /*
+    The brand in the reader's language, suffix included. The template was
+    English-only, so every Arabic tab read "<Arabic title> · Al-Qabandi &
+    Partners" — and a page without a title of its own showed the English
+    default whole.
+  */
+  const resolved = await getLocale()
+  const ar = isLocale(resolved) && resolved === 'ar'
+  const name = ar ? brand.identity.nameAr : brand.identity.nameEn
+  const tagline = ar ? brand.identity.taglineAr : brand.identity.taglineEn
   return {
     title: {
-      default: `${brand.identity.nameEn} · ${brand.identity.taglineEn}`,
-      template: `%s · ${brand.identity.nameEn}`,
+      default: `${name} · ${tagline}`,
+      template: `%s · ${name}`,
     },
-    description: brand.identity.legalNameEn,
+    description: ar ? brand.identity.legalNameAr : brand.identity.legalNameEn,
     /**
      * Two icons, and only one of them re-skins.
      *
@@ -46,7 +56,7 @@ export async function generateMetadata(): Promise<Metadata> {
      * else about their identity remains an environment variable.
      */
     icons: { icon: faviconDataUri(brand), apple: '/apple-touch-icon.png' },
-    applicationName: brand.identity.nameEn,
+    applicationName: name,
   }
 }
 

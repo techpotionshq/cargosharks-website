@@ -7,17 +7,21 @@
  * own is unarguable and unverifiable.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { listSettlements, listSettleablePartners } from '@/features/payables/queries'
 import { SettlementDialog } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { Money } from '@/ui/money'
 
 const STATUS_TONE: Record<string, Tone> = {
   draft: 'info',
@@ -32,6 +36,12 @@ const DIRECTION_TONE: Record<string, Tone> = {
   square: 'muted',
 }
 
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('settlements') }
+}
+
 export default async function SettlementsPage({
   searchParams,
 }: {
@@ -40,20 +50,20 @@ export default async function SettlementsPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'payable.read')) notFound()
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const filters = await searchParams
 
   const [rows, settleable, t, tc] = await Promise.all([
-    listSettlements(session.actor, { partnerId: filters.partner, status: filters.status }),
-    listSettleablePartners(session.actor),
+    listSettlements(session.actor, { partnerId: filters.partner, status: filters.status }, locale),
+    listSettleablePartners(session.actor, locale),
     getTranslations('settlements'),
     getTranslations('common'),
   ])
-
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-
-  const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
 
   return (
     <>
@@ -76,10 +86,17 @@ export default async function SettlementsPage({
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('agent')}</TH>
-                <TH>{t('period')}</TH>
-                <TH align="end">{t('theyOweUsShort')}</TH>
-                <TH align="end">{t('weOweThemShort')}</TH>
+                {/* A netting statement's answer is the residual — who owes
+                    whom, and how much. The two gross sides it nets wait for a
+                    wider screen; the agent follows the reference on a phone. */}
+                <TH priority="low">{t('agent')}</TH>
+                <TH priority="low">{t('period')}</TH>
+                <TH priority="low" align="end">
+                  {t('theyOweUsShort')}
+                </TH>
+                <TH priority="low" align="end">
+                  {t('weOweThemShort')}
+                </TH>
                 <TH align="end">{t('residual')}</TH>
                 <TH align="end">{tc('status')}</TH>
               </TR>
@@ -90,25 +107,45 @@ export default async function SettlementsPage({
                   <TD>
                     <Link
                       href={`/settlements/${row.id}`}
-                      className="ref numeric font-medium hover:text-brand"
+                      className="ref numeric font-medium hover:text-accent"
                     >
                       {row.reference}
                     </Link>
+                    <span className="block text-caption text-ink-muted @3xl:hidden">
+                      {row.partnerName}
+                    </span>
                   </TD>
-                  <TD className="text-ink-muted">{row.partnerName}</TD>
-                  <TD className="text-ink-muted">
-                    {formatDate(row.periodFrom, locale, timeZone)} —{' '}
-                    {formatDate(row.periodTo, locale, timeZone)}
+                  <TD priority="low" className="text-ink-muted">
+                    {row.partnerName}
+                  </TD>
+                  <TD priority="low" className="text-ink-muted">
+                    {/* Isolated, as on the settlement itself. */}
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodFrom, locale, timeZone)}
+                    </bdi>{' '}
+                    —{' '}
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodTo, locale, timeZone)}
+                    </bdi>
+                  </TD>
+                  <TD priority="low" align="end" numeric>
+                    <Money
+                      value={{ amount: row.receivableTotal, currency: row.currency }}
+                      locale={locale}
+                    />
+                  </TD>
+                  <TD priority="low" align="end" numeric>
+                    <Money
+                      value={{ amount: row.payableTotal, currency: row.currency }}
+                      locale={locale}
+                    />
                   </TD>
                   <TD align="end" numeric>
-                    {money(row.receivableTotal, row.currency)}
-                  </TD>
-                  <TD align="end" numeric>
-                    {money(row.payableTotal, row.currency)}
-                  </TD>
-                  <TD align="end" numeric>
-                    <span className="inline-flex items-center gap-1.5">
-                      {money(row.residualAmount, row.currency)}
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                      <Money
+                        value={{ amount: row.residualAmount, currency: row.currency }}
+                        locale={locale}
+                      />
                       <Badge tone={DIRECTION_TONE[row.residualDirection] ?? 'muted'}>
                         {t(`directions.${row.residualDirection}` as 'directions.square')}
                       </Badge>

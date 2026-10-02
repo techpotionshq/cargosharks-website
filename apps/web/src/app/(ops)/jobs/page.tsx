@@ -7,6 +7,7 @@
  * customs status are columns rather than something you open a job to discover.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -22,6 +23,8 @@ import { MilestoneDots } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { JobDialog } from '@/features/jobs/ui/dialogs'
+import { pickName } from '@/lib/named'
+import { formatByCurrency, sumByCurrency } from '@/lib/by-currency'
 
 type Filter = 'live' | 'exceptions' | 'arriving' | 'all'
 
@@ -34,6 +37,12 @@ const FILTERS: readonly {
   { key: 'arriving', label: 'filterArriving' },
   { key: 'all', label: 'filterAll' },
 ]
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('jobs') }
+}
 
 export default async function JobsPage({
   searchParams,
@@ -59,6 +68,7 @@ export default async function JobsPage({
       status: params.status ?? (filter === 'all' ? undefined : 'live'),
       exceptionsOnly: filter === 'exceptions',
       limit: 100,
+      locale,
     }),
     listRunningClocks(session.actor),
   ])
@@ -68,7 +78,18 @@ export default async function JobsPage({
   )
   const visible = filter === 'arriving' ? arriving : rows
   const held = rows.filter((r) => r.customsStatus === 'held' || r.status === 'on_hold').length
-  const accruing = clocks.reduce((sum, clock) => sum + clock.accrued.amount, 0)
+  /*
+    Per currency, never one sum (O15). The clocks are each in their own
+    currency, and adding a USD per-diem to a KWD one and printing "KWD" was
+    the same mistake the finance summaries made.
+  */
+  const accruingByCurrency = sumByCurrency(
+    clocks.map((clock) => ({
+      currency: clock.accrued.currency,
+      amount: String(clock.accrued.amount),
+    })),
+  )
+  const accruing = accruingByCurrency.length > 0
 
   return (
     <>
@@ -86,7 +107,7 @@ export default async function JobsPage({
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <StatTile label={t('filterLive')} value={formatNumber(rows.length, locale)} icon="jobs" />
         <StatTile
           label={t('filterArriving')}
@@ -104,13 +125,10 @@ export default async function JobsPage({
         />
         <StatTile
           label={tDash('accruing')}
-          value={formatMoney({ amount: accruing, currency: 'KWD' }, locale, {
-            showCurrency: false,
-          })}
-          unit="KWD"
+          value={formatByCurrency(accruingByCurrency, locale)}
           icon="clock"
-          tone={accruing > 0 ? 'caution' : 'muted'}
-          live={accruing > 0}
+          tone={accruing ? 'caution' : 'muted'}
+          live={accruing}
         />
       </div>
 
@@ -127,7 +145,7 @@ export default async function JobsPage({
             title={t('clocksHint')}
             actions={
               <Badge tone="caution" icon="dot">
-                {formatMoney({ amount: accruing, currency: 'KWD' }, locale)}
+                {formatByCurrency(accruingByCurrency, locale)}
               </Badge>
             }
           />
@@ -137,22 +155,25 @@ export default async function JobsPage({
                 key={clock.id}
                 className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-sm bg-surface-sunken p-3"
               >
-                <div className="min-w-0 flex-1">
+                {/* A floor for the details, so on a phone the amount wraps
+                    beneath them instead of squeezing the reference onto two
+                    lines. */}
+                <div className="min-w-[min(100%,16rem)] flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <Link
                       href={`/jobs/${clock.jobId}`}
-                      className="ref numeric text-[0.8125rem] font-medium text-brand hover:underline"
+                      className="ref numeric text-body-sm font-medium text-ink hover:text-accent hover:underline"
                     >
                       {clock.jobReference}
                     </Link>
-                    <span className="ref numeric text-[0.75rem] text-ink-muted">
+                    <span className="ref numeric text-caption text-ink-muted">
                       {clock.containerNo}
                     </span>
                     <Badge tone="critical">
                       {t(`clockKinds.${clock.kind}` as 'clockKinds.demurrage')}
                     </Badge>
                   </div>
-                  <p className="mt-1.5 text-[0.75rem] text-ink-muted">
+                  <p className="mt-1.5 text-caption text-ink-muted">
                     {t('freeDays', { days: clock.freeDays })} ·{' '}
                     <span className="font-medium text-critical">
                       {t('chargeableDays', { days: clock.chargeableDays })}
@@ -169,11 +190,11 @@ export default async function JobsPage({
                 </div>
 
                 <div className="text-end">
-                  <p className="numeric accruing font-display text-[1.25rem] leading-none font-semibold text-critical">
+                  <p className="numeric accruing font-display text-headline leading-none font-semibold text-critical">
                     {formatMoney(clock.accrued, locale)}
                   </p>
                   {clock.chargeLineWritten ? (
-                    <p className="mt-1.5 inline-flex items-center gap-1 text-[0.6875rem] font-medium text-positive">
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-micro font-medium text-positive">
                       <Icon name="check" size={12} strokeWidth={2.5} />
                       {t('chargeLineWritten')}
                     </p>
@@ -194,9 +215,10 @@ export default async function JobsPage({
                 key={option.key}
                 href={option.key === 'live' ? '/jobs' : `/jobs?filter=${option.key}`}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-sm px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+                // The register filters' tint (`ui/register.tsx`), 40px on a phone.
+                className={`inline-flex h-8 items-center rounded-sm px-3 text-body-sm font-medium transition-colors max-md:h-10 ${
                   active
-                    ? 'bg-brand-soft text-brand-soft-ink'
+                    ? 'bg-accent-soft text-accent'
                     : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
                 }`}
               >
@@ -204,7 +226,7 @@ export default async function JobsPage({
               </Link>
             )
           })}
-          <span className="ms-auto text-[0.75rem] text-ink-subtle">
+          <span className="ms-auto text-caption text-ink-subtle">
             {tc('showing', { count: visible.length })}
           </span>
         </div>
@@ -216,12 +238,12 @@ export default async function JobsPage({
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('customer')}</TH>
-                <TH>{t('route')}</TH>
-                <TH>{t('vessel')}</TH>
-                <TH>{t('progress')}</TH>
+                <TH priority="low">{t('customer')}</TH>
+                <TH priority="low">{t('route')}</TH>
+                <TH priority="lowest">{t('vessel')}</TH>
+                <TH priority="low">{t('progress')}</TH>
                 <TH>{t('status')}</TH>
-                <TH>{t('customs')}</TH>
+                <TH priority="low">{t('customs')}</TH>
                 <TH align="end">{t('eta')}</TH>
               </TR>
             </THead>
@@ -236,37 +258,49 @@ export default async function JobsPage({
                     <TD className="whitespace-nowrap">
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="ref numeric font-medium text-brand hover:underline"
+                        className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                       >
                         {job.reference}
                       </Link>
-                      <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
-                        <Icon name={modeIcon(job.mode)} size={12} />
-                        {tMode(job.mode)}
-                        {job.containerCount > 0
-                          ? ` · ${job.containerCount} ${
+                      {/* The reference never breaks; the line under it may.
+                          "Sea FCL · 3 containers" was the widest thing in the
+                          cell, and the last 10px by which the board scrolled
+                          at 1280. */}
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-micro whitespace-normal text-ink-subtle">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                          <Icon name={modeIcon(job.mode)} size={12} />
+                          {tMode(job.mode)}
+                        </span>
+                        {job.containerCount > 0 ? (
+                          <span className="whitespace-nowrap">
+                            {`· ${job.containerCount} ${
                               job.containerCount === 1 ? tc('container') : tc('containers')
-                            }`
-                          : ''}
+                            }`}
+                          </span>
+                        ) : null}
                       </span>
                     </TD>
 
-                    <TD className="max-w-52 truncate">
-                      {locale === 'ar' ? job.customerNameAr : job.customerName}
+                    {/* Customer and vessel wrap rather than truncate: the
+                        reference beside them is two lines already, and a
+                        truncated cell still asks the table for the width of
+                        its whole unbroken text. */}
+                    <TD priority="low" className="min-w-28">
+                      {pickName(locale, job.customerName, job.customerNameAr)}
                     </TD>
 
-                    <TD className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
                       <Lane
-                        origin={locale === 'ar' ? job.originNameAr : job.originName}
-                        destination={locale === 'ar' ? job.destinationNameAr : job.destinationName}
+                        origin={pickName(locale, job.originName, job.originNameAr)}
+                        destination={pickName(locale, job.destinationName, job.destinationNameAr)}
                       />
                     </TD>
 
-                    <TD className="max-w-48 truncate text-ink-muted">
+                    <TD priority="lowest" className="min-w-28 text-ink-muted">
                       {job.vesselOrFlight ?? '—'}
                     </TD>
 
-                    <TD>
+                    <TD priority="low">
                       <MilestoneDots
                         total={job.milestonesTotal}
                         completed={job.milestonesDone}
@@ -278,9 +312,19 @@ export default async function JobsPage({
                       <Badge tone={jobTone(job.status)} dot>
                         {t(`statuses.${job.status}` as 'statuses.booked')}
                       </Badge>
+                      {/* The customs column leaves a phone, but a hold is the
+                          one customs state that changes what someone does
+                          next, so it follows the status there. */}
+                      {job.customsStatus === 'held' ? (
+                        <span className="mt-1 block @3xl:hidden">
+                          <Badge tone={customsTone(job.customsStatus)} icon="hold">
+                            {t('customsStatuses.held')}
+                          </Badge>
+                        </span>
+                      ) : null}
                     </TD>
 
-                    <TD>
+                    <TD priority="low">
                       {job.customsStatus ? (
                         <Badge
                           tone={customsTone(job.customsStatus)}
@@ -301,7 +345,7 @@ export default async function JobsPage({
                       ) : (
                         <>
                           <span className="block">{formatDay(job.eta, locale, timeZone)}</span>
-                          <span className="block text-[0.6875rem] text-ink-subtle">
+                          <span className="block text-micro text-ink-subtle">
                             {formatRelative(job.eta, locale, now)}
                           </span>
                         </>

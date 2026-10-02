@@ -11,10 +11,12 @@
  * that does that could be fired by a link preview in somebody's chat client.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import {
   getConsolidation,
@@ -24,19 +26,36 @@ import {
 } from '@/features/consolidation/queries'
 import { ConsolChargeDialog, ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import {
-  allocateConsolCharge,
-  attachHouse,
+  AllocateButton,
+  AttachHouseForm,
+  DetachHouseButton,
+} from '@/features/consolidation/ui/house-actions'
+import {
   closeConsolidation,
-  detachHouse,
+  restoreConsolCharge,
   reverseConsolAllocation,
+  withdrawConsolCharge,
 } from '@/features/consolidation/form-actions'
+import { localInputValue } from '@qabandi/core'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate, formatMoney, formatLane } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Icon } from '@/ui/icon'
 import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
+import { MoreMenu } from '@/ui/menu'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const consol = await getConsolidation(session.actor, recordId((await params).id))
+  const t = await getTranslations('consolidations')
+  return { title: consol?.reference ?? t('title') }
+}
 
 export default async function ConsolidationDetailPage({
   params,
@@ -46,13 +65,15 @@ export default async function ConsolidationDetailPage({
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const id = recordId((await params).id)
 
-  const consol = await getConsolidation(session.actor, id)
+  const consol = await getConsolidation(session.actor, id, locale)
   if (!consol) notFound()
 
   const [attachable, shares, t, tc, tJob] = await Promise.all([
-    consol.status === 'open' ? listAttachableJobs(session.actor, id) : Promise.resolve([]),
+    consol.status === 'open' ? listAttachableJobs(session.actor, id, locale) : Promise.resolve([]),
     // Unconditional: a closed master is the one most likely to be opened *to*
     // settle an argument about who paid for what.
     listAllocationShares(session.actor, id),
@@ -73,8 +94,6 @@ export default async function ConsolidationDetailPage({
     else sharesByCharge.set(share.consolChargeLineId, [share])
   }
 
-  const resolved = await getLocale()
-  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   // As in the document panel: the link checker cannot see past the first
   // interpolation in an href, so the URL is built before it is used.
   const manifestUrl = `/api/consolidations/${id}/manifest`
@@ -99,41 +118,53 @@ export default async function ConsolidationDetailPage({
             <Button href={manifestUrl} download icon="document" variant="secondary">
               {t('manifest')}
             </Button>
-            <Button href={`${manifestUrl}?locale=ar`} download variant="ghost">
-              AR
-            </Button>
-            {mayWrite ? (
-              <ConsolidationDialog
-                variant="secondary"
-                defaults={{
-                  id: consol.id,
-                  branchId: consol.branchId,
-                  mode: consol.mode,
-                  tradeDirection: consol.tradeDirection,
-                  masterBillNumber: consol.masterBillNumber,
-                  bookingNumber: consol.bookingNumber,
-                  vesselName: consol.vesselName,
-                  voyageNumber: consol.voyageNumber,
-                  flightNumber: consol.flightNumber,
-                  notes: consol.notes,
-                }}
-              />
-            ) : null}
-            {mayWrite && consol.status === 'open' ? (
-              <form action={closeConsolidation}>
-                <input type="hidden" name="consolidationId" value={id} />
-                <Button type="submit" variant="secondary" icon="sealed">
-                  {t('close')}
-                </Button>
-              </form>
-            ) : null}
+            {/*
+              The manifest stays in view — it is what this screen is opened to
+              print. The Arabic copy, editing and closing sit behind More.
+            */}
+            <MoreMenu label={tc('more')}>
+              <Button href={`${manifestUrl}?locale=ar`} download variant="menu" icon="document">
+                {t('manifest')} · AR
+              </Button>
+              {mayWrite ? (
+                <ConsolidationDialog
+                  variant="secondary"
+                  defaults={{
+                    id: consol.id,
+                    branchId: consol.branchId,
+                    mode: consol.mode,
+                    tradeDirection: consol.tradeDirection,
+                    masterBillNumber: consol.masterBillNumber,
+                    bookingNumber: consol.bookingNumber,
+                    vesselName: consol.vesselName,
+                    voyageNumber: consol.voyageNumber,
+                    flightNumber: consol.flightNumber,
+                    notes: consol.notes,
+                    carrierPartnerId: consol.carrierPartnerId,
+                    coloadPartnerId: consol.coloadPartnerId,
+                    originId: consol.originId,
+                    destinationId: consol.destinationId,
+                    etd: localInputValue(consol.etd, consol.branchTimeZone),
+                    eta: localInputValue(consol.eta, consol.branchTimeZone),
+                  }}
+                />
+              ) : null}
+              {mayWrite && consol.status === 'open' ? (
+                <form action={closeConsolidation}>
+                  <input type="hidden" name="consolidationId" value={id} />
+                  <Button type="submit" variant="menu" icon="sealed">
+                    {t('close')}
+                  </Button>
+                </form>
+              ) : null}
+            </MoreMenu>
           </span>
         }
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-4 @5xl:grid-cols-6">
             <Field label={t('carrier')}>{consol.carrierName ?? '—'}</Field>
             <Field label={t('vessel')} mono>
               {[consol.vesselName, consol.voyageNumber].filter(Boolean).join(' / ') ||
@@ -141,7 +172,9 @@ export default async function ConsolidationDetailPage({
                 '—'}
             </Field>
             <Field label={t('route')}>
-              {[consol.originName, consol.destinationName].filter(Boolean).join(' → ') || '—'}
+              {consol.originName && consol.destinationName
+                ? formatLane(consol.originName, consol.destinationName, locale)
+                : consol.originName || consol.destinationName || '—'}
             </Field>
             <Field label={t('etd')} mono>
               {formatDate(consol.etd, locale, timeZone)}
@@ -158,7 +191,7 @@ export default async function ConsolidationDetailPage({
         </Card>
 
         {/* --- houses ------------------------------------------------- */}
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
             <CardHeader
               icon="jobs"
@@ -167,37 +200,28 @@ export default async function ConsolidationDetailPage({
             />
 
             {mayWrite && consol.status === 'open' && attachable.length > 0 ? (
-              <form action={attachHouse} className="flex items-center gap-2">
-                <input type="hidden" name="consolidationId" value={id} />
-                <select
-                  name="jobId"
-                  required
-                  aria-label={t('attach')}
-                  className="h-8 max-w-56 rounded-sm border border-line bg-surface px-2 text-[0.8125rem] text-ink"
-                >
-                  <option value="">{tc('choose')}</option>
-                  {attachable.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.label}
-                    </option>
-                  ))}
-                </select>
-                <Button type="submit" size="sm" variant="secondary" icon="plus">
-                  {t('attach')}
-                </Button>
-              </form>
+              <AttachHouseForm
+                consolidationId={id}
+                jobs={attachable.map((job) => ({ id: job.id, label: job.label }))}
+                label={t('attach')}
+                choose={tc('choose')}
+              />
             ) : null}
           </div>
 
           {consol.houses.length === 0 ? (
             <EmptyState icon="jobs" title={t('noHouses')} description={t('noHousesHint')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('house')}</TH>
-                  <TH>{tc('customer')}</TH>
-                  <TH align="end">{t('packages')}</TH>
+                  {/* House, volume, status and detach on a phone; the
+                      customer follows the house bill there (below). */}
+                  <TH priority="low">{tc('customer')}</TH>
+                  <TH priority="low" align="end">
+                    {t('packages')}
+                  </TH>
                   <TH align="end">{t('volume')}</TH>
                   <TH align="end">{tc('status')}</TH>
                   <TH align="end">{tc('actions')}</TH>
@@ -209,13 +233,18 @@ export default async function ConsolidationDetailPage({
                     <TD>
                       <Link
                         href={`/jobs/${house.jobId}`}
-                        className="ref numeric font-medium hover:text-brand"
+                        className="ref numeric font-medium hover:text-accent"
                       >
                         {house.houseBillNumber ?? house.reference}
                       </Link>
+                      <span className="block text-caption text-ink-muted @3xl:hidden">
+                        {house.customerName}
+                      </span>
                     </TD>
-                    <TD className="text-ink-muted">{house.customerName}</TD>
-                    <TD align="end" numeric className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
+                      {house.customerName}
+                    </TD>
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
                       {house.packages}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
@@ -228,21 +257,19 @@ export default async function ConsolidationDetailPage({
                     </TD>
                     <TD align="end">
                       {mayWrite && consol.status === 'open' ? (
-                        <form action={detachHouse}>
-                          <input type="hidden" name="consolidationId" value={id} />
-                          <input type="hidden" name="jobId" value={house.jobId} />
-                          <Button type="submit" size="sm" variant="ghost">
-                            {t('detach')}
-                          </Button>
-                        </form>
+                        <DetachHouseButton
+                          consolidationId={id}
+                          jobId={house.jobId}
+                          label={t('detach')}
+                        />
                       ) : null}
                     </TD>
                   </TR>
                 ))}
                 <TR>
                   <TD className="font-semibold">{tc('total')}</TD>
-                  <TD />
-                  <TD align="end" numeric className="font-semibold">
+                  <TD priority="low" />
+                  <TD priority="low" align="end" numeric className="font-semibold">
                     {consol.houses.reduce((acc, h) => acc + h.packages, 0)}
                   </TD>
                   <TD align="end" numeric className="font-semibold">
@@ -257,7 +284,7 @@ export default async function ConsolidationDetailPage({
         </Card>
 
         {/* --- master costs ------------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
             <CardHeader icon="finance" eyebrow={t('charges')} title={t('chargesTitle')} />
             {mayWrite ? <ConsolChargeDialog consolidationId={id} /> : null}
@@ -274,10 +301,10 @@ export default async function ConsolidationDetailPage({
                   <li key={charge.id} className="border-b border-line p-4 last:border-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="block text-[0.875rem] font-medium text-ink">
+                        <span className="block text-body font-medium text-ink">
                           {charge.chargeTypeName}
                         </span>
-                        <span className="block text-[0.6875rem] text-ink-subtle">
+                        <span className="block text-micro text-ink-subtle">
                           {charge.counterpartyName ?? t('noCounterparty')} ·{' '}
                           {t(`bases.${charge.allocationBasis}` as 'bases.volume')}
                         </span>
@@ -294,11 +321,8 @@ export default async function ConsolidationDetailPage({
                       what rounds per currency: three places for the dinar, two
                       for the dirham.
                     */}
-                      <span className="numeric shrink-0 text-[0.875rem] font-medium">
-                        {formatMoney(
-                          { amount: Number(charge.amount), currency: charge.currency },
-                          locale,
-                        )}
+                      <span className="numeric shrink-0 text-body font-medium">
+                        {formatMoney({ amount: charge.amount, currency: charge.currency }, locale)}
                       </span>
                     </div>
 
@@ -325,11 +349,54 @@ export default async function ConsolidationDetailPage({
                           consolidationId={id}
                           chargeLineId={charge.id}
                           label={t('allocate')}
+                          manual={
+                            charge.allocationBasis === 'manual'
+                              ? {
+                                  currency: charge.currency,
+                                  houses: consol.houses.map((house) => ({
+                                    jobId: house.jobId,
+                                    label: house.houseBillNumber ?? house.reference,
+                                  })),
+                                }
+                              : undefined
+                          }
                         />
                       ) : (
                         <Badge tone="caution">{t('notAllocated')}</Badge>
                       )}
                     </div>
+
+                    {/*
+                      An unsplit cost can be corrected or withdrawn (O12).
+                      Before, a mistyped amount or the wrong basis stayed on
+                      the master for good. Withdrawn, not deleted: the row is
+                      stamped and drops out of the page and the split.
+                    */}
+                    {mayWrite && !charge.allocatedAt ? (
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <ConsolChargeDialog
+                          consolidationId={id}
+                          defaults={{
+                            id: charge.id,
+                            direction: charge.direction,
+                            chargeTypeId: charge.chargeTypeId,
+                            counterpartyPartnerId: charge.counterpartyPartnerId,
+                            amount: charge.amount,
+                            currency: charge.currency,
+                            fxRate: charge.fxRate,
+                            allocationBasis: charge.allocationBasis,
+                            description: charge.description,
+                          }}
+                        />
+                        <form action={withdrawConsolCharge}>
+                          <input type="hidden" name="consolidationId" value={id} />
+                          <input type="hidden" name="chargeLineId" value={charge.id} />
+                          <Button type="submit" size="sm" variant="ghost">
+                            {t('withdrawCharge')}
+                          </Button>
+                        </form>
+                      </div>
+                    ) : null}
 
                     {/*
                     The split, on request.
@@ -348,7 +415,7 @@ export default async function ConsolidationDetailPage({
                   */}
                     {chargeShares.length > 0 ? (
                       <details className="group mt-2.5">
-                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[0.6875rem] text-ink-muted [&::-webkit-details-marker]:hidden">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-micro text-ink-muted [&::-webkit-details-marker]:hidden">
                           <Icon
                             name="chevron-end"
                             size={12}
@@ -361,7 +428,7 @@ export default async function ConsolidationDetailPage({
                           {chargeShares.map((share) => (
                             <li
                               key={share.jobId}
-                              className="flex items-baseline justify-between gap-3 text-[0.75rem]"
+                              className="flex items-baseline justify-between gap-3 text-caption"
                             >
                               <Link
                                 href={`/jobs/${share.jobId}`}
@@ -376,7 +443,7 @@ export default async function ConsolidationDetailPage({
                             */}
                               <span className="numeric shrink-0 text-ink">
                                 {formatMoney(
-                                  { amount: Number(share.shareAmount), currency: charge.currency },
+                                  { amount: share.shareAmount, currency: charge.currency },
                                   locale,
                                 )}
                               </span>
@@ -391,48 +458,52 @@ export default async function ConsolidationDetailPage({
             </ul>
           )}
 
-          <p className="p-4 pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+          {/*
+            Withdrawn costs, set apart and restorable (O12). A withdrawal had
+            no way back, so the wrong click meant re-keying the cost and an
+            audit trail with two rows for one carrier invoice. Collapsed by
+            default: on most masters it is empty, and when it is not it is
+            the exception rather than the work.
+          */}
+          {consol.withdrawn.length > 0 ? (
+            <details className="group border-t border-line p-4">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-micro text-ink-muted [&::-webkit-details-marker]:hidden">
+                <Icon
+                  name="chevron-end"
+                  size={12}
+                  className="shrink-0 transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90"
+                />
+                <span>{t('withdrawnCharges', { count: consol.withdrawn.length })}</span>
+              </summary>
+              <ul className="mt-2 space-y-2 border-s border-line ps-3">
+                {consol.withdrawn.map((charge) => (
+                  <li key={charge.id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-caption text-ink-muted">
+                      {charge.chargeTypeName} ·{' '}
+                      <span className="numeric">
+                        {formatMoney({ amount: charge.amount, currency: charge.currency }, locale)}
+                      </span>
+                    </span>
+                    {mayWrite ? (
+                      <form action={restoreConsolCharge}>
+                        <input type="hidden" name="consolidationId" value={id} />
+                        <input type="hidden" name="chargeLineId" value={charge.id} />
+                        <Button type="submit" size="sm" variant="ghost">
+                          {t('restoreCharge')}
+                        </Button>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          <p className="p-4 pt-3 text-micro leading-relaxed text-ink-subtle">
             {t('allocationNote')}
           </p>
         </Card>
       </Grid>
     </>
-  )
-}
-
-/**
- * `allocateConsolCharge` returns an `ActionState` so it can hand back the
- * engine's own refusal — "every house has a zero volume, so there is nothing
- * to split by". A plain `action={}` form cannot show that, so this posts and
- * lets the page revalidate; the refusal surfaces on the next render as the
- * cost still sitting unallocated.
- *
- * The honest note: this is the one place in the feature where the message is
- * lost. Wiring `useActionState` here means a client component for a single
- * button, and the refusals it swallows are all visible states on the page —
- * no houses attached, cargo figures missing.
- */
-function AllocateButton({
-  consolidationId,
-  chargeLineId,
-  label,
-}: {
-  readonly consolidationId: string
-  readonly chargeLineId: string
-  readonly label: string
-}) {
-  return (
-    <form
-      action={async (form: FormData) => {
-        'use server'
-        await allocateConsolCharge({}, form)
-      }}
-    >
-      <input type="hidden" name="consolidationId" value={consolidationId} />
-      <input type="hidden" name="chargeLineId" value={chargeLineId} />
-      <Button type="submit" size="sm" variant="secondary">
-        {label}
-      </Button>
-    </form>
   )
 }

@@ -12,10 +12,13 @@
  */
 
 import { revalidatePath } from 'next/cache'
+import { getTranslations } from 'next-intl/server'
 import { priceEnquiryToQuote, withActor, type PricingRefusal } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
-import { failWith, succeed, type ActionState } from '@/lib/form-state'
+import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -30,12 +33,18 @@ function read(form: FormData, key: string): string | undefined {
  * fault. Branch scoping is RLS's: an enquiry outside the actor's branches is
  * invisible and comes back `not_found`, which is also the right answer to give.
  */
-export async function priceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const priceEnquiry = refuseForbidden(async function priceEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('ledgerValidation')
 
   const enquiryId = read(form, 'enquiryId')
-  if (!enquiryId) return failWith('Nothing to price.')
+  if (!enquiryId) return failWith(tv('nothingToPrice'))
 
   const outcome = await withActor(session.actor, (tx) =>
     priceEnquiryToQuote(tx, enquiryId, session.principal.id, {
@@ -45,21 +54,42 @@ export async function priceEnquiry(_previous: ActionState, form: FormData): Prom
     }),
   )
 
-  if ('error' in outcome) return failWith(REFUSALS[outcome.error])
+  if ('error' in outcome) return failWith(refusal(tv, outcome.error))
 
   revalidatePath('/quotes')
   revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome.reference)
-}
+})
 
-const REFUSALS: Record<PricingRefusal, string> = {
-  not_found: 'No such enquiry, or it is not one you can see.',
-  no_mode: 'The enquiry has no transport mode, so there is nothing to price it against.',
-  no_cover:
-    'No rate card covers this lane and mode on the readiness date. Ask an agent for a rate, or load the card.',
-  no_margin:
-    'Only a buying rate covers this lane, and this customer has no house margin set. Add one on their account, or load a selling card.',
-  cannot_price:
-    'The card needs a figure this enquiry does not carry — a container count, or a currency with no rate to the base.',
+/*
+  A switch of literal translator calls rather than a lookup table of keys, so
+  `check-messages` can see every key — it resolves static calls only. The
+  `never` default keeps it exhaustive when the engine learns a new refusal.
+*/
+function refusal(tv: Translate, reason: PricingRefusal): string {
+  switch (reason) {
+    case 'not_found':
+      return tv('pricingNotFound')
+    case 'no_mode':
+      return tv('pricingNoMode')
+    case 'no_container_count':
+      return tv('pricingNoContainerCount')
+    case 'no_cover':
+      return tv('pricingNoCover')
+    case 'no_margin':
+      return tv('pricingNoMargin')
+    case 'cannot_price':
+      return tv('pricingCannotPrice')
+    case 'quote_accepted':
+      return tv('quoteAlreadyAccepted')
+    case 'already_quoted':
+      // Only the auto-draft sweep asks for a first quotation; a click never
+      // does. Worded anyway, so the switch stays exhaustive.
+      return tv('pricingAlreadyQuoted')
+    default: {
+      const unhandled: never = reason
+      return unhandled
+    }
+  }
 }

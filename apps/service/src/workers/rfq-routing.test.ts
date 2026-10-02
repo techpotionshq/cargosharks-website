@@ -14,7 +14,11 @@ describe('rfqSubjectTag / rfqTokenIn', () => {
   })
 
   it('falls back to the quoted body when a forward mangles the subject', () => {
-    const body = ['Our rate is USD 950/40HC.', '', '> Rate request [RFQ:' + TOKEN + '] — lane'].join('\n')
+    const body = [
+      'Our rate is USD 950/40HC.',
+      '',
+      '> Rate request [RFQ:' + TOKEN + '] — lane',
+    ].join('\n')
     expect(rfqTokenIn('Fwd: rates', body)).toBe(TOKEN)
   })
 
