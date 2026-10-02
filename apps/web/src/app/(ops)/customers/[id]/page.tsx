@@ -35,7 +35,7 @@ export async function generateMetadata({
   const session = await requireSession()
   const id = recordId((await params).id)
   const customer = await getCustomer(session.actor, id)
-  if (!customer) return { title: 'Customer' }
+  if (!customer) return { title: (await getTranslations('nav'))('customers') }
   // The tab says what the heading says (F27).
   const resolved = await getLocale()
   const name =
@@ -125,7 +125,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               description={t('termsPerBranchHint')}
             />
           </div>
-          <TableShell minWidth="none" className="border-t border-line">
+          <TableShell className="border-t border-line">
             <THead>
               <TR>
                 <TH>{t('branch')}</TH>
@@ -206,7 +206,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       ) : (
         <Card>
           <CardHeader icon="customers" eyebrow={t('eyebrow')} title={t('identity')} />
-          <dl className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <dl className="mt-5 grid grid-cols-2 gap-4 @xl:grid-cols-3">
             <Field label={t('legalNameEn')}>{customer.legalNameEn}</Field>
             <Field label={t('legalNameAr')}>{customer.legalNameAr ?? '—'}</Field>
             <Field label={t('country')}>{customer.countryCode ?? '—'}</Field>

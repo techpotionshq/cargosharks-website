@@ -41,7 +41,7 @@ import {
   MilestoneTemplateDialog,
   WorkingCalendarDialog,
 } from '@/features/admin/ui/reference-dialogs'
-import { trimDecimal } from '@/lib/format'
+import { formatMoney, formatNumber, trimDecimal } from '@/lib/format'
 
 /**
  * One height for every register on this page — 34rem.
@@ -114,6 +114,51 @@ export default async function ReferencePage() {
     listFxRates(session.actor),
   ])
 
+  /*
+    The engine rules, worded here rather than in the read.
+
+    The query used to return `sea_fcl`, `demurrage`, `KWI · sea_fcl · 40HC` and
+    "10 days · 32 KWD · calendar" as finished strings, in English, so the
+    Arabic page printed the enum values and the sentence verbatim. The rows
+    are data; the words are the catalogue's.
+  */
+  const tMode = await getTranslations('mode')
+  const tDirection = await getTranslations('direction')
+  const tFree = await getTranslations('freeTimeRuleForm')
+  const tNav = await getTranslations('nav')
+  const modeLabel = (mode: unknown) =>
+    typeof mode === 'string' && tMode.has(mode) ? tMode(mode as 'air') : String(mode ?? '')
+  // A seeded role by its name; a role an administrator invented, as typed.
+  const roleLabel = (key: string) =>
+    tNav.has(`roles.${key}`) ? tNav(`roles.${key}` as 'roles.coordinator') : key
+  const chargeableScope = (raw: Record<string, unknown>) =>
+    (raw.branchCode as string | null) ?? t('everywhere')
+  // As the trade states it: a divisor, an increment, a floor. No divisor is
+  // FCL, billed per container and never by volume.
+  const chargeableDetail = (raw: Record<string, unknown>) =>
+    raw.divisorCm3PerKg === null || raw.divisorCm3PerKg === undefined
+      ? t('perContainer')
+      : t('chargeableDetail', {
+          divisor: formatNumber(Number(raw.divisorCm3PerKg), locale),
+          roundUp: formatNumber(Number(raw.roundUpToKg), locale),
+          minimum: formatNumber(Number(raw.minimumKg), locale),
+        })
+  const freeTimeKind = (raw: Record<string, unknown>) =>
+    ['demurrage', 'detention', 'storage'].includes(raw.kind as string)
+      ? tFree(`kinds.${raw.kind as 'demurrage'}`)
+      : String(raw.kind)
+  // Absence is how a rule widens, so an empty scope is "everywhere".
+  const freeTimeScope = (raw: Record<string, unknown>) =>
+    [raw.branchCode as string | null, raw.mode ? modeLabel(raw.mode) : null, raw.containerType]
+      .filter(Boolean)
+      .join(' · ') || t('everywhere')
+  const freeTimeDetail = (raw: Record<string, unknown>) =>
+    t('freeTimeDetail', {
+      days: formatNumber(Number(raw.freeDays), locale),
+      perDiem: formatMoney({ amount: String(raw.perDiem), currency: String(raw.currency) }, locale),
+      basis: raw.dayBasis === 'working' ? tFree('working') : tFree('calendar'),
+    })
+
   /** `480` reads as `08:00` — the column is minutes from local midnight. */
   const clock = (minutes: number) =>
     `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
@@ -166,7 +211,7 @@ export default async function ReferencePage() {
         six covers it at all three breakpoints at once, since six divides by
         both two and three.
       */}
-      <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-card border border-line bg-line @xl:grid-cols-3 @4xl:grid-cols-6">
         {counts.map((row) => (
           <div key={row.key} className="bg-surface px-4 py-3">
             <p className="eyebrow truncate">{t(`tables.${row.key}`)}</p>
@@ -185,7 +230,7 @@ export default async function ReferencePage() {
       </div>
 
       <Grid className="mb-4">
-        <Card className={`${PANEL} lg:col-span-7`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-7`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="finance"
@@ -194,7 +239,7 @@ export default async function ReferencePage() {
               description={t('chargeTypesHint')}
             />
           </div>
-          <TableShell minWidth="none" scroll="fill" className="border-t border-line">
+          <TableShell scroll="fill" className="border-t border-line">
             <THead>
               <TR>
                 <TH>{t('key')}</TH>
@@ -257,7 +302,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <div className={`${PANEL} gap-4 lg:col-span-5`}>
+        <div className={`${PANEL} gap-4 @4xl:col-span-5`}>
           {/*
             `shrink-0`: a forwarder has four working calendars and will never
             have forty, so this card keeps its natural height and the card
@@ -294,10 +339,9 @@ export default async function ReferencePage() {
                   key={code.code}
                   className="flex items-center justify-between gap-3 border-b border-line pb-2 last:border-0 last:pb-0"
                 >
-                  <span className="min-w-0 text-body text-ink">
-                    {code.name}
-                    <span className="ref ms-2 text-caption text-ink-subtle">{code.code}</span>
-                  </span>
+                  {/* The name, not the key beside it (`customs_hold`): an
+                      identifier on both languages' screens, read by nobody. */}
+                  <span className="min-w-0 text-body text-ink">{code.name}</span>
                   <span className="numeric shrink-0 text-caption text-ink-muted">
                     {code.slaHours === null ? '—' : t('slaHours', { hours: code.slaHours })}
                   </span>
@@ -309,7 +353,7 @@ export default async function ReferencePage() {
       </Grid>
 
       <Grid>
-        <Card className={`${PANEL} lg:col-span-4`}>
+        <Card className={`${PANEL} @4xl:col-span-4`}>
           <CardHeader icon="jobs" eyebrow={t('eyebrow')} title={t('containers')} />
           <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.containers.map((row) => (
@@ -321,7 +365,7 @@ export default async function ReferencePage() {
           </ul>
         </Card>
 
-        <Card className={`${PANEL} lg:col-span-4`}>
+        <Card className={`${PANEL} @4xl:col-span-4`}>
           <CardHeader icon="rates" eyebrow={t('eyebrow')} title={t('incoterms')} />
           {/* `content-start`: a two-column grid given spare height spreads its
               rows down it, which would undo the point of the fill. */}
@@ -335,7 +379,7 @@ export default async function ReferencePage() {
           </ul>
         </Card>
 
-        <Card className={`${PANEL} lg:col-span-4`}>
+        <Card className={`${PANEL} @4xl:col-span-4`}>
           <CardHeader icon="document" eyebrow={t('eyebrow')} title={t('documentTypes')} />
           <ul className="qb-scroll mt-4 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
             {sample.documents.map((row) => (
@@ -358,7 +402,7 @@ export default async function ReferencePage() {
         same kind of thing as a charge type: rows the product runs on.
       */}
       <Grid className="mt-4">
-        <Card className={`${PANEL} lg:col-span-12`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-12`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="tracking"
@@ -372,7 +416,7 @@ export default async function ReferencePage() {
           {milestones.length === 0 ? (
             <EmptyState icon="tracking" title={t('noMilestones')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+            <TableShell className="border-t border-line" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('shape')}</TH>
@@ -385,10 +429,10 @@ export default async function ReferencePage() {
               <TBody>
                 {milestones.map((row) => (
                   <TR key={row.id}>
-                    <TD className="md:whitespace-nowrap">
-                      <Badge tone="muted">{row.mode}</Badge>
-                      <span className="block text-caption text-ink-subtle md:ms-1.5 md:inline">
-                        {row.direction}
+                    <TD className="@3xl:whitespace-nowrap">
+                      <Badge tone="muted">{modeLabel(row.mode)}</Badge>
+                      <span className="block text-caption text-ink-subtle @3xl:ms-1.5 @3xl:inline">
+                        {tDirection(row.direction as 'import')}
                       </span>
                     </TD>
                     <TD align="end" numeric>
@@ -398,11 +442,6 @@ export default async function ReferencePage() {
                       <span className="font-medium text-ink">
                         {locale === 'ar' ? row.nameAr : row.nameEn}
                       </span>
-                      {/* Its own line on a phone: beside the name the pair had
-                          no break opportunity and set the column's width. */}
-                      <span className="ref block text-micro text-ink-subtle wrap-anywhere md:ms-2 md:inline">
-                        {row.code}
-                      </span>
                       {row.customerVisible ? null : (
                         <Badge tone="muted" className="ms-2">
                           {t('internalOnly')}
@@ -410,7 +449,7 @@ export default async function ReferencePage() {
                       )}
                     </TD>
                     <TD priority="low" className="text-ink-muted">
-                      {row.ownerRole ?? '—'}
+                      {row.ownerRole ? roleLabel(row.ownerRole) : '—'}
                     </TD>
                     <TD align="end">
                       <MilestoneTemplateDialog defaults={row} />
@@ -439,7 +478,7 @@ export default async function ReferencePage() {
           Both cards end on the same line, neither is padded, and the height
           follows the data rather than a number chosen here.
         */}
-        <Card className={`${PANEL} lg:col-span-6`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="calendar"
@@ -455,7 +494,7 @@ export default async function ReferencePage() {
             />
           </div>
 
-          <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+          <TableShell className="border-t border-line" scroll="fill">
             <THead>
               <TR>
                 <TH>{t('calendar')}</TH>
@@ -495,7 +534,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <Card className={`${PANEL} h-0 min-h-full lg:col-span-6`} padding="none">
+        <Card className={`${PANEL} h-0 min-h-full @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="customs"
@@ -509,7 +548,7 @@ export default async function ReferencePage() {
           {duties.length === 0 ? (
             <EmptyState icon="customs" title={t('noDuties')} description={t('noDutiesHint')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+            <TableShell className="border-t border-line" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('hsPrefix')}</TH>
@@ -559,7 +598,7 @@ export default async function ReferencePage() {
         with no way to configure it.
       */}
       <Grid className="mt-4">
-        <Card className={`${PANEL} lg:col-span-6`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="rates"
@@ -569,7 +608,7 @@ export default async function ReferencePage() {
               actions={<ChargeableRuleDialog />}
             />
           </div>
-          <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+          <TableShell className="border-t border-line" scroll="fill">
             <THead>
               <TR>
                 <TH>{t('mode')}</TH>
@@ -581,9 +620,9 @@ export default async function ReferencePage() {
             <TBody>
               {rules.chargeable.map((row) => (
                 <TR key={row.id}>
-                  <TD className="font-medium text-ink">{row.label}</TD>
-                  <TD className="ref text-ink-muted">{row.scope}</TD>
-                  <TD className="numeric text-body-sm text-ink-muted">{row.detail}</TD>
+                  <TD className="font-medium text-ink">{modeLabel(row.raw.mode)}</TD>
+                  <TD className="text-ink-muted">{chargeableScope(row.raw)}</TD>
+                  <TD className="text-body-sm text-ink-muted">{chargeableDetail(row.raw)}</TD>
                   <TD align="end">
                     <ChargeableRuleDialog defaults={row.raw as never} />
                   </TD>
@@ -593,7 +632,7 @@ export default async function ReferencePage() {
           </TableShell>
         </Card>
 
-        <Card className={`${PANEL} lg:col-span-6`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="clock"
@@ -610,7 +649,7 @@ export default async function ReferencePage() {
               description={t('noFreeTimeRulesHint')}
             />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+            <TableShell className="border-t border-line" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('kind')}</TH>
@@ -622,9 +661,9 @@ export default async function ReferencePage() {
               <TBody>
                 {rules.freeTime.map((row) => (
                   <TR key={row.id}>
-                    <TD className="font-medium text-ink">{row.label}</TD>
-                    <TD className="ref text-ink-muted">{row.scope}</TD>
-                    <TD className="numeric text-body-sm text-ink-muted">{row.detail}</TD>
+                    <TD className="font-medium text-ink">{freeTimeKind(row.raw)}</TD>
+                    <TD className="text-ink-muted">{freeTimeScope(row.raw)}</TD>
+                    <TD className="text-body-sm text-ink-muted">{freeTimeDetail(row.raw)}</TD>
                     <TD align="end">
                       <FreeTimeRuleDialog defaults={row.raw as never} />
                     </TD>
@@ -643,7 +682,7 @@ export default async function ReferencePage() {
         enquiry refused "Price it".
       */}
       <Grid className="mt-4">
-        <Card className={`${PANEL} lg:col-span-6`} padding="none">
+        <Card className={`${PANEL} @4xl:col-span-6`} padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="finance"
@@ -656,7 +695,7 @@ export default async function ReferencePage() {
           {fx.length === 0 ? (
             <EmptyState icon="finance" title={t('noFxRates')} description={t('noFxRatesHint')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none" scroll="fill">
+            <TableShell className="border-t border-line" scroll="fill">
               <THead>
                 <TR>
                   <TH>{t('fxPair')}</TH>

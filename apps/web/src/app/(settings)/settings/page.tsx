@@ -35,7 +35,7 @@ export default async function SettingsIndexPage() {
     <>
       <PageHeader title={t('title')} description={t('description')} />
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 @xl:grid-cols-2">
         {areas.map((area) => {
           const key = area.key
           return (

@@ -11,6 +11,7 @@
  * that does that could be fired by a link preview in somebody's chat client.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -44,6 +45,17 @@ import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { MoreMenu } from '@/ui/menu'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const consol = await getConsolidation(session.actor, recordId((await params).id))
+  const t = await getTranslations('consolidations')
+  return { title: consol?.reference ?? t('title') }
+}
 
 export default async function ConsolidationDetailPage({
   params,
@@ -151,8 +163,8 @@ export default async function ConsolidationDetailPage({
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-4 @5xl:grid-cols-6">
             <Field label={t('carrier')}>{consol.carrierName ?? '—'}</Field>
             <Field label={t('vessel')} mono>
               {[consol.vesselName, consol.voyageNumber].filter(Boolean).join(' / ') ||
@@ -179,7 +191,7 @@ export default async function ConsolidationDetailPage({
         </Card>
 
         {/* --- houses ------------------------------------------------- */}
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
             <CardHeader
               icon="jobs"
@@ -200,7 +212,7 @@ export default async function ConsolidationDetailPage({
           {consol.houses.length === 0 ? (
             <EmptyState icon="jobs" title={t('noHouses')} description={t('noHousesHint')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('house')}</TH>
@@ -225,7 +237,7 @@ export default async function ConsolidationDetailPage({
                       >
                         {house.houseBillNumber ?? house.reference}
                       </Link>
-                      <span className="block text-caption text-ink-muted md:hidden">
+                      <span className="block text-caption text-ink-muted @3xl:hidden">
                         {house.customerName}
                       </span>
                     </TD>
@@ -272,7 +284,7 @@ export default async function ConsolidationDetailPage({
         </Card>
 
         {/* --- master costs ------------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-3">
             <CardHeader icon="finance" eyebrow={t('charges')} title={t('chargesTitle')} />
             {mayWrite ? <ConsolChargeDialog consolidationId={id} /> : null}

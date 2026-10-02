@@ -55,6 +55,12 @@ export function Badge({ children, tone = 'muted', icon, dot = false, className }
     <span
       // A hook for `TD`, which lets a pill wrap on a phone — see table.tsx.
       data-badge=""
+      /*
+        …except a short one. "غير نشط" wrapped a word per line inside its own
+        outline; a label of a couple of words is never what pushed a row off
+        a phone, a sentence-length one ("Standing until 23 Oct 2026") is.
+      */
+      data-short={typeof children === 'string' && children.length <= 16 ? '' : undefined}
       className={[
         'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-caption font-medium ring-1 ring-inset whitespace-nowrap',
         PILL_CLASS[tone],

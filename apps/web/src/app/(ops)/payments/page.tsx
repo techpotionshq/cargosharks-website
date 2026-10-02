@@ -119,7 +119,7 @@ export default async function PaymentsPage({
                 </TD>
                 <TD className="font-medium text-ink">
                   {row.customerName ?? '—'}
-                  <span className="block text-micro font-normal whitespace-nowrap text-ink-subtle md:hidden">
+                  <span className="block text-micro font-normal whitespace-nowrap text-ink-subtle @3xl:hidden">
                     {formatDate(new Date(row.receivedOn), locale, timeZone)}
                   </span>
                 </TD>
@@ -138,7 +138,7 @@ export default async function PaymentsPage({
                   <span
                     // May wrap after the figure: on one line this second line
                     // was wider than the amount it sits under.
-                    className={`block text-micro whitespace-normal md:hidden ${open ? 'text-caution' : 'text-ink-subtle'}`}
+                    className={`block text-micro whitespace-normal @3xl:hidden ${open ? 'text-caution' : 'text-ink-subtle'}`}
                   >
                     {allocation}
                   </span>

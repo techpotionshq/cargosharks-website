@@ -16,7 +16,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
-import { brandMailDomain, getBrand } from '@/lib/brand'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listRoles, listUsers } from '@/features/admin/queries'
@@ -30,6 +29,7 @@ import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { SuspendUserDialog, UserDialog } from '@/features/admin/ui/dialogs'
 import { SignInLinkButton } from '@/features/admin/ui/sign-in-link-button'
+import { Breakable } from '@/ui/breakable'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('users')
@@ -152,9 +152,9 @@ export default async function UsersPage() {
                   */}
                   <TD className="font-medium text-ink">
                     {name}
-                    <span className="md:hidden">
-                      <span className="ref mt-0.5 block text-caption font-normal wrap-anywhere text-ink-muted">
-                        {person.email}
+                    <span className="@3xl:hidden">
+                      <span className="ref mt-0.5 block text-caption font-normal text-ink-muted">
+                        <Breakable text={person.email} />
                       </span>
                       <span className="mt-1.5 block font-normal">{assignments}</span>
                       {person.type !== 'system' && !person.hasPassword ? (
@@ -202,7 +202,7 @@ export default async function UsersPage() {
       </Card>
 
       <Grid>
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="users"
@@ -211,7 +211,7 @@ export default async function UsersPage() {
               description={t('rolesHint')}
             />
           </div>
-          <TableShell minWidth="none" className="border-t border-line">
+          <TableShell className="border-t border-line">
             <THead>
               <TR>
                 <TH>{t('role')}</TH>
@@ -223,13 +223,11 @@ export default async function UsersPage() {
               {roleRows.map((role) => (
                 <TR key={role.key}>
                   <TD>
+                    {/* The name only. The key beside it (`operations_manager`)
+                        is the seed's identifier, not something an
+                        administrator reads or types anywhere in the product. */}
                     <span className="font-medium text-ink">
                       {locale === 'ar' ? role.nameAr : role.nameEn}
-                    </span>
-                    {/* Under the name on a phone; beside it the pair could
-                        not break and was the table's whole overflow. */}
-                    <span className="ref block text-caption text-ink-subtle md:ms-2 md:inline">
-                      {role.key}
                     </span>
                   </TD>
                   <TD align="end" numeric>
@@ -250,22 +248,15 @@ export default async function UsersPage() {
           </TableShell>
         </Card>
 
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader icon="admin" eyebrow={t('eyebrow')} title={t('addTitle')} />
-          <p className="mt-4 text-body-sm text-ink-muted">{t('addBody')}</p>
           {/*
-            The domain comes from the brand for the same reason the sidebar
-            does: this is a sample an administrator copies and edits, and one
-            reading another company's domain is both wrong and a small leak of
-            who else runs this product.
+            The invitation, in words. This card printed a `pnpm db:create-user`
+            command — the way the *first* administrator is made, from a shell
+            on the server, which nobody reading this screen has or needs: the
+            Invite button above is how everyone after them arrives.
           */}
-          <pre className="ref mt-4 overflow-x-auto rounded-md bg-surface-sunken p-3 text-caption leading-relaxed text-ink">
-            {`pnpm db:create-user \\
-  --email person@${brandMailDomain(getBrand())} \\
-  --name "Full Name" \\
-  --role coordinator \\
-  --branch KWI`}
-          </pre>
+          <p className="mt-4 text-body-sm text-ink-muted">{t('addBody')}</p>
           <p className="mt-3 text-caption text-ink-subtle">{t('addNote')}</p>
         </Card>
       </Grid>

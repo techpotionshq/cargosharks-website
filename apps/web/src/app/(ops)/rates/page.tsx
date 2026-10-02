@@ -77,7 +77,7 @@ export default async function RatesPage({
 
   return (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric
           label={t('liveCards')}
           value={formatNumber(summary.live, locale)}

@@ -38,6 +38,7 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -71,7 +72,33 @@ export function MoreMenu({
   const [empty, setEmpty] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
   const panelId = useId()
+  /*
+    How far the panel has to move to stay on screen, in physical pixels.
+
+    `end-0` is right whenever the More button sits at the header's inline end,
+    and on a phone it often does not: the header wraps, the button lands at
+    the start of its line, and a 224px panel anchored to its end opened off
+    the left edge in English (five detail pages) and off the right in Arabic
+    (three). Measured on open, after layout and before paint, and nudged back
+    inside an 8px margin — so the anchoring stays as designed wherever it fits.
+  */
+  const [shift, setShift] = useState(0)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const element = panel.current
+    if (!element) return
+    // Where it would sit unshifted: the measured box, less the shift it has.
+    const rect = element.getBoundingClientRect()
+    const shown = new DOMMatrixReadOnly(getComputedStyle(element).transform).m41
+    const left = rect.left - shown
+    const right = rect.right - shown
+    const width = document.documentElement.clientWidth
+    const margin = 8
+    setShift(left < margin ? margin - left : right > width - margin ? width - margin - right : 0)
+  }, [open])
 
   const close = useCallback((refocus: boolean) => {
     setOpen(false)
@@ -184,6 +211,7 @@ export function MoreMenu({
           directions instead of off the edge of a phone.
         */}
         <div
+          ref={panel}
           id={panelId}
           role="group"
           aria-label={label}
@@ -193,8 +221,9 @@ export function MoreMenu({
           onClick={(event) => {
             if ((event.target as HTMLElement).closest(`#${CSS.escape(panelId)} > *`)) close(false)
           }}
+          style={shift ? { transform: `translateX(${shift}px)` } : undefined}
           className={[
-            'absolute end-0 top-full z-30 mt-1.5 flex min-w-56 flex-col gap-0.5 rounded-card border border-line bg-surface-raised p-1.5 shadow-pop',
+            'absolute end-0 top-full z-30 mt-1.5 flex max-w-[calc(100vw-1rem)] min-w-56 flex-col gap-0.5 rounded-card border border-line bg-surface-raised p-1.5 shadow-pop',
             open ? 'visible' : 'invisible',
           ].join(' ')}
         >

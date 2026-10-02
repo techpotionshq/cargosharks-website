@@ -12,6 +12,7 @@
  * these variables, or add one file under `packages/brand/src/brands/`.
  */
 
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { markSvg } from '@qabandi/brand'
@@ -56,6 +57,12 @@ function Swatch({ color, label }: { readonly color: string; readonly label: stri
       <p className="numeric mt-1 truncate text-micro text-ink-subtle">{label}</p>
     </div>
   )
+}
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('brand') }
 }
 
 export default async function BrandPage() {
@@ -109,7 +116,7 @@ export default async function BrandPage() {
 
       <Grid className="mb-4">
         {/* --- the mark, at the sizes it actually ships at -------------- */}
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader icon="admin" eyebrow={t('identity')} title={t('logo')} />
 
           <div className="mt-5 flex flex-wrap items-end gap-6">
@@ -147,7 +154,7 @@ export default async function BrandPage() {
         </Card>
 
         {/* --- the ramps ------------------------------------------------ */}
-        <Card className="lg:col-span-7">
+        <Card className="@4xl:col-span-7">
           <CardHeader icon="rates" eyebrow={t('palette')} title={t('palette')} />
 
           <p className="eyebrow mt-5 mb-2">primary</p>
@@ -174,7 +181,7 @@ export default async function BrandPage() {
       </Grid>
 
       <Grid className="mb-4">
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="dashboard" eyebrow={t('surfaces')} title={t('surfaces')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {semantic.map((token) => (
@@ -187,7 +194,7 @@ export default async function BrandPage() {
           </div>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="alert" eyebrow={t('statusColours')} title={t('statusColours')} />
           <div className="mt-5 grid grid-cols-3 gap-2">
             {statuses.map((token) => (
@@ -203,7 +210,7 @@ export default async function BrandPage() {
           </p>
         </Card>
 
-        <Card className="lg:col-span-4">
+        <Card className="@4xl:col-span-4">
           <CardHeader icon="trend" eyebrow={t('chartColours')} title={t('chartColours')} />
           <div className="mt-5 grid grid-cols-4 gap-2">
             {series.map((token) => (
@@ -222,7 +229,7 @@ export default async function BrandPage() {
       </Grid>
 
       <Grid>
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="admin"
@@ -260,7 +267,7 @@ export default async function BrandPage() {
           </div>
         </Card>
 
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader icon="document" eyebrow={t('typography')} title={t('typography')} />
           <dl className="mt-5 flex flex-col gap-4">
             <div>

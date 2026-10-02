@@ -144,7 +144,7 @@ export default async function FinancePage({
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
         <Metric
           label={t('owed')}
           value={owed.length > 0 ? formatByCurrency(owed, locale) : formatZero(lead, locale)}
@@ -200,7 +200,7 @@ export default async function FinancePage({
       <Grid className="mb-4">
         {/* ---- the ageing report ------------------------------------- */}
         <Panel
-          className="lg:col-span-7"
+          className="@4xl:col-span-7"
           icon="chart"
           title={t('ageing')}
           explain={t('ageingExplain')}
@@ -296,7 +296,7 @@ export default async function FinancePage({
 
         {/* ---- who to ring ------------------------------------------- */}
         <Panel
-          className="lg:col-span-5"
+          className="@4xl:col-span-5"
           padding="none"
           icon="customers"
           title={t('debtors')}
@@ -307,7 +307,7 @@ export default async function FinancePage({
           {debtors.length === 0 ? (
             <EmptyState icon="check" title={t('noDebtors')} />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('customer')}</TH>
@@ -362,7 +362,7 @@ export default async function FinancePage({
       */}
       <Grid>
         <Panel
-          className="lg:col-span-6"
+          className="@4xl:col-span-6"
           icon="invoices"
           title={t('invoicesTitle')}
           explain={t('invoicesExplain')}
@@ -379,7 +379,7 @@ export default async function FinancePage({
         </Panel>
 
         <Panel
-          className="lg:col-span-6"
+          className="@4xl:col-span-6"
           icon="payments"
           title={t('paymentsTitle')}
           explain={t('paymentsExplain')}
@@ -427,7 +427,7 @@ export default async function FinancePage({
         {exports.length === 0 ? (
           <EmptyState icon="finance" title={t('noExports')} description={t('noExportsHint')} />
         ) : (
-          <TableShell minWidth="none">
+          <TableShell>
             <THead>
               <TR>
                 <TH>{t('exportPeriod')}</TH>
@@ -446,7 +446,7 @@ export default async function FinancePage({
                   <TR key={row.id}>
                     {/* The period may break at its dash on a phone; on one
                         line it was the whole width of the screen. */}
-                    <TD className="font-medium text-ink md:whitespace-nowrap">{period}</TD>
+                    <TD className="font-medium text-ink @3xl:whitespace-nowrap">{period}</TD>
                     <TD priority="low" className="ref">
                       {row.branchCode ?? '—'}
                     </TD>

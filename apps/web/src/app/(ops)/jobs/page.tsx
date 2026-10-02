@@ -7,6 +7,7 @@
  * customs status are columns rather than something you open a job to discover.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -36,6 +37,12 @@ const FILTERS: readonly {
   { key: 'arriving', label: 'filterArriving' },
   { key: 'all', label: 'filterAll' },
 ]
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('jobs') }
+}
 
 export default async function JobsPage({
   searchParams,
@@ -100,7 +107,7 @@ export default async function JobsPage({
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <StatTile label={t('filterLive')} value={formatNumber(rows.length, locale)} icon="jobs" />
         <StatTile
           label={t('filterArriving')}
@@ -309,7 +316,7 @@ export default async function JobsPage({
                           one customs state that changes what someone does
                           next, so it follows the status there. */}
                       {job.customsStatus === 'held' ? (
-                        <span className="mt-1 block md:hidden">
+                        <span className="mt-1 block @3xl:hidden">
                           <Badge tone={customsTone(job.customsStatus)} icon="hold">
                             {t('customsStatuses.held')}
                           </Badge>

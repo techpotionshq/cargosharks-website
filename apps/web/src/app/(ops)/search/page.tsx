@@ -117,7 +117,7 @@ export default async function SearchPage({
 
           {results.jobs.length > 0 ? (
             <Panel padding="none" icon="jobs" title={t('jobs')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tJob('reference')}</TH>
@@ -182,7 +182,7 @@ export default async function SearchPage({
               references, and consolidations by their master bill (U4).
             */
             <Panel padding="none" icon="document" title={t('records')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tJob('reference')}</TH>
@@ -217,7 +217,7 @@ export default async function SearchPage({
 
           {results.containers.length > 0 ? (
             <Panel padding="none" icon="container" title={t('containers')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tc('container')}</TH>
@@ -255,7 +255,7 @@ export default async function SearchPage({
 
           {results.customers.length > 0 ? (
             <Panel padding="none" icon="customers" title={t('customers')}>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{tc('customer')}</TH>

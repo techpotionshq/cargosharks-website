@@ -42,8 +42,8 @@ export function CreateApiKeyForm({
 
   return (
     <div className="rounded-card border border-line p-4">
-      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <label className="flex flex-col gap-1 sm:col-span-2">
+      <form action={action} className="grid grid-cols-1 gap-3 @2xl:grid-cols-4">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.name}</span>
           <input
             name="name"
@@ -87,7 +87,7 @@ export function CreateApiKeyForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.expires}</span>
           <input
             type="date"
@@ -98,7 +98,7 @@ export function CreateApiKeyForm({
           <span className="text-micro text-ink-subtle">{labels.expiresHint}</span>
         </label>
 
-        <div className="flex items-end sm:col-span-2">
+        <div className="flex items-end @2xl:col-span-2">
           <Button type="submit" variant="primary" icon="plus">
             {labels.issue}
           </Button>
@@ -177,8 +177,8 @@ export function CreateWebhookForm({
 
   return (
     <div className="rounded-card border border-line p-4">
-      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <label className="flex flex-col gap-1 sm:col-span-4">
+      <form action={action} className="grid grid-cols-1 gap-3 @2xl:grid-cols-4">
+        <label className="flex flex-col gap-1 @2xl:col-span-4">
           <span className="eyebrow">{labels.url}</span>
           <input
             name="url"
@@ -191,7 +191,7 @@ export function CreateWebhookForm({
           <span className="text-micro text-ink-subtle">{labels.urlHint}</span>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.customer}</span>
           <select
             name="customerId"
@@ -209,7 +209,7 @@ export function CreateWebhookForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.branch}</span>
           <select
             name="branchId"
@@ -225,7 +225,7 @@ export function CreateWebhookForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-3">
+        <label className="flex flex-col gap-1 @2xl:col-span-3">
           <span className="eyebrow">{labels.events}</span>
           <input
             name="events"
@@ -236,7 +236,7 @@ export function CreateWebhookForm({
           <span className="text-micro text-ink-subtle">{labels.eventsHint}</span>
         </label>
 
-        <div className="flex items-start sm:col-span-1">
+        <div className="flex items-start @2xl:col-span-1">
           <Button type="submit" variant="primary" icon="plus">
             {labels.subscribe}
           </Button>

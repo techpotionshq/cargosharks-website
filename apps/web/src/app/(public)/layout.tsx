@@ -33,7 +33,7 @@ export default async function PublicLayout({ children }: { children: React.React
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-4 px-4 py-2 sm:px-6">
           {/*
             The mark goes to tracking, not to the root.
 
@@ -42,8 +42,16 @@ export default async function PublicLayout({ children }: { children: React.React
             form they have no account for. Tracking is the only thing in this
             shell and the only thing they came for.
           */}
+          {/* The small wordmark on a phone, as in the portal header. */}
           <Link href="/track" className="min-w-0 rounded-sm outline-offset-4">
-            <Logo brand={brand} locale={locale} size="md" />
+            <Logo
+              brand={brand}
+              locale={locale}
+              size="sm"
+              showTagline={false}
+              className="sm:hidden"
+            />
+            <Logo brand={brand} locale={locale} size="md" className="hidden sm:flex" />
           </Link>
 
           <nav className="ms-auto flex items-center gap-1">
@@ -57,7 +65,8 @@ export default async function PublicLayout({ children }: { children: React.React
             <LanguageSwitch />
             <Link
               href="/sign-in"
-              className="ms-1 inline-flex h-9 items-center rounded-sm bg-brand px-3.5 text-body font-medium text-on-brand transition-colors hover:bg-brand-hover"
+              // One line, always: "Sign in" wrapped out of its own pill at 390.
+              className="ms-1 inline-flex h-9 shrink-0 items-center rounded-sm bg-brand px-3.5 text-body font-medium whitespace-nowrap text-on-brand transition-colors hover:bg-brand-hover"
             >
               {tc('signIn')}
             </Link>
@@ -65,7 +74,7 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="@container flex-1">{children}</main>
 
       <footer className="border-t border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 md:flex-row md:items-start md:justify-between">

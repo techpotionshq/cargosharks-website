@@ -91,16 +91,21 @@ export function Metric({
       </div>
 
       {/*
-        Smaller below `sm`: two tiles share a 390px phone, and "KWD 5,000.000"
-        at the desktop size was wider than its tile and pushed the page
-        sideways. The unit may drop under the figure rather than overflow.
-        A step smaller again from lg to 2xl, where four tiles share a row
-        beside the sidebar: "KWD 111,674.395" ran past its tile's edge on
-        the margin report at 1440.
+        Sized by the tile, not the window (the tile is a size container).
+
+        Two tiles share a 390px phone, and "KWD 5,000.000" at the desktop size
+        was wider than its tile and pushed the page sideways. Window
+        breakpoints then chased the tile around: smaller below sm, larger from
+        sm, smaller again from lg where four share a row beside the sidebar,
+        larger at 2xl — and still the quotation's figures ran out of their
+        tiles at 390 and at 768, where the sidebar leaves a half-width tile
+        narrower than a phone's. The tile knows its own width; the figure
+        steps up only when the tile has room for it. The unit may drop under
+        the figure rather than overflow.
       */}
-      <p className="mt-3 flex flex-wrap items-baseline gap-1.5">
+      <p className="mt-3 flex min-w-0 flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric font-display text-headline leading-none font-semibold tracking-tight text-ink sm:text-display-lg lg:text-display 2xl:text-display-lg ${
+          className={`numeric min-w-0 font-display text-headline leading-none font-semibold tracking-tight text-ink @[13rem]:text-display @[17rem]:text-display-lg ${
             live ? 'accruing' : ''
           }`}
         >
@@ -108,14 +113,19 @@ export function Metric({
         </span>
         {of ? <span className="numeric text-title text-ink-subtle">/{of}</span> : null}
         {unit ? (
-          <span className="text-caption font-medium tracking-wide text-ink-subtle uppercase">
+          // `dir="auto"` for the reason `Money` gives: "US$" in an Arabic tile read "$US".
+          <span
+            dir="auto"
+            className="text-caption font-medium tracking-wide text-ink-muted uppercase"
+          >
             {unit}
           </span>
         ) : null}
       </p>
 
       {children ? <div className="mt-3">{children}</div> : null}
-      {hint ? <p className="mt-2 text-caption leading-snug text-ink-subtle">{hint}</p> : null}
+      {/* Muted, not subtle: 12px subtle ink on a tinted tile measured 4.3–4.5:1. */}
+      {hint ? <p className="mt-2 text-caption leading-snug text-ink-muted">{hint}</p> : null}
     </>
   )
 
@@ -138,7 +148,7 @@ export function Metric({
   }
 
   const classes = [
-    'rounded-card border p-4 transition-colors',
+    '@container min-w-0 rounded-card border p-4 transition-colors',
     SURFACE[tone],
     href ? 'hover:border-line-strong hover:brightness-[0.985]' : '',
     className,

@@ -1085,9 +1085,6 @@ export interface FxRateRow {
 /** Mirrors `EngineRuleRow`. `raw` pre-fills the edit dialog. */
 export interface EngineRuleRow {
   readonly id: string
-  readonly label: string
-  readonly scope: string
-  readonly detail: string
   readonly isActive: boolean
   readonly raw: Record<string, unknown>
 }

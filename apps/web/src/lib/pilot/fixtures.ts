@@ -5473,23 +5473,11 @@ export function pilotEngineRules(): { chargeable: EngineRuleRow[]; freeTime: Eng
   return {
     chargeable: chargeableRaw.map((row) => ({
       id: row.id,
-      label: row.mode,
-      scope: row.branchCode ?? '—',
-      // Stated as the trade states it: a divisor, an increment, a floor. A null
-      // divisor is FCL, billed per container and never by volume.
-      detail:
-        row.divisorCm3PerKg === null
-          ? 'per container'
-          : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),
     freeTime: freeTimeRaw.map((row) => ({
       id: row.id,
-      label: row.kind,
-      // Absence is how a rule widens, so an empty scope is "everything".
-      scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
-      detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),

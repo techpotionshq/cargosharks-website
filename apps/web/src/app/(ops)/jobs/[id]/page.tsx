@@ -271,7 +271,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid className="mb-4">
         {/* --- the milestone timeline ---------------------------------- */}
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader
             icon="tracking"
             eyebrow={t('shipment')}
@@ -313,7 +313,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </Card>
 
-        <div className="flex flex-col gap-4 lg:col-span-7">
+        <div className="flex flex-col gap-4 @4xl:col-span-7">
           {/* --- the shipment's own facts ----------------------------- */}
           <Card>
             <CardHeader
@@ -322,7 +322,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               title={t('shipment')}
               description={`${tDirection(job.direction)} · ${job.owner ?? tc('unassigned')}`}
             />
-            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 @xl:grid-cols-3">
               <Field label={t('masterBill')} mono>
                 {job.masterBillNumber ?? '—'}
               </Field>
@@ -533,7 +533,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid>
         {/* --- the document vault, with release control ---------------- */}
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="document"
@@ -608,7 +608,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- who we engaged ---------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="partners"
@@ -622,7 +622,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.partners.length === 0 ? (
             <EmptyState icon="partners" title={tPartners('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{tPartners('partner')}</TH>
@@ -650,7 +650,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- containers -------------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="container"
@@ -663,7 +663,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.containers.length === 0 ? (
             <EmptyState icon="container" title={tc('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('equipment')}</TH>
@@ -698,14 +698,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- parties, cargo, and what they produce ------------------- */}
-        <PartiesCard jobId={id} parties={parties} className="lg:col-span-7" />
+        <PartiesCard jobId={id} parties={parties} className="@4xl:col-span-7" />
 
         <ProofOfDeliveryCard
           jobId={id}
           records={podRecords}
           equipment={podEquipment}
           branchTimeZone={job.branchTimeZone}
-          className="lg:col-span-12"
+          className="@4xl:col-span-12"
         />
 
         {/*
@@ -723,7 +723,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           cargo={cargo}
           containers={containerOptions}
-          className="lg:col-span-7"
+          className="@4xl:col-span-7"
         />
 
         <DocumentActionsCard
@@ -733,7 +733,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           houseBillNumber={job.houseBillNumber}
           houseBillSurrenderedAt={job.houseBillSurrenderedAt}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
-          className="lg:col-span-5"
+          className="@4xl:col-span-5"
         />
 
         {/*
@@ -744,7 +744,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           opens this page to move a shipment; the margin is what they scroll to
           when somebody asks.
         */}
-        {ledger ? <JobLedgerCard ledger={ledger} className="lg:col-span-12" /> : null}
+        {ledger ? <JobLedgerCard ledger={ledger} className="@4xl:col-span-12" /> : null}
       </Grid>
     </>
   )

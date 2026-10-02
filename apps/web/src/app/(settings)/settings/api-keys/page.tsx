@@ -29,6 +29,7 @@ import { formatDate } from '@/lib/format'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { Breakable } from '@/ui/breakable'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('apiKeys')
@@ -120,7 +121,7 @@ export default async function ApiKeysPage() {
                     {/* The prefix is stored in clear precisely so a key is
                         identifiable in a list without being usable from one. */}
                     <span className="ref text-micro text-ink-subtle">{key.prefix}…</span>
-                    <span className="block text-caption text-ink-muted md:hidden">
+                    <span className="block text-caption text-ink-muted @3xl:hidden">
                       {(locale === 'ar' && key.customerNameAr) || key.customerName || '—'}
                     </span>
                   </TD>
@@ -212,8 +213,17 @@ export default async function ApiKeysPage() {
                 <TR key={endpoint.id}>
                   {/* Wraps anywhere on a phone: a URL has no spaces, and
                       truncated to a phone's column it is only "https://". */}
-                  <TD className="ref text-ink wrap-anywhere md:max-w-xs md:truncate">
-                    {endpoint.url}
+                  {/* At its seams on a narrow table; one line with an ellipsis,
+                      and the whole address on hover, once there is room. */}
+                  <TD className="ref text-ink">
+                    <Breakable text={endpoint.url} className="@3xl:hidden" />
+                    <span
+                      dir="ltr"
+                      title={endpoint.url}
+                      className="hidden max-w-xs truncate @3xl:block"
+                    >
+                      {endpoint.url}
+                    </span>
                   </TD>
                   <TD priority="low" className="text-ink-muted">
                     {(locale === 'ar' && endpoint.customerNameAr) ||

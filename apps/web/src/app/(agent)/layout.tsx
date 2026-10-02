@@ -53,15 +53,29 @@ export default async function AgentLayout({ children }: { children: React.ReactN
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-4xl items-center gap-4 px-4 sm:px-6">
-          <Link href="/agent" className="min-w-0 rounded-sm outline-offset-4">
-            <Logo brand={brand} locale={locale} size="md" />
+        <div className="mx-auto flex min-h-16 max-w-4xl items-center gap-4 px-4 py-2 sm:px-6">
+          {/*
+            The small wordmark on a phone, without the tagline. At `md` beside
+            three or four controls the name was given ~90px, wrapped to three
+            lines, and the fixed-height header clipped the first of them.
+          */}
+          <Link href="/agent" className="min-w-0 rounded-sm outline-offset-4 sm:shrink-0">
+            <Logo
+              brand={brand}
+              locale={locale}
+              size="sm"
+              showTagline={false}
+              className="sm:hidden"
+            />
+            <Logo brand={brand} locale={locale} size="md" className="hidden sm:flex" />
           </Link>
 
           {partnerName ? (
             <>
               <span className="hidden h-6 w-px bg-line sm:block" />
-              <span className="hidden truncate text-body-sm font-medium text-ink-muted sm:block">
+              {/* `min-w-0` so it truncates; without it the agency's name kept
+                  its full width and pushed the wordmark onto two lines at 1440. */}
+              <span className="hidden min-w-0 truncate text-body-sm font-medium text-ink-muted sm:block">
                 {partnerName}
               </span>
             </>
@@ -99,7 +113,9 @@ export default async function AgentLayout({ children }: { children: React.ReactN
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+      <main className="@container mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
+        {children}
+      </main>
     </div>
   )
 }

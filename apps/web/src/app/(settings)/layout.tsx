@@ -199,7 +199,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
         <MobileNav sections={sections} />
 
-        <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
+        <main className="@container flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
       </div>
 
       {/* The same "done" line the operations shell has — see `ui/toast.tsx`. */}

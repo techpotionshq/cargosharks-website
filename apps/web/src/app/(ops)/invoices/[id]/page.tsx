@@ -34,7 +34,7 @@ import {
 } from '@/features/ledger/ui/invoice-actions'
 import { PaymentDialog } from '@/features/ledger/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
+import { currencyLabel, formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon } from '@/ui/icon'
 import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Notice } from '@/ui/notice'
@@ -53,7 +53,9 @@ export async function generateMetadata({
   const session = await requireSession()
   const id = recordId((await params).id)
   const invoice = await getInvoiceDetail(session.actor, id)
-  return { title: invoice?.seriesNo ?? 'Invoice' }
+  // A draft has no number yet; it is titled as the page calls it.
+  const t = await getTranslations('invoiceDetail')
+  return { title: invoice?.seriesNo ?? t('unnumbered') }
 }
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -168,25 +170,25 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </Notice>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric
           label={t('total')}
           value={figure(invoice.total)}
-          unit={invoice.currency}
+          unit={currencyLabel(invoice.currency, locale)}
           icon="invoices"
           tone="brand"
         />
         <Metric
           label={t('paid')}
           value={figure(invoice.amountPaid)}
-          unit={invoice.currency}
+          unit={currencyLabel(invoice.currency, locale)}
           icon="payments"
           tone={Number(invoice.amountPaid) > 0 ? 'positive' : 'neutral'}
         />
         <Metric
           label={t('balance')}
           value={figure(balance)}
-          unit={invoice.currency}
+          unit={currencyLabel(invoice.currency, locale)}
           icon={owing ? 'alert' : 'check'}
           tone={!owing ? 'positive' : overdue ? 'critical' : 'caution'}
           hint={t('balanceHint')}
@@ -201,7 +203,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
       <Grid className="mb-4">
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="finance"
           title={t('lines')}
@@ -215,7 +217,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             />
           ) : (
             <>
-              <TableShell minWidth="none">
+              <TableShell>
                 <THead>
                   <TR>
                     <TH>{t('description')}</TH>
@@ -284,7 +286,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4 lg:col-span-4">
+        <div className="flex flex-col gap-4 @4xl:col-span-4">
           <Panel icon="invoices" title={t('about')}>
             <dl className="grid grid-cols-2 gap-4">
               <Field label={t('branch')}>{invoice.branchCode ?? '—'}</Field>

@@ -1099,7 +1099,12 @@
     "fxEffective": "اعتباراً من",
     "fxManual": "مُدخل يدوياً",
     "fxSource": "المصدر",
-    "calendarsGlance": "التقاويم في لمحة"
+    "calendarsGlance": "التقاويم في لمحة",
+    "perContainer": "لكل حاوية",
+    "chargeableDetail": "{divisor} سم³ لكل كغم · تقريب لأعلى إلى {roundUp} كغم · بحد أدنى {minimum} كغم",
+    "freeTimeDetail": "{days} أيام مجانية · ثم {perDiem} يوميًا · {basis}",
+    "everywhere": "في كل مكان",
+    "allModes": "كل الأنماط"
   },
   "audit": {
     "eyebrow": "الإدارة",
