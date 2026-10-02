@@ -69,6 +69,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
         taxAmount: invoices.taxAmount,
         total: invoices.total,
         amountPaid: invoices.amountPaid,
+        amountCredited: invoices.amountCredited,
         notes: invoices.notes,
         customerEn: customers.legalNameEn,
         customerAr: customers.legalNameAr,
@@ -124,6 +125,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       taxAmount: row.taxAmount,
       total: row.total,
       amountPaid: row.amountPaid,
+      amountCredited: row.amountCredited,
       notes: row.notes,
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
       branch: {

@@ -2683,6 +2683,12 @@ function invoiceRow(seed: InvoiceSeed, now: number, locale: 'en' | 'ar' = 'en'):
     taxAmount: numeric(seed.tax),
     total: invoiceTotal(seed),
     amountPaid: numeric(seed.paid),
+    /*
+      Zero throughout. The pilot's one credit note (4116) predates partial
+      credit and is told as a credit applied in its own `amountPaid`; the
+      figures every screen sums were agreed on that basis.
+    */
+    amountCredited: numeric('0'),
     issuedAt: seed.status === 'draft' ? null : at(now, -seed.issued, 11),
     dueOn: seed.status === 'draft' ? null : day(now, -seed.issued + seed.termsDays),
     isCreditNote: seed.isCreditNote ?? false,
@@ -6553,6 +6559,7 @@ export function pilotInvoiceDetail(
     taxAmount: numeric(seed.tax),
     total: invoiceTotal(seed),
     amountPaid: numeric(seed.paid),
+    amountCredited: row.amountCredited ?? numeric('0'),
     taxTreatment: invoiceTaxTreatment(seed),
     taxRatePercent: numeric(invoiceTaxRate(seed)),
     language: ARABIC_INVOICE_CUSTOMERS.has(customer.code) ? 'ar' : 'en',
@@ -6564,6 +6571,9 @@ export function pilotInvoiceDetail(
     notes: invoiceNotes(seed),
     lines: invoiceLines(seed),
     allocations: invoiceAllocations(seed, now),
+    creditNotes: [],
+    isCreditNote: row.isCreditNote,
+    creditsInvoiceId: null,
   }
 }
 

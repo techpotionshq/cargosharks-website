@@ -192,7 +192,8 @@ export async function runInvoiceOverdueNotices(asOf = new Date()): Promise<Remin
         customerId: invoices.customerId,
         currency: invoices.currency,
         total: invoices.total,
-        amountPaid: invoices.amountPaid,
+        // Receipts and partial credit notes (F9): both are off what is owed.
+        amountPaid: sql<string>`(${invoices.amountPaid} + ${invoices.amountCredited})::text`,
         dueOn: invoices.dueOn,
       })
       .from(invoices)
@@ -207,7 +208,7 @@ export async function runInvoiceOverdueNotices(asOf = new Date()): Promise<Remin
           lt(invoices.dueOn, isoDate(cutoff)),
           // Compared as `numeric`, never in JavaScript. KWD has three decimals
           // and a float loses the third — see §11 and `core/money.ts`.
-          sql`${invoices.amountPaid} < ${invoices.total}`,
+          sql`${invoices.amountPaid} + ${invoices.amountCredited} < ${invoices.total}`,
           notAlreadyAnnounced('invoice.overdue', 'seriesNo', invoices.seriesNo),
         ),
       )

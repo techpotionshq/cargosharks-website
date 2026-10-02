@@ -976,7 +976,11 @@ export async function draftSettlement(
     const ours = await tx
       .select({
         id: invoices.id,
-        total: invoices.total,
+        /*
+          Less any partial credit note (F9): what was credited is not there to
+          set off, any more than what was received.
+        */
+        total: sql<string>`(${invoices.total} - ${invoices.amountCredited})::text`,
         amountPaid: invoices.amountPaid,
       })
       .from(invoices)
@@ -986,7 +990,7 @@ export async function draftSettlement(
           eq(invoices.currency, currency),
           inArray(invoices.status, ['issued', 'part_paid']),
           sql`${invoices.issuedAt}::date between ${data.periodFrom}::date and ${data.periodTo}::date`,
-          sql`${invoices.total} > ${invoices.amountPaid}`,
+          sql`${invoices.total} > ${invoices.amountPaid} + ${invoices.amountCredited}`,
           /*
             Not on another *live* statement. Any line at all used to exclude
             it, so an invoice on a voided settlement could never be netted
@@ -1167,7 +1171,7 @@ export async function setSettlementStatus(
                                      or si.status not in ('approved', 'part_paid')
                                      or sl.amount > si.total - si.amount_paid))
              or (i.id is not null and (i.status not in ('issued', 'part_paid')
-                                       or sl.amount > i.total - i.amount_paid
+                                       or sl.amount > i.total - i.amount_paid - i.amount_credited
                                        or exists (
                                          select 1 from partner_settlement_lines other
                                            join partner_settlements ps on ps.id = other.settlement_id

@@ -23,7 +23,7 @@
  * `unconvertible` and the caller shows it.
  */
 
-import { and, desc, eq, isNotNull, or } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import {
   add,
   assessCredit,
@@ -114,7 +114,12 @@ export async function creditStanding(
       .select({
         currency: invoices.currency,
         total: invoices.total,
-        amountPaid: invoices.amountPaid,
+        /*
+          Receipts and partial credit notes together (F9): the engine's
+          `amountPaid` is "what is no longer owed", and a note for part of an
+          invoice leaves it issued or part paid with that much less owed.
+        */
+        amountPaid: sql<string>`(${invoices.amountPaid} + ${invoices.amountCredited})::text`,
       })
       .from(invoices)
       .where(

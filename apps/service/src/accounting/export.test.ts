@@ -615,6 +615,83 @@ describe.skipIf(!enabled)('the accounting export', () => {
   })
 
   /*
+    F9. A credit note for part of an invoice is the invoice's lines scaled to
+    the amount (`core/credit-note.ts`), born credited at the invoice's rate.
+    The export needs no second path for it: it reverses exactly that much
+    revenue and receivable, at the rate the original posted at.
+  */
+  describe('a partial credit note', () => {
+    it("reverses only the part credited, at the invoice's own rate", async () => {
+      await mapCharge('4100')
+      const period = { from: '2036-06-01', to: '2036-06-30' }
+      seq += 1
+      const original = `FXE-${RUN}-${seq}`
+      seq += 1
+      const note = `FXE-${RUN}-${seq}`
+
+      await withActor(systemActor, async (tx) => {
+        const [invoice] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: original,
+            status: 'issued',
+            currency: 'USD',
+            subtotal: '1000',
+            total: '1000',
+            amountCredited: '250',
+            fxRate: '0.307',
+            issuedAt: new Date('2036-06-10T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: invoice!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '1000',
+          amount: '1000',
+        })
+        const [credit] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: note,
+            status: 'credited',
+            isCreditNote: true,
+            creditsInvoiceId: invoice!.id,
+            currency: 'USD',
+            subtotal: '250',
+            total: '250',
+            amountPaid: '250',
+            fxRate: '0.307',
+            issuedAt: new Date('2036-06-20T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values({
+          invoiceId: credit!.id,
+          chargeTypeId,
+          descriptionEn: 'Ocean freight',
+          unitPrice: '250',
+          amount: '250',
+        })
+      })
+
+      const result = await buildAccountingExport(actor, { branchId: BRANCH, ...period })
+      expect(result.totalDebit).toBe(result.totalCredit)
+
+      const rows = result.csv.split('\r\n').map((line) => line.split(','))
+      const ar = rows.filter((r) => r[1] === '1200')
+      const revenue = rows.filter((r) => r[1] === '4100')
+      // The invoice debits 307.000; the note credits a quarter of it back.
+      expect(ar.find((r) => r.includes(original))![4]).toBe('307')
+      expect(ar.find((r) => r.includes(note))![5]).toBe('76.75')
+      expect(revenue.find((r) => r.includes(note))![4]).toBe('76.75')
+    })
+  })
+
+  /*
     F19. Two people posting the same month at once: the \`is null\` guard kept the
     second from re-pointing the rows, but it still committed a second "posted"
     export carrying the same journal.

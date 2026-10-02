@@ -26,7 +26,11 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
-import { InvoiceLineDialog, InvoiceStatusActions } from '@/features/ledger/ui/invoice-actions'
+import {
+  CreditNoteDialog,
+  InvoiceLineDialog,
+  InvoiceStatusActions,
+} from '@/features/ledger/ui/invoice-actions'
 import { PaymentDialog } from '@/features/ledger/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
@@ -79,7 +83,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     })
 
   // Decimal, then a string for display: money minus money is never a float.
-  const owed = dec(invoice.total ?? 0).minus(dec(invoice.amountPaid ?? 0))
+  // A partial credit note (F9) is off the balance as surely as a receipt.
+  const credited = dec(invoice.amountCredited ?? 0)
+  const owed = dec(invoice.total ?? 0)
+    .minus(dec(invoice.amountPaid ?? 0))
+    .minus(credited)
   const balance = owed.toFixed()
   const owing = owed.gt(0)
   const isDraft = invoice.status === 'draft'
@@ -140,6 +148,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 an approved-but-unnumbered, a credited or a voided invoice was
                 offered "Record a receipt" and every one failed with a 500. */}
               <InvoiceStatusActions invoiceId={invoice.id} status={invoice.status} part="other" />
+              <CreditNoteDialog
+                invoiceId={invoice.id}
+                branchId={invoice.branchId}
+                status={invoice.status}
+                isCreditNote={invoice.isCreditNote}
+                currency={invoice.currency}
+                creditable={owing ? balance : '0'}
+              />
             </MoreMenu>
           </>
         }
@@ -254,6 +270,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <dt className="text-ink">{t('total')}</dt>
                   <dd className="numeric text-ink">{money(invoice.total)}</dd>
                 </div>
+                {credited.gt(0) ? (
+                  <div className="flex justify-between text-[0.875rem]">
+                    <dt className="text-ink-muted">{t('credited')}</dt>
+                    <dd className="numeric text-ink">{money(credited.toFixed())}</dd>
+                  </div>
+                ) : null}
               </dl>
             </>
           )}
@@ -285,7 +307,54 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 {invoice.notes}
               </p>
             ) : null}
+            {invoice.isCreditNote && invoice.creditsInvoiceId ? (
+              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem]">
+                <Link
+                  href={`/invoices/${invoice.creditsInvoiceId}`}
+                  className="text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+                >
+                  {t('creditsInvoice')}
+                </Link>
+              </p>
+            ) : null}
           </Panel>
+
+          {/*
+            The notes raised against it (F9). Listed only where there are
+            any: most invoices are never credited, and an empty panel would
+            say "nothing here" about a thing nobody was looking for.
+          */}
+          {invoice.creditNotes.length > 0 ? (
+            <Panel
+              padding="none"
+              icon="invoices"
+              title={t('creditNotes')}
+              explain={t('creditNotesExplain')}
+            >
+              <ul className="divide-y divide-line">
+                {invoice.creditNotes.map((note) => (
+                  <li key={note.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/invoices/${note.id}`}
+                        className="ref numeric truncate text-[0.8125rem] text-ink hover:underline"
+                      >
+                        {note.seriesNo ?? t('unnumbered')}
+                      </Link>
+                      {note.issuedAt ? (
+                        <p className="text-[0.75rem] text-ink-subtle">
+                          {formatDate(new Date(note.issuedAt), locale, timeZone)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="numeric shrink-0 text-[0.875rem] font-semibold">
+                      {money(note.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
 
           <Panel
             padding="none"

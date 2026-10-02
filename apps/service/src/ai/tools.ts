@@ -553,6 +553,8 @@ async function listOverdueInvoices(actor: Actor, args: ToolArgs): Promise<unknow
         currency: invoices.currency,
         total: invoices.total,
         amountPaid: invoices.amountPaid,
+        // Named apart from receipts so an answer can say which (F9).
+        amountCredited: invoices.amountCredited,
         dueOn: invoices.dueOn,
         daysOverdue: sql<number>`(current_date - ${invoices.dueOn})::int`,
       })

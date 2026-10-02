@@ -812,6 +812,7 @@ export async function getPartnerAccount(
             dueOn: invoices.dueOn,
             total: invoices.total,
             amountPaid: invoices.amountPaid,
+            amountCredited: invoices.amountCredited,
             isCreditNote: invoices.isCreditNote,
           })
           .from(invoices)
@@ -837,7 +838,8 @@ export async function getPartnerAccount(
         reference: i.reference ?? i.id.slice(0, 8),
         description: i.isCreditNote ? 'Credit note' : 'Invoice',
         amount: i.total,
-        outstanding: subtractStrings(i.total, i.amountPaid),
+        // Less partial credit notes (F9); a note itself is born settled.
+        outstanding: subtractStrings(subtractStrings(i.total, i.amountPaid), i.amountCredited),
         dueOn: i.dueOn ? new Date(i.dueOn) : null,
       })),
       ...bills.map((b): StatementEntry => ({

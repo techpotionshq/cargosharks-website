@@ -72,12 +72,15 @@ const {
   roles,
   workingCalendars,
   withActor,
+  creditStanding,
 } = await import('@qabandi/db')
+const { invoiceSummary, receivablesAgeing } = await import('./queries')
 const {
   addInvoiceLine,
   addQuoteLine,
   allocatePayment,
   createInvoice,
+  creditInvoice,
   createQuote,
   draftQuoteCoverNote,
   recordPayment,
@@ -614,6 +617,211 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
 
       expect(states.filter((st) => st.errors === undefined)).toHaveLength(1)
       expect(Number((await invoiceRow(invoiceId)).paid)).toBe(100)
+    })
+  })
+
+  /*
+    F9. A credit note reversed the whole invoice or nothing. Part of one is
+    now its own numbered note, the invoice owing less and staying open; the
+    register, the ageing and the credit exposure all count the reduction.
+  */
+  describe('creditInvoice — part of an invoice', () => {
+    const notesFor = (invoiceId: string) =>
+      withActor(actor, (tx) =>
+        tx.select().from(invoices).where(eq(invoices.creditsInvoiceId, invoiceId)),
+      )
+    const credited = async (invoiceId: string) => {
+      const [row] = await withActor(actor, (tx) =>
+        tx
+          .select({ status: invoices.status, credited: invoices.amountCredited })
+          .from(invoices)
+          .where(eq(invoices.id, invoiceId)),
+      )
+      return row!
+    }
+    const kwdOwed = async () =>
+      (await invoiceSummary(actor)).outstanding.find((o) => o.currency === 'KWD')?.amount ?? '0'
+    const kwdAgeing = async () => {
+      const kwd = (await receivablesAgeing(actor)).byCurrency.find((c) => c.currency === 'KWD')
+      return kwd ? JSON.stringify(kwd) : ''
+    }
+
+    it('raises a note for part of it, scaled across its lines, and leaves it issued', async () => {
+      // Two lines, one taxed, so the proration has something to split.
+      const invoiceId = await withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            currency: 'KWD',
+            subtotal: '100.000',
+            taxAmount: '5.000',
+            total: '105.000',
+          })
+          .returning({ id: invoices.id })
+        await tx.insert(invoiceLines).values([
+          { invoiceId: row!.id, descriptionEn: 'Freight', unitPrice: '60', amount: '60.000' },
+          {
+            invoiceId: row!.id,
+            descriptionEn: 'Clearance',
+            unitPrice: '40',
+            amount: '40.000',
+            taxAmount: '5.000',
+            isTaxable: true,
+            sortOrder: 1,
+          },
+        ])
+        return row!.id
+      })
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+      await setInvoiceStatus({}, form({ invoiceId, status: 'issued' }))
+
+      const owedBefore = await kwdOwed()
+      const exposureBefore = (await creditStanding(actor, CUSTOMER, BRANCH)).outstanding
+      const state = await creditInvoice(
+        {},
+        form({ invoiceId, amount: '21.000', notes: 'One pallet short' }),
+      )
+      expect(state.errors).toBeUndefined()
+      expect(state.ok).toBeTruthy()
+
+      const [note] = await notesFor(invoiceId)
+      expect(note).toMatchObject({
+        isCreditNote: true,
+        status: 'credited',
+        notes: 'One pallet short',
+      })
+      expect(state.ok!.split(':')[0]).toBe(note!.seriesNo)
+      expect(note!.total).toMatch(/^21\.0+$/)
+      expect(note!.amountPaid).toMatch(/^21\.0+$/)
+      const lines = await withActor(actor, (tx) =>
+        tx
+          .select({ amount: invoiceLines.amount, tax: invoiceLines.taxAmount })
+          .from(invoiceLines)
+          .where(eq(invoiceLines.invoiceId, note!.id))
+          .orderBy(invoiceLines.sortOrder),
+      )
+      // A fifth of each: 12 + 8 net, 1 tax.
+      expect(lines.map((l) => [Number(l.amount), Number(l.tax)])).toEqual([
+        [12, 0],
+        [8, 1],
+      ])
+
+      const after = await credited(invoiceId)
+      expect(after.status).toBe('issued')
+      expect(after.credited).toMatch(/^21\.0+$/)
+
+      // Owed less by exactly the note, on the register and in the exposure.
+      const owedAfter = await kwdOwed()
+      expect(
+        (
+          await withActor(actor, (tx) =>
+            tx.execute(sql`select (${owedBefore}::numeric - ${owedAfter}::numeric)::text as d`),
+          )
+        ).rows[0],
+      ).toMatchObject({ d: expect.stringMatching(/^21\.0+$/) })
+      const exposureAfter = (await creditStanding(actor, CUSTOMER, BRANCH)).outstanding
+      expect(exposureBefore.amount.minus(exposureAfter.amount).toFixed(3)).toBe('21.000')
+
+      // The rest is payable, and only the rest.
+      const over = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '84.001',
+          currency: 'KWD',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          invoiceId,
+        }),
+      )
+      expect(over.errors?.amount).toBe('ledgerValidation.overInvoiced')
+      const paid = await recordPayment(
+        {},
+        form({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          amount: '84.000',
+          currency: 'KWD',
+          receivedOn: '2026-08-18',
+          method: 'bank_transfer',
+          invoiceId,
+        }),
+      )
+      expect(paid.errors).toBeUndefined()
+      expect((await credited(invoiceId)).status).toBe('paid')
+    })
+
+    it('refuses more than is still owed, and closes the invoice at exactly that', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('40.000')
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '40.000' }))
+      const ageingBefore = await kwdAgeing()
+
+      const tooMuch = await creditInvoice({}, form({ invoiceId, amount: '60.001' }))
+      expect(tooMuch.errors?.amount).toBe(
+        'ledgerValidation.creditExceedsOwed:{"creditable":"60.000","currency":"KWD"}',
+      )
+      expect((await creditInvoice({}, form({ invoiceId, amount: '1.0001' }))).errors?.amount).toBe(
+        'ledgerValidation.creditTooPrecise',
+      )
+      expect((await creditInvoice({}, form({ invoiceId, amount: 'ten' }))).errors?.amount).toBe(
+        'ledgerValidation.creditAmountNumber',
+      )
+      expect(await notesFor(invoiceId)).toHaveLength(0)
+
+      await creditInvoice({}, form({ invoiceId, amount: '25.000' }))
+      expect((await credited(invoiceId)).status).toBe('part_paid')
+      expect(await kwdAgeing()).not.toBe(ageingBefore)
+
+      await creditInvoice({}, form({ invoiceId, amount: '35.000' }))
+      const closed = await credited(invoiceId)
+      expect(closed.status).toBe('credited')
+      expect(closed.credited).toMatch(/^60\.0+$/)
+      expect(await notesFor(invoiceId)).toHaveLength(2)
+
+      // Nothing is left to credit.
+      const again = await creditInvoice({}, form({ invoiceId, amount: '1.000' }))
+      expect(again.message).toBe('ledgerValidation.invoiceBadTransition')
+    })
+
+    it('credits only what is still owed when crediting the whole of a part-paid invoice', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const paymentId = await receipt('30.000')
+      await allocatePayment({}, form({ paymentId, invoiceId, amount: '30.000' }))
+      await creditInvoice({}, form({ invoiceId, amount: '20.000' }))
+
+      await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      const notes = await notesFor(invoiceId)
+      expect(notes.map((n) => Number(n.total)).sort()).toEqual([20, 50])
+      expect(await credited(invoiceId)).toMatchObject({ status: 'credited' })
+    })
+
+    it('refuses a draft, a credit note, and an invoice in another branch', async () => {
+      const draft = await draftInvoice('10.000')
+      expect((await creditInvoice({}, form({ invoiceId: draft, amount: '1' }))).message).toBe(
+        'ledgerValidation.invoiceBadTransition',
+      )
+
+      const invoiceId = await issuedInvoice('10.000')
+      await creditInvoice({}, form({ invoiceId, amount: '1.000' }))
+      const [note] = await notesFor(invoiceId)
+      expect((await creditInvoice({}, form({ invoiceId: note!.id, amount: '1' }))).message).toBe(
+        'ledgerValidation.invoiceBadTransition',
+      )
+
+      // `invoice.credit` held elsewhere is not held here.
+      harness.session = {
+        ...session,
+        branchRoles: new Map([['00000000-0000-7000-8000-0000000000ff', 'finance']]),
+      }
+      try {
+        await expect(creditInvoice({}, form({ invoiceId, amount: '1.000' }))).rejects.toThrow()
+      } finally {
+        harness.session = session
+      }
     })
   })
 

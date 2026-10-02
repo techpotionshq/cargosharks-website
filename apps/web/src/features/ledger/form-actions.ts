@@ -27,15 +27,18 @@ import {
   SettlementError,
   assertTransition,
   checkSettlement,
+  creditableAmount,
   dec,
   fromDb,
   invoiceMachine,
   money as moneyOf,
+  planCreditNote,
   positionFromDb,
   quoteMachine,
   round,
   toScale,
   todayIn,
+  type CreditNoteRefusal,
 } from '@qabandi/core'
 import {
   branches,
@@ -1106,7 +1109,9 @@ export async function setInvoiceStatus(
 
       if (status === 'credited') {
         if (current.isCreditNote) throw new Error('invoice_transition_credit_note')
-        await raiseCreditNote(tx, invoiceId, session.principal.id)
+        // "Credit note raised" credits whatever is still owed — the whole
+        // invoice unless part of it was paid or credited already (F9).
+        await raiseCreditNote(tx, invoiceId, session.principal.id, 'rest')
       }
 
       /*
@@ -1154,27 +1159,41 @@ export async function setInvoiceStatus(
 }
 
 /**
- * The credit note behind "Credit note raised" — §5.5.
+ * The credit note behind "Credit note raised", and behind a partial credit —
+ * §5.5, F9.
  *
  * Crediting used to flip the invoice's status and nothing else: no document,
  * so the export posted the revenue and never reversed it, while ageing and
  * top debtors kept counting the balance and the credit exposure did not.
  * Now it raises the note as its own statutory document, numbered from the
- * branch series, pointing at what it reverses and carrying the same lines.
+ * branch series, pointing at what it reverses.
  *
  * Amounts are positive with `is_credit_note` set — the convention the export
  * already reverses on (`core/accounting.ts`), and the one the pilot data
  * shows. The note is born `credited` with `amount_paid` equal to its total,
  * which is how a credited document leaves every "what is owed" query without
- * being deleted. It credits the whole invoice: a partial credit is a document
- * somebody has to compose, and that is not what this button offers.
+ * being deleted.
+ *
+ * `amount` is what to credit, or `'rest'` for whatever is still owed. The
+ * lines are the invoice's own, scaled by `planCreditNote` in core so each one
+ * reverses revenue on the account its original posted to. The invoice's
+ * `amount_credited` is re-derived from its notes, and a note that leaves
+ * nothing owed moves it to `credited`; one that leaves something keeps it
+ * issued or part paid, owing less.
  *
  * The rate travels with it — the invoice's own, or the one on the charge
  * lines it was billed from — so the reversal posts at exactly the figure the
- * original did.
+ * original did. The caller holds the invoice's row lock and has checked its
+ * state; a refusal comes back as a `CreditRefused`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function raiseCreditNote(tx: any, invoiceId: string, principalId: string): Promise<void> {
+async function raiseCreditNote(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  invoiceId: string,
+  principalId: string,
+  amount: string | 'rest',
+  notes: string | null = null,
+): Promise<{ seriesNo: string; total: string; closes: boolean }> {
   const [original] = await tx
     .select({
       branchId: invoices.branchId,
@@ -1183,6 +1202,8 @@ async function raiseCreditNote(tx: any, invoiceId: string, principalId: string):
       subtotal: invoices.subtotal,
       taxAmount: invoices.taxAmount,
       total: invoices.total,
+      amountPaid: invoices.amountPaid,
+      amountCredited: invoices.amountCredited,
       taxTreatment: invoices.taxTreatment,
       taxRatePercent: invoices.taxRatePercent,
       language: invoices.language,
@@ -1194,6 +1215,39 @@ async function raiseCreditNote(tx: any, invoiceId: string, principalId: string):
     .where(eq(invoices.id, invoiceId))
     .limit(1)
   if (!original) throw new Error('not_found')
+
+  const lines: {
+    chargeTypeId: string | null
+    descriptionEn: string
+    descriptionAr: string | null
+    quantity: string
+    unitPrice: string
+    amount: string
+    taxAmount: string
+    isTaxable: boolean
+    sortOrder: number
+  }[] = await tx
+    .select({
+      chargeTypeId: invoiceLines.chargeTypeId,
+      descriptionEn: invoiceLines.descriptionEn,
+      descriptionAr: invoiceLines.descriptionAr,
+      quantity: invoiceLines.quantity,
+      unitPrice: invoiceLines.unitPrice,
+      amount: invoiceLines.amount,
+      taxAmount: invoiceLines.taxAmount,
+      isTaxable: invoiceLines.isTaxable,
+      sortOrder: invoiceLines.sortOrder,
+    })
+    .from(invoiceLines)
+    .where(eq(invoiceLines.invoiceId, invoiceId))
+    .orderBy(invoiceLines.sortOrder, invoiceLines.id)
+
+  const spec = { code: original.currency, minorUnits: await minorUnits(tx, original.currency) }
+  const invoice = { ...original, lines }
+  const credit = amount === 'rest' ? creditableAmount(invoice).toFixed(spec.minorUnits) : amount
+  const planned = planCreditNote(invoice, credit, spec)
+  if (!planned.ok) throw new CreditRefused(planned.reason, planned.creditable, original.currency)
+  const { plan } = planned
 
   const allocated = await tx.execute(
     sql`select app.allocate_series_number(${original.branchId}::uuid, 'invoice') as next`,
@@ -1211,28 +1265,142 @@ async function raiseCreditNote(tx: any, invoiceId: string, principalId: string):
       isCreditNote: true,
       creditsInvoiceId: invoiceId,
       currency: original.currency,
-      subtotal: original.subtotal,
-      taxAmount: original.taxAmount,
-      total: original.total,
-      amountPaid: original.total,
+      subtotal: plan.subtotal,
+      taxAmount: plan.taxAmount,
+      total: plan.total,
+      amountPaid: plan.total,
       taxTreatment: original.taxTreatment,
       taxRatePercent: original.taxRatePercent,
       fxRate: original.fxRate,
       language: original.language,
+      notes,
       issuedAt: new Date(),
       issuedById: principalId,
     })
     .returning({ id: invoices.id })
 
+  /*
+    The whole invoice keeps its own quantities and prices, so a full credit
+    note reads line for line like what it reverses. A part of it cannot — a
+    third of "2 x 150.000" is not a quantity anyone shipped — so each line is
+    one of its scaled amount.
+  */
+  const whole = dec(plan.total).equals(dec(original.total))
+  if (lines.length > 0) {
+    await tx.insert(invoiceLines).values(
+      lines.map((line, index) => ({
+        invoiceId: note!.id,
+        chargeTypeId: line.chargeTypeId,
+        descriptionEn: line.descriptionEn,
+        descriptionAr: line.descriptionAr,
+        quantity: whole ? line.quantity : '1',
+        unitPrice: whole ? line.unitPrice : plan.lines[index]!.amount,
+        amount: plan.lines[index]!.amount,
+        taxAmount: plan.lines[index]!.taxAmount,
+        isTaxable: line.isTaxable,
+        sortOrder: line.sortOrder,
+      })),
+    )
+  }
+
+  /*
+    Credited re-derived from the notes rather than incremented, as receipts
+    are (`settled.ts`). `amount_paid` is left alone: an opening balance
+    imported at cutover carries a paid figure with no receipts behind it,
+    and re-deriving it here would put that money back on the customer.
+  */
   await tx.execute(sql`
-    insert into invoice_lines
-      (invoice_id, charge_type_id, description_en, description_ar, quantity,
-       unit_price, amount, tax_amount, is_taxable, sort_order)
-    select ${note!.id}, charge_type_id, description_en, description_ar, quantity,
-           unit_price, amount, tax_amount, is_taxable, sort_order
-      from invoice_lines
-     where invoice_id = ${invoiceId}
+    update invoices set
+      amount_credited = coalesce((select sum(n.total) from invoices n
+                                   where n.credits_invoice_id = ${invoiceId}
+                                     and n.is_credit_note and n.status <> 'void'), 0),
+      status = ${plan.closes ? sql`'credited'::invoice_status` : sql`status`},
+      updated_at = now()
+    where id = ${invoiceId}
   `)
+
+  return { seriesNo, total: plan.total, closes: plan.closes }
+}
+
+/** A partial credit the invoice cannot take, with what it can. */
+class CreditRefused extends Error {
+  constructor(
+    readonly reason: CreditNoteRefusal,
+    readonly creditable: string,
+    readonly currency: string,
+  ) {
+    super(`credit_${reason}`)
+  }
+}
+
+/**
+ * Credit part of an issued or part-paid invoice — F9.
+ *
+ * "Credit note raised" reversed the whole invoice and nothing smaller. A
+ * customer disputing one line, or owed a goodwill reduction, could only be
+ * credited everything and invoiced again for the rest — two statutory
+ * numbers and a statement nobody could follow. This raises one note for the
+ * amount typed, up to what is still owed.
+ *
+ * The branch is the invoice's, checked with `assertCanIn`: `invoice.credit`
+ * held in Dubai does not credit a Kuwait invoice.
+ */
+export async function creditInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'invoice.credit')
+  const tv = await getTranslations('ledgerValidation')
+
+  const invoiceId = read(form, 'invoiceId')
+  const amount = read(form, 'amount')
+  const notes = read(form, 'notes')?.slice(0, 1000) ?? null
+  if (!invoiceId) return failWith(tv('nothingToUpdate'))
+  if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
+    return fail({ amount: tv('creditAmountNumber') }, echo(form))
+  }
+
+  let raised: { seriesNo: string; total: string; closes: boolean; currency: string }
+  try {
+    raised = await withActor(session.actor, async (tx) => {
+      const [current] = await tx
+        .select({
+          status: invoices.status,
+          branchId: invoices.branchId,
+          isCreditNote: invoices.isCreditNote,
+          currency: invoices.currency,
+        })
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId))
+        .limit(1)
+        // Two people crediting at once must not both fit under the ceiling.
+        .for('update')
+      if (!current) throw new Error('not_found')
+      assertCanIn(session, 'invoice.credit', current.branchId)
+      if (current.isCreditNote || !['issued', 'part_paid'].includes(current.status)) {
+        throw new Error('invoice_transition_credit')
+      }
+      const note = await raiseCreditNote(tx, invoiceId, session.principal.id, amount, notes)
+      return { ...note, currency: current.currency }
+    })
+  } catch (error) {
+    if (error instanceof CreditRefused) {
+      const message =
+        error.reason === 'exceeds_creditable'
+          ? tv('creditExceedsOwed', { creditable: error.creditable, currency: error.currency })
+          : error.reason === 'too_precise'
+            ? tv('creditTooPrecise')
+            : tv('amountMustBePositive')
+      return fail({ amount: message }, echo(form))
+    }
+    if (error instanceof Error && error.message.includes('transition')) {
+      return failWith(tv('invoiceBadTransition'))
+    }
+    throw error
+  }
+
+  revalidatePath('/invoices')
+  revalidatePath(`/invoices/${invoiceId}`)
+  revalidatePath('/finance')
+  return succeed(raised.seriesNo)
 }
 
 /**
@@ -1508,6 +1676,7 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
       customerId: invoices.customerId,
       branchId: invoices.branchId,
       total: invoices.total,
+      amountCredited: invoices.amountCredited,
     })
     .from(invoices)
     .where(eq(invoices.id, invoiceId))
@@ -1564,7 +1733,8 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
       {
         received: payment.amount,
         allocated: row?.allocated ?? null,
-        invoiced: invoice.total,
+        // What a partial credit note took off is no longer there to pay (F9).
+        invoiced: dec(invoice.total).minus(dec(invoice.amountCredited)).toFixed(),
         settled: row?.settled ?? null,
       },
       invoice.currency,

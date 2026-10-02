@@ -131,6 +131,7 @@ export interface InvoiceRow {
   readonly taxAmount: string | null
   readonly total: string | null
   readonly amountPaid: string | null
+  readonly amountCredited: string | null
   readonly issuedAt: Date | null
   readonly dueOn: string | null
   readonly isCreditNote: boolean
@@ -157,6 +158,7 @@ export async function listInvoices(
         taxAmount: invoices.taxAmount,
         total: invoices.total,
         amountPaid: invoices.amountPaid,
+        amountCredited: invoices.amountCredited,
         issuedAt: invoices.issuedAt,
         dueOn: invoices.dueOn,
         isCreditNote: invoices.isCreditNote,
@@ -217,6 +219,10 @@ export async function invoiceSummary(actor: Actor): Promise<{
       screens disagreeing about what a customer owes. An approved invoice has
       not been sent, so is not owed either.
 
+      What is owed on one is its total less receipts and less any partial
+      credit note (F9) — `amount_credited`, which a note for part of an
+      invoice reduces without moving it out of these two states.
+
       Drafts are not owed: nothing has been sent. Counted here and not in
       "issued" beside it, a draft raised the receivables figure the moment it
       was created. A currency whose open invoices net to zero is left out
@@ -224,12 +230,12 @@ export async function invoiceSummary(actor: Actor): Promise<{
     */
     const balances = await tx.execute(sql`
       select currency,
-             sum(total - coalesce(amount_paid, 0))::text as amount
+             sum(total - amount_paid - amount_credited)::text as amount
       from invoices
       where status in ('issued', 'part_paid')
       group by currency
-      having sum(total - coalesce(amount_paid, 0)) <> 0
-      order by sum(total - coalesce(amount_paid, 0)) desc, currency
+      having sum(total - amount_paid - amount_credited) <> 0
+      order by sum(total - amount_paid - amount_credited) desc, currency
     `)
 
     return {
@@ -389,10 +395,11 @@ export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: Cur
   return withActor(actor, async (tx) => {
     const result = await tx.execute(sql`
       with open_invoices as (
-        select due_on, currency, (total - coalesce(amount_paid, 0)) as balance
+        -- Less partial credit notes too (F9), as in the summary above.
+        select due_on, currency, (total - amount_paid - amount_credited) as balance
           from invoices
          where status in ('issued', 'part_paid')
-           and total > coalesce(amount_paid, 0)
+           and total > amount_paid + amount_credited
       )
       select
         coalesce(sum(balance) filter (where due_on >= current_date), 0)::text as current_amount,
@@ -474,7 +481,7 @@ export async function topDebtors(
     const result = await tx.execute(sql`
       select c.id                                            as "customerId",
              ${name}                                         as "customerName",
-             sum(i.total - coalesce(i.amount_paid, 0))::text as balance,
+             sum(i.total - i.amount_paid - i.amount_credited)::text as balance,
              i.currency                                      as currency,
              count(*)::int                                   as "invoiceCount",
              min(i.due_on)::text                             as "oldestDueOn",
@@ -482,9 +489,9 @@ export async function topDebtors(
         from invoices i
         join customers c on c.id = i.customer_id
        where i.status in ('issued', 'part_paid')
-         and i.total > coalesce(i.amount_paid, 0)
+         and i.total > i.amount_paid + i.amount_credited
        group by c.id, c.legal_name_en, c.legal_name_ar, i.currency
-       order by sum(i.total - coalesce(i.amount_paid, 0)) desc, i.currency
+       order by sum(i.total - i.amount_paid - i.amount_credited) desc, i.currency
        limit ${limit}
     `)
     return result.rows as unknown as DebtorRow[]
@@ -610,6 +617,8 @@ export interface InvoiceDetail {
   readonly taxAmount: string
   readonly total: string
   readonly amountPaid: string
+  /** Partial credit notes against it (F9); owed is total - paid - credited. */
+  readonly amountCredited: string
   readonly taxTreatment: string
   readonly taxRatePercent: string
   readonly language: string
@@ -632,6 +641,16 @@ export interface InvoiceDetail {
     reference: string | null
     method: string
   }[]
+  /** The credit notes raised against it, newest first — or, on a note, none. */
+  readonly creditNotes: readonly {
+    id: string
+    seriesNo: string | null
+    total: string
+    issuedAt: string | null
+  }[]
+  readonly isCreditNote: boolean
+  /** On a credit note, the invoice it credits. */
+  readonly creditsInvoiceId: string | null
 }
 
 /** `locale` names the customer in the reader's language (F27). */
@@ -650,6 +669,8 @@ export async function getInvoiceDetail(
              i.customer_id as "customerId", ${customerName} as "customerName",
              i.currency, i.subtotal::text as subtotal, i.tax_amount::text as "taxAmount",
              i.total::text as total, i.amount_paid::text as "amountPaid",
+             i.amount_credited::text as "amountCredited",
+             i.is_credit_note as "isCreditNote", i.credits_invoice_id as "creditsInvoiceId",
              i.tax_treatment::text as "taxTreatment",
              i.tax_rate_percent::text as "taxRatePercent",
              i.language::text as language,
@@ -670,7 +691,14 @@ export async function getInvoiceDetail(
                       order by pm.received_on desc)
                  from payment_allocations pa
                  join payments pm on pm.id = pa.payment_id
-                where pa.invoice_id = i.id), '[]'::json) as allocations
+                where pa.invoice_id = i.id), '[]'::json) as allocations,
+             coalesce((
+               select json_agg(json_build_object(
+                        'id', n.id, 'seriesNo', n.series_no, 'total', n.total::text,
+                        'issuedAt', n.issued_at::text)
+                      order by n.issued_at desc)
+                 from invoices n
+                where n.credits_invoice_id = i.id and n.is_credit_note), '[]'::json) as "creditNotes"
         from invoices i
         left join branches   b on b.id = i.branch_id
         left join customers  c on c.id = i.customer_id

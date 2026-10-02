@@ -468,6 +468,7 @@ export interface InvoiceRow {
   readonly taxAmount: string | null
   readonly total: string | null
   readonly amountPaid: string | null
+  readonly amountCredited: string | null
   readonly issuedAt: Date | null
   /** A `date` column, so a `YYYY-MM-DD` string rather than a `Date`. */
   readonly dueOn: string | null
@@ -1356,6 +1357,7 @@ export interface InvoiceDetail {
   readonly taxAmount: string
   readonly total: string
   readonly amountPaid: string
+  readonly amountCredited: string
   readonly taxTreatment: TaxTreatment
   readonly taxRatePercent: string
   /** Which of the bilingual columns the PDF renders, and which way it runs. */
@@ -1388,6 +1390,15 @@ export interface InvoiceDetail {
     reference: string | null
     method: PaymentMethod
   }[]
+  /** Credit notes raised against it (F9). None in the pilot set. */
+  readonly creditNotes: readonly {
+    id: string
+    seriesNo: string | null
+    total: string
+    issuedAt: string | null
+  }[]
+  readonly isCreditNote: boolean
+  readonly creditsInvoiceId: string | null
 }
 
 /* ===========================================================================

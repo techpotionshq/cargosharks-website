@@ -55,9 +55,12 @@ export default async function InvoicesPage({
     invoiceSummary(session.actor),
   ])
 
-  // Decimal: a balance is money minus money (see the money rule in CLAUDE.md).
+  // Decimal: a balance is money minus money (see the money rule in CLAUDE.md),
+  // and a partial credit note (F9) is off it as surely as a receipt.
   const balanceOf = (row: (typeof all)[number]) =>
-    dec(row.total ?? 0).minus(dec(row.amountPaid ?? 0))
+    dec(row.total ?? 0)
+      .minus(dec(row.amountPaid ?? 0))
+      .minus(dec(row.amountCredited ?? 0))
   const isOverdue = (row: (typeof all)[number]) =>
     row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balanceOf(row).gt(0)
   const rows = overdueView ? all.filter(isOverdue) : all

@@ -590,7 +590,7 @@ async function loadAllocatableInvoices(
       select i.id,
              i.series_no               as label,
              ${customer}               as customer,
-             (i.total - i.amount_paid) as balance,
+             (i.total - i.amount_paid - i.amount_credited) as balance,
              i.currency
         from payments p
         join invoices i on i.customer_id = p.customer_id
@@ -600,7 +600,7 @@ async function loadAllocatableInvoices(
        where p.id = ${paymentId}
          and i.status in ('issued', 'part_paid')
          and i.series_no is not null
-         and i.total > i.amount_paid
+         and i.total > i.amount_paid + i.amount_credited
        order by i.due_on asc nulls last
        limit 200
     `)
@@ -711,13 +711,13 @@ async function loadOutstandingInvoices(
       select i.id,
              i.series_no                      as label,
              ${customer}                      as customer,
-             (i.total - i.amount_paid)        as balance,
+             (i.total - i.amount_paid - i.amount_credited) as balance,
              i.currency
         from invoices i
         join customers c on c.id = i.customer_id
        where i.status in ('issued', 'part_paid')
          and i.series_no is not null
-         and i.total > i.amount_paid
+         and i.total > i.amount_paid + i.amount_credited
        order by i.due_on asc nulls last
        limit 200
     `)

@@ -153,6 +153,18 @@ describe('invoice document', () => {
     expect(partPaid).toContain('3,940.500')
   })
 
+  /** F9. A partial credit note is a line of its own, never folded into "Received". */
+  it('shows what was credited apart from what was received', () => {
+    const html = renderInvoiceHtml(
+      view({ amountPaid: '5000.000000', amountCredited: '940.500000' }),
+      'en',
+    )
+    expect(html).toContain('Credited')
+    expect(html).toContain('940.500')
+    expect(html).toContain('3,000.000')
+    expect(renderInvoiceHtml(view({ amountCredited: '1.000' }), 'ar')).toContain('إشعارات دائنة')
+  })
+
   it('shows the issuing entity and its tax registration', () => {
     const html = renderInvoiceHtml(base, 'en')
     expect(html).toContain('Al-Qabandi Kuwait')

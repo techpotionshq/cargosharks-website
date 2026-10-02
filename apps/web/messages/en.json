@@ -1759,7 +1759,7 @@
       "approved": "Marks the invoice as reviewed. It still has no number and can be edited.",
       "issued": "This allocates the next number in the branch's series and cannot be undone. An issued invoice can only be corrected with a credit note.",
       "void": "Cancels this invoice. The number stays used, so the series has no gap, and the document has no effect.",
-      "credited": "Records that a credit note replaces this invoice."
+      "credited": "Raises a numbered credit note for everything still owed on this invoice and closes it. To credit only part of it, use Credit part of it."
     },
     "moveTitle": {
       "approved": "Approve this invoice",
@@ -1783,14 +1783,30 @@
       "approved": "Approve",
       "issued": "Issue",
       "void": "Void",
-      "credited": "Mark credited"
+      "credited": "Credit in full"
     },
     "moveDone": {
       "approved": "Invoice approved.",
       "issued": "Invoice issued.",
       "void": "Invoice voided.",
       "credited": "Invoice marked credited."
-    }
+    },
+    "partialCredit": {
+      "open": "Credit part of it",
+      "title": "Credit part of this invoice",
+      "description": "Raises a numbered credit note for the amount you enter, at this invoice's rate. The invoice stays open for whatever is left.",
+      "note": "At most {ceiling} can be credited — what is still owed on this invoice.",
+      "amount": "Amount to credit",
+      "amountHint": "Including tax. Split across the invoice's lines in proportion, so each one reverses where it was booked.",
+      "reason": "Reason",
+      "reasonHint": "Printed on the credit note, so write it for the customer.",
+      "submit": "Raise the credit note",
+      "done": "Credit note raised"
+    },
+    "credited": "Credited",
+    "creditNotes": "Credit notes",
+    "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
+    "creditsInvoice": "Credits invoice"
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
@@ -4014,7 +4030,10 @@
     "invoiceNotDraftNoEdit": "This invoice is no longer a draft, so its lines cannot change. Correct it with a credit note.",
     "invoiceNoLines": "Add at least one line before approving or issuing this invoice.",
     "quantityMoreThanZero": "Quantity must be more than zero.",
-    "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override."
+    "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override.",
+    "creditAmountNumber": "Enter the amount to credit, in figures.",
+    "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
+    "creditTooPrecise": "This currency does not have that many decimal places."
   },
   "validation": {
     "invalidType": "Enter a valid value.",

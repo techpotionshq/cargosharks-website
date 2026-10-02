@@ -109,6 +109,13 @@ export const invoices = pgTable(
     taxAmount: amount('tax_amount').notNull().default('0'),
     total: amount('total').notNull().default('0'),
     amountPaid: amount('amount_paid').notNull().default('0'),
+    /**
+     * The sum of the credit notes raised against this invoice (F9), kept apart
+     * from `amount_paid` so the page, the PDF and the export can tell a
+     * receipt from a credit. What is owed is `total - amount_paid -
+     * amount_credited`; re-derived with the receipts in `settled.ts`.
+     */
+    amountCredited: amount('amount_credited').notNull().default('0'),
     taxTreatment: taxTreatmentEnum('tax_treatment').notNull().default('out_of_scope'),
     taxRatePercent: quantity('tax_rate_percent').notNull().default('0'),
     /**
