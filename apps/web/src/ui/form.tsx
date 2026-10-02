@@ -25,7 +25,7 @@
  * forty-field job form stays as cheap to type into as a text box.
  */
 
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Icon, type IconName } from './icon'
 import {
@@ -406,9 +406,15 @@ export function Switch({
   readonly defaultChecked?: boolean
   readonly span?: Span
 }) {
-  // One id per box, not per name. A group shared `id="branchIds"`, so every
-  // label pointed at the first checkbox and clicking "DXB" toggled "KWI".
-  const id = value === undefined ? name : `${name}-${value}`
+  /*
+    One id per box, not per name. A group shared `id="branchIds"`, so every
+    label pointed at the first checkbox and clicking "DXB" toggled "KWI" — and
+    a page renders many dialogs at once, so every edit row's "Active" switch
+    was `id="isActive"` and its label toggled the first one in the document,
+    not its own (QA P1-3, P2-13). Scoped by `useId`, unique on the page.
+  */
+  const scope = useId()
+  const id = `${scope}-${name}${value === undefined ? '' : `-${value}`}`
   return (
     // `row-span-3` even though a switch has no label band of its own: it makes
     // the switch occupy the same three rows a `Field` does, so one sitting
