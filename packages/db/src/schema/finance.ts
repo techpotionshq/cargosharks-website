@@ -110,6 +110,14 @@ export const invoices = pgTable(
     total: amount('total').notNull().default('0'),
     amountPaid: amount('amount_paid').notNull().default('0'),
     /**
+     * What was paid before cutover, on an open receivable imported from the
+     * old system (F22). No receipt row stands behind it, so it is kept apart
+     * and added back whenever `amount_paid` is re-derived from receipts and
+     * set-offs — otherwise the first receipt wiped it, and the customer owed
+     * the money they had already paid. Zero on every invoice raised here.
+     */
+    amountPaidOpening: amount('amount_paid_opening').notNull().default('0'),
+    /**
      * The sum of the credit notes raised against this invoice (F9), kept apart
      * from `amount_paid` so the page, the PDF and the export can tell a
      * receipt from a credit. What is owed is `total - amount_paid -

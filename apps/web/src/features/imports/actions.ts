@@ -374,6 +374,9 @@ async function writeOpenReceivables(
         taxAmount: values.taxAmount,
         total: values.total,
         amountPaid: values.amountPaid,
+        // The same figure, kept apart: no receipt stands behind it, and
+        // re-deriving `amount_paid` from receipts adds it back (F22).
+        amountPaidOpening: values.amountPaid,
         taxTreatment: values.taxTreatment,
         issuedAt: new Date(values.issuedOn),
         dueOn: values.dueOn ?? null,

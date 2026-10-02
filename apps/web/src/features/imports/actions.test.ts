@@ -790,12 +790,18 @@ describe.skipIf(!enabled)('bulk import', () => {
 
       const [row] = await withActor(bothBranchesActor, (tx) =>
         tx
-          .select({ status: invoices.status, paid: invoices.amountPaid })
+          .select({
+            status: invoices.status,
+            paid: invoices.amountPaid,
+            opening: invoices.amountPaidOpening,
+          })
           .from(invoices)
           .where(eq(invoices.seriesNo, seriesNo)),
       )
       expect(row?.status).toBe('part_paid')
       expect(Number(row?.paid)).toBeCloseTo(40, 3)
+      // F22. Kept apart, so a later receipt re-deriving `amount_paid` keeps it.
+      expect(row?.opening).toMatch(/^40\.0+$/)
     })
 
     /**

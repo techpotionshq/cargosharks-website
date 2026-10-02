@@ -825,6 +825,60 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
     })
   })
 
+  /*
+    F22. An open receivable imported at cutover carries what was paid before
+    it with no receipt behind it. Re-deriving paid-to-date from receipts alone
+    wiped it on the first receipt, and the customer owed it again.
+  */
+  describe('a payment made before cutover', () => {
+    /** Shaped as `writeOpenReceivables` writes it: numbered, part paid, opening set. */
+    const imported = () =>
+      withActor(actor, async (tx) => {
+        const [row] = await tx
+          .insert(invoices)
+          .values({
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            seriesNo: `OPEN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            status: 'part_paid',
+            currency: 'KWD',
+            subtotal: '100.000',
+            total: '100.000',
+            amountPaid: '40.000',
+            amountPaidOpening: '40.000',
+            issuedAt: new Date('2026-01-15T09:00:00Z'),
+          })
+          .returning({ id: invoices.id })
+        return row!.id
+      })
+
+    it('keeps the opening payment through a receipt, and caps the receipt at the rest', async () => {
+      const invoiceId = await imported()
+      const over = await allocatePayment(
+        {},
+        form({ paymentId: await receipt('60.001'), invoiceId, amount: '60.001' }),
+      )
+      expect(over.errors?.amount).toBe('ledgerValidation.overInvoiced')
+
+      const part = await allocatePayment(
+        {},
+        form({ paymentId: await receipt('20.000'), invoiceId, amount: '20.000' }),
+      )
+      expect(part.errors).toBeUndefined()
+      let row = await invoiceRow(invoiceId)
+      expect(row.status).toBe('part_paid')
+      expect(row.paid).toMatch(/^60\.0+$/)
+
+      await allocatePayment(
+        {},
+        form({ paymentId: await receipt('40.000'), invoiceId, amount: '40.000' }),
+      )
+      row = await invoiceRow(invoiceId)
+      expect(row.status).toBe('paid')
+      expect(row.paid).toMatch(/^100\.0+$/)
+    })
+  })
+
   describe('setInvoiceStatus — the statutory series', () => {
     /**
      * The number is allocated at issue, not at creation: a draft that is

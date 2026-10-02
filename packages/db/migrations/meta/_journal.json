@@ -372,6 +372,20 @@
       "when": 1790930753633,
       "tag": "0053_supplier_invoice_recorded_by",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790932994100,
+      "tag": "0054_invoice_amount_paid_opening",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790932996095,
+      "tag": "0055_invoice_amount_paid_opening_backfill",
+      "breakpoints": true
     }
   ]
 }

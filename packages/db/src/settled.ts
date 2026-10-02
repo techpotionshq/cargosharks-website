@@ -30,6 +30,10 @@ type Tx = any
  * An invoice's `amount_paid`, `amount_credited` and status, from its
  * allocations, set-offs and credit notes.
  *
+ * "Set against" includes `amount_paid_opening`: a payment made before
+ * cutover, carried on an imported invoice with no receipt row behind it. Left
+ * out, the first receipt wiped it (F22).
+ *
  * Only an invoice that is issued, part paid or paid moves. A draft, a void and
  * a credited invoice keep their status whatever is set against them — the
  * callers refuse those cases before they get here, and a status this function
@@ -50,7 +54,9 @@ export async function rederiveInvoiceSettlement(tx: Tx, invoiceId: string): Prom
            + coalesce((select sum(sl.amount) from partner_settlement_lines sl
                          join partner_settlements ps on ps.id = sl.settlement_id
                         where sl.invoice_id = ${invoiceId}
-                          and ps.status in ('agreed', 'settled')), 0) as amount,
+                          and ps.status in ('agreed', 'settled')), 0)
+           -- Paid before cutover, with no receipt behind it (F22).
+           + (select i.amount_paid_opening from invoices i where i.id = ${invoiceId}) as amount,
              coalesce((select sum(n.total) from invoices n
                         where n.credits_invoice_id = ${invoiceId}
                           and n.is_credit_note and n.status <> 'void'), 0) as credited

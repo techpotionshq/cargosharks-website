@@ -621,6 +621,50 @@ describe.skipIf(!enabled)('netting off with an agent', () => {
       expect(Number(after.bill.paid)).toBe(0)
     })
 
+    /*
+      F22. An invoice imported part paid at cutover nets only what is still
+      open, and keeps its opening payment when the set-off settles it and when
+      the statement is voided.
+    */
+    it('keeps a payment made before cutover through netting and its void', async () => {
+      const who = await agent()
+      await bill(who, '200.000')
+      const invoiceId = await ourInvoice(who, '120.000', {
+        status: 'part_paid',
+        amountPaid: '50.000',
+        amountPaidOpening: '50.000',
+      })
+      await draft(who)
+      const id = (await latestSettlement(who))!.id
+      const claimed = (await linesOf(id)).filter((l) => l.kind === 'invoice')
+      expect(claimed.map((l) => Number(l.amount))).toEqual([70])
+
+      const invoice = async () => {
+        const [row] = await withActor(actor, (tx) =>
+          tx
+            .select({ status: invoices.status, paid: invoices.amountPaid })
+            .from(invoices)
+            .where(eq(invoices.id, invoiceId)),
+        )
+        return row!
+      }
+
+      await setSettlementStatus({}, form({ settlementId: id, action: 'agree' }))
+      expect(await invoice()).toMatchObject({
+        status: 'paid',
+        paid: expect.stringMatching(/^120\.0+$/),
+      })
+
+      await setSettlementStatus(
+        {},
+        form({ settlementId: id, action: 'void', reason: 'Agent disputes it' }),
+      )
+      expect(await invoice()).toMatchObject({
+        status: 'part_paid',
+        paid: expect.stringMatching(/^50\.0+$/),
+      })
+    })
+
     /** F7. The netted part of a bill cannot be paid again in cash. */
     it('refuses to pay the part of a bill a set-off already settled', async () => {
       const who = await agent()

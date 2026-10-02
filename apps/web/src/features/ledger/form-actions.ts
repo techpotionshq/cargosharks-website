@@ -1719,7 +1719,10 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
        + coalesce((select sum(sl.amount) from partner_settlement_lines sl
                      join partner_settlements ps on ps.id = sl.settlement_id
                     where sl.invoice_id = ${invoiceId}
-                      and ps.status in ('agreed', 'settled')), 0))::numeric as settled
+                      and ps.status in ('agreed', 'settled')), 0)
+       -- And what was paid before cutover (F22), or an imported part-paid
+       -- invoice could be paid in full a second time.
+       + (select i.amount_paid_opening from invoices i where i.id = ${invoiceId}))::numeric as settled
   `)
   const row = result.rows[0] as { allocated: string | null; settled: string | null } | undefined
 
