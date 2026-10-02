@@ -118,6 +118,11 @@ test.describe('customer and partner surfaces', () => {
     might not have, and spent the anonymous lookup budget on every click.
   */
   test('opens a shipment from the customer portal', async ({ page }, testInfo) => {
+    // Against a database the suite signs in as an administrator, and the
+    // portal sends staff to their own shell (A9) — there are no cards to
+    // follow. The signed-in shipment read is covered there by
+    // tracking/queries.test.ts, under a real customer contact's policy.
+    test.skip(MODE === 'full', 'the e2e account is staff, and the portal is for customers')
     await visitAndAssertHealthy(page, '/portal', testInfo)
     const first = page.locator('a[href^="/portal/shipments/"]').first()
     const href = await first.getAttribute('href')
