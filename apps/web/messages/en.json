@@ -3808,7 +3808,8 @@
     "paymentCurrencyMismatch": "The payment is in {paid} and the bill in {billed}. Allocate it to a bill in the same currency.",
     "billNotDisputable": "Only a bill that has not been paid, netted or exported can be disputed. Raise the difference with the supplier as a credit or a new bill.",
     "billNoExchangeRate": "The bill is in {currency} and there is no exchange rate to {base} on file, so it was not written. Capture it by hand with the agreed rate — the scan is on file.",
-    "billHasNoLines": "This bill has no lines, so there is nothing to approve. Add what the supplier charged first."
+    "billHasNoLines": "This bill has no lines, so there is nothing to approve. Add what the supplier charged first.",
+    "noRateOnFilePayment": "No {from} to {to} rate is on file. Enter the rate the payment was made at."
   },
   "creditValidation": {
     "chooseCustomer": "Choose a customer",

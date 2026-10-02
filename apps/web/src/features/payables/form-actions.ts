@@ -769,7 +769,7 @@ export const recordSupplierPayment = refuseForbidden(async function recordSuppli
 
   if (outcome.error === 'no_rate') {
     return fail(
-      { fxRate: tv('noRateOnFile', { from: data.currency, to: outcome.base }) },
+      { fxRate: tv('noRateOnFilePayment', { from: data.currency, to: outcome.base }) },
       echo(form),
     )
   }

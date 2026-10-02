@@ -624,7 +624,9 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(row?.fxRate).toBe('0.30700000')
 
       const none = await paid('XXX', `${reference}-none`)
-      expect(none.errors?.fxRate).toBe('payablesValidation.noRateOnFile:{"from":"XXX","to":"KWD"}')
+      expect(none.errors?.fxRate).toBe(
+        'payablesValidation.noRateOnFilePayment:{"from":"XXX","to":"KWD"}',
+      )
     })
 
     /** QA P3: "1,200.500", as every invoice prints it, was refused as not a number. */
