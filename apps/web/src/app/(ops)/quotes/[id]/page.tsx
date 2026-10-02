@@ -67,6 +67,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   if (!quote) notFound()
 
   const t = await getTranslations('quoteDetail')
+  // Each covering note's placeholder in its own language — see `CoverNoteEditor`.
+  const [tEn, tAr] = await Promise.all([
+    getTranslations({ locale: 'en', namespace: 'quoteDetail' }),
+    getTranslations({ locale: 'ar', namespace: 'quoteDetail' }),
+  ])
   const tc = await getTranslations('common')
   const tq = await getTranslations('quotes')
   const tMode = await getTranslations('mode')
@@ -276,7 +281,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </Field>
             </dl>
             {quote.notes ? (
-              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">
+              <p
+                dir="auto"
+                className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted"
+              >
                 {quote.notes}
               </p>
             ) : null}
@@ -341,7 +349,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             labels={{
               english: t('coverNote.english'),
               arabic: t('coverNote.arabic'),
-              placeholder: t('coverNote.placeholder'),
+              placeholder: tEn('coverNote.placeholder'),
+              placeholderAr: tAr('coverNote.placeholder'),
               draft: t('coverNote.draft'),
               drafting: t('coverNote.drafting'),
               save: t('coverNote.save'),

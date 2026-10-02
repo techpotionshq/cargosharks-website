@@ -336,7 +336,7 @@ export default async function TrackPage({
                         href={`mailto:${brand.contact.supportEmail}`}
                         className="font-medium text-accent hover:underline"
                       >
-                        {brand.contact.supportEmail}
+                        <bdi>{brand.contact.supportEmail}</bdi>
                       </a>
                     ),
                   })}

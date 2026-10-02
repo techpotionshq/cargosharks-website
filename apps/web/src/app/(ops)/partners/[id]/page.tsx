@@ -275,7 +275,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-ink-muted">
                       {contact.email ? (
                         <a href={`mailto:${contact.email}`} className="hover:text-accent">
-                          {contact.email}
+                          <bdi>{contact.email}</bdi>
                         </a>
                       ) : null}
                       {contact.phone ? (

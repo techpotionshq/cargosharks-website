@@ -269,7 +269,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <Field label={t('issuedBy')}>{invoice.issuedBy ?? '—'}</Field>
             </dl>
             {invoice.notes ? (
-              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">
+              // Free text, in whatever language it was typed: its own direction.
+              <p
+                dir="auto"
+                className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted"
+              >
                 {invoice.notes}
               </p>
             ) : null}

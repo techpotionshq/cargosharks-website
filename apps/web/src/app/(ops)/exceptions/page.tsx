@@ -101,7 +101,10 @@ export default async function ExceptionsPage({
                     {locale === 'ar' ? row.nameAr : row.nameEn}
                   </span>
                   {row.description ? (
-                    <span className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted">
+                    <span
+                      dir="auto"
+                      className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted"
+                    >
                       {row.description}
                     </span>
                   ) : null}

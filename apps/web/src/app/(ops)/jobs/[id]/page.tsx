@@ -227,7 +227,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                     </Badge>
                   </div>
                   {exception.description ? (
-                    <p className="mt-1 text-[0.8125rem] text-ink-muted">{exception.description}</p>
+                    <p dir="auto" className="mt-1 text-[0.8125rem] text-ink-muted">
+                      {exception.description}
+                    </p>
                   ) : null}
                 </div>
                 <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
@@ -326,10 +328,20 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               <Field label={t('incoterm')}>{job.incoterm ?? '—'}</Field>
               <Field label={t('commodity')}>{job.commodity}</Field>
               <Field label={t('weight')}>
-                {job.grossWeightKg === null ? '—' : `${formatNumber(job.grossWeightKg, locale)} kg`}
+                {/* <bdi>: "30,992 kg" is one Latin unit; in Arabic, unisolated, the
+                    unit drifted to the start of the figure. */}
+                {job.grossWeightKg === null ? (
+                  '—'
+                ) : (
+                  <bdi>{`${formatNumber(job.grossWeightKg, locale)} kg`}</bdi>
+                )}
               </Field>
               <Field label={t('volume')}>
-                {job.volumeCbm === null ? '—' : `${formatNumber(job.volumeCbm, locale)} cbm`}
+                {job.volumeCbm === null ? (
+                  '—'
+                ) : (
+                  <bdi>{`${formatNumber(job.volumeCbm, locale)} cbm`}</bdi>
+                )}
               </Field>
               <Field label={t('pieces')}>
                 {job.pieces === null ? '—' : formatNumber(job.pieces, locale)}

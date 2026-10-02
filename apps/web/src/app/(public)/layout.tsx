@@ -81,7 +81,7 @@ export default async function PublicLayout({ children }: { children: React.React
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="enquiries" size={15} className="text-ink-subtle" />
               <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-accent">
-                {brand.contact.supportEmail}
+                <bdi>{brand.contact.supportEmail}</bdi>
               </a>
             </div>
             <div className="flex items-center gap-2 text-ink-muted">

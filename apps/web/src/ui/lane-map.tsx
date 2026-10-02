@@ -350,7 +350,12 @@ export function LaneMap({
           mode: lane.mode,
           count: lane.count,
           href: lane.href ?? '',
-          label: `${lane.originName} → ${lane.destinationName} · ${lane.count}`,
+          // The arrow points at the destination in either direction; U+2192
+          // under RTL pointed back at the origin (see `formatLane`). This runs
+          // in the browser, so the document's own `dir` is the source.
+          label: `${lane.originName} ${
+            document.documentElement.dir === 'rtl' ? '←' : '→'
+          } ${lane.destinationName} · ${lane.count}`,
         },
       }))
 

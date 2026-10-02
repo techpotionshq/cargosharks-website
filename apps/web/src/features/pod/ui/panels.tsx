@@ -124,7 +124,9 @@ export async function ProofOfDeliveryCard({
                 ) : null}
 
                 {pod.notes ? (
-                  <p className="mt-2 text-[0.8125rem] text-ink-muted">{pod.notes}</p>
+                  <p dir="auto" className="mt-2 text-[0.8125rem] text-ink-muted">
+                    {pod.notes}
+                  </p>
                 ) : null}
 
                 {/*
