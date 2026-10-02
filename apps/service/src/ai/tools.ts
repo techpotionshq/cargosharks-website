@@ -522,6 +522,12 @@ async function listEnquiries(actor: Actor, args: ToolArgs): Promise<unknown> {
         contactEmail: enquiries.contactEmail,
         slaDueAt: enquiries.slaDueAt,
         firstRespondedAt: enquiries.firstRespondedAt,
+        /*
+          Computed here, not left to the model: live, it called an SLA due
+          two hours ahead "overdue", reading a UTC timestamp against a clock
+          it does not have. The board's own comparison, as a fact.
+        */
+        overdue: sql<boolean>`(${enquiries.firstRespondedAt} is null and ${enquiries.slaDueAt} <= now())`,
         notes: enquiries.notes,
         _matches: MATCHES,
       })

@@ -334,7 +334,15 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     description:
       'Open enquiries on the board, including how long is left on the four-working-hour first-response clock. Returns `total` (every match) and the first `shown` rows. Use for "what needs answering", "how many enquiries are open" and anything about the SLA.',
     parameters: objectSchema({
-      status: oneOf(ENQUIRY_STATUSES),
+      /*
+        Live, asked "how many enquiries are open", a model filtered on `new`
+        and answered 4 when 9 were open — "open" read as a status. Said here,
+        where the model chooses the filter.
+      */
+      status: oneOf(
+        ENQUIRY_STATUSES,
+        'Leave null to count every open enquiry. "new" means received and not yet assigned — only a part of what is open.',
+      ),
       overdueOnly: { type: 'boolean', description: 'Only those past their SLA.' },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),

@@ -554,4 +554,38 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       expect(result.found).toBe(false)
     })
   })
+
+  /*
+    Live: asked how many enquiries were open, a model filtered on "new" and
+    called an SLA two hours ahead overdue. The count covers every open status,
+    and "overdue" is the board's comparison, computed, not the model's guess.
+  */
+  describe('list_enquiries', () => {
+    it('counts every open status and says which are overdue', async () => {
+      const make = (status: 'new' | 'assigned', slaOffsetHours: number) =>
+        withActor(systemActor, async (tx) => {
+          seq += 1
+          await tx.insert(enquiries).values({
+            reference: `${CODE}-OE${seq}`,
+            branchId: BRANCH,
+            customerId: CUSTOMER,
+            channel: 'email',
+            status,
+            slaDueAt: new Date(Date.now() + slaOffsetHours * 3_600_000),
+          })
+          return `${CODE}-OE${seq}`
+        })
+      const late = await make('new', -2)
+      const ahead = await make('assigned', 2)
+
+      const listed = (await runTool(actor, 'list_enquiries', { limit: 50 })) as {
+        total: number
+        rows: { reference: string; overdue: boolean }[]
+      }
+      const byRef = new Map(listed.rows.map((row) => [row.reference, row]))
+      expect(byRef.get(late)?.overdue).toBe(true)
+      expect(byRef.get(ahead)?.overdue).toBe(false)
+      expect(listed.total).toBe(listed.rows.length)
+    })
+  })
 })
