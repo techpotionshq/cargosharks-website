@@ -27,7 +27,8 @@ import {
   SupplierPaymentDialog,
 } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney } from '@/lib/format'
+import { amountInput, formatDate, formatMoney } from '@/lib/format'
+import { dec } from '@qabandi/core'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Card } from '@/ui/card'
 import { EmptyState, Grid, PageHeader } from '@/ui/layout'
@@ -285,7 +286,13 @@ export default async function PayablesPage({
             </THead>
             <TBody>
               {openPayments.map((payment) => {
-                const unallocated = (Number(payment.amount) - Number(payment.allocated)).toFixed(3)
+                // Decimal, at the payment's own places (QA P3): a float and a
+                // fixed three put "4350.000" in a dollar allocation field.
+                const unallocated =
+                  amountInput(
+                    dec(payment.amount).minus(dec(payment.allocated)).toFixed(),
+                    payment.currency,
+                  ) ?? '0'
                 const bills = billsByPartner.get(payment.partnerId) ?? []
                 return (
                   <TR key={payment.id}>

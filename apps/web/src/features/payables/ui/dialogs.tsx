@@ -9,6 +9,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
 import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { branchBaseCurrency, defaultBillBranch } from '../queries'
@@ -174,7 +175,7 @@ export async function SupplierInvoiceDialog({
           label: t('tax'),
           span: 4,
           mono: true,
-          defaultValue: defaults?.taxAmount ?? '0',
+          defaultValue: amountInput(defaults?.taxAmount, defaults?.currency) ?? '0',
         },
         {
           kind: 'textarea',

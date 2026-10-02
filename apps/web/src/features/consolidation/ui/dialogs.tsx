@@ -10,6 +10,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
 import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -312,7 +313,7 @@ export async function ConsolChargeDialog({
       span: 4,
       required: true,
       mono: true,
-      defaultValue: defaults?.amount,
+      defaultValue: amountInput(defaults?.amount, defaults?.currency),
     },
     {
       kind: 'select',
