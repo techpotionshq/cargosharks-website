@@ -183,6 +183,8 @@ export async function runTool(actor: Actor, name: string, args: ToolArgs): Promi
       return listFreeTime(actor, args)
     case 'list_overdue_invoices':
       return listOverdueInvoices(actor, args)
+    case 'get_quote':
+      return getQuote(actor, args)
     case 'get_invoice':
       return getInvoice(actor, args)
     case 'list_unbilled':
@@ -225,50 +227,69 @@ async function search(actor: Actor, args: ToolArgs): Promise<unknown> {
   const like = `%${query}%`
 
   return withActor(actor, async (tx: Tx) => {
-    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows] = await inSeries([
-      () =>
-        tx
-          .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
-          .from(jobs)
-          .where(ilike(jobs.reference, like))
-          .limit(limit),
-      () =>
-        tx
-          .select({ reference: enquiries.reference, status: enquiries.status })
-          .from(enquiries)
-          .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
-          .limit(limit),
-      () =>
-        tx
-          .select({ code: customers.code, name: customers.legalNameEn })
-          .from(customers)
-          .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
-          .limit(limit),
-      () =>
-        tx
-          .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
-          .from(invoices)
-          .where(ilike(invoices.seriesNo, like))
-          .limit(limit),
-      /*
+    const [jobRows, enquiryRows, customerRows, invoiceRows, containerRows, quoteRows] =
+      await inSeries([
+        () =>
+          tx
+            .select({ reference: jobs.reference, status: jobs.status, mode: jobs.mode })
+            .from(jobs)
+            .where(ilike(jobs.reference, like))
+            .limit(limit),
+        () =>
+          tx
+            .select({ reference: enquiries.reference, status: enquiries.status })
+            .from(enquiries)
+            .where(or(ilike(enquiries.reference, like), ilike(enquiries.contactEmail, like)))
+            .limit(limit),
+        () =>
+          tx
+            .select({ code: customers.code, name: customers.legalNameEn })
+            .from(customers)
+            .where(or(ilike(customers.code, like), ilike(customers.legalNameEn, like)))
+            .limit(limit),
+        () =>
+          tx
+            .select({ number: invoices.seriesNo, status: invoices.status, total: invoices.total })
+            .from(invoices)
+            .where(ilike(invoices.seriesNo, like))
+            .limit(limit),
+        /*
         Containers hang off `equipment`, not `job_cargo`.
 
         `job_cargo` is what is *in* the box — packages, description, HS code —
         and `equipment` is the box. Searching the wrong one finds nothing and
         looks exactly like a container we are not handling.
       */
-      () =>
-        tx
-          .select({ container: equipment.containerNo, reference: jobs.reference })
-          .from(equipment)
-          .innerJoin(jobs, eq(jobs.id, equipment.jobId))
-          .where(ilike(equipment.containerNo, like))
-          .limit(limit),
-    ])
+        () =>
+          tx
+            .select({ container: equipment.containerNo, reference: jobs.reference })
+            .from(equipment)
+            .innerJoin(jobs, eq(jobs.id, equipment.jobId))
+            .where(ilike(equipment.containerNo, like))
+            .limit(limit),
+        /*
+        Quotations, which this tool's description always promised and the query
+        never searched (F77): asked for the margin on QUO-2026-00004 the
+        assistant found nothing, and explained the silence by inventing a
+        reference format. Superseded revisions are history, not the quotation.
+      */
+        () =>
+          tx
+            .select({
+              reference: quotes.reference,
+              status: quotes.status,
+              enquiry: enquiries.reference,
+            })
+            .from(quotes)
+            .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+            .where(and(ilike(quotes.reference, like), isNull(quotes.supersededById)))
+            .limit(limit),
+      ])
 
     return {
       shipments: jobRows,
       enquiries: enquiryRows,
+      quotes: quoteRows,
       customers: customerRows,
       invoices: invoiceRows,
       containers: containerRows,
@@ -757,6 +778,65 @@ async function getInvoice(actor: Actor, args: ToolArgs): Promise<unknown> {
     }
     // As everywhere: not found and not permitted are one answer (see getJob).
     return { found: false, number }
+  })
+}
+
+/**
+ * One quotation: its state, totals and margin (F77).
+ *
+ * The assistant had no way to read a quotation — only the list of those about
+ * to lapse — so "what is the margin on QUO-…" got "no record found". Matched
+ * the way `getInvoice` matches: the exact reference first, then a fragment
+ * only when it names one quotation. The margin is worked out in SQL on the
+ * stored `numeric` totals, never in a JavaScript number, and is null when
+ * nothing was sold to divide by. A superseded revision names the one that
+ * replaced it, because a question about a revised quote means the live one.
+ */
+async function getQuote(actor: Actor, args: ToolArgs): Promise<unknown> {
+  const reference = text(args, 'reference')
+  if (!reference) return { found: false }
+
+  return withActor(actor, async (tx: Tx) => {
+    const replacement = alias(quotes, 'replacement')
+    const select = () =>
+      tx
+        .select({
+          reference: quotes.reference,
+          status: quotes.status,
+          version: quotes.version,
+          currency: quotes.currency,
+          totalSell: quotes.totalSell,
+          totalCost: quotes.totalCost,
+          marginAmount: sql<string | null>`(${quotes.totalSell} - ${quotes.totalCost})::text`,
+          marginPercent: sql<
+            string | null
+          >`round((${quotes.totalSell} - ${quotes.totalCost}) / nullif(${quotes.totalSell}, 0) * 100, 1)::text`,
+          validUntil: quotes.validUntil,
+          enquiry: enquiries.reference,
+          customer: customers.legalNameEn,
+          supersededBy: replacement.reference,
+        })
+        .from(quotes)
+        .leftJoin(enquiries, eq(enquiries.id, quotes.enquiryId))
+        .leftJoin(customers, eq(customers.id, enquiries.customerId))
+        .leftJoin(replacement, eq(replacement.id, quotes.supersededById))
+
+    const [exact] = await select().where(ilike(quotes.reference, reference)).limit(1)
+    if (exact) return { found: true, quote: exact }
+
+    const partial = await select()
+      .where(and(ilike(quotes.reference, `%${reference}%`), isNull(quotes.supersededById)))
+      .limit(6)
+    if (partial.length === 1) return { found: true, quote: partial[0] }
+    if (partial.length > 1) {
+      return {
+        found: false,
+        ambiguous: true,
+        candidates: partial.map((row) => row.reference),
+        note: 'Several quotations match; ask which one, or call again with the full reference.',
+      }
+    }
+    return { found: false, reference }
   })
 }
 
