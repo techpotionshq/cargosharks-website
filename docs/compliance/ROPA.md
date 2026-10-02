@@ -78,7 +78,7 @@ engineering one — see the note at the foot.
 | | |
 | --- | --- |
 | **Purpose** | Turning emailed and WhatsApp enquiries into structured records — and, where a branch switches the intake agent on, answering the sender: at most one confirmation and a capped number of clarifications per enquiry |
-| **Categories of data** | Sender address or phone number, message body, attachments — uncontrolled, because anyone may write in |
+| **Categories of data** | Sender address or phone number, message body, attachments (WhatsApp images and documents are fetched through Kapso and stored like email attachments), and the business's own WhatsApp replies sent from outside the product — uncontrolled, because anyone may write in |
 | **Lawful basis** | The controller's legitimate interest in answering enquiries |
 | **Retention** | **Not set** |
 | **Where** | `mailboxes`, `whatsapp_numbers`, `messages`, `message_attachments`, `intake_conversations`, `intake_turns` |

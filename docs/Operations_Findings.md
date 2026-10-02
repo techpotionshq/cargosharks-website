@@ -477,8 +477,24 @@ from §11 applied before anything else was built, and these were added:
   A clarification that never arrived is a coordinator's call; the same
   question twice is a bot.
 
-Found on the way, and left for the owner of the file store: the `memory` file
-store driver builds a fresh store on every `fileStore()` call, so bytes put
-while filing a mail are gone by the time anything reads them in the same
-process. The intake tests share one store for that reason.
+Found on the way: the `memory` file store driver built a fresh store on every
+`fileStore()` call, so bytes put while filing a mail were gone by the time
+anything read them in the same process. It is one store per process now
+(`resolveFileStore`), which is all the driver ever promised.
 
+Closed after the first cut, each because it was a way a person could still be
+talked over or a file still lost:
+
+- **A coordinator answering from their own WhatsApp, or the Kapso inbox, is a
+  staff reply.** `/webhooks/whatsapp` now takes Kapso's `whatsapp.message.sent`
+  echo. An echo of a message we sent (its wamid is on our row, or the same words
+  went to that customer minutes ago) is settled with nothing written; an echo
+  younger than thirty seconds is thrown back to the queue rather than guessed
+  at, because calling the agent's own reply a staff reply would silence it for
+  half a day. Anything else is filed as an outbound message marked
+  `staff_authored`, and the agent stays quiet.
+- **WhatsApp media is fetched** through Kapso's authenticated media call,
+  stored like an email attachment (10 MB, larger files a stub), and read in the
+  turn. A caption-less picture or PDF counts as content.
+- **A supplier's filed mail has a screen** — "Mail waiting for a person" on the
+  partner page, with attach-to-job, read-as-a-bill and mark-handled.

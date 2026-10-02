@@ -210,7 +210,7 @@ ROPA_ROWS = [
     ['P-05', 'Inbound enquiry mail', 'Processor', 'The forwarder',
      'Turning emailed and WhatsApp enquiries into structured records, and — where a branch switches the intake agent on — answering the sender with at most one confirmation and a capped number of clarifications',
      'Anyone who emails the enquiry mailbox or messages a business WhatsApp number',
-     'Sender address, message body, attachments — uncontrolled, because anyone may write in',
+     'Sender address or phone number, message body, attachments (WhatsApp media fetched through Kapso), and staff WhatsApp replies sent from outside the product — uncontrolled, because anyone may write in',
      'Possible but not sought — the sender controls what they send',
      "The controller's legitimate interest in answering enquiries",
      'The IMAP mailbox provider the customer provisions',

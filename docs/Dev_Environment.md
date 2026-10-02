@@ -167,6 +167,13 @@ leaking, not on feature count. The user wants the whole list done, quickly.
   message is filed once whatever receipt it arrives under, a bounce through the
   webhook marks its delivery failed, and a failed WhatsApp send is retried and
   recorded.
+- Then: Kapso's `whatsapp.message.sent` echoes of a coordinator writing from
+  their phone or the Kapso inbox are filed as staff replies (the agent goes
+  quiet); WhatsApp images and documents are fetched through Kapso's media call
+  and read with the conversation; a supplier's filed mail is listed on its
+  partner page to attach to a job, read as a bill or mark handled. The Kapso
+  webhook must now subscribe to `whatsapp.message.sent` as well as
+  `whatsapp.message.received`.
 
 **Next, in the order agreed:**
 
