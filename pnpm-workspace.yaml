@@ -90,3 +90,4 @@ overrides:
   fast-uri@4: '>=4.1.4 <5'
   brace-expansion@2: '>=2.1.6 <3'
   '@grpc/grpc-js@1': '>=1.14.5 <2'
+  ip-address@10: '>=10.7.1 <11'

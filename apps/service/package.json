@@ -30,7 +30,7 @@
     "@qabandi/core": "workspace:*",
     "@qabandi/db": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.12.0",
+    "fastify": "^5.12.5",
     "imapflow": "^1.7.1",
     "mailparser": "^3.9.31",
     "pg-boss": "^12.27.0",
