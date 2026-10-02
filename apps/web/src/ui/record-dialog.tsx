@@ -30,7 +30,7 @@
  * product without anyone having to remember to make it so.
  */
 
-import { useActionState, useEffect, useId, useRef, type ReactNode } from 'react'
+import { useActionState, useId, useRef, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
@@ -209,7 +209,25 @@ export function RecordDialog({
   iconOnly = false,
   trigger,
 }: RecordDialogProps) {
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {})
+  /*
+    Say so when it worked.
+
+    The dialog closing was the only acknowledgement there was, and a dialog
+    also closes when it is cancelled — so after a status move nothing on the
+    screen distinguished "issued" from "never mind". Announced as the action
+    resolves, not from an effect on the result: a move that changes what the
+    page offers (agree a settlement, start rating, book a quote) takes this
+    dialog away with the revalidation, and an effect on an unmounted dialog
+    never runs, so exactly those moves said nothing (QA P3).
+  */
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    async (previous, form) => {
+      const result = await action(previous, form)
+      if (result.ok) toast(labels.success)
+      return result
+    },
+    {},
+  )
   const attempt = useAttemptKey(state)
   /*
     The form's id, so the submit button can sit outside it.
@@ -227,22 +245,6 @@ export function RecordDialog({
   */
   const formId = useId()
   const inMenu = useInMenu()
-
-  /*
-    Say so when it worked.
-
-    The dialog closing was the only acknowledgement there was, and a dialog
-    also closes when it is cancelled — so after a status move nothing on the
-    screen distinguished "issued" from "never mind". Keyed on the token, like
-    the close itself, so two successes in a row both announce.
-  */
-  const announced = useRef(state.ok)
-  useEffect(() => {
-    if (state.ok && state.ok !== announced.current) {
-      announced.current = state.ok
-      toast(labels.success)
-    }
-  }, [state.ok, labels.success])
 
   return (
     <Modal

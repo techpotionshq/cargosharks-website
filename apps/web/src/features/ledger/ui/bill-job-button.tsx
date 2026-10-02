@@ -10,7 +10,7 @@
  * seconds is one the reader has to reproduce to read again.
  */
 
-import { useActionState, useEffect, useRef } from 'react'
+import { useActionState } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import { Button } from '@/ui/layout'
 import { toast } from '@/ui/toast'
@@ -29,20 +29,21 @@ export function BillJobButton({
   /** The link to the draft, which is where the next step happens. */
   readonly open: string
 }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(billJob, {})
-
   /*
     Say so, and say where (QA P2-6). The row leaves the unbilled list as the
     page revalidates, so nothing on screen acknowledged the click and nothing
-    led to the draft it made. The token is `<invoiceId>:<n>`.
+    led to the draft it made. Announced as the action resolves rather than
+    from an effect: by the time an effect would run, this button has gone
+    with its row and never runs it. The token is `<invoiceId>:<n>`.
   */
-  const announced = useRef(state.ok)
-  useEffect(() => {
-    if (!state.ok || state.ok === announced.current) return
-    announced.current = state.ok
-    const invoiceId = state.ok.replace(/:\d+$/, '')
-    toast(done, { href: `/invoices/${invoiceId}`, label: open })
-  }, [state.ok, done, open])
+  const [state, action, pending] = useActionState<ActionState, FormData>(async (previous, form) => {
+    const result = await billJob(previous, form)
+    if (result.ok) {
+      const invoiceId = result.ok.replace(/:\d+$/, '')
+      toast(done, { href: `/invoices/${invoiceId}`, label: open })
+    }
+    return result
+  }, {})
 
   return (
     <form action={action} className="flex flex-col items-end gap-1">
