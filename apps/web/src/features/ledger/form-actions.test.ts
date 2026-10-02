@@ -1391,6 +1391,71 @@ describe.skipIf(!enabled)('quotations', () => {
       expect((await linesOf(quoteId))[0]?.description).toBe('Ocean freight KWI/JEA, all-in')
     })
 
+    /**
+     * QA P2-5. "New quotation" on a priced enquiry made a v2 with no lines,
+     * so the revised offer printed a total over an empty table. The lines
+     * travel to the new draft, and the total is theirs.
+     */
+    it('copies the lines onto a revision, and the total follows them', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      for (const rate of ['1450.00', '250.50']) {
+        await addQuoteLine(
+          {},
+          form({
+            quoteId: first!.id,
+            chargeTypeId: freightChargeTypeId,
+            quantity: '1',
+            rate,
+            currency: 'USD',
+            description: `Line at ${rate}`,
+          }),
+        )
+      }
+
+      await createQuote(
+        {},
+        form({ enquiryId: id, branchId: BRANCH, ...priced({ totalSell: '9999.00' }) }),
+      )
+
+      const [, second] = await quotesFor(id)
+      const lines = await linesOf(second!.id)
+      expect(lines.map((l) => l.description).sort()).toEqual(['Line at 1450.00', 'Line at 250.50'])
+      expect(second?.totalSell).toBe('1700.500000')
+      // The first version keeps its own lines — a revision copies, never moves.
+      expect(await linesOf(first!.id)).toHaveLength(2)
+    })
+
+    it('leaves the lines behind when the revision changes currency', async () => {
+      const id = await enquiry()
+      await createQuote({}, form({ enquiryId: id, branchId: BRANCH, ...priced() }))
+      const [first] = await quotesFor(id)
+      await addQuoteLine(
+        {},
+        form({
+          quoteId: first!.id,
+          chargeTypeId: freightChargeTypeId,
+          quantity: '1',
+          rate: '100',
+          currency: 'USD',
+        }),
+      )
+
+      await createQuote(
+        {},
+        form({
+          enquiryId: id,
+          branchId: BRANCH,
+          ...priced({ currency: 'KWD', totalSell: '4300' }),
+        }),
+      )
+
+      const [, second] = await quotesFor(id)
+      expect(await linesOf(second!.id)).toHaveLength(0)
+      expect(second?.totalSell).toBe('4300.000000')
+    })
+
     it('asks which charge the line is', async () => {
       const state = await addQuoteLine({}, form({ quoteId: await draft(), rate: '100' }))
 

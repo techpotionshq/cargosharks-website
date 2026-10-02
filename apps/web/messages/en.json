@@ -1323,7 +1323,8 @@
       "per_container": "Per container",
       "per_day": "Per day",
       "percent": "Percent"
-    }
+    },
+    "revisionNote": "The current version's lines are carried onto the revision, where you can change them. Once a quotation has lines, its sell price is their total."
   },
   "invoiceForm": {
     "open": "New invoice",

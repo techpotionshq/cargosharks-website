@@ -59,6 +59,7 @@ import {
   rederiveInvoiceSettlement,
   retireQuoteVersion,
   withActor,
+  type Tx,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
@@ -233,6 +234,32 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
         })
         .returning({ id: quotes.id, reference: quotes.reference })
 
+      /*
+        A revision starts from the version it replaces (QA P2-5).
+
+        "New quotation" on a priced enquiry made v2 with no lines at all, so
+        the customer's revised offer printed a total over an empty table and
+        every charge had to be typed again. The previous version's lines are
+        copied onto the new draft, where they stay editable, and — the S10
+        rule — once a draft has lines they are the offer, so the sell total
+        follows them. Only lines in the new version's currency travel: a
+        revision into another currency is a new price, and a quotation with
+        lines in two currencies has no total.
+      */
+      if (next.previousId) {
+        const copied = await tx.execute(sql`
+          insert into quote_lines
+                 (quote_id, charge_type_id, description, basis, quantity, rate, amount,
+                  currency, sort_order)
+          select ${row!.id}, charge_type_id, description, basis, quantity, rate, amount,
+                 currency, sort_order
+            from quote_lines
+           where quote_id = ${next.previousId} and currency = ${data.currency}
+           order by sort_order, created_at
+        `)
+        if ((copied.rowCount ?? 0) > 0) await totalFollowsLines(tx, row!.id)
+      }
+
       await retireQuoteVersion(tx, next.previousId, row!.id)
 
       return { reference: row!.reference }
@@ -245,6 +272,26 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
   revalidatePath(`/enquiries/${data.enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome.reference)
+}
+
+/**
+ * A draft's sell total, restated as the sum of its lines, and its frozen
+ * margin percentage restated against the cost it already carries (S10). In
+ * SQL, on `numeric`: the total is money and never passes through a float.
+ */
+async function totalFollowsLines(tx: Tx, quoteId: string): Promise<void> {
+  await tx.execute(sql`
+    update quotes q
+       set total_sell = l.total,
+           priced_snapshot = jsonb_set(
+             coalesce(q.priced_snapshot, '{}'::jsonb), '{marginPct}',
+             to_jsonb(case when l.total > 0
+                           then round((l.total - coalesce(q.total_cost, 0)) / l.total * 100, 2)
+                           else 0 end)),
+           updated_at = now()
+      from (select sum(amount) as total from quote_lines where quote_id = ${quoteId}) l
+     where q.id = ${quoteId}
+  `)
 }
 
 /** Add a priced line to a draft quotation. */
@@ -326,19 +373,7 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
       them, and the frozen margin percentage is restated against the cost the
       quotation already carries.
     */
-    const quoteId = data.quoteId
-    await tx.execute(sql`
-      update quotes q
-         set total_sell = l.total,
-             priced_snapshot = jsonb_set(
-               coalesce(q.priced_snapshot, '{}'::jsonb), '{marginPct}',
-               to_jsonb(case when l.total > 0
-                             then round((l.total - coalesce(q.total_cost, 0)) / l.total * 100, 2)
-                             else 0 end)),
-             updated_at = now()
-        from (select sum(amount) as total from quote_lines where quote_id = ${quoteId}) l
-       where q.id = ${quoteId}
-    `)
+    await totalFollowsLines(tx, data.quoteId)
     return null
   })
 

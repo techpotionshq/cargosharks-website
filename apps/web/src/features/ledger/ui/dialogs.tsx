@@ -151,6 +151,9 @@ export async function QuoteDialog({
       kind: 'note',
       text: t('marginNote'),
     },
+    // A revision copies the current version's lines (QA P2-5); say so, since
+    // the sell figure above then gives way to their total.
+    ...(totalSell !== undefined ? [{ kind: 'note' as const, text: t('revisionNote') }] : []),
     {
       kind: 'date',
       name: 'validUntil',
