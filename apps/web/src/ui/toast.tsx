@@ -24,6 +24,7 @@
  * `toast()` is a no-op, which is the right failure.
  */
 
+import type { Route } from 'next'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './icon'
@@ -119,7 +120,7 @@ export function Toaster({
             {entry.message}
             {entry.link ? (
               <Link
-                href={entry.link.href}
+                href={entry.link.href as Route}
                 className="ms-2 font-medium text-accent underline-offset-2 hover:underline"
               >
                 {entry.link.label}
