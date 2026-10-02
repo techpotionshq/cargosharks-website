@@ -3548,7 +3548,8 @@
       "get_margin": "هامش ربح الشحنة",
       "get_customer_credit": "الوضع الائتماني للعميل",
       "list_consolidation_candidates": "الشحنات القابلة للتجميع",
-      "get_invoice": "الفاتورة"
+      "get_invoice": "الفاتورة",
+      "get_quote": "عرض السعر"
     },
     "toolUnknown": "السجلات",
     "suggestions": {

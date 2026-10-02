@@ -163,7 +163,10 @@ describe.skipIf(!enabled)('intake agent settings', () => {
   it('refuses a branch the administrator does not administer', async () => {
     harness.session = homeOnly
     try {
-      await expect(saveIntakeSettings({}, valid({ branchId: AWAY_BRANCH }))).rejects.toThrow()
+      // Refused as a sentence, not a throw: every form action is wrapped in
+      // refuseForbidden, so a ForbiddenError never reaches the error page.
+      const state = await saveIntakeSettings({}, valid({ branchId: AWAY_BRANCH }))
+      expect(state.message).toBe('common.forbiddenAction')
     } finally {
       harness.session = session
     }

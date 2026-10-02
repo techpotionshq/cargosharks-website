@@ -3548,7 +3548,8 @@
       "get_margin": "the shipment's margin",
       "get_customer_credit": "the customer's credit standing",
       "list_consolidation_candidates": "shipments that could be consolidated",
-      "get_invoice": "the invoice"
+      "get_invoice": "the invoice",
+      "get_quote": "the quotation"
     },
     "toolUnknown": "the records",
     "suggestions": {
