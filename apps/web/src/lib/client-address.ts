@@ -31,7 +31,28 @@
  *
  * The service reads the same variable for Fastify's `trustProxy`, so one
  * setting describes the deployment to both processes.
+ *
+ * ## Handing it to Better Auth
+ *
+ * Better Auth resolves its own address — for its rate limiter and the
+ * `ip_address` on a session row — from a list of headers, and takes no
+ * computed value. Left to `X-Forwarded-For` it either trusts a single entry
+ * or, given the two Traefik writes when a caller sends one, resolves nothing
+ * and throttles every caller in one shared bucket. So `proxy.ts` writes the
+ * address computed here into `CLIENT_ADDRESS_HEADER` on every request,
+ * overwriting whatever the caller sent under that name, and `auth.ts` tells
+ * Better Auth to read only that header. One rule, one place, both consumers.
  */
+
+/**
+ * Set by `proxy.ts` from `clientAddressFrom`, and the only header Better Auth
+ * reads an address from. Never trusted from outside: the proxy replaces it on
+ * every request, or removes it where no address can be believed.
+ */
+export const CLIENT_ADDRESS_HEADER = 'x-qabandi-client-address'
+
+/** Better Auth's `advanced.ipAddress`: that header and nothing else. */
+export const BETTER_AUTH_IP_ADDRESS = { ipAddressHeaders: [CLIENT_ADDRESS_HEADER] }
 
 /** Read once per call rather than at import, so a test can change it. */
 export function trustedProxyHops(): number {

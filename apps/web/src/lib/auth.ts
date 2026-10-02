@@ -34,6 +34,7 @@ import {
 } from '@qabandi/db'
 import { getBrand } from '@/lib/brand'
 import { authHooks } from '@/lib/auth-guard'
+import { BETTER_AUTH_IP_ADDRESS } from '@/lib/client-address'
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 /** What became of one reset email. */
@@ -217,6 +218,13 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: 'qabandi',
     useSecureCookies: process.env.NODE_ENV === 'production',
+    /*
+      The address Better Auth rate-limits by and stamps on a session is the
+      one `lib/client-address.ts` computes from the trusted proxy hops,
+      handed over in a header `proxy.ts` overwrites on every request. Its own
+      default read `X-Forwarded-For`, which a caller can write to.
+    */
+    ipAddress: BETTER_AUTH_IP_ADDRESS,
   },
 
   /**

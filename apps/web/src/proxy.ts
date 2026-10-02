@@ -51,6 +51,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { CLIENT_ADDRESS_HEADER, clientAddressFrom } from '@/lib/client-address'
 
 const PRODUCTION = process.env.NODE_ENV === 'production'
 
@@ -101,6 +102,16 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-nonce', nonce)
   requestHeaders.set('Content-Security-Policy', policy)
+
+  /*
+    The caller's address, as `lib/client-address.ts` reads it from the trusted
+    hops, for Better Auth's rate limiter and session rows. Replaced or removed
+    on every request, so a caller who sends this header themselves is never
+    believed — the reason it cannot simply be one Traefik sets downstream.
+  */
+  const address = clientAddressFrom(request.headers)
+  if (address) requestHeaders.set(CLIENT_ADDRESS_HEADER, address)
+  else requestHeaders.delete(CLIENT_ADDRESS_HEADER)
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
 
