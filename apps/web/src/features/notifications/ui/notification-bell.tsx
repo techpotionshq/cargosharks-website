@@ -33,7 +33,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
     <details className="group relative">
       <summary
         aria-label={unread > 0 ? `${t('title')} (${unread})` : t('title')}
-        className="inline-flex size-8 cursor-pointer list-none items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink group-open:bg-surface-sunken group-open:text-ink [&::-webkit-details-marker]:hidden"
+        className="inline-flex size-10 cursor-pointer list-none md:size-8 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink group-open:bg-surface-sunken group-open:text-ink [&::-webkit-details-marker]:hidden"
       >
         <span className="relative">
           <Icon name="bell" size={17} />

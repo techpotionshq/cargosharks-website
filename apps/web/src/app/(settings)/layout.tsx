@@ -163,7 +163,12 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
-          <Link href="/dashboard" className="md:hidden">
+          {/* Named, as in the operations shell: the mark alone gives a link no text. */}
+          <Link
+            href="/dashboard"
+            aria-label={locale === 'ar' ? brand.identity.nameAr : brand.identity.nameEn}
+            className="-ms-2 flex size-10 items-center justify-center rounded-sm md:hidden"
+          >
             <Logo brand={brand} locale={locale} size="sm" markOnly />
           </Link>
 

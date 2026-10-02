@@ -147,7 +147,10 @@ export default async function JobsPage({
                 key={clock.id}
                 className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-sm bg-surface-sunken p-3"
               >
-                <div className="min-w-0 flex-1">
+                {/* A floor for the details, so on a phone the amount wraps
+                    beneath them instead of squeezing the reference onto two
+                    lines. */}
+                <div className="min-w-[min(100%,16rem)] flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <Link
                       href={`/jobs/${clock.jobId}`}
@@ -204,9 +207,10 @@ export default async function JobsPage({
                 key={option.key}
                 href={option.key === 'live' ? '/jobs' : `/jobs?filter=${option.key}`}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-sm px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+                // The register filters' tint (`ui/register.tsx`), 40px on a phone.
+                className={`inline-flex h-8 items-center rounded-sm px-3 text-[0.8125rem] font-medium transition-colors max-md:h-10 ${
                   active
-                    ? 'bg-brand-soft text-brand-soft-ink'
+                    ? 'bg-accent-soft text-accent'
                     : 'text-ink-muted hover:bg-surface-sunken hover:text-ink'
                 }`}
               >

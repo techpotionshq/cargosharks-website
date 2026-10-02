@@ -161,7 +161,7 @@ export default async function SignInPage({
           <ul className="mt-8 flex flex-col gap-3.5">
             {ASSURANCES.map((item) => (
               <li key={item.key} className="flex items-start gap-3">
-                <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink">
+                <span className="mt-px flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
                   <Icon name={item.icon} size={15} />
                 </span>
                 <span className="text-[0.875rem] leading-snug text-ink-muted">
