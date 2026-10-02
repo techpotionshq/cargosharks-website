@@ -72,6 +72,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -139,6 +140,8 @@ const quoteSchema = (tv: Translate) =>
 export async function createQuote(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(quoteSchema(tv), {
@@ -251,6 +254,8 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
 export async function addQuoteLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
@@ -358,6 +363,8 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
 /** Send, accept or reject — the three moves that change a quote's meaning. */
 export async function setQuoteStatus(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const quoteId = read(form, 'quoteId')
   const status = read(form, 'status')
@@ -508,6 +515,8 @@ export async function draftQuoteCoverNote(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const quoteId = read(form, 'quoteId')
   const locale = read(form, 'locale') === 'ar' ? 'ar' : 'en'
@@ -611,6 +620,8 @@ export async function setQuoteCoverNote(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const parsed = await localeParse(coverNoteSchema, {
     quoteId: read(form, 'quoteId'),
@@ -789,6 +800,8 @@ const invoiceSchema = (tv: Translate) =>
 export async function createInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(invoiceSchema(tv), {
@@ -871,6 +884,8 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
 export async function addInvoiceLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
@@ -955,6 +970,8 @@ export async function setInvoiceStatus(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const invoiceId = read(form, 'invoiceId')
   const status = read(form, 'status')
@@ -1348,6 +1365,8 @@ class CreditRefused extends Error {
 export async function creditInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.credit')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const invoiceId = read(form, 'invoiceId')
@@ -1495,6 +1514,8 @@ const paymentSchema = (tv: Translate) =>
 export async function recordPayment(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(paymentSchema(tv), {
@@ -1573,6 +1594,8 @@ export async function allocatePayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const paymentId = read(form, 'paymentId')
@@ -1808,6 +1831,8 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
 export async function billJob(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const jobId = read(form, 'jobId')

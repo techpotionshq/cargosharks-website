@@ -66,6 +66,8 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -143,6 +145,8 @@ export async function saveConsolidation(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -243,6 +247,8 @@ export async function saveConsolidation(
 export async function attachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -308,6 +314,8 @@ export async function attachHouse(_previous: ActionState, form: FormData): Promi
 export async function detachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -371,6 +379,7 @@ export async function detachHouse(_previous: ActionState, form: FormData): Promi
 export async function closeConsolidation(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const consolidationId = read(form, 'consolidationId')
   if (!consolidationId) throw new Error('Nothing to close')
@@ -426,6 +435,8 @@ export async function addConsolCharge(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolChargeLineId = read(form, 'consolChargeLineId')
@@ -541,6 +552,7 @@ export async function addConsolCharge(
 export async function withdrawConsolCharge(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -579,6 +591,7 @@ export async function withdrawConsolCharge(form: FormData): Promise<void> {
 export async function restoreConsolCharge(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -625,6 +638,8 @@ export async function allocateConsolCharge(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.allocate')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const chargeLineId = read(form, 'chargeLineId')
@@ -899,6 +914,7 @@ function allocationRefusal(tv: Translate, refusal: AllocationRefusal): string | 
 export async function reverseConsolAllocation(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.allocate')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -1044,6 +1060,8 @@ export async function consolidateCluster(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const branchId = read(form, 'branchId')

@@ -40,6 +40,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** Uppercase, URL-safe, and never containing a space that breaks a search. */
 const entityCode = (tv: Translate) =>
@@ -101,6 +102,8 @@ const partnerSchema = (tv: Translate) =>
 export async function savePartner(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(partnerSchema(tv), {
@@ -188,6 +191,8 @@ const locationSchema = (tv: Translate) =>
 
 export async function saveLocation(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Places are reference data, so they sit behind the reference permission
   // rather than a places-specific one — the same gate as commodities and
   // charge types, which are the same kind of thing.
@@ -248,6 +253,8 @@ export async function setNetworkActive(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Bound before the permission check only because the refusal below comes
   // first: which permission applies depends on the kind being valid.
   const tv = await getTranslations('networkValidation')
@@ -307,6 +314,8 @@ export async function savePartnerContact(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(contactSchema(tv), {
@@ -401,6 +410,8 @@ export async function savePartnerCoverage(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(coverageSchema, {
@@ -484,6 +495,8 @@ export async function savePartnerCompliance(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(complianceSchema(tv), {

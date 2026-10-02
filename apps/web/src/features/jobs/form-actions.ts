@@ -57,6 +57,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { dayIn } from '@/lib/time'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -181,6 +182,8 @@ class JobRefusal extends Error {
 export async function saveJob(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, read(form, 'jobId') ? 'job.update' : 'job.book')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('jobsValidation')
 
   const parsed = await localeParse(jobSchema(tv), {
@@ -613,6 +616,8 @@ async function claimQuote(
 export async function addJobPartner(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('jobsValidation')
 
   const schema = z.object({

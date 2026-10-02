@@ -58,6 +58,8 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { dayIn, todayIn } from '@/lib/time'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -132,6 +134,8 @@ const raiseSchema = (tv: Translate) =>
 export async function raiseException(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const parsed = await localeParse(raiseSchema(tv), {
@@ -221,6 +225,8 @@ export async function raiseException(_previous: ActionState, form: FormData): Pr
 export async function closeException(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const exceptionId = read(form, 'exceptionId')
@@ -305,6 +311,8 @@ export async function saveCustomsStage(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   /*
     Every customs move needs this; two of them need more.
 
@@ -422,6 +430,8 @@ export async function completeMilestone(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const milestoneId = read(form, 'milestoneId')
@@ -550,6 +560,8 @@ const containerSchema = (tv: Translate) =>
 export async function addContainer(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const parsed = await localeParse(containerSchema(tv), {
@@ -590,6 +602,8 @@ export async function addContainer(_previous: ActionState, form: FormData): Prom
  */
 export async function setJobStatus(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Bound before the permission check only because the first refusal comes
   // before it: which key applies depends on the status that was sent.
   const tv = await getTranslations('operationsValidation')
@@ -694,6 +708,7 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
 export async function releaseDocument(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'document.release')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const documentId = read(form, 'documentId')
   if (!documentId) throw new Error('No document given')
@@ -802,6 +817,8 @@ export async function saveFreeTimeClock(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const parsed = await localeParse(clockSchema(tv), {
@@ -892,6 +909,8 @@ export async function freeTimeDefaults(input: {
 }): Promise<{ freeDays: number; perDiem: string; currency: string } | null> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  // No rules to read in the demo; the dialog asks for days and rate instead.
+  if (usePilotFixtures()) return null
 
   return withActor(session.actor, async (tx) => {
     const [job] = await tx

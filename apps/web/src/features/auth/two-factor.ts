@@ -48,6 +48,7 @@ import { getTranslations } from 'next-intl/server'
 import QRCode from 'qrcode'
 import { auth } from '@/lib/auth'
 import { applySetCookie } from './cookies'
+import { demoReadOnlyMessage } from '@/lib/pilot/read-only'
 
 export interface ChallengeState {
   readonly error?: string
@@ -65,6 +66,8 @@ export async function verifyChallenge(
   _previous: ChallengeState,
   formData: FormData,
 ): Promise<ChallengeState> {
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo }
   const t = await getTranslations('twoFactor')
 
   /*
@@ -137,6 +140,8 @@ export async function beginEnrolment(
   _previous: EnrolState,
   formData: FormData,
 ): Promise<EnrolState> {
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo }
   const t = await getTranslations('twoFactor')
   const password = String(formData.get('password') ?? '')
 
@@ -199,6 +204,8 @@ export async function completeEnrolment(
   _previous: ChallengeState,
   formData: FormData,
 ): Promise<ChallengeState> {
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo }
   const t = await getTranslations('twoFactor')
   const code = digits(formData.get('code'))
 

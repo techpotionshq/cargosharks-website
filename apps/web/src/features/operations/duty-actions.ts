@@ -42,6 +42,7 @@ import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -91,6 +92,8 @@ export async function estimateJobDuty(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'customs.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('operationsValidation')
 
   const parsed = await localeParse(schema(tv), {

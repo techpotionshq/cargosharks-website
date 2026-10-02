@@ -31,6 +31,14 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const harness = vi.hoisted(() => ({ session: null as unknown }))
 
+/*
+  This suite runs the real action with the database mocked out, so the unset
+  DATABASE_URL that would put the app in fixture mode is not a demo here.
+*/
+vi.mock('@/lib/pilot/read-only', () => ({
+  demoReadOnly: async () => null,
+  demoReadOnlyMessage: async () => null,
+}))
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),

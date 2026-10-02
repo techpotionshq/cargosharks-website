@@ -45,6 +45,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { todayIn } from '@/lib/time'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -85,6 +86,8 @@ export async function recordCreditOverride(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'credit.override')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('creditValidation')
 
   const parsed = await localeParse(overrideSchema(tv), {

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { getSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { revokeSupportGrant } from './queries'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 /**
  * Withdraw support access.
@@ -18,6 +19,7 @@ import { revokeSupportGrant } from './queries'
  * built on, not because either check is redundant.
  */
 export async function revokeSupportAccess(formData: FormData): Promise<void> {
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
   const session = await getSession()
   if (!session) throw new Error('No session')
 

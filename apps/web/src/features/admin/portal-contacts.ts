@@ -38,6 +38,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { sendSignInLink } from './sign-in-link'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 const contactSchema = (tv: Translate) =>
   z.object({
@@ -66,6 +67,8 @@ export async function inviteCustomerContact(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const read = (key: string) => {

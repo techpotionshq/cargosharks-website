@@ -46,6 +46,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -115,6 +116,8 @@ export async function saveMilestoneTemplate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(milestoneSchema(tv), {
@@ -207,6 +210,8 @@ export async function saveWorkingCalendar(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(calendarSchema(tv), {
@@ -290,6 +295,8 @@ const holidaySchema = (tv: Translate) =>
 export async function saveHoliday(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(holidaySchema(tv), {
@@ -353,6 +360,8 @@ const dutySchema = (tv: Translate) =>
 export async function saveDutyRate(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(dutySchema(tv), {
@@ -450,6 +459,8 @@ export async function saveChargeableRule(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(chargeableSchema(tv), {
@@ -534,6 +545,8 @@ export async function saveFreeTimeRule(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(freeTimeSchema(tv), {
@@ -646,6 +659,8 @@ const fxSchema = (tv: Translate) =>
 export async function saveFxRate(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(fxSchema(tv), {

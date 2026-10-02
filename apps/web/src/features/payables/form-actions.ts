@@ -72,6 +72,8 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -131,6 +133,8 @@ export async function saveSupplierInvoice(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const billId = read(form, 'supplierInvoiceId')
@@ -263,6 +267,8 @@ export async function addSupplierInvoiceLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(lineSchema(tv), {
@@ -363,6 +369,8 @@ export async function matchSupplierLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const lineId = read(form, 'supplierInvoiceLineId')
@@ -466,6 +474,7 @@ export async function matchSupplierLine(
 export async function unmatchSupplierLine(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const matchId = read(form, 'matchId')
   const billId = read(form, 'supplierInvoiceId')
@@ -507,6 +516,8 @@ export async function setSupplierInvoiceStatus(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Bound before the permission check, because that check depends on the
   // action, and "nothing to do" has to be answered before there is one.
   const tv = await getTranslations('payablesValidation')
@@ -699,6 +710,8 @@ export async function recordSupplierPayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(supplierPaymentSchema(tv), {
@@ -749,6 +762,8 @@ export async function allocateSupplierPayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const paymentId = read(form, 'supplierPaymentId')
@@ -915,6 +930,8 @@ export async function draftSettlement(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(settlementSchema(tv), {
@@ -1108,6 +1125,8 @@ export async function setSettlementStatus(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const settlementId = read(form, 'settlementId')
@@ -1307,6 +1326,7 @@ async function resettleDocuments(tx: any, settlementId: string): Promise<void> {
  * invoices could be fired by a link preview in somebody's chat client.
  */
 export async function advanceSettlement(form: FormData): Promise<void> {
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
   await setSettlementStatus({}, form)
 }
 
@@ -1317,6 +1337,8 @@ export async function linkPartnerAccount(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
@@ -1346,6 +1368,8 @@ export async function setPartnerTolerance(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
@@ -1413,6 +1437,8 @@ export async function readSupplierBill(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const branchId = read(form, 'branchId')

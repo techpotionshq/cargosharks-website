@@ -25,6 +25,7 @@ import { assertCan, assertCanIn } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface CustomerFormState {
   /** Field-keyed messages, so each input can render its own error. */
@@ -60,6 +61,8 @@ export async function createCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('customersValidation')
 
   const parsed = await localeParse(customerFormSchema(tv), customerFormData(form))
@@ -123,6 +126,8 @@ export async function updateCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('customersValidation')
 
   const parsed = await localeParse(updateCustomerSchema(tv), {
@@ -209,6 +214,8 @@ export async function setCustomerActive(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   /*
     A form action like every other one here, rather than the two positional

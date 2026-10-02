@@ -40,6 +40,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -101,6 +102,8 @@ const partySchema = (tv: Translate) =>
 export async function saveJobParty(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const partyId = read(form, 'partyId')
@@ -196,6 +199,8 @@ const cargoSchema = (tv: Translate) =>
 export async function saveCargoLine(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const cargoId = read(form, 'cargoId')
@@ -329,6 +334,8 @@ async function allocateHouseBillNumber(
 export async function issueDocument(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.generate')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')
@@ -469,6 +476,8 @@ export async function surrenderHouseBill(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.release')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')

@@ -54,6 +54,8 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -90,6 +92,8 @@ const userSchema = (tv: Translate) =>
 export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(userSchema(tv), {
@@ -353,6 +357,8 @@ async function personChanged(
 export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
@@ -395,6 +401,8 @@ export async function sendUserSignInLink(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
@@ -567,6 +575,8 @@ const branchSchema = (tv: Translate) =>
 
 export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   /*
     Not `admin.reference.write`, which is what this used to be.
 
@@ -756,6 +766,8 @@ export async function saveReferenceRecord(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(referenceSchema(tv), {
@@ -837,6 +849,8 @@ export async function saveReferenceRecord(
 export async function listAssignableRoles(): Promise<{ id: string; key: string; name: string }[]> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  // The demo grants nothing, so it offers nothing to grant.
+  if (usePilotFixtures()) return []
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -864,6 +878,7 @@ export async function getUserGrants(principalId: string): Promise<{
 }> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  if (usePilotFixtures()) return { roleId: null, branchIds: [] }
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -915,6 +930,8 @@ export async function saveNotificationTemplate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(templateSchema(tv), {
@@ -1038,6 +1055,7 @@ export async function saveNotificationTemplate(
 export async function saveNotificationSwitches(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   /*
     An unchecked checkbox posts nothing, so the switches are read as

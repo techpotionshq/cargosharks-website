@@ -3,7 +3,8 @@
     "tagline": "Shipping & Forwarding",
     "operations": "Operations",
     "pilot": "Pilot environment",
-    "pilotHint": "Seeded pilot data — replaced by the client's own job files and rate card."
+    "pilotHint": "Seeded pilot data — replaced by the client's own job files and rate card.",
+    "demoReadOnly": "This is the demo, and it does not save changes. Nothing you entered was lost — on your own instance this would be saved."
   },
   "nav": {
     "dashboard": "Dashboard",

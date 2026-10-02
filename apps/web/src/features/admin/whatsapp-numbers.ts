@@ -43,6 +43,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface WhatsappNumberRow {
   readonly id: string
@@ -107,6 +108,8 @@ export async function saveWhatsappNumber(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
@@ -175,6 +178,8 @@ export async function setWhatsappNumberActive(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const numberId = String(form.get('numberId') ?? '')
   const isActive = form.get('isActive') === 'true'

@@ -17,6 +17,7 @@ import { priceEnquiryToQuote, withActor, type PricingRefusal } from '@qabandi/db
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -34,6 +35,8 @@ function read(form: FormData, key: string): string | undefined {
 export async function priceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const enquiryId = read(form, 'enquiryId')

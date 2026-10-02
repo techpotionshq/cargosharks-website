@@ -57,6 +57,7 @@ import {
   type ExpectedValue,
   type ResolutionFailure,
 } from './proposals'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -64,6 +65,8 @@ const FIRST_RESPONSE_MINUTES = 4 * 60
 export async function submitEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const read = (key: string): string | undefined => {
@@ -149,6 +152,8 @@ export async function setEnquiryContainerCount(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -198,6 +203,8 @@ export async function assignEnquiryAction(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -236,6 +243,8 @@ export async function respondEnquiryAction(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -260,6 +269,8 @@ export async function closeEnquiryAction(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.close')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -397,6 +408,8 @@ async function nextReference(
  */
 export async function advanceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   // This file reads FormData directly, like its siblings above.
@@ -492,6 +505,8 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
 export async function acceptProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')
@@ -591,6 +606,8 @@ export async function acceptAllProposals(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = readField(form, 'enquiryId')
@@ -673,6 +690,8 @@ export async function acceptAllProposals(
 export async function rejectProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')

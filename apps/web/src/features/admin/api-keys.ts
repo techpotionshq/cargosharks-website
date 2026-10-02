@@ -45,6 +45,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface ApiKeyRow {
   readonly id: string
@@ -119,6 +120,8 @@ const keySchema = (tv: Translate) =>
 export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(keySchema(tv), {
@@ -176,6 +179,8 @@ export async function createApiKey(_previous: ActionState, form: FormData): Prom
 export async function revokeApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const keyId = String(form.get('keyId') ?? '')
   const tv = await getTranslations('adminValidation')
@@ -278,6 +283,8 @@ export async function createWebhookEndpoint(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(endpointSchema(tv), {
@@ -342,6 +349,8 @@ export async function setWebhookEndpointActive(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const endpointId = String(form.get('endpointId') ?? '')
   const tv = await getTranslations('adminValidation')
