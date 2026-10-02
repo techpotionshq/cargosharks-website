@@ -43,6 +43,7 @@ import {
 import {
   branches,
   chargeLines,
+  chargeTypes,
   checkCredit,
   currencies,
   enquiries,
@@ -1869,12 +1870,15 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         id: chargeLines.id,
         description: chargeLines.description,
         chargeTypeId: chargeLines.chargeTypeId,
+        chargeNameEn: chargeTypes.nameEn,
+        chargeNameAr: chargeTypes.nameAr,
         quantity: chargeLines.quantity,
         rate: chargeLines.rate,
         amount: chargeLines.amount,
         currency: chargeLines.currency,
       })
       .from(chargeLines)
+      .leftJoin(chargeTypes, eq(chargeTypes.id, chargeLines.chargeTypeId))
       .where(
         and(
           eq(chargeLines.jobId, jobId),
@@ -1935,14 +1939,18 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         invoiceId,
         chargeTypeId: line.chargeTypeId,
         /*
-          The line's own description, or the shipment reference as a fallback.
+          The line's own description, else the charge's name — in both
+          languages, because the Arabic invoice prints `description_ar`.
 
           `description` is nullable on `charge_lines` and `description_en` is
           not on `invoice_lines`, which is the right way round: an internal
           ledger line may be terse, and a document a customer reads may not be
-          blank.
+          blank. The fallback was the shipment reference, so an undescribed
+          line read "KWI-JOB-2026-00012" in English and nothing in Arabic (QA
+          P2-6); the charge type is what the line actually is.
         */
-        descriptionEn: line.description ?? job.reference,
+        descriptionEn: line.description ?? line.chargeNameEn ?? job.reference,
+        descriptionAr: line.chargeNameAr ?? null,
         quantity: line.quantity,
         unitPrice: line.rate,
         amount: line.amount,

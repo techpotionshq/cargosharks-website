@@ -3466,7 +3466,9 @@
     "oldest": "Oldest line",
     "bill": "Draft invoice",
     "mixedCurrency": "Mixed currencies — bill separately",
-    "showAll": "Show all {count}"
+    "showAll": "Show all {count}",
+    "billed": "Draft invoice created.",
+    "openDraft": "Open the draft"
   },
   "grouping": {
     "title": "Could share a container",

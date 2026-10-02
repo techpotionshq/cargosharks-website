@@ -45,7 +45,8 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { chargeLines, invoiceLines, invoices, jobs, withActor } = await import('@qabandi/db')
+const { chargeLines, chargeTypes, invoiceLines, invoices, jobs, withActor } =
+  await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
@@ -193,6 +194,30 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
     expect(lines).toHaveLength(2)
 
     expect((await readLine(second))?.invoiceId).toBe(invoiceId)
+  })
+
+  /**
+   * QA P2-6. A line with no description of its own went onto the invoice as
+   * the shipment reference, in English only; the Arabic invoice printed an
+   * empty description. The charge type names it, in both languages.
+   */
+  it('names an undescribed line by its charge, in both languages', async () => {
+    const jobId = await aJob()
+    const line = await aLine(jobId, { description: null })
+    await billJob({}, form({ jobId }))
+    const invoiceId = (await readLine(line))!.invoiceId!
+
+    const [drafted] = await withActor(bothBranchesActor, (tx) =>
+      tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoiceId)),
+    )
+    const [charge] = await withActor(bothBranchesActor, (tx) =>
+      tx
+        .select({ nameEn: chargeTypes.nameEn, nameAr: chargeTypes.nameAr })
+        .from(chargeTypes)
+        .where(eq(chargeTypes.id, chargeTypeId)),
+    )
+    expect(drafted?.descriptionEn).toBe(charge!.nameEn)
+    expect(drafted?.descriptionAr).toBe(charge!.nameAr)
   })
 
   /**

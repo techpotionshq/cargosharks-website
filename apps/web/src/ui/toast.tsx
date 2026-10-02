@@ -24,20 +24,40 @@
  * `toast()` is a no-op, which is the right failure.
  */
 
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './icon'
 
 const EVENT = 'qabandi:toast'
 
+/**
+ * Where the thing that was just made can be opened.
+ *
+ * For a click that creates a record somewhere else — a draft invoice from the
+ * unbilled list, a shipment from an accepted quotation. The row that was
+ * clicked disappears with the revalidation, so a link drawn beside it would
+ * vanish with it; the toast outlives the row (QA P2-6).
+ */
+export interface ToastLink {
+  readonly href: string
+  readonly label: string
+}
+
+interface Detail {
+  readonly message?: string
+  readonly link?: ToastLink
+}
+
 /** Says "done" in the region, if there is one. Omit the message for the default. */
-export function toast(message?: string): void {
+export function toast(message?: string, link?: ToastLink): void {
   if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent<string | undefined>(EVENT, { detail: message }))
+  window.dispatchEvent(new CustomEvent<Detail>(EVENT, { detail: { message, link } }))
 }
 
 interface Entry {
   readonly id: number
   readonly message: string
+  readonly link?: ToastLink
 }
 
 /** Long enough to read a sentence twice, short enough not to linger over work. */
@@ -54,11 +74,12 @@ export function Toaster({
   useEffect(() => {
     const timers = new Set<ReturnType<typeof setTimeout>>()
     function onToast(event: Event) {
-      const message = (event as CustomEvent<string | undefined>).detail || labels.saved
+      const detail = (event as CustomEvent<Detail | undefined>).detail
+      const message = detail?.message || labels.saved
       const id = (next.current += 1)
       // Newest last, and never more than three: a burst of saves is one
       // thing happening, not a stack to read.
-      setEntries((current) => [...current.slice(-2), { id, message }])
+      setEntries((current) => [...current.slice(-2), { id, message, link: detail?.link }])
       const timer = setTimeout(() => {
         timers.delete(timer)
         setEntries((current) => current.filter((entry) => entry.id !== id))
@@ -94,7 +115,17 @@ export function Toaster({
           <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-positive-soft text-positive">
             <Icon name="check" size={14} weight="bold" />
           </span>
-          <span className="min-w-0">{entry.message}</span>
+          <span className="min-w-0">
+            {entry.message}
+            {entry.link ? (
+              <Link
+                href={entry.link.href}
+                className="ms-2 font-medium text-accent underline-offset-2 hover:underline"
+              >
+                {entry.link.label}
+              </Link>
+            ) : null}
+          </span>
           <button
             type="button"
             onClick={() => setEntries((current) => current.filter((e) => e.id !== entry.id))}
