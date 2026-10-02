@@ -52,6 +52,7 @@ import {
 } from './states'
 import { AiError } from './ai'
 import { MODES } from './extraction'
+import type { LabelVocabulary } from './labels'
 
 /* -------------------------------------------------------------------------
  * Tools
@@ -90,6 +91,12 @@ export interface AssistantTool {
    * where the question is not what you can see but what you may change.
    */
   readonly requires?: string
+  /**
+   * Which coded values in this tool's result get a label beside them, by path
+   * (`rows.status`) — see `withLabels` in `labels.ts`. Declared with the tool
+   * so a column added to a result is labelled where its shape is described.
+   */
+  readonly labels?: Readonly<Record<string, LabelVocabulary>>
 }
 
 const objectSchema = (
@@ -289,6 +296,12 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'search',
     kind: 'read',
+    labels: {
+      'shipments.status': 'jobStatus',
+      'shipments.mode': 'mode',
+      'enquiries.status': 'enquiryStatus',
+      'invoices.status': 'invoiceStatus',
+    },
     description:
       'Find a shipment, enquiry, quote, invoice or customer by reference, name or container number. Use this first whenever the person names something specific.',
     parameters: objectSchema(
@@ -302,6 +315,13 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'get_job',
     kind: 'read',
+    labels: {
+      'shipment.status': 'jobStatus',
+      'shipment.mode': 'mode',
+      'shipment.tradeDirection': 'direction',
+      'openExceptions.severity': 'severity',
+      'customs.status': 'customsStatus',
+    },
     description:
       'Everything about one shipment: parties, cargo, milestones, customs state, charge lines and open exceptions.',
     parameters: objectSchema({ reference: REFERENCE }, ['reference']),
@@ -309,6 +329,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_jobs',
     kind: 'read',
+    labels: { 'rows.status': 'jobStatus', 'rows.mode': 'mode', 'rows.direction': 'direction' },
     description:
       'Shipments the person can see, newest first, optionally narrowed by status, mode, direction or arrival window. Returns `total` (every match) and the first `shown` rows. Use for questions like "what is in clearance", "how many sea imports do we have" or "what is arriving this week" (arrivingWithinDays: 7).',
     parameters: objectSchema({
@@ -331,6 +352,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_enquiries',
     kind: 'read',
+    labels: { 'rows.status': 'enquiryStatus' },
     description:
       'Open enquiries on the board, including how long is left on the four-working-hour first-response clock. Returns `total` (every match) and the first `shown` rows. Use for "what needs answering", "how many enquiries are open" and anything about the SLA.',
     parameters: objectSchema({
@@ -350,6 +372,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_exceptions',
     kind: 'read',
+    labels: { 'rows.severity': 'severity' },
     description:
       'Open exceptions across shipments, most severe and longest open first. Returns `total` and the first `shown` rows. Use for "what is going wrong" and "what should I look at today".',
     parameters: objectSchema({
@@ -360,6 +383,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_free_time',
     kind: 'read',
+    labels: { 'rows.kind': 'clockKind' },
     description:
       'Containers whose free time is running out or has expired, and what the demurrage exposure is. Returns `total` and the first `shown` rows. Use for anything about free time, detention, demurrage or storage.',
     parameters: objectSchema({
@@ -380,6 +404,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'get_invoice',
     kind: 'read',
+    labels: { 'invoice.status': 'invoiceStatus' },
     description:
       'One customer invoice by its number: customer, status, total, paid, credited, the balance still owed, due date and days overdue. Use whenever the person asks about a specific invoice, its balance or whether it is paid.',
     parameters: objectSchema(
@@ -395,6 +420,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_unbilled',
     kind: 'read',
+    labels: { 'rows.status': 'jobStatus' },
     description:
       'Shipments carrying revenue that was earned but never invoiced, largest first, with the amount in the branch base currency, plus `total`. Use for "what have we not billed", "unbilled revenue" and anything about revenue leaking.',
     parameters: objectSchema({
@@ -404,6 +430,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_quotes_expiring',
     kind: 'read',
+    labels: { 'rows.status': 'quoteStatus' },
     description:
       'Sent quotations approaching the end of their validity, soonest first, with the customer and the quoted total, plus `total` (how many). Use for "which quotes are about to lapse" and following up before a price expires.',
     parameters: objectSchema({
@@ -431,6 +458,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
   {
     name: 'list_consolidation_candidates',
     kind: 'read',
+    labels: { mode: 'mode' },
     description:
       'Loose LCL and air shipments on the same lane that could have shared a container, grouped, largest first, with the container each group would fill. Use for "what could we consolidate", "any co-load opportunities" and finding freight bought retail that should have been bought wholesale.',
     parameters: objectSchema({

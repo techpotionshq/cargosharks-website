@@ -44,6 +44,7 @@ import {
   proposableTransitions,
   proposeTransition,
   toolsFor,
+  withLabels,
   type TransitionProposal,
 } from '@qabandi/core'
 import { AiError } from '@qabandi/core'
@@ -622,7 +623,19 @@ async function execute(
   }
 
   try {
-    return { args, value: await runTool(input.actor, call.name, args) }
+    const value = await runTool(input.actor, call.name, args)
+    /*
+      The label beside every code, in the answer's language. A model shown only
+      `in_transit` writes `in_transit` — a live Arabic answer put it in a table
+      under Arabic headings — and the prompt can only say "use the label" if
+      there is one to use.
+    */
+    return {
+      args,
+      value: declared.labels
+        ? withLabels(value, declared.labels, answerLanguage(input.question, input.locale))
+        : value,
+    }
   } catch (error) {
     return {
       args,

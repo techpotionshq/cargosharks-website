@@ -32,6 +32,7 @@ export * from './extraction'
 export * from './evaluation'
 export * from './grouping'
 export * from './assistant'
+export * from './labels'
 export * from './time'
 
 /**

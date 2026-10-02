@@ -122,6 +122,9 @@ vi.mock('./tools', () => ({
         rows: [{ number: 'KWI-INV-1', balance: INVOICES['KWI-INV-1']!.balance, currency: 'KWD' }],
       }
     }
+    if (name === 'list_jobs') {
+      return { total: 1, shown: 1, rows: [{ reference: 'KWI-JOB-0001', status: 'in_transit' }] }
+    }
     if (name === 'get_invoice') {
       const number = String(args.number)
       return INVOICES[number]
@@ -330,5 +333,29 @@ describe('a tool argument outside its vocabulary', () => {
     const refusal = world.requests[1]!.messages.at(-1)!
     expect(refusal.role).toBe('tool')
     expect(text(refusal)).toContain('sea_fcl')
+  })
+})
+
+describe('what a tool result shows the model', () => {
+  /*
+    A live Arabic answer put `in_transit` in a table under Arabic headings.
+    The result now carries the label beside the code, in the answer's language.
+  */
+  it('carries the label beside each code, in the language of the answer', async () => {
+    world.script.push(
+      () => reply('', [{ name: 'list_jobs', args: { status: 'in_transit' } }]),
+      () => reply('شحنة واحدة قيد النقل.'),
+    )
+
+    await ask({ ...base, locale: 'en', question: 'ما الشحنات قيد النقل؟' })
+
+    const result = JSON.parse(text(world.requests[1]!.messages.at(-1)!)) as {
+      rows: { status: string; statusLabel: string }[]
+    }
+    expect(result.rows[0]).toEqual({
+      reference: 'KWI-JOB-0001',
+      status: 'in_transit',
+      statusLabel: 'قيد النقل',
+    })
   })
 })
