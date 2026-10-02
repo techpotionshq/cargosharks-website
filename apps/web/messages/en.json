@@ -107,7 +107,13 @@
     "currency": "Currency",
     "notes": "Notes",
     "description": "Description",
-    "timeZone": "Time zone"
+    "timeZone": "Time zone",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "Match the device",
+    "more": "More",
+    "loading": "Loading…",
+    "home": "Home"
   },
   "search": {
     "title": "Search",
@@ -441,7 +447,10 @@
     "nextStep": "Next step",
     "empty": "No shipments yet.",
     "emptyHint": "New bookings appear here as soon as they are confirmed.",
-    "viewShipment": "View shipment"
+    "viewShipment": "View shipment",
+    "progress": "{done} of {total} steps",
+    "documentCount": "{count, plural, one {# document} other {# documents}}",
+    "etaPassed": "Past its ETA"
   },
   "agent": {
     "title": "Assigned shipments",
@@ -1614,7 +1623,10 @@
     "cancel": "Cancel it",
     "cancelTitle": "Cancel this enquiry",
     "cancelDescription": "For one that will not be quoted at all — the customer went elsewhere, or it was raised twice.",
-    "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads."
+    "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads.",
+    "respondDone": "Reply recorded. The clock has stopped.",
+    "assignDone": "Enquiry assigned.",
+    "closeDone": "Enquiry closed."
   },
   "quoteDetail": {
     "version": "v{version}",
@@ -1678,6 +1690,16 @@
       "drafting": "Drafting…",
       "save": "Save note",
       "saved": "Saved."
+    },
+    "moveOpen": {
+      "sent": "Send to customer",
+      "accepted": "Mark accepted",
+      "rejected": "Mark rejected"
+    },
+    "moveDone": {
+      "sent": "Quotation sent.",
+      "accepted": "Quotation marked accepted.",
+      "rejected": "Quotation marked rejected."
     }
   },
   "invoiceDetail": {
@@ -1756,6 +1778,18 @@
       "issued": "Issue it",
       "void": "Void it",
       "credited": "Mark credited"
+    },
+    "moveOpen": {
+      "approved": "Approve",
+      "issued": "Issue",
+      "void": "Void",
+      "credited": "Mark credited"
+    },
+    "moveDone": {
+      "approved": "Invoice approved.",
+      "issued": "Invoice issued.",
+      "void": "Invoice voided.",
+      "credited": "Invoice marked credited."
     }
   },
   "partnerDetail": {
@@ -3404,7 +3438,8 @@
     "amount": "Unbilled",
     "oldest": "Oldest line",
     "bill": "Draft invoice",
-    "mixedCurrency": "Mixed currencies — bill separately"
+    "mixedCurrency": "Mixed currencies — bill separately",
+    "showAll": "Show all {count}"
   },
   "grouping": {
     "title": "Could share a container",

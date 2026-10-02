@@ -78,12 +78,14 @@ export default async function ExceptionsPage({
           <TR>
             <TH>{t('shipment')}</TH>
             <TH>{t('problem')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{t('severity')}</TH>
-            <TH>{t('opened')}</TH>
+            <TH priority="low">{t('opened')}</TH>
             <TH>{t('due')}</TH>
-            <TH>{t('owner')}</TH>
-            <TH align="end">{t('cost')}</TH>
+            <TH priority="low">{t('owner')}</TH>
+            <TH priority="low" align="end">
+              {t('cost')}
+            </TH>
           </TR>
         </THead>
         <TBody>
@@ -99,12 +101,15 @@ export default async function ExceptionsPage({
                     {locale === 'ar' ? row.nameAr : row.nameEn}
                   </span>
                   {row.description ? (
-                    <span className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted">
+                    <span
+                      dir="auto"
+                      className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted"
+                    >
                       {row.description}
                     </span>
                   ) : null}
                 </TD>
-                <TD className="text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
                 </TD>
                 <TD>
@@ -112,7 +117,7 @@ export default async function ExceptionsPage({
                     {t(`severities.${row.severity}`)}
                   </Badge>
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {formatRelative(row.openedAt, locale, now)}
                 </TD>
                 <TD
@@ -120,8 +125,10 @@ export default async function ExceptionsPage({
                 >
                   {row.dueAt ? formatRelative(row.dueAt, locale, now) : '—'}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.owner ?? t('unassigned')}</TD>
-                <TD align="end" numeric>
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                  {row.owner ?? t('unassigned')}
+                </TD>
+                <TD priority="low" align="end" numeric>
                   {row.costImpact
                     ? `${trimDecimal(row.costImpact)} ${row.costCurrency ?? ''}`.trim()
                     : '—'}

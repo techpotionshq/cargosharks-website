@@ -11,7 +11,8 @@
  *
  * What is added on top is only what the platform does not do:
  *
- *   - a backdrop click closes it (`<dialog>` does not do this by itself)
+ *   - a backdrop click closes it (`<dialog>` does not do this by itself) —
+ *     unless something has been typed, see `dirty`
  *   - the page behind stops scrolling while it is open
  *   - a `close()` reachable from anywhere inside, so a form can dismiss the
  *     dialog it lives in without the caller threading a callback down
@@ -33,6 +34,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Icon, type IconName } from './icon'
+import { buttonClass } from './control'
 
 const DialogContext = createContext<{ close: () => void } | null>(null)
 
@@ -90,6 +92,16 @@ export function Modal({
   const [open, setOpen] = useState(false)
   const titleId = useId()
   const lastSignal = useRef(closeOn)
+  /*
+    Whether anything inside has been typed into since it opened.
+
+    A stray click on the scrim used to throw away a half-written enquiry —
+    the dialog closed, the uncontrolled fields went with it, and there is no
+    undo. Once a field has changed, the backdrop stops dismissing and only
+    the explicit ways out (Cancel, the close button, Escape) remain. A ref,
+    because nothing renders from it.
+  */
+  const dirty = useRef(false)
 
   const close = useCallback(() => {
     ref.current?.close()
@@ -98,6 +110,7 @@ export function Modal({
 
   const show = useCallback(() => {
     lastSignal.current = closeOn
+    dirty.current = false
     ref.current?.showModal()
     setOpen(true)
   }, [closeOn])
@@ -157,7 +170,10 @@ export function Modal({
         // is the dialog rather than any of its children landed outside the
         // panel, because the panel fills the dialog's padding box.
         onClick={(event) => {
-          if (event.target === ref.current) close()
+          if (event.target === ref.current && !dirty.current) close()
+        }}
+        onInput={() => {
+          dirty.current = true
         }}
         /*
           The height cap and the flex column live on the *element*, and that is
@@ -173,12 +189,15 @@ export function Modal({
           selector beats the user-agent's `display: none` for a closed one, and
           every dialog on the page would render inline, permanently.
         */
-        className={`m-auto max-h-[85dvh] w-[calc(100vw-2rem)] ${SIZE[size]} overflow-hidden rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:flex open:animate-[qb-modal-in_140ms_ease-out]`}
+        // `visible`: a dialog opened from a `MoreMenu` lives inside a panel
+        // that hides itself with `visibility` once the row is clicked, and
+        // visibility is inherited — see `ui/menu.tsx`.
+        className={`visible m-auto max-h-[85dvh] w-[calc(100vw-2rem)] ${SIZE[size]} overflow-hidden rounded-lg border border-line bg-surface p-0 text-ink shadow-pop backdrop:bg-[color:var(--qb-scrim)] backdrop:backdrop-blur-[2px] open:flex open:animate-[qb-modal-in_140ms_ease-out]`}
       >
         <div className="flex min-h-0 w-full flex-1 flex-col">
           <header className="flex items-start gap-3 border-b border-line px-5 py-4">
             {icon ? (
-              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink">
+              <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
                 <Icon name={icon} size={18} />
               </span>
             ) : null}
@@ -194,7 +213,7 @@ export function Modal({
               type="button"
               onClick={close}
               aria-label={closeLabel}
-              className="-me-1 flex size-8 shrink-0 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink"
+              className="-me-2 -mt-1 flex size-10 shrink-0 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink"
             >
               <Icon name="close" size={17} />
             </button>
@@ -223,11 +242,7 @@ export function Modal({
 export function ModalCancel({ children }: { readonly children: ReactNode }) {
   const { close } = useDialog()
   return (
-    <button
-      type="button"
-      onClick={close}
-      className="inline-flex h-9 items-center rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken"
-    >
+    <button type="button" onClick={close} className={buttonClass('secondary', 'md')}>
       {children}
     </button>
   )

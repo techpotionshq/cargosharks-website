@@ -81,86 +81,90 @@ export default async function UsersPage() {
       ]}
       isEmpty={false}
       empty={{ title: '' }}
+      // Two bodies — the people, then the roles — so each draws its own card.
+      framed={false}
     >
-      <TableShell className="mb-5">
-        <THead>
-          <TR>
-            <TH>{t('name')}</TH>
-            <TH>{t('email')}</TH>
-            <TH>{t('assignments')}</TH>
-            <TH>{t('signIn')}</TH>
-            <TH>{t('lastSeen')}</TH>
-            <TH>{tc('status')}</TH>
-            <TH align="end" />
-          </TR>
-        </THead>
-        <TBody>
-          {people.map((person) => (
-            <TR key={person.id}>
-              <TD className="font-medium text-ink">
-                {locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
-              </TD>
-              <TD className="ref text-ink-muted">{person.email}</TD>
-              <TD>
-                {person.assignments.length === 0 ? (
-                  <span className="text-ink-subtle">{t('noAssignments')}</span>
-                ) : (
-                  <span className="flex flex-wrap gap-1">
-                    {person.assignments.map((assignment) => (
-                      <Badge
-                        key={`${assignment.branchCode}-${assignment.roleKey}`}
-                        tone="info"
-                        icon={assignment.requiresTwoFactor ? 'hold' : undefined}
-                      >
-                        <span className="ref">{assignment.branchCode}</span>
-                        <span className="mx-1 opacity-50">·</span>
-                        {tNav(`roles.${assignment.roleKey}`)}
-                      </Badge>
-                    ))}
-                  </span>
-                )}
-              </TD>
-              <TD>
-                {person.type === 'system' ? (
-                  <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
-                ) : person.hasPassword ? (
-                  <Icon name="check" size={16} className="text-positive" />
-                ) : (
-                  /*
+      <Card padding="none" className="mb-5 overflow-hidden">
+        <TableShell>
+          <THead>
+            <TR>
+              <TH>{t('name')}</TH>
+              <TH>{t('email')}</TH>
+              <TH>{t('assignments')}</TH>
+              <TH>{t('signIn')}</TH>
+              <TH>{t('lastSeen')}</TH>
+              <TH>{tc('status')}</TH>
+              <TH align="end" />
+            </TR>
+          </THead>
+          <TBody>
+            {people.map((person) => (
+              <TR key={person.id}>
+                <TD className="font-medium text-ink">
+                  {locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
+                </TD>
+                <TD className="ref text-ink-muted">{person.email}</TD>
+                <TD>
+                  {person.assignments.length === 0 ? (
+                    <span className="text-ink-subtle">{t('noAssignments')}</span>
+                  ) : (
+                    <span className="flex flex-wrap gap-1">
+                      {person.assignments.map((assignment) => (
+                        <Badge
+                          key={`${assignment.branchCode}-${assignment.roleKey}`}
+                          tone="info"
+                          icon={assignment.requiresTwoFactor ? 'hold' : undefined}
+                        >
+                          <span className="ref">{assignment.branchCode}</span>
+                          <span className="mx-1 opacity-50">·</span>
+                          {tNav(`roles.${assignment.roleKey}`)}
+                        </Badge>
+                      ))}
+                    </span>
+                  )}
+                </TD>
+                <TD>
+                  {person.type === 'system' ? (
+                    <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
+                  ) : person.hasPassword ? (
+                    <Icon name="check" size={16} className="text-positive" />
+                  ) : (
+                    /*
                     Invited, or recorded before invitations created a login —
                     either way they cannot sign in yet, and the register says
                     so rather than drawing a tick (A7). The button reports
                     what became of the mail.
                   */
-                  <span className="flex flex-col items-start gap-1">
-                    <span className="text-[0.75rem] text-ink-subtle">
-                      {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
+                    <span className="flex flex-col items-start gap-1">
+                      <span className="text-[0.75rem] text-ink-subtle">
+                        {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
+                      </span>
+                      {person.isActive ? (
+                        <SignInLinkButton principalId={person.id} label={t('sendSignInLink')} />
+                      ) : null}
                     </span>
-                    {person.isActive ? (
-                      <SignInLinkButton principalId={person.id} label={t('sendSignInLink')} />
-                    ) : null}
-                  </span>
-                )}
-              </TD>
-              <TD className="whitespace-nowrap text-ink-muted">
-                {person.lastSeenAt ? formatRelative(person.lastSeenAt, locale, now) : '—'}
-              </TD>
-              <TD>
-                <Badge tone={person.isActive ? 'positive' : 'muted'}>
-                  {person.isActive ? tc('active') : tc('inactive')}
-                </Badge>
-              </TD>
-              <TD align="end">
-                <SuspendUserDialog
-                  principalId={person.id}
-                  name={locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
-                  isActive={person.isActive}
-                />
-              </TD>
-            </TR>
-          ))}
-        </TBody>
-      </TableShell>
+                  )}
+                </TD>
+                <TD className="whitespace-nowrap text-ink-muted">
+                  {person.lastSeenAt ? formatRelative(person.lastSeenAt, locale, now) : '—'}
+                </TD>
+                <TD>
+                  <Badge tone={person.isActive ? 'positive' : 'muted'}>
+                    {person.isActive ? tc('active') : tc('inactive')}
+                  </Badge>
+                </TD>
+                <TD align="end">
+                  <SuspendUserDialog
+                    principalId={person.id}
+                    name={locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
+                    isActive={person.isActive}
+                  />
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </TableShell>
+      </Card>
 
       <Grid>
         <Card className="lg:col-span-7" padding="none">

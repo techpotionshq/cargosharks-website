@@ -27,7 +27,7 @@ export function BillJobButton({
   return (
     <form action={action} className="flex flex-col items-end gap-1">
       <input type="hidden" name="jobId" value={jobId} />
-      <Button type="submit" variant="secondary" size="sm" icon="invoices" disabled={pending}>
+      <Button type="submit" variant="ghost" size="sm" icon="invoices" disabled={pending}>
         {label}
       </Button>
       {state.message ? (

@@ -37,6 +37,7 @@ import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { consolidationCandidates } from '../candidates'
 import { FormClusterButton } from './form-cluster-button'
+import { Lane } from '@/ui/layout'
 
 export async function CandidatesPanel() {
   const timeZone = await getTimeZone()
@@ -55,14 +56,23 @@ export async function CandidatesPanel() {
 
   return (
     <Card className="mb-4" padding="none">
-      <CardHeader title={t('title')} description={t('description', { count: clusters.length })} />
+      <CardHeader
+        className="p-4 pb-3"
+        title={t('title')}
+        description={t('description', { count: clusters.length })}
+      />
       <ul className="divide-y divide-line">
         {clusters.map((cluster) => (
           <li key={cluster.key} className="flex flex-wrap items-start gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[0.9375rem] font-semibold text-ink">
-                  {cluster.originName ?? '—'} → {cluster.destinationName ?? '—'}
+                  {/* The drawn arrow mirrors; a typed U+2192 points back at the
+                      origin in Arabic. */}
+                  <Lane
+                    origin={cluster.originName ?? '—'}
+                    destination={cluster.destinationName ?? '—'}
+                  />
                 </span>
                 <Badge tone="muted">{t(`modes.${cluster.mode}`)}</Badge>
                 {cluster.fit ? (

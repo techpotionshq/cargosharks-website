@@ -68,7 +68,7 @@ export default async function ForgotPasswordPage() {
         <div className="mt-8 border-t border-line pt-6">
           <Link
             href="/sign-in"
-            className="inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-brand hover:underline"
+            className="inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-accent hover:underline"
           >
             {/*
               `arrow-end` is in the mirrored set, so it already flips with the

@@ -19,6 +19,7 @@ import { useActionState } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import { Button } from '@/ui/layout'
 import { allocateConsolCharge, attachHouse, detachHouse } from '../form-actions'
+import { FOCUS_RING } from '@/ui/control'
 
 function Refusal({ message }: { readonly message?: string }) {
   return message ? (
@@ -145,7 +146,7 @@ export function AllocateButton({
                     placeholder={manual.currency}
                     aria-invalid={error ? true : undefined}
                     defaultValue={state.values?.[`share_${house.jobId}`] ?? ''}
-                    className="h-8 w-28 rounded-sm border border-line bg-surface-sunken px-2 text-end text-[0.8125rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
+                    className={`h-8 w-28 rounded-sm border border-line-strong bg-surface-sunken px-2 text-end text-[0.8125rem] text-ink focus:bg-surface ${FOCUS_RING}`}
                   />
                 </label>
                 <Refusal message={error} />

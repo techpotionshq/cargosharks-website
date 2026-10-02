@@ -31,6 +31,7 @@ import { formatDate, formatMoney, trimDecimal } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
+import { MoreMenu } from '@/ui/menu'
 
 const STATUS_TONE: Record<string, Tone> = {
   received: 'info',
@@ -67,7 +68,7 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   ])
 
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
+    formatMoney({ amount: amount, currency }, locale)
 
   const candidates: MatchCandidateOption[] = candidateRows.map((c) => ({
     id: c.id,
@@ -95,35 +96,39 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
           </span>
         }
         title={bill.reference}
+        /*
+          Approve is the one primary; editing and disputing the bill sit
+          behind More, disputing as the destructive row it is.
+        */
         actions={
           <span className="flex flex-wrap items-center gap-2">
-            {editable && can(session, 'payable.record') ? (
-              <SupplierInvoiceDialog
-                variant="secondary"
-                defaults={{
-                  id: bill.id,
-                  branchId: bill.branchId,
-                  partnerId: bill.partnerId,
-                  reference: bill.reference,
-                  currency: bill.currency,
-                  fxRate: trimDecimal(bill.fxRate),
-                  invoiceDate: bill.invoiceDate,
-                  dueOn: bill.dueOn,
-                  taxAmount: trimDecimal(bill.taxAmount),
-                  notes: bill.notes,
-                }}
+            {editable ? (
+              <BillDecisionDialog
+                billId={bill.id}
+                action="approve"
+                needsReview={!bill.summary.clean}
               />
             ) : null}
-            {editable ? (
-              <>
-                <BillDecisionDialog billId={bill.id} action="dispute" />
-                <BillDecisionDialog
-                  billId={bill.id}
-                  action="approve"
-                  needsReview={!bill.summary.clean}
+            <MoreMenu label={tc('more')}>
+              {editable && can(session, 'payable.record') ? (
+                <SupplierInvoiceDialog
+                  variant="secondary"
+                  defaults={{
+                    id: bill.id,
+                    branchId: bill.branchId,
+                    partnerId: bill.partnerId,
+                    reference: bill.reference,
+                    currency: bill.currency,
+                    fxRate: trimDecimal(bill.fxRate),
+                    invoiceDate: bill.invoiceDate,
+                    dueOn: bill.dueOn,
+                    taxAmount: trimDecimal(bill.taxAmount),
+                    notes: bill.notes,
+                  }}
                 />
-              </>
-            ) : null}
+              ) : null}
+              {editable ? <BillDecisionDialog billId={bill.id} action="dispute" /> : null}
+            </MoreMenu>
           </span>
         }
       />

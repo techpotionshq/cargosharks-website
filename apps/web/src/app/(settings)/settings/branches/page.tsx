@@ -79,7 +79,7 @@ export default async function BranchesPage() {
         <TBody>
           {rows.map((row) => (
             <TR key={row.id} flag={row.calendarName ? undefined : 'caution'}>
-              <TD className="ref whitespace-nowrap text-brand">{row.code}</TD>
+              <TD className="ref whitespace-nowrap font-medium text-ink">{row.code}</TD>
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
               </TD>

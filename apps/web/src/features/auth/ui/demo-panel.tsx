@@ -58,7 +58,7 @@ export function DemoPanel({
 
   return (
     <div className="mt-4 flex items-center gap-2 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5">
-      <span className="eyebrow flex items-center gap-1 text-brand">
+      <span className="eyebrow flex items-center gap-1 text-accent">
         <Icon name="live" size={11} />
         {labels.title}
       </span>
@@ -77,7 +77,7 @@ export function DemoPanel({
               type="button"
               onClick={() => fill(persona.email)}
               aria-label={`${persona.role} — ${persona.name}`}
-              className="flex size-6 items-center justify-center rounded-full bg-brand-soft text-brand-soft-ink transition-colors hover:bg-brand hover:text-on-brand"
+              className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-accent transition-colors hover:bg-accent hover:text-on-brand"
             >
               <Icon name={persona.icon} size={13} />
             </button>
@@ -85,10 +85,15 @@ export function DemoPanel({
               The view's name, revealed by pointer or keyboard
               (`group-focus-within`) and stated on `aria-label` besides — a
               tooltip a screen reader cannot announce is decoration.
+
+              Anchored to the button's inline end rather than centred on it:
+              these sit at the trailing edge of the card, and a centred label
+              on the last one hung past the edge of a phone. `end-0` keeps it
+              inside in both directions.
             */}
             <span
               role="tooltip"
-              className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-[0.6875rem] font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+              className="pointer-events-none absolute end-0 bottom-full z-10 mb-1.5 whitespace-nowrap rounded-sm border border-line bg-surface px-2 py-1 text-[0.6875rem] font-medium text-ink opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             >
               {persona.role}
             </span>

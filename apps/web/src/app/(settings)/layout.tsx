@@ -40,6 +40,7 @@ import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
+import { Toaster } from '@/ui/toast'
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -162,7 +163,12 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
-          <Link href="/dashboard" className="md:hidden">
+          {/* Named, as in the operations shell: the mark alone gives a link no text. */}
+          <Link
+            href="/dashboard"
+            aria-label={locale === 'ar' ? brand.identity.nameAr : brand.identity.nameEn}
+            className="-ms-2 flex size-10 items-center justify-center rounded-sm md:hidden"
+          >
             <Logo brand={brand} locale={locale} size="sm" markOnly />
           </Link>
 
@@ -180,7 +186,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <div className="ms-auto flex items-center gap-1.5">
             <Link
               href="/dashboard"
-              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:border-brand hover:text-brand sm:inline-flex"
+              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:border-brand hover:text-accent sm:inline-flex"
             >
               <Icon name="dashboard" size={14} />
               {tc('operations')}
@@ -195,6 +201,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
       </div>
+
+      {/* The same "done" line the operations shell has — see `ui/toast.tsx`. */}
+      <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />
     </div>
   )
 }

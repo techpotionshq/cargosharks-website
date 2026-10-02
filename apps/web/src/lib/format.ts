@@ -39,13 +39,26 @@ function intlLocale(locale: Locale): string {
   return locale === 'ar' ? 'ar-KW-u-nu-latn' : 'en-GB'
 }
 
+/**
+ * `amount` takes the decimal string the database hands back, and should.
+ *
+ * It used to take only a `number`, so every call site wrote
+ * `Number(row.total)` first — a float conversion on the way to the screen,
+ * harmless at today's figures and exactly the habit the money rule forbids.
+ * `Intl.NumberFormat` formats a numeric *string* at full precision (it is
+ * specified to, since ES2023), so the string goes straight through and the
+ * `number` form stays for amounts that are genuinely computed for display.
+ */
 export function formatMoney(
-  value: { amount: number; currency: string } | null | undefined,
+  value: { amount: number | string; currency: string } | null | undefined,
   locale: Locale,
   options: { compact?: boolean; showCurrency?: boolean } = {},
 ): string {
   if (!value) return '—'
   const { compact = false, showCurrency = true } = options
+  // Only the size test needs a number; the formatted figure never passes
+  // through one.
+  const magnitude = Math.abs(Number(value.amount))
 
   /*
     The currency's own places, also when the code is not printed.
@@ -65,7 +78,7 @@ export function formatMoney(
     style: showCurrency ? 'currency' : 'decimal',
     currency: value.currency,
     ...(showCurrency ? {} : { minimumFractionDigits: places, maximumFractionDigits: places }),
-    notation: compact && Math.abs(value.amount) >= 10_000 ? 'compact' : 'standard',
+    notation: compact && magnitude >= 10_000 ? 'compact' : 'standard',
     /*
       Compact notation and three-decimal currencies do not mix legibly.
 
@@ -78,10 +91,12 @@ export function formatMoney(
       the whole fix, and it makes the output the same under any ICU build
       instead of depending on how one resolves the conflict.
     */
-    ...(compact && Math.abs(value.amount) >= 10_000
+    ...(compact && magnitude >= 10_000
       ? { minimumFractionDigits: 0, maximumFractionDigits: 1 }
       : {}),
-  }).format(value.amount)
+  }).format(
+    typeof value.amount === 'string' ? (value.amount as Intl.StringNumericLiteral) : value.amount,
+  )
 }
 
 /**
@@ -233,9 +248,21 @@ export function formatPercent(value: number | null | undefined, locale: Locale):
   }).format(value / 100)
 }
 
-/** A lane, in the reader's language and in the reader's direction. */
-export function formatLane(originName: string, destinationName: string): string {
-  // U+2192 renders correctly under RTL because the surrounding text direction
-  // carries it; an ASCII "->" does not.
-  return `${originName} → ${destinationName}`
+/**
+ * A lane, in the reader's language and in the reader's direction.
+ *
+ * The arrow is chosen by locale because it is not a mirrored character.
+ * Under RTL the two names reorder — origin on the right, destination on the
+ * left — while U+2192 kept pointing right, back at the origin: every Arabic
+ * lane read as travelling backwards. `←` in Arabic points at the destination,
+ * which is what the slice queries already do (`ledger`, `network`); this is the
+ * same rule for the string a page builds itself. The drawn `Lane` component
+ * is still preferred wherever markup is allowed.
+ */
+export function formatLane(
+  originName: string,
+  destinationName: string,
+  locale: Locale = 'en',
+): string {
+  return `${originName} ${locale === 'ar' ? '←' : '→'} ${destinationName}`
 }

@@ -67,10 +67,7 @@ export async function RenewalsPanel() {
             <div className="text-end">
               {row.quotedTotal && row.quotedCurrency ? (
                 <div className="text-[0.9375rem] font-semibold text-ink">
-                  {formatMoney(
-                    { amount: Number(row.quotedTotal), currency: row.quotedCurrency },
-                    locale,
-                  )}
+                  {formatMoney({ amount: row.quotedTotal, currency: row.quotedCurrency }, locale)}
                 </div>
               ) : (
                 <span className="text-[0.8125rem] text-ink-subtle">{tShared('awaiting')}</span>

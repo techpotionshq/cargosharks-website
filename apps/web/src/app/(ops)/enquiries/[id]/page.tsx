@@ -37,6 +37,7 @@ import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automati
 import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
+import { MoreMenu } from '@/ui/menu'
 import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -124,34 +125,45 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         }
         title={hasOptions ? t('title') : t('awaitingTitle')}
         description={hasOptions ? t('subtitle') : t('awaitingSubtitle')}
-        actionsBefore={
-          <EnquiryActions
-            enquiryId={id}
-            hasResponded={comparison.hasResponded}
-            isClosed={comparison.isClosed}
-            status={comparison.status}
-          />
-        }
+        /*
+          One primary action — Price it — and everything else behind More.
+
+          This header used to carry six equal buttons: Mark replied, Assign,
+          Cancel it, Close, Price it, New quotation. The one that moves an
+          enquiry on was the fifth and no louder than the one that ends it.
+          The menu keeps every move one click away in the same order, with
+          cancelling drawn as the destructive row it is.
+        */
         actionsAfter={
-          comparison.isClosed || comparison.hasAccepted ? null : (
-            /*
-              Defaults from the enquiry and its current quotation (S7): the
-              enquiry's branch and base currency, and the figures already
-              priced, so a revision starts from the offer it revises rather
-              than from DXB, USD and two empty boxes.
-            */
-            <QuoteDialog
-              enquiryId={id}
-              branchId={comparison.branchId}
-              currency={comparison.options[0]?.sell.currency ?? comparison.baseCurrency}
-              totalSell={
-                comparison.options[0] ? String(comparison.options[0].sell.amount) : undefined
-              }
-              totalCost={
-                comparison.options[0] ? String(comparison.options[0].buy.amount) : undefined
-              }
-              variant="secondary"
-            />
+          comparison.isClosed ? null : (
+            <MoreMenu label={tc('more')}>
+              <EnquiryActions
+                enquiryId={id}
+                hasResponded={comparison.hasResponded}
+                isClosed={comparison.isClosed}
+                status={comparison.status}
+              />
+              {comparison.hasAccepted ? null : (
+                /*
+                  Defaults from the enquiry and its current quotation (S7): the
+                  enquiry's branch and base currency, and the figures already
+                  priced, so a revision starts from the offer it revises rather
+                  than from DXB, USD and two empty boxes.
+                */
+                <QuoteDialog
+                  enquiryId={id}
+                  branchId={comparison.branchId}
+                  currency={comparison.options[0]?.sell.currency ?? comparison.baseCurrency}
+                  totalSell={
+                    comparison.options[0] ? String(comparison.options[0].sell.amount) : undefined
+                  }
+                  totalCost={
+                    comparison.options[0] ? String(comparison.options[0].buy.amount) : undefined
+                  }
+                  variant="secondary"
+                />
+              )}
+            </MoreMenu>
           )
         }
       />
@@ -175,7 +187,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
           {timing ? (
             <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-brand text-on-brand">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent text-on-brand">
                 <Icon name="clock" size={18} />
               </span>
               <div>
@@ -262,7 +274,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             {comparison.options.map((option) => (
               <Card
                 key={option.id}
-                className={option.isRecommended ? 'ring-2 ring-brand/30' : undefined}
+                className={option.isRecommended ? 'ring-2 ring-accent/30' : undefined}
               >
                 <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
                   <div className="min-w-0">

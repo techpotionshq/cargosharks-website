@@ -41,6 +41,7 @@ import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { Term } from '@/ui/term'
 import { Notice } from '@/ui/notice'
 import { OpenShipmentFromQuote } from '@/features/jobs/ui/dialogs'
+import { MoreMenu } from '@/ui/menu'
 
 export async function generateMetadata({
   params,
@@ -66,6 +67,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   if (!quote) notFound()
 
   const t = await getTranslations('quoteDetail')
+  // Each covering note's placeholder in its own language — see `CoverNoteEditor`.
+  const [tEn, tAr] = await Promise.all([
+    getTranslations({ locale: 'en', namespace: 'quoteDetail' }),
+    getTranslations({ locale: 'ar', namespace: 'quoteDetail' }),
+  ])
   const tc = await getTranslations('common')
   const tq = await getTranslations('quotes')
   const tMode = await getTranslations('mode')
@@ -107,7 +113,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             </span>
           ) : undefined
         }
-        actions={
+        status={
           <>
             <Badge tone={quoteTone(quote.status)} dot>
               {tq(`statuses.${quote.status}` as 'statuses.sent')}
@@ -115,7 +121,19 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             {quote.version > 1 ? (
               <Badge tone="muted">{t('version', { version: quote.version })}</Badge>
             ) : null}
-            {/*
+          </>
+        }
+        /*
+          One primary: the move that takes the quotation forward (send a
+          draft, accept a sent one), or opening the shipment once it is
+          accepted. The PDFs and the moves that end it sit behind More.
+        */
+        actions={
+          <>
+            <QuoteStatusActions quoteId={quote.id} status={quote.status} part="forward" />
+            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
+            <MoreMenu label={tc('more')}>
+              {/*
               The document the customer receives — FR-EQ-08.
 
               Both languages, as plain links: a `GET` renders and streams and
@@ -124,14 +142,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               `check-links.mjs` reads an interpolated href by its literal
               prefix and cannot see past the first `${`.
             */}
-            <Button size="sm" variant="ghost" href={pdf} download icon="download">
-              {t('pdf')}
-            </Button>
-            <Button size="sm" variant="ghost" href={`${pdf}?locale=ar`} download>
-              {t('pdfAr')}
-            </Button>
-            <QuoteStatusActions quoteId={quote.id} status={quote.status} />
-            {quote.status === 'accepted' ? <OpenShipmentFromQuote quoteId={quote.id} /> : null}
+              <Button variant="menu" href={pdf} download icon="download">
+                {t('pdf')}
+              </Button>
+              <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
+                {t('pdfAr')}
+              </Button>
+              <QuoteStatusActions quoteId={quote.id} status={quote.status} part="other" />
+            </MoreMenu>
           </>
         }
       />
@@ -223,16 +241,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       {Number(line.quantity)}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
-                      {formatMoney({ amount: Number(line.rate), currency: line.currency }, locale, {
+                      {formatMoney({ amount: line.rate, currency: line.currency }, locale, {
                         showCurrency: false,
                       })}
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {formatMoney(
-                        { amount: Number(line.amount), currency: line.currency },
-                        locale,
-                        { showCurrency: false },
-                      )}
+                      {formatMoney({ amount: line.amount, currency: line.currency }, locale, {
+                        showCurrency: false,
+                      })}
                     </TD>
                   </TR>
                 ))}
@@ -247,7 +263,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <Field label={t('enquiry')}>
                 <Link
                   href={`/enquiries/${quote.enquiryId}`}
-                  className="ref text-brand hover:underline"
+                  className="ref text-ink hover:text-accent hover:underline"
                 >
                   {quote.enquiryReference}
                 </Link>
@@ -265,7 +281,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </Field>
             </dl>
             {quote.notes ? (
-              <p className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted">
+              <p
+                dir="auto"
+                className="mt-4 border-t border-line pt-4 text-[0.8125rem] text-ink-muted"
+              >
                 {quote.notes}
               </p>
             ) : null}
@@ -291,7 +310,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       href={`/quotes/${version.id}` as Route}
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
-                      <span className="ref numeric text-[0.8125rem] text-brand">
+                      <span className="ref numeric text-[0.8125rem] text-accent">
                         {version.reference}
                       </span>
                       <span className="flex items-center gap-2">
@@ -330,7 +349,8 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             labels={{
               english: t('coverNote.english'),
               arabic: t('coverNote.arabic'),
-              placeholder: t('coverNote.placeholder'),
+              placeholder: tEn('coverNote.placeholder'),
+              placeholderAr: tAr('coverNote.placeholder'),
               draft: t('coverNote.draft'),
               drafting: t('coverNote.drafting'),
               save: t('coverNote.save'),

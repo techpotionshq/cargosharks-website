@@ -27,6 +27,7 @@ import { can, canOpenSettings } from '@/lib/permissions'
 import { getNavCounts } from '@/features/dashboard/nav-counts'
 import { SupportAccessBanner } from '@/features/support/ui/banner'
 import { AssistantDock } from '@/features/assistant/ui/assistant-dock'
+import { AssistantLauncher } from '@/features/assistant/ui/assistant-launcher'
 import { assistantLabels } from '@/features/assistant/labels'
 import { assistantConfigured } from '@/features/assistant/queries'
 import { signOut } from '@/features/auth/actions'
@@ -34,6 +35,8 @@ import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
+import { FOCUS_RING } from '@/ui/control'
+import { Toaster } from '@/ui/toast'
 import { getInbox } from '@/features/notifications/queries'
 import { NotificationBell } from '@/features/notifications/ui/notification-bell'
 
@@ -300,7 +303,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                   type="submit"
                   title={t('signOut')}
                   aria-label={t('signOut')}
-                  className="flex size-7 items-center justify-center rounded-sm text-chrome-ink-muted transition-colors hover:bg-surface hover:text-critical"
+                  className="flex size-9 items-center justify-center rounded-sm text-chrome-ink-muted transition-colors hover:bg-surface hover:text-critical"
                 >
                   <Icon name="sign-out" size={15} />
                 </button>
@@ -313,7 +316,16 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface/85 px-4 backdrop-blur-md md:px-6">
           {/* On a phone the sidebar collapses to the mark alone. */}
-          <Link href="/dashboard" className="md:hidden">
+          {/*
+            Named, because the mark alone is an image and the link had no text
+            a screen reader could announce — it was read as "link", twice per
+            screen. 40px square so it is a target and not a smudge.
+          */}
+          <Link
+            href="/dashboard"
+            aria-label={locale === 'ar' ? brand.identity.nameAr : brand.identity.nameEn}
+            className="-ms-2 flex size-10 items-center justify-center rounded-sm md:hidden"
+          >
             <Logo brand={brand} locale={locale} size="sm" markOnly />
           </Link>
 
@@ -336,7 +348,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
               name="q"
               placeholder={tc('searchPlaceholder')}
               aria-label={tc('search')}
-              className="h-9 w-full rounded-full border border-line bg-surface-sunken ps-9 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+              className={`h-9 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
             />
           </form>
 
@@ -350,6 +362,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
                 {tApp('pilot')}
               </span>
             ) : null}
+            {aiConfigured ? <AssistantLauncher label={ta('title')} /> : null}
             <NotificationBell inbox={inbox} />
             <TimeZoneSwitch current={session.principal.timezone} />
             <ThemeSwitch current={theme} />
@@ -387,16 +400,17 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           `calc`, which is wrong the first time the header wraps.
         */}
         {/*
-          The block-end padding is the assistant's footprint, not taste.
+          The block-end padding is the assistant's footprint on a phone only.
 
-          The dock is `fixed bottom-5 end-5` at `h-11`, so it floats four rems
-          up from the viewport floor over whatever is beneath it — and what is
-          beneath it, on every register in the product, is the total row of a
-          table. A charge breakdown's margin and amount were sitting under it.
-          Six rems clears the button with a gap; page-level padding is enough
-          because nothing here scrolls in its own container.
+          From `md` up the launcher lives in the top bar and covers nothing, so
+          the page ends where its content does. On a phone it is still a 48px
+          button floating `bottom-4 end-4` over whatever is last on the
+          screen — on every register, the total row of a table — and five rems
+          clears it with a gap.
         */}
-        <main className="flex flex-1 flex-col px-4 pt-6 pb-24 md:px-6 lg:px-8">{children}</main>
+        <main className="flex flex-1 flex-col px-4 pt-6 pb-20 md:px-6 md:pb-10 lg:px-8">
+          {children}
+        </main>
       </div>
 
       {/*
@@ -414,6 +428,9 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         across the boundary.
       */}
       <AssistantDock labels={assistantLabels(ta)} configured={aiConfigured} />
+
+      {/* "Done", said once, after a dialog's save — see `ui/toast.tsx`. */}
+      <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />
     </div>
   )
 }

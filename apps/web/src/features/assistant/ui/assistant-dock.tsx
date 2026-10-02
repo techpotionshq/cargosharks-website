@@ -12,7 +12,7 @@
  * So it behaves like the messaging window every one of these people already
  * has open in another tab. Three states, and the middle one is the default:
  *
- *   `closed`     a launcher in the corner
+ *   `closed`     a launcher in the top bar (a floating icon on a phone)
  *   `docked`     a column beside the work, which stays usable
  *   `expanded`   wide, for reading a long thread without leaving the page
  *
@@ -33,6 +33,7 @@ import { usePathname } from 'next/navigation'
 import type { Route } from 'next'
 import { Icon } from '@/ui/icon'
 import { Conversation, type ConversationLabels } from './conversation'
+import { ASSISTANT_SIZE_EVENT, ASSISTANT_TOGGLE_EVENT } from './assistant-events'
 import { useAssistant } from './use-assistant'
 
 export interface DockLabels extends ConversationLabels {
@@ -97,6 +98,24 @@ export function AssistantDock({
     window.sessionStorage.setItem(SIZE_KEY, next)
   }, [])
 
+  // Tell the top-bar launcher what the panel is now, however it got there.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(ASSISTANT_SIZE_EVENT, { detail: size }))
+  }, [size])
+
+  useEffect(() => {
+    if (onOwnPage) return
+    function onToggle() {
+      setSize((current) => {
+        const next = current === 'closed' ? 'docked' : 'closed'
+        window.sessionStorage.setItem(SIZE_KEY, next)
+        return next
+      })
+    }
+    window.addEventListener(ASSISTANT_TOGGLE_EVENT, onToggle)
+    return () => window.removeEventListener(ASSISTANT_TOGGLE_EVENT, onToggle)
+  }, [onOwnPage])
+
   useEffect(() => {
     if (onOwnPage) return
 
@@ -133,17 +152,22 @@ export function AssistantDock({
   if (!configured) return null
 
   if (size === 'closed') {
+    /*
+      Phones only. From `md` up the launcher is in the top bar
+      (`assistant-launcher.tsx`); here it is a 48px icon in the corner, named
+      for screen readers, with no ⌘K hint — a phone has no keyboard to press
+      it on. Navy rather than the brand red, so the one thing floating over
+      every screen is not the colour of an alarm.
+    */
     return (
       <button
         type="button"
         onClick={() => resize('docked')}
-        className="fixed bottom-5 end-5 z-40 inline-flex h-11 items-center gap-2 rounded-full bg-brand ps-4 pe-5 text-[0.875rem] font-semibold text-on-brand shadow-lg transition-colors hover:bg-brand-hover"
+        aria-label={labels.title}
+        title={labels.title}
+        className="fixed end-4 bottom-4 z-40 flex size-12 items-center justify-center rounded-full bg-accent text-on-brand shadow-pop transition-transform active:scale-95 md:hidden"
       >
-        <Icon name="assistant" className="h-4 w-4" />
-        {labels.title}
-        <kbd className="ms-1 rounded-sm bg-on-brand/15 px-1.5 py-0.5 text-[0.6875rem] font-medium">
-          ⌘K
-        </kbd>
+        <Icon name="assistant" size={20} />
       </button>
     )
   }
@@ -167,7 +191,7 @@ export function AssistantDock({
           onClick={() => setShowThreads((was) => !was)}
           aria-label={labels.threads}
           aria-expanded={showThreads}
-          className="rounded-sm p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex size-9 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         >
           <Icon name="menu" className="h-4 w-4" />
         </button>
@@ -178,14 +202,14 @@ export function AssistantDock({
           type="button"
           onClick={assistant.startNew}
           aria-label={labels.newThread}
-          className="rounded-sm p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex size-9 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         >
           <Icon name="plus" className="h-4 w-4" />
         </button>
         <Link
           href={'/assistant' as Route}
           aria-label={labels.openFull}
-          className="rounded-sm p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex size-9 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         >
           <Icon name="external" className="h-4 w-4" />
         </Link>
@@ -193,15 +217,15 @@ export function AssistantDock({
           type="button"
           onClick={() => resize(expanded ? 'docked' : 'expanded')}
           aria-label={expanded ? labels.collapse : labels.expand}
-          className="rounded-sm p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex size-9 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         >
-          <Icon name={expanded ? 'dot' : 'plus'} className="h-4 w-4" />
+          <Icon name={expanded ? 'collapse' : 'expand'} className="h-4 w-4" />
         </button>
         <button
           type="button"
           onClick={() => resize('closed')}
           aria-label={labels.minimise}
-          className="rounded-sm p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+          className="flex size-9 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface hover:text-ink"
         >
           <Icon name="close" className="h-4 w-4" />
         </button>

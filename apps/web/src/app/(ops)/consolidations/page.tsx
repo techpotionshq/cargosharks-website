@@ -14,7 +14,7 @@ import { listConsolidations } from '@/features/consolidation/queries'
 import { ConsolidationDialog } from '@/features/consolidation/ui/dialogs'
 import { CandidatesPanel } from '@/features/consolidation/ui/candidates-panel'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatLane } from '@/lib/format'
 import { Card } from '@/ui/card'
 import { EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
@@ -61,11 +61,13 @@ export default async function ConsolidationsPage() {
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('masterBill')}</TH>
-                <TH>{t('carrier')}</TH>
-                <TH>{t('route')}</TH>
+                <TH priority="low">{t('masterBill')}</TH>
+                <TH priority="low">{t('carrier')}</TH>
+                <TH priority="low">{t('route')}</TH>
                 <TH align="end">{t('houses')}</TH>
-                <TH align="end">{t('volume')}</TH>
+                <TH priority="low" align="end">
+                  {t('volume')}
+                </TH>
                 <TH align="end">{t('etd')}</TH>
                 <TH align="end">{tc('status')}</TH>
               </TR>
@@ -76,7 +78,7 @@ export default async function ConsolidationsPage() {
                   <TD>
                     <Link
                       href={`/consolidations/${row.id}`}
-                      className="ref numeric font-medium hover:text-brand"
+                      className="ref numeric font-medium hover:text-accent"
                     >
                       {row.reference}
                     </Link>
@@ -84,21 +86,23 @@ export default async function ConsolidationsPage() {
                       {tMode(row.mode as 'sea_lcl')}
                     </span>
                   </TD>
-                  <TD numeric className="text-ink-muted">
+                  <TD priority="low" numeric className="text-ink-muted">
                     {row.masterBillNumber ?? '—'}
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {[row.vesselName, row.voyageNumber].filter(Boolean).join(' / ') ||
                       row.flightNumber ||
                       '—'}
                   </TD>
-                  <TD className="text-ink-muted">
-                    {[row.originName, row.destinationName].filter(Boolean).join(' → ') || '—'}
+                  <TD priority="low" className="text-ink-muted">
+                    {row.originName && row.destinationName
+                      ? formatLane(row.originName, row.destinationName, locale)
+                      : row.originName || row.destinationName || '—'}
                   </TD>
                   <TD align="end" numeric>
                     {row.houseCount}
                   </TD>
-                  <TD align="end" numeric className="text-ink-muted">
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
                     {Number(row.volumeCbm).toFixed(2)}
                   </TD>
                   <TD align="end" numeric className="text-ink-muted">

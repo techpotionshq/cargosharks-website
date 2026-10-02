@@ -17,6 +17,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
 import { EmptyState, PageHeader } from './layout'
+import { SEARCH_CONTROL } from './control'
 
 interface RegisterFilter {
   readonly label: string
@@ -58,6 +59,13 @@ export interface RegisterProps {
     readonly action?: ReactNode
   }
   readonly isEmpty: boolean
+  /**
+   * Draws the card the table sits in. On by default: a register's table used
+   * to sit straight on the canvas, so its rows ran edge to edge with nothing
+   * holding them and the scroll edge had no surface to fade into. Off for the
+   * one register whose body is several cards of its own.
+   */
+  readonly framed?: boolean
   readonly children: ReactNode
 }
 
@@ -71,6 +79,7 @@ export function Register({
   summary,
   empty,
   isEmpty,
+  framed = true,
   children,
 }: RegisterProps) {
   return (
@@ -103,7 +112,7 @@ export function Register({
                 defaultValue={search.value ?? ''}
                 placeholder={search.placeholder}
                 aria-label={search.label}
-                className="h-9 w-full rounded-md border border-line bg-surface ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none"
+                className={SEARCH_CONTROL}
               />
               {Object.entries(search.hidden ?? {}).map(([name, value]) =>
                 value === undefined || value === '' ? null : (
@@ -120,18 +129,26 @@ export function Register({
                   key={filter.href}
                   href={filter.href as Route}
                   aria-current={filter.active ? 'true' : undefined}
+                  /*
+                    A tint for the active filter, not a solid fill. A row of
+                    pills with one filled in the brand red was the loudest
+                    thing on every register — louder than the overdue rows the
+                    filter was there to find. The tint is the same treatment
+                    the sidebar uses for "you are here", so the two read as one
+                    idea. 40px tall on a phone, where these are thumb targets.
+                  */
                   className={[
-                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.8125rem] transition-colors',
+                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[0.8125rem] transition-colors max-md:h-10',
                     filter.active
-                      ? 'bg-brand font-semibold text-on-brand'
-                      : 'border border-line bg-surface font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
+                      ? 'border-accent/30 bg-accent-soft font-semibold text-accent'
+                      : 'border-line bg-surface font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
                   ].join(' ')}
                 >
                   {filter.label}
                   {filter.count !== undefined ? (
                     <span
                       className={`numeric text-[0.75rem] ${
-                        filter.active ? 'text-on-brand/75' : 'text-ink-subtle'
+                        filter.active ? 'text-accent' : 'text-ink-subtle'
                       }`}
                     >
                       {filter.count}
@@ -153,6 +170,10 @@ export function Register({
             action={empty.action}
           />
         </div>
+      ) : framed ? (
+        <div className="overflow-hidden rounded-card border border-line bg-surface shadow-card">
+          {children}
+        </div>
       ) : (
         children
       )}
@@ -163,9 +184,15 @@ export function Register({
 /**
  * A record's identifier, as the first cell of a register row.
  *
- * Monospace and brand-coloured, because a reference is a thing you read
- * against a printed document and then click.
+ * Monospace, because a reference is a thing you read against a printed
+ * document. In ink rather than the brand colour: a column of references in
+ * Qabandi's red was a column that looked like errors, on the screens whose
+ * whole job is to make the one real error stand out. The link announces
+ * itself on hover and focus instead, in the accent.
  */
+export const RECORD_LINK =
+  'ref font-medium whitespace-nowrap text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline'
+
 export function RecordLink({
   href,
   children,
@@ -174,7 +201,7 @@ export function RecordLink({
   readonly children: ReactNode
 }) {
   return (
-    <Link href={href as Route} className="ref whitespace-nowrap text-brand hover:underline">
+    <Link href={href as Route} className={RECORD_LINK}>
       {children}
     </Link>
   )

@@ -89,7 +89,7 @@ export default async function ResetPasswordPage({
         )}
 
         <div className="mt-8 border-t border-line pt-6">
-          <Link href="/sign-in" className="text-[0.875rem] font-medium text-brand hover:underline">
+          <Link href="/sign-in" className="text-[0.875rem] font-medium text-accent hover:underline">
             {t('backToSignIn')}
           </Link>
         </div>

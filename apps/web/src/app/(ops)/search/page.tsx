@@ -26,6 +26,7 @@ import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { pickName } from '@/lib/named'
+import { FOCUS_RING } from '@/ui/control'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('search')
@@ -98,7 +99,7 @@ export default async function SearchPage({
           autoFocus
           placeholder={tc('searchPlaceholder')}
           aria-label={tc('search')}
-          className="h-10 w-full rounded-full border border-line bg-surface-sunken ps-9 pe-3 text-[0.875rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+          className={`h-10 w-full rounded-full border border-line-strong bg-surface-sunken ps-9 pe-3 text-[0.875rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
         />
       </form>
 
@@ -132,7 +133,7 @@ export default async function SearchPage({
                       <TD className="whitespace-nowrap">
                         <Link
                           href={`/jobs/${job.id}`}
-                          className="ref numeric font-medium text-brand hover:underline"
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                         >
                           {job.reference}
                         </Link>
@@ -194,7 +195,7 @@ export default async function SearchPage({
                       <TD className="whitespace-nowrap">
                         <Link
                           href={recordHref(row.kind, row.id) as Route}
-                          className="ref numeric font-medium text-brand hover:underline"
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                         >
                           {row.reference}
                         </Link>
@@ -235,7 +236,7 @@ export default async function SearchPage({
                       <TD>
                         <Link
                           href={`/jobs/${row.jobId}`}
-                          className="ref numeric font-medium text-brand hover:underline"
+                          className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                         >
                           {row.jobReference}
                         </Link>
@@ -279,7 +280,7 @@ export default async function SearchPage({
                           {customer.id ? (
                             <Link
                               href={`/customers/${customer.id}`}
-                              className="text-brand hover:underline"
+                              className="text-accent hover:underline"
                             >
                               {name}
                             </Link>

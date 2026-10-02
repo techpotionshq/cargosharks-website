@@ -93,6 +93,10 @@ export interface ThemeColors {
   readonly brandSoftInk: string
   readonly accent: string
   readonly accentSoft: string
+  /**
+   * The focus ring. Never the brand when the brand sits on a status hue — a
+   * red ring on a focused field reads as a validation error (`focusFor`).
+   */
   readonly focus: string
   readonly shadow: string
   readonly status: StatusColors

@@ -53,7 +53,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
   const [t, tc] = await Promise.all([getTranslations('settlements'), getTranslations('common')])
 
   const money = (amount: string) =>
-    formatMoney({ amount: Number(amount), currency: settlement.currency }, locale)
+    formatMoney({ amount: amount, currency: settlement.currency }, locale)
 
   const mayRun = can(session, 'settlement.run')
 
@@ -79,7 +79,8 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                 <form action={advanceSettlement}>
                   <input type="hidden" name="settlementId" value={id} />
                   <input type="hidden" name="action" value="agree" />
-                  <Button type="submit" icon="check">
+                  {/* The settlement's next step is its one primary action. */}
+                  <Button type="submit" variant="primary" icon="check">
                     {t('agree')}
                   </Button>
                 </form>
@@ -88,7 +89,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                 <form action={advanceSettlement}>
                   <input type="hidden" name="settlementId" value={id} />
                   <input type="hidden" name="action" value="settle" />
-                  <Button type="submit" icon="sealed">
+                  <Button type="submit" variant="primary" icon="sealed">
                     {t('markSettled')}
                   </Button>
                 </form>
@@ -178,7 +179,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                             ? `/invoices/${line.documentId}`
                             : `/payables/${line.documentId}`
                         }
-                        className="ref numeric hover:text-brand"
+                        className="ref numeric hover:text-accent"
                       >
                         {line.reference}
                       </Link>

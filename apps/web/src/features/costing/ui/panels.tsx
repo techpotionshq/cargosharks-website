@@ -37,7 +37,7 @@ import type { ChargeLineRow, JobLedger } from '../queries'
  * Every arithmetic step upstream of this line stayed exact.
  */
 function display(amount: string, currency: string, locale: 'en' | 'ar'): string {
-  return formatMoney({ amount: Number(amount), currency }, locale)
+  return formatMoney({ amount: amount, currency }, locale)
 }
 
 /**

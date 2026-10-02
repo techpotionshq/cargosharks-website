@@ -124,9 +124,9 @@ export default async function RatesPage({
             <THead>
               <TR>
                 <TH>{t('lane')}</TH>
-                <TH>{tEnq('mode')}</TH>
+                <TH priority="low">{tEnq('mode')}</TH>
                 <TH>{t('direction')}</TH>
-                <TH>{t('counterparty')}</TH>
+                <TH priority="low">{t('counterparty')}</TH>
                 <TH>{t('validity')}</TH>
                 <TH align="end">{t('daysLeft')}</TH>
               </TR>
@@ -140,7 +140,7 @@ export default async function RatesPage({
                   <TD className="font-medium text-ink">
                     {locale === 'ar' ? card.laneAr : card.lane}
                   </TD>
-                  <TD>
+                  <TD priority="low">
                     <span className="inline-flex items-center gap-1.5 text-ink-muted">
                       <Icon name={modeIcon(card.mode)} size={14} />
                       {tMode(card.mode as 'air')}
@@ -151,7 +151,7 @@ export default async function RatesPage({
                       {card.direction === 'buy' ? t('buy') : t('sell')}
                     </Badge>
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {locale === 'ar' ? card.counterpartyAr : card.counterparty}
                   </TD>
                   <TD className="text-ink-muted">{formatDate(card.validTo, locale, timeZone)}</TD>
@@ -194,7 +194,7 @@ export default async function RatesPage({
             <THead>
               <TR>
                 <TH>{t('lane')}</TH>
-                <TH>{tEnq('mode')}</TH>
+                <TH priority="low">{tEnq('mode')}</TH>
                 <TH align="end">{t('buyTotal')}</TH>
                 <TH align="end">{t('sellTotal')}</TH>
                 <TH align="end">{tEnq('margin')}</TH>
@@ -204,7 +204,7 @@ export default async function RatesPage({
               {margins.map((row, index) => (
                 <TR key={`${row.lane}-${row.mode}-${index}`}>
                   <TD className="font-medium text-ink">{row.lane}</TD>
-                  <TD>
+                  <TD priority="low">
                     <span className="inline-flex items-center gap-1.5 text-ink-muted">
                       <Icon name={modeIcon(row.mode)} size={14} />
                       {tMode(row.mode as 'air')}
@@ -215,7 +215,7 @@ export default async function RatesPage({
                   <TD align="end" numeric className="text-ink-muted">
                     {row.buyTotal
                       ? formatMoney(
-                          { amount: Number(row.buyTotal), currency: row.currency ?? 'USD' },
+                          { amount: row.buyTotal, currency: row.currency ?? 'USD' },
                           locale,
                         )
                       : '—'}
@@ -223,7 +223,7 @@ export default async function RatesPage({
                   <TD align="end" numeric>
                     {row.sellTotal
                       ? formatMoney(
-                          { amount: Number(row.sellTotal), currency: row.currency ?? 'USD' },
+                          { amount: row.sellTotal, currency: row.currency ?? 'USD' },
                           locale,
                         )
                       : '—'}
@@ -286,9 +286,11 @@ export default async function RatesPage({
             <TR>
               <TH>{t('direction')}</TH>
               <TH>{t('lane')}</TH>
-              <TH>{tEnq('mode')}</TH>
-              <TH>{t('counterparty')}</TH>
-              <TH align="end">{t('lines')}</TH>
+              <TH priority="low">{tEnq('mode')}</TH>
+              <TH priority="low">{t('counterparty')}</TH>
+              <TH priority="low" align="end">
+                {t('lines')}
+              </TH>
               <TH>{t('validity')}</TH>
               <TH>{tc('status')}</TH>
             </TR>
@@ -308,16 +310,16 @@ export default async function RatesPage({
                     t('anyLane')
                   )}
                 </TD>
-                <TD>
+                <TD priority="low">
                   <span className="inline-flex items-center gap-1.5 text-ink-muted">
                     <Icon name={modeIcon(row.mode)} size={14} />
                     {tMode(row.mode as 'air')}
                   </span>
                 </TD>
-                <TD className="text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {row.partnerName ?? row.customerName ?? t('anyone')}
                 </TD>
-                <TD align="end" numeric>
+                <TD priority="low" align="end" numeric>
                   {row.lineCount === 0 ? (
                     // A card with no lines prices nothing. It is the most
                     // common half-finished state and worth flagging.

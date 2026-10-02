@@ -109,7 +109,7 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                   <>
                     <div className="text-[0.9375rem] font-semibold text-ink">
                       {formatMoney(
-                        { amount: Number(row.quotedTotal), currency: row.quotedCurrency },
+                        { amount: row.quotedTotal, currency: row.quotedCurrency },
                         locale,
                       )}
                     </div>
@@ -124,7 +124,7 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                       <div className="text-[0.6875rem] text-ink-subtle">
                         ≈{' '}
                         {formatMoney(
-                          { amount: Number(row.normalizedTotal), currency: view.baseCurrency },
+                          { amount: row.normalizedTotal, currency: view.baseCurrency },
                           locale,
                         )}
                       </div>

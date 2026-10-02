@@ -397,7 +397,7 @@ export function ImportConsole({
       {state.committed ? (
         <Card tone="brand">
           <div className="flex items-center gap-3">
-            <Icon name="check" size={20} className="text-brand" />
+            <Icon name="check" size={20} className="text-accent" />
             <div>
               <p className="font-semibold text-ink">{labels.doneTitle}</p>
               <p className="text-[0.8125rem] text-ink-muted">

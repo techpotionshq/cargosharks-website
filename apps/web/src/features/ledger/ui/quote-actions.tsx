@@ -40,19 +40,28 @@ const MOVES: Partial<
   rejected: { permission: 'quote.reject', variant: 'secondary', icon: 'close' },
 }
 
+/** The moves that take the record forward, as opposed to ending it. */
+const FORWARD: readonly QuoteStatus[] = ['sent', 'accepted']
+
 export async function QuoteStatusActions({
   quoteId,
   status,
+  part = 'all',
 }: {
   readonly quoteId: string
   readonly status: string
+  /**
+   * Which half of the moves to render.
+   *
+   * A detail page header shows the move that takes the record *forward* as
+   * its one primary button and folds the rest — voiding, crediting,
+   * rejecting — into its More menu, so the page is split by the caller and
+   * each half asks for its own. `all` is the old behaviour.
+   */
+  readonly part?: 'forward' | 'other' | 'all'
 }) {
   const session = await requireSession()
-  const [t, tc, tq] = await Promise.all([
-    getTranslations('quoteDetail'),
-    getTranslations('common'),
-    getTranslations('quotes'),
-  ])
+  const [t, tc] = await Promise.all([getTranslations('quoteDetail'), getTranslations('common')])
 
   const allowed = nextStates(quoteMachine, status as QuoteStatus)
     .map((next) => ({ next, move: MOVES[next] }))
@@ -61,17 +70,30 @@ export async function QuoteStatusActions({
         Boolean(entry.move) && can(session, entry.move!.permission),
     )
 
-  if (allowed.length === 0) return null
+  // One forward move at most: the first the machine offers. Anything after
+  // it is still offered, in the menu.
+  const lead = allowed.find(({ next }) => FORWARD.includes(next))
+  const shown =
+    part === 'all'
+      ? allowed
+      : part === 'forward'
+        ? lead
+          ? [lead]
+          : []
+        : allowed.filter((entry) => entry !== lead)
+
+  if (shown.length === 0) return null
 
   return (
     <>
-      {allowed.map(({ next, move }) => (
+      {shown.map(({ next, move }) => (
         <RecordDialog
           key={next}
           action={setQuoteStatus}
           icon={move.icon}
           size="sm"
-          variant={move.variant}
+          // The forward move is the header's one primary button.
+          variant={part === 'forward' ? 'primary' : move.variant}
           submitIcon={move.icon}
           fields={[
             { kind: 'hidden', name: 'quoteId', value: quoteId },
@@ -85,12 +107,14 @@ export async function QuoteStatusActions({
             },
           ]}
           labels={{
-            open: tq(`statuses.${next}` as 'statuses.sent'),
+            // A verb, not the status — see the same line in `invoice-actions`.
+            open: t(`moveOpen.${next}` as 'moveOpen.sent'),
             title: t(`moveTitle.${next}` as 'moveTitle.sent'),
             description: t(`moveDescription.${next}` as 'moveDescription.sent'),
             submit: t(`moveSubmit.${next}` as 'moveSubmit.sent'),
             submitting: tc('saving'),
             cancel: tc('cancel'),
+            success: t(`moveDone.${next}` as 'moveDone.sent'),
           }}
         />
       ))}

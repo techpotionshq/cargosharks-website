@@ -89,9 +89,13 @@ export default async function PartnersPage({
             <TH>{t('code')}</TH>
             <TH>{t('name')}</TH>
             <TH>{t('type')}</TH>
-            <TH>{t('country')}</TH>
-            <TH align="end">{t('paymentTerms')}</TH>
-            <TH align="end">{t('openJobs')}</TH>
+            <TH priority="low">{t('country')}</TH>
+            <TH priority="low" align="end">
+              {t('paymentTerms')}
+            </TH>
+            <TH priority="low" align="end">
+              {t('openJobs')}
+            </TH>
             <TH>{tc('status')}</TH>
             <TH align="end" />
           </TR>
@@ -108,11 +112,13 @@ export default async function PartnersPage({
               <TD>
                 <Badge tone="info">{t(`types.${row.type}`)}</Badge>
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.countryCode ?? '—'}</TD>
-              <TD align="end" numeric>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.countryCode ?? '—'}
+              </TD>
+              <TD priority="low" align="end" numeric>
                 {row.paymentTermsDays === null ? '—' : t('days', { count: row.paymentTermsDays })}
               </TD>
-              <TD align="end" numeric>
+              <TD priority="low" align="end" numeric>
                 {row.openJobs}
               </TD>
               <TD>

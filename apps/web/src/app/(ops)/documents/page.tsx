@@ -61,10 +61,12 @@ export default async function DocumentsPage() {
           <TR>
             <TH>{t('shipment')}</TH>
             <TH>{t('type')}</TH>
-            <TH>{t('customer')}</TH>
-            <TH align="end">{t('version')}</TH>
+            <TH priority="low">{t('customer')}</TH>
+            <TH priority="low" align="end">
+              {t('version')}
+            </TH>
             <TH>{tc('status')}</TH>
-            <TH>{t('author')}</TH>
+            <TH priority="low">{t('author')}</TH>
             <TH>{t('created')}</TH>
           </TR>
         </THead>
@@ -85,10 +87,10 @@ export default async function DocumentsPage() {
                   {t(`categories.${row.category}`)}
                 </Badge>
               </TD>
-              <TD className="text-ink-muted">
+              <TD priority="low" className="text-ink-muted">
                 {(locale === 'ar' && row.customerNameAr) || row.customerName || '—'}
               </TD>
-              <TD align="end" numeric>
+              <TD priority="low" align="end" numeric>
                 v{row.version}
               </TD>
               <TD>
@@ -102,7 +104,9 @@ export default async function DocumentsPage() {
                   <Badge tone="caution">{t('draft')}</Badge>
                 )}
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.authorName ?? '—'}</TD>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.authorName ?? '—'}
+              </TD>
               <TD className="whitespace-nowrap text-ink-muted">
                 {formatDateTime(row.createdAt, locale, timeZone)}
               </TD>

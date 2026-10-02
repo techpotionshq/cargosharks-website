@@ -22,7 +22,14 @@ const PILL_CLASS: Record<Tone, string> = {
   critical: 'bg-critical-soft text-critical ring-critical/30',
   info: 'bg-info-soft text-info ring-info/25',
   muted: 'bg-muted-soft text-ink-muted ring-line',
-  brand: 'bg-brand-soft text-brand-soft-ink ring-brand/20',
+  /*
+    The accent, despite the name. `brand` is the tone for "new" and
+    "approved" — states that want to be noticed and are not problems — and in
+    the brand red they were the same pill as `lost` and `credited` beside
+    them. The name stays because it is the *role* (the house highlight); the
+    colour is whichever ramp can carry that role without reading as alarm.
+  */
+  brand: 'bg-accent-soft text-accent ring-accent/20',
 }
 
 const DOT_CLASS: Record<Tone, string> = {
@@ -31,7 +38,7 @@ const DOT_CLASS: Record<Tone, string> = {
   critical: 'bg-critical',
   info: 'bg-info',
   muted: 'bg-muted',
-  brand: 'bg-brand',
+  brand: 'bg-accent',
 }
 
 export interface BadgeProps {
@@ -79,8 +86,10 @@ export function enquiryTone(status: string): Tone {
   switch (status) {
     case 'won':
       return 'positive'
+    // Arrived and untouched: news, not trouble. It was `brand`, which for a
+    // red brand put every fresh enquiry in the colour of a lost one.
     case 'new':
-      return 'brand'
+      return 'info'
     case 'assigned':
     case 'rating':
       return 'caution'
@@ -179,8 +188,10 @@ export function invoiceTone(status: string): Tone {
       return 'brand'
     case 'part_paid':
       return 'caution'
+    // Replaced by a credit note — finished business, not a fault. Red here
+    // made every credited invoice look like an overdue one.
     case 'credited':
-      return 'critical'
+      return 'muted'
     default:
       return 'muted'
   }

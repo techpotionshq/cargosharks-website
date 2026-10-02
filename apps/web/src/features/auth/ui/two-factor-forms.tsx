@@ -12,9 +12,9 @@ import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { beginEnrolment, completeEnrolment, verifyChallenge } from '../two-factor'
 import type { ChallengeState, EnrolState } from '../two-factor'
+import { FOCUS_RING } from '@/ui/control'
 
-const FIELD =
-  'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
+const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:bg-surface ${FOCUS_RING}`
 
 /**
  * The code field.

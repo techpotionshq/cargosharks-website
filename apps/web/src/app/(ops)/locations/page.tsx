@@ -74,9 +74,11 @@ export default async function LocationsPage({
           <TR>
             <TH>{t('unlocode')}</TH>
             <TH>{t('name')}</TH>
-            <TH>{t('kind')}</TH>
-            <TH>{t('country')}</TH>
-            <TH align="end">{t('shipments')}</TH>
+            <TH priority="low">{t('kind')}</TH>
+            <TH priority="low">{t('country')}</TH>
+            <TH priority="low" align="end">
+              {t('shipments')}
+            </TH>
             <TH>{tc('status')}</TH>
             <TH align="end" />
           </TR>
@@ -88,7 +90,7 @@ export default async function LocationsPage({
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.nameAr ? row.nameAr : row.nameEn}
               </TD>
-              <TD>
+              <TD priority="low">
                 <span className="inline-flex items-center gap-1.5 text-ink-muted">
                   <Icon
                     name={KIND_ICON[row.kind as keyof typeof KIND_ICON] ?? 'locations'}
@@ -97,8 +99,15 @@ export default async function LocationsPage({
                   {t(`kinds.${row.kind}`)}
                 </span>
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">{row.countryCode ?? '—'}</TD>
-              <TD align="end" numeric className={row.useCount ? 'text-ink' : 'text-ink-subtle'}>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.countryCode ?? '—'}
+              </TD>
+              <TD
+                priority="low"
+                align="end"
+                numeric
+                className={row.useCount ? 'text-ink' : 'text-ink-subtle'}
+              >
                 {row.useCount || '—'}
               </TD>
               <TD>

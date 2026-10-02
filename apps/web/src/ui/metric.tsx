@@ -39,7 +39,8 @@ const CHIP_TONE: Record<MetricTone, string> = {
   positive: 'bg-positive-soft text-positive',
   caution: 'bg-caution-soft text-caution',
   critical: 'bg-critical-soft text-critical',
-  brand: 'bg-brand-soft text-brand-soft-ink',
+  // The accent, for the reason `Card`'s `brand` tone gives.
+  brand: 'bg-accent-soft text-accent',
   info: 'bg-info-soft text-info',
 }
 
@@ -129,7 +130,7 @@ export function Metric({
     positive: 'border-positive/25 bg-positive-soft/25',
     caution: 'border-caution/30 bg-caution-soft/30',
     critical: 'border-critical/30 bg-critical-soft/30',
-    brand: 'border-brand/25 bg-brand-soft/40',
+    brand: 'border-accent/20 bg-accent-soft/50',
     info: 'border-info/25 bg-info-soft/25',
   }
 
@@ -226,7 +227,8 @@ export function Spark({
 }) {
   const width = 120
   const stroke = {
-    brand: 'var(--qb-brand)',
+    // Accent: a trend line in the brand red reads as a falling one.
+    brand: 'var(--qb-accent)',
     positive: 'var(--qb-positive)',
     critical: 'var(--qb-critical)',
     caution: 'var(--qb-caution)',
@@ -331,7 +333,7 @@ export function TickMeter({
     positive: 'bg-positive',
     caution: 'bg-caution',
     critical: 'bg-critical',
-    brand: 'bg-brand',
+    brand: 'bg-accent',
     info: 'bg-info',
   }
 

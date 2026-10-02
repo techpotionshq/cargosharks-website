@@ -12,6 +12,7 @@
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import type { CustomerFormState } from '../actions'
+import { FOCUS_RING } from '@/ui/control'
 
 export interface BranchOption {
   readonly id: string
@@ -74,8 +75,7 @@ export interface CustomerDefaults {
   readonly defaultIncoterm?: string | null
 }
 
-const FIELD =
-  'h-10 w-full rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink transition-colors focus:border-brand focus:bg-surface focus:outline-none'
+const FIELD = `h-10 w-full rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink transition-colors focus:bg-surface ${FOCUS_RING}`
 const FIELD_ERROR = 'border-critical bg-critical-soft/40'
 
 function Field({

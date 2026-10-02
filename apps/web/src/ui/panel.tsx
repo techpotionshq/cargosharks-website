@@ -85,7 +85,7 @@ export function Panel({
       {footerHref ? (
         <Link
           href={footerHref as Route}
-          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-brand"
+          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-accent"
         >
           {footerLabel}
           <Icon name="chevron-end" size={14} />
@@ -141,15 +141,17 @@ export function Readout({
               {fact.icon ? (
                 <Icon name={fact.icon} size={14} className="shrink-0 text-ink-subtle" />
               ) : null}
+              {/* Two lines before an ellipsis: "Received this …" told nobody
+                  anything, and the panel had the height to spare. */}
               <span
-                className="truncate"
+                className="line-clamp-2"
                 title={typeof fact.label === 'string' ? fact.label : undefined}
               >
                 {fact.label}
               </span>
             </dt>
             <dd
-              className="min-w-0 truncate text-end text-[0.8125rem] font-semibold text-ink"
+              className="line-clamp-2 min-w-0 text-end text-[0.8125rem] font-semibold break-words text-ink"
               title={typeof fact.value === 'string' ? fact.value : undefined}
             >
               {fact.value}
@@ -200,7 +202,7 @@ export function EventRow({
   readonly last?: boolean
 }) {
   const dot = {
-    brand: 'bg-brand',
+    brand: 'bg-accent',
     positive: 'bg-positive',
     caution: 'bg-caution',
     critical: 'bg-critical',

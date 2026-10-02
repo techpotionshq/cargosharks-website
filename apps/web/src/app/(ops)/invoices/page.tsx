@@ -21,6 +21,7 @@ import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { InvoiceDialog } from '@/features/ledger/ui/dialogs'
 import { todayIn } from '@/lib/time'
+import { dec } from '@qabandi/core'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('invoices')
@@ -42,10 +43,24 @@ export default async function InvoicesPage({
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const today = todayIn()
 
-  const [rows, summary] = await Promise.all([
-    listInvoices(session.actor, status, locale),
+  /*
+    `overdue` is not a status in the enum — it is a status *and* a date — so it
+    cannot be asked of the query. It reads every invoice and keeps the ones
+    the rule below flags, which is the same rule that draws the red rule on a
+    row, so the filter and the flags cannot disagree.
+  */
+  const overdueView = status === 'overdue'
+  const [all, summary] = await Promise.all([
+    listInvoices(session.actor, overdueView ? undefined : status, locale),
     invoiceSummary(session.actor),
   ])
+
+  // Decimal: a balance is money minus money (see the money rule in CLAUDE.md).
+  const balanceOf = (row: (typeof all)[number]) =>
+    dec(row.total ?? 0).minus(dec(row.amountPaid ?? 0))
+  const isOverdue = (row: (typeof all)[number]) =>
+    row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balanceOf(row).gt(0)
+  const rows = overdueView ? all.filter(isOverdue) : all
 
   return (
     <Register
@@ -64,9 +79,7 @@ export default async function InvoicesPage({
           value:
             summary.outstanding.length > 0
               ? summary.outstanding
-                  .map(({ currency, amount }) =>
-                    formatMoney({ amount: Number(amount), currency }, locale),
-                  )
+                  .map(({ currency, amount }) => formatMoney({ amount: amount, currency }, locale))
                   .join(' · ')
               : '—',
         },
@@ -81,6 +94,13 @@ export default async function InvoicesPage({
           href: '/invoices?status=issued',
           count: summary.issued,
           active: status === 'issued',
+        },
+        // The summary counts overdue, so the strip offers it.
+        {
+          label: t('statuses.overdue'),
+          href: '/invoices?status=overdue',
+          count: summary.overdue,
+          active: overdueView,
         },
         {
           label: t('statuses.paid'),
@@ -100,19 +120,18 @@ export default async function InvoicesPage({
         <THead>
           <TR>
             <TH>{t('number')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{t('total')}</TH>
             <TH align="end">{t('balance')}</TH>
-            <TH>{t('issued')}</TH>
+            <TH priority="low">{t('issued')}</TH>
             <TH>{t('due')}</TH>
           </TR>
         </THead>
         <TBody>
           {rows.map((row) => {
-            const balance = Number(row.total ?? 0) - Number(row.amountPaid ?? 0)
-            const overdue =
-              row.status === 'issued' && row.dueOn !== null && row.dueOn < today && balance > 0
+            const balance = balanceOf(row)
+            const overdue = isOverdue(row)
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
                 <TD>
@@ -137,7 +156,9 @@ export default async function InvoicesPage({
                     </Badge>
                   ) : null}
                 </TD>
-                <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="font-medium text-ink">
+                  {row.customerName ?? '—'}
+                </TD>
                 <TD>
                   <Badge tone={overdue ? 'critical' : invoiceTone(row.status)} dot>
                     {overdue ? t('statuses.overdue') : t(`statuses.${row.status}`)}
@@ -145,17 +166,17 @@ export default async function InvoicesPage({
                 </TD>
                 <TD align="end" numeric>
                   {row.total
-                    ? formatMoney({ amount: Number(row.total), currency: row.currency }, locale)
+                    ? formatMoney({ amount: row.total, currency: row.currency }, locale)
                     : '—'}
                 </TD>
                 <TD
                   align="end"
                   numeric
-                  className={balance > 0 ? 'font-semibold text-ink' : 'text-ink-subtle'}
+                  className={balance.gt(0) ? 'font-semibold text-ink' : 'text-ink-subtle'}
                 >
-                  {formatMoney({ amount: balance, currency: row.currency }, locale)}
+                  {formatMoney({ amount: balance.toFixed(), currency: row.currency }, locale)}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD

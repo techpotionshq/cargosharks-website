@@ -19,10 +19,19 @@ export interface CardProps {
   readonly tone?: 'default' | 'critical' | 'brand'
 }
 
+/*
+  `brand` is a highlight, and it is drawn in the accent.
+
+  It was a wash of the brand colour, which for a red brand is pink — and a
+  pink card at the top of the rate comparison, directly above a table of
+  margins, read as "something is wrong with this enquiry". The highlight says
+  "this is the headline", which is the accent's job; red stays for the mark,
+  the primary action and `critical`, where it means what it says.
+*/
 const TONE_CLASS = {
   default: 'border-line bg-surface',
   critical: 'border-critical/35 bg-surface',
-  brand: 'border-brand/25 bg-brand-soft',
+  brand: 'border-accent/20 bg-accent-soft',
 } as const
 
 const PADDING_CLASS = { none: '', sm: 'p-4', md: 'p-5' } as const
@@ -63,25 +72,39 @@ export function CardHeader({
   className,
 }: CardHeaderProps) {
   return (
+    /*
+      Wraps, and the title claims its width first.
+
+      On a phone a header with two actions used to squeeze the title column to
+      whatever the buttons left — 90px — and the heading truncated to "Rates
+      fr…" beside a row of perfectly legible buttons. The title block now asks
+      for at least 14rem (or the whole row, if that is less), and the actions
+      drop beneath it when both cannot fit.
+    */
     <header
-      className={['flex items-start justify-between gap-4', className].filter(Boolean).join(' ')}
+      className={['flex flex-wrap items-start justify-between gap-x-4 gap-y-3', className]
+        .filter(Boolean)
+        .join(' ')}
     >
-      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-[min(100%,14rem)] flex-1 items-start gap-3">
         {icon ? (
-          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm bg-brand-soft text-brand-soft-ink">
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm bg-accent-soft text-accent">
             <Icon name={icon} size={17} />
           </span>
         ) : null}
         <div className="min-w-0">
           {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
-          <h2 className="truncate text-[0.9375rem] font-semibold text-ink">{title}</h2>
+          <h2 className="text-[0.9375rem] font-semibold text-balance text-ink">{title}</h2>
           {description ? (
-            <p className="mt-0.5 text-[0.8125rem] text-ink-muted">{description}</p>
+            // `break-words`: a description naming a template key or an address
+            // with no spaces in it pushed the notifications screen 37px past
+            // a phone's edge.
+            <p className="mt-0.5 text-[0.8125rem] break-words text-ink-muted">{description}</p>
           ) : null}
         </div>
       </div>
       {actions ? (
-        <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>
       ) : null}
     </header>
   )

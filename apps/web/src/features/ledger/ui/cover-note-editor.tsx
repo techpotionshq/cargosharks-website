@@ -19,11 +19,19 @@ import { useActionState } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import { Button } from '@/ui/layout'
 import { draftQuoteCoverNote, setQuoteCoverNote } from '../form-actions'
+import { FOCUS_RING } from '@/ui/control'
 
 export interface CoverNoteLabels {
   readonly english: string
   readonly arabic: string
+  /**
+   * The placeholder in each note's own language, whatever the interface's.
+   * The Arabic note is a right-to-left box, and an English sentence greyed
+   * into it read backwards — its full stop at the wrong end — under an
+   * English interface; the reverse happened to the English note in Arabic.
+   */
   readonly placeholder: string
+  readonly placeholderAr: string
   readonly draft: string
   readonly drafting: string
   readonly save: string
@@ -114,8 +122,8 @@ function LocaleNote({
           defaultValue={note ?? ''}
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           rows={4}
-          placeholder={labels.placeholder}
-          className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none"
+          placeholder={locale === 'ar' ? labels.placeholderAr : labels.placeholder}
+          className={`w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
         />
         {draftState.message ? (
           <p className="mt-1 text-[0.8125rem] text-caution">{draftState.message}</p>

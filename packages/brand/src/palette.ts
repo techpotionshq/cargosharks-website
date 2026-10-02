@@ -286,6 +286,24 @@ export interface ThemeSpec {
 }
 
 /**
+ * The colour of the focus ring.
+ *
+ * The brand's own 500 by default, which is what every brand wants — unless
+ * the brand sits on a status hue. Qabandi's red is at hue 27, which is where
+ * `critical` lives, and a focused field drawn in it was indistinguishable from
+ * a field that had just failed validation: tabbing through a clean form looked
+ * like walking through a list of errors. In that case the ring moves to the
+ * accent, which the chrome already uses and which nobody reads as an alarm.
+ *
+ * Decided from the hue, not per brand, so the next client with a red or a
+ * green arrives correct rather than with a note in their brand file.
+ */
+function focusFor(spec: ThemeSpec, theme: 'light' | 'dark'): string {
+  const ramp = collidesWithStatus(spec.primarySpec.hue) === null ? spec.primary : spec.accent
+  return theme === 'light' ? ramp[500] : ramp[400]
+}
+
+/**
  * The light theme.
  *
  * Deliberately not white-on-white: the canvas is a hair off-white and cards
@@ -319,17 +337,33 @@ export function lightTheme(spec: ThemeSpec): ThemeColors {
     chromeLine: oklch(0.915, 0.006, spec.hue),
     ink: oklch(0.24, 0.016, spec.hue),
     inkMuted: oklch(0.5, 0.014, spec.hue),
-    inkSubtle: oklch(0.62, 0.012, spec.hue),
+    /*
+      L 0.55, not 0.62. The third level of the hierarchy carries timestamps,
+      hints and every column header, and at 0.62 it measured 3.6:1 on white
+      and 3.4:1 on the canvas — under AA for text that small. 0.55 clears
+      4.5:1 on both and still sits visibly below `inkMuted`.
+    */
+    inkSubtle: oklch(0.55, 0.012, spec.hue),
     onBrand: oklch(0.99, 0.004, spec.hue),
     line: oklch(0.912, 0.006, spec.hue),
-    lineStrong: oklch(0.848, 0.009, spec.hue),
+    /*
+      The boundary of a control, not of a card.
+
+      `line` is for separating things that are already legible on their own —
+      a card from the canvas, one table row from the next — and at 1.3:1 it is
+      right for that. An empty text field has nothing else to find it by, so
+      its edge needs about 3:1 (WCAG 1.4.11). L 0.70 is as dark as a hairline
+      can go before a form reads as a grid of boxes; the field kit pairs it
+      with an `inkSubtle` hover so the step up is still visible.
+    */
+    lineStrong: oklch(0.7, 0.012, spec.hue),
     brand: spec.primary[600],
     brandHover: spec.primary[700],
     brandSoft: spec.primary[50],
     brandSoftInk: spec.primary[800],
     accent: spec.accent[600],
     accentSoft: spec.accent[50],
-    focus: spec.primary[500],
+    focus: focusFor(spec, 'light'),
     shadow: oklch(0.24, 0.03, spec.hue, 0.09),
     status: statusAt(0.52, 1),
     statusSoft: statusAt(0.955, 0.55),
@@ -368,7 +402,9 @@ export function darkTheme(spec: ThemeSpec): ThemeColors {
      */
     onBrand: oklch(0.985, 0.006, spec.hue),
     line: oklch(0.312, 0.016, spec.hue),
-    lineStrong: oklch(0.392, 0.02, spec.hue),
+    // Raised from 0.392 for the reason the light theme's was lowered: it is
+    // the edge of a text field, and at 0.392 a field on a card vanished.
+    lineStrong: oklch(0.47, 0.02, spec.hue),
     /**
      * `400` washed a saturated brand out to a pastel — Al-Qabandi's red
      * arrived as salmon. L 0.57 is the balance point: white label text clears
@@ -383,7 +419,7 @@ export function darkTheme(spec: ThemeSpec): ThemeColors {
     // Was a literal hue 75 — a brass value left over from the provisional
     // palette, which would have stayed brass no matter what a client supplied.
     accentSoft: spec.accent[900],
-    focus: spec.primary[400],
+    focus: focusFor(spec, 'dark'),
     shadow: oklch(0.08, 0.02, spec.hue, 0.5),
     status: statusAt(0.735, 0.92),
     statusSoft: statusAt(0.3, 0.5),

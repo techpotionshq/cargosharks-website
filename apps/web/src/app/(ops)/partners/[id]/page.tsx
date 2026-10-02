@@ -37,6 +37,7 @@ import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
 import { Badge, jobTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { MoreMenu } from '@/ui/menu'
 
 export async function generateMetadata({
   params,
@@ -100,11 +101,13 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         }
         title={displayName}
         description={tf(`types.${partner.type}` as 'types.carrier')}
+        status={
+          <Badge tone={partner.isActive ? 'positive' : 'muted'} dot>
+            {partner.isActive ? tc('active') : tc('inactive')}
+          </Badge>
+        }
         actions={
           <>
-            <Badge tone={partner.isActive ? 'positive' : 'muted'} dot>
-              {partner.isActive ? tc('active') : tc('inactive')}
-            </Badge>
             <PartnerDialog
               variant="secondary"
               defaults={{
@@ -126,20 +129,22 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
               drift before somebody has to look, and which customer record
               they invoice us as — without which no set-off can be run.
             */}
-            <PartnerToleranceDialog
-              partnerId={partner.id}
-              defaults={{
-                percent: partner.varianceTolerancePercent,
-                absolute: partner.varianceToleranceAbsolute,
-              }}
-            />
-            <PartnerAccountDialog
-              partnerId={partner.id}
-              defaults={{
-                settlementCustomerId: partner.settlementCustomerId,
-                settlementCurrency: partner.settlementCurrency,
-              }}
-            />
+            <MoreMenu label={tc('more')}>
+              <PartnerToleranceDialog
+                partnerId={partner.id}
+                defaults={{
+                  percent: partner.varianceTolerancePercent,
+                  absolute: partner.varianceToleranceAbsolute,
+                }}
+              />
+              <PartnerAccountDialog
+                partnerId={partner.id}
+                defaults={{
+                  settlementCustomerId: partner.settlementCustomerId,
+                  settlementCurrency: partner.settlementCurrency,
+                }}
+              />
+            </MoreMenu>
           </>
         }
       />
@@ -207,7 +212,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     <TD>
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="ref numeric font-medium text-brand hover:underline"
+                        className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                       >
                         {job.reference}
                       </Link>
@@ -269,12 +274,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     ) : null}
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-ink-muted">
                       {contact.email ? (
-                        <a href={`mailto:${contact.email}`} className="hover:text-brand">
-                          {contact.email}
+                        <a href={`mailto:${contact.email}`} className="hover:text-accent">
+                          <bdi>{contact.email}</bdi>
                         </a>
                       ) : null}
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="numeric hover:text-brand">
+                        <a href={`tel:${contact.phone}`} className="numeric hover:text-accent">
                           {contact.phone}
                         </a>
                       ) : null}

@@ -33,7 +33,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
     <details className="group relative">
       <summary
         aria-label={unread > 0 ? `${t('title')} (${unread})` : t('title')}
-        className="inline-flex size-8 cursor-pointer list-none items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink group-open:bg-surface-sunken group-open:text-ink [&::-webkit-details-marker]:hidden"
+        className="inline-flex size-10 cursor-pointer list-none md:size-8 items-center justify-center rounded-sm text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink group-open:bg-surface-sunken group-open:text-ink [&::-webkit-details-marker]:hidden"
       >
         <span className="relative">
           <Icon name="bell" size={17} />
@@ -63,7 +63,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
             <form action={clearNotifications}>
               <button
                 type="submit"
-                className="text-[0.75rem] font-medium text-brand hover:underline"
+                className="text-[0.75rem] font-medium text-accent hover:underline"
               >
                 {t('markAllRead')}
               </button>
@@ -91,7 +91,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
                   >
                     {/* Unread pip, holding the same column whether lit or not. */}
                     <span className="mt-1.5 flex w-2 shrink-0 justify-center">
-                      {item.read ? null : <Icon name="dot" size={8} className="text-brand" />}
+                      {item.read ? null : <Icon name="dot" size={8} className="text-accent" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span

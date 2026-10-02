@@ -9,17 +9,28 @@ import type { Route } from 'next'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from './icon'
+import { BUTTON_SIZE, BUTTON_VARIANT, MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
 
 export function PageHeader({
   title,
   eyebrow,
   description,
+  status,
   actions,
   className,
 }: {
   readonly title: ReactNode
   readonly eyebrow?: ReactNode
   readonly description?: ReactNode
+  /**
+   * The record's state, beside its name.
+   *
+   * Status pills used to ride in the actions row, where they read as one
+   * more button — "Issued" next to "Void", the same height and the same
+   * shape. Beside the title they read as what they are: a fact about the
+   * thing the page is about.
+   */
+  readonly status?: ReactNode
   readonly actions?: ReactNode
   readonly className?: string
 }) {
@@ -31,9 +42,12 @@ export function PageHeader({
     >
       <div className="min-w-0">
         {eyebrow ? <p className="eyebrow mb-1.5">{eyebrow}</p> : null}
-        <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
-          {title}
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h1 className="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+            {title}
+          </h1>
+          {status ? <div className="flex flex-wrap items-center gap-1.5">{status}</div> : null}
+        </div>
         {description ? (
           <p className="mt-1.5 max-w-2xl text-[0.875rem] text-ink-muted">{description}</p>
         ) : null}
@@ -51,22 +65,14 @@ export function PageHeader({
   )
 }
 
-const BUTTON_VARIANT = {
-  primary: 'bg-brand text-on-brand hover:bg-brand-hover shadow-card',
-  secondary: 'border border-line bg-surface text-ink hover:bg-surface-sunken',
-  ghost: 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-  danger: 'bg-critical text-on-brand hover:opacity-90',
-} as const
-
-const BUTTON_SIZE = {
-  sm: 'h-8 px-2.5 text-[0.8125rem] gap-1.5',
-  md: 'h-9 px-3.5 text-[0.875rem] gap-2',
-  lg: 'h-11 px-5 text-[0.9375rem] gap-2',
-} as const
-
 export interface ButtonProps {
   readonly children?: ReactNode
-  readonly variant?: keyof typeof BUTTON_VARIANT
+  /**
+   * `menu` and `menu-danger` draw the button as a row of a `MoreMenu` panel.
+   * A server component cannot ask the menu whether it is inside one, so the
+   * caller says so.
+   */
+  readonly variant?: keyof typeof BUTTON_VARIANT | 'menu' | 'menu-danger'
   readonly size?: keyof typeof BUTTON_SIZE
   readonly icon?: IconName
   /** Places the glyph after the label — for "next", "open". */
@@ -91,11 +97,14 @@ export interface ButtonProps {
   readonly download?: boolean
   readonly type?: 'button' | 'submit'
   /**
-   * Only meaningful on a `<button>`, and deliberately not forwarded to a link.
+   * On a `<button>`, the attribute. On a link, `aria-disabled` and out of the
+   * tab order.
    *
-   * `disabled` is not an anchor attribute — React drops it, the element stays
-   * clickable, and it looks disabled while navigating anyway. A destination
-   * that should not be reachable is one that should not be rendered as a link.
+   * `disabled` is not an anchor attribute — React drops it, and the link used
+   * to look dimmed while staying focusable and announced as a live link. A
+   * destination that should never be reachable is still better not rendered
+   * at all; this is for the one that is reachable *later* (a download that
+   * needs a document first) and wants to show where it will be.
    */
   readonly disabled?: boolean
   readonly className?: string
@@ -126,9 +135,11 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const classes = [
-    'inline-flex items-center justify-center rounded-sm font-medium whitespace-nowrap transition-colors',
-    BUTTON_VARIANT[variant],
-    BUTTON_SIZE[size],
+    variant === 'menu'
+      ? MENU_ITEM
+      : variant === 'menu-danger'
+        ? MENU_ITEM_DANGER
+        : buttonClass(variant, size),
     // Dimmed and inert, but still readable — a pending submit says what it is
     // doing, and a label nobody can read is worse than a live button.
     disabled ? 'pointer-events-none opacity-60' : '',
@@ -136,6 +147,9 @@ export function Button({
   ]
     .filter(Boolean)
     .join(' ')
+
+  // A disabled link is announced as one and skipped by Tab (see `disabled`).
+  const inert = disabled ? ({ 'aria-disabled': true, tabIndex: -1 } as const) : {}
 
   const inner = (
     <>
@@ -147,14 +161,14 @@ export function Button({
 
   if (href && download) {
     return (
-      <a href={href} className={classes} {...rest}>
+      <a href={href} className={classes} {...inert} {...rest}>
         {inner}
       </a>
     )
   }
 
   return href ? (
-    <Link href={href as Route} className={classes} {...rest}>
+    <Link href={href as Route} className={classes} {...inert} {...rest}>
       {inner}
     </Link>
   ) : (
@@ -247,8 +261,14 @@ export function Field({
   return (
     <div className={['min-w-0', className].filter(Boolean).join(' ')}>
       <dt className="eyebrow mb-1">{label}</dt>
+      {/*
+        Two lines, then an ellipsis — not one. A customer called "Fintas Steel
+        Industries" in a quarter-width column read "Fintas Steel I…", and the
+        name is the one thing on that card a person came to check. The title
+        still carries the whole value for anything longer.
+      */}
       <dd
-        className={`truncate text-[0.875rem] text-ink ${mono ? 'ref numeric' : ''}`}
+        className={`line-clamp-2 text-[0.875rem] break-words text-ink ${mono ? 'ref numeric' : ''}`}
         title={typeof children === 'string' ? children : undefined}
       >
         {children}

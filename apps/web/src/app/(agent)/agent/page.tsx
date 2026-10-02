@@ -104,7 +104,7 @@ export default async function AgentHome() {
                   <Meter
                     value={shipment.milestonesDone}
                     max={shipment.milestonesTotal}
-                    tone="var(--qb-brand)"
+                    tone="var(--qb-accent)"
                     label={`${shipment.milestonesDone} / ${shipment.milestonesTotal}`}
                   />
                 </div>
