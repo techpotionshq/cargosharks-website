@@ -35,7 +35,7 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { supplierInvoiceLines, supplierInvoices, supplierPayments, withActor } =
+const { currencies, fxRates, supplierInvoiceLines, supplierInvoices, supplierPayments, withActor } =
   await import('@qabandi/db')
 
 const { HOME_BRANCH, AWAY_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
@@ -530,6 +530,65 @@ describe.skipIf(!enabled)('supplier bills', () => {
     it('records a payment to a supplier', async () => {
       const id = await payment('100.000')
       expect(id).toBeTruthy()
+    })
+
+    /*
+      QA P1-2. The form prefilled 1, the action defaulted a blank to 1, and a
+      USD payment was stored at fx_rate 1 against a KWD branch. Blank now takes
+      the latest rate on file, as a bill does (O3); nothing on file is a
+      sentence on the field. Test currency codes of this suite's own, because
+      the database is never emptied and a real currency's rate would leak into
+      every other suite that converts it.
+    */
+    it('takes the latest rate on file for a payment typed without one', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        await tx
+          .insert(currencies)
+          .values([
+            { code: 'XTS', nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 },
+            { code: 'XXX', nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 },
+          ])
+          .onConflictDoNothing()
+        await tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'XTS',
+            toCurrency: 'KWD',
+            rate: '0.30700000',
+            source: 'payables-test',
+            effectiveOn: today,
+          })
+          .onConflictDoNothing()
+      })
+
+      const reference = `PAY-FX-${(seq += 1)}-${Date.now()}`
+      const paid = (currency: string, ref: string) =>
+        recordSupplierPayment(
+          {},
+          form({
+            branchId: HOME_BRANCH,
+            partnerId: PARTNER,
+            amount: '100.00',
+            currency,
+            fxRate: '',
+            paidOn: '2026-08-18',
+            method: 'transfer',
+            reference: ref,
+          }),
+        )
+
+      expect((await paid('XTS', reference)).errors).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ fxRate: supplierPayments.fxRate })
+          .from(supplierPayments)
+          .where(eq(supplierPayments.reference, reference)),
+      )
+      expect(row?.fxRate).toBe('0.30700000')
+
+      const none = await paid('XXX', `${reference}-none`)
+      expect(none.errors?.fxRate).toBe('payablesValidation.noRateOnFile:{"from":"XXX","to":"KWD"}')
     })
 
     it('reports field errors rather than throwing on a bad payment form', async () => {

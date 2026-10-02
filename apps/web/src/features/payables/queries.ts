@@ -1155,3 +1155,25 @@ export async function defaultBillBranch(
   )
   return last?.branchId ?? first
 }
+
+/**
+ * The currency a branch keeps its books in, to default a money form to.
+ *
+ * The payment form defaulted to KWD for every branch, so a Dubai payment in
+ * dirhams had to be re-chosen by hand and one that was not went in as dinars.
+ * Undefined offline — the pilot form keeps the deployment's first currency.
+ */
+export async function branchBaseCurrency(
+  actor: Actor,
+  branchId: string | undefined,
+): Promise<string | undefined> {
+  if (!branchId || usePilotFixtures()) return undefined
+  const [row] = await withActor(actor, (tx) =>
+    tx
+      .select({ base: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, branchId))
+      .limit(1),
+  )
+  return row?.base
+}

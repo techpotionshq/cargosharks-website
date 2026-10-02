@@ -682,7 +682,11 @@ const supplierPaymentSchema = (tv: Translate) =>
     partnerId: z.uuid(tv('chooseSupplier')),
     amount: decimalString(tv('enterAmountPaid')),
     currency: z.string().trim().length(3),
-    fxRate: decimalString(tv('enterExchangeRate')),
+    // Blank takes the latest rate on file, as a bill does (O3). It defaulted
+    // to 1 and booked a USD payment at face value in the branch's currency.
+    fxRate: decimalString(tv('enterExchangeRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     paidOn: isoDate(tv),
     method: z.string().trim().min(1, tv('howPaid')).max(40),
     reference: z
@@ -706,7 +710,7 @@ export async function recordSupplierPayment(
     partnerId: read(form, 'partnerId'),
     amount: read(form, 'amount') ?? '',
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     paidOn: read(form, 'paidOn') ?? '',
     method: read(form, 'method') ?? 'transfer',
     reference: read(form, 'reference'),
@@ -716,19 +720,36 @@ export async function recordSupplierPayment(
   const data = parsed.data
   assertCanIn(session, 'payable.pay', data.branchId)
 
-  await withActor(session.actor, async (tx) => {
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [branch] = await tx
+      .select({ baseCurrency: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, data.branchId))
+      .limit(1)
+    const base = branch?.baseCurrency ?? data.currency
+    const fxRate = data.fxRate ?? (await latestFxRate(tx, data.currency, base))
+    if (fxRate === null) return { error: 'no_rate' as const, base }
+
     await tx.insert(supplierPayments).values({
       branchId: data.branchId,
       partnerId: data.partnerId,
       amount: data.amount,
       currency: data.currency,
-      fxRate: data.fxRate,
+      fxRate,
       paidOn: data.paidOn,
       method: data.method,
       reference: data.reference,
       recordedById: session.actor.principalId,
     })
+    return { error: null }
   })
+
+  if (outcome.error === 'no_rate') {
+    return fail(
+      { fxRate: tv('noRateOnFile', { from: data.currency, to: outcome.base }) },
+      echo(form),
+    )
+  }
 
   revalidatePath('/payables')
   return succeed(data.partnerId)

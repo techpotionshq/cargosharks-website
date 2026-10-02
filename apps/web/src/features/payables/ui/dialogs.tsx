@@ -11,7 +11,7 @@
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { branchesWhere, can } from '@/lib/permissions'
-import { defaultBillBranch } from '../queries'
+import { branchBaseCurrency, defaultBillBranch } from '../queries'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { todayIn } from '@/lib/time'
@@ -548,6 +548,13 @@ export async function SupplierPaymentDialog({
     getTranslations('common'),
   ])
 
+  // Only branches this person may pay from, and the default currency is that
+  // branch's own (QA P1-2) rather than KWD everywhere.
+  const payable = branchesWhere(session, 'payable.pay')
+  const branchChoices = options.branches.filter((b) => payable.includes(b.value))
+  const branchId = branchChoices[0]?.value
+  const base = await branchBaseCurrency(session.actor, branchId)
+
   const fields: FieldSpec[] = [
     {
       kind: 'select',
@@ -555,8 +562,8 @@ export async function SupplierPaymentDialog({
       label: t('branch'),
       span: 6,
       required: true,
-      options: options.branches,
-      defaultValue: [...session.branchRoles.keys()][0],
+      options: branchChoices,
+      defaultValue: branchId,
     },
     {
       kind: 'select',
@@ -575,9 +582,21 @@ export async function SupplierPaymentDialog({
       span: 4,
       required: true,
       options: options.currencies,
-      defaultValue: 'KWD',
+      defaultValue: base ?? 'KWD',
     },
-    { kind: 'text', name: 'fxRate', label: t('fxRate'), span: 4, mono: true, defaultValue: '1' },
+    /*
+      Blank, not 1. A prefilled 1 survived a change of currency and the action
+      trusted it, so a USD payment was stored at face value in dinars. Left
+      blank, the action takes the latest rate on file, as a bill does (O3).
+    */
+    {
+      kind: 'text',
+      name: 'fxRate',
+      label: t('fxRate'),
+      span: 4,
+      mono: true,
+      hint: t('fxRateHint'),
+    },
     {
       kind: 'date',
       name: 'paidOn',
@@ -699,6 +718,13 @@ export async function SettlementDialog({
     .toISOString()
     .slice(0, 10)
 
+  // Only branches this person may pay from, and the default currency is that
+  // branch's own (QA P1-2) rather than KWD everywhere.
+  const payable = branchesWhere(session, 'payable.pay')
+  const branchChoices = options.branches.filter((b) => payable.includes(b.value))
+  const branchId = branchChoices[0]?.value
+  const base = await branchBaseCurrency(session.actor, branchId)
+
   const fields: FieldSpec[] = [
     {
       kind: 'select',
@@ -706,8 +732,8 @@ export async function SettlementDialog({
       label: t('branch'),
       span: 6,
       required: true,
-      options: options.branches,
-      defaultValue: [...session.branchRoles.keys()][0],
+      options: branchChoices,
+      defaultValue: branchId,
     },
     {
       kind: 'select',
