@@ -314,13 +314,23 @@ describe('silence known before the model is asked', () => {
   }
   const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000)
 
-  it('names a takeover and a loop breaker, so the turn skips its model call', () => {
-    expect(silencedBeforeReading({ ...base, humanActiveAt: hoursAgo(1) })).toBe('human_active')
+  it('names a loop breaker, a closed enquiry and chit-chat, so the turn skips its model call', () => {
     expect(silencedBeforeReading({ ...base, senderGuard: 'burst' })).toBe('loop_guard')
-    expect(silencedBeforeReading({ ...base, agentEnabled: false })).toBe('agent_off')
     expect(silencedBeforeReading({ ...base, enquiryOpen: false })).toBe('closed')
     expect(silencedBeforeReading({ ...base, newContent: 'chit_chat' })).toBe('chit_chat')
-    expect(silencedBeforeReading({ ...base, humanActiveAt: hoursAgo(13) })).toBeNull()
+    expect(silencedBeforeReading({ ...base, newContent: 'automatic' })).toBe('automatic')
+  })
+
+  it('still reads under a takeover, whose reply alone is silenced', () => {
+    const human = { ...base, humanActiveAt: hoursAgo(1) }
+    expect(silencedBeforeReading(human)).toBeNull()
+    expect(silencedBeforeReading({ ...base, agentEnabled: false })).toBeNull()
+    // The coordinator gets the proposals and a completing read still marks ready.
+    expect(decideIntakeReply({ ...human, completeness: complete })).toEqual({
+      action: 'none',
+      reason: 'human_active',
+      markReady: true,
+    })
   })
 
   it('leaves the handoff, the cap and the cooldown to read, because a complete read confirms', () => {

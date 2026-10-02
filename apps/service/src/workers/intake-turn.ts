@@ -309,23 +309,19 @@ export async function runIntakeTurn(
   const enquiryOpen = OPEN_STATUSES.has(enquiry.status)
 
   /*
-    The one model call, and only when it can change something: the agent is on,
-    the enquiry is still being collected, the customer said something a model
-    could read, and nothing already guarantees silence. Chit-chat, an
-    auto-responder, a switched-off agent, an operator who took over and a sender
-    tripping a loop breaker cost nothing; `silencedBeforeReading` holds the list.
+    The one model call, unless reading is worthless or abuse: a closed enquiry,
+    nothing substantive (chit-chat, an auto-responder), or a sender tripping a
+    loop breaker cost nothing; `silencedBeforeReading` holds the list. A
+    switched-off agent and an operator who took over still read: the reply is
+    silenced below, but the coordinator fills the enquiry from the proposals.
   */
   let invocationId: string | null = null
   let modelCalled = false
   let modelFailure: IntakeReason | null = null
   const silenced = silencedBeforeReading({
-    now: asOf,
-    agentEnabled,
     enquiryOpen,
     newContent,
-    humanActiveAt: loaded.humanActiveAt,
     senderGuard: loaded.senderGuard,
-    settings,
   })
   if (silenced === null) {
     const extract = deps.extract ?? ((input: ExtractEnquiryInput) => extractEnquiry(input))
