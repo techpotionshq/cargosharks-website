@@ -43,6 +43,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** A correction naming a record it may not retire — thrown to roll back. */
 class PodRefusal extends Error {}
@@ -127,6 +128,8 @@ export const captureProofOfDelivery = refuseForbidden(async function captureProo
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('podValidation')
 
   const parsed = await localeParse(podSchema(tv), {

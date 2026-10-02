@@ -10,11 +10,19 @@
  * disagree about the one thing a coordinator has to recognise instantly.
  */
 
+import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { AssistantPage } from '@/features/assistant/ui/assistant-page'
 import { assistantLabels } from '@/features/assistant/labels'
+import { usePilotFixtures } from '@/lib/pilot/source'
 import { assistantConfigured } from '@/features/assistant/queries'
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('assistant') }
+}
 
 export default async function Page() {
   /*
@@ -44,5 +52,11 @@ export default async function Page() {
   */
   const locale = await getLocale()
 
-  return <AssistantPage labels={assistantLabels(t)} configured={configured} locale={locale} />
+  return (
+    <AssistantPage
+      labels={assistantLabels(t, usePilotFixtures())}
+      configured={configured}
+      locale={locale}
+    />
+  )
 }

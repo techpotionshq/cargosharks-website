@@ -12,6 +12,7 @@
  * somebody's chat client, and a bare button could be fired by a stray click.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -38,6 +39,17 @@ const DIRECTION_TONE: Record<string, Tone> = {
   they_owe_us: 'positive',
   we_owe_them: 'caution',
   square: 'muted',
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const settlement = await getSettlement(session.actor, recordId((await params).id))
+  const t = await getTranslations('settlements')
+  return { title: settlement?.reference ?? t('title') }
 }
 
 export default async function SettlementPage({ params }: { params: Promise<{ id: string }> }) {
@@ -86,16 +98,23 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @5xl:grid-cols-6">
             <Field label={tc('status')}>
               <Badge tone={STATUS_TONE[settlement.status] ?? 'muted'}>
                 {t(`statuses.${settlement.status}` as 'statuses.draft')}
               </Badge>
             </Field>
             <Field label={t('period')}>
-              {formatDate(settlement.periodFrom, locale, timeZone)} —{' '}
-              {formatDate(settlement.periodTo, locale, timeZone)}
+              {/* Each date isolated: unmarked, "30 سبتمبر 2026 — 01 أكتوبر 2026"
+                  reordered its digits across the dash in Arabic. */}
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodFrom, locale, timeZone)}
+              </bdi>{' '}
+              —{' '}
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodTo, locale, timeZone)}
+              </bdi>
             </Field>
             <Field label={t('theyOweUs')}>{money(settlement.receivableTotal)}</Field>
             <Field label={t('weOweThem')}>{money(settlement.payableTotal)}</Field>
@@ -130,7 +149,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
           ) : null}
         </Card>
 
-        <Card className="lg:col-span-12" padding="none">
+        <Card className="@4xl:col-span-12" padding="none">
           <div className="p-5 pb-3">
             <CardHeader icon="invoices" eyebrow={t('documentsEyebrow')} title={t('documents')} />
           </div>
@@ -142,7 +161,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
               description={t('noDocumentsHint')}
             />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('side')}</TH>

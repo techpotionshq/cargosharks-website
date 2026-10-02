@@ -41,6 +41,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** Uppercase, URL-safe, and never containing a space that breaks a search. */
 const entityCode = (tv: Translate) =>
@@ -105,6 +106,8 @@ export const savePartner = refuseForbidden(async function savePartner(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(partnerSchema(tv), {
@@ -195,6 +198,8 @@ export const saveLocation = refuseForbidden(async function saveLocation(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Places are reference data, so they sit behind the reference permission
   // rather than a places-specific one — the same gate as commodities and
   // charge types, which are the same kind of thing.
@@ -255,6 +260,8 @@ export const setNetworkActive = refuseForbidden(async function setNetworkActive(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Bound before the permission check only because the refusal below comes
   // first: which permission applies depends on the kind being valid.
   const tv = await getTranslations('networkValidation')
@@ -314,6 +321,8 @@ export const savePartnerContact = refuseForbidden(async function savePartnerCont
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(contactSchema(tv), {
@@ -408,6 +417,8 @@ export const savePartnerCoverage = refuseForbidden(async function savePartnerCov
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(coverageSchema, {
@@ -491,6 +502,8 @@ export const savePartnerCompliance = refuseForbidden(async function savePartnerC
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('networkValidation')
 
   const parsed = await localeParse(complianceSchema(tv), {

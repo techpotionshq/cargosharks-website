@@ -17,16 +17,22 @@
 import type { ReactNode } from 'react'
 
 /**
- * Which columns survive a narrow screen.
+ * Which columns survive a narrow table.
  *
  * Every register used to keep every column at every width and scroll
  * sideways, and on a 390px phone the first viewport held a reference and a
  * customer name — the status, the money and the date were all off to the
  * inline end, behind a scroll nobody could see was there. A column now says
  * how much it matters: `low` columns (customer, lane, owner — context the row
- * carries elsewhere) leave below `md`; `lowest` (vessel, broker) leave below
- * `xl`, which is what stops the ops board overflowing at 1440. Reference,
- * status and money are never marked, so they are what a phone sees.
+ * carries elsewhere) need a 48rem table; `lowest` (vessel, broker) need 56rem.
+ * Reference, status and money are never marked, so they are what a phone sees.
+ *
+ * Measured against the *table's* width (`TableShell` is a size container), not
+ * the window's. These were `md:` and `xl:`, and from `md` up the sidebar takes
+ * 248px of the window: a 768px tablet gave the register 440px and every `low`
+ * column at once, so thirty registers overflowed by ~360px with the money and
+ * the status off-screen in both languages. A panel in a third of a grid is the
+ * same case at any window size, and gets the same answer.
  *
  * The same value goes on the `TH` and on every `TD` in the column — a table
  * has no column element that can hide a whole column for us.
@@ -35,21 +41,13 @@ export type ColumnPriority = 'high' | 'low' | 'lowest'
 
 const PRIORITY_CLASS: Record<ColumnPriority, string> = {
   high: '',
-  low: 'hidden md:table-cell',
-  lowest: 'hidden xl:table-cell',
+  low: 'hidden @3xl:table-cell',
+  lowest: 'hidden @4xl:table-cell',
 }
 
 export function TableShell({
   children,
   className,
-  /**
-   * The width below which the table scrolls instead of crushing its columns.
-   *
-   * A board with eight columns needs a floor; a four-column panel sitting in a
-   * third of the grid does not, and giving it one only guarantees that its
-   * last columns are permanently off-screen.
-   */
-  minWidth = 'wide',
   /**
    * `fill`: take whatever height the card has left, and scroll inside it.
    *
@@ -76,7 +74,6 @@ export function TableShell({
 }: {
   readonly children: ReactNode
   readonly className?: string
-  readonly minWidth?: 'wide' | 'none'
   readonly scroll?: 'none' | 'fill'
 }) {
   return (
@@ -84,8 +81,9 @@ export function TableShell({
     <div
       className={[
         // `qb-scroll-x` draws a soft edge on whichever side has more columns
-        // behind it — see globals.css.
-        'qb-scroll-x w-full overflow-x-auto',
+        // behind it — see globals.css. `@container` is what the columns'
+        // priorities and the cells' padding measure; see `ColumnPriority`.
+        'qb-scroll-x @container w-full overflow-x-auto',
         scroll === 'fill' ? 'qb-scroll min-h-0 flex-1 overflow-y-auto' : '',
         className,
       ]
@@ -93,18 +91,13 @@ export function TableShell({
         .join(' ')}
     >
       {/*
-        The floor applies from md up only. Below md the low-priority columns
-        are already hidden (`priority` on TH/TD), and a 52rem floor on what is
-        left kept every register 476px wider than a phone, so the balance,
-        status and SLA columns that `priority` exists to keep sat off-screen.
+        No floor. There was a 52rem minimum from md up, so a wide board
+        scrolled rather than crushed its columns — and once the columns that
+        do not fit leave by priority, the floor only guaranteed a scroll in
+        the band between "the low columns appear" and 52rem. A register that
+        still does not fit scrolls inside this box on its own merits.
       */}
-      <table
-        className={`w-full border-collapse text-body-sm ${
-          minWidth === 'wide' ? 'md:min-w-208' : ''
-        }`}
-      >
-        {children}
-      </table>
+      <table className="w-full border-collapse text-body-sm">{children}</table>
     </div>
   )
 }
@@ -146,10 +139,11 @@ export function TH({
     <th
       scope="col"
       className={[
-        // Below md the padding tightens. A phone has room for three or four
+        // In a table under 48rem the padding tightens (the shell is the size
+        // container, as for `ColumnPriority`). A phone has room for three or four
         // columns, and 24px of padding per column was most of the margin by
         // which the last of them fell off-screen; 12px still reads as a gap.
-        // Below 2xl it is 20px rather than 24px: nine columns at 1280 have
+        // Under 72rem it is 20px rather than 24px: nine columns at 1280 have
         // 966px between them, and the 36px that saves is a whole column of
         // the enquiry queue no longer pushed out of its card.
         //
@@ -159,7 +153,7 @@ export function TH({
         // "WORKING CALENDAR" and "REVENUE / COST" were each the widest thing
         // in their column, and the reason the branch and charge-type tables
         // scrolled at 1280 with every cell beneath them already wrapping.
-        'px-1.5 py-2.5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-2.5 2xl:px-3',
+        'px-1.5 py-2.5 text-micro font-semibold tracking-[0.06em] text-ink-subtle uppercase @xl:px-2 @3xl:px-2.5 @6xl:px-3',
         align === 'end' ? 'text-end' : 'text-start',
         PRIORITY_CLASS[priority],
         className,
@@ -228,13 +222,14 @@ export function TD({
   return (
     <td
       className={[
-        // Tighter below md for the same reason as the header; see `TH`. A
-        // status pill may also wrap there: "Awaiting documents" held to one
-        // line was the widest thing in several registers, and it pushed the
-        // figure beside it off a phone. Two lines of pill is still a pill.
+        // Tighter under 48rem for the same reason as the header; see `TH`. A
+        // long status pill may also wrap there: "Awaiting documents" held to
+        // one line was the widest thing in several registers, and it pushed
+        // the figure beside it off a phone. A short one does not (`Badge`
+        // marks it): two words broken one per line read as a rendering fault.
         // Its leading dot goes too: the pill's own colour already carries the
         // tone, and the dot's 12px was the last few pixels of a phone row.
-        'px-1.5 py-2.5 align-middle text-ink sm:px-2 md:px-2.5 2xl:px-3 max-md:[&_[data-badge]]:whitespace-normal max-md:[&_[data-dot]]:hidden',
+        'px-1.5 py-2.5 align-middle text-ink @xl:px-2 @3xl:px-2.5 @6xl:px-3 @max-3xl:[&_[data-badge]:not([data-short])]:whitespace-normal @max-3xl:[&_[data-dot]]:hidden',
         align === 'end' ? 'text-end' : 'text-start',
         // A figure never wraps: "KWD 1,840.500" broken after the code is two
         // half-numbers, and a column of them stops aligning on the decimal.

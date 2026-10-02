@@ -45,6 +45,7 @@ import { createEnquirySchema } from './schema'
 import { enquiryColumn, resolveProposal } from './proposals'
 import { describeFailure } from './proposal-failures'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
@@ -55,6 +56,8 @@ export const submitEnquiry = refuseForbidden(async function submitEnquiry(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const read = (key: string): string | undefined => {
@@ -140,6 +143,8 @@ export const setEnquiryContainerCount = refuseForbidden(async function setEnquir
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -189,6 +194,8 @@ export const assignEnquiryAction = refuseForbidden(async function assignEnquiryA
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -227,6 +234,8 @@ export const respondEnquiryAction = refuseForbidden(async function respondEnquir
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -251,6 +260,8 @@ export const closeEnquiryAction = refuseForbidden(async function closeEnquiryAct
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.close')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '')
@@ -391,6 +402,8 @@ export const advanceEnquiry = refuseForbidden(async function advanceEnquiry(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   // This file reads FormData directly, like its siblings above.
@@ -497,6 +510,8 @@ export const acceptProposal = refuseForbidden(async function acceptProposal(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')
@@ -596,6 +611,8 @@ export const acceptAllProposals = refuseForbidden(async function acceptAllPropos
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const enquiryId = readField(form, 'enquiryId')
@@ -681,6 +698,8 @@ export const rejectProposal = refuseForbidden(async function rejectProposal(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('enquiriesValidation')
 
   const proposalId = readField(form, 'proposalId')

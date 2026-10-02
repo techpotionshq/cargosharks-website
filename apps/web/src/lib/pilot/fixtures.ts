@@ -666,13 +666,21 @@ function partner(key: PartnerKey): (typeof PARTNERS)[number] {
   return PARTNERS.find((p) => p.id === key)!
 }
 
-const OWNERS = [
-  'Fahad Al-Rashid',
-  'Maryam Al-Otaibi',
-  'Yousef Haddad',
-  'Noura Al-Sabah',
-  'Rajesh Menon',
-] as const
+/**
+ * The people who own work on the board: the first five of `PEOPLE`, by index.
+ *
+ * This was a list of English names of its own, so an Arabic screen listed
+ * "Fahad Al-Rashid" as the owner of a shipment beside a users register that
+ * already called him فهد الرشيد. One list, read in the reader's language.
+ * A function rather than a slice of `PEOPLE` because that constant is
+ * declared further down and a top-level read of it here would run first.
+ */
+const OWNER_COUNT = 5
+
+function ownerName(index: number, locale: 'en' | 'ar' = 'en'): string {
+  const person = PEOPLE[index % OWNER_COUNT]!
+  return locale === 'ar' ? person.ar : person.en
+}
 
 const CARRIERS = ['ONE', 'CMA CGM', 'Hapag-Lloyd', 'MSC', 'Emirates SkyCargo', 'Maersk'] as const
 
@@ -899,7 +907,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'KWSWK',
     destination: 'SAJED',
     status: 'in_transit',
-    done: 4,
+    done: 5,
     etaOffset: 2,
     transitDays: 6,
     containers: 3,
@@ -915,7 +923,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'KWKWI',
     destination: 'DEHAM',
     status: 'in_transit',
-    done: 3,
+    done: 4,
     etaOffset: 1,
     transitDays: 2,
     containers: 0,
@@ -1030,7 +1038,7 @@ const JOB_SEEDS: readonly JobSeed[] = [
     origin: 'AEJEA',
     destination: 'KWSWK',
     status: 'in_transit',
-    done: 4,
+    done: 5,
     etaOffset: 1,
     transitDays: 5,
     containers: 2,
@@ -1101,24 +1109,49 @@ function containerNumber(seq: number, index: number): string {
 function milestonesFor(seed: JobSeed, now: number): MilestoneView[] {
   const template = TEMPLATES[seed.template]!
   const arrivalIndex = template.findIndex(([code]) => code === 'arrived_destination')
+  const departureIndex = template.findIndex(
+    ([code]) => code === 'departed_origin' || code === 'uplifted',
+  )
   const etaDay = seed.etaOffset
+  const etdDay = seed.etaOffset - seed.transitDays
 
   return template.map(([code, nameEn, nameAr], index) => {
     /**
-     * Steps are spread backwards from the arrival milestone across the transit
-     * time, so a job with a 26-day sailing shows a 26-day gap where the
-     * sailing is — not six evenly spaced dots.
+     * Departure on the header's ETD and arrival on its ETA, the sailing in
+     * between, the paperwork a few days either side.
+     *
+     * Steps used to be spread backwards from arrival across the transit time,
+     * which put "departed origin" halfway through the voyage and "booking
+     * confirmed" on the ETD — so the job header and its own timeline gave two
+     * different sailing dates on the same screen, and the customer's portal
+     * repeated the disagreement.
      */
-    const fromArrival = index - arrivalIndex
     const offset =
-      fromArrival <= 0
-        ? etaDay - seed.transitDays * (Math.abs(fromArrival) / Math.max(arrivalIndex, 1))
-        : etaDay + fromArrival * 2
+      index <= departureIndex
+        ? etdDay - (departureIndex - index)
+        : index <= arrivalIndex
+          ? etdDay +
+            (seed.transitDays * (index - departureIndex)) /
+              Math.max(arrivalIndex - departureIndex, 1)
+          : etaDay + (index - arrivalIndex) * 2
 
-    const planned = at(now, Math.round(offset), 8 + (index % 6))
+    /**
+     * Actuals drift from plan by up to a day: real dates are never exact. Not
+     * the sailing and the arrival, though — those are the dates the header
+     * prints beside this timeline, at the header's own hours.
+     */
+    const anchor = index === departureIndex || index === arrivalIndex
+    const planned = anchor
+      ? at(now, Math.round(offset), index === arrivalIndex ? 14 : 6)
+      : at(now, Math.round(offset), 8 + (index % 6))
     const done = index < seed.done
-    /** Actuals drift from plan by up to a day: real dates are never exact. */
-    const actual = done ? at(now, Math.round(offset) + ((index % 3) - 1), 10 + (index % 5)) : null
+    const drifted = at(now, Math.round(offset) + (index % 3) - 1, 10 + (index % 5))
+    // …and never in the future: a step that is done happened already.
+    const actual = done
+      ? anchor
+        ? planned
+        : new Date(Math.min(drifted.getTime(), now - HOUR))
+      : null
     const slipped = !done && seed.customs === 'held' && index >= seed.done
 
     return {
@@ -1133,7 +1166,7 @@ function milestonesFor(seed: JobSeed, now: number): MilestoneView[] {
   })
 }
 
-function clocksFor(seed: JobSeed, now: number): ClockView[] {
+function clocksFor(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): ClockView[] {
   /**
    * One job carries the demurrage clock the demo turns on (Pilot §3.1 item
    * 12). It is deliberately past its free time and has already written a
@@ -1157,7 +1190,7 @@ function clocksFor(seed: JobSeed, now: number): ClockView[] {
       chargeableDays: chargeable,
       perDiem: { amount: perDiem, currency: 'KWD' },
       accrued: { amount: chargeable * perDiem * 3, currency: 'KWD' },
-      counterparty: 'ONE — Ocean Network Express',
+      counterparty: pickName(locale, partner('one').en, partner('one').ar),
       chargeLineWritten: true,
       equipmentId: null,
       counterpartyId: partnerId('one'),
@@ -1182,7 +1215,7 @@ function documentsFor(seed: JobSeed, now: number): DocumentView[] {
   }))
 }
 
-function jobSummary(seed: JobSeed, now: number): JobSummary {
+function jobSummary(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobSummary {
   const customer = CUSTOMERS[seed.customer]!
   const origin = PORTS[seed.origin]
   const destination = PORTS[seed.destination]
@@ -1214,7 +1247,7 @@ function jobSummary(seed: JobSeed, now: number): JobSummary {
     etd: at(now, seed.etaOffset - seed.transitDays, 6),
     eta: at(now, seed.etaOffset, 14),
     ata: seed.etaOffset < 0 ? at(now, seed.etaOffset, 14) : null,
-    owner: OWNERS[seed.owner]!,
+    owner: ownerName(seed.owner, locale),
     customsStatus: seed.customs ?? null,
     containerCount: seed.containers,
     milestonesTotal: template.length,
@@ -1225,27 +1258,41 @@ function jobSummary(seed: JobSeed, now: number): JobSummary {
   }
 }
 
-export function pilotJobs(now = Date.now()): JobSummary[] {
-  return JOB_SEEDS.map((seed) => jobSummary(seed, now))
+/**
+ * `locale` is for what an operator would have typed — the owner's name, the
+ * commodity, the customs note — which a real file holds in whichever language
+ * it was written, and which the demo writes in the reader's.
+ */
+export function pilotJobs(now = Date.now(), locale: 'en' | 'ar' = 'en'): JobSummary[] {
+  return JOB_SEEDS.map((seed) => jobSummary(seed, now, locale))
 }
 
-export function pilotJob(id: string, now = Date.now()): JobDetail | undefined {
+export function pilotJob(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): JobDetail | undefined {
   const seed = JOB_SEEDS.find((s) => `job-${s.seq}` === id || String(s.seq) === id)
   if (!seed) return undefined
-  return jobDetail(seed, now)
+  return jobDetail(seed, now, locale)
 }
 
-function pilotJobByReference(reference: string, now = Date.now()): JobDetail | undefined {
+function pilotJobByReference(
+  reference: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): JobDetail | undefined {
   const normalised = reference.trim().toUpperCase()
   const seed = JOB_SEEDS.find((s) => {
     const year = new Date(now).getFullYear()
     return `${s.branch}-${year}-${String(s.seq).padStart(5, '0')}` === normalised
   })
-  return seed ? jobDetail(seed, now) : undefined
+  return seed ? jobDetail(seed, now, locale) : undefined
 }
 
-function jobDetail(seed: JobSeed, now: number): JobDetail {
-  const summary = jobSummary(seed, now)
+function jobDetail(seed: JobSeed, now: number, locale: 'en' | 'ar' = 'en'): JobDetail {
+  const summary = jobSummary(seed, now, locale)
+  const ar = locale === 'ar'
   const containers = Array.from({ length: seed.containers }, (_, index) => ({
     containerNo: containerNumber(seed.seq, index),
     type: CONTAINER_TYPES[(seed.seq + index) % CONTAINER_TYPES.length]!,
@@ -1299,27 +1346,39 @@ function jobDetail(seed: JobSeed, now: number): JobDetail {
     incoterm: seed.direction === 'import' ? 'CFR' : 'FOB',
     commodity:
       seed.customer === 0
-        ? 'Steel coils'
+        ? ar
+          ? 'لفائف حديد'
+          : 'Steel coils'
         : seed.customer === 2
-          ? 'Foodstuffs — ambient'
+          ? ar
+            ? 'مواد غذائية — حرارة عادية'
+            : 'Foodstuffs — ambient'
           : seed.customer === 4
-            ? 'Consumer electronics'
-            : 'General cargo',
+            ? ar
+              ? 'إلكترونيات استهلاكية'
+              : 'Consumer electronics'
+            : ar
+              ? 'بضائع عامة'
+              : 'General cargo',
     grossWeightKg: seed.mode === 'air' ? 1850 + seed.seq : 18500 + seed.seq * 12,
     chargeableWeightKg: seed.mode === 'air' ? 2100 + seed.seq : null,
     volumeCbm: seed.mode === 'air' ? 11.4 : seed.containers * 62,
     pieces: seed.mode === 'air' ? 42 : seed.containers * 210,
     milestones: milestonesFor(seed, now),
     containers,
-    clocks: clocksFor(seed, now),
-    exceptions: pilotExceptions(now).filter((e) => e.jobId === summary.id),
+    clocks: clocksFor(seed, now, locale),
+    exceptions: pilotExceptions(now, locale).filter((e) => e.jobId === summary.id),
     documents: documentsFor(seed, now),
     partners: partnersFor(seed),
     customsNote:
       seed.customs === 'held'
-        ? 'Held by Kuwait General Administration of Customs pending origin certificate attestation.'
+        ? ar
+          ? 'محتجزة لدى الإدارة العامة للجمارك في الكويت بانتظار تصديق شهادة المنشأ.'
+          : 'Held by Kuwait General Administration of Customs pending origin certificate attestation.'
         : seed.customs === 'inspection'
-          ? 'Physical inspection scheduled — yard 4.'
+          ? ar
+            ? 'تفتيش فعلي مجدول — الساحة 4.'
+            : 'Physical inspection scheduled — yard 4.'
           : null,
   }
 }
@@ -1429,8 +1488,9 @@ function partnersFor(seed: JobSeed): JobPartnerView[] {
  * on a job that is otherwise unremarkable, which is the point: it is the sort
  * of thing that goes unnoticed for a week today.
  */
-export function pilotExceptions(now = Date.now()): ExceptionView[] {
+export function pilotExceptions(now = Date.now(), locale: 'en' | 'ar' = 'en'): ExceptionView[] {
   const year = new Date(now).getFullYear()
+  const pick = (en: string, ar: string): string => (locale === 'ar' ? ar : en)
   return [
     {
       id: 'exc-1',
@@ -1442,8 +1502,11 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'critical',
       openedAt: at(now, -4, 8),
       dueAt: at(now, -1, 12),
-      owner: OWNERS[0]!,
-      description: 'Origin certificate requires chamber attestation before release.',
+      owner: ownerName(0, locale),
+      description: pick(
+        'Origin certificate requires chamber attestation before release.',
+        'شهادة المنشأ تحتاج إلى تصديق غرفة التجارة قبل الإفراج.',
+      ),
       customerName: CUSTOMERS[0]!.en,
       customerNameAr: CUSTOMERS[0]!.ar,
     },
@@ -1457,8 +1520,11 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'high',
       openedAt: at(now, -3, 10),
       dueAt: at(now, 1, 12),
-      owner: OWNERS[3]!,
-      description: 'Selected for physical inspection at yard 4.',
+      owner: ownerName(3, locale),
+      description: pick(
+        'Selected for physical inspection at yard 4.',
+        'اختيرت للتفتيش الفعلي في الساحة 4.',
+      ),
       customerName: CUSTOMERS[6]!.en,
       customerNameAr: CUSTOMERS[6]!.ar,
     },
@@ -1472,8 +1538,11 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'medium',
       openedAt: at(now, -2, 9),
       dueAt: at(now, 0, 17),
-      owner: OWNERS[1]!,
-      description: 'Packing list not received from shipper.',
+      owner: ownerName(1, locale),
+      description: pick(
+        'Packing list not received from shipper.',
+        'لم تصل قائمة التعبئة من الشاحن.',
+      ),
       customerName: CUSTOMERS[2]!.en,
       customerNameAr: CUSTOMERS[2]!.ar,
     },
@@ -1487,8 +1556,11 @@ export function pilotExceptions(now = Date.now()): ExceptionView[] {
       severity: 'medium',
       openedAt: at(now, -1, 14),
       dueAt: at(now, 2, 12),
-      owner: OWNERS[4]!,
-      description: 'Berthing delayed 36 hours at Jebel Ali.',
+      owner: ownerName(4, locale),
+      description: pick(
+        'Berthing delayed 36 hours at Jebel Ali.',
+        'تأخر الرسو 36 ساعة في جبل علي.',
+      ),
       customerName: CUSTOMERS[8]!.en,
       customerNameAr: CUSTOMERS[8]!.ar,
     },
@@ -1841,7 +1913,7 @@ export function pilotEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): En
       customerNameAr: customer.ar,
       originName: pickName(locale, PORTS[seed.origin].en, PORTS[seed.origin].ar),
       destinationName: pickName(locale, PORTS[seed.destination].en, PORTS[seed.destination].ar),
-      owner: seed.owner === null ? null : OWNERS[seed.owner]!,
+      owner: seed.owner === null ? null : ownerName(seed.owner, locale),
       createdAt,
       slaDueAt: new Date(createdAt.getTime() + seed.sla * HOUR),
       firstRespondedAt:
@@ -1862,226 +1934,232 @@ export function pilotEnquiries(now = Date.now(), locale: 'en' | 'ar' = 'en'): En
  * `manualTurnaroundHours` is the punchline of Moment 2: the same enquiry,
  * answered by hand last month, took a day and a half. Pilot §5 item 7 asks the
  * client for that number specifically, with *"the honest turnaround time"*.
+ *
+ * Built from the enquiry's own seed. This used to return one hard-coded
+ * comparison whatever was asked, so every enquiry on the board opened as
+ * ENQ-KWI-0320 for Fintas Steel, Ningbo to Shuwaikh — a Hamburg air enquiry
+ * included. Now the header is the enquiry's, the recommended option's sell is
+ * the figure the register and the quotations list print for it, and an
+ * enquiry nobody has priced yet opens on the empty comparison with its
+ * "Price it" button, as it does on a database.
  */
-export function pilotQuote(now = Date.now(), locale: 'en' | 'ar' = 'en'): QuoteComparison {
+export function pilotQuote(
+  enquiryId: string | undefined,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): QuoteComparison | undefined {
+  // The comparison is always reached from an enquiry; the demo's own is the
+  // won Ningbo sailing, the lane every other screen tells the story of.
+  const seed = ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === (enquiryId ?? 'enq-314'))
+  if (!seed) return undefined
+
   const year = new Date(now).getFullYear()
   const ar = locale === 'ar'
+  const customer = CUSTOMERS[seed.customer]!
+  const origin = PORTS[seed.origin]
+  const destination = PORTS[seed.destination]
+  const createdAt = hours(now, -seed.age)
+  const priced = seed.sell !== undefined
+  const fcl = seed.mode === 'sea_fcl'
+  // An FCL enquiry that arrived by mail has no count until someone records one.
+  const containerCount = fcl && priced ? 1 : null
+  const importing = destination.country === 'KW' || destination.country === 'AE'
+
   return {
-    enquiryReference: `ENQ-KWI-${year}-0320`,
-    customerName: ar ? CUSTOMERS[0]!.ar : CUSTOMERS[0]!.en,
-    lane: ar ? `${PORTS.CNNGB.ar} ← ${PORTS.KWSWK.ar}` : 'Ningbo → Shuwaikh',
-    mode: 'sea_fcl',
-    containerCount: 1,
-    containerType: '1 × 40HC',
-    incoterm: 'CFR Shuwaikh',
-    preparedBy: OWNERS[0]!,
-    pricedAt: hours(now, -1),
-    manualTurnaroundHours: 36,
-    pricingMs: 840,
-    hasResponded: false,
-    isClosed: false,
-    options: [
-      {
-        id: 'opt-1',
-        carrier: 'ONE — Ocean Network Express',
-        service: 'Direct · weekly',
-        transitDays: 24,
-        buy: { amount: 1284, currency: 'KWD' },
-        sell: { amount: 1580, currency: 'KWD' },
-        marginPct: 18.7,
-        validUntil: at(now, 21, 23),
-        isRecommended: true,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 980,
-            sellRate: 1180,
-            amount: { amount: 1180, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 118,
-            sellRate: 145,
-            amount: { amount: 145, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 22,
-            sellRate: 45,
-            amount: { amount: 45, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 42,
-            amount: { amount: 42, currency: 'KWD' },
-          },
-        ],
-      },
-      {
-        id: 'opt-2',
-        carrier: 'CMA CGM',
-        service: 'Direct · fortnightly',
-        transitDays: 21,
-        buy: { amount: 1362, currency: 'KWD' },
-        sell: { amount: 1690, currency: 'KWD' },
-        marginPct: 19.4,
-        validUntil: at(now, 14, 23),
-        isRecommended: false,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 1050,
-            sellRate: 1275,
-            amount: { amount: 1275, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 126,
-            sellRate: 155,
-            amount: { amount: 155, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 22,
-            sellRate: 45,
-            amount: { amount: 45, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 47,
-            amount: { amount: 47, currency: 'KWD' },
-          },
-        ],
-      },
-      {
-        id: 'opt-3',
-        carrier: 'Hapag-Lloyd',
-        service: 'Transhipment via Jebel Ali',
-        transitDays: 29,
-        buy: { amount: 1178, currency: 'KWD' },
-        sell: { amount: 1420, currency: 'KWD' },
-        marginPct: 17.0,
-        validUntil: at(now, 28, 23),
-        isRecommended: false,
-        lines: [
-          {
-            chargeCode: 'ocean_freight',
-            nameEn: 'Ocean Freight',
-            nameAr: 'أجرة الشحن البحري',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 890,
-            sellRate: 1050,
-            amount: { amount: 1050, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_origin',
-            nameEn: 'Terminal Handling — Origin',
-            nameAr: 'مناولة المحطة - المنشأ',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 118,
-            sellRate: 145,
-            amount: { amount: 145, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'thc_destination',
-            nameEn: 'Terminal Handling — Destination',
-            nameAr: 'مناولة المحطة - الوجهة',
-            basis: 'per_container',
-            quantity: 1,
-            buyRate: 132,
-            sellRate: 168,
-            amount: { amount: 168, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'documentation',
-            nameEn: 'Documentation',
-            nameAr: 'رسوم المستندات',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 6,
-            sellRate: 15,
-            amount: { amount: 15, currency: 'KWD' },
-          },
-          {
-            chargeCode: 'delivery_order',
-            nameEn: 'Delivery Order',
-            nameAr: 'إذن التسليم',
-            basis: 'flat',
-            quantity: 1,
-            buyRate: 32,
-            sellRate: 42,
-            amount: { amount: 42, currency: 'KWD' },
-          },
-        ],
-      },
-    ],
+    status: seed.status,
+    enquiryReference: `ENQ-${seed.branch}-${year}-${String(seed.seq).padStart(4, '0')}`,
+    customerName: pickName(locale, customer.en, customer.ar),
+    // Read right to left in Arabic, so the origin ends up on the right.
+    lane: ar ? `${origin.ar} ← ${destination.ar}` : `${origin.en} → ${destination.en}`,
+    mode: seed.mode,
+    containerCount,
+    containerType: containerCount ? `${containerCount} × 40HC` : null,
+    // The term is international; the named place is a place, in the reader's language.
+    incoterm: importing
+      ? `CFR ${ar ? destination.ar : destination.en}`
+      : `FOB ${ar ? origin.ar : origin.en}`,
+    preparedBy: seed.owner === null ? null : ownerName(seed.owner, locale),
+    pricedAt: new Date(createdAt.getTime() + (seed.respondedAfter ?? 1) * HOUR),
+    // Measured on the showcase lane only; anywhere else it would be invented.
+    manualTurnaroundHours: priced && seed.seq === 314 ? 36 : null,
+    pricingMs: priced ? 640 + (seed.seq % 5) * 80 : null,
+    hasResponded: seed.respondedAfter !== undefined,
+    isClosed: seed.status === 'won' || seed.status === 'lost',
+    hasAccepted: seed.status === 'won',
+    branchId: branch(seed.branch).id,
+    // KWD on the Dubai enquiry as well — see `pilotQuotes` for why.
+    baseCurrency: 'KWD',
+    options: priced ? quoteOptions(seed, now, locale) : [],
   }
+}
+
+/**
+ * Who sails each kind of enquiry, and how — the comparison's columns.
+ *
+ * `share` is the option's sell against the recommended one and `marginDelta`
+ * its margin against the enquiry's; the recommended option is always first and
+ * always exactly the enquiry's quoted sell and margin.
+ */
+interface QuoteCarrier {
+  readonly partner: PartnerKey
+  readonly serviceEn: string
+  readonly serviceAr: string
+  readonly transitDelta: number
+  readonly share: string
+  readonly marginDelta: string
+}
+
+const QUOTE_CARRIERS: Partial<Record<Mode, readonly QuoteCarrier[]>> = {
+  sea_fcl: [
+    {
+      partner: 'one',
+      serviceEn: 'Direct · weekly',
+      serviceAr: 'مباشر · أسبوعي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+    {
+      partner: 'cmacgm',
+      serviceEn: 'Direct · fortnightly',
+      serviceAr: 'مباشر · كل أسبوعين',
+      transitDelta: -3,
+      share: '1.07',
+      marginDelta: '0.7',
+    },
+    {
+      partner: 'hapag',
+      serviceEn: 'Transhipment via Jebel Ali',
+      serviceAr: 'مسافنة عبر جبل علي',
+      transitDelta: 5,
+      share: '0.9',
+      marginDelta: '-1.7',
+    },
+  ],
+  sea_lcl: [
+    {
+      partner: 'cmacgm',
+      serviceEn: 'Consolidated · weekly',
+      serviceAr: 'شحن مجمّع · أسبوعي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+    {
+      partner: 'maersk',
+      serviceEn: 'Consolidated via Jebel Ali',
+      serviceAr: 'شحن مجمّع عبر جبل علي',
+      transitDelta: 4,
+      share: '0.92',
+      marginDelta: '-2.1',
+    },
+  ],
+  // One airline flies the demo's air lanes, so the comparison draws a single option.
+  air: [
+    {
+      partner: 'ek',
+      serviceEn: 'Via Dubai · daily',
+      serviceAr: 'عبر دبي · يومي',
+      transitDelta: 0,
+      share: '1',
+      marginDelta: '0',
+    },
+  ],
+}
+
+/** Days port to port by the countries at either end; a rough but honest board. */
+const LANE_TRANSIT: Record<string, number> = {
+  'CN-KW': 24,
+  'CN-AE': 20,
+  'IN-KW': 9,
+  'IN-AE': 6,
+  'TR-KW': 18,
+  'DE-KW': 26,
+  'KW-IN': 8,
+  'AE-KW': 2,
+}
+
+/** How a quotation's sell divides into its charges, by mode — the last line absorbs rounding. */
+const QUOTE_SPLIT: Record<'sea' | 'air', readonly (readonly [ChargeKey, string, string])[]> = {
+  sea: [
+    ['ocean_freight', 'per_container', '0.74'],
+    ['thc_origin', 'per_container', '0.09'],
+    ['thc_destination', 'per_container', '0.10'],
+    ['documentation', 'flat', '0.03'],
+    ['delivery_order', 'flat', '0'],
+  ],
+  air: [
+    ['air_freight', 'per_kg', '0.82'],
+    ['documentation', 'flat', '0.04'],
+    ['delivery_order', 'flat', '0'],
+  ],
+}
+
+function quoteOptions(
+  seed: EnquirySeed,
+  now: number,
+  locale: 'en' | 'ar',
+): QuoteComparison['options'] {
+  const sell = new D(seed.sell!)
+  const margin = new D(seed.margin ?? 0)
+  const lane = `${PORTS[seed.origin].country}-${PORTS[seed.destination].country}`
+  const base = seed.mode === 'air' ? 2 : (LANE_TRANSIT[lane] ?? 20)
+  const split = QUOTE_SPLIT[seed.mode === 'air' ? 'air' : 'sea']
+  const carriers = QUOTE_CARRIERS[seed.mode] ?? []
+
+  return carriers.map((carrier, index) => {
+    const optionSell = sell.times(carrier.share).toDecimalPlaces(0)
+    const optionMargin = margin.plus(carrier.marginDelta)
+    const optionBuy = optionSell
+      .times(new D(100).minus(optionMargin))
+      .dividedBy(100)
+      .toDecimalPlaces(0)
+
+    let sellLeft = optionSell
+    let buyLeft = optionBuy
+    const lines = split.map(([code, basis, share], position) => {
+      const last = position === split.length - 1
+      const lineSell = last ? sellLeft : optionSell.times(share).toDecimalPlaces(0)
+      const lineBuy = last ? buyLeft : optionBuy.times(share).toDecimalPlaces(0)
+      sellLeft = sellLeft.minus(lineSell)
+      buyLeft = buyLeft.minus(lineBuy)
+      const charge = CHARGE_TYPE_ROWS.find((row) => row.key === code)
+      return {
+        chargeCode: code,
+        nameEn: charge?.en ?? code,
+        nameAr: charge?.ar ?? code,
+        basis,
+        quantity: 1,
+        buyRate: lineBuy.toNumber(),
+        sellRate: lineSell.toNumber(),
+        amount: { amount: lineSell.toNumber(), currency: 'KWD' },
+      }
+    })
+
+    const who = partner(carrier.partner)
+    return {
+      id: `enq-${seed.seq}-opt-${index + 1}`,
+      carrier: locale === 'ar' ? who.ar : who.en,
+      service: locale === 'ar' ? carrier.serviceAr : carrier.serviceEn,
+      transitDays: Math.max(1, base + carrier.transitDelta),
+      buy: { amount: optionBuy.toNumber(), currency: 'KWD' },
+      sell: { amount: optionSell.toNumber(), currency: 'KWD' },
+      marginPct: optionMargin.toNumber(),
+      validUntil: at(now, 14 + index * 7, 23),
+      isRecommended: index === 0,
+      lines,
+    }
+  })
 }
 
 // --- the dashboard ---------------------------------------------------------
 
 const LIVE_STATUSES = new Set(['booked', 'in_transit', 'arrived', 'customs', 'on_hold'])
 
-export function pilotOverview(now = Date.now()): OpsOverview {
-  const jobs = pilotJobs(now)
-  const enquiries = pilotEnquiries(now)
-  const exceptions = pilotExceptions(now)
+export function pilotOverview(now = Date.now(), locale: 'en' | 'ar' = 'en'): OpsOverview {
+  const jobs = pilotJobs(now, locale)
+  const enquiries = pilotEnquiries(now, locale)
+  const exceptions = pilotExceptions(now, locale)
   const live = jobs.filter((j) => LIVE_STATUSES.has(j.status))
   const openEnquiries = enquiries.filter(
     (e) => !['won', 'lost', 'cancelled', 'expired'].includes(e.status),
@@ -2206,15 +2284,21 @@ export function pilotOverview(now = Date.now()): OpsOverview {
 /** The seeded portal customer — Pilot §3.1 item 10. */
 export const PILOT_PORTAL_CUSTOMER = CUSTOMERS[0]!
 
+/**
+ * The agency the demo's agent login works for: the origin agent on the China
+ * imports, under the id the job's partner panel names it by.
+ */
+export const PILOT_AGENT_PARTNER = { ...partner('everbright'), id: partnerId('everbright') }
+
 export function pilotPortalShipments(
   now = Date.now(),
   locale: 'en' | 'ar' = 'en',
 ): PortalShipment[] {
   const ar = locale === 'ar'
-  return pilotJobs(now)
+  return pilotJobs(now, locale)
     .filter((job) => job.customerName === PILOT_PORTAL_CUSTOMER.en)
     .map((job) => {
-      const detail = pilotJob(job.id, now)
+      const detail = pilotJob(job.id, now, locale)
       const next = detail?.milestones.find((m) => m.actualAt === null)
       return {
         id: job.id,
@@ -2247,8 +2331,8 @@ export function pilotAgentShipments(
   locale: 'en' | 'ar' = 'en',
 ): PortalShipment[] {
   const ar = locale === 'ar'
-  return pilotJobs(now)
-    .map((job) => ({ job, detail: pilotJob(job.id, now) }))
+  return pilotJobs(now, locale)
+    .map((job) => ({ job, detail: pilotJob(job.id, now, locale) }))
     .filter(({ detail }) => detail?.partners.some((p) => p.partnerId === partner))
     .map(({ job, detail }) => {
       const next = detail?.milestones.find((m) => m.actualAt === null)
@@ -2311,7 +2395,12 @@ export function pilotTracking(
     eta: job.eta,
     ata: job.ata,
     containers: job.containers,
-    milestones: job.milestones.filter((m) => m.code !== 'empty_returned'),
+    /*
+      Every step, as the database's tracking read returns them. This hid the
+      empty return, so the portal said "4 of 7" and the tracking page "4 of 6"
+      about the same shipment.
+    */
+    milestones: job.milestones,
     /** Released only — a draft bill of lading is not a customer document. */
     documents: job.documents.filter((d) => d.releasedAt !== null),
     notices: job.exceptions
@@ -2415,7 +2504,7 @@ export function pilotQuotes(
       decidedAt: decided ? hours(now, -Math.round(seed.age / 3)) : null,
       customerName: pickName(locale, customer.en, customer.ar),
       enquiryReference,
-      preparedBy: seed.owner === null ? null : OWNERS[seed.owner]!,
+      preparedBy: seed.owner === null ? null : ownerName(seed.owner, locale),
       branchCode: seed.branch,
     }
 
@@ -2953,7 +3042,7 @@ export function pilotPayments(now = Date.now(), locale: 'en' | 'ar' = 'en'): Pay
       reference: seed.reference,
       customerName: pickName(locale, CUSTOMERS[seed.customer]!.en, CUSTOMERS[seed.customer]!.ar),
       branchCode: seed.branch,
-      recordedBy: OWNERS[seed.recordedBy]!,
+      recordedBy: ownerName(seed.recordedBy, locale),
       allocated: numeric(seed.allocated),
     }))
 }
@@ -2975,7 +3064,10 @@ export function pilotPaymentSummary(now = Date.now()): PaymentSummary {
  * than a delete: the reason somebody gives for unwinding a posted period is a
  * thing an auditor asks about (FR-FN-12).
  */
-export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] {
+export function pilotAccountingExports(
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): AccountingExportRow[] {
   return [
     {
       id: 'exp-31',
@@ -2999,7 +3091,7 @@ export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] 
       rowCount: 508,
       status: 'posted',
       postedAt: at(now, -28, 16),
-      postedBy: OWNERS[3]!,
+      postedBy: ownerName(3, locale),
       voidedAt: null,
       voidReason: null,
     },
@@ -3012,9 +3104,12 @@ export function pilotAccountingExports(now = Date.now()): AccountingExportRow[] 
       rowCount: 96,
       status: 'void',
       postedAt: at(now, -27, 10),
-      postedBy: OWNERS[4]!,
+      postedBy: ownerName(4, locale),
       voidedAt: at(now, -26, 9),
-      voidReason: 'Posted against the wrong period — reposted as the corrected month.',
+      voidReason:
+        locale === 'ar'
+          ? 'رُحّلت على فترة خاطئة، وأُعيد ترحيلها على الشهر الصحيح.'
+          : 'Posted against the wrong period — reposted as the corrected month.',
     },
   ]
 }
@@ -3674,16 +3769,19 @@ export function pilotPartner(
       {
         id: `${id}-c1`,
         nameEn: seed.type === 'carrier' ? 'Bookings Desk' : 'Operations Desk',
+        nameAr: seed.type === 'carrier' ? 'مكتب الحجوزات' : 'مكتب العمليات',
         email: `ops@${seed.code.toLowerCase()}.example`,
         phone: '+965 2222 0000',
-        role: 'operations',
+        // Free text an operator typed, so the reader's language rather than a key.
+        role: locale === 'ar' ? 'العمليات' : 'Operations',
       },
       {
         id: `${id}-c2`,
         nameEn: 'Accounts',
+        nameAr: 'الحسابات',
         email: `accounts@${seed.code.toLowerCase()}.example`,
         phone: null,
-        role: 'finance',
+        role: locale === 'ar' ? 'المالية' : 'Finance',
       },
     ],
     jobs: open.map((job) => {
@@ -3798,6 +3896,7 @@ const CLOSED_EXCEPTIONS = [
     closedAgo: 13,
     owner: 3,
     description: 'Rotterdam sailing put back two days by berth congestion.',
+    descriptionAr: 'تأجّل الإبحار من روتردام يومين بسبب ازدحام الأرصفة.',
     costImpact: null,
   },
   {
@@ -3812,6 +3911,7 @@ const CLOSED_EXCEPTIONS = [
     closedAgo: 9,
     owner: 2,
     description: 'Packing list weight disagreed with the bill; amended at origin.',
+    descriptionAr: 'اختلف الوزن في قائمة التعبئة عن البوليصة، وعُدّل في المنشأ.',
     costImpact: '48.000',
   },
 ] as const
@@ -3826,10 +3926,11 @@ const CLOSED_EXCEPTIONS = [
 export function pilotExceptionRows(
   now = Date.now(),
   scope: 'open' | 'closed' | 'all' = 'open',
+  locale: 'en' | 'ar' = 'en',
 ): ExceptionRow[] {
   const year = new Date(now).getFullYear()
 
-  const open: ExceptionRow[] = pilotExceptions(now).map((view) => ({
+  const open: ExceptionRow[] = pilotExceptions(now, locale).map((view) => ({
     id: view.id,
     jobId: view.jobId,
     jobReference: view.jobReference,
@@ -3858,11 +3959,11 @@ export function pilotExceptionRows(
     nameEn: seed.nameEn,
     nameAr: seed.nameAr,
     severity: seed.severity,
-    description: seed.description,
+    description: locale === 'ar' ? seed.descriptionAr : seed.description,
     openedAt: at(now, -seed.openedAgo, 9),
     dueAt: at(now, -seed.openedAgo + 1, 17),
     closedAt: at(now, -seed.closedAgo, 14),
-    owner: OWNERS[seed.owner]!,
+    owner: ownerName(seed.owner, locale),
     costImpact: seed.costImpact === null ? null : numeric(seed.costImpact),
     costCurrency: seed.costImpact === null ? null : 'KWD',
   }))
@@ -3978,7 +4079,7 @@ export function pilotCustomsCounts(now = Date.now()): {
  * the thing somebody needs to find when the customer is holding the old one,
  * and the register is the only place that question gets asked.
  */
-export function pilotDocumentRows(now = Date.now()): DocumentRow[] {
+export function pilotDocumentRows(now = Date.now(), locale: 'en' | 'ar' = 'en'): DocumentRow[] {
   const rows = JOB_SEEDS.flatMap((seed) => {
     const summary = jobSummary(seed, now)
     const category = new Map<string, string>(DOCUMENT_TYPES.map(([code, , , cat]) => [code, cat]))
@@ -3993,7 +4094,7 @@ export function pilotDocumentRows(now = Date.now()): DocumentRow[] {
         typeNameEn: document.nameEn,
         typeNameAr: document.nameAr,
         category: category.get(document.code) ?? 'transport',
-        authorName: OWNERS[(seed.seq + index) % OWNERS.length]!,
+        authorName: ownerName(seed.seq + index, locale),
         createdAt: at(now, -4 - index, 10),
       }
 
@@ -4656,8 +4757,8 @@ const ROLES = [
 /**
  * The people, and the branches they hold a role in.
  *
- * The first five are `OWNERS`, in order, so a job owned by Fahad Al-Rashid on
- * the board resolves to a person on this register. Two accounts are here for
+ * The first five are the owners (`ownerName`), in order, so a job owned by
+ * Fahad Al-Rashid on the board resolves to a person on this register. Two accounts are here for
  * states the screen has to be able to draw and a healthy team would not
  * volunteer: one invited and never signed in — `hasLogin` false, which is what
  * FR-ID-07's invitation-only model produces — and one suspended, which is the
@@ -5175,7 +5276,7 @@ const DUTY_ROWS = [
     hs: '870323',
     rate: '5.000',
     en: 'Motor cars, 1500–3000 cc',
-    ar: 'سيارات ركوب ١٥٠٠-٣٠٠٠ سي سي',
+    ar: 'سيارات ركوب 1500–3000 سي سي',
   },
   { country: 'KW', hs: '2402', rate: '100.000', en: 'Tobacco products', ar: 'منتجات التبغ' },
   {
@@ -5375,23 +5476,11 @@ export function pilotEngineRules(): { chargeable: EngineRuleRow[]; freeTime: Eng
   return {
     chargeable: chargeableRaw.map((row) => ({
       id: row.id,
-      label: row.mode,
-      scope: row.branchCode ?? '—',
-      // Stated as the trade states it: a divisor, an increment, a floor. A null
-      // divisor is FCL, billed per container and never by volume.
-      detail:
-        row.divisorCm3PerKg === null
-          ? 'per container'
-          : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),
     freeTime: freeTimeRaw.map((row) => ({
       id: row.id,
-      label: row.kind,
-      // Absence is how a rule widens, so an empty scope is "everything".
-      scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
-      detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
       isActive: row.isActive,
       raw: row as Record<string, unknown>,
     })),
@@ -6092,8 +6181,10 @@ export function pilotMapData(): MapData {
  * second not at all.
  *
  * `locale` picks each name's language the way `named()` does in the query —
- * Arabic where the row has it, English where it does not. People stay as they
- * are: a name is not translated.
+ * Arabic where the row has it, English where it does not. People included:
+ * a name is not translated, but `principals.name_ar` is how the person writes
+ * it themselves, and an Arabic owner dropdown of Latin names beside Arabic
+ * customers read as a screen half-localised.
  */
 export function pilotOptions(locale: 'en' | 'ar' = 'en'): ReferenceOptions {
   const sortLabel = (a: { label: string }, b: { label: string }) =>
@@ -6165,8 +6256,8 @@ export function pilotOptions(locale: 'en' | 'ar' = 'en'): ReferenceOptions {
     */
     people: PEOPLE.map((person, index) => ({
       value: `person-${String(index).padStart(2, '0')}`,
-      label: person.en,
-    })).sort((a, b) => a.label.localeCompare(b.label)),
+      label: pickName(locale, person.en, person.ar),
+    })).sort(sortLabel),
     roles: ROLES.map((role) => ({
       value: `role-${role.key}`,
       label: pickName(locale, role.en, role.ar),
@@ -6277,8 +6368,8 @@ export function pilotProofOfDelivery(jobId: string, now = Date.now()): PodRow[] 
     hasException: false,
     exceptionNotes: null,
     notes: 'Delivered to consignee warehouse, offloaded by receiver.',
-    capturedByEn: OWNERS[seed.owner]!,
-    capturedByAr: null,
+    capturedByEn: ownerName(seed.owner),
+    capturedByAr: ownerName(seed.owner, 'ar'),
     createdAt: deliveredAt,
     supersededById: null,
     photos: [
@@ -6427,17 +6518,21 @@ const ARABIC_INVOICE_CUSTOMERS: ReadonlySet<string> = new Set(['PWA'])
  */
 const INVOICE_ANCILLARIES: Record<
   string,
-  readonly { readonly description: string; readonly amount: string }[]
+  readonly {
+    readonly description: string
+    readonly descriptionAr: string
+    readonly amount: string
+  }[]
 > = {
   KWD: [
-    { description: 'Documentation', amount: '25.000' },
-    { description: 'Customs clearance', amount: '65.000' },
-    { description: 'Delivery order', amount: '42.000' },
+    { description: 'Documentation', descriptionAr: 'رسوم المستندات', amount: '25.000' },
+    { description: 'Customs clearance', descriptionAr: 'التخليص الجمركي', amount: '65.000' },
+    { description: 'Delivery order', descriptionAr: 'إذن التسليم', amount: '42.000' },
   ],
   AED: [
-    { description: 'Documentation', amount: '275.00' },
-    { description: 'Customs clearance', amount: '720.00' },
-    { description: 'Delivery order', amount: '460.00' },
+    { description: 'Documentation', descriptionAr: 'رسوم المستندات', amount: '275.00' },
+    { description: 'Customs clearance', descriptionAr: 'التخليص الجمركي', amount: '720.00' },
+    { description: 'Delivery order', descriptionAr: 'إذن التسليم', amount: '460.00' },
   ],
 }
 
@@ -6486,6 +6581,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
       {
         id: `invl-${seed.seq}-1`,
         descriptionEn: `Destination charges billed twice on invoice ${against} — credited`,
+        descriptionAr: `رسوم الوجهة محتسبة مرتين في الفاتورة ${against} — مستردّة`,
         quantity: numeric('1'),
         unitPrice: numeric(seed.subtotal),
         amount: numeric(seed.subtotal),
@@ -6498,6 +6594,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
   const lines = ancillaries.map((charge, index) => ({
     id: `invl-${seed.seq}-${index + 2}`,
     descriptionEn: charge.description,
+    descriptionAr: charge.descriptionAr,
     quantity: numeric('1'),
     unitPrice: numeric(charge.amount),
     amount: numeric(charge.amount),
@@ -6509,6 +6606,7 @@ function invoiceLines(seed: InvoiceSeed): InvoiceDetail['lines'] {
     {
       id: `invl-${seed.seq}-1`,
       descriptionEn: 'Freight and origin charges',
+      descriptionAr: 'أجور الشحن ورسوم المنشأ',
       quantity: numeric('1'),
       unitPrice: freight,
       amount: freight,
@@ -6635,7 +6733,7 @@ export function pilotInvoiceDetail(
     dueOn: row.dueOn,
     // Nobody issued a draft, so nobody is named on one. The finance desk in
     // each entity is the same person the exports register credits.
-    issuedBy: seed.status === 'draft' ? null : OWNERS[seed.branch === 'KWI' ? 3 : 4]!,
+    issuedBy: seed.status === 'draft' ? null : ownerName(seed.branch === 'KWI' ? 3 : 4, locale)!,
     notes: invoiceNotes(seed),
     lines: invoiceLines(seed),
     allocations: invoiceAllocations(seed, now),
@@ -6799,12 +6897,17 @@ function quoteLines(row: QuoteRow, mode: Mode, locale: 'en' | 'ar' = 'en'): Quot
  * for — which is the whole reason a second version exists rather than an edit,
  * and the thing somebody opening version 1 needs to be told.
  */
-function quoteNotes(id: string): string | null {
+function quoteNotes(id: string, locale: 'en' | 'ar' = 'en'): string | null {
+  const ar = locale === 'ar'
   if (id === 'quote-316') {
-    return 'Revised to CIF Nhava Sheva at the customer request. Version 1, quoted CFR, stands until they confirm which they want.'
+    return ar
+      ? 'عُدّلت إلى CIF نهافا شيفا بطلب من العميل. تبقى النسخة 1 بسعر CFR قائمة حتى يؤكد أيّهما يريد.'
+      : 'Revised to CIF Nhava Sheva at the customer request. Version 1, quoted CFR, stands until they confirm which they want.'
   }
   if (id === 'quote-316-v1') {
-    return 'Quoted CFR Nhava Sheva, 1 × 40HC, cargo ready within ten days.'
+    return ar
+      ? 'سعر CFR نهافا شيفا، 1 × 40HC، والبضاعة جاهزة خلال عشرة أيام.'
+      : 'Quoted CFR Nhava Sheva, 1 × 40HC, cargo ready within ten days.'
   }
   return null
 }
@@ -6865,7 +6968,7 @@ export function pilotQuoteDetail(
         ? `${PORTS[seed.origin].ar} ← ${PORTS[seed.destination].ar}`
         : `${PORTS[seed.origin].en} → ${PORTS[seed.destination].en}`,
     mode: seed.mode,
-    notes: quoteNotes(row.id),
+    notes: quoteNotes(row.id, locale),
     /*
       A drafted covering note on the demo's draft quotations, so the note panel
       is shown mid-workflow — English written, Arabic still empty and inviting a
@@ -8750,7 +8853,11 @@ export function pilotCreditStanding(
  * demonstrate a credit screen that has never had to make the interesting
  * decision, which is the one a forwarder asks about.
  */
-export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverrideRowLike[] {
+export function pilotCreditOverrides(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): CreditOverrideRowLike[] {
   // Customer 4 is the name that is most of the aged tail — see `INVOICE_SEEDS`.
   if (id !== customerId(4)) return []
 
@@ -8761,9 +8868,12 @@ export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverri
       jobId: null,
       invoiceId: null,
       expiresOn: day(now, 21),
-      reason: 'Payment plan agreed with the finance director. Review at quarter end.',
-      approvedByEn: OWNERS[3]!,
-      approvedByAr: 'نورة الصباح',
+      reason:
+        locale === 'ar'
+          ? 'خطة سداد متفق عليها مع المدير المالي. تُراجع في نهاية الربع.'
+          : 'Payment plan agreed with the finance director. Review at quarter end.',
+      approvedByEn: ownerName(3),
+      approvedByAr: ownerName(3, 'ar'),
       approvedAt: at(now, -9, 11),
       exposure: numeric(sum(['18400.000', '2150.000'])),
       creditLimit: CUSTOMERS[4]!.limit,
@@ -8854,8 +8964,8 @@ export function pilotMarginByDimension(
               ? { key: seed.mode, labelEn: seed.mode, labelAr: null as string | null }
               : {
                   key: `owner-${seed.owner}`,
-                  labelEn: OWNERS[seed.owner]!,
-                  labelAr: null as string | null,
+                  labelEn: ownerName(seed.owner),
+                  labelAr: ownerName(seed.owner, 'ar') as string | null,
                 }
 
     const group: MarginGroup = groups.get(cut.key) ?? {
@@ -8900,7 +9010,7 @@ export function pilotMarginByDimension(
  * is shown once at minting and stored as a hash; a fixture carrying one would
  * teach the wrong thing about how this works.
  */
-export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
+export function pilotApiKeys(now = Date.now(), locale: 'en' | 'ar' = 'en'): ApiKeyRowLike[] {
   const home = branch('KWI')
   return [
     {
@@ -8911,7 +9021,7 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       customerNameAr: CUSTOMERS[0]!.ar,
       branchId: home.id,
       scopes: ['shipments.read', 'documents.read'],
-      createdBy: OWNERS[0]!,
+      createdBy: ownerName(0, locale),
       createdAt: at(now, -84, 10),
       lastUsedAt: hours(now, -3),
       expiresAt: null,
@@ -8925,7 +9035,7 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       customerNameAr: CUSTOMERS[4]!.ar,
       branchId: home.id,
       scopes: ['invoices.read'],
-      createdBy: OWNERS[3]!,
+      createdBy: ownerName(3, locale),
       createdAt: at(now, -41, 9),
       lastUsedAt: hours(now, -26),
       expiresAt: at(now, 120, 0),
@@ -8944,7 +9054,7 @@ export function pilotApiKeys(now = Date.now()): ApiKeyRowLike[] {
       customerNameAr: CUSTOMERS[2]!.ar,
       branchId: home.id,
       scopes: ['shipments.read'],
-      createdBy: OWNERS[0]!,
+      createdBy: ownerName(0, locale),
       createdAt: at(now, -300, 14),
       lastUsedAt: at(now, -158, 8),
       expiresAt: null,
@@ -9064,7 +9174,18 @@ export function pilotWhatsappNumbers(now = Date.now()): WhatsappNumberRowLike[] 
  * dinar — is one click from a buy card. Figures are the broker's own currency
  * with the dinar equivalent beside them, exactly as the real query returns them.
  */
-export function pilotRateRequests(now = Date.now()): RateRequestsView {
+/**
+ * The agents asked on the enquiry the model read — 318, Ningbo to Shuwaikh,
+ * which is why the agents are in Ningbo and the decline is about Shuwaikh.
+ * Every other enquiry has asked nobody yet, which is what its panel says,
+ * instead of every enquiry on the board showing the same four replies.
+ */
+export const PILOT_RFQ_ENQUIRY = 'enq-318'
+
+export function pilotRateRequests(enquiryId?: string, now = Date.now()): RateRequestsView {
+  if (enquiryId !== undefined && enquiryId !== PILOT_RFQ_ENQUIRY) {
+    return { baseCurrency: 'KWD', awaiting: 0, answered: 0, requests: [] }
+  }
   return {
     baseCurrency: 'KWD',
     /*

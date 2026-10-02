@@ -42,7 +42,7 @@ export default async function ExceptionsPage({
   const now = Date.now()
 
   const [rows, counts] = await Promise.all([
-    listExceptions(session.actor, view),
+    listExceptions(session.actor, view, locale),
     exceptionCounts(session.actor),
   ])
 
@@ -101,7 +101,7 @@ export default async function ExceptionsPage({
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
                 <TD>
-                  <span className="block md:hidden">
+                  <span className="block @3xl:hidden">
                     <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                   </span>
                   <span className="font-medium text-ink">

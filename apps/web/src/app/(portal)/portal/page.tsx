@@ -11,6 +11,7 @@
  * in front of it, rather than a different design.
  */
 
+import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listPortalShipments } from '@/features/portal/queries'
@@ -22,6 +23,12 @@ import { StatTile } from '@/ui/stat'
 import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('portal') }
+}
 
 export default async function PortalHome() {
   const timeZone = await getTimeZone()
@@ -46,7 +53,7 @@ export default async function PortalHome() {
     <>
       <PageHeader title={t('title')} description={t('subtitle')} />
 
-      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="mb-5 grid grid-cols-1 gap-4 @xl:grid-cols-3">
         <StatTile label={t('active')} value={formatNumber(active.length, locale)} icon="jobs" />
         <StatTile
           label={t('arriving')}

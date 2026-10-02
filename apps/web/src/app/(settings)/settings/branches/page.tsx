@@ -93,7 +93,7 @@ export default async function BranchesPage() {
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
                 {row.calendarName ? null : (
-                  <span className="mt-0.5 flex items-center gap-1 text-caption text-caution md:hidden">
+                  <span className="mt-0.5 flex items-center gap-1 text-caption text-caution @3xl:hidden">
                     <Icon name="alert" size={13} className="shrink-0" />
                     {t('noCalendar')}
                   </span>
@@ -150,7 +150,7 @@ export default async function BranchesPage() {
                   {row.isActive ? tc('active') : tc('inactive')}
                 </Badge>
                 {row.arAccountCode && row.apAccountCode && row.bankAccountCode ? null : (
-                  <span className="mt-1 block md:hidden">
+                  <span className="mt-1 block @3xl:hidden">
                     <Badge tone="caution">{t('accountsMissing')}</Badge>
                   </span>
                 )}

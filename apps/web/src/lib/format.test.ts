@@ -97,6 +97,13 @@ describe('formatMoney', () => {
     expect(formatMoney({ amount: 1.5, currency: 'USD' }, 'en')).toContain('1.50')
   })
 
+  /** "$US 1,850.00" on Arabic rate requests: the Latin symbol was reordered. */
+  it('isolates a Latin symbol in Arabic, and leaves an Arabic one alone', () => {
+    expect(formatMoney({ amount: 1850, currency: 'USD' }, 'ar')).toContain('\u2066US$\u2069')
+    expect(formatMoney({ amount: 1840, currency: 'KWD' }, 'ar')).not.toContain('\u2066')
+    expect(formatMoney({ amount: 1850, currency: 'USD' }, 'en')).not.toContain('\u2066')
+  })
+
   it('gives JPY none', () => {
     const formatted = formatMoney({ amount: 1500, currency: 'JPY' }, 'en')
     expect(formatted).toContain('1,500')

@@ -15,6 +15,14 @@ const harness = vi.hoisted(() => ({
   redirected: null as string | null,
 }))
 
+/*
+  This suite runs the real action with the database mocked out, so the unset
+  DATABASE_URL that would put the app in fixture mode is not a demo here.
+*/
+vi.mock('@/lib/pilot/read-only', () => ({
+  demoReadOnly: async () => null,
+  demoReadOnlyMessage: async () => null,
+}))
 vi.mock('next/navigation', () => ({
   redirect: (to: string) => {
     harness.redirected = to

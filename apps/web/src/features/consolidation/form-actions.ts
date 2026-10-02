@@ -68,6 +68,8 @@ import {
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -145,6 +147,8 @@ export const saveConsolidation = refuseForbidden(async function saveConsolidatio
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -248,6 +252,8 @@ export const attachHouse = refuseForbidden(async function attachHouse(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -316,6 +322,8 @@ export const detachHouse = refuseForbidden(async function detachHouse(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolidationId = read(form, 'consolidationId')
@@ -379,6 +387,7 @@ export const detachHouse = refuseForbidden(async function detachHouse(
 export async function closeConsolidation(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const consolidationId = read(form, 'consolidationId')
   if (!consolidationId) throw new Error('Nothing to close')
@@ -435,6 +444,8 @@ export const addConsolCharge = refuseForbidden(async function addConsolCharge(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const consolChargeLineId = read(form, 'consolChargeLineId')
@@ -550,6 +561,7 @@ export const addConsolCharge = refuseForbidden(async function addConsolCharge(
 export async function withdrawConsolCharge(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -588,6 +600,7 @@ export async function withdrawConsolCharge(form: FormData): Promise<void> {
 export async function restoreConsolCharge(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -634,6 +647,8 @@ export const allocateConsolCharge = refuseForbidden(async function allocateConso
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.allocate')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const chargeLineId = read(form, 'chargeLineId')
@@ -908,6 +923,7 @@ function allocationRefusal(tv: Translate, refusal: AllocationRefusal): string | 
 export async function reverseConsolAllocation(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'consol.allocate')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const chargeLineId = read(form, 'chargeLineId')
   const consolidationId = read(form, 'consolidationId')
@@ -1053,6 +1069,8 @@ export const consolidateCluster = refuseForbidden(async function consolidateClus
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('consolidationValidation')
 
   const branchId = read(form, 'branchId')

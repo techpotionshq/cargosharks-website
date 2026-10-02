@@ -311,6 +311,11 @@
    * The single most persuasive detail in the demo is a number that is visibly
    * still moving. The pulse is slow and low-contrast on purpose: it must read
    * as "accruing", not as an alarm.
+   *
+   * A glow, not a fade. It faded to 62% opacity, which took the red figure to
+   * 3.5:1 against its card at the bottom of every breath — below AA for the
+   * one number the page exists to show. The halo moves; the figure stays at
+   * full contrast.
    */
   .accruing {
     animation: qb-accrue 2.4s ease-in-out infinite;
@@ -319,10 +324,10 @@
   @keyframes qb-accrue {
     0%,
     100% {
-      opacity: 1;
+      text-shadow: 0 0 0 transparent;
     }
     50% {
-      opacity: 0.62;
+      text-shadow: 0 0 0.6em color-mix(in oklch, currentColor 40%, transparent);
     }
   }
 

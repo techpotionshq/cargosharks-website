@@ -86,7 +86,7 @@ export async function ShipmentView({
           />
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 sm:grid-cols-4">
+        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-4 @2xl:grid-cols-4">
           <Field label={tJob('status')}>
             <span className="inline-flex items-center gap-1.5">
               <Icon name={modeIcon(result.mode)} size={15} className="text-ink-muted" />
@@ -141,7 +141,7 @@ export async function ShipmentView({
         </div>
       </Card>
 
-      <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mb-4 grid grid-cols-1 gap-4 @2xl:grid-cols-2">
         {result.containers.length > 0 ? (
           <Card>
             <CardHeader icon="container" title={t('containers')} />

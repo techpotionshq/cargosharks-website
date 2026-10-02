@@ -11,6 +11,7 @@
  * itself, and the release control on the document vault.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -56,17 +57,28 @@ import { pickName } from '@/lib/named'
 import { localInputValue } from '@qabandi/core'
 import { MoreMenu } from '@/ui/menu'
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const job = await getJobDetail(session.actor, recordId((await params).id))
+  const t = await getTranslations('job')
+  return { title: job?.reference ?? t('title') }
+}
+
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const id = recordId((await params).id)
-  const job = await getJobDetail(session.actor, id)
-  if (!job) notFound()
-
-  // Resolved before the reads below: the ledger names its charges in it.
+  // Resolved before the reads below: the ledger names its charges in it, and
+  // the file names its owner and its free-text fields in it.
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  const job = await getJobDetail(session.actor, id, locale)
+  if (!job) notFound()
 
   // Resolved once rather than per row — the document list can be long and the
   // answer cannot change halfway down it.
@@ -233,7 +245,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   ) : null}
                 </div>
                 <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
-                  <div className="text-end text-micro text-ink-subtle">
+                  {/* Muted: 11px subtle ink on the exception's tinted row was 4.4:1. */}
+                  <div className="text-end text-micro text-ink-muted">
                     <p>
                       {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
                     </p>
@@ -259,7 +272,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid className="mb-4">
         {/* --- the milestone timeline ---------------------------------- */}
-        <Card className="lg:col-span-5">
+        <Card className="@4xl:col-span-5">
           <CardHeader
             icon="tracking"
             eyebrow={t('shipment')}
@@ -301,7 +314,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </Card>
 
-        <div className="flex flex-col gap-4 lg:col-span-7">
+        <div className="flex flex-col gap-4 @4xl:col-span-7">
           {/* --- the shipment's own facts ----------------------------- */}
           <Card>
             <CardHeader
@@ -310,7 +323,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
               title={t('shipment')}
               description={`${tDirection(job.direction)} · ${job.owner ?? tc('unassigned')}`}
             />
-            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 @xl:grid-cols-3">
               <Field label={t('masterBill')} mono>
                 {job.masterBillNumber ?? '—'}
               </Field>
@@ -333,19 +346,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {locale === 'ar' && job.commodityAr ? job.commodityAr : job.commodity}
               </Field>
               <Field label={t('weight')}>
-                {/* <bdi>: "30,992 kg" is one Latin unit; in Arabic, unisolated, the
-                    unit drifted to the start of the figure. */}
+                {/* <bdi> keeps the figure and its unit together in either
+                    direction; the unit itself is the reader's — "كغم", not "kg". */}
                 {job.grossWeightKg === null ? (
                   '—'
                 ) : (
-                  <bdi>{`${formatNumber(job.grossWeightKg, locale)} kg`}</bdi>
+                  <bdi>{t('weightValue', { weight: formatNumber(job.grossWeightKg, locale) })}</bdi>
                 )}
               </Field>
               <Field label={t('volume')}>
                 {job.volumeCbm === null ? (
                   '—'
                 ) : (
-                  <bdi>{`${formatNumber(job.volumeCbm, locale)} cbm`}</bdi>
+                  <bdi>{t('volumeValue', { volume: formatNumber(job.volumeCbm, locale) })}</bdi>
                 )}
               </Field>
               <Field label={t('pieces')}>
@@ -523,7 +536,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
       <Grid>
         {/* --- the document vault, with release control ---------------- */}
-        <Card className="lg:col-span-7" padding="none">
+        <Card className="@4xl:col-span-7" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="document"
@@ -598,7 +611,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- who we engaged ---------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="partners"
@@ -612,7 +625,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.partners.length === 0 ? (
             <EmptyState icon="partners" title={tPartners('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{tPartners('partner')}</TH>
@@ -640,7 +653,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- containers -------------------------------------------- */}
-        <Card className="lg:col-span-5" padding="none">
+        <Card className="@4xl:col-span-5" padding="none">
           <div className="p-5 pb-3">
             <CardHeader
               icon="container"
@@ -653,7 +666,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           {job.containers.length === 0 ? (
             <EmptyState icon="container" title={tc('none')} />
           ) : (
-            <TableShell className="border-t border-line" minWidth="none">
+            <TableShell className="border-t border-line">
               <THead>
                 <TR>
                   <TH>{t('equipment')}</TH>
@@ -688,14 +701,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </Card>
 
         {/* --- parties, cargo, and what they produce ------------------- */}
-        <PartiesCard jobId={id} parties={parties} className="lg:col-span-7" />
+        <PartiesCard jobId={id} parties={parties} className="@4xl:col-span-7" />
 
         <ProofOfDeliveryCard
           jobId={id}
           records={podRecords}
           equipment={podEquipment}
           branchTimeZone={job.branchTimeZone}
-          className="lg:col-span-12"
+          className="@4xl:col-span-12"
         />
 
         {/*
@@ -713,7 +726,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           jobId={id}
           cargo={cargo}
           containers={containerOptions}
-          className="lg:col-span-7"
+          className="@4xl:col-span-7"
         />
 
         <DocumentActionsCard
@@ -723,7 +736,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           houseBillNumber={job.houseBillNumber}
           houseBillSurrenderedAt={job.houseBillSurrenderedAt}
           dutyAction={<DutyEstimateDialog jobId={id} variant="ghost" />}
-          className="lg:col-span-5"
+          className="@4xl:col-span-5"
         />
 
         {/*
@@ -734,7 +747,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           opens this page to move a shipment; the margin is what they scroll to
           when somebody asks.
         */}
-        {ledger ? <JobLedgerCard ledger={ledger} className="lg:col-span-12" /> : null}
+        {ledger ? <JobLedgerCard ledger={ledger} className="@4xl:col-span-12" /> : null}
       </Grid>
     </>
   )

@@ -94,8 +94,16 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                       <span
                         className={[
                           'numeric ms-auto min-w-[1.25rem] rounded-full px-1.5 py-px text-center text-micro font-semibold',
+                          /*
+                            `text-surface`, not `text-on-brand`: on-brand is
+                            light in both themes, and the dark theme's critical
+                            is a light red, so the count read at 2.4:1. The
+                            surface colour flips with the theme — white on the
+                            light red-600, near-black on the dark one's pale
+                            red — and clears AA in both (6.0:1 and 7.0:1).
+                          */
                           critical
-                            ? 'bg-critical text-on-brand'
+                            ? 'bg-critical text-surface'
                             : 'bg-surface-sunken text-ink-muted',
                         ].join(' ')}
                       >
@@ -139,7 +147,8 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
             <Icon name={item.icon} size={15} weight={active ? 'fill' : 'regular'} />
             {item.label}
             {item.badge ? (
-              <span className="numeric rounded-full bg-critical px-1.5 text-micro font-semibold text-on-brand">
+              // The same pair as the sidebar's count, for the same contrast.
+              <span className="numeric rounded-full bg-critical px-1.5 text-micro font-semibold text-surface">
                 {item.badge > 99 ? '99+' : item.badge}
               </span>
             ) : null}

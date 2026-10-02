@@ -8,6 +8,7 @@
  * one found at month end is a loss you have already taken.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -44,6 +45,12 @@ const STATUS_TONE: Record<string, Tone> = {
   paid: 'positive',
   disputed: 'critical',
   void: 'muted',
+}
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('payables') }
 }
 
 export default async function PayablesPage({
@@ -116,7 +123,7 @@ export default async function PayablesPage({
 
       <Grid>
         <StatTile
-          className="lg:col-span-3"
+          className="@4xl:col-span-3"
           label={t('needsReview')}
           value={summary.needingReview}
           hint={t('needsReviewHint')}
@@ -124,7 +131,7 @@ export default async function PayablesPage({
           tone={summary.needingReview > 0 ? 'critical' : 'positive'}
         />
         <StatTile
-          className="lg:col-span-3"
+          className="@4xl:col-span-3"
           label={t('awaitingApproval')}
           value={summary.awaitingApproval}
           hint={t('awaitingApprovalHint')}
@@ -133,7 +140,7 @@ export default async function PayablesPage({
           href="/payables?status=received"
         />
         <StatTile
-          className="lg:col-span-3"
+          className="@4xl:col-span-3"
           label={t('overdue')}
           value={summary.overdue}
           hint={t('overdueHint')}
@@ -141,7 +148,7 @@ export default async function PayablesPage({
           tone={summary.overdue > 0 ? 'caution' : 'muted'}
         />
         <StatTile
-          className="lg:col-span-3"
+          className="@4xl:col-span-3"
           label={t('owed')}
           value={formatByCurrency(
             ageing.byCurrency.map(({ currency, ageing: aged }) => ({
@@ -155,7 +162,7 @@ export default async function PayablesPage({
           tone="info"
         />
 
-        <Card className="lg:col-span-12" padding="none">
+        <Card className="@4xl:col-span-12" padding="none">
           {rows.length === 0 ? (
             <EmptyState icon="payments" title={t('none')} description={t('noneHint')} />
           ) : (
@@ -191,7 +198,7 @@ export default async function PayablesPage({
                         <span className="mt-0.5 block text-micro text-ink-subtle">
                           {formatDate(row.invoiceDate, locale, timeZone)}
                         </span>
-                        <span className="block text-caption text-ink-muted md:hidden">
+                        <span className="block text-caption text-ink-muted @3xl:hidden">
                           {row.partnerName}
                         </span>
                       </TD>
@@ -204,7 +211,7 @@ export default async function PayablesPage({
                           locale={locale}
                         />
                         {row.dueOn ? (
-                          <span className="block text-micro text-ink-subtle md:hidden">
+                          <span className="block text-micro text-ink-subtle @3xl:hidden">
                             {t('due')} {formatDate(row.dueOn, locale, timeZone)}
                           </span>
                         ) : null}
@@ -299,7 +306,7 @@ export default async function PayablesPage({
                     <TD className="font-medium text-ink">
                       {payment.partnerName}
                       {payment.paidOn ? (
-                        <span className="block text-micro font-normal text-ink-subtle md:hidden">
+                        <span className="block text-micro font-normal text-ink-subtle @3xl:hidden">
                           {formatDate(new Date(payment.paidOn), locale, timeZone)}
                         </span>
                       ) : null}

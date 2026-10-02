@@ -326,7 +326,13 @@ export function Lane({
   )
 }
 
-/** The dashboard's column grid. Twelve columns, collapsing to one on a phone. */
+/**
+ * The dashboard's column grid. Twelve columns, collapsing to one on a narrow page.
+ *
+ * Twelve from a 56rem content area (the layout's `<main>` is the container),
+ * not from the window's `lg`: at a 1024px window the sidebar leaves 712px, and
+ * a four-twelfths card in that is a 230px column nobody can read a table in.
+ */
 export function Grid({
   children,
   className,
@@ -336,7 +342,7 @@ export function Grid({
 }) {
   return (
     <div
-      className={['grid grid-cols-1 gap-4 lg:grid-cols-12', className].filter(Boolean).join(' ')}
+      className={['grid grid-cols-1 gap-4 @4xl:grid-cols-12', className].filter(Boolean).join(' ')}
     >
       {children}
     </div>

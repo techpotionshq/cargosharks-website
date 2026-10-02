@@ -13,6 +13,7 @@
  * still out of the pilot (Pilot §3.2): those arrive and are answered by email.
  */
 
+import type { Metadata } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listAgentShipments } from '@/features/network/queries'
@@ -24,6 +25,12 @@ import { EmptyState, Lane, PageHeader } from '@/ui/layout'
 import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
 import { Meter } from '@/ui/chart'
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('agent') }
+}
 
 export default async function AgentHome() {
   const session = await requireSession()

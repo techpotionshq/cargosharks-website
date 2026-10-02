@@ -16,7 +16,7 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { getLocale } from 'next-intl/server'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatMoney } from '@/lib/format'
+import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Badge } from '@/ui/status'
 import { getRenewals } from '../rate-requests'
@@ -38,11 +38,15 @@ export async function RenewalsPanel() {
 
   return (
     <Card className="mb-4" padding="none">
-      <CardHeader title={t('title')} description={t('description')} />
+      {/* The card is unpadded so its rows run edge to edge; the header is not. */}
+      <div className="px-4 pt-4 pb-2">
+        <CardHeader title={t('title')} description={t('description')} />
+      </div>
       <ul className="divide-y divide-line">
         {renewals.map((row) => (
-          <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <div className="min-w-0 flex-1">
+          // A floor under the lane, as on the rate requests above it.
+          <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <div className="min-w-0 flex-[1_1_12rem]">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-title font-medium text-ink" dir="auto">
                   {row.lane}
@@ -53,7 +57,10 @@ export async function RenewalsPanel() {
                 {row.partnerName}
                 {row.oldValidTo ? (
                   <span className="ms-2 text-ink-subtle">
-                    {t('lapses', { date: row.oldValidTo })}
+                    {/* A calendar day, so read in UTC — the zone it is stored in. */}
+                    {t('lapses', {
+                      date: formatDate(row.oldValidTo, locale, 'UTC'),
+                    })}
                   </span>
                 ) : null}
               </p>
@@ -64,9 +71,9 @@ export async function RenewalsPanel() {
               ) : null}
             </div>
 
-            <div className="text-end">
+            <div className="ms-auto text-end">
               {row.quotedTotal && row.quotedCurrency ? (
-                <div className="text-title font-semibold text-ink">
+                <div className="text-title font-semibold whitespace-nowrap text-ink">
                   {formatMoney({ amount: row.quotedTotal, currency: row.quotedCurrency }, locale)}
                 </div>
               ) : (

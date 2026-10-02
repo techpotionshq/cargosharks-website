@@ -47,6 +47,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface MailboxRow {
   readonly id: string
@@ -106,6 +107,8 @@ export async function listMailboxes(): Promise<MailboxRow[]> {
 export async function mailboxKeyConfigured(): Promise<boolean> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  // As `integrationKeyProblem`: the demo seals nothing, so it has no key to miss.
+  if (usePilotFixtures()) return true
   return hasSecretKey()
 }
 
@@ -134,6 +137,8 @@ export const saveMailbox = refuseForbidden(async function saveMailbox(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
@@ -276,6 +281,8 @@ export const setMailboxActive = refuseForbidden(async function setMailboxActive(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const mailboxId = String(form.get('mailboxId') ?? '')
   const isActive = form.get('isActive') === 'true'

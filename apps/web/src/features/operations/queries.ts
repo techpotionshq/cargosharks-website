@@ -27,6 +27,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
+import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import {
   pilotCustomsCounts,
@@ -68,8 +69,9 @@ export interface ExceptionRow {
 export async function listExceptions(
   actor: Actor,
   scope: 'open' | 'closed' | 'all' = 'open',
+  locale: 'en' | 'ar' = 'en',
 ): Promise<ExceptionRow[]> {
-  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope)
+  if (usePilotFixtures()) return pilotExceptionRows(Date.now(), scope, locale)
 
   return withActor(actor, async (tx) => {
     const filter =
@@ -95,7 +97,8 @@ export async function listExceptions(
           openedAt: exceptions.openedAt,
           dueAt: exceptions.dueAt,
           closedAt: exceptions.closedAt,
-          owner: principals.nameEn,
+          // The owner as they write their own name — principals.name_ar (F27).
+          owner: named(locale, principals.nameEn, principals.nameAr),
           costImpact: exceptions.costImpact,
           costCurrency: exceptions.costCurrency,
         })
@@ -262,8 +265,11 @@ export interface DocumentRow {
  * bill that was reissued is exactly the thing someone needs to find when the
  * customer is holding the old one.
  */
-export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
-  if (usePilotFixtures()) return pilotDocumentRows()
+export async function listDocuments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<DocumentRow[]> {
+  if (usePilotFixtures()) return pilotDocumentRows(Date.now(), locale)
 
   return withActor(actor, async (tx) =>
     tx
@@ -279,7 +285,7 @@ export async function listDocuments(actor: Actor): Promise<DocumentRow[]> {
         category: documentTypes.category,
         version: documents.version,
         releasedAt: documents.releasedAt,
-        authorName: principals.nameEn,
+        authorName: named(locale, principals.nameEn, principals.nameAr),
         createdAt: documents.createdAt,
         isSuperseded: sql<boolean>`${documents.supersededById} is not null`,
       })

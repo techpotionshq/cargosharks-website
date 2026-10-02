@@ -38,7 +38,7 @@ import {
   type ReportDimension,
 } from '@/features/reports/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatMoney, formatNumber } from '@/lib/format'
+import { formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { formatByCurrency } from '@/lib/by-currency'
 import { Button, EmptyState, Grid, PageHeader } from '@/ui/layout'
 import { Metric } from '@/ui/metric'
@@ -146,7 +146,11 @@ export default async function ReportsPage({
       <PageHeader
         eyebrow={t('eyebrow')}
         title={t('title')}
-        description={t('subtitle', { from: period.from, to: period.to })}
+        // Days as the reader writes them, not "2026-09-01" (a calendar day, so UTC).
+        description={t('subtitle', {
+          from: formatDate(period.from, locale, 'UTC'),
+          to: formatDate(period.to, locale, 'UTC'),
+        })}
         actions={
           <Button
             href={`/api/reports/margin.csv?${new URLSearchParams({ dimension, from: period.from, to: period.to })}`}
@@ -211,11 +215,11 @@ export default async function ReportsPage({
       </form>
 
       <Grid className="mb-4">
-        <Metric className="lg:col-span-3" label={t('revenue')} value={totalOf('revenue')} />
-        <Metric className="lg:col-span-3" label={t('cost')} value={totalOf('cost')} />
-        <Metric className="lg:col-span-3" label={t('grossProfit')} value={totalOf('gross')} />
+        <Metric className="@4xl:col-span-3" label={t('revenue')} value={totalOf('revenue')} />
+        <Metric className="@4xl:col-span-3" label={t('cost')} value={totalOf('cost')} />
+        <Metric className="@4xl:col-span-3" label={t('grossProfit')} value={totalOf('gross')} />
         <Metric
-          className="lg:col-span-3"
+          className="@4xl:col-span-3"
           label={t('jobs')}
           value={formatNumber(jobCount, locale)}
         />

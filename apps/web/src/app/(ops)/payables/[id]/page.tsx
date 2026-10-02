@@ -12,6 +12,7 @@
  * reason, and a bare button cannot collect either.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -40,6 +41,17 @@ const STATUS_TONE: Record<string, Tone> = {
   paid: 'positive',
   disputed: 'critical',
   void: 'muted',
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const bill = await getSupplierInvoice(session.actor, recordId((await params).id))
+  const t = await getTranslations('payables')
+  return { title: bill?.reference ?? t('title') }
 }
 
 export default async function SupplierInvoicePage({ params }: { params: Promise<{ id: string }> }) {
@@ -143,8 +155,8 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
       />
 
       <Grid>
-        <Card className="lg:col-span-12">
-          <dl className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <Card className="@4xl:col-span-12">
+          <dl className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @5xl:grid-cols-6">
             <Field label={tc('status')}>
               <Badge tone={STATUS_TONE[bill.status] ?? 'muted'}>
                 {t(`statuses.${bill.status}` as 'statuses.received')}
@@ -182,7 +194,11 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
           ) : null}
         </Card>
 
-        <SupplierInvoiceLinesCard className="lg:col-span-12" bill={bill} candidates={candidates} />
+        <SupplierInvoiceLinesCard
+          className="@4xl:col-span-12"
+          bill={bill}
+          candidates={candidates}
+        />
       </Grid>
     </>
   )

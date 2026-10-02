@@ -22,6 +22,7 @@ import { useDemoLogin, usePilotFixtures } from '@/lib/pilot/source'
 import { demoPasswordMatches, demoPersonaByEmail, startDemoSession } from '@/lib/pilot/demo'
 import { AUTH_REFUSAL, refusalOf } from '@/lib/auth-guard'
 import { applySetCookie } from './cookies'
+import { demoReadOnlyMessage } from '@/lib/pilot/read-only'
 
 export interface SignInState {
   readonly error?: string
@@ -60,6 +61,14 @@ export async function signIn(_previous: SignInState, formData: FormData): Promis
       redirect(persona.home)
     }
   }
+
+  /*
+    Fixture mode has no `auth_user` to check anything else against. Better
+    Auth would throw on the missing connection and the visitor would see an
+    error page instead of a sentence beside the form.
+  */
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo, email }
 
   /*
     The throttle and the account lock — FR-ID-05, A1.
@@ -267,6 +276,9 @@ export async function requestPasswordReset(
 
   if (!email) return { error: t('errorMissing') }
 
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo, email }
+
   try {
     await auth.api.requestPasswordReset({
       body: { email, redirectTo: '/reset-password' },
@@ -321,6 +333,9 @@ export async function resetPassword(
     return { error: t('errorTooShort', { length: MIN_PASSWORD_LENGTH }) }
   }
   if (password !== confirm) return { error: t('errorMismatch') }
+
+  const demo = await demoReadOnlyMessage()
+  if (demo) return { error: demo }
 
   try {
     await auth.api.resetPassword({ body: { newPassword: password, token } })

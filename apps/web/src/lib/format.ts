@@ -56,8 +56,31 @@ export function formatMoney(
   options: { compact?: boolean; showCurrency?: boolean } = {},
 ): string {
   if (!value) return '—'
-  return moneyFormat(value, locale, options).formatter.format(moneyOperand(value.amount))
+  const { formatter } = moneyFormat(value, locale, options)
+  if (locale !== 'ar') return formatter.format(moneyOperand(value.amount))
+  /*
+    A Latin symbol in an Arabic figure is isolated left-to-right.
+
+    ICU writes "‏1,850.00 US$" for Arabic, and in a right-to-left line the
+    bidi algorithm reorders the Latin letters and the dollar sign around each
+    other: rate requests, renewals, bills and settlements all read "$US
+    1,850.00". `Money` already isolates its currency span (`dir="auto"`); this
+    is the same isolation for the string form, so every inline figure and
+    every sentence a figure is interpolated into gets it without a call site
+    having to remember. An Arabic symbol (د.ك.) needs nothing and gets nothing.
+  */
+  return formatter
+    .formatToParts(moneyOperand(value.amount))
+    .map((part) =>
+      part.type === 'currency' && /[A-Za-z]/.test(part.value)
+        ? `${LTR_ISOLATE}${part.value}${POP_ISOLATE}`
+        : part.value,
+    )
+    .join('')
 }
+
+const LTR_ISOLATE = '\u2066'
+const POP_ISOLATE = '\u2069'
 
 /** A string goes to `Intl` as a string, so it is never a float on the way. */
 function moneyOperand(amount: number | string): number | Intl.StringNumericLiteral {
@@ -164,6 +187,17 @@ export function formatMoneyParts(
     : (fraction === 0 ? PUNCTUATION_SPACE : '') +
       FIGURE_SPACE.repeat(Math.max(0, ALIGN_PLACES - fraction))
   return { currency, amount, pad }
+}
+
+/**
+ * How a currency is written beside a figure in the reader's language — "KWD"
+ * in English, "د.ك." in Arabic — for a value and its unit set apart (a metric
+ * tile, an option card). These printed the ISO code, so an Arabic tile said
+ * KWD above a table that said د.ك. for the same money. Read off the same
+ * formatter as `formatMoney`, so the two cannot disagree.
+ */
+export function currencyLabel(currency: string, locale: Locale): string {
+  return formatMoneyParts({ amount: 0, currency }, locale)?.currency ?? currency
 }
 
 /**

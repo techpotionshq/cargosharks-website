@@ -56,6 +56,7 @@ import { echo, fail, failWith, succeed, type ActionState, type Translate } from 
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 interface IntegrationFieldView {
   readonly name: string
@@ -200,6 +201,13 @@ function callsPerHour(settings: Readonly<Record<string, string | undefined>>): n
 export async function integrationKeyProblem(): Promise<KeyProblem | null> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
+  /*
+    The demo seals nothing — every save answers `demoReadOnly` — so a missing
+    key is not a problem there, and a red banner naming an environment
+    variable told a prospective customer the product was broken. The page
+    says "credentials are not stored in the demo" instead.
+  */
+  if (usePilotFixtures()) return null
   const status = secretKeyStatus()
   return status.ok ? null : status
 }
@@ -324,6 +332,8 @@ export const saveIntegration = refuseForbidden(async function saveIntegration(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const key = read(form, 'key')
   const spec = key ? integrationSpec(key) : undefined
@@ -482,6 +492,8 @@ export const setIntegrationActive = refuseForbidden(async function setIntegratio
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.integrations.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const key = read(form, 'key')
   const isActive = form.get('isActive') === 'true'

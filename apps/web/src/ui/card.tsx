@@ -31,7 +31,9 @@ export interface CardProps {
 const TONE_CLASS = {
   default: 'border-line bg-surface',
   critical: 'border-critical/35 bg-surface',
-  brand: 'border-accent/20 bg-accent-soft',
+  // Eyebrows a step darker on the tint: the default subtle ink read 4.0:1 on
+  // the dark theme's accent wash, under AA at the eyebrow's 11px.
+  brand: 'border-accent/20 bg-accent-soft [&_.eyebrow]:text-ink-muted',
 } as const
 
 const PADDING_CLASS = { none: '', sm: 'p-4', md: 'p-5' } as const

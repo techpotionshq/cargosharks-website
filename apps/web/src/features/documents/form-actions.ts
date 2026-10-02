@@ -41,6 +41,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -105,6 +106,8 @@ export const saveJobParty = refuseForbidden(async function saveJobParty(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const partyId = read(form, 'partyId')
@@ -203,6 +206,8 @@ export const saveCargoLine = refuseForbidden(async function saveCargoLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const cargoId = read(form, 'cargoId')
@@ -339,6 +344,8 @@ export const issueDocument = refuseForbidden(async function issueDocument(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.generate')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')
@@ -479,6 +486,8 @@ export const surrenderHouseBill = refuseForbidden(async function surrenderHouseB
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.release')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('documentsValidation')
 
   const jobId = read(form, 'jobId')

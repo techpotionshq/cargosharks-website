@@ -422,8 +422,13 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
           button floating `bottom-4 end-4` over whatever is last on the
           screen — on every register, the total row of a table — and five rems
           clears it with a gap.
+
+          `@container`: the page's grids lay out against this box, not the
+          window. From `md` the sidebar takes 248px, so a window breakpoint
+          promised a 768px tablet room it did not have; `@3xl:grid-cols-4`
+          asks the question that was meant.
         */}
-        <main className="flex flex-1 flex-col px-4 pt-6 pb-20 md:px-6 md:pb-10 lg:px-8">
+        <main className="@container flex flex-1 flex-col px-4 pt-6 pb-20 md:px-6 md:pb-10 lg:px-8">
           {children}
         </main>
       </div>
@@ -442,7 +447,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
         that reached for translations would pull the whole message catalogue
         across the boundary.
       */}
-      <AssistantDock labels={assistantLabels(ta)} configured={aiConfigured} />
+      <AssistantDock labels={assistantLabels(ta, usePilotFixtures())} configured={aiConfigured} />
 
       {/* "Done", said once, after a dialog's save — see `ui/toast.tsx`. */}
       <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />

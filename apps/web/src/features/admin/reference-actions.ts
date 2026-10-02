@@ -48,6 +48,7 @@ import {
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -117,6 +118,8 @@ export const saveMilestoneTemplate = refuseForbidden(async function saveMileston
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(milestoneSchema(tv), {
@@ -209,6 +212,8 @@ export const saveWorkingCalendar = refuseForbidden(async function saveWorkingCal
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(calendarSchema(tv), {
@@ -295,6 +300,8 @@ export const saveHoliday = refuseForbidden(async function saveHoliday(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(holidaySchema(tv), {
@@ -362,6 +369,8 @@ export const saveDutyRate = refuseForbidden(async function saveDutyRate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(dutySchema(tv), {
@@ -462,6 +471,8 @@ export const saveChargeableRule = refuseForbidden(async function saveChargeableR
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(chargeableSchema(tv), {
@@ -547,6 +558,8 @@ export const saveFreeTimeRule = refuseForbidden(async function saveFreeTimeRule(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(freeTimeSchema(tv), {
@@ -662,6 +675,8 @@ export const saveFxRate = refuseForbidden(async function saveFxRate(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(fxSchema(tv), {

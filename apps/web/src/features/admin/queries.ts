@@ -802,11 +802,12 @@ export async function listFxRates(actor: Actor): Promise<FxRateRow[]> {
   })
 }
 
+/**
+ * A rule as data. The page words it — mode, scope and terms in the reader's
+ * language — so this carries no sentence of its own; it used to, in English.
+ */
 export interface EngineRuleRow {
   readonly id: string
-  readonly label: string
-  readonly scope: string
-  readonly detail: string
   readonly isActive: boolean
   /** The row itself, so the edit dialog can pre-fill without a second read. */
   readonly raw: Record<string, unknown>
@@ -852,24 +853,11 @@ export async function listEngineRules(actor: Actor): Promise<{
     return {
       chargeable: (chargeable.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as string,
-        label: row.mode as string,
-        scope: (row.branchCode as string) ?? '—',
-        // Stated as the trade states it: a divisor, an increment, a floor. A
-        // null divisor is FCL, which is billed per container and never by
-        // volume.
-        detail:
-          row.divisorCm3PerKg === null
-            ? 'per container'
-            : `${Number(row.divisorCm3PerKg)} cm³/kg · ↑${Number(row.roundUpToKg)} · min ${Number(row.minimumKg)}`,
         isActive: row.isActive as boolean,
         raw: row,
       })),
       freeTime: (freeTime.rows as Record<string, unknown>[]).map((row) => ({
         id: row.id as string,
-        label: row.kind as string,
-        // Absence is how a rule widens, so an empty scope is "everything".
-        scope: [row.branchCode, row.mode, row.containerType].filter(Boolean).join(' · ') || '—',
-        detail: `${row.freeDays} days · ${Number(row.perDiem)} ${row.currency} · ${row.dayBasis}`,
         isActive: row.isActive as boolean,
         raw: row,
       })),

@@ -10,6 +10,7 @@
  * second screen — none of which a `useState` filter can do.
  */
 
+import type { Metadata } from 'next'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { listEnquiries } from '@/features/enquiries/queries'
@@ -30,6 +31,12 @@ const FILTERS: readonly {
   { key: 'overdue', label: 'filterOverdue' },
   { key: 'quoted', label: 'filterQuoted' },
 ]
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('enquiries') }
+}
 
 export default async function EnquiriesPage({
   searchParams,

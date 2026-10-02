@@ -91,7 +91,7 @@ export async function getQuoteComparison(
   enquiryId?: string,
   locale: 'en' | 'ar' = 'en',
 ): Promise<QuoteComparison | undefined> {
-  if (usePilotFixtures()) return pilotQuote(Date.now(), locale)
+  if (usePilotFixtures()) return pilotQuote(enquiryId, Date.now(), locale)
   if (!enquiryId) return undefined
 
   return withActor(actor, async (tx) => {
@@ -111,6 +111,7 @@ export async function getQuoteComparison(
         customerName: customers.legalNameEn,
         customerNameAr: customers.legalNameAr,
         preparedBy: principals.nameEn,
+        preparedByAr: principals.nameAr,
         originName: origin.nameEn,
         originNameAr: origin.nameAr,
         destinationName: destination.nameEn,
@@ -252,7 +253,7 @@ export async function getQuoteComparison(
       containerCount: header.containerCount,
       containerType: null,
       incoterm: header.incoterm,
-      preparedBy: header.preparedBy,
+      preparedBy: named(header.preparedBy, header.preparedByAr),
       pricedAt: new Date(),
       /*
         Neither number is measured on the live path yet.

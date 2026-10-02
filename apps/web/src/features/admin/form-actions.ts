@@ -55,6 +55,8 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -135,6 +137,8 @@ export const saveUser = refuseForbidden(async function saveUser(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(userSchema(tv), {
@@ -406,6 +410,8 @@ export const setUserActive = refuseForbidden(async function setUserActive(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
@@ -448,6 +454,8 @@ export const sendUserSignInLink = refuseForbidden(async function sendUserSignInL
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const principalId = read(form, 'principalId')
@@ -623,6 +631,8 @@ export const saveBranch = refuseForbidden(async function saveBranch(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   /*
     Not `admin.reference.write`, which is what this used to be.
 
@@ -812,6 +822,8 @@ export const saveReferenceRecord = refuseForbidden(async function saveReferenceR
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(referenceSchema(tv), {
@@ -893,6 +905,8 @@ export const saveReferenceRecord = refuseForbidden(async function saveReferenceR
 export async function listAssignableRoles(): Promise<{ id: string; key: string; name: string }[]> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  // The demo grants nothing, so it offers nothing to grant.
+  if (usePilotFixtures()) return []
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -920,6 +934,7 @@ export async function getUserGrants(principalId: string): Promise<{
 }> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  if (usePilotFixtures()) return { roleId: null, branchIds: [] }
 
   return withActor(session.actor, async (tx) => {
     const rows = await tx
@@ -971,6 +986,8 @@ export const saveNotificationTemplate = refuseForbidden(async function saveNotif
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(templateSchema(tv), {
@@ -1094,6 +1111,7 @@ export const saveNotificationTemplate = refuseForbidden(async function saveNotif
 export async function saveNotificationSwitches(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'admin.reference.write')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   /*
     An unchecked checkbox posts nothing, so the switches are read as

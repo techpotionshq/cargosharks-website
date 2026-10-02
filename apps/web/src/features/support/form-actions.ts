@@ -40,6 +40,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /**
  * The longest a grant may run.
@@ -83,6 +84,8 @@ export const grantSupportAccess = refuseForbidden(async function grantSupportAcc
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('supportValidation')
 
   // Belt and braces against the one path the policy cannot express as neatly:

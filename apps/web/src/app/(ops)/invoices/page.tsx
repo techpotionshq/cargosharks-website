@@ -179,7 +179,7 @@ export default async function InvoicesPage({
                       anyway and carried its 8px start margin onto the new
                       line, so the pill sat indented under the number. */}
                   {row.isCreditNote ? (
-                    <span className="mt-1 block md:ms-2 md:mt-0 md:inline">
+                    <span className="mt-1 block @3xl:ms-2 @3xl:mt-0 @3xl:inline">
                       <Badge tone="caution">{t('creditNote')}</Badge>
                     </span>
                   ) : null}

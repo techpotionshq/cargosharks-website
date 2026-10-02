@@ -58,6 +58,7 @@ import {
 import { localeParse } from '@/lib/validate'
 import { dayIn } from '@/lib/time'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -185,6 +186,8 @@ export const saveJob = refuseForbidden(async function saveJob(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, read(form, 'jobId') ? 'job.update' : 'job.book')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('jobsValidation')
 
   const parsed = await localeParse(jobSchema(tv), {
@@ -620,6 +623,8 @@ export const addJobPartner = refuseForbidden(async function addJobPartner(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('jobsValidation')
 
   const schema = z.object({

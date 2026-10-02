@@ -40,6 +40,9 @@ import { formatDateTime } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
+import { Notice } from '@/ui/notice'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import { Breakable } from '@/ui/breakable'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('integrations')
@@ -111,6 +114,13 @@ export default async function IntegrationsPage() {
             {SECRET_KEY_COMMAND}
           </pre>
         </div>
+      ) : null}
+
+      {/* The demo says what it is, where a real instance would show its key status. */}
+      {usePilotFixtures() ? (
+        <Notice tone="info" className="mb-5">
+          {t('demoNote')}
+        </Notice>
       ) : null}
 
       {failing > 0 ? <p className="mb-4 text-body text-muted">{t('failingHint')}</p> : null}
@@ -218,7 +228,7 @@ export default async function IntegrationsPage() {
                         {integration.live ? (
                           <Grid className="gap-y-3">
                             {driverLabel ? (
-                              <Field label={t('driver')} className="lg:col-span-3">
+                              <Field label={t('driver')} className="@4xl:col-span-3">
                                 {driverLabel}
                               </Field>
                             ) : null}
@@ -229,11 +239,26 @@ export default async function IntegrationsPage() {
                                 label={t(
                                   `fields.${integration.key}.${field.name}` as 'fields.smtp.host',
                                 )}
-                                className="lg:col-span-3"
+                                className="@4xl:col-span-3"
                               >
                                 <span className="flex flex-wrap items-baseline gap-1.5">
-                                  <span className={field.value ? '' : 'text-muted'}>
-                                    {field.value ?? '—'}
+                                  {/* A switch stored as text reads as a word, not "true". */}
+                                  {/*
+                                    An address breaks at its seams rather than
+                                    being cut off at the field's edge with no
+                                    ellipsis, which is how a provider URL read
+                                    at 1440.
+                                  */}
+                                  <span className={`min-w-0 ${field.value ? '' : 'text-muted'}`}>
+                                    {field.value === 'true' ? (
+                                      tc('yes')
+                                    ) : field.value === 'false' ? (
+                                      tc('no')
+                                    ) : field.value && /^[a-z]+:\/\/|@/.test(field.value) ? (
+                                      <Breakable text={field.value} />
+                                    ) : (
+                                      (field.value ?? '—')
+                                    )}
                                   </span>
                                   {/*
                                     Which layer answered, per field rather than
@@ -262,7 +287,7 @@ export default async function IntegrationsPage() {
                                 label={t(
                                   `secrets.${integration.key}.${secret.name}` as 'secrets.smtp.password',
                                 )}
-                                className="lg:col-span-3"
+                                className="@4xl:col-span-3"
                               >
                                 {/* Whether it is set, never what it is. */}
                                 <Badge tone={secret.isSet ? 'positive' : 'muted'}>
@@ -272,17 +297,17 @@ export default async function IntegrationsPage() {
                             ))}
 
                             {integration.callsPerHour !== null ? (
-                              <Field label={t('callsPerHour')} className="lg:col-span-3">
+                              <Field label={t('callsPerHour')} className="@4xl:col-span-3">
                                 <span className="numeric">{integration.callsPerHour}</span>
                               </Field>
                             ) : integration.key === 'carrierPoll' ? (
-                              <Field label={t('callsPerHour')} className="lg:col-span-3">
+                              <Field label={t('callsPerHour')} className="@4xl:col-span-3">
                                 <span className="text-muted">{t('callsUnknown')}</span>
                               </Field>
                             ) : null}
 
                             {integration.lastOkAt ? (
-                              <Field label={t('lastOk')} className="lg:col-span-3">
+                              <Field label={t('lastOk')} className="@4xl:col-span-3">
                                 {formatDateTime(integration.lastOkAt, locale, timeZone)}
                               </Field>
                             ) : null}

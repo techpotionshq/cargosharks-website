@@ -57,7 +57,14 @@ export async function CreditStandingCard({
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
   const mayOverride = can(session, 'credit.override')
 
-  const amount = (value: string) => `${value} ${view.currency}`
+  /*
+    Through `Money`, like every other figure. This was the raw column and the
+    code glued together — "1890.500 KWD" — with no grouping, a dot where an
+    Arabic reader expects the locale's figure, and the code on the wrong side.
+  */
+  const amount = (value: string) => (
+    <Money value={{ amount: value, currency: view.currency }} locale={lang} />
+  )
 
   return (
     <Card className={className}>
@@ -158,13 +165,13 @@ export async function CreditStandingCard({
                 <TD>
                   {/* Held to one line from md only: this table sits inside a
                       padded card, 40px narrower than a register on a phone. */}
-                  <span className="md:whitespace-nowrap">
+                  <span className="@3xl:whitespace-nowrap">
                     {formatDate(o.approvedAt, lang, timeZone)}
                   </span>
-                  <span className="block text-caption text-ink-muted md:hidden">
+                  <span className="block text-caption text-ink-muted @3xl:hidden">
                     {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
                   </span>
-                  <span className="mt-0.5 block text-caption break-words text-ink-subtle md:hidden">
+                  <span className="mt-0.5 block text-caption break-words text-ink-subtle @3xl:hidden">
                     {o.reason}
                   </span>
                 </TD>
@@ -174,7 +181,10 @@ export async function CreditStandingCard({
                 <TD>
                   {o.expiresOn ? (
                     <Badge tone={o.isLive ? 'caution' : 'muted'}>
-                      {t(o.isLive ? 'standingUntil' : 'lapsedOn', { date: o.expiresOn })}
+                      {/* A calendar day, as the reader writes one — not "2026-10-23". */}
+                      {t(o.isLive ? 'standingUntil' : 'lapsedOn', {
+                        date: formatDate(o.expiresOn, lang, 'UTC'),
+                      })}
                     </Badge>
                   ) : (
                     <Badge tone="muted">
@@ -189,11 +199,11 @@ export async function CreditStandingCard({
                   whole overflow.
                 */}
                 <TD align="end" numeric>
-                  <span className="block md:inline">
+                  <span className="block @3xl:inline">
                     <Money value={{ amount: o.exposure, currency: o.currency }} locale={lang} />
                   </span>
-                  <span className="block text-ink-muted md:inline">
-                    <span className="hidden md:inline"> </span>/{' '}
+                  <span className="block text-ink-muted @3xl:inline">
+                    <span className="hidden @3xl:inline"> </span>/{' '}
                     <Money value={{ amount: o.creditLimit, currency: o.currency }} locale={lang} />
                   </span>
                 </TD>

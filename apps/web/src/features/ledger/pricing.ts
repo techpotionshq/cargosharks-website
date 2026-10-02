@@ -18,6 +18,7 @@ import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -38,6 +39,8 @@ export const priceEnquiry = refuseForbidden(async function priceEnquiry(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const enquiryId = read(form, 'enquiryId')

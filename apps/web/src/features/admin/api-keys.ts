@@ -34,6 +34,7 @@ import { apiKeys, branches, customers, principals, webhookEndpoints, withActor }
 import { requireSession, type Session } from '@/lib/session'
 import { assertCan, assertCanIn, canIn } from '@/lib/permissions'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { named } from '@/lib/named'
 import { pilotApiKeys, pilotWebhookEndpoints } from '@/lib/pilot/fixtures'
 import {
   echo,
@@ -46,6 +47,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface ApiKeyRow {
   readonly id: string
@@ -63,11 +65,11 @@ export interface ApiKeyRow {
 }
 
 /** Live keys first, then revoked ones — the revoked stay visible (§5.5). */
-export async function listApiKeys(): Promise<ApiKeyRow[]> {
+export async function listApiKeys(locale: 'en' | 'ar' = 'en'): Promise<ApiKeyRow[]> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
-  if (usePilotFixtures()) return pilotApiKeys()
+  if (usePilotFixtures()) return pilotApiKeys(Date.now(), locale)
 
   return withActor(session.actor, (tx) =>
     tx
@@ -79,7 +81,7 @@ export async function listApiKeys(): Promise<ApiKeyRow[]> {
         customerNameAr: customers.legalNameAr,
         branchId: apiKeys.branchId,
         scopes: apiKeys.scopes,
-        createdBy: principals.nameEn,
+        createdBy: named(locale, principals.nameEn, principals.nameAr),
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
         expiresAt: apiKeys.expiresAt,
@@ -123,6 +125,8 @@ export const createApiKey = refuseForbidden(async function createApiKey(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(keySchema(tv), {
@@ -183,6 +187,8 @@ export const revokeApiKey = refuseForbidden(async function revokeApiKey(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const keyId = String(form.get('keyId') ?? '')
   const tv = await getTranslations('adminValidation')
@@ -285,6 +291,8 @@ export const createWebhookEndpoint = refuseForbidden(async function createWebhoo
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const parsed = await localeParse(endpointSchema(tv), {
@@ -349,6 +357,8 @@ export const setWebhookEndpointActive = refuseForbidden(async function setWebhoo
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const endpointId = String(form.get('endpointId') ?? '')
   const tv = await getTranslations('adminValidation')

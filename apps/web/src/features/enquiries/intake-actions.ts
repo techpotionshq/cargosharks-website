@@ -24,6 +24,7 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
 import { fail, succeed, type ActionState } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export const setIntakeAgent = refuseForbidden(async function setIntakeAgent(
   _previous: ActionState,
@@ -31,6 +32,8 @@ export const setIntakeAgent = refuseForbidden(async function setIntakeAgent(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const t = await getTranslations('intakeAgent')
 
   const enquiryId = String(form.get('enquiryId') ?? '')

@@ -51,9 +51,21 @@ export default async function PortalLayout({ children }: { children: React.React
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-5xl items-center gap-4 px-4 py-2 sm:px-6">
+          {/*
+            The small wordmark on a phone, without the tagline. At `md` beside
+            three or four controls the name was given ~90px, wrapped to three
+            lines, and the fixed-height header clipped the first of them.
+          */}
           <Link href="/portal" className="min-w-0 rounded-sm outline-offset-4">
-            <Logo brand={brand} locale={locale} size="md" />
+            <Logo
+              brand={brand}
+              locale={locale}
+              size="sm"
+              showTagline={false}
+              className="sm:hidden"
+            />
+            <Logo brand={brand} locale={locale} size="md" className="hidden sm:flex" />
           </Link>
 
           <nav className="ms-auto flex items-center gap-1">
@@ -98,7 +110,9 @@ export default async function PortalLayout({ children }: { children: React.React
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+      <main className="@container mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">
+        {children}
+      </main>
     </div>
   )
 }

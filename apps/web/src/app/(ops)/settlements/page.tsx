@@ -7,6 +7,7 @@
  * own is unarguable and unverifiable.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -33,6 +34,12 @@ const DIRECTION_TONE: Record<string, Tone> = {
   they_owe_us: 'positive',
   we_owe_them: 'caution',
   square: 'muted',
+}
+
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('settlements') }
 }
 
 export default async function SettlementsPage({
@@ -104,7 +111,7 @@ export default async function SettlementsPage({
                     >
                       {row.reference}
                     </Link>
-                    <span className="block text-caption text-ink-muted md:hidden">
+                    <span className="block text-caption text-ink-muted @3xl:hidden">
                       {row.partnerName}
                     </span>
                   </TD>
@@ -112,8 +119,14 @@ export default async function SettlementsPage({
                     {row.partnerName}
                   </TD>
                   <TD priority="low" className="text-ink-muted">
-                    {formatDate(row.periodFrom, locale, timeZone)} —{' '}
-                    {formatDate(row.periodTo, locale, timeZone)}
+                    {/* Isolated, as on the settlement itself. */}
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodFrom, locale, timeZone)}
+                    </bdi>{' '}
+                    —{' '}
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodTo, locale, timeZone)}
+                    </bdi>
                   </TD>
                   <TD priority="low" align="end" numeric>
                     <Money

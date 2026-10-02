@@ -95,14 +95,29 @@ export default async function WhatsappNumbersPage() {
               <TD>
                 {row.label ?? '—'}
                 {row.displayNumber ? (
-                  <span className="numeric block text-caption whitespace-nowrap text-ink-muted md:hidden">
+                  // `dir="ltr"`: "+965 2222 0000" is written left to right in
+                  // Arabic too; unmarked, the groups came out reversed.
+                  <span
+                    dir="ltr"
+                    className="numeric block text-caption whitespace-nowrap text-ink-muted @3xl:hidden"
+                  >
                     {row.displayNumber}
                   </span>
                 ) : null}
               </TD>
-              <TD priority="low">{row.displayNumber ?? '—'}</TD>
               <TD priority="low">
-                <span className="text-muted">{row.phoneNumberId}</span>
+                {row.displayNumber ? (
+                  <span dir="ltr" className="numeric whitespace-nowrap">
+                    {row.displayNumber}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </TD>
+              <TD priority="low">
+                <span dir="ltr" className="numeric text-muted">
+                  {row.phoneNumberId}
+                </span>
               </TD>
               <TD priority="low">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}

@@ -99,30 +99,38 @@ export async function JobLedgerCard({
         for, what it cost, what is left, and how much of the cost is still our
         own estimate rather than a bill we have seen.
       */}
-      <dl className="grid grid-cols-2 gap-px border-y border-line bg-line md:grid-cols-4">
-        <Figure label={t('revenue')}>
-          {display(margin.revenue.amount.toString(), baseCurrency, locale)}
-        </Figure>
-        <Figure label={t('cost')}>
-          {display(margin.cost.amount.toString(), baseCurrency, locale)}
-        </Figure>
-        <Figure label={t('gross')} tone={marginTone}>
-          {display(margin.gross.amount.toString(), baseCurrency, locale)}
-          {/*
+      {/*
+        Four across only when the panel has the room, measured on the panel:
+        it sits in two-thirds of the job file on a desktop and alone on a
+        tablet, and `md:grid-cols-4` cut its figures off at 768, where the
+        sidebar leaves the whole file narrower than the breakpoint implies.
+      */}
+      <div className="@container">
+        <dl className="grid grid-cols-2 gap-px border-y border-line bg-line @xl:grid-cols-4">
+          <Figure label={t('revenue')}>
+            {display(margin.revenue.amount.toString(), baseCurrency, locale)}
+          </Figure>
+          <Figure label={t('cost')}>
+            {display(margin.cost.amount.toString(), baseCurrency, locale)}
+          </Figure>
+          <Figure label={t('gross')} tone={marginTone}>
+            {display(margin.gross.amount.toString(), baseCurrency, locale)}
+            {/*
             A real space, not only the margin: copied, read aloud or found with
             the browser's search, the two ran together as "KWD 0.000not priced
             yet" (U6).
           */}{' '}
-          <span className="ms-1 text-caption font-normal text-ink-subtle">
-            {margin.grossPercent === null
-              ? t('unpriced')
-              : formatPercent(Number(margin.grossPercent.toString()), locale)}
-          </span>
-        </Figure>
-        <Figure label={t('accrued')} hint={t('accruedHint')}>
-          {display(margin.accruedCost.amount.toString(), baseCurrency, locale)}
-        </Figure>
-      </dl>
+            <span className="ms-1 text-caption font-normal text-ink-subtle">
+              {margin.grossPercent === null
+                ? t('unpriced')
+                : formatPercent(Number(margin.grossPercent.toString()), locale)}
+            </span>
+          </Figure>
+          <Figure label={t('accrued')} hint={t('accruedHint')}>
+            {display(margin.accruedCost.amount.toString(), baseCurrency, locale)}
+          </Figure>
+        </dl>
+      </div>
 
       {under ? (
         <p className="border-b border-line bg-critical-soft px-5 py-2.5 text-body-sm text-critical">
@@ -133,7 +141,7 @@ export async function JobLedgerCard({
       {ledger.lines.length === 0 ? (
         <EmptyState icon="finance" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell minWidth="none">
+        <TableShell>
           <THead>
             <TR>
               {/*
@@ -171,7 +179,7 @@ export async function JobLedgerCard({
                     </Badge>
                   </TD>
                   <TD>
-                    <span className="mb-1 block md:hidden">
+                    <span className="mb-1 block @3xl:hidden">
                       <Badge tone={line.direction === 'revenue' ? 'info' : 'muted'}>
                         {t(line.direction === 'revenue' ? 'revenueShort' : 'costShort')}
                       </Badge>

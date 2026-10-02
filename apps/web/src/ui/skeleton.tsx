@@ -80,7 +80,7 @@ export function DetailSkeleton({ label }: { readonly label: string }) {
       <div aria-hidden>
         <Header actions={2} />
         <div className="mb-4 rounded-card border border-line bg-surface p-5">
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-6 @xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, cell) => (
               <div key={cell} className="flex flex-col gap-2">
                 <Bar className="h-2.5 w-16" />
@@ -89,8 +89,8 @@ export function DetailSkeleton({ label }: { readonly label: string }) {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div className="flex flex-col gap-4 lg:col-span-8">
+        <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-12">
+          <div className="flex flex-col gap-4 @4xl:col-span-8">
             {[6, 4].map((rows, panel) => (
               <div key={panel} className="rounded-card border border-line bg-surface p-5">
                 <Bar className="mb-5 h-4 w-40" />
@@ -100,7 +100,7 @@ export function DetailSkeleton({ label }: { readonly label: string }) {
               </div>
             ))}
           </div>
-          <div className="flex flex-col gap-4 lg:col-span-4">
+          <div className="flex flex-col gap-4 @4xl:col-span-4">
             {[5, 3].map((rows, panel) => (
               <div key={panel} className="rounded-card border border-line bg-surface p-5">
                 <Bar className="mb-5 h-4 w-32" />

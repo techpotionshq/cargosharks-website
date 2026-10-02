@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { pickName } from '@/lib/named'
 import { recordId } from '@/lib/ids'
 import { getPartnerDetail, listPartnerCredentials } from '@/features/network/queries'
 import {
@@ -39,6 +40,7 @@ import { Panel } from '@/ui/panel'
 import { Badge, jobTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { MoreMenu } from '@/ui/menu'
+import { Breakable } from '@/ui/breakable'
 
 export async function generateMetadata({
   params,
@@ -50,7 +52,7 @@ export async function generateMetadata({
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const partner = await getPartnerDetail(session.actor, id, locale)
-  if (!partner) return { title: 'Partner' }
+  if (!partner) return { title: (await getTranslations('nav'))('partners') }
   // The tab says what the heading says; partners carry no Arabic name yet, so
   // this is English until one is entered.
   return {
@@ -150,7 +152,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric
           label={t('openJobs')}
           value={formatNumber(partner.openJobs, locale)}
@@ -186,7 +188,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
 
       <Grid>
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="ship"
           title={t('shipments')}
@@ -197,7 +199,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           {partner.jobs.length === 0 ? (
             <EmptyState icon="ship" title={t('noJobs')} description={t('noJobsHint')} />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('reference')}</TH>
@@ -243,7 +245,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4 lg:col-span-4">
+        <div className="flex flex-col gap-4 @4xl:col-span-4">
           <Panel icon="partners" title={t('about')}>
             <dl className="grid grid-cols-2 gap-4">
               <Field label={tf('code')} mono>
@@ -272,7 +274,9 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 {partner.contacts.map((contact) => (
                   <li key={contact.id} className="px-5 py-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-body font-medium text-ink">{contact.nameEn}</p>
+                      <p className="text-body font-medium text-ink">
+                        {pickName(locale, contact.nameEn, contact.nameAr)}
+                      </p>
                       <PartnerContactDialog partnerId={id} defaults={contact} />
                     </div>
                     {contact.role ? (
@@ -281,11 +285,15 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-caption text-ink-muted">
                       {contact.email ? (
                         <a href={`mailto:${contact.email}`} className="hover:text-accent">
-                          <bdi>{contact.email}</bdi>
+                          <Breakable text={contact.email} />
                         </a>
                       ) : null}
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="numeric hover:text-accent">
+                        <a
+                          href={`tel:${contact.phone}`}
+                          dir="ltr"
+                          className="numeric hover:text-accent"
+                        >
                           {contact.phone}
                         </a>
                       ) : null}
@@ -307,7 +315,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           certificate in it.
         */}
         <Panel
-          className="lg:col-span-6"
+          className="@4xl:col-span-6"
           padding="none"
           icon="globe"
           title={t('coverage')}
@@ -317,7 +325,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           {credentials.coverage.length === 0 ? (
             <EmptyState icon="globe" title={t('noCoverage')} description={t('noCoverageHint')} />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('mode')}</TH>
@@ -343,7 +351,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         </Panel>
 
         <Panel
-          className="lg:col-span-6"
+          className="@4xl:col-span-6"
           padding="none"
           icon="document"
           title={t('compliance')}
@@ -357,7 +365,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
               description={t('noComplianceHint')}
             />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('document')}</TH>
@@ -415,13 +423,13 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
           nothing without the documents that make it up, and a partner nobody
           runs an account with says so instead of showing a zero.
         */}
-        {account ? <PartnerAccountCard account={account} className="lg:col-span-12" /> : null}
+        {account ? <PartnerAccountCard account={account} className="@4xl:col-span-12" /> : null}
 
         {/*
           This supplier's mail that the intake filed on no record — not a
           customer enquiry, and not a bill it could read — waiting for a person.
         */}
-        <PartnerMailPanel partnerId={id} className="lg:col-span-12" />
+        <PartnerMailPanel partnerId={id} className="@4xl:col-span-12" />
       </Grid>
     </>
   )

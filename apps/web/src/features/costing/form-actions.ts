@@ -43,6 +43,7 @@ import {
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -108,6 +109,8 @@ export const saveChargeLine = refuseForbidden(async function saveChargeLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('costingValidation')
 
   const chargeLineId = read(form, 'chargeLineId')

@@ -74,6 +74,8 @@ import {
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
+import { usePilotFixtures } from '@/lib/pilot/source'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -134,6 +136,8 @@ export const saveSupplierInvoice = refuseForbidden(async function saveSupplierIn
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const billId = read(form, 'supplierInvoiceId')
@@ -266,6 +270,8 @@ export const addSupplierInvoiceLine = refuseForbidden(async function addSupplier
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(lineSchema(tv), {
@@ -366,6 +372,8 @@ export const matchSupplierLine = refuseForbidden(async function matchSupplierLin
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const lineId = read(form, 'supplierInvoiceLineId')
@@ -471,6 +479,7 @@ export const matchSupplierLine = refuseForbidden(async function matchSupplierLin
 export async function unmatchSupplierLine(form: FormData): Promise<void> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
 
   const matchId = read(form, 'matchId')
   const billId = read(form, 'supplierInvoiceId')
@@ -512,6 +521,8 @@ export const setSupplierInvoiceStatus = refuseForbidden(async function setSuppli
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   // Bound before the permission check, because that check depends on the
   // action, and "nothing to do" has to be answered before there is one.
   const tv = await getTranslations('payablesValidation')
@@ -726,6 +737,8 @@ export const recordSupplierPayment = refuseForbidden(async function recordSuppli
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(supplierPaymentSchema(tv), {
@@ -793,6 +806,8 @@ export const allocateSupplierPayment = refuseForbidden(async function allocateSu
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.pay')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const paymentId = read(form, 'supplierPaymentId')
@@ -961,6 +976,8 @@ export const draftSettlement = refuseForbidden(async function draftSettlement(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const parsed = await localeParse(settlementSchema(tv), {
@@ -1154,6 +1171,8 @@ export const setSettlementStatus = refuseForbidden(async function setSettlementS
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'settlement.run')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const settlementId = read(form, 'settlementId')
@@ -1353,6 +1372,7 @@ async function resettleDocuments(tx: any, settlementId: string): Promise<void> {
  * invoices could be fired by a link preview in somebody's chat client.
  */
 export async function advanceSettlement(form: FormData): Promise<void> {
+  if (usePilotFixtures()) return // the demo saves nothing; lib/pilot/read-only.ts
   await setSettlementStatus({}, form)
 }
 
@@ -1363,6 +1383,8 @@ export const linkPartnerAccount = refuseForbidden(async function linkPartnerAcco
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
@@ -1392,6 +1414,8 @@ export const setPartnerTolerance = refuseForbidden(async function setPartnerTole
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
@@ -1459,6 +1483,8 @@ export const readSupplierBill = refuseForbidden(async function readSupplierBill(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payable.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('payablesValidation')
 
   const branchId = read(form, 'branchId')

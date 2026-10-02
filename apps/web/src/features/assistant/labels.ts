@@ -56,7 +56,12 @@ function toolLabels(t: Translator): Record<string, string> {
   return labels
 }
 
-export function assistantLabels(t: Translator): DockLabels {
+/**
+ * `demo`: the hosted pilot has no service by design, and the notice for that
+ * case named `SERVICE_URL` and `INTERNAL_API_SECRET` to a prospective customer.
+ * In the demo it says the assistant is not part of it, in plain words.
+ */
+export function assistantLabels(t: Translator, demo = false): DockLabels {
   return {
     title: t('title'),
     placeholder: t('placeholder'),
@@ -80,8 +85,8 @@ export function assistantLabels(t: Translator): DockLabels {
     openSettings: t('openSettings'),
     unreachable: t('unreachable'),
     unreachableHint: t('unreachableHint'),
-    serviceMissing: t('serviceMissing'),
-    serviceMissingHint: t('serviceMissingHint'),
+    serviceMissing: demo ? t('demoUnavailable') : t('serviceMissing'),
+    serviceMissingHint: demo ? t('demoUnavailableHint') : t('serviceMissingHint'),
     // A record built from the codes, so a code added to `failures.ts` without
     // a sentence here is a type error rather than `undefined` on screen.
     failures: Object.fromEntries(

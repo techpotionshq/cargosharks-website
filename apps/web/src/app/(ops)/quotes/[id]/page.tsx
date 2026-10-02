@@ -203,7 +203,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         </Notice>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
         <Metric label={t('sell')} value={money(sell)} icon="quotes" tone="brand" />
         <Metric label={t('cost')} value={money(cost)} icon="finance" hint={t('costHint')} />
         <Metric
@@ -232,7 +232,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
       <Grid className="mb-4">
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="finance"
           title={t('lines')}
@@ -251,7 +251,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           {quote.lines.length === 0 ? (
             <EmptyState icon="finance" title={t('noLines')} description={t('noLinesHint')} />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   <TH>{t('charge')}</TH>
@@ -306,7 +306,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4 lg:col-span-4">
+        <div className="flex flex-col gap-4 @4xl:col-span-4">
           <Panel icon="quotes" title={t('about')} explain={t('aboutExplain')}>
             <dl className="grid grid-cols-2 gap-4">
               <Field label={t('enquiry')}>

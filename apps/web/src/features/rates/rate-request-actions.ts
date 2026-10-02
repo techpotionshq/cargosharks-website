@@ -33,6 +33,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** A token that survives a mail round-trip — hex, matched by `rfq-routing.ts`. */
 function newToken(): string {
@@ -52,6 +53,8 @@ export const requestRates = refuseForbidden(async function requestRates(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'rate.card.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ratesValidation')
 
   const enquiryId = String(form.get('enquiryId') ?? '').trim()
@@ -114,6 +117,8 @@ export const acceptRateReply = refuseForbidden(async function acceptRateReply(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'rate.card.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ratesValidation')
 
   const rateRequestId = String(form.get('rateRequestId') ?? '').trim()

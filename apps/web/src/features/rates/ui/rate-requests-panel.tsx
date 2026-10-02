@@ -79,8 +79,14 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
       ) : (
         <ul className="divide-y divide-line">
           {requests.map((row) => (
-            <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-              <div className="min-w-0 flex-1">
+            /*
+              The name has a floor. It was `min-w-0 flex-1`, free to shrink to
+              nothing, so on a phone the price kept its place and the agent's
+              name was squeezed under it a few letters a line. With a 12rem
+              basis the price and the action drop to the next line instead.
+            */
+            <li key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+              <div className="min-w-0 flex-[1_1_12rem]">
                 <div className="flex flex-wrap items-baseline gap-2">
                   <span className="text-title font-medium text-ink" dir="auto">
                     {row.partnerName}
@@ -104,10 +110,10 @@ export async function RateRequestsPanel({ enquiryId }: { readonly enquiryId: str
                 ) : null}
               </div>
 
-              <div className="text-end">
+              <div className="ms-auto text-end">
                 {row.quotedTotal && row.quotedCurrency ? (
                   <>
-                    <div className="text-title font-semibold text-ink">
+                    <div className="text-title font-semibold whitespace-nowrap text-ink">
                       {formatMoney(
                         { amount: row.quotedTotal, currency: row.quotedCurrency },
                         locale,

@@ -33,15 +33,22 @@ export function CreateApiKeyForm({
 
   // `succeed` suffixes a counter; the token before the last colon is the key.
   const issued = state.ok ? state.ok.slice(0, state.ok.lastIndexOf(':')) : null
+  /*
+    React resets an uncontrolled form after its action returns, so without a
+    default every refused submission emptied the name the operator had typed.
+    The action echoes the form back; the fields start from that echo.
+  */
+  const echoed = state.values ?? {}
 
   return (
     <div className="rounded-card border border-line p-4">
-      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <label className="flex flex-col gap-1 sm:col-span-2">
+      <form action={action} className="grid grid-cols-1 gap-3 @2xl:grid-cols-4">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.name}</span>
           <input
             name="name"
             required
+            defaultValue={echoed.name}
             placeholder={labels.namePlaceholder}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
@@ -52,6 +59,7 @@ export function CreateApiKeyForm({
           <select
             name="customerId"
             required
+            defaultValue={echoed.customerId}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             <option value="">{labels.choose}</option>
@@ -68,6 +76,7 @@ export function CreateApiKeyForm({
           <select
             name="branchId"
             required
+            defaultValue={echoed.branchId}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             {branches.map((option) => (
@@ -78,17 +87,18 @@ export function CreateApiKeyForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.expires}</span>
           <input
             type="date"
             name="expiresAt"
+            defaultValue={echoed.expiresAt}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
           <span className="text-micro text-ink-subtle">{labels.expiresHint}</span>
         </label>
 
-        <div className="flex items-end sm:col-span-2">
+        <div className="flex items-end @2xl:col-span-2">
           <Button type="submit" variant="primary" icon="plus">
             {labels.issue}
           </Button>
@@ -162,14 +172,17 @@ export function CreateWebhookForm({
 }) {
   const [state, action] = useActionState<ActionState, FormData>(createWebhookEndpoint, {})
   const secret = state.ok ? state.ok.slice(0, state.ok.lastIndexOf(':')) : null
+  // The same echo as the key form above, for the same reset.
+  const echoed = state.values ?? {}
 
   return (
     <div className="rounded-card border border-line p-4">
-      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <label className="flex flex-col gap-1 sm:col-span-4">
+      <form action={action} className="grid grid-cols-1 gap-3 @2xl:grid-cols-4">
+        <label className="flex flex-col gap-1 @2xl:col-span-4">
           <span className="eyebrow">{labels.url}</span>
           <input
             name="url"
+            defaultValue={echoed.url}
             required
             type="url"
             placeholder="https://…"
@@ -178,10 +191,11 @@ export function CreateWebhookForm({
           <span className="text-micro text-ink-subtle">{labels.urlHint}</span>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.customer}</span>
           <select
             name="customerId"
+            defaultValue={echoed.customerId}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             {/* Empty is a deployment-wide subscriber — the operator's own
@@ -195,10 +209,11 @@ export function CreateWebhookForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-2">
+        <label className="flex flex-col gap-1 @2xl:col-span-2">
           <span className="eyebrow">{labels.branch}</span>
           <select
             name="branchId"
+            defaultValue={echoed.branchId}
             className="rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           >
             <option value="">{labels.everyBranch}</option>
@@ -210,17 +225,18 @@ export function CreateWebhookForm({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 sm:col-span-3">
+        <label className="flex flex-col gap-1 @2xl:col-span-3">
           <span className="eyebrow">{labels.events}</span>
           <input
             name="events"
+            defaultValue={echoed.events}
             placeholder="job.milestone_reached document.released"
             className="ref rounded-sm border border-line bg-surface px-2.5 py-1.5 text-body"
           />
           <span className="text-micro text-ink-subtle">{labels.eventsHint}</span>
         </label>
 
-        <div className="flex items-start sm:col-span-1">
+        <div className="flex items-start @2xl:col-span-1">
           <Button type="submit" variant="primary" icon="plus">
             {labels.subscribe}
           </Button>

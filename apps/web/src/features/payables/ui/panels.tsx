@@ -100,7 +100,7 @@ export async function SupplierInvoiceLinesCard({
                     {line.chargeTypeName ?? t('unmapped')}
                     {line.jobReference ? ` · ${line.jobReference}` : ''}
                   </span>
-                  <span className="mt-0.5 block text-caption text-ink-muted md:hidden">
+                  <span className="mt-0.5 block text-caption text-ink-muted @3xl:hidden">
                     {t('billed')}{' '}
                     <span className="numeric whitespace-nowrap text-ink">
                       {display(line.amount, bill.currency, locale)}
@@ -232,27 +232,30 @@ export async function PartnerAccountCard({
         <EmptyState icon="partners" title={t('noAccount')} description={t('noAccountHint')} />
       ) : (
         <>
-          <dl className="grid grid-cols-2 gap-4 border-y border-line px-5 py-4 md:grid-cols-4">
-            <Field label={t('theyOweUs')}>
-              {display(statement.receivable.amount.toString(), currency, locale)}
-            </Field>
-            <Field label={t('weOweThem')}>
-              {display(statement.payable.amount.toString(), currency, locale)}
-            </Field>
-            <Field label={t('offset')}>
-              {display(net.offset.amount.toString(), currency, locale)}
-            </Field>
-            <Field label={t('residual')}>
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="tabular-nums">
-                  {display(net.residual.amount.toString(), currency, locale)}
+          {/* Four across by the panel's own width — see the job P&L panel. */}
+          <div className="@container">
+            <dl className="grid grid-cols-2 gap-4 border-y border-line px-5 py-4 @xl:grid-cols-4">
+              <Field label={t('theyOweUs')}>
+                {display(statement.receivable.amount.toString(), currency, locale)}
+              </Field>
+              <Field label={t('weOweThem')}>
+                {display(statement.payable.amount.toString(), currency, locale)}
+              </Field>
+              <Field label={t('offset')}>
+                {display(net.offset.amount.toString(), currency, locale)}
+              </Field>
+              <Field label={t('residual')}>
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="tabular-nums">
+                    {display(net.residual.amount.toString(), currency, locale)}
+                  </span>
+                  <Badge tone={directionTone}>
+                    {t(`directions.${net.direction}` as 'directions.square')}
+                  </Badge>
                 </span>
-                <Badge tone={directionTone}>
-                  {t(`directions.${net.direction}` as 'directions.square')}
-                </Badge>
-              </span>
-            </Field>
-          </dl>
+              </Field>
+            </dl>
+          </div>
 
           {statement.lines.length === 0 ? (
             <EmptyState
@@ -261,7 +264,7 @@ export async function PartnerAccountCard({
               description={t('nothingOpenHint')}
             />
           ) : (
-            <TableShell minWidth="none">
+            <TableShell>
               <THead>
                 <TR>
                   {/* Document and running balance on a phone; the date follows
@@ -289,7 +292,7 @@ export async function PartnerAccountCard({
                         <span className="font-mono text-body-sm">{line.reference}</span>
                         <span className="mt-0.5 block text-micro text-ink-subtle">
                           {t(`kinds.${line.kind}` as 'kinds.invoice')}
-                          <span className="md:hidden">
+                          <span className="@3xl:hidden">
                             {' · '}
                             {formatDate(line.date, locale, timeZone)}
                           </span>

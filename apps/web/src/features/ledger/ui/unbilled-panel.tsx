@@ -92,7 +92,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
               <TR key={row.jobId}>
                 <TD className="ref">
                   {row.reference}
-                  <span className="block text-micro text-ink-subtle md:hidden">
+                  <span className="block text-micro text-ink-subtle @3xl:hidden">
                     {formatDate(row.oldestAt, lang, timeZone)}
                   </span>
                 </TD>

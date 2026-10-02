@@ -92,7 +92,7 @@ export async function listQuotes(
         decidedAt: quotes.decidedAt,
         customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         enquiryReference: enquiries.reference,
-        preparedBy: principals.nameEn,
+        preparedBy: named(locale, principals.nameEn, principals.nameAr),
         branchCode: branches.code,
       })
       .from(quotes)
@@ -282,7 +282,7 @@ export async function listPayments(
         reference: payments.reference,
         customerName: named(locale, customers.legalNameEn, customers.legalNameAr),
         branchCode: branches.code,
-        recordedBy: principals.nameEn,
+        recordedBy: named(locale, principals.nameEn, principals.nameAr),
         // What of this receipt has been matched to an invoice. An unallocated
         // payment is money you have but cannot close a ledger with.
         allocated: sql<string>`coalesce((
@@ -586,7 +586,7 @@ export async function getQuoteDetail(
              q.version, q.status::text as status, q.currency,
              q.total_sell::text as "totalSell", q.total_cost::text as "totalCost",
              q.valid_until::text as "validUntil",
-             p.name_en as "preparedBy",
+             ${named(locale, sql`p.name_en`, sql`p.name_ar`)} as "preparedBy",
              q.sent_at as "sentAt", q.decided_at as "decidedAt", q.created_at as "createdAt",
              case when o.name_en is null or d.name_en is null then null
                   else ${originName} || ${arrow}::text || ${destinationName} end as lane,
@@ -659,6 +659,7 @@ export interface InvoiceDetail {
   readonly lines: readonly {
     id: string
     descriptionEn: string
+    descriptionAr: string | null
     quantity: string
     unitPrice: string
     amount: string
@@ -705,10 +706,11 @@ export async function getInvoiceDetail(
              i.tax_rate_percent::text as "taxRatePercent",
              i.language::text as language,
              i.issued_at as "issuedAt", i.due_on::text as "dueOn",
-             p.name_en as "issuedBy", i.notes,
+             ${named(locale, sql`p.name_en`, sql`p.name_ar`)} as "issuedBy", i.notes,
              coalesce((
                select json_agg(json_build_object(
                         'id', il.id, 'descriptionEn', il.description_en,
+                        'descriptionAr', il.description_ar,
                         'quantity', il.quantity::text, 'unitPrice', il.unit_price::text,
                         'amount', il.amount::text, 'taxAmount', il.tax_amount::text)
                       order by il.sort_order)
@@ -771,10 +773,11 @@ export interface AccountingExportRow {
 export async function listAccountingExports(
   actor: Actor,
   limit = 12,
+  locale: 'en' | 'ar' = 'en',
 ): Promise<AccountingExportRow[]> {
   // Sliced rather than passed on: the builder takes no limit, and `limit` here
   // is the SQL `limit` — honouring it keeps the two modes the same shape.
-  if (usePilotFixtures()) return pilotAccountingExports().slice(0, limit)
+  if (usePilotFixtures()) return pilotAccountingExports(Date.now(), locale).slice(0, limit)
 
   return withActor(actor, async (tx) =>
     tx
@@ -787,7 +790,7 @@ export async function listAccountingExports(
         rowCount: accountingExports.rowCount,
         status: accountingExports.status,
         postedAt: accountingExports.postedAt,
-        postedBy: principals.nameEn,
+        postedBy: named(locale, principals.nameEn, principals.nameAr),
         voidedAt: accountingExports.voidedAt,
         voidReason: accountingExports.voidReason,
       })

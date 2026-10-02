@@ -20,6 +20,7 @@ import { requireSession } from '@/lib/session'
 import { assertCanIn, canIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /** The filed mail a form names, if the reader can see it at all. */
 async function filedMail(actor: Parameters<typeof withActor>[0], messageId: string) {
@@ -39,6 +40,10 @@ export const attachPartnerMailToJob = refuseForbidden(async function attachPartn
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  // Before the read the permission check needs: fixture mode has no mail to
+  // read, and the panel it came from is fixture data the demo cannot change.
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const t = await getTranslations('partnerMail')
   const messageId = String(form.get('messageId') ?? '')
   const reference = String(form.get('jobReference') ?? '')
@@ -76,6 +81,10 @@ export const markPartnerMailHandled = refuseForbidden(async function markPartner
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  // Before the read the permission check needs: fixture mode has no mail to
+  // read, and the panel it came from is fixture data the demo cannot change.
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const t = await getTranslations('partnerMail')
   const mail = await filedMail(session.actor, String(form.get('messageId') ?? ''))
   if (!mail) return failWith(t('notFound'))
@@ -107,6 +116,10 @@ export const readPartnerMailAsBill = refuseForbidden(async function readPartnerM
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  // Before the read the permission check needs: fixture mode has no mail to
+  // read, and the panel it came from is fixture data the demo cannot change.
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const t = await getTranslations('partnerMail')
   const assetId = String(form.get('assetId') ?? '')
   const mail = await filedMail(session.actor, String(form.get('messageId') ?? ''))

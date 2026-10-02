@@ -20,6 +20,7 @@ import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { listPortalContacts } from '../queries'
 import { inviteCustomerContact } from '../portal-contacts'
 import { SignInLinkButton } from './sign-in-link-button'
+import { Breakable } from '@/ui/breakable'
 
 export async function PortalContactsCard({
   customerId,
@@ -88,7 +89,7 @@ export async function PortalContactsCard({
       {contacts.length === 0 ? (
         <p className="border-t border-line px-5 py-4 text-body-sm text-ink-muted">{t('none')}</p>
       ) : (
-        <TableShell minWidth="none" className="border-t border-line">
+        <TableShell className="border-t border-line">
           <THead>
             <TR>
               <TH>{t('name')}</TH>
@@ -117,9 +118,9 @@ export async function PortalContactsCard({
                       name, and only last seen waits for a wider screen. */}
                   <TD className="font-medium text-ink">
                     {locale === 'ar' && contact.nameAr ? contact.nameAr : contact.nameEn}
-                    <span className="md:hidden">
-                      <span className="ref mt-0.5 block text-caption font-normal wrap-anywhere text-ink-muted">
-                        {contact.email}
+                    <span className="@3xl:hidden">
+                      <span className="ref mt-0.5 block text-caption font-normal text-ink-muted">
+                        <Breakable text={contact.email} />
                       </span>
                       {contact.hasPassword ? null : (
                         <span className="mt-1.5 block font-normal">{signIn}</span>
@@ -127,7 +128,7 @@ export async function PortalContactsCard({
                     </span>
                   </TD>
                   <TD priority="low" className="ref text-ink-muted">
-                    {contact.email}
+                    <Breakable text={contact.email} />
                   </TD>
                   <TD priority="low">{signIn}</TD>
                   <TD priority="low" className="whitespace-nowrap text-ink-muted">

@@ -17,6 +17,7 @@
  * filtered out downstream, but by living only in this slice.
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
@@ -24,7 +25,7 @@ import { requireSession } from '@/lib/session'
 import { recordId } from '@/lib/ids'
 import { getQuoteComparison } from '@/features/quotes/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate, formatMoney, formatNumber } from '@/lib/format'
+import { currencyLabel, formatDate, formatMoney, formatNumber } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { Field } from '@/ui/layout'
 import { Badge } from '@/ui/status'
@@ -41,6 +42,17 @@ import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 import { MoreMenu } from '@/ui/menu'
 import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const session = await requireSession()
+  const comparison = await getQuoteComparison(session.actor, recordId((await params).id))
+  const t = await getTranslations('enquiry')
+  return { title: comparison?.enquiryReference ?? t('title') }
+}
 
 export default async function EnquiryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const timeZone = await getTimeZone()
@@ -94,8 +106,8 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   const optionColumns = solo
     ? ''
     : comparison.options.length === 2
-      ? 'sm:grid-cols-2'
-      : 'sm:grid-cols-2 lg:grid-cols-3'
+      ? '@2xl:grid-cols-2'
+      : '@2xl:grid-cols-2 @5xl:grid-cols-3'
 
   return (
     <>
@@ -185,68 +197,89 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       */}
       <Card className="mb-4" tone="brand">
         {/*
-          Two groups, kept adjacent rather than pushed to opposite edges.
+          Rows, not one wrapping line.
 
-          `justify-between` looked right at 1280 and fell apart above it: on a
-          wide monitor it opened a hand's width of nothing down the middle and
-          the timing and the consignment read as two unrelated things sharing a
-          box. The metadata instead takes the remaining width as an even
-          four-column grid, so it spreads without drifting, and drops under a
-          rule when the row can no longer hold both.
+          The timing, the four facts and the container form used to share a
+          `flex-wrap` row, with the facts as a `sm:grid-cols-4` grid squeezed
+          into whatever width the other two left. At 768 the sidebar leaves the
+          card ~440px, the grid still went four-up, and the labels overlapped
+          values cut to single letters ("Sea FCL · 1 × 40HC" broke per word at
+          every width). Each group now takes its own row, and the facts lay
+          out against the card's width (`@container`), not the window's: two
+          columns with customer and lane given the whole line until there is
+          room for four, the timing beside them only on a wide card.
         */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-          {timing ? (
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent text-on-brand">
-                <Icon name="clock" size={18} />
-              </span>
-              <div>
-                <p className="text-title font-semibold text-ink">
-                  {t('pricedIn', { ms: formatNumber(comparison.pricingMs ?? 0, locale) })}
-                </p>
-                {comparison.manualTurnaroundHours ? (
-                  <p className="text-body-sm text-ink-muted">
-                    {t('manualComparison', { hours: comparison.manualTurnaroundHours })}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <dl
-            className={`grid min-w-0 flex-1 grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 ${
-              timing ? 'border-line/60 lg:border-s lg:ps-6' : ''
-            }`}
-          >
-            <Field label={tEnq('customer')}>{orNotRecorded(comparison.customerName)}</Field>
-            <Field label={tEnq('lane')}>{orNotRecorded(comparison.lane)}</Field>
-            <Field label={tEnq('mode')}>
-              {comparison.mode ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Icon name={modeIcon(comparison.mode)} size={15} />
-                  {tMode(comparison.mode)}
-                  {comparison.containerType ? ` · ${comparison.containerType}` : ''}
+        <div className="@container">
+          <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-start @4xl:gap-6">
+            {timing ? (
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent text-on-brand">
+                  <Icon name="clock" size={18} />
                 </span>
-              ) : (
-                tc('notRecorded')
-              )}
-            </Field>
-            <Field label={tEnq('incoterm')}>{orNotRecorded(comparison.incoterm)}</Field>
-          </dl>
+                <div>
+                  <p className="text-title font-semibold text-ink">
+                    {t('pricedIn', { ms: formatNumber(comparison.pricingMs ?? 0, locale) })}
+                  </p>
+                  {comparison.manualTurnaroundHours ? (
+                    <p className="text-body-sm text-ink-muted">
+                      {t('manualComparison', { hours: comparison.manualTurnaroundHours })}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <dl
+              className={`grid min-w-0 flex-1 grid-cols-2 gap-x-6 gap-y-3 @3xl:grid-cols-4 ${
+                timing ? 'border-line/60 @4xl:border-s @4xl:ps-6' : ''
+              }`}
+            >
+              <Field label={tEnq('customer')} className="col-span-2 @3xl:col-span-1">
+                {orNotRecorded(comparison.customerName)}
+              </Field>
+              <Field label={tEnq('lane')} className="col-span-2 @3xl:col-span-1">
+                {orNotRecorded(comparison.lane)}
+              </Field>
+              <Field label={tEnq('mode')}>
+                {comparison.mode ? (
+                  // Two unbreakable halves: the mode and the equipment wrap as
+                  // units, never "Sea / FCL / · / 1 / × / 40HC".
+                  <span className="inline-flex flex-wrap items-center gap-x-1.5">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <Icon name={modeIcon(comparison.mode)} size={15} />
+                      {tMode(comparison.mode)}
+                    </span>
+                    {comparison.containerType ? (
+                      <span className="whitespace-nowrap" dir="ltr">
+                        · {comparison.containerType}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  tc('notRecorded')
+                )}
+              </Field>
+              <Field label={tEnq('incoterm')}>{orNotRecorded(comparison.incoterm)}</Field>
+            </dl>
+          </div>
           {/*
             Sea FCL is priced per container and refuses without a count; an
-            enquiry that arrived by email or WhatsApp has no other way to get one.
+            enquiry that arrived by email or WhatsApp has no other way to get
+            one. Under the facts, ruled off, rather than as a third item in
+            their row.
           */}
           {comparison.mode === 'sea_fcl' && !comparison.isClosed ? (
-            <ContainerCountForm
-              enquiryId={id}
-              current={comparison.containerCount}
-              labels={{
-                field: tForm('containers'),
-                save: tc('save'),
-                hint: tForm('containersHint'),
-              }}
-            />
+            <div className="mt-4 border-t border-line/60 pt-4">
+              <ContainerCountForm
+                enquiryId={id}
+                current={comparison.containerCount}
+                labels={{
+                  field: tForm('containers'),
+                  save: tc('save'),
+                  hint: tForm('containersHint'),
+                }}
+              />
+            </div>
           ) : null}
         </div>
       </Card>
@@ -285,15 +318,18 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       <RateRequestsPanel enquiryId={id} />
 
       {hasOptions ? (
-        <>
+        <div className="@container">
           {/* --- the options, side by side where there is a side by side ----- */}
+          {/* Columns by the width the page has, not the window — see the facts card. */}
           <div className={`mb-4 grid grid-cols-1 gap-4 ${optionColumns}`}>
             {comparison.options.map((option) => (
               <Card
                 key={option.id}
                 className={option.isRecommended ? 'ring-2 ring-accent/30' : undefined}
               >
-                <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
+                <div
+                  className={solo ? '@2xl:grid @2xl:grid-cols-2 @2xl:items-center @2xl:gap-8' : ''}
+                >
                   <div className="min-w-0">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -319,7 +355,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                         {formatMoney(option.sell, locale, { showCurrency: false })}
                       </span>
                       <span className="text-body-sm font-medium text-ink-subtle">
-                        {option.sell.currency}
+                        {currencyLabel(option.sell.currency, locale)}
                       </span>
                     </div>
                     <p className="mt-1 text-caption text-ink-subtle">{t('sell')}</p>
@@ -337,7 +373,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                 */}
                     <dl
                       className={`mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 ${
-                        solo ? 'md:mt-0 md:border-t-0 md:border-s md:pt-0 md:ps-8' : ''
+                        solo ? '@2xl:mt-0 @2xl:border-t-0 @2xl:border-s @2xl:pt-0 @2xl:ps-8' : ''
                       }`}
                     >
                       <div>
@@ -372,14 +408,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                     </dl>
 
                     <Meter
-                      className={`mt-3 ${solo ? 'md:ms-8' : ''}`}
+                      className={`mt-3 ${solo ? '@2xl:ms-8' : ''}`}
                       value={option.marginPct}
                       max={maxMargin}
                       tone={option.id === best?.id ? 'var(--qb-positive)' : 'var(--qb-chart-1)'}
                       label={`${t('margin')} ${option.marginPct}%`}
                     />
 
-                    <p className={`mt-3 text-micro text-ink-subtle ${solo ? 'md:ms-8' : ''}`}>
+                    <p className={`mt-3 text-micro text-ink-subtle ${solo ? '@2xl:ms-8' : ''}`}>
                       {t('validUntil')} {formatDate(option.validUntil, locale, timeZone)}
                     </p>
                   </div>
@@ -519,7 +555,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               </tfoot>
             </TableShell>
           </Card>
-        </>
+        </div>
       ) : null}
     </>
   )

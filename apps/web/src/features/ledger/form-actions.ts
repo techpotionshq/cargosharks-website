@@ -76,6 +76,7 @@ import {
 import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -147,6 +148,8 @@ export const createQuote = refuseForbidden(async function createQuote(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(quoteSchema(tv), {
@@ -308,6 +311,8 @@ export const addQuoteLine = refuseForbidden(async function addQuoteLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
@@ -406,6 +411,8 @@ export const setQuoteStatus = refuseForbidden(async function setQuoteStatus(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const quoteId = read(form, 'quoteId')
   const status = read(form, 'status')
@@ -556,6 +563,8 @@ export const draftQuoteCoverNote = refuseForbidden(async function draftQuoteCove
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const quoteId = read(form, 'quoteId')
   const locale = read(form, 'locale') === 'ar' ? 'ar' : 'en'
@@ -661,6 +670,8 @@ export const setQuoteCoverNote = refuseForbidden(async function setQuoteCoverNot
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const parsed = await localeParse(coverNoteSchema, {
     quoteId: read(form, 'quoteId'),
@@ -842,6 +853,8 @@ export const createInvoice = refuseForbidden(async function createInvoice(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(invoiceSchema(tv), {
@@ -927,6 +940,8 @@ export const addInvoiceLine = refuseForbidden(async function addInvoiceLine(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const schema = z.object({
@@ -1011,6 +1026,8 @@ export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
   form: FormData,
 ): Promise<ActionState> {
   const session = await requireSession()
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const invoiceId = read(form, 'invoiceId')
   const status = read(form, 'status')
@@ -1407,6 +1424,8 @@ export const creditInvoice = refuseForbidden(async function creditInvoice(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.credit')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const invoiceId = read(form, 'invoiceId')
@@ -1559,6 +1578,8 @@ export const recordPayment = refuseForbidden(async function recordPayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const parsed = await localeParse(paymentSchema(tv), {
@@ -1637,6 +1658,8 @@ export const allocatePayment = refuseForbidden(async function allocatePayment(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const paymentId = read(form, 'paymentId')
@@ -1877,6 +1900,8 @@ export const billJob = refuseForbidden(async function billJob(
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const jobId = read(form, 'jobId')

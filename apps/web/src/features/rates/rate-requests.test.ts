@@ -212,9 +212,10 @@ describe.skipIf(!enabled)('getEnquiryRateRequests', () => {
 
   it('serves the fixture comparison in pilot mode', async () => {
     pilot.on = true
-    const view = await getEnquiryRateRequests(bothBranchesActor, 'any')
+    // The enquiry the model read — the one the demo asked agents about.
+    const view = await getEnquiryRateRequests(bothBranchesActor, 'enq-318')
     expect(view).not.toBeNull()
-    expect(Array.isArray(view!.requests)).toBe(true)
+    expect(view!.requests.length).toBeGreaterThan(0)
     expect(typeof view!.baseCurrency).toBe('string')
     // The demo's summary is counted by hand; it must agree with its own list.
     expect({ awaiting: view!.awaiting, answered: view!.answered }).toEqual(

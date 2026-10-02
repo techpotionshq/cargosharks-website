@@ -49,7 +49,7 @@ export async function PartiesCard({
       {parties.length === 0 ? (
         <EmptyState icon="partners" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell className="border-t border-line" minWidth="none">
+        <TableShell className="border-t border-line">
           <THead>
             <TR>
               <TH>{t('role')}</TH>
@@ -69,7 +69,7 @@ export async function PartiesCard({
                     <span className="mt-0.5 block text-micro text-ink-subtle">{party.nameAr}</span>
                   ) : null}
                   {party.city || party.country ? (
-                    <span className="mt-0.5 block text-micro text-ink-muted md:hidden">
+                    <span className="mt-0.5 block text-micro text-ink-muted @3xl:hidden">
                       {[party.city, party.country].filter(Boolean).join(', ')}
                     </span>
                   ) : null}
@@ -139,7 +139,7 @@ export async function CargoCard({
       {cargo.length === 0 ? (
         <EmptyState icon="container" title={t('none')} description={t('noneHint')} />
       ) : (
-        <TableShell className="border-t border-line" minWidth="none">
+        <TableShell className="border-t border-line">
           <THead>
             <TR>
               <TH>{t('description')}</TH>
@@ -163,7 +163,7 @@ export async function CargoCard({
                       t('unclassified')}
                   </span>
                   {line.packageCount ? (
-                    <span className="numeric block text-micro text-ink-muted md:hidden">
+                    <span className="numeric block text-micro text-ink-muted @3xl:hidden">
                       {line.packageCount} {line.packageType ?? ''}
                     </span>
                   ) : null}

@@ -44,6 +44,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface WhatsappNumberRow {
   readonly id: string
@@ -108,6 +109,8 @@ export const saveWhatsappNumber = refuseForbidden(async function saveWhatsappNum
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('adminValidation')
 
   const read = (key: string): string | undefined => {
@@ -176,6 +179,8 @@ export const setWhatsappNumberActive = refuseForbidden(async function setWhatsap
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const numberId = String(form.get('numberId') ?? '')
   const isActive = form.get('isActive') === 'true'

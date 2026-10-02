@@ -57,6 +57,7 @@ import { pilotIntakeSettings } from '@/lib/pilot/fixtures'
 import type { IntakeSettingsRowLike } from '@/lib/pilot/types'
 import { echo, fail, succeed, type ActionState } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 /**
  * The requirement choices the form offers, per mode — `all` meaning every mode.
@@ -149,6 +150,8 @@ export const saveIntakeSettings = refuseForbidden(async function saveIntakeSetti
   if (!branchId) return fail({ _: t('noBranch') })
   // In that branch, not anywhere — FR-ID-02, A2.
   assertCanIn(session, 'admin.mailboxes.write', branchId)
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   const errors: Record<string, string> = {}
   const numbers: Record<string, number> = {}

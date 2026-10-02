@@ -26,6 +26,7 @@
  * own: RLS applies it (§5.3).
  */
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
@@ -62,11 +63,21 @@ function partOfDay(now: Date, timeZone: string): 'morning' | 'afternoon' | 'even
   return 'evening'
 }
 
+/** The tab says which screen this is, as the sidebar does, in the reader's language. */
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('nav')
+  return { title: t('dashboard') }
+}
+
 export default async function DashboardPage() {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const overview = await getOpsOverview(session.actor)
+  const resolvedLocale = await getLocale()
+  const overview = await getOpsOverview(
+    session.actor,
+    isLocale(resolvedLocale) ? resolvedLocale : DEFAULT_LOCALE,
+  )
   const setup = await getSetupState(session.actor)
   const map = await getMapData(session.actor)
 
@@ -179,7 +190,7 @@ export default async function DashboardPage() {
       {/* ---- the four numbers -------------------------------------------
           Only the two that represent a live cost carry a tone. A row where
           everything is coloured says nothing at a glance. */}
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-4 grid grid-cols-1 gap-4 @xl:grid-cols-2 @3xl:grid-cols-4">
         <Metric
           label={t('overdueReplies')}
           value={formatNumber(overview.enquiries.breached, locale)}
@@ -284,7 +295,7 @@ export default async function DashboardPage() {
             The widest panel on the board, because it is the only one that
             changes what somebody does next. */}
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           padding="none"
           icon="alert"
           title={t('attention')}
@@ -361,7 +372,7 @@ export default async function DashboardPage() {
             value here is showing a newcomer what a shipment's life looks
             like — a list of ten teaches nothing. */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="ship"
           title={t('nextArrival')}
           explain={t('nextArrivalExplain')}
@@ -432,14 +443,14 @@ export default async function DashboardPage() {
       <Grid className="mb-4">
         {/* ---- intake, with the facts written out ---------------------- */}
         <Panel
-          className="lg:col-span-8"
+          className="@4xl:col-span-8"
           icon="trend"
           title={t('enquiryTrend')}
           explain={t('enquiryTrendExplain')}
           bodyClassName="flex"
         >
           {/* 17rem for the readout: at 15 its labels clipped to "Received this …". */}
-          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_17rem]">
+          <div className="grid flex-1 gap-6 @4xl:grid-cols-[1fr_17rem]">
             <TrendColumns
               className="flex flex-1 flex-col justify-end"
               height={190}
@@ -502,7 +513,7 @@ export default async function DashboardPage() {
 
         {/* ---- who is still waiting ------------------------------------ */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           padding="none"
           icon="clock"
           title={t('slaWatch')}
@@ -550,7 +561,7 @@ export default async function DashboardPage() {
       <Grid>
         {/* ---- what it is worth ---------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="finance"
           title={t('avgMargin')}
           explain={t('avgMarginExplain')}
@@ -577,7 +588,7 @@ export default async function DashboardPage() {
 
         {/* ---- how it moves -------------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="container"
           title={t('jobsByMode')}
           explain={t('jobsByModeExplain')}
@@ -618,7 +629,7 @@ export default async function DashboardPage() {
 
         {/* ---- where it goes ------------------------------------------- */}
         <Panel
-          className="lg:col-span-4"
+          className="@4xl:col-span-4"
           icon="locations"
           title={t('topLanes')}
           explain={t('topLanesExplain')}

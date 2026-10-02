@@ -26,6 +26,7 @@ import { isUniqueViolation } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 export interface CustomerFormState {
   /** Field-keyed messages, so each input can render its own error. */
@@ -61,6 +62,8 @@ export const createCustomer = refuseForbidden(async function createCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('customersValidation')
 
   const parsed = await localeParse(customerFormSchema(tv), customerFormData(form))
@@ -124,6 +127,8 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('customersValidation')
 
   const parsed = await localeParse(updateCustomerSchema(tv), {
@@ -210,6 +215,8 @@ export const setCustomerActive = refuseForbidden(async function setCustomerActiv
 ): Promise<CustomerFormState> {
   const session = await requireSession()
   assertCan(session, 'customer.write')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
 
   /*
     A form action like every other one here, rather than the two positional

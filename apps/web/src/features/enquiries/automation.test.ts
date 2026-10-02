@@ -203,11 +203,21 @@ describe.skipIf(!enabled)('enquiryAutomation', () => {
   it('returns the mid-automation fixture in pilot mode', async () => {
     pilot.on = true
 
-    const activity = await enquiryAutomation(bothBranchesActor, 'any-id')
+    const activity = await enquiryAutomation(bothBranchesActor, 'enq-318')
 
     expect(activity.acknowledgedAt).toBeInstanceOf(Date)
     expect(activity.fieldsRead).toBeGreaterThan(0)
     expect(activity.rateRequestsSent).toBeGreaterThan(0)
     expect(activity.rateRepliesIn).toBeGreaterThan(0)
+  })
+
+  /** …on the enquiry the model read, not on every enquiry on the board. */
+  it('shows nothing in pilot mode for an enquiry nobody automated', async () => {
+    pilot.on = true
+
+    const activity = await enquiryAutomation(bothBranchesActor, 'enq-316')
+
+    expect(activity.acknowledgedAt).toBeNull()
+    expect(activity.rateRequestsSent).toBe(0)
   })
 })

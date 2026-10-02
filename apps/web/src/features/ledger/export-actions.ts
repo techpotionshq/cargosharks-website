@@ -32,6 +32,7 @@ import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
+import { demoReadOnly } from '@/lib/pilot/read-only'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -187,6 +188,8 @@ export const createAccountingExport = refuseForbidden(async function createAccou
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'finance.export')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const branchId = read(form, 'branchId')
@@ -258,6 +261,8 @@ export const voidAccountingExportAction = refuseForbidden(async function voidAcc
 ): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'finance.export')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
   const tv = await getTranslations('ledgerValidation')
 
   const exportId = read(form, 'exportId')
