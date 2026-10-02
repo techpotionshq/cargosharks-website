@@ -48,7 +48,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import {
   assets,
   branches,
@@ -550,8 +550,9 @@ async function load(conversationId: string, asOf: Date): Promise<Loaded | null> 
         and(
           eq(messages.enquiryId, conversation.enquiryId),
           eq(messages.direction, 'outbound'),
-          isNotNull(messages.authorId),
-          ne(messages.authorId, SYSTEM_PRINCIPAL_ID),
+          // A person in the product (their own id), or outside it — their
+          // phone or the Kapso inbox, echoed back and marked `staff_authored`.
+          sql`(${messages.staffAuthored} or (${messages.authorId} is not null and ${messages.authorId} <> ${SYSTEM_PRINCIPAL_ID}))`,
         ),
       )
     const staffInbound = inbound

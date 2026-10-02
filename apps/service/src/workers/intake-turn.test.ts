@@ -69,14 +69,8 @@ vi.mock('../adapters/index', async (importOriginal) => {
       throw new Error('not used')
     },
   }
-  /*
-    One memory store for the whole file. The real resolver builds a fresh one
-    per call, so bytes put while filing a mail are gone by the time the turn
-    reads them — fine for a suite that never reads back, not for this one.
-  */
-  const { memoryFileStore } = await import('../adapters/s3')
-  const store = memoryFileStore()
-  return { ...actual, modelProvider: async () => fake, fileStore: async () => store }
+  // The file store is the real one: `memory` is one store per process now.
+  return { ...actual, modelProvider: async () => fake }
 })
 
 /** The fake reader: the facts a transcript states, as extraction entries. */
@@ -128,6 +122,7 @@ process.env.FILE_STORE_DRIVER = 'memory'
 
 const {
   aiInvocations,
+  assets,
   branches,
   enquiries,
   intakeConversations,
@@ -136,6 +131,7 @@ const {
   intakeSettings,
   intakeTurns,
   inboundWebhookEvents,
+  messageAttachments,
   messages,
   notificationOutbox,
   principals,
@@ -147,6 +143,8 @@ const {
 } = await import('@qabandi/db')
 const { DEFAULT_INTAKE_REQUIREMENTS } = await import('@qabandi/core')
 const { runInboundWhatsAppWebhook } = await import('./inbound-whatsapp-webhook')
+const { kapsoMediaSource } = await import('../adapters/whatsapp')
+type WhatsAppMediaSource = import('../adapters/whatsapp').WhatsAppMediaSource
 const { ingestMessage } = await import('./inbound-mail')
 const { runIntakeTurn, transcript, withoutQuotedHistory } = await import('./intake-turn')
 
@@ -217,6 +215,7 @@ async function say(
   seconds: number,
   ack = recorder('whatsapp'),
   extra: Record<string, unknown> = {},
+  resolveMedia: () => Promise<WhatsAppMediaSource | null> = async () => null,
 ) {
   seq += 1
   const wamid = `wamid.IN-${RUN}-${seq}`
@@ -248,6 +247,8 @@ async function say(
     noEnqueue,
     ack.resolve,
     nudge,
+    undefined,
+    resolveMedia,
   )
   return { ...result, eventId: event!.id, wamid }
 }
@@ -803,6 +804,240 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     const turn = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
     expect(turn.decision?.reason).toBe('loop_guard')
     expect(wa.sent).toHaveLength(0)
+  })
+
+  /** A Kapso `whatsapp.message.sent` echo — the business writing to `to`. */
+  async function echo(
+    to: string,
+    body: string,
+    seconds: number,
+    asOfSeconds: number,
+    wamid?: string,
+  ) {
+    seq += 1
+    const id = wamid ?? `wamid.STAFF-${RUN}-${seq}`
+    const [event] = await withActor(sys, (tx) =>
+      tx
+        .insert(inboundWebhookEvents)
+        .values({
+          provider: 'whatsapp',
+          externalId: `${RUN}-echo-${seq}`,
+          payload: {
+            type: 'whatsapp.message.sent',
+            message: {
+              id,
+              timestamp: String(Math.floor(at(seconds).getTime() / 1000)),
+              type: 'text',
+              to,
+              text: { body },
+              kapso: { direction: 'outbound' },
+            },
+            conversation: { phone_number: to, phone_number_id: PHONE_NUMBER_ID },
+            phone_number_id: PHONE_NUMBER_ID,
+          },
+        })
+        .returning({ id: inboundWebhookEvents.id }),
+    )
+    return runInboundWhatsAppWebhook(
+      { eventId: event!.id },
+      at(asOfSeconds),
+      noEnqueue,
+      async () => null,
+      nudge,
+    )
+  }
+
+  it('hears a coordinator replying from their own phone, and stays quiet', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
+    const enquiryId = first.enquiryId!
+
+    const staff = await echo(
+      sender,
+      'Hi, Sara here from the desk — which goods are these?',
+      60,
+      120,
+    )
+    expect(staff).toEqual({ outcome: 'staff_reply', enquiryId })
+    const [row] = await withActor(sys, (tx) =>
+      tx
+        .select()
+        .from(messages)
+        .where(and(eq(messages.enquiryId, enquiryId), eq(messages.direction, 'outbound'))),
+    )
+    expect(row?.staffAuthored).toBe(true)
+    expect(row?.authorId).toBeNull()
+
+    const { id } = await conversationFor(enquiryId)
+    const turn = await runIntakeTurn(id, at(200), { resolveWhatsApp: wa.resolve })
+    expect(turn.decision?.reason).toBe('human_active')
+    expect(wa.sent).toHaveLength(0)
+  })
+
+  it('knows its own replies when Kapso echoes them back', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2 containers Busan to Kuwait', 0)
+    const { id } = await conversationFor(first.enquiryId!)
+    await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+    expect(wa.sent).toHaveLength(1)
+
+    // Too soon to tell from our own send: back to the queue, nothing written.
+    await expect(echo(sender, 'unknown text', 131, 135)).rejects.toThrow(/too recent/)
+    // The agent's own message, by its wamid: settled, and no staff reply filed.
+    const own = await echo(sender, wa.sent[0]!.body, 130, 131, wa.sent[0]!.ref)
+    expect(own.reason).toBe('own_echo')
+    const staffRows = await withActor(sys, (tx) =>
+      tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.enquiryId, first.enquiryId!), eq(messages.staffAuthored, true))),
+    )
+    expect(staffRows).toEqual([])
+  })
+
+  describe('WhatsApp media', () => {
+    /** A local stand-in for Kapso's media endpoints: metadata, then bytes. */
+    async function mediaServer(files: Record<string, { type: string; body: Buffer }>) {
+      const { createServer } = await import('node:http')
+      const hits: string[] = []
+      const server = createServer((req, res) => {
+        hits.push(`${req.headers['x-api-key']} ${req.url}`)
+        const url = req.url ?? ''
+        const meta = /\/v[\d.]+\/(.+)$/.exec(url)
+        if (url.startsWith('/files/')) {
+          const file = files[url.slice('/files/'.length)]!
+          res.writeHead(200, { 'content-type': file.type, 'content-length': file.body.length })
+          res.end(file.body)
+          return
+        }
+        const id = decodeURIComponent(meta?.[1] ?? '')
+        const file = files[id]
+        if (!file) {
+          res.writeHead(404).end('{}')
+          return
+        }
+        const { port } = server.address() as { port: number }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(
+          JSON.stringify({
+            url: `http://127.0.0.1:${port}/files/${id}`,
+            mime_type: file.type,
+            file_size: file.body.length,
+          }),
+        )
+      })
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+      const { port } = server.address() as { port: number }
+      return {
+        hits,
+        close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+        source: (maxBytes?: number) =>
+          kapsoMediaSource({ apiKey: 'mock-key', baseUrl: `http://127.0.0.1:${port}`, maxBytes }),
+      }
+    }
+
+    it('fetches a caption-less PDF, stores it, and reads it in the turn', async () => {
+      const mock = await mediaServer({
+        'media-pdf-1': {
+          type: 'application/pdf',
+          body: Buffer.from('%PDF-1.4 Two 40HC of furniture from Qingdao to Kuwait'),
+        },
+      })
+      try {
+        const sender = newSender()
+        const wa = recorder('whatsapp')
+        model.documents.length = 0
+        const first = await say(
+          sender,
+          '',
+          0,
+          undefined,
+          {
+            type: 'document',
+            text: undefined,
+            document: { id: 'media-pdf-1', mime_type: 'application/pdf' },
+          },
+          async () => mock.source(),
+        )
+        expect(mock.hits.every((h) => h.startsWith('mock-key '))).toBe(true)
+        const attached = await withActor(sys, (tx) =>
+          tx
+            .select({ name: assets.fileName, type: assets.contentType, size: assets.byteSize })
+            .from(messageAttachments)
+            .innerJoin(assets, eq(assets.id, messageAttachments.assetId))
+            .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+            .where(eq(messages.enquiryId, first.enquiryId!)),
+        )
+        expect(attached).toEqual([
+          { name: 'whatsapp-document.pdf', type: 'application/pdf', size: 53 },
+        ])
+
+        const { id } = await conversationFor(first.enquiryId!)
+        const turn = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+        expect(model.documents).toEqual([1])
+        expect(turn.decision?.action).toBe('confirm')
+      } finally {
+        await mock.close()
+      }
+    })
+
+    it('files an oversized picture as a stub and does not send it to the model', async () => {
+      const mock = await mediaServer({
+        'media-big-1': { type: 'image/jpeg', body: Buffer.alloc(2048, 1) },
+      })
+      try {
+        const sender = newSender()
+        model.documents.length = 0
+        const first = await say(
+          sender,
+          '',
+          0,
+          undefined,
+          { type: 'image', text: undefined, image: { id: 'media-big-1', mime_type: 'image/jpeg' } },
+          async () => mock.source(1024),
+        )
+        const [asset] = await withActor(sys, (tx) =>
+          tx
+            .select({ key: assets.storageKey })
+            .from(messageAttachments)
+            .innerJoin(assets, eq(assets.id, messageAttachments.assetId))
+            .innerJoin(messages, eq(messages.id, messageAttachments.messageId))
+            .where(eq(messages.enquiryId, first.enquiryId!)),
+        )
+        expect(asset?.key.startsWith('oversized:')).toBe(true)
+        // Only the metadata call: the bytes were never downloaded.
+        expect(mock.hits).toHaveLength(1)
+
+        // A caption-less picture still counts as content: the model is asked.
+        const { id } = await conversationFor(first.enquiryId!)
+        const turn = await runIntakeTurn(id, at(130), {
+          resolveWhatsApp: recorder('whatsapp').resolve,
+        })
+        expect(turn.modelCalled).toBe(true)
+        expect(model.documents).toEqual([0])
+      } finally {
+        await mock.close()
+      }
+    })
+
+    it('files the message without the file when the media call fails', async () => {
+      const mock = await mediaServer({})
+      try {
+        const first = await say(
+          newSender(),
+          '',
+          0,
+          undefined,
+          { type: 'image', text: undefined, image: { id: 'missing', mime_type: 'image/png' } },
+          async () => mock.source(),
+        )
+        expect(first.outcome).toBe('created')
+      } finally {
+        await mock.close()
+      }
+    })
   })
 
   describe('on an email thread', () => {

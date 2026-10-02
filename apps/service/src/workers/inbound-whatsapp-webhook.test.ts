@@ -16,7 +16,11 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
-import { toWhatsAppInboundMessage } from './inbound-whatsapp-webhook'
+import {
+  isOutboundEcho,
+  toWhatsAppInboundMessage,
+  whatsAppMediaRef,
+} from './inbound-whatsapp-webhook'
 import { kapsoChannel } from '../adapters/whatsapp'
 
 const AT = new Date('2026-09-28T09:00:00Z')
@@ -151,6 +155,47 @@ describe('toWhatsAppInboundMessage', () => {
   it('defaults the received time to now on a bad timestamp rather than refusing', () => {
     const message = toWhatsAppInboundMessage(received({ message: { timestamp: 'nope' } }), AT)
     expect(message.receivedAt).toEqual(AT)
+  })
+})
+
+describe('what a receipt carries besides words', () => {
+  it('names the media a message carries by its id', () => {
+    expect(
+      whatsAppMediaRef(
+        received({
+          message: {
+            type: 'document',
+            document: { id: 'm-1', mime_type: 'application/pdf', filename: 'pl.pdf' },
+          },
+        }),
+      ),
+    ).toEqual({
+      kind: 'document',
+      id: 'm-1',
+      mimeType: 'application/pdf',
+      filename: 'pl.pdf',
+      url: null,
+    })
+    expect(whatsAppMediaRef(received())).toBeNull()
+  })
+
+  it('takes a link Kapso already resolved onto the payload', () => {
+    const ref = whatsAppMediaRef(
+      received({
+        message: {
+          type: 'image',
+          image: { id: 'm-2' },
+          kapso: { direction: 'inbound', media_url: 'https://media.kapso.test/m-2' },
+        },
+      }),
+    )
+    expect(ref?.url).toBe('https://media.kapso.test/m-2')
+  })
+
+  it('tells the business’s own outbound echo from a customer’s message', () => {
+    expect(isOutboundEcho(received())).toBe(false)
+    expect(isOutboundEcho(received({ message: { kapso: { direction: 'outbound' } } }))).toBe(true)
+    expect(isOutboundEcho(received({ top: { type: 'whatsapp.message.sent' } }))).toBe(true)
   })
 })
 

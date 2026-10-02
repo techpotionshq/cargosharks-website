@@ -473,13 +473,13 @@ const PHRASES: readonly (readonly string[])[] = CHIT_CHAT_PHRASES.map((phrase) =
 /**
  * Placeholders `inbound-whatsapp-webhook.ts` writes for a message with no words.
  *
- * A sticker or a reaction is a thumbs-up by other means. Other media — an image
- * or a document with no caption — is not chit-chat, but the intake cannot read
- * it either (the bytes are not fetched in this cut), so it is answered the same
- * way: no model call, no reply, and a person sees it on the thread.
+ * A sticker or a reaction is a thumbs-up by other means, and a shared location
+ * or contact card answers nothing a quotation needs. An image, a document, a
+ * video or a voice note is *not* on this list: a photographed packing list or
+ * a PDF booking sheet with no caption is often the whole enquiry, so it counts
+ * as content and is read.
  */
-const WORDLESS =
-  /^\[whatsapp (sticker|reaction|image|video|audio|document|location|contacts)( message)?(: [^\]]*)?\]$/i
+const WORDLESS = /^\[whatsapp (sticker|reaction|location|contacts)( message)?(: [^\]]*)?\]$/i
 
 /**
  * Whether a message says nothing an enquiry could use — "ok", "thanks 👍",

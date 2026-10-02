@@ -731,6 +731,9 @@ export async function ingestMessage(
             That is the safe direction for a default nobody will revisit.
           */
           customerVisible: customerId !== null && context.created,
+          // A supplier's mail filed on no record carries whose it is, for the
+          // partner page's list of mail waiting to be acted on.
+          partnerId: supplierOnly ? partnerId : null,
           sentAt: message.receivedAt,
         })
         .returning({ id: messages.id })

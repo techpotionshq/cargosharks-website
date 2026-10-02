@@ -111,6 +111,9 @@ describe('chit-chat', () => {
     'Shanghai to Shuwaikh',
     'شكرا، الوزن 500 كيلو',
     'Hi, I need a rate for 2 pallets Dubai to Kuwait by air',
+    // A caption-less picture or PDF is often the whole enquiry.
+    '[WhatsApp image]',
+    '[WhatsApp document: booking.pdf]',
   ])('%j carries content', (text) => {
     expect(isChitChat(text)).toBe(false)
   })

@@ -400,6 +400,20 @@
       "when": 1790941030635,
       "tag": "0057_high_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790944623531,
+      "tag": "0058_magical_thunderbolts",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1790944648268,
+      "tag": "0059_mute_warstar",
+      "breakpoints": true
     }
   ]
 }
