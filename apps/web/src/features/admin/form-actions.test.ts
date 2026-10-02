@@ -13,6 +13,7 @@
  * the driver's error — so this asserts the sentence rather than the 500.
  */
 
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 
@@ -25,6 +26,8 @@ const harness = vi.hoisted(() => ({
   /** The mail outcome a sign-in link reports — the service is not running here. */
   linkOutcome: 'not_configured' as string,
   linksSent: [] as string[],
+  /** What each link was worded as, in order (D11). */
+  linkIntents: [] as (string | undefined)[],
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
@@ -36,8 +39,9 @@ vi.mock('@/lib/session', () => ({ requireSession: async () => harness.session })
   the link, and that the administrator is told what became of it.
 */
 vi.mock('./sign-in-link', () => ({
-  sendSignInLink: async (email: string) => {
+  sendSignInLink: async (email: string, intent?: string) => {
     harness.linksSent.push(email)
+    harness.linkIntents.push(intent)
     return harness.linkOutcome
   },
 }))
@@ -390,6 +394,47 @@ describe.skipIf(!enabled)('administration', () => {
       expect(sent.ok).toBeDefined()
       expect(sent.message).toBe(`adminValidation.signInLinkSent:${JSON.stringify({ email })}`)
       harness.linkOutcome = 'not_configured'
+    })
+
+    /**
+     * D11. A first link is an invitation, a link to somebody who already has a
+     * password is a reset; the reset wording told a new contact their
+     * "current password still works".
+     */
+    it('words the link as an invitation until the person has a password', async () => {
+      const email = nextEmail()
+      harness.linkIntents = []
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Invited',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+      await sendUserSignInLink({}, form({ principalId: principal!.id }))
+      expect(harness.linkIntents).toEqual(['invitation', 'invitation'])
+
+      const [login] = await withActor(adminActor, (tx) =>
+        tx.select({ id: authUser.id }).from(authUser).where(eq(authUser.email, email)),
+      )
+      await withActor(adminActor, (tx) =>
+        tx.insert(authAccount).values({
+          id: randomUUID(),
+          accountId: login!.id,
+          providerId: 'credential',
+          userId: login!.id,
+          password: 'not-a-real-hash',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      )
+      await sendUserSignInLink({}, form({ principalId: principal!.id }))
+      expect(harness.linkIntents.at(-1)).toBe('reset')
     })
 
     /**

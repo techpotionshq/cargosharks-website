@@ -59,6 +59,7 @@ import { localeParse } from '@/lib/validate'
 import { dayIn } from '@/lib/time'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
 import { demoReadOnly } from '@/lib/pilot/read-only'
+import { carryQuoteCharges } from './quote-charges'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -466,6 +467,20 @@ export const saveJob = refuseForbidden(async function saveJob(
       }
       if (data.quoteId) {
         await tx.update(quotes).set({ updatedAt: new Date() }).where(eq(quotes.id, data.quoteId))
+
+        /*
+          The quotation's money comes with it (D13): its priced lines as
+          revenue and its recorded buy side as cost, in the same transaction
+          as the job, so a booked shipment is billable the moment it exists
+          and shows the margin the customer accepted. See `quote-charges.ts`.
+        */
+        const carried = await carryQuoteCharges(tx, {
+          quoteId: data.quoteId,
+          jobId: row!.id,
+          branchId: data.branchId,
+          customerId: data.customerId,
+        })
+        if (!carried.ok) throw new JobRefusal('quoteId', 'quoteNoFxRate')
       }
 
       /*

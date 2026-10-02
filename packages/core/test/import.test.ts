@@ -42,6 +42,9 @@ import {
   type ImportDescriptor,
   type ImportRow,
   type RateRowValues,
+  normalisePhone,
+  phoneMatchKey,
+  phonesCollide,
 } from '../src/import'
 
 const ctx = { lookups: {} }
@@ -923,5 +926,45 @@ describe('the template round-trips', () => {
     const report = readImport(filled, customers, { lookups })
     expect(report.ok).toBe(true)
     expect(report.rows[0]!.values).toMatchObject({ code: 'AGL', countryCode: 'KW' })
+  })
+})
+
+/**
+ * D3. A number saved from the customer's page must be one WhatsApp matching
+ * will find: Arabic-Indic digits were stripped to nothing by the matcher's
+ * digits-only comparison, and fewer than seven digits never match.
+ */
+describe('a contact phone number', () => {
+  it('stores digits with an optional plus, whatever the punctuation', () => {
+    expect(normalisePhone('+965 2220-1234')).toBe('+96522201234')
+    expect(normalisePhone('(965) 2220 1234')).toBe('96522201234')
+    expect(normalisePhone('2220 1234')).toBe('22201234')
+    expect(normalisePhone('00965 2220 1234')).toBe('+96522201234')
+  })
+
+  it('reads Arabic-Indic digits as digits', () => {
+    expect(normalisePhone('٢٢٢٠ ١٢٣٤')).toBe('22201234')
+    expect(normalisePhone('+۹۶۵۲۲۲۰۱۲۳۴')).toBe('+96522201234')
+  })
+
+  it('refuses what the matcher could never match', () => {
+    expect(normalisePhone('12345')).toBeNull()
+    expect(normalisePhone('call me')).toBeNull()
+    expect(normalisePhone('+1234567890123456')).toBeNull()
+  })
+
+  it('keys a number the way the matcher compares it', () => {
+    expect(phoneMatchKey('+965 2220 1234')).toBe('96522201234')
+    expect(phoneMatchKey('0096522201234')).toBe('96522201234')
+    expect(phoneMatchKey('022201234')).toBe('22201234')
+  })
+
+  it('finds two numbers one sender would match', () => {
+    expect(phonesCollide('+96522201234', '0096522201234')).toBe(true)
+    // The national number and the same number with its country code.
+    expect(phonesCollide('22201234', '+965 2220 1234')).toBe(true)
+    expect(phonesCollide('22201234', '+965 2220 1235')).toBe(false)
+    // Too short to be a national number in the matcher's eyes.
+    expect(phonesCollide('201234', '+965201234')).toBe(false)
   })
 })

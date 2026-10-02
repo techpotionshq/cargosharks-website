@@ -75,6 +75,7 @@ import type {
   ConsolidationHouseRow,
   ConsolidationSummary,
   CreditOverrideRowLike,
+  CustomerContactRow,
   CustomerDetail,
   CustomerRow,
   CustomsRow,
@@ -3416,6 +3417,11 @@ export function pilotRateCardSummary(): RateCardSummary {
     ).length,
     lanesCovered: buyKeys.size,
     uncoveredLanes: [...trafficked].filter((key) => !buyKeys.has(key)).length,
+    cards: {
+      all: RATE_CARD_SEEDS.length,
+      buy: RATE_CARD_SEEDS.filter((c) => c.direction === 'buy').length,
+      sell: RATE_CARD_SEEDS.filter((c) => c.direction === 'sell').length,
+    },
   }
 }
 
@@ -3587,6 +3593,9 @@ export function pilotCustomer(id: string): CustomerDetail | null {
         creditCurrency: home.currency,
         freeTimeDays: 10,
         defaultIncoterm: 'CFR',
+        // A house margin, so the pilot shows "Price it" over a buying card.
+        defaultMarginKind: 'percent',
+        defaultMarginValue: '15.000000',
         /*
           One customer on stop, and it is the one carrying the 130-day debt.
           A credit hold that does not line up with the receivables screen is a
@@ -3596,6 +3605,34 @@ export function pilotCustomer(id: string): CustomerDetail | null {
       },
     ],
   }
+}
+
+/**
+ * Serves `listCustomerContacts`.
+ *
+ * One buyer per customer with a Kuwaiti or Emirati mobile, written the way
+ * people type them, so the card shows what WhatsApp matching keys on.
+ */
+export function pilotCustomerContacts(id: string): CustomerContactRow[] {
+  const index = CUSTOMERS.findIndex((_, i) => customerId(i) === id)
+  if (index === -1) return []
+  const customer = CUSTOMERS[index]!
+  const domain = `${customer.code.toLowerCase()}.example`
+  return [
+    {
+      id: `contact-${String(index).padStart(2, '0')}-1`,
+      nameEn: 'Purchasing desk',
+      nameAr: 'قسم المشتريات',
+      email: `purchasing@${domain}`,
+      phone:
+        customer.country === 'AE'
+          ? `+97150${1000000 + index * 7919}`
+          : `+9655${1000000 + index * 7919}`,
+      role: 'Buyer',
+      isActive: true,
+      hasLogin: false,
+    },
+  ]
 }
 
 /** Serves `loadFormReference` — the branch and country lists a form needs. */

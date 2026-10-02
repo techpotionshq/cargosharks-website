@@ -151,7 +151,7 @@ export const inviteCustomerContact = refuseForbidden(async function inviteCustom
 
   // After the commit — see `saveUser`. The card lists the login with its
   // state and a button that reports what became of the mail.
-  await sendSignInLink(data.email)
+  await sendSignInLink(data.email, 'invitation')
 
   revalidatePath(`/customers/${data.customerId}`)
   return succeed(data.email)

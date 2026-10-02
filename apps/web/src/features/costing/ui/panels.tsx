@@ -48,7 +48,13 @@ function display(amount: string, currency: string, locale: 'en' | 'ar'): string 
  * a missing-message crash: a new worker shipping before its label does should
  * degrade to a slightly ugly row, not to a blank screen on the job file.
  */
-const SOURCES = ['consol_allocation', 'consol_allocation_reversal', 'free_time_clock'] as const
+const SOURCES = [
+  'consol_allocation',
+  'consol_allocation_reversal',
+  'free_time_clock',
+  'quote_line',
+  'quote_cost',
+] as const
 
 type KnownSource = (typeof SOURCES)[number]
 

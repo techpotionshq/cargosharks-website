@@ -82,6 +82,12 @@ interface VoidExportRequest {
 interface PasswordResetRequest {
   readonly email: string
   readonly url: string
+  /**
+   * Why the link is being sent. `invitation` is an administrator's first
+   * sign-in link to somebody who has never had a password; anything else is a
+   * reset. Only the wording changes: the link and its expiry are the same.
+   */
+  readonly intent?: 'reset' | 'invitation'
 }
 
 interface AssistantRequest {
@@ -969,11 +975,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
   })
 
   app.post<{ Body: PasswordResetRequest }>('/mail/password-reset', async (request, reply) => {
-    const { email, url } = request.body ?? {}
+    const { email, url, intent } = request.body ?? {}
 
     if (typeof email !== 'string' || typeof url !== 'string' || !email || !url) {
       return reply.code(400).send({ error: 'invalid_request' })
     }
+    // A newly invited customer contact used to receive "Reset your password ...
+    // your current password still works" about a password they never had.
+    const invitation = intent === 'invitation'
 
     /*
       The recipient's own language.
@@ -1007,8 +1016,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
     try {
       await sendMail(smtpOptions(await mailSettings()), {
         to: email,
-        subject: locale === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset your password',
-        body: passwordResetBody(locale, name, url),
+        subject: invitation
+          ? locale === 'ar'
+            ? 'دعوة لتعيين كلمة المرور'
+            : 'You have been invited, set your password'
+          : locale === 'ar'
+            ? 'إعادة تعيين كلمة المرور'
+            : 'Reset your password',
+        body: invitation ? invitationBody(locale, name, url) : passwordResetBody(locale, name, url),
         locale,
       })
       return reply.code(202).send({ status: 'sent' })
@@ -1231,5 +1246,43 @@ function passwordResetBody(locale: 'en' | 'ar', name: string, url: string): stri
     '',
     'If you did not ask for this, no action is needed — your current password',
     'still works and nothing has changed.',
+  ].join(NEWLINE)
+}
+
+/**
+ * The invitation, in the recipient's language: the same set-password link as
+ * a reset, worded for somebody who has never had a password. Fixed in code for
+ * the same reason as the reset mail above, its link is what an attacker would
+ * most like to point elsewhere.
+ */
+function invitationBody(locale: 'en' | 'ar', name: string, url: string): string {
+  const NEWLINE = '\n'
+
+  if (locale === 'ar') {
+    return [
+      `مرحباً ${name}`.trim(),
+      '',
+      'تمت دعوتكم لاستخدام حساب جديد. لتعيين كلمة المرور وتسجيل الدخول، يرجى فتح الرابط التالي:',
+      '',
+      url,
+      '',
+      'ينتهي هذا الرابط خلال ساعة واحدة ويصلح لمرة واحدة فقط. إذا انتهت صلاحيته، اطلبوا من الشخص الذي دعاكم إرسال رابط جديد.',
+      '',
+      'إذا لم تكونوا تتوقعون هذه الدعوة، يمكنكم تجاهل هذه الرسالة.',
+    ].join(NEWLINE)
+  }
+
+  return [
+    `Hello ${name}`.trim(),
+    '',
+    'You have been invited to a new account. To set your password and sign in,',
+    'open the link below:',
+    '',
+    url,
+    '',
+    'The link expires in one hour and can be used once. If it has expired, ask',
+    'the person who invited you to send a new one.',
+    '',
+    'If you were not expecting this invitation, you can ignore this email.',
   ].join(NEWLINE)
 }

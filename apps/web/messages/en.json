@@ -703,7 +703,15 @@
     "restore": "Bring back",
     "restoreTitle": "Bring {name} back",
     "restoreDescription": "Makes them selectable again on new work.",
-    "restoreNote": "They become selectable again everywhere they were before."
+    "restoreNote": "They become selectable again everywhere they were before.",
+    "marginKind": "House margin",
+    "marginValue": "Margin",
+    "marginHint": "Used when only a buying rate covers a lane. A percentage is of cost; a fixed amount or selling price is in the branch currency.",
+    "marginKinds": {
+      "percent": "Percentage over cost",
+      "absolute": "Fixed amount over cost",
+      "target_sell": "Fixed selling price"
+    }
   },
   "setup": {
     "title": "Finish setting up",
@@ -2407,7 +2415,9 @@
     "source": {
       "consol_allocation": "Allocated from a consolidation",
       "consol_allocation_reversal": "Reversed consolidation allocation",
-      "free_time_clock": "Accrued by the free-time clock"
+      "free_time_clock": "Accrued by the free-time clock",
+      "quote_line": "From the accepted quotation",
+      "quote_cost": "Buy rate on the accepted quotation"
     },
     "match": {
       "na": "—",
@@ -4068,7 +4078,8 @@
     "quoteNotBookable": "That quotation could not be found.",
     "quoteNotAccepted": "Only an accepted quotation can be booked.",
     "quoteOtherCustomer": "That quotation is for a different customer or branch.",
-    "quoteAlreadyBooked": "A shipment has already been opened from that quotation."
+    "quoteAlreadyBooked": "A shipment has already been opened from that quotation.",
+    "quoteNoFxRate": "This quotation is priced in a currency with no exchange rate to the branch's currency on file. Add the rate, then book it."
   },
   "supportValidation": {
     "supportSessionCannotGrant": "A support session cannot grant support access",
@@ -4089,7 +4100,10 @@
     "chooseBranch": "Choose a branch",
     "numbersOnly": "Numbers only",
     "codeInUse": "That customer code is already in use.",
-    "nothingToUpdate": "Nothing to update."
+    "nothingToUpdate": "Nothing to update.",
+    "marginNeedsValue": "Enter the margin, or clear the kind",
+    "marginNeedsKind": "Choose how the margin applies",
+    "marginPositive": "The margin must be more than zero"
   },
   "podValidation": {
     "notCoordinate": "Not a coordinate",
@@ -4198,7 +4212,8 @@
     "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override.",
     "creditAmountNumber": "Enter the amount to credit, in figures.",
     "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
-    "creditTooPrecise": "This currency does not have that many decimal places."
+    "creditTooPrecise": "This currency does not have that many decimal places.",
+    "openCustomerTerms": "Set the house margin"
   },
   "validation": {
     "invalidType": "Enter a valid value.",
@@ -4487,5 +4502,36 @@
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
     "readTimedOut": "Reading the file took too long. Try again."
+  },
+  "customerContacts": {
+    "eyebrow": "People",
+    "title": "Contacts",
+    "description": "Who speaks for this customer. A WhatsApp message is filed under them by the phone number here.",
+    "add": "Add contact",
+    "addTitle": "Add a contact",
+    "editTitle": "Edit {name}",
+    "formDescription": "Type the phone number with its country code where you know it, as WhatsApp sends it.",
+    "none": "No contacts on file yet.",
+    "name": "Name",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "email": "Email",
+    "phone": "Phone",
+    "role": "Role",
+    "portalLogin": "Portal login",
+    "emailOnLoginHint": "This contact signs in to the portal with this address, so it is changed on their login.",
+    "deactivate": "Deactivate",
+    "deactivateTitle": "Deactivate {name}",
+    "deactivateNote": "Their messages are no longer matched to this customer and they receive no notifications. Nothing is deleted, and they can be brought back.",
+    "restore": "Bring back",
+    "restoreTitle": "Bring {name} back",
+    "restoreNote": "Their phone number and email match this customer again.",
+    "nameRequired": "Enter a name",
+    "validEmail": "Enter a valid email address",
+    "validPhone": "Enter a phone number of 7 to 15 digits",
+    "phoneTaken": "That number belongs to a contact at another customer. WhatsApp could not tell them apart, so it would match neither.",
+    "emailOnLogin": "This contact signs in with this address. Change it on their portal login.",
+    "notFound": "That contact is not on file.",
+    "customerInactive": "This customer is retired. Bring them back before adding contacts."
   }
 }

@@ -593,6 +593,11 @@ export interface RateCardSummary {
   readonly lanesCovered: number
   /** Lanes with traffic and no live buy card — quoting those is guessing. */
   readonly uncoveredLanes: number
+  /**
+   * Every card the reader can see, by direction, before the register's tab
+   * filters it, so the All/Buying/Selling counts do not change with the tab.
+   */
+  readonly cards: { readonly all: number; readonly buy: number; readonly sell: number }
 }
 
 /** Mirrors `LaneMarginRow`. `marginPct` is null where one side is missing. */
@@ -647,8 +652,24 @@ export interface CustomerDetail extends CustomerRow {
     readonly creditCurrency: string | null
     readonly freeTimeDays: number | null
     readonly defaultIncoterm: string | null
+    /** The house margin "Price it" uses over a buying rate (D8). */
+    readonly defaultMarginKind: string | null
+    readonly defaultMarginValue: string | null
     readonly isOnHold: boolean
   }[]
+}
+
+/** Mirrors `CustomerContactRow` in `features/customers/queries.ts`. */
+export interface CustomerContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly role: string | null
+  readonly isActive: boolean
+  /** Joined to a portal login, whose address is changed on the login. */
+  readonly hasLogin: boolean
 }
 
 /** Mirrors `FormReference`. */

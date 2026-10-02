@@ -162,6 +162,7 @@ export async function rateCardSummary(actor: Actor): Promise<{
   expiring: number
   lanesCovered: number
   uncoveredLanes: number
+  cards: { all: number; buy: number; sell: number }
 }> {
   if (usePilotFixtures()) return pilotRateCardSummary()
 
@@ -194,15 +195,34 @@ export async function rateCardSummary(actor: Actor): Promise<{
                    and lc.destination_id = j.destination_id
                    and lc.mode = j.mode
               )
-         ) gaps)::int as "uncoveredLanes"
+         ) gaps)::int as "uncoveredLanes",
+        /*
+          The register's tab counts, over every card RLS lets the reader see.
+          Counted here rather than from the listed rows, because those are
+          already filtered by the tab and capped at 200: on ?direction=sell
+          the tabs read "Buying 0".
+        */
+        (select count(*) from rate_cards)::int as "cardsAll",
+        (select count(*) from rate_cards where direction = 'buy')::int as "cardsBuy",
+        (select count(*) from rate_cards where direction = 'sell')::int as "cardsSell"
     `)
     const row = result.rows[0] as unknown as
-      { live: number; expiring: number; lanesCovered: number; uncoveredLanes: number } | undefined
+      | {
+          live: number
+          expiring: number
+          lanesCovered: number
+          uncoveredLanes: number
+          cardsAll: number
+          cardsBuy: number
+          cardsSell: number
+        }
+      | undefined
     return {
       live: row?.live ?? 0,
       expiring: row?.expiring ?? 0,
       lanesCovered: row?.lanesCovered ?? 0,
       uncoveredLanes: row?.uncoveredLanes ?? 0,
+      cards: { all: row?.cardsAll ?? 0, buy: row?.cardsBuy ?? 0, sell: row?.cardsSell ?? 0 },
     }
   })
 }
