@@ -27,6 +27,26 @@ export {
 } from './s3'
 
 /**
+ * The one in-memory store this process has, made on first use.
+ *
+ * `fileStore()` resolves per use — so a settings change takes effect without a
+ * restart — and with the memory driver that meant a *new, empty* map on every
+ * call (ai-3). An upload put the PDF in one map and "Read a bill" looked in
+ * another, so with the driver `docs/Dev_Environment.md` recommends for local
+ * work every read failed with "no such key". The bytes still go at a restart,
+ * which is what the memory driver has always meant; they no longer go between
+ * one request and the next.
+ *
+ * Tests that want isolation call `memoryFileStore()` directly, as they did.
+ */
+let processMemory: ReturnType<typeof memoryFileStore> | undefined
+
+export function processMemoryStore(): ReturnType<typeof memoryFileStore> {
+  processMemory ??= memoryFileStore()
+  return processMemory
+}
+
+/**
  * Resolve the driver named in the environment, and refuse a half-configured
  * one.
  *
@@ -37,7 +57,7 @@ export {
  * made a mistake, and this is the cheapest possible moment to tell them.
  */
 export function resolveFileStore(settings: LiveIntegration): FileStore {
-  if (settings.driver === 'memory') return memoryFileStore()
+  if (settings.driver === 'memory') return processMemoryStore()
 
   const endpoint = settings.text('endpoint')
   const bucket = settings.text('bucket')
