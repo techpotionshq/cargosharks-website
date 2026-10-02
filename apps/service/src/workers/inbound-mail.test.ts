@@ -325,7 +325,7 @@ const {
   workingCalendars,
 } = await import('@qabandi/db')
 
-const { branchFor, runInboundMailPoll } = await import('./inbound-mail')
+const { branchFor, ingestMessage, runInboundMailPoll } = await import('./inbound-mail')
 const { rfqSubjectTag } = await import('./rfq-routing')
 
 const BRANCH = '00000000-0000-7000-8000-0000000ab001'
@@ -1283,7 +1283,10 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
     customer's shipment request.
   */
   describe('a second reply on a rate request', () => {
-    async function request(over: { enquiryId: string | null; status: 'accepted' | 'parsed' }) {
+    async function request(over: {
+      enquiryId: string | null
+      status: 'accepted' | 'parsed' | 'sent'
+    }) {
       seq += 1
       const token = `late${RUN}x${seq}`.replace(/[^A-Za-z0-9]/g, '')
       const [row] = await withActor(sys, (tx) =>
@@ -1333,6 +1336,38 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
           .where(eq(notificationOutbox.enquiryId, enquiry.id)),
       )
       expect(alerts.map((a) => a.eventKey)).toContain('rate_request.late_reply')
+    })
+
+    /*
+      D7: the agent is a known partner and its tariff is a PDF, which used to
+      send the offer to the invoice reader as well, where a single-container
+      quote that reconciled would land as a supplier bill.
+    */
+    it('reads a tariff PDF on a rate reply as rates, never as a bill', async () => {
+      const req = await request({ enquiryId: null, status: 'sent' })
+      const bills: string[] = []
+      const rates: string[] = []
+      const reply = mail({
+        from: 'accounts@fixture-agent.test',
+        subject: `Re: Rate request ${rfqSubjectTag(req.token)}`,
+        attachments: [
+          { filename: 'offer.pdf', contentType: 'application/pdf', content: Buffer.from('%PDF') },
+        ],
+      })
+      const handled = await ingestMessage(
+        reply,
+        { id: BRANCH, code: 'IMB' },
+        new Date('2026-08-18T09:20:00Z'),
+        async () => {},
+        undefined,
+        async (b) => void bills.push(b.assetId),
+        async (r) => void rates.push(r.rateRequestId),
+        async () => {},
+      )
+
+      expect(handled.outcome).toBe('rate_reply')
+      expect(rates).toEqual([req.id])
+      expect(bills).toEqual([])
     })
 
     it('never opens an enquiry for a reply to a renewal RFQ', async () => {
