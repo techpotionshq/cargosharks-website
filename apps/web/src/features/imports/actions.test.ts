@@ -29,7 +29,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 
 const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
@@ -975,6 +975,14 @@ describe.skipIf(!enabled)('bulk import', () => {
     })
 
     it('writes a selling tariff with no partner attached to it', async () => {
+      // "The newest sell card" is not this import's card when the coverage run
+      // has another suite writing sell cards in the same instant, so remember
+      // what was there before and look only at what is new.
+      const before = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ id: rateCards.id }).from(rateCards).where(eq(rateCards.direction, 'sell')),
+      )
+      const existing = before.map((row) => row.id)
+
       const state = await runImport(
         {},
         upload('rate-cards', sheet(RATE_HEADER, [rateRow('documentation', '15.000', FLAT)]), {
@@ -990,9 +998,11 @@ describe.skipIf(!enabled)('bulk import', () => {
         tx
           .select({ id: rateCards.id, partnerId: rateCards.partnerId })
           .from(rateCards)
-          .where(eq(rateCards.direction, 'sell'))
-          .orderBy(sql`created_at desc`)
-          .limit(1),
+          .where(
+            existing.length > 0
+              ? and(eq(rateCards.direction, 'sell'), notInArray(rateCards.id, existing))
+              : eq(rateCards.direction, 'sell'),
+          ),
       )
       expect(card?.partnerId).toBeNull()
 
