@@ -1628,7 +1628,10 @@
     "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads.",
     "respondDone": "Reply recorded. The clock has stopped.",
     "assignDone": "Enquiry assigned.",
-    "closeDone": "Enquiry closed."
+    "closeDone": "Enquiry closed.",
+    "reopenRating": "Reopen for revision",
+    "reopenRatingTitle": "Send this back to rating",
+    "reopenRatingDescription": "The customer asked for a different price. The enquiry goes back to rating so a revised quotation can be prepared."
   },
   "quoteDetail": {
     "version": "v{version}",
@@ -3846,7 +3849,8 @@
     "lostNotYet": "A new enquiry cannot be closed as lost. Assign it first, or cancel it.",
     "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
     "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
-    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25."
+    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
+    "notPermitted": "Your role does not allow this in this enquiry's branch."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",

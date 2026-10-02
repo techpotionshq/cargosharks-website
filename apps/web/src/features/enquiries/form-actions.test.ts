@@ -71,6 +71,7 @@ const {
   assignEnquiryAction,
   respondEnquiryAction,
   closeEnquiryAction,
+  advanceEnquiry,
   acceptProposal,
   acceptAllProposals,
   setEnquiryContainerCount,
@@ -584,6 +585,64 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
       expect(after.status).toBe('won')
       // Nothing was lost, so there is nothing to explain.
       expect(after.lostReason).toBeNull()
+    })
+  })
+
+  /**
+   * Back to rating — reached from two states, on two different keys.
+   *
+   * `entryPermission` cannot answer "what does reaching rating need" because
+   * the answer depends on where from, and asking it anyway made "Start rating"
+   * a 500 for everyone (QA P1-1). The transition taken decides.
+   */
+  describe('starting to price it', () => {
+    const toQuoted = (id: string) =>
+      withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.update(enquiries).set({ status: 'quoted' }).where(eq(enquiries.id, id)),
+      )
+
+    it('starts rating an assigned enquiry on enquiry.rate', async () => {
+      const row = await raise()
+      await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
+
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+
+      expect(state.message).toBeUndefined()
+      expect(state.ok).toBeDefined()
+      expect((await readEnquiry(row.id)).status).toBe('rating')
+    })
+
+    it('refuses to reopen a quoted enquiry without quote.revise, with a sentence', async () => {
+      const row = await raise()
+      await toQuoted(row.id)
+
+      // enquiry.rate is held, and it is not the key for this move.
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+
+      expect(state.message).toBe('enquiriesValidation.notPermitted')
+      expect((await readEnquiry(row.id)).status).toBe('quoted')
+    })
+
+    it('reopens a quoted enquiry for revision on quote.revise', async () => {
+      const row = await raise()
+      await toQuoted(row.id)
+      harness.session = {
+        ...session,
+        permissions: new Set(['enquiry.assign', 'quote.revise']),
+      }
+      try {
+        const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+        expect(state.ok).toBeDefined()
+      } finally {
+        harness.session = session
+      }
+      expect((await readEnquiry(row.id)).status).toBe('rating')
+    })
+
+    it('refuses rating from new, which the machine does not allow', async () => {
+      const row = await raise()
+      const state = await advanceEnquiry({}, form({ enquiryId: row.id, to: 'rating' }))
+      expect(state.message).toBe('enquiriesValidation.illegalTransition')
     })
   })
 

@@ -16,7 +16,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
-import { canTransition, enquiryMachine, type EnquiryStatus } from '@qabandi/core'
+import { assertTransition, canTransition, enquiryMachine, type EnquiryStatus } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -51,7 +51,17 @@ export async function EnquiryActions({
 
   const mayAssign = can(session, 'enquiry.assign')
   const mayClose = can(session, 'enquiry.close')
-  const mayRate = can(session, 'enquiry.rate')
+  /*
+    Back to rating is two different moves with two different keys: pricing an
+    assigned enquiry (`enquiry.rate`) and reopening a quoted one for revision
+    (`quote.revise`). The transition knows which; the button asks it.
+  */
+  const rateFrom = status as EnquiryStatus | undefined
+  const rateMove =
+    rateFrom && canTransition(enquiryMachine, rateFrom, 'rating')
+      ? assertTransition(enquiryMachine, rateFrom, 'rating')
+      : undefined
+  const mayRate = Boolean(rateMove && (!rateMove.requires || can(session, rateMove.requires)))
   const mayCancel = can(session, 'enquiry.cancel')
 
   // A closed enquiry is a record, not a queue item. Offering actions on it
@@ -138,7 +148,7 @@ export async function EnquiryActions({
         elsewhere before we quoted, which is neither won nor lost and was
         previously chased for ever.
       */}
-      {mayRate && status === 'assigned' ? (
+      {mayRate ? (
         <RecordDialog
           action={advanceEnquiry}
           icon="rates"
@@ -149,14 +159,25 @@ export async function EnquiryActions({
             { kind: 'hidden', name: 'to', value: 'rating' },
             { kind: 'note', text: t('ratingNote') },
           ]}
-          labels={{
-            open: t('startRating'),
-            title: t('startRatingTitle'),
-            description: t('startRatingDescription'),
-            submit: t('startRating'),
-            submitting: tc('saving'),
-            cancel: tc('cancel'),
-          }}
+          labels={
+            status === 'quoted'
+              ? {
+                  open: t('reopenRating'),
+                  title: t('reopenRatingTitle'),
+                  description: t('reopenRatingDescription'),
+                  submit: t('reopenRating'),
+                  submitting: tc('saving'),
+                  cancel: tc('cancel'),
+                }
+              : {
+                  open: t('startRating'),
+                  title: t('startRatingTitle'),
+                  description: t('startRatingDescription'),
+                  submit: t('startRating'),
+                  submitting: tc('saving'),
+                  cancel: tc('cancel'),
+                }
+          }
         />
       ) : null}
 

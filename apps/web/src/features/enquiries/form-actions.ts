@@ -23,7 +23,6 @@ import {
   canTransition,
   decideProposal,
   enquiryMachine,
-  entryPermission,
   isTerminal,
   slaDueAt,
   type WorkingCalendar,
@@ -39,7 +38,7 @@ import {
   workingCalendars,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch, assertCanIn } from '@/lib/permissions'
+import { assertCan, assertInBranch, assertCanIn, canIn } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -407,10 +406,6 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
     return failWith(tv('nothingToDo'))
   }
 
-  // The key the machine declares for the move, rather than one restated here.
-  const required = entryPermission(enquiryMachine, to)
-  if (required) assertCan(session, required)
-
   /*
     A cancellation needs a reason, and reuses `lost_reason`.
 
@@ -429,14 +424,25 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
       .where(eq(enquiries.id, enquiryId))
       .limit(1)
     if (!current) return 'not_found' as const
-    if (required) assertCanIn(session, required, current.branchId)
-    else assertInBranch(session, current.branchId)
 
+    /*
+      The key the machine declares for *this* move, read off the transition
+      once the row says where it is coming from.
+
+      `rating` is reached two ways and they are different authorities:
+      starting to price an assigned enquiry is `enquiry.rate`, sending a quoted
+      one back for revision is `quote.revise`. `entryPermission` refuses to
+      pick between them by design, and asking it here made "Start rating" a
+      500 on every enquiry.
+    */
+    let required: string | undefined
     try {
-      assertTransition(enquiryMachine, current.status, to)
+      required = assertTransition(enquiryMachine, current.status, to).requires
     } catch {
       return 'illegal' as const
     }
+    if (required && !canIn(session, required, current.branchId)) return 'forbidden' as const
+    if (!required) assertInBranch(session, current.branchId)
 
     await tx
       .update(enquiries)
@@ -453,6 +459,7 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
   })
 
   if (outcome === 'not_found') return failWith(tv('enquiryNotFound'))
+  if (outcome === 'forbidden') return failWith(tv('notPermitted'))
   if (outcome === 'illegal') {
     return failWith(tv('illegalTransition'))
   }
