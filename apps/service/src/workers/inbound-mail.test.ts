@@ -18,7 +18,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 /*
   Object storage that can be switched off for one case.
@@ -325,7 +325,7 @@ const {
   workingCalendars,
 } = await import('@qabandi/db')
 
-const { runInboundMailPoll } = await import('./inbound-mail')
+const { branchFor, runInboundMailPoll } = await import('./inbound-mail')
 const { rfqSubjectTag } = await import('./rfq-routing')
 
 const BRANCH = '00000000-0000-7000-8000-0000000ab001'
@@ -734,10 +734,60 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
         },
       )
 
-      expect(result.created).toBe(1)
+      // A supplier's bill is filed, not opened as an enquiry — and still filed
+      // when the queue that would read it is down.
+      expect(result.filed).toBe(1)
+      expect(result.created).toBe(0)
       expect(result.failed).toBe(0)
-      await enquiryNoted(`Queue down ${RUN}`)
+      const filed = await withActor(sys, (tx) =>
+        tx
+          .select({ enquiryId: messages.enquiryId })
+          .from(messages)
+          .where(eq(messages.subject, `Queue down ${RUN}`)),
+      )
+      expect(filed).toEqual([{ enquiryId: null }])
     })
+  })
+
+  /*
+    A supplier's mail with nothing to read as a bill is still not a customer
+    enquiry: it is filed on no record, and a person is told it arrived.
+  */
+  it('files a supplier’s mail without a bill, and tells a person', async () => {
+    const subject = `Revised schedule ${RUN}`
+    const result = await runInboundMailPoll(
+      new Date('2026-08-18T07:37:00Z'),
+      sourceOf(mail({ subject, from: 'accounts@fixture-agent.test', body: 'New cut-off.' })),
+    )
+    expect(result.filed).toBe(1)
+    expect(result.created).toBe(0)
+    const notices = await withActor(sys, (tx) =>
+      tx
+        .select({ payload: notificationOutbox.payload })
+        .from(notificationOutbox)
+        .where(
+          and(
+            eq(notificationOutbox.branchId, BRANCH),
+            eq(notificationOutbox.eventKey, 'partner.mail_filed'),
+          ),
+        ),
+    )
+    expect(notices.map((n) => (n.payload as Record<string, string>).subject)).toContain(subject)
+  })
+
+  /*
+    `Freight-DXB@…` from a provider and `freight-dxb@…` on the row are one
+    mailbox. Exact matching skipped the mail as unconfigured and lost it.
+  */
+  it('matches the mailbox whatever case the provider reports it in', async () => {
+    const result = await runInboundMailPoll(
+      new Date('2026-08-18T07:38:00Z'),
+      sourceOf(mail({ subject: `Case ${RUN}`, mailbox: MAILBOX.toUpperCase() })),
+    )
+    expect(result.created).toBe(1)
+    expect(result.failed).toBe(0)
+    const map = new Map([['freight-dxb@qa.test', { id: 'b', code: 'DXB' }]])
+    expect(branchFor(map, ' Freight-DXB@QA.test ')?.code).toBe('DXB')
   })
 
   /**

@@ -1907,6 +1907,10 @@
       "integrations": {
         "title": "Integrations",
         "description": "The relay that sends the mail, the carrier registrations that feed the board, and the provider that will transmit the invoices. A credential saved here takes effect within a minute, with no release."
+      },
+      "intakeAgent": {
+        "title": "Intake agent",
+        "description": "How the agent answers WhatsApp and email enquiries: when it replies, what it asks for, and when it hands over to a person."
       }
     },
     "referenceMoved": "Ports, charge types and other reference data are operational and stayed in",
@@ -2763,6 +2767,14 @@
       },
       "rate_request": {
         "late_reply": "An agent replies again on a decided rate request"
+      },
+      "intake": {
+        "clarify": "The intake agent asks the customer for missing details",
+        "confirm": "The intake agent confirms an enquiry is complete",
+        "handoff": "The intake agent hands an enquiry to a person"
+      },
+      "partner": {
+        "mail_filed": "A supplier writes in with no bill"
       }
     },
     "log": "Delivery",
@@ -2819,6 +2831,14 @@
       },
       "rate_request": {
         "late_reply": "An agent replied to a rate request that was already decided; the reply is filed for a person to read."
+      },
+      "intake": {
+        "clarify": "The intake agent asks the customer, once, for what a quotation still needs.",
+        "confirm": "The intake agent tells the customer their enquiry is complete.",
+        "handoff": "The intake agent has stopped asking, and an enquiry needs a person."
+      },
+      "partner": {
+        "mail_filed": "A known supplier wrote in with nothing to read as a bill."
       }
     }
   },
@@ -3355,7 +3375,8 @@
     "configure": "Configure",
     "offHint": "Set to “{driver}”. Nothing is configured here, and nothing needs to be — open Configure to switch it on.",
     "offHintPlain": "Not switched on. Open Configure to set it up.",
-    "keyCommand": "Generate a valid key on the server with:"
+    "keyCommand": "Generate a valid key on the server with:",
+    "intakeAgentLink": "Set up the intake agent for each branch"
   },
   "assistant": {
     "title": "Assistant",
@@ -3450,7 +3471,8 @@
       "pieces": "Pieces",
       "dimensions": "Dimensions",
       "isDangerous": "Dangerous goods",
-      "containerCount": "Containers"
+      "containerCount": "Containers",
+      "containerType": "Container type"
     },
     "acceptAll": "Accept all {count}"
   },
@@ -4181,5 +4203,135 @@
     "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
     "effectiveOn": "Effective from",
     "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
+  },
+  "intakeAgent": {
+    "title": "Intake agent",
+    "channels": {
+      "whatsapp": "Talks to the customer on WhatsApp.",
+      "email": "Talks to the customer by email, in their thread."
+    },
+    "states": {
+      "collecting": "Collecting the enquiry",
+      "awaiting_customer": "Waiting for the customer",
+      "complete": "Complete, ready to quote",
+      "handed_off": "Handed to a person"
+    },
+    "off": "Taken over by a person",
+    "missing": "Missing: {fields}.",
+    "nextRead": "Reads the conversation again at {time}.",
+    "summary": "Turns: {turns} · Model calls: {calls} · Questions asked: {asked}",
+    "languages": {
+      "en": "Customer writes in English",
+      "ar": "Customer writes in Arabic"
+    },
+    "read": "{count, plural, one {# message read} other {# messages read}}",
+    "modelCalled": "model called",
+    "sendFailed": "Not sent: {error}",
+    "noTurnsYet": "The agent reads the conversation when the customer stops typing.",
+    "takeOver": "Take over",
+    "takeOverHint": "The agent stops writing to this customer. You answer them yourself.",
+    "resume": "Turn the agent on",
+    "resumeHint": "The agent answers the customer's next message. It does not answer messages that arrived while it was off.",
+    "notFound": "The agent does not hold this enquiry.",
+    "actions": {
+      "confirm": "Confirmed the enquiry is complete",
+      "clarify": "Asked for the missing details",
+      "handoff": "Handed the enquiry to a person",
+      "none": "Sent nothing"
+    },
+    "reasons": {
+      "confirmed": "Every required detail is known.",
+      "clarified": "Details were missing, so it asked once.",
+      "cap_reached": "It asked as many times as it may.",
+      "agent_off": "The agent is off for this enquiry.",
+      "closed": "The enquiry is no longer open.",
+      "no_new_content": "No new message from the customer.",
+      "chit_chat": "The message was a greeting or a thank-you.",
+      "automatic": "The message came from an automatic reply.",
+      "already_complete": "The enquiry was already complete.",
+      "human_active": "A person replied to the customer recently.",
+      "cooldown": "It asked recently, so it waits before it asks again.",
+      "handed_off": "A person has this enquiry now.",
+      "loop_guard": "A loop guard stopped the reply.",
+      "model_unavailable": "The model was not available, so it did not reply.",
+      "model_retry": "The model failed. The agent tries again soon."
+    },
+    "requirements": {
+      "mode": "Mode",
+      "origin": "Origin",
+      "destination": "Destination",
+      "commodity": "Cargo",
+      "containerCount": "Container count",
+      "containerType": "Container type",
+      "grossWeightKg": "Gross weight",
+      "volumeCbm": "Volume",
+      "pieces": "Packages",
+      "readyOn": "Cargo ready date",
+      "incoterm": "Incoterm",
+      "dimensions": "Dimensions",
+      "weightOrVolume": "Weight or volume",
+      "weight": "Weight"
+    }
+  },
+  "intakeSettings": {
+    "eyebrow": "Intake",
+    "title": "Intake agent",
+    "subtitle": "How the agent answers WhatsApp and email enquiries, per branch. It waits until the customer stops typing, then answers once.",
+    "branches": "Branches",
+    "branch": "Branch",
+    "agentOn": "Agent on",
+    "agentOff": "Agent off",
+    "inherited": "Uses the default settings",
+    "quietWindow": "Quiet window",
+    "patience": "Questions",
+    "required": "Required details",
+    "windowSummary": "WhatsApp {whatsapp} s · email {email} s",
+    "patienceSummary": "{cap} at most, {cooldown} h apart · silent {takeover} h after a staff reply",
+    "noneYet": "No branch to configure",
+    "noneYetHint": "You configure the agent for the branches you administer.",
+    "editTitle": "Intake agent: {branch}",
+    "editSubtitle": "Changes apply to the next conversation turn.",
+    "inheritedHint": "This branch uses the default settings. Saving gives it its own.",
+    "enabled": "The agent answers this branch's enquiries",
+    "enabledHint": "Off, every enquiry gets the old acknowledgement and a person does the rest.",
+    "timing": "Timing",
+    "timingHint": "Each new message moves the turn back by the quiet window, up to the longest wait.",
+    "fields": {
+      "whatsappQuietSeconds": "WhatsApp quiet window (seconds)",
+      "whatsappMaxWaitSeconds": "WhatsApp longest wait (seconds)",
+      "emailQuietSeconds": "Email quiet window (seconds)",
+      "emailMaxWaitSeconds": "Email longest wait (seconds)",
+      "clarifyCooldownHours": "Hours between questions",
+      "clarifyCap": "Questions before a person takes over",
+      "humanTakeoverHours": "Hours of silence after a staff reply"
+    },
+    "requiredAll": "Required for every mode",
+    "requiredFor": "Required for {mode}",
+    "outOfRange": "Enter a whole number from {min} to {max}.",
+    "waitShorterThanQuiet": "Make the longest wait at least the quiet window.",
+    "noRequirements": "Choose at least one required detail.",
+    "noBranch": "Choose a branch."
+  },
+  "partnerMail": {
+    "title": "Mail waiting for a person",
+    "explain": "Mail from this supplier that opened no enquiry and had no bill to read.",
+    "noSubject": "No subject",
+    "openBill": "Open the bill",
+    "readAsBill": "Read as a bill",
+    "readAsBillHint": "The assistant reads the file into a bill in Received. Finance approves it before any payment.",
+    "reading": "Reading…",
+    "attachToJob": "Attach to a job",
+    "attach": "Attach",
+    "jobReference": "Job reference",
+    "jobReferenceHint": "The job in the same branch that this mail is about.",
+    "jobReferenceRequired": "Enter the job reference.",
+    "jobNotFound": "No job {reference} in this branch.",
+    "markHandled": "Mark as handled",
+    "handledHint": "The mail stays on record and leaves this list.",
+    "notFound": "This mail is no longer waiting.",
+    "serviceNotConfigured": "The background service is not configured, so the file cannot be read.",
+    "noModel": "No model is configured to read the file.",
+    "notABill": "The file did not read as a bill. Enter it on the payables screen.",
+    "readTimedOut": "Reading the file took too long. Try again."
   }
 }

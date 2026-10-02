@@ -60,6 +60,7 @@ import {
   type IssueValues,
   type RateRowValues,
 } from './import'
+import { containerTypeCode, statesContainerKind } from './intake'
 import {
   abs,
   add,
@@ -766,6 +767,14 @@ export const ENQUIRY_FIELDS = [
     side in the prompt the model reads, which is where they get confused.
   */
   'containerCount',
+  /*
+    Which box — 20GP, 40HC. The count alone does not price a FCL lane: a 40'
+    high cube and a 20' general purpose are different rates on the same card,
+    and the intake agent cannot call an FCL enquiry complete without it.
+    Proposed as our code (`containerTypeCode` in `intake.ts`), never the
+    customer's wording, so the accept path only has to check the row exists.
+  */
+  'containerType',
   'dimensions',
   'isDangerous',
 ] as const
@@ -878,7 +887,11 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
       the accept path to refuse with a sentence if it must.
     */
     const trimmed = typeof cell.value === 'string' ? cell.value.trim() : ''
-    const value = QUANTITY_FIELDS.has(field) ? proposedQuantity(field, trimmed) : trimmed
+    const value = QUANTITY_FIELDS.has(field)
+      ? proposedQuantity(field, trimmed)
+      : field === 'containerType'
+        ? containerTypeCode(trimmed)
+        : trimmed
     if (value === null || value === '') continue
 
     let scored: Confidence
@@ -890,6 +903,17 @@ export function readExtractedEnquiry(raw: unknown): ExtractedEnquiry {
     }
 
     const evidence = typeof cell.evidence === 'string' ? cell.evidence.trim() : ''
+    /*
+      A box the quoted words do not name is a guess. Read live: "حاويتين ٤٠ قدم"
+      ("two 40-foot containers") came back as 40GP with exactly that evidence —
+      a forty-footer is general purpose or high cube and the price differs, so
+      the agent must ask rather than the model choose. Where the evidence can be
+      checked and states no kind, the proposal is dropped. Only the kind: the
+      size is often in an earlier message ("normal ones, not high cube").
+    */
+    if (field === 'containerType' && evidence !== '' && !statesContainerKind(evidence)) {
+      continue
+    }
     fields.push({ field, value, confidence: scored, ...(evidence === '' ? {} : { evidence }) })
   }
 
@@ -1014,7 +1038,10 @@ export function withoutStrayContainerCount(
   mode: string | null | undefined,
 ): FieldProposal[] {
   if (containerCountFitsMode(mode)) return [...fields]
-  return fields.filter((proposal) => proposal.field !== 'containerCount')
+  // The box goes with the count: neither means anything off a FCL shipment.
+  return fields.filter(
+    (proposal) => proposal.field !== 'containerCount' && proposal.field !== 'containerType',
+  )
 }
 
 /* -------------------------------------------------------------------------

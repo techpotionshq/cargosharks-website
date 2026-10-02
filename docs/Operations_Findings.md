@@ -450,3 +450,51 @@ creates it rather than assuming a seed ran first; a query with a `LIMIT` says
 what it is limiting to; and one suite at a time. `docs/Dev_Environment.md`
 records where that database is.
 
+## 12. Replying without looping — the intake agent, October 2026
+
+The intake agent is the second path in the system that writes to the sender of
+inbound mail, and the first that does so on purpose more than once. Every rule
+from §11 applied before anything else was built, and these were added:
+
+- **It answers turns, not messages.** A turn runs once the customer has been
+  quiet for a window, so a burst — a fast typist, or a machine — costs one
+  model call and at most one reply. The window is capped, so an auto-responder
+  that keeps answering cannot postpone the turn forever either.
+- **It only answers substance.** Greetings, thanks, stickers and auto-responder
+  text (`looksAutoReply`), the same text twice, and anything arriving within
+  five seconds of our own message are classified before any model is asked,
+  and an automatic turn says nothing. A conversation with another company's
+  bot therefore ends after at most one message from us.
+- **It has a ceiling per enquiry and per sender.** One confirmation, at most
+  `clarifyCap` clarifications with a cooldown between them, then a person is
+  told. Across enquiries, four agent messages to one sender in a day stop it,
+  and a no-reply address is never written to.
+- **It records the silence.** Every turn — including one that sent nothing —
+  is a row in `intake_turns` with its reason, so "why did it not answer?" is a
+  word on the enquiry screen, not a log search.
+- **At most once, not at least once.** The turn's messages are marked read
+  before the reply is sent, so a worker that dies mid-send never sends twice.
+  A clarification that never arrived is a coordinator's call; the same
+  question twice is a bot.
+
+Found on the way: the `memory` file store driver built a fresh store on every
+`fileStore()` call, so bytes put while filing a mail were gone by the time
+anything read them in the same process. It is one store per process now
+(`resolveFileStore`), which is all the driver ever promised.
+
+Closed after the first cut, each because it was a way a person could still be
+talked over or a file still lost:
+
+- **A coordinator answering from their own WhatsApp, or the Kapso inbox, is a
+  staff reply.** `/webhooks/whatsapp` now takes Kapso's `whatsapp.message.sent`
+  echo. An echo of a message we sent (its wamid is on our row, or the same words
+  went to that customer minutes ago) is settled with nothing written; an echo
+  younger than thirty seconds is thrown back to the queue rather than guessed
+  at, because calling the agent's own reply a staff reply would silence it for
+  half a day. Anything else is filed as an outbound message marked
+  `staff_authored`, and the agent stays quiet.
+- **WhatsApp media is fetched** through Kapso's authenticated media call,
+  stored like an email attachment (10 MB, larger files a stub), and read in the
+  turn. A caption-less picture or PDF counts as content.
+- **A supplier's filed mail has a screen** — "Mail waiting for a person" on the
+  partner page, with attach-to-job, read-as-a-bill and mark-handled.

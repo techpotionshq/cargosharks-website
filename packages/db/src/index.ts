@@ -20,6 +20,7 @@ export * from './rate-cards'
 export * from './rate-promotion'
 export * from './pricing'
 export * from './enquiry-proposals'
+export * from './intake'
 export * from './integrations'
 export * from './schema-version'
 /*

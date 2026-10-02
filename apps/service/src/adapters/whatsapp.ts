@@ -138,3 +138,113 @@ export async function resolveWhatsAppChannel(): Promise<NotificationChannel | nu
     baseUrl: settings.text('baseUrl') || KAPSO_DEFAULT_BASE_URL,
   })
 }
+
+/**
+ * A media item a WhatsApp message refers to — the picture, the PDF, the voice
+ * note — named by the id Meta assigned it, and sometimes by a link Kapso
+ * already resolved.
+ */
+export interface WhatsAppMediaRef {
+  readonly kind: string
+  readonly id: string
+  readonly mimeType: string | null
+  readonly filename: string | null
+  /** A download link the webhook carried, where Kapso put one on the payload. */
+  readonly url: string | null
+}
+
+export interface FetchedMedia {
+  readonly filename: string
+  readonly contentType: string
+  /** Empty when the file was larger than the limit — stored as a stub, never read. */
+  readonly content: Buffer
+  readonly oversized: boolean
+}
+
+export interface WhatsAppMediaSource {
+  fetch(ref: WhatsAppMediaRef): Promise<FetchedMedia>
+}
+
+/** A photograph of a packing list, or a PDF of one — and refused well before memory trouble. */
+export const WHATSAPP_MEDIA_MAX_BYTES = 10 * 1024 * 1024
+
+const EXTENSION: Readonly<Record<string, string>> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+}
+
+/**
+ * The bytes behind a media id, through Kapso's authenticated media call.
+ *
+ * Meta's own two steps, through Kapso's proxy and its `X-API-Key`: `GET
+ * /{media_id}` answers with a short-lived `url`, the type and the size, and
+ * that `url` answers with the bytes. Where the webhook already carried a link,
+ * the first step is skipped. The size is checked twice — against what the
+ * metadata claims before downloading, and against what arrived after — because
+ * a claim is not a byte count, and an oversized file comes back as an empty
+ * stub so the message is still filed and a person sees that a file came.
+ *
+ * Throws on a provider failure: the caller files the message without the file
+ * rather than losing the message over it.
+ */
+export function kapsoMediaSource(
+  options: KapsoWhatsAppOptions & { readonly maxBytes?: number },
+): WhatsAppMediaSource {
+  const base = options.baseUrl.replace(/\/+$/, '')
+  const doFetch = options.fetchImpl ?? fetch
+  const max = options.maxBytes ?? WHATSAPP_MEDIA_MAX_BYTES
+  const headers = { 'x-api-key': options.apiKey }
+
+  return {
+    async fetch(ref: WhatsAppMediaRef): Promise<FetchedMedia> {
+      let url = ref.url
+      let contentType = ref.mimeType ?? 'application/octet-stream'
+      let claimed = 0
+
+      if (!url) {
+        const meta = await doFetch(`${base}/${GRAPH_VERSION}/${encodeURIComponent(ref.id)}`, {
+          headers,
+        })
+        if (!meta.ok)
+          throw new Error(`kapso media ${meta.status}: ${(await meta.text()).slice(0, 200)}`)
+        const body = (await meta.json()) as Record<string, unknown>
+        const data = (body.data as Record<string, unknown> | undefined) ?? body
+        url = typeof data.url === 'string' ? data.url : null
+        if (typeof data.mime_type === 'string') contentType = data.mime_type
+        claimed = Number(data.file_size ?? 0) || 0
+        if (!url) throw new Error('kapso media answered with no download url')
+      }
+
+      const filename =
+        ref.filename ||
+        `whatsapp-${ref.kind}.${EXTENSION[contentType.split(';')[0]!.trim()] ?? 'bin'}`
+      const stub = { filename, contentType, content: Buffer.alloc(0), oversized: true }
+      if (claimed > max) return stub
+
+      const file = await doFetch(url, { headers })
+      if (!file.ok) throw new Error(`kapso media download ${file.status}`)
+      const length = Number(file.headers.get('content-length') ?? 0)
+      if (length > max) return stub
+      const content = Buffer.from(await file.arrayBuffer())
+      if (content.byteLength > max) return stub
+      const served = file.headers.get('content-type')
+      return {
+        filename,
+        contentType: ref.mimeType ?? (served ? served.split(';')[0]!.trim() : contentType),
+        content,
+        oversized: false,
+      }
+    },
+  }
+}
+
+/** The media source this deployment is configured with, or `null` when WhatsApp is off. */
+export async function resolveWhatsAppMedia(): Promise<WhatsAppMediaSource | null> {
+  const settings = await integration('whatsapp')
+  if (settings.driver !== 'kapso') return null
+  const apiKey = settings.secret('kapsoApiKey')
+  if (!apiKey) return null
+  return kapsoMediaSource({ apiKey, baseUrl: settings.text('baseUrl') || KAPSO_DEFAULT_BASE_URL })
+}

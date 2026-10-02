@@ -43,6 +43,7 @@ import {
   type InboundWhatsAppWebhookInput,
 } from './inbound-whatsapp-webhook'
 import { runInboundRedrive } from './inbound-redrive'
+import { runIntakeTurns } from './intake-turn'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
@@ -387,6 +388,21 @@ export async function registerWorkers(log: {
       sendReceiptJob(boss, jobName, eventId),
     )
     if (result.requeued > 0 || result.failed > 0) log.info(result, 'inbound receipts re-driven')
+  })
+
+  /*
+    The intake agent's debounced turn — FR-EQ-02, the conversation half.
+
+    One handler for both triggers: the minute sweep and the per-conversation
+    wake-up the ingest queues at the exact due time. Either way it runs every
+    turn that is due, so a wake-up arriving after the sweep already took the
+    turn finds nothing and returns. Failures are the turn's own — a conversation
+    whose turn throws keeps its lease until it expires and is retried by a later
+    sweep — so nothing rethrows into pg-boss's backoff here.
+  */
+  await work(JOBS.intakeTurn, async () => {
+    const result = await runIntakeTurns()
+    if (result.due > 0) log.info(result, 'intake turns run')
   })
 
   await work(JOBS.inboundWhatsApp, async (jobs) => {

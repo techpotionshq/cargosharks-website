@@ -43,6 +43,7 @@
 import { randomBytes } from 'node:crypto'
 import { and, asc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import {
+  intakeNotReady,
   enquiries,
   locations,
   partnerContacts,
@@ -151,6 +152,15 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
             database's clock, like `created_at` itself.
           */
           sql`${enquiries.createdAt} >= now() - make_interval(hours => ${maxAgeHours}::int)`,
+          /*
+            Not while the intake agent is still collecting it. An inbound
+            enquiry with a lane but no container type is one the agent is about
+            to ask the customer about, and emailing six agents a half-request
+            costs their goodwill and returns six rates for the wrong box. The
+            agent raises the flag the turn the enquiry is complete; an enquiry
+            it does not hold is never held back.
+          */
+          sql`not ${intakeNotReady(enquiries.id)}`,
           // The loop-breaker: nothing already asked on this enquiry.
           sql`not exists (
             select 1 from ${rateRequests} r

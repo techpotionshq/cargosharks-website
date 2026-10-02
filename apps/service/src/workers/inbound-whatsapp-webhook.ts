@@ -43,14 +43,27 @@ import {
   branches,
   enquiries,
   inboundWebhookEvents,
+  intakeConversations,
   messages,
   systemActor,
+  SYSTEM_PRINCIPAL_ID,
   whatsappNumbers,
   withActor,
 } from '@qabandi/db'
 import type { InboundMessage, NotificationChannel } from '../ports/index'
-import { resolveWhatsAppChannel } from '../adapters/index'
-import { ingestMessage, type BranchRef, type EnqueueExtraction } from './inbound-mail'
+import {
+  resolveWhatsAppChannel,
+  resolveWhatsAppMedia,
+  type WhatsAppMediaRef,
+  type WhatsAppMediaSource,
+} from '../adapters/index'
+import { sendWithRetry } from './send-retry'
+import {
+  ingestMessage,
+  type BranchRef,
+  type EnqueueExtraction,
+  type NudgeIntakeTurn,
+} from './inbound-mail'
 
 /** How the ack resolves a channel — the real resolver, or a test's stand-in. */
 export type ResolveWhatsAppChannel = () => Promise<NotificationChannel | null>
@@ -61,7 +74,16 @@ export interface InboundWhatsAppWebhookInput {
 }
 
 export interface InboundWhatsAppWebhookResult {
-  readonly outcome: 'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply'
+  readonly outcome:
+    | 'created'
+    | 'threaded'
+    | 'duplicate'
+    | 'ignored'
+    | 'skipped'
+    | 'rate_reply'
+    | 'filed'
+    /** A message the business sent from outside the product, filed as a staff reply. */
+    | 'staff_reply'
   readonly enquiryId?: string | null
   /** Why nothing happened, where nothing did. */
   readonly reason?: string
@@ -75,6 +97,11 @@ export async function runInboundWhatsAppWebhook(
   asOf = new Date(),
   enqueue?: EnqueueExtraction,
   resolveChannel: ResolveWhatsAppChannel = resolveWhatsAppChannel,
+  nudge?: NudgeIntakeTurn,
+  /** The pauses between acknowledgement attempts — the real backoff, or none in a test. */
+  sendDelays?: readonly number[],
+  /** Where media bytes come from — Kapso's media call, or a test's local mock. */
+  resolveMedia: () => Promise<WhatsAppMediaSource | null> = resolveWhatsAppMedia,
 ): Promise<InboundWhatsAppWebhookResult> {
   const [event] = await withActor(systemActor(), async (tx) =>
     tx
@@ -91,9 +118,17 @@ export async function runInboundWhatsAppWebhook(
   if (!event) return { outcome: 'skipped', reason: 'receipt_not_found' }
   if (event.processedAt) return { outcome: 'duplicate', reason: 'already_processed' }
 
+  /*
+    The business's own outbound message, echoed — a coordinator writing from
+    their phone or the Kapso inbox. Not an enquiry, and not to be ignored
+    either: it is the clearest sign a person is talking to this customer.
+  */
+  const payload = event.payload as Record<string, unknown>
+  if (isOutboundEcho(payload)) return fileStaffEcho(event.id, payload, asOf)
+
   let message: InboundMessage
   try {
-    message = toWhatsAppInboundMessage(event.payload as Record<string, unknown>, asOf)
+    message = toWhatsAppInboundMessage(payload, asOf)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     await note(event.id, reason, asOf)
@@ -116,7 +151,44 @@ export async function runInboundWhatsAppWebhook(
     return { outcome: 'skipped', reason }
   }
 
-  const handled = await ingestMessage(message, branch, asOf, enqueue, { id: event.id })
+  /*
+    The picture or the PDF, fetched before the message is filed so it is stored
+    as the message's attachment and read with the conversation — a photographed
+    packing list is often the whole enquiry. Best-effort: a media call that
+    fails files the message with its "[WhatsApp image]" note and no file, which
+    is where this intake was before it fetched anything.
+  */
+  const ref = whatsAppMediaRef(payload)
+  if (ref) {
+    try {
+      const source = await resolveMedia()
+      const media = source ? await source.fetch(ref) : null
+      if (media) {
+        message = {
+          ...message,
+          attachments: [
+            { filename: media.filename, contentType: media.contentType, content: media.content },
+          ],
+        }
+      }
+    } catch (error) {
+      console.error(
+        { eventId: event.id, error: error instanceof Error ? error.message : String(error) },
+        'inbound whatsapp: media not fetched; the message is filed without it',
+      )
+    }
+  }
+
+  const handled = await ingestMessage(
+    message,
+    branch,
+    asOf,
+    enqueue,
+    { id: event.id },
+    undefined,
+    undefined,
+    nudge,
+  )
 
   /*
     Acknowledge on the same channel — FR-NT-01, the WhatsApp shape of it.
@@ -141,19 +213,31 @@ export async function runInboundWhatsAppWebhook(
     sender is acknowledged at most once per window; and a sender writing faster
     than a person types is not acknowledged at all. See `acknowledgementRefused`.
   */
-  if (handled.outcome === 'created' && handled.enquiryId) {
-    await acknowledge(message, handled.enquiryId, branch, resolveChannel, asOf).catch(
-      (error: unknown) => {
-        // Swallowed by design; the enquiry stands with or without the reply.
-        console.error(
-          {
-            enquiryId: handled.enquiryId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'inbound whatsapp: acknowledgement not sent',
-        )
-      },
-    )
+  /*
+    Not when the intake agent holds the conversation (`handled.intake`): it
+    answers once the customer has finished typing — with what is still missing,
+    or with "we have everything" — and an acknowledgement two minutes earlier is
+    exactly the reply-to-every-message it replaces.
+  */
+  if (handled.outcome === 'created' && handled.enquiryId && !handled.intake) {
+    await acknowledge(
+      message,
+      handled.enquiryId,
+      branch,
+      resolveChannel,
+      asOf,
+      event.id,
+      sendDelays,
+    ).catch((error: unknown) => {
+      // Swallowed by design; the enquiry stands with or without the reply.
+      console.error(
+        {
+          enquiryId: handled.enquiryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'inbound whatsapp: acknowledgement not sent',
+      )
+    })
   }
 
   return { outcome: handled.outcome, enquiryId: handled.enquiryId }
@@ -231,6 +315,8 @@ async function acknowledge(
   branch: BranchRef,
   resolveChannel: ResolveWhatsAppChannel,
   asOf: Date,
+  eventId: string,
+  sendDelays?: readonly number[],
 ): Promise<void> {
   const channel = await resolveChannel()
   if (!channel) return // WhatsApp is off; the enquiry is filed, just not greeted.
@@ -251,14 +337,35 @@ async function acknowledge(
   if (!row?.reference) return
 
   const body = acknowledgementBody(row.reference)
-  const sent = await channel.send({
-    to: message.from,
-    // The business number that received it — the branch's own, from the receipt.
-    from: message.mailbox,
-    body,
-    locale: 'en',
-  })
-  if (!sent.accepted) return
+  const sent = await sendWithRetry(
+    channel,
+    {
+      to: message.from,
+      // The business number that received it — the branch's own, from the receipt.
+      from: message.mailbox,
+      body,
+      locale: 'en',
+    },
+    sendDelays,
+  )
+  if (!sent.accepted) {
+    /*
+      Recorded, not only logged: on the receipt, where "why was this customer
+      never greeted" is looked for, beside the intake that did succeed. The
+      enquiry stands; the acknowledgement is what failed.
+    */
+    const reason =
+      `acknowledgement not sent after ${sent.attempts} attempt(s): ` +
+      (sent.error ?? 'the provider refused the message')
+    console.error({ enquiryId, eventId, reason }, 'inbound whatsapp: acknowledgement failed')
+    await withActor(systemActor(), (tx) =>
+      tx
+        .update(inboundWebhookEvents)
+        .set({ error: reason.slice(0, 1000), updatedAt: asOf })
+        .where(eq(inboundWebhookEvents.id, eventId)),
+    )
+    return
+  }
 
   /*
     The acknowledgement goes on the thread as an outbound message, with the
@@ -270,6 +377,7 @@ async function acknowledge(
     it. The thread is also simply more honest with it — the coordinator sees
     what the customer was told.
   */
+  const senderNumber = await whatsAppSenderNumber(message.mailbox)
   await withActor(systemActor(), async (tx) => {
     await tx.insert(messages).values({
       branchId: branch.id,
@@ -277,11 +385,15 @@ async function acknowledge(
       channel: 'whatsapp',
       direction: 'outbound',
       body,
-      fromAddress: message.mailbox,
+      // The number the customer sees, not the provider's id for it.
+      fromAddress: senderNumber,
       toAddresses: [message.from],
       ccAddresses: [],
       externalRef: sent.externalRef ?? null,
       customerVisible: true,
+      // A machine wrote it — the system principal, so a staff reply (a person's
+      // id, or `staff_authored`) is never confused with it.
+      authorId: SYSTEM_PRINCIPAL_ID,
       sentAt: asOf,
     })
   })
@@ -501,3 +613,193 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : undefined
+
+/**
+ * Whether a receipt is the business's own outbound message — Kapso's
+ * `whatsapp.message.sent` echo, or any delivery whose message says it went out.
+ */
+export function isOutboundEcho(payload: Record<string, unknown>): boolean {
+  const message = obj(payload.message)
+  if (!message) return false
+  const kapso = obj(message.kapso) ?? {}
+  return str(kapso.direction) === 'outbound' || str(payload.type) === 'whatsapp.message.sent'
+}
+
+/** An echo this new may be our own send whose row is not written yet. */
+const ECHO_SETTLE_SECONDS = 30
+
+/**
+ * File a message the business sent from outside the product as a staff reply.
+ *
+ * Kapso echoes every outbound message — ours as well as a coordinator's — so
+ * the first question is whose it is. Ours carries a wamid we already hold on an
+ * outbound row (the agent's reply, the acknowledgement), or the same words we
+ * sent this customer minutes ago; that echo is settled with nothing written.
+ * An echo that arrives before our own row could exist is thrown back to the
+ * queue to try again in a moment, rather than guessed at: calling the agent's
+ * own reply a staff reply would silence the agent for half a day.
+ *
+ * Anything else a person wrote. It is filed as an outbound message marked
+ * `staff_authored` on the customer's most recent enquiry, and that enquiry's
+ * intake conversation records staff activity — so the agent stays silent while
+ * a person has the conversation, exactly as for a reply written in the product.
+ */
+async function fileStaffEcho(
+  eventId: string,
+  payload: Record<string, unknown>,
+  asOf: Date,
+): Promise<InboundWhatsAppWebhookResult> {
+  const message = obj(payload.message) ?? {}
+  const conversation = obj(payload.conversation) ?? {}
+  const wamid = str(message.id)
+  const phoneNumberId = str(payload.phone_number_id) || str(conversation.phone_number_id)
+  const customer = str(message.to) || str(conversation.phone_number)
+  const body = whatsAppBody(message, obj(message.kapso) ?? {})
+  const sentAt = whatsAppTimestamp(message.timestamp, asOf)
+
+  if (!wamid || !customer || !phoneNumberId) {
+    const reason = 'outbound echo with no message id, recipient or business number; nothing to file'
+    await note(eventId, reason, asOf)
+    return { outcome: 'skipped', reason }
+  }
+  const branch = await resolveWhatsAppBranch(phoneNumberId)
+  if (!branch) {
+    const reason = `outbound echo on phone_number_id ${phoneNumberId}, which no branch answers on`
+    await note(eventId, reason, asOf)
+    return { outcome: 'skipped', reason }
+  }
+
+  const ours = await withActor(systemActor(), async (tx) => {
+    const [byId] = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.externalRef, wamid), eq(messages.direction, 'outbound')))
+      .limit(1)
+    if (byId) return true
+    const since = new Date(sentAt.getTime() - 10 * 60 * 1000)
+    const [byText] = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.branchId, branch.id),
+          eq(messages.channel, 'whatsapp'),
+          eq(messages.direction, 'outbound'),
+          eq(messages.authorId, SYSTEM_PRINCIPAL_ID),
+          eq(messages.body, body),
+          sql`${messages.toAddresses} @> ${JSON.stringify([customer])}::jsonb`,
+          gte(messages.sentAt, since),
+        ),
+      )
+      .limit(1)
+    return Boolean(byText)
+  })
+  if (ours) {
+    await note(eventId, 'echo of a message this system sent; nothing to file', asOf)
+    return { outcome: 'ignored', reason: 'own_echo' }
+  }
+  if (asOf.getTime() - sentAt.getTime() < ECHO_SETTLE_SECONDS * 1000) {
+    // Thrown, not noted: pg-boss retries in thirty seconds, by when our own
+    // send — if this is one — has written the row that identifies it.
+    throw new Error('outbound echo too recent to tell from our own send; retrying')
+  }
+
+  const senderNumber = await whatsAppSenderNumber(phoneNumberId)
+  const enquiryId = await withActor(systemActor(), async (tx) => {
+    const [latest] = await tx
+      .select({ enquiryId: messages.enquiryId })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.branchId, branch.id),
+          eq(messages.channel, 'whatsapp'),
+          eq(messages.direction, 'inbound'),
+          eq(messages.fromAddress, customer),
+          sql`${messages.enquiryId} is not null`,
+        ),
+      )
+      .orderBy(sql`${messages.sentAt} desc`)
+      .limit(1)
+    const target = latest?.enquiryId ?? null
+
+    await tx.insert(messages).values({
+      branchId: branch.id,
+      enquiryId: target,
+      channel: 'whatsapp',
+      direction: 'outbound',
+      body,
+      fromAddress: senderNumber,
+      toAddresses: [customer],
+      ccAddresses: [],
+      externalRef: wamid,
+      // A person, outside the product: no principal to name, so the flag says it.
+      staffAuthored: true,
+      customerVisible: true,
+      sentAt,
+    })
+    if (target) {
+      await tx
+        .update(intakeConversations)
+        .set({ lastStaffActivityAt: sentAt, updatedAt: asOf })
+        .where(eq(intakeConversations.enquiryId, target))
+    }
+    await tx
+      .update(inboundWebhookEvents)
+      .set({
+        processedAt: asOf,
+        error: target ? null : 'staff reply filed on no enquiry: the customer has none open',
+        updatedAt: asOf,
+      })
+      .where(eq(inboundWebhookEvents.id, eventId))
+    return target
+  })
+  return { outcome: 'staff_reply', enquiryId }
+}
+
+/**
+ * The media a message carries, by Meta's id — or null for a text message.
+ *
+ * Exported for its tests. The id is what Kapso's media call is asked for; a
+ * `media_url` Kapso already resolved onto the payload is taken when present.
+ */
+export function whatsAppMediaRef(payload: Record<string, unknown>): WhatsAppMediaRef | null {
+  const message = obj(payload.message)
+  if (!message) return null
+  const kapso = obj(message.kapso) ?? {}
+  for (const kind of ['image', 'document', 'video', 'audio'] as const) {
+    const media = obj(message[kind])
+    if (!media) continue
+    const id = str(media.id)
+    const url = str(kapso.media_url) || str(obj(kapso.media_data)?.url) || null
+    if (!id && !url) return null
+    return {
+      kind,
+      id,
+      mimeType: str(media.mime_type) || null,
+      filename: str(media.filename) || null,
+      url,
+    }
+  }
+  return null
+}
+
+/**
+ * The business number a WhatsApp message went out from, as a person reads it.
+ *
+ * Kapso addresses a send by `phone_number_id` — an opaque provider key — and
+ * that is what the outbound rows used to store as their sender, so the thread
+ * showed a customer a sixteen-digit id where the office's number belongs. The
+ * id stays where it is needed (the send itself, and the conversation's
+ * `business_address`); the row records `whatsapp_numbers.display_number`, and
+ * falls back to the id only for a number nobody entered a display number for.
+ */
+export async function whatsAppSenderNumber(phoneNumberId: string): Promise<string> {
+  const [row] = await withActor(systemActor(), (tx) =>
+    tx
+      .select({ displayNumber: whatsappNumbers.displayNumber })
+      .from(whatsappNumbers)
+      .where(eq(whatsappNumbers.phoneNumberId, phoneNumberId))
+      .limit(1),
+  )
+  return row?.displayNumber?.trim() || phoneNumberId
+}

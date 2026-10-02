@@ -26,6 +26,7 @@
  */
 
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { INTEGRATION_GROUPS } from '@qabandi/core'
@@ -137,6 +138,18 @@ export default async function IntegrationsPage() {
               <p className="mb-3 text-body-sm text-ink-muted">
                 {t(`groupHints.${group}` as 'groupHints.platform')}
               </p>
+              {/*
+                The intake agent is configured per branch, so it cannot be a card
+                on this deployment-wide screen; it is where somebody looking at
+                the automations will look for it, so the way there is here.
+              */}
+              {group === 'intelligence' && can(session, 'admin.mailboxes.write') ? (
+                <p className="mb-3 text-body-sm">
+                  <Link href="/settings/intake-agent" className="text-accent hover:underline">
+                    {t('intakeAgentLink')}
+                  </Link>
+                </p>
+              ) : null}
 
               <div className="space-y-4">
                 {inGroup.map((integration) => {

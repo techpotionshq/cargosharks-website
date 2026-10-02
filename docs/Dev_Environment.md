@@ -1,6 +1,6 @@
 # Dev Environment and Automation Roadmap
 
-**Working notes · Internal · last revised 23 August 2026**
+**Working notes · Internal · last revised 2 October 2026**
 
 | | |
 |---|---|
@@ -143,6 +143,37 @@ leaking, not on feature count. The user wants the whole list done, quickly.
   The money-critical halves moved into `@qabandi/db` (`promoteRateReply`,
   `priceEnquiryToQuote`, `resolveProposal`) so the sweep and the buttons write the
   same rows. See `docs/Automation_Opportunities.md §7`.
+
+**Shipped since (October 2026):**
+
+- **The intake agent** — debounced conversation turns on inbound WhatsApp and
+  email (`workers/intake-turn.ts`, `core/intake.ts`). Every message is still
+  filed the moment it arrives; understanding and answering wait until the
+  customer stops typing (a quiet window, 120 s on WhatsApp and 60 s on email by
+  default, capped at 10 minutes from the first unread message). One model call
+  per turn reads the whole conversation and any attached PDF or image. The
+  agent then confirms once when the enquiry is complete, asks once for exactly
+  what is missing (a cooldown of 6 h and a cap of 2 before a person is told),
+  or stays silent — for chit-chat, auto-responders, a recent staff reply or an
+  operator take-over — and records why in `intake_turns`, which the enquiry
+  screen shows. Rate fan-out and quote auto-draft wait for its ready flag.
+  Settings › Intake agent, per branch; **ships off** (the default
+  `intake_settings` row is `enabled = false`), so the live mailbox behaves as
+  before until a branch is switched on. With it off, the old per-message
+  acknowledgement and first-message extraction run unchanged.
+- In the same pass: supplier mail no longer opens a customer enquiry (it is
+  read as a bill or filed with an internal notice), a WhatsApp customer is
+  acknowledged once and only on WhatsApp, mailboxes match case-insensitively, a
+  message is filed once whatever receipt it arrives under, a bounce through the
+  webhook marks its delivery failed, and a failed WhatsApp send is retried and
+  recorded.
+- Then: Kapso's `whatsapp.message.sent` echoes of a coordinator writing from
+  their phone or the Kapso inbox are filed as staff replies (the agent goes
+  quiet); WhatsApp images and documents are fetched through Kapso's media call
+  and read with the conversation; a supplier's filed mail is listed on its
+  partner page to attach to a job, read as a bill or mark handled. The Kapso
+  webhook must now subscribe to `whatsapp.message.sent` as well as
+  `whatsapp.message.received`.
 
 **Next, in the order agreed:**
 

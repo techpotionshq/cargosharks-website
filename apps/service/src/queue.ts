@@ -88,6 +88,16 @@ export const JOBS = {
     `workers/inbound-redrive.ts`.
   */
   inboundRedrive: 'inbound-webhook-redrive',
+  /*
+    The intake agent's debounced conversation turn — read the whole inbound
+    conversation once the customer has stopped typing, then confirm, clarify,
+    hand off or stay silent. The truth is `intake_conversations.turn_due_at`;
+    this job only says "look now". It runs on a minute's cron as the safety net
+    and is also queued with `startAfter` at the exact due time by the ingest, so
+    duplicates are expected and harmless — a turn is claimed under a lease with
+    `for update skip locked`, and a job that finds nothing due does nothing.
+  */
+  intakeTurn: 'intake-turn',
   webhookDelivery: 'outbound-webhook-delivery',
   scheduledReport: 'scheduled-report',
 } as const
@@ -274,6 +284,14 @@ export async function registerSchedules(): Promise<void> {
     which is past a healthy job and past pg-boss's own first retries.
   */
   await b.schedule(JOBS.inboundRedrive, '*/10 * * * *')
+
+  /*
+    Intake turns, every minute — the sweep under the per-conversation wake-ups
+    the ingest queues. A turn whose wake-up was lost (a queue that was down, a
+    restart between commit and send) is found here within a minute of falling
+    due. Idles on a deployment whose agent is off: there are no conversations.
+  */
+  await b.schedule(JOBS.intakeTurn, '* * * * *')
 }
 
 /**

@@ -62,7 +62,8 @@
 import { eq } from 'drizzle-orm'
 import { inboundWebhookEvents, systemActor, withActor } from '@qabandi/db'
 import type { InboundAttachment, InboundMessage } from '../ports/index'
-import { ingestMessage, resolveBranches, type EnqueueExtraction } from './inbound-mail'
+import { BOUNCE_PARTS, DAEMON_SENDERS, readBounce } from '../adapters/imap'
+import { ingestMessage, branchFor, resolveBranches, type EnqueueExtraction } from './inbound-mail'
 
 export interface InboundEmailWebhookInput {
   /** `inbound_webhook_events.id`, as queued by `/webhooks/email`. */
@@ -70,7 +71,8 @@ export interface InboundEmailWebhookInput {
 }
 
 export interface InboundEmailWebhookResult {
-  readonly outcome: 'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply'
+  readonly outcome:
+    'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply' | 'filed'
   readonly enquiryId?: string | null
   /** Why nothing happened, where nothing did. */
   readonly reason?: string
@@ -113,7 +115,7 @@ export async function runInboundEmailWebhook(
     return { outcome: 'skipped', reason }
   }
 
-  const branch = (await resolveBranches()).get(message.mailbox)
+  const branch = branchFor(await resolveBranches(), message.mailbox)
   if (!branch) {
     /*
       No active mailbox row matches the address the provider says received it.
@@ -178,6 +180,58 @@ const looksPostmark = (p: Record<string, unknown>): boolean =>
 const looksNeutral = (p: Record<string, unknown>): boolean =>
   typeof p.from === 'string' && typeof p.mailbox === 'string'
 
+/**
+ * A bounce, read from a provider's JSON the way the poll reads one from MIME.
+ *
+ * Before this the webhook path recognised a bounce only as automatic mail — it
+ * was filed nowhere, correctly, but the delivery it reported stayed `sent`, so
+ * an operator was told a customer had a notification they never received
+ * (FR-NT-06). The decision is `readBounce`, shared with `imap.ts`; this only
+ * gathers its strings: who sent it, the report parts among the attachments,
+ * and the threading headers.
+ */
+function bounceFromJson(input: {
+  from: string
+  failedRecipients: string
+  contentType: string
+  subject: string
+  text: string
+  attachments: readonly InboundAttachment[]
+  inReplyTo?: string
+  references: readonly string[]
+}): InboundMessage['bounceOf'] {
+  const local = input.from.toLowerCase().split('@')[0] ?? ''
+  const fromDaemon = DAEMON_SENDERS.has(local) || input.failedRecipients !== ''
+  const reportParts = input.attachments.filter((a) => BOUNCE_PARTS.test(a.contentType))
+  const isReport =
+    /multipart\/report/i.test(input.contentType) ||
+    reportParts.some((a) => /delivery-status/i.test(a.contentType))
+  if (!isReport && !fromDaemon) return undefined
+  return readBounce({
+    fromDaemon,
+    text: input.text,
+    parts: reportParts.map((a) => a.content.toString('utf8')),
+    subject: input.subject,
+    inReplyTo: input.inReplyTo,
+    threaded: input.references.at(-1),
+  })
+}
+
+/** The message with its bounce read, and a bounce always counted as automatic. */
+function withBounce(message: InboundMessage, failedRecipients: string, contentType: string) {
+  const bounceOf = bounceFromJson({
+    from: message.from,
+    failedRecipients,
+    contentType,
+    subject: message.subject ?? '',
+    text: message.body,
+    attachments: message.attachments,
+    inReplyTo: message.inReplyTo,
+    references: message.references,
+  })
+  return bounceOf ? { ...message, automatic: true, bounceOf } : message
+}
+
 function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
   const toFull = asRecords(p.ToFull)
   const ccFull = asRecords(p.CcFull)
@@ -195,7 +249,7 @@ function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
     throw new Error('The Postmark receipt names no recipient, so no branch can own it.')
   }
 
-  return {
+  const message: InboundMessage = {
     externalId: requireMessageId(str(p.MessageID)),
     mailbox,
     from: firstAddress(str(p.From)),
@@ -219,10 +273,15 @@ function fromPostmark(p: Record<string, unknown>, asOf: Date): InboundMessage {
       content: Buffer.from(str(a.Content), 'base64'),
     })),
   }
+  return withBounce(
+    message,
+    headerOf(p.Headers, 'X-Failed-Recipients'),
+    headerOf(p.Headers, 'Content-Type'),
+  )
 }
 
 function fromNeutral(p: Record<string, unknown>, asOf: Date): InboundMessage {
-  return {
+  const message: InboundMessage = {
     externalId: requireMessageId(str(p.messageId)),
     mailbox: str(p.mailbox),
     from: firstAddress(str(p.from)),
@@ -243,6 +302,7 @@ function fromNeutral(p: Record<string, unknown>, asOf: Date): InboundMessage {
       content: Buffer.from(str(a.contentBase64), 'base64'),
     })),
   }
+  return withBounce(message, '', str(p.contentType))
 }
 
 /**

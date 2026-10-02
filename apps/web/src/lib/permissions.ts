@@ -126,6 +126,19 @@ export const SETTINGS_AREAS = [
     icon: 'enquiries',
   },
   /*
+    How the intake agent behind those numbers and mailboxes answers — FR-EQ-02.
+
+    On `admin.mailboxes.write` for the same reason the WhatsApp numbers are: it
+    is the next step of one decision, per branch — which doors feed this
+    branch's board, and what the agent behind them says to its customers.
+  */
+  {
+    key: 'intakeAgent',
+    href: '/settings/intake-agent',
+    permission: 'admin.mailboxes.write',
+    icon: 'assistant',
+  },
+  /*
     The credentials this deployment reaches its suppliers with — FR-AD-03.
 
     Its own key, and the strictest reasoning on this list. The mailbox entry

@@ -88,6 +88,14 @@ export const enquiries = pgTable(
      * means not stated, and FCL pricing refuses rather than guess.
      */
     containerCount: integer('container_count'),
+    /**
+     * Which box a sea FCL enquiry asks for — `20GP`, `40HC`. The count without
+     * it does not price a lane (a 40' high cube and a 20' are different rates),
+     * and the intake agent cannot call an FCL enquiry complete without both.
+     * A code we hold, never the customer's wording — `containerTypeCode` in
+     * `core/intake.ts` folds "40ft high cube" to `40HC` before it is proposed.
+     */
+    containerType: text('container_type').references(() => containerTypes.code),
     /** Per-piece dimensions, where the customer supplied them. */
     dimensions:
       jsonb('dimensions').$type<

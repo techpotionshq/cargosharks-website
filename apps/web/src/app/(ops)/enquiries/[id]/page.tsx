@@ -35,6 +35,7 @@ import { Money } from '@/ui/money'
 import { EnquiryActions } from '@/features/enquiries/ui/enquiry-actions'
 import { ProposalsPanel } from '@/features/enquiries/ui/proposals-panel'
 import { EnquiryAutomationStrip } from '@/features/enquiries/ui/enquiry-automation-strip'
+import { IntakeAgentPanel } from '@/features/enquiries/ui/intake-agent-panel'
 import { RateRequestsPanel } from '@/features/rates/ui/rate-requests-panel'
 import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
@@ -257,6 +258,13 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         working on the file is visible, not inferred from three separate panels.
       */}
       <EnquiryAutomationStrip enquiryId={id} />
+
+      {/*
+        The intake agent's conversation with the customer — its state, what it
+        is still waiting for, and the reason behind every reply and every
+        silence. Above the proposals, because it is what produced them.
+      */}
+      <IntakeAgentPanel enquiryId={id} />
 
       <ProposalsPanel enquiryId={id} />
 

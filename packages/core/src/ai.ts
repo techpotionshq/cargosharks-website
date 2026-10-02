@@ -464,6 +464,7 @@ export const EXTRACTABLE_FIELDS: Readonly<Record<AiSurface, readonly string[]>> 
     'volumeCbm',
     'pieces',
     'containerCount',
+    'containerType',
     'dimensions',
     'isDangerous',
   ],

@@ -23,8 +23,8 @@
  */
 
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
-import { countryAliasCode } from '@qabandi/core'
-import { commodities, countries, enquiries, locations } from './schema/index'
+import { containerTypeCode, countryAliasCode } from '@qabandi/core'
+import { commodities, containerTypes, countries, enquiries, locations } from './schema/index'
 import type { Tx } from './actor'
 
 /**
@@ -114,6 +114,24 @@ export async function resolveProposal(tx: Tx, field: string, raw: string): Promi
       return /^[1-9]\d{0,3}$/.test(value)
         ? { ok: true, column: 'containerCount', value: Number(value) }
         : { ok: false, failure: invalid(value, { kind: 'positiveInteger' }) }
+
+    /*
+      Extraction proposes our code ("40HC"), folded from the customer's wording
+      by `containerTypeCode`; the fold runs again here because a coordinator or
+      an older proposal may hold the wording. The row must exist and be active —
+      a code we do not hold is refused like a port we do not hold.
+    */
+    case 'containerType': {
+      const code = containerTypeCode(value) ?? value.toUpperCase()
+      const [row] = await tx
+        .select({ code: containerTypes.code })
+        .from(containerTypes)
+        .where(and(eq(containerTypes.code, code), eq(containerTypes.isActive, true)))
+        .limit(1)
+      return row
+        ? { ok: true, column: 'containerType', value: row.code }
+        : { ok: false, failure: { kind: 'not_found', value } }
+    }
 
     case 'dimensions':
       return { ok: true, column: 'dimensions', value }
@@ -289,6 +307,7 @@ export async function enquiryColumn(
       volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
       containerCount: enquiries.containerCount,
+      containerType: enquiries.containerType,
       dimensions: enquiries.dimensions,
       isDangerous: enquiries.isDangerous,
     })

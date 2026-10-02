@@ -87,18 +87,25 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
       return reply.code(401).send({ error: 'bad_signature' })
     }
 
-    // Only inbound messages open enquiries; a `sent`/`delivered`/`read` status
-    // event has nothing to intake, so it is acknowledged and dropped here rather
-    // than queued and skipped by the worker.
+    // Inbound messages open enquiries, and `sent` echoes are the business's own
+    // replies — a coordinator on their phone or the Kapso inbox, which the
+    // intake agent must hear about to stay quiet. A `delivered`/`read` status
+    // has nothing to intake, so it is acknowledged and dropped here.
     const event = request.headers['x-webhook-event']
-    if (typeof event === 'string' && event !== '' && event !== 'whatsapp.message.received') {
+    if (
+      typeof event === 'string' &&
+      event !== '' &&
+      event !== 'whatsapp.message.received' &&
+      event !== 'whatsapp.message.sent'
+    ) {
       return reply.code(202).send({ accepted: true, ignored: event })
     }
 
     await enqueueOnce(
       'whatsapp',
       whatsAppExternalId(request.headers['x-idempotency-key'], body.parsed),
-      body.parsed,
+      // The event name rides on the receipt: the worker sees only the payload.
+      event === 'whatsapp.message.sent' ? { ...body.parsed, type: event } : body.parsed,
       JOBS.inboundWhatsApp,
     )
     return reply.code(202).send({ accepted: true })

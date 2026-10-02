@@ -53,6 +53,7 @@ const FIELD_KEYS = [
   'volumeCbm',
   'pieces',
   'containerCount',
+  'containerType',
   'dimensions',
   'isDangerous',
 ] as const

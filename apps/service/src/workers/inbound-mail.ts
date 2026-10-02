@@ -54,8 +54,11 @@ import {
   enquiries,
   partnerContacts,
   partners,
+  principals,
   inboundWebhookEvents,
+  intakeConversations,
   jobs,
+  loadIntakeSettings,
   messageAttachments,
   messages,
   notificationDeliveries,
@@ -65,7 +68,7 @@ import {
   withActor,
   workingCalendars,
 } from '@qabandi/db'
-import { slaDueAt, type WorkingCalendar } from '@qabandi/core'
+import { slaDueAt, turnDueAt, type IntakeSettings, type WorkingCalendar } from '@qabandi/core'
 import { fileStore, resolveInboundMail } from '../adapters/index'
 import type { InboundMailSource, InboundMessage } from '../ports/index'
 import {
@@ -91,6 +94,8 @@ export interface InboundMailResult {
   readonly duplicates: number
   /** Bounces and auto-replies: claimed so they are never re-polled, filed nowhere. */
   readonly ignored: number
+  /** Mail from a known supplier, filed on no enquiry — read as a bill where it carries one. */
+  readonly filed: number
   readonly failed: number
 }
 
@@ -112,6 +117,7 @@ export async function runInboundMailPoll(
   injected?: readonly InboundMailSource[],
   enqueue: EnqueueExtraction = enqueueExtraction,
   billEnqueue: EnqueueBill = enqueueBill,
+  nudge: NudgeIntakeTurn = nudgeIntakeTurn,
 ): Promise<InboundMailResult> {
   const sources = injected ?? (await resolveInboundMail())
 
@@ -123,6 +129,7 @@ export async function runInboundMailPoll(
       rateReplies: 0,
       duplicates: 0,
       ignored: 0,
+      filed: 0,
       failed: 0,
     }
   }
@@ -135,6 +142,7 @@ export async function runInboundMailPoll(
   let rateReplies = 0
   let duplicates = 0
   let ignored = 0
+  let filed = 0
   let failed = 0
 
   for (const source of sources) {
@@ -145,7 +153,7 @@ export async function runInboundMailPoll(
         collected++
 
         try {
-          const branch = branchByMailbox.get(message.mailbox)
+          const branch = branchFor(branchByMailbox, message.mailbox)
 
           /*
             A mailbox whose branch code matches nothing is a configuration
@@ -175,11 +183,14 @@ export async function runInboundMailPoll(
             enqueue,
             undefined,
             billEnqueue,
+            undefined,
+            nudge,
           )
           if (handled.outcome === 'created') created++
           else if (handled.outcome === 'threaded') threaded++
           else if (handled.outcome === 'rate_reply') rateReplies++
           else if (handled.outcome === 'ignored') ignored++
+          else if (handled.outcome === 'filed') filed++
           else duplicates++
         } catch (error) {
           /*
@@ -222,7 +233,7 @@ export async function runInboundMailPoll(
     }
   }
 
-  return { collected, created, threaded, rateReplies, duplicates, ignored, failed }
+  return { collected, created, threaded, rateReplies, duplicates, ignored, filed, failed }
 }
 
 export interface BranchRef {
@@ -255,15 +266,27 @@ export async function resolveBranches(): Promise<Map<string, BranchRef>> {
       .where(eq(mailboxes.isActive, true)),
   )
 
+  /*
+    Keyed lowercased, and looked up the same way (`branchFor`). An address is
+    case-insensitive in practice everywhere that matters here: a provider
+    reporting `OriginalRecipient: Freight-DXB@…` for a row saved as
+    `freight-dxb@…` matched nothing, and the mail was skipped as "no mailbox" —
+    an enquiry lost to a capital letter.
+  */
   return new Map(
     rows.map((r: { username: string; id: string; code: string }) => [
-      r.username,
+      r.username.trim().toLowerCase(),
       { id: r.id, code: r.code },
     ]),
   )
 }
 
-type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored' | 'rate_reply'
+/** The branch an address delivers to, from `resolveBranches`'s map, ignoring case. */
+export function branchFor(map: Map<string, BranchRef>, mailbox: string): BranchRef | undefined {
+  return map.get(mailbox.trim().toLowerCase())
+}
+
+type Outcome = 'created' | 'threaded' | 'duplicate' | 'ignored' | 'rate_reply' | 'filed'
 
 /**
  * What `handleMessage` did, and what a model should read next.
@@ -280,6 +303,37 @@ interface Handled {
   readonly partnerId: string | null
   /** The RFQ this mail answered, where it carried a token that matched one. */
   readonly rateRequestId: string | null
+  /**
+   * The intake conversation this message moved, and when its turn is now due —
+   * null where the agent is not holding this enquiry. Present means the agent
+   * will answer, so the caller sends no acknowledgement of its own.
+   */
+  readonly intake?: { readonly conversationId: string; readonly dueAt: Date } | null
+}
+
+/**
+ * Wake the intake turn worker when a conversation's turn falls due.
+ *
+ * A latency optimisation and nothing more: the minute sweep (`JOBS.intakeTurn`
+ * on the schedule) finds every due conversation whether or not this ran. It
+ * exists so a two-minute quiet window answers at two minutes rather than at
+ * up to three, and it is keyed per conversation *and* due time so a burst of
+ * five messages queues the one job whose time is latest-but-capped, not five
+ * that each find nothing to do.
+ */
+export type NudgeIntakeTurn = (input: { conversationId: string; dueAt: Date }) => Promise<void>
+
+const nudgeIntakeTurn: NudgeIntakeTurn = async ({ conversationId, dueAt }) => {
+  const { JOBS, getBoss } = await import('../queue')
+  const boss = await getBoss()
+  await boss.send(
+    JOBS.intakeTurn,
+    { conversationId },
+    {
+      startAfter: dueAt,
+      singletonKey: `${conversationId}:${dueAt.toISOString()}`,
+    },
+  )
 }
 
 /**
@@ -411,6 +465,7 @@ export async function ingestMessage(
   claimed?: { readonly id: string },
   billEnqueue: EnqueueBill = enqueueBill,
   rfqEnqueue: EnqueueRateExtract = enqueueRateExtract,
+  nudge: NudgeIntakeTurn = nudgeIntakeTurn,
 ): Promise<Handled> {
   const claim = claimed ?? (await claimReceipt(message, branch.id))
   if (claim === 'already_processed') {
@@ -522,6 +577,59 @@ export async function ingestMessage(
         )
       }
 
+      /*
+        The same message under a second receipt is still the same message.
+
+        A receipt is keyed on what the provider calls the *delivery* — Kapso's
+        `X-Idempotency-Key`, a webhook's own id — and a provider that redelivers
+        under a fresh key, or a mail that arrives by poll and by webhook both,
+        passes that check with a new receipt. The message's own id (the wamid,
+        the `Message-ID`) is the one thing both copies agree on, so a second
+        inbound row with it on this branch is a duplicate however it arrived.
+        After the sender lock above, so two copies racing in cannot both miss
+        each other.
+      */
+      const [already] = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.branchId, branch.id),
+            eq(messages.direction, 'inbound'),
+            eq(messages.channel, message.channel ?? 'email'),
+            eq(messages.externalRef, message.externalId),
+          ),
+        )
+        .limit(1)
+      if (already) {
+        await tx
+          .update(inboundWebhookEvents)
+          .set({
+            processedAt: asOf,
+            error: 'duplicate: this message was already filed under another receipt',
+            updatedAt: asOf,
+          })
+          .where(eq(inboundWebhookEvents.id, claim.id))
+        return {
+          outcome: 'duplicate' as const,
+          enquiryId: null,
+          messageId: null,
+          partnerId: null,
+          rateRequestId: null,
+        }
+      }
+
+      /*
+        The intake agent's settings for this branch, read once, before anything
+        is created — they decide whether the new enquiry is greeted the old way
+        (an acknowledgement now, a model call per enquiry) or held for a
+        debounced turn that answers once the customer has finished typing.
+      */
+      const intake = await loadIntakeSettings(tx, branch.id)
+      const agentOn =
+        intake.enabled &&
+        (message.channel === 'whatsapp' || (message.channel ?? 'email') === 'email')
+
       const target =
         (await findTarget(tx, message)) ??
         (message.channel === 'whatsapp' ? await findOpenConversation(tx, message, branch.id) : null)
@@ -563,9 +671,26 @@ export async function ingestMessage(
       const rateRequest = matched && AWAITING_REPLY.has(matched.status) ? matched : null
       const late = matched && !rateRequest ? matched : null
 
+      /*
+        Mail from a supplier is not a customer enquiry.
+
+        An agent's invoice arriving from `accounts@agent` used to open an
+        enquiry — an SLA clock, a model call, and with the auto-pipeline on, RFQs
+        about a bill. A sender who resolves to exactly one partner and to no
+        customer, writing about nothing we can thread it onto, is filed on no
+        record: any readable attachment goes to bill extraction below (which is
+        what a supplier's mail almost always is), and a mail with none raises an
+        internal notice so a person reads it. A sender who is both — an overseas
+        agent on their own imports — still opens an enquiry, because then it may
+        genuinely be one, and refusing it would lose a customer.
+      */
+      const supplierOnly = !matched && !target && partnerId !== null && customerId === null
+
       const context = matched
         ? { enquiryId: matched.enquiryId, jobId: null, created: false }
-        : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf)))
+        : supplierOnly
+          ? { enquiryId: null, jobId: null, created: false }
+          : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf, !agentOn)))
 
       const [row] = await tx
         .insert(messages)
@@ -606,6 +731,9 @@ export async function ingestMessage(
             That is the safe direction for a default nobody will revisit.
           */
           customerVisible: customerId !== null && context.created,
+          // A supplier's mail filed on no record carries whose it is, for the
+          // partner page's list of mail waiting to be acted on.
+          partnerId: supplierOnly ? partnerId : null,
           sentAt: message.receivedAt,
         })
         .returning({ id: messages.id })
@@ -660,6 +788,23 @@ export async function ingestMessage(
       }
 
       /*
+        The intake conversation, moved in the same transaction that filed the
+        message — so a turn that commits between the two can never miss it, and
+        a crash between the two leaves neither.
+      */
+      const intakeMoved =
+        matched || !context.enquiryId
+          ? null
+          : await noteIntake(tx, {
+              message,
+              branchId: branch.id,
+              enquiryId: context.enquiryId,
+              created: context.created && agentOn,
+              settings: intake,
+              asOf,
+            })
+
+      /*
         A reply to a request that was already read, decided or replaced.
 
         Filed — on the enquiry, or unattached for a renewal RFQ, which has none
@@ -682,6 +827,19 @@ export async function ingestMessage(
         })
       }
 
+      if (supplierOnly && bills.length === 0) {
+        const [partner] = await tx
+          .select({ name: partners.legalNameEn })
+          .from(partners)
+          .where(eq(partners.id, partnerId!))
+          .limit(1)
+        await tx.insert(notificationOutbox).values({
+          branchId: branch.id,
+          eventKey: 'partner.mail_filed',
+          payload: { partnerName: partner?.name ?? message.from, subject: message.subject || '' },
+        })
+      }
+
       await tx
         .update(inboundWebhookEvents)
         .set({
@@ -689,7 +847,11 @@ export async function ingestMessage(
           error: late
             ? `rate reply to a request already ${late.status}: filed, not re-read; ` +
               'a person has been told'
-            : null,
+            : supplierOnly
+              ? bills.length > 0
+                ? 'filed: mail from a known supplier, read as a bill — not a customer enquiry'
+                : 'filed: mail from a known supplier, not a customer enquiry; a person has been told'
+              : null,
           updatedAt: asOf,
         })
         .where(eq(inboundWebhookEvents.id, claim.id))
@@ -697,13 +859,16 @@ export async function ingestMessage(
       return {
         outcome: matched
           ? ('rate_reply' as const)
-          : context.created
-            ? ('created' as const)
-            : ('threaded' as const),
+          : supplierOnly
+            ? ('filed' as const)
+            : context.created
+              ? ('created' as const)
+              : ('threaded' as const),
         enquiryId: context.enquiryId,
         messageId: row!.id,
         partnerId,
         rateRequestId: rateRequest?.id ?? null,
+        intake: intakeMoved,
       }
     })
 
@@ -723,7 +888,17 @@ export async function ingestMessage(
       Wrapped rather than awaited bare, for the same reason once more: a queue
       that is down costs this deployment a slower coordinator, never an intake.
     */
-    if (outcome.outcome === 'created' && outcome.enquiryId && outcome.messageId) {
+    if (
+      outcome.outcome === 'created' &&
+      outcome.enquiryId &&
+      outcome.messageId &&
+      /*
+        Not when the agent holds the conversation: its turn reads the whole
+        conversation in one call once the customer stops typing, and reading the
+        first "Hi" here as well would spend a model call on a greeting.
+      */
+      !outcome.intake
+    ) {
       try {
         await enqueue({
           enquiryId: outcome.enquiryId,
@@ -787,6 +962,24 @@ export async function ingestMessage(
             error: error instanceof Error ? error.message : String(error),
           },
           'inbound mail: could not queue the rate reply for reading',
+        )
+      }
+    }
+
+    /*
+      Wake the turn worker for the moment the turn falls due — after the commit,
+      best-effort, because the minute sweep finds it anyway.
+    */
+    if (outcome.intake) {
+      try {
+        await nudge(outcome.intake)
+      } catch (error) {
+        console.error(
+          {
+            conversationId: outcome.intake.conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'inbound mail: could not schedule the intake turn; the sweep will find it',
         )
       }
     }
@@ -1260,6 +1453,14 @@ async function createEnquiry(
   branch: BranchRef,
   customerId: string | null,
   asOf: Date,
+  /**
+   * Whether to raise the immediate `enquiry.received` acknowledgement. False
+   * when the intake agent holds the conversation: its turn answers once, with
+   * either what is missing or that we have everything — and a "we have your
+   * enquiry" two minutes before that is the reply-to-every-message the agent
+   * exists to stop.
+   */
+  acknowledge = true,
 ): Promise<Target> {
   const calendar = await loadCalendar(tx, branch.id)
 
@@ -1321,7 +1522,14 @@ async function createEnquiry(
     and auto-replies never reach here anyway (`isAutomaticMail` files them
     before this), so this is the second lock on the same door.
   */
-  if (customerId) {
+  /*
+    Email only. A WhatsApp customer is acknowledged on WhatsApp, from the number
+    they wrote to, under that path's own loop breakers
+    (`inbound-whatsapp-webhook.ts`); raising this as well sent the same customer
+    a second acknowledgement by email — one conversation greeted twice, on a
+    channel they never used, outside every WhatsApp guard.
+  */
+  if (customerId && acknowledge && (message.channel ?? 'email') === 'email') {
     await tx.insert(notificationOutbox).values({
       branchId: branch.id,
       eventKey: 'enquiry.received',
@@ -1332,6 +1540,108 @@ async function createEnquiry(
   }
 
   return { enquiryId: row!.id, jobId: null, created: true }
+}
+
+/**
+ * Move the intake conversation for a message that just landed on an enquiry.
+ *
+ * Three cases, and the order matters:
+ *
+ *  1. **A colleague wrote.** An email from an active staff member's own address
+ *     — a coordinator answering from Outlook with the intake mailbox copied — is
+ *     the clearest sign a person has the conversation. It is recorded as staff
+ *     activity, which silences the agent for the takeover window, and it never
+ *     schedules a turn: a turn reads the customer, not us.
+ *  2. **A new enquiry on a branch whose agent is on** opens the conversation,
+ *     with the first turn due after the quiet window.
+ *  3. **A follow-up** on an enquiry the agent already holds pushes the turn
+ *     back — by the quiet window, never past the maximum wait from the first
+ *     message no turn has read yet.
+ *
+ * Anything else — an enquiry a coordinator typed, a branch with the agent off —
+ * has no conversation and is left exactly as the intake always left it.
+ */
+async function noteIntake(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  input: {
+    message: InboundMessage
+    branchId: string
+    enquiryId: string
+    created: boolean
+    settings: IntakeSettings
+    asOf: Date
+  },
+): Promise<{ conversationId: string; dueAt: Date } | null> {
+  const { message, settings, asOf } = input
+  const channel = message.channel === 'whatsapp' ? 'whatsapp' : 'email'
+  const quiet = channel === 'whatsapp' ? settings.whatsappQuietSeconds : settings.emailQuietSeconds
+  const maxWait =
+    channel === 'whatsapp' ? settings.whatsappMaxWaitSeconds : settings.emailMaxWaitSeconds
+
+  if (input.created) {
+    const dueAt = turnDueAt(asOf, asOf, quiet, maxWait)
+    const [row] = await tx
+      .insert(intakeConversations)
+      .values({
+        branchId: input.branchId,
+        enquiryId: input.enquiryId,
+        channel,
+        customerAddress: message.from,
+        businessAddress: message.mailbox,
+        pendingSince: asOf,
+        turnDueAt: dueAt,
+      })
+      .returning({ id: intakeConversations.id })
+    return { conversationId: row!.id, dueAt }
+  }
+
+  const [conversation] = await tx
+    .select({
+      id: intakeConversations.id,
+      pendingSince: intakeConversations.pendingSince,
+      channel: intakeConversations.channel,
+    })
+    .from(intakeConversations)
+    .where(eq(intakeConversations.enquiryId, input.enquiryId))
+    .for('update')
+    .limit(1)
+  if (!conversation) return null
+
+  if (await isStaffAddress(tx, message.from)) {
+    await tx
+      .update(intakeConversations)
+      .set({ lastStaffActivityAt: asOf, updatedAt: asOf })
+      .where(eq(intakeConversations.id, conversation.id))
+    return null
+  }
+
+  const pendingSince: Date = conversation.pendingSince ?? asOf
+  const dueAt = turnDueAt(pendingSince, asOf, quiet, maxWait)
+  await tx
+    .update(intakeConversations)
+    .set({ pendingSince, turnDueAt: dueAt, updatedAt: asOf })
+    .where(eq(intakeConversations.id, conversation.id))
+  return { conversationId: conversation.id, dueAt }
+}
+
+/** An active internal principal's own address — a colleague, not a customer. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function isStaffAddress(tx: any, from: string): Promise<boolean> {
+  const address = from.trim().toLowerCase()
+  if (!address.includes('@')) return false
+  const [row] = await tx
+    .select({ id: principals.id })
+    .from(principals)
+    .where(
+      and(
+        sql`lower(${principals.email}) = ${address}`,
+        eq(principals.type, 'internal'),
+        eq(principals.isActive, true),
+      ),
+    )
+    .limit(1)
+  return Boolean(row)
 }
 
 async function loadCalendar(

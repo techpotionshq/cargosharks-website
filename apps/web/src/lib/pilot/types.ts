@@ -2004,3 +2004,82 @@ export interface CoveringAgent {
   /** An RFQ is already out to this agent for this enquiry. */
   readonly alreadyRequested: boolean
 }
+
+/**
+ * One turn of the intake agent, as the enquiry screen lists it — mirrors a row
+ * of `intake_turns` joined to the reply it sent, if it sent one.
+ */
+export interface IntakeTurnLike {
+  readonly id: string
+  readonly at: Date
+  /** `confirm`, `clarify`, `handoff` or `none`. */
+  readonly action: string
+  /** One of `INTAKE_REASONS`. */
+  readonly reason: string
+  readonly missing: readonly string[]
+  readonly messagesRead: number
+  readonly modelCalled: boolean
+  readonly replyBody: string | null
+  readonly sendError: string | null
+}
+
+/** Where the intake agent is with one enquiry — `intake_conversations`, for the panel. */
+export interface EnquiryIntakeLike {
+  readonly conversationId: string
+  readonly branchId: string
+  readonly channel: 'whatsapp' | 'email'
+  /** `collecting`, `awaiting_customer`, `complete` or `handed_off`. */
+  readonly state: string
+  readonly agentEnabled: boolean
+  readonly locale: 'en' | 'ar' | null
+  /** What the latest turn still found missing — requirement keys. */
+  readonly missing: readonly string[]
+  readonly turnDueAt: Date | null
+  readonly turns: number
+  readonly modelCalls: number
+  readonly clarifications: number
+  readonly readyAt: Date | null
+  /** Newest first, at most a handful. */
+  readonly recent: readonly IntakeTurnLike[]
+}
+
+/** One branch's intake-agent settings, for Settings › Intake agent. */
+export interface IntakeSettingsRowLike {
+  readonly branchId: string
+  readonly branchCode: string
+  /** True where the branch has no row of its own and the default answers. */
+  readonly inherited: boolean
+  readonly enabled: boolean
+  readonly whatsappQuietSeconds: number
+  readonly whatsappMaxWaitSeconds: number
+  readonly emailQuietSeconds: number
+  readonly emailMaxWaitSeconds: number
+  readonly clarifyCooldownHours: number
+  readonly clarifyCap: number
+  readonly humanTakeoverHours: number
+  /** True where the requirement rows are the branch's own. */
+  readonly ownRequirements: boolean
+  readonly requirements: readonly {
+    readonly mode: string | null
+    readonly key: string
+    readonly fields: readonly string[]
+  }[]
+}
+
+/** A supplier's mail filed on no record, for the partner page's list. */
+export interface PartnerMailLike {
+  readonly id: string
+  readonly branchId: string
+  readonly receivedAt: Date
+  readonly fromAddress: string | null
+  readonly subject: string | null
+  readonly excerpt: string
+  readonly attachments: readonly {
+    readonly assetId: string
+    readonly fileName: string
+    /** A PDF or an image — something "Read as a bill" can send to the model. */
+    readonly readable: boolean
+    /** The bill already captured from this file, where one was. */
+    readonly billId: string | null
+  }[]
+}

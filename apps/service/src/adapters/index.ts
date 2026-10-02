@@ -73,7 +73,16 @@ import { KAPSO_DEFAULT_BASE_URL } from './whatsapp'
 
 export { sendMail } from './smtp'
 export { inAppChannel } from './in-app'
-export { kapsoChannel, resolveWhatsAppChannel, KAPSO_DEFAULT_BASE_URL } from './whatsapp'
+export {
+  kapsoChannel,
+  kapsoMediaSource,
+  resolveWhatsAppChannel,
+  resolveWhatsAppMedia,
+  KAPSO_DEFAULT_BASE_URL,
+  WHATSAPP_MEDIA_MAX_BYTES,
+  type WhatsAppMediaRef,
+  type WhatsAppMediaSource,
+} from './whatsapp'
 
 /**
  * A resolver that must not be able to take the deployment down.
