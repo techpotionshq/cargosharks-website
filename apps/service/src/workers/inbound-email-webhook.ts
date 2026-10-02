@@ -18,10 +18,11 @@
  *
  * ## The receipt is claimed by the route, not here
  *
- * `enqueueOnce` inserts the row and enqueues in one transaction, so a crash
- * between the two cannot leave a recorded-but-unqueued event. That insert is
- * the idempotency claim, so this worker passes it to `ingestMessage` rather
- * than letting a second one be taken — see the `claimed` parameter there.
+ * `enqueueOnce` inserts the row and then queues this job — two steps, not one
+ * transaction, which is why a redelivery of an unprocessed receipt re-queues
+ * and `inbound-redrive.ts` sweeps the ones left behind. That insert is the
+ * idempotency claim, so this worker passes it to `ingestMessage` rather than
+ * letting a second one be taken — see the `claimed` parameter there.
  *
  * ## Two payload shapes, and a refusal for everything else
  *
@@ -135,12 +136,20 @@ export async function runInboundEmailWebhook(
   return { outcome: handled.outcome, enquiryId: handled.enquiryId }
 }
 
-/** Records why a receipt was not turned into anything, without failing the job. */
+/**
+ * Records why a receipt was not turned into anything, without failing the job.
+ *
+ * And settles it: `processed_at` is stamped beside the reason, as the
+ * automatic-mail path does. The re-drive sweep (`inbound-redrive.ts`) queues
+ * every receipt left unprocessed, and these are decisions, not faults — the
+ * same payload is just as unreadable, and the same number just as unconfigured,
+ * on the next attempt.
+ */
 async function note(id: string, reason: string, asOf: Date): Promise<void> {
   await withActor(systemActor(), async (tx) => {
     await tx
       .update(inboundWebhookEvents)
-      .set({ error: reason, updatedAt: asOf })
+      .set({ error: reason, processedAt: asOf, updatedAt: asOf })
       .where(eq(inboundWebhookEvents.id, id))
   })
 }

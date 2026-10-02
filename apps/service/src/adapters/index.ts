@@ -56,7 +56,7 @@ import { hasSecretKey, mailboxes, openSecret, systemActor, withActor } from '@qa
 import type { InboundMailSource, NotificationChannel } from '../ports/index'
 import { integration, noteIntegrationResult, type LiveIntegration } from '../settings'
 import { logChannel, smtpChannel, type SmtpOptions } from './smtp'
-import { imapSource } from './imap'
+import { imapSource, type UidCursorStore } from './imap'
 import {
   CARRIER_SETTINGS_KEYS,
   manualCarrierTracking,
@@ -317,6 +317,7 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
       */
       batch: row.pollBatch,
       maxAttachmentBytes: row.maxAttachmentMb * 1024 * 1024,
+      cursor: mailboxCursor(row.id),
     })
 
     /*
@@ -347,6 +348,43 @@ export async function resolveInboundMail(): Promise<InboundMailSource[]> {
   }
 
   return sources
+}
+
+/**
+ * The poll's position in one mailbox, kept on its row — see `UidCursor`.
+ *
+ * Read fresh on every poll rather than carried in memory, so a restart, a
+ * second instance or a folder changed on the settings screen all start from
+ * what the database says.
+ */
+function mailboxCursor(id: string): UidCursorStore {
+  return {
+    async load() {
+      const [row] = await withActor(systemActor(), (tx) =>
+        tx
+          .select({ uidCursor: mailboxes.uidCursor })
+          .from(mailboxes)
+          .where(eq(mailboxes.id, id))
+          .limit(1),
+      )
+      return row?.uidCursor ?? null
+    },
+    async save(cursor) {
+      await withActor(systemActor(), async (tx) => {
+        await tx
+          .update(mailboxes)
+          .set({
+            uidCursor: {
+              folder: cursor.folder,
+              uidValidity: cursor.uidValidity,
+              uidNext: cursor.uidNext,
+              pending: { ...cursor.pending },
+            },
+          })
+          .where(eq(mailboxes.id, id))
+      })
+    },
+  }
 }
 
 /** Records why a mailbox produced nothing, for the settings screen to show. */

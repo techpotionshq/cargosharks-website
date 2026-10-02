@@ -45,9 +45,11 @@ export interface AutoDraftResult {
   readonly drafted: number
   /** Eligible enquiries that could not be priced — no cover, no margin, or a gap. */
   readonly skipped: number
+  /** Enquiries whose pricing threw — logged with the reason, retried next sweep. */
+  readonly failed: number
 }
 
-const EMPTY: AutoDraftResult = { enabled: false, drafted: 0, skipped: 0 }
+const EMPTY: AutoDraftResult = { enabled: false, drafted: 0, skipped: 0, failed: 0 }
 
 type CoverNoteDrafter = (input: {
   actor: Actor
@@ -73,6 +75,7 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
 
   let drafted = 0
   let skipped = 0
+  let failed = 0
 
   for (const candidate of eligible) {
     try {
@@ -105,12 +108,25 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
       } catch {
         // The note is prose; a failure here is not the sweep's problem.
       }
-    } catch {
-      skipped += 1
+    } catch (error) {
+      /*
+        A throw is not a refusal. Refusals return above and are `skipped`; a
+        throw is a fault in pricing or the database, and counting it as a skip
+        made a pricing bug look the same as "no cover". Logged and counted
+        apart, and the enquiry stays eligible for the next sweep.
+      */
+      failed += 1
+      console.error(
+        {
+          enquiryId: candidate.enquiryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'quote auto-draft: enquiry failed, left for the next sweep',
+      )
     }
   }
 
-  return { enabled: true, drafted, skipped }
+  return { enabled: true, drafted, skipped, failed }
 }
 
 /**

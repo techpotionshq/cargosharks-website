@@ -357,8 +357,17 @@ export function readCompletion(payload: ChatCompletion, requested: string): Mode
       where there is no content and no tool call but there is reasoning text,
       the reasoning *is* the reply. A model that genuinely reasoned and then
       answered has content, and is unaffected.
+
+      "No content" includes `content: ""`, not only `null`. The same provider
+      sends both shapes, and `??` only falls through on null — so an empty
+      string with the whole answer in `reasoning` still read as nothing. The
+      streaming path below already tested for `''`; this one now agrees.
     */
-    text: choice.message?.content ?? (toolCalls.length === 0 ? reasoningText(choice.message) : ''),
+    text: hasWords(choice.message?.content)
+      ? choice.message!.content!
+      : toolCalls.length === 0
+        ? reasoningText(choice.message) || (choice.message?.content ?? '')
+        : (choice.message?.content ?? ''),
     toolCalls,
     inputTokens: payload.usage?.prompt_tokens ?? 0,
     outputTokens: payload.usage?.completion_tokens ?? 0,
@@ -385,6 +394,11 @@ export function readCompletion(payload: ChatCompletion, requested: string): Mode
  */
 function reasoningText(message: { readonly reasoning?: string | null } | undefined): string {
   return typeof message?.reasoning === 'string' ? message.reasoning : ''
+}
+
+/** Content that says something — not null, and not empty or whitespace. */
+function hasWords(content: string | null | undefined): content is string {
+  return typeof content === 'string' && content.trim() !== ''
 }
 
 function readFinishReason(reason: string | undefined): ModelResponse['finishReason'] {

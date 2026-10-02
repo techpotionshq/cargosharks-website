@@ -76,9 +76,17 @@ export interface AutoFanoutResult {
   readonly requests: number
   /** Eligible enquiries with no emailable covering agent — left for a person. */
   readonly skipped: number
+  /** Enquiries whose fan-out threw — logged with the reason, retried next sweep. */
+  readonly failed: number
 }
 
-const EMPTY: AutoFanoutResult = { enabled: false, enquiries: 0, requests: 0, skipped: 0 }
+const EMPTY: AutoFanoutResult = {
+  enabled: false,
+  enquiries: 0,
+  requests: 0,
+  skipped: 0,
+  failed: 0,
+}
 
 export interface AutoFanoutDeps {
   /**
@@ -161,6 +169,7 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
           sql`exists (
             select 1
               from ${partnerCoverage} c
+              join ${partners} p on p.id = c.partner_id and p.is_active
               join ${partnerContacts} pc
                 on pc.partner_id = c.partner_id and pc.is_active and pc.email is not null
               join ${locations} o on o.id = ${enquiries.originId}
@@ -180,6 +189,7 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
   let fanned = 0
   let requests = 0
   let skipped = 0
+  let failed = 0
 
   for (const enquiry of eligible) {
     // Per enquiry, so one lane's failure is not the sweep's. The read of covering
@@ -207,13 +217,23 @@ export async function autoFanoutRateRequests(deps: AutoFanoutDeps = {}): Promise
         fanned += 1
         requests += opened
       }
-    } catch {
-      // A single lane's failure is left for the next sweep; the rest fan out.
-      skipped += 1
+    } catch (error) {
+      /*
+        A single lane's failure is left for the next sweep; the rest fan out.
+
+        Counted apart from `skipped` and logged with its reason. Folded into
+        `skipped`, a database or pricing fault read exactly like "nobody covers
+        this lane" — the one answer that tells nobody to look.
+      */
+      failed += 1
+      console.error(
+        { enquiryId: enquiry.id, error: error instanceof Error ? error.message : String(error) },
+        'rate auto-fanout: enquiry failed, left for the next sweep',
+      )
     }
   }
 
-  return { enabled: true, enquiries: fanned, requests, skipped }
+  return { enabled: true, enquiries: fanned, requests, skipped, failed }
 }
 
 /**
@@ -248,6 +268,14 @@ async function coveringAgentIds(
       and(
         eq(partnerCoverage.mode, enquiry.mode as 'sea_fcl'),
         eq(partnerCoverage.isActive, true),
+        /*
+          A deactivated partner is one we stopped working with. Their coverage
+          rows are not retired with them — nothing is deleted, and an
+          administrator switches off the partner, not each lane — so the
+          partner's own flag is the one that has to be read here, or the sweep
+          keeps mailing RFQs to an agent somebody deliberately let go.
+        */
+        eq(partners.isActive, true),
         or(
           eq(partnerCoverage.originId, enquiry.originId),
           originCountry ? eq(partnerCoverage.originCountry, originCountry) : sql`false`,

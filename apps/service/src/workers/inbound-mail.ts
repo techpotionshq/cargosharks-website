@@ -53,6 +53,7 @@ import {
   mailboxes,
   enquiries,
   partnerContacts,
+  partners,
   inboundWebhookEvents,
   jobs,
   messageAttachments,
@@ -480,7 +481,50 @@ export async function ingestMessage(
     const stored = await storeAttachments(message, branch)
 
     const outcome = await withActor(systemActor(), async (tx) => {
-      const target = await findTarget(tx, message)
+      /*
+        The receipt, locked for the length of this transaction — and re-read.
+
+        Two runs can hold the same receipt: two service instances polling one
+        mailbox, a webhook job and its re-drive (`inbound-redrive.ts`), or a
+        provider redelivery that re-queued a job still running. `claimReceipt`
+        hands an unprocessed receipt to each of them as resumable, which is
+        right for a run that died part-way and wrong for one that is still
+        going: both filed the mail. The row lock makes the second wait for the
+        first to commit; it then reads `processed_at` and stops, having
+        written nothing.
+      */
+      const [receipt] = await tx
+        .select({ processedAt: inboundWebhookEvents.processedAt })
+        .from(inboundWebhookEvents)
+        .where(eq(inboundWebhookEvents.id, claim.id))
+        .for('update')
+      if (receipt?.processedAt) {
+        return {
+          outcome: 'duplicate' as const,
+          enquiryId: null,
+          messageId: null,
+          partnerId: null,
+          rateRequestId: null,
+        }
+      }
+
+      /*
+        One sender's WhatsApp messages are taken one at a time.
+
+        "Hi", "2x40HC", "Shanghai to Shuwaikh" arrive as three webhooks within a
+        second, and the threading below depends on the first having filed its
+        enquiry before the second looks for one. A transaction-scoped advisory
+        lock on the sender serialises exactly that, and nothing else.
+      */
+      if (message.channel === 'whatsapp') {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`whatsapp:${branch.id}:${message.from}`}))`,
+        )
+      }
+
+      const target =
+        (await findTarget(tx, message)) ??
+        (message.channel === 'whatsapp' ? await findOpenConversation(tx, message, branch.id) : null)
       const customerId = await matchCustomer(tx, message)
       /*
         The sender may be a supplier as well as — or instead of — a customer.
@@ -504,12 +548,23 @@ export async function ingestMessage(
         `createEnquiry` would put a broker's price on the board as a shipment
         request. The row is filed, the request moves to `responded`, and a model
         reads the charges after the commit.
+
+        That holds whatever state the request is in. Only `sent` and
+        `responded` used to match, so the agent's *second* mail — "revised rate
+        attached" after the first was read, the real quote after an auto-ack,
+        any reply to a renewal RFQ that has no enquiry — fell through to
+        `createEnquiry` and landed on the board as a customer's shipment, with
+        an SLA clock, a model call and, with auto-fanout on, RFQs about itself.
+        A request already read or decided is not reopened (`late`, below): the
+        mail is filed on its enquiry and a person is told.
       */
       const rfqToken = rfqTokenIn(message.subject ?? null, message.body)
-      const rateRequest = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+      const matched = rfqToken ? await findRateRequestByToken(tx, rfqToken, branch.id) : null
+      const rateRequest = matched && AWAITING_REPLY.has(matched.status) ? matched : null
+      const late = matched && !rateRequest ? matched : null
 
-      const context = rateRequest
-        ? { enquiryId: rateRequest.enquiryId, jobId: null, created: false }
+      const context = matched
+        ? { enquiryId: matched.enquiryId, jobId: null, created: false }
         : (target ?? (await createEnquiry(tx, message, branch, customerId, asOf)))
 
       const [row] = await tx
@@ -604,13 +659,43 @@ export async function ingestMessage(
           .where(eq(rateRequests.id, rateRequest.id))
       }
 
+      /*
+        A reply to a request that was already read, decided or replaced.
+
+        Filed — on the enquiry, or unattached for a renewal RFQ, which has none
+        — and *not* re-read: the request keeps its status, its parsed figures
+        and any card already promoted from it, because a model overwriting an
+        accepted award with a later mail is a decision nobody made. Whether the
+        new mail changes anything is a person's call, so a person is told, on
+        the internal channel the variance alarm uses. The receipt says the same
+        thing for whoever looks there first.
+      */
+      if (late) {
+        await tx.insert(notificationOutbox).values({
+          branchId: branch.id,
+          eventKey: 'rate_request.late_reply',
+          enquiryId: late.enquiryId,
+          payload: {
+            reference: late.enquiryReference ?? late.token,
+            partnerName: late.partnerName,
+          },
+        })
+      }
+
       await tx
         .update(inboundWebhookEvents)
-        .set({ processedAt: asOf, error: null, updatedAt: asOf })
+        .set({
+          processedAt: asOf,
+          error: late
+            ? `rate reply to a request already ${late.status}: filed, not re-read; ` +
+              'a person has been told'
+            : null,
+          updatedAt: asOf,
+        })
         .where(eq(inboundWebhookEvents.id, claim.id))
 
       return {
-        outcome: rateRequest
+        outcome: matched
           ? ('rate_reply' as const)
           : context.created
             ? ('created' as const)
@@ -917,6 +1002,60 @@ async function findTarget(tx: any, message: InboundMessage): Promise<Target | nu
 }
 
 /**
+ * How far back a WhatsApp sender's last message still makes the next one part
+ * of the same conversation.
+ *
+ * WhatsApp has no subject and no reference line: a customer types "Hi", then
+ * "2x40HC", then "Shanghai to Shuwaikh" as three messages, and nobody quotes a
+ * reference into a chat. A day matches WhatsApp's own customer-service window.
+ */
+export const WHATSAPP_CONVERSATION_HOURS = 24
+
+/** Enquiry states a follow-up message can still be threaded onto. */
+const OPEN_ENQUIRY_STATUSES = ['new', 'assigned', 'rating', 'quoted'] as const
+
+/**
+ * The sender's open enquiry, where they wrote to it recently — WhatsApp only.
+ *
+ * Without this every message opened its own enquiry, with its own SLA clock,
+ * model call and acknowledgement: three for one request, and an endless supply
+ * for another company's auto-responder answering our acknowledgement — the
+ * 195-enquiry loop of `Operations_Findings` §11 on a new channel. The match is
+ * the exact sender on the same business number's branch, an enquiry still
+ * open, and a message from them on it inside the window; the most recent wins.
+ * A sender whose enquiry was closed, or who has been silent for a day, starts a
+ * new one, which is what a new conversation is.
+ */
+async function findOpenConversation(
+  tx: any,
+  message: InboundMessage,
+  branchId: string,
+): Promise<Target | null> {
+  if (message.from === '') return null
+  const since = new Date(
+    message.receivedAt.getTime() - WHATSAPP_CONVERSATION_HOURS * 60 * 60 * 1000,
+  )
+  const rows = await tx
+    .select({ enquiryId: messages.enquiryId })
+    .from(messages)
+    .innerJoin(enquiries, eq(enquiries.id, messages.enquiryId))
+    .where(
+      and(
+        eq(messages.branchId, branchId),
+        eq(messages.channel, 'whatsapp'),
+        eq(messages.direction, 'inbound'),
+        eq(messages.fromAddress, message.from),
+        sql`${messages.sentAt} >= ${since}`,
+        sql`${messages.sentAt} <= ${message.receivedAt}`,
+        inArray(enquiries.status, [...OPEN_ENQUIRY_STATUSES]),
+      ),
+    )
+    .orderBy(sql`${messages.sentAt} desc`)
+    .limit(1)
+  return rows[0]?.enquiryId ? { enquiryId: rows[0].enquiryId, jobId: null, created: false } : null
+}
+
+/**
  * Which customer sent this, if it can be said without guessing.
  *
  * Exact contact address first. Then the domain, but only where it belongs to
@@ -976,31 +1115,43 @@ async function matchPartner(tx: any, from: string): Promise<string | null> {
   return byDomain.length === 1 ? byDomain[0]!.partnerId : null
 }
 
+/** The request states a reply is read into; any other state is a late reply. */
+const AWAITING_REPLY = new Set(['sent', 'responded'])
+
 /**
  * The rate request a reply's token names, scoped to the branch — FR-RT-10.
  *
  * `token` is unique across the table, so the branch predicate is a guard rather
  * than a tiebreak: a token that resolves to another branch's request is treated
- * as no match, and the reply falls through to the ordinary rules. Only a request
- * still awaiting an answer is matched — a `superseded` re-send or one already
- * `accepted` is not reopened by a late duplicate reply, which would otherwise
- * roll a decided request back to `responded`.
+ * as no match, and the reply falls through to the ordinary rules. Every status
+ * matches — the caller decides what a reply to a decided request does — so a
+ * token we issued can never open an enquiry.
  */
 async function findRateRequestByToken(
   tx: any,
   token: string,
   branchId: string,
-): Promise<{ id: string; enquiryId: string | null } | null> {
+): Promise<{
+  id: string
+  enquiryId: string | null
+  status: string
+  token: string
+  partnerName: string
+  enquiryReference: string | null
+} | null> {
   const rows = await tx
-    .select({ id: rateRequests.id, enquiryId: rateRequests.enquiryId })
+    .select({
+      id: rateRequests.id,
+      enquiryId: rateRequests.enquiryId,
+      status: rateRequests.status,
+      token: rateRequests.token,
+      partnerName: partners.legalNameEn,
+      enquiryReference: enquiries.reference,
+    })
     .from(rateRequests)
-    .where(
-      and(
-        eq(rateRequests.token, token),
-        eq(rateRequests.branchId, branchId),
-        sql`${rateRequests.status} in ('sent', 'responded')`,
-      ),
-    )
+    .innerJoin(partners, eq(partners.id, rateRequests.partnerId))
+    .leftJoin(enquiries, eq(enquiries.id, rateRequests.enquiryId))
+    .where(and(eq(rateRequests.token, token), eq(rateRequests.branchId, branchId)))
     .limit(1)
   return rows[0] ?? null
 }
@@ -1059,19 +1210,31 @@ async function matchCustomerByEmail(tx: any, from: string): Promise<string | nul
  * contact. There is no domain fallback the way email has one: a phone number
  * identifies one person, not an organisation, so an unrecognised number opens an
  * enquiry a coordinator triages rather than guessing at a customer.
+ *
+ * Most Kuwaiti contacts are typed the way people say them — `2220 1234`, no
+ * country code — and those never matched the E.164 sender. So a stored number
+ * also matches as the *national* part of the sender's: after stripping a `00`
+ * international prefix or a `0` trunk prefix, it must be at least seven digits
+ * and the sender's number must be it with one to three digits — a country
+ * code — in front. Two customers matching is still none.
  */
 async function matchCustomerByPhone(tx: any, from: string): Promise<string | null> {
-  const digits = from.replace(/[^0-9]/g, '')
+  const digits = from.replace(/[^0-9]/g, '').replace(/^00/, '')
   // Too short to identify anyone — a stray digit or two is not a phone number,
   // and a loose match here files a stranger's message under a real customer.
   if (digits.length < 7) return null
 
+  const stored = sql`regexp_replace(regexp_replace(coalesce(${customerContacts.phone}, ''), '[^0-9]', '', 'g'), '^0{1,2}', '')`
   const rows = await tx
     .selectDistinct({ customerId: customerContacts.customerId })
     .from(customerContacts)
     .where(
       and(
-        sql`regexp_replace(coalesce(${customerContacts.phone}, ''), '[^0-9]', '', 'g') = ${digits}`,
+        sql`(${stored} = ${digits} or (
+          length(${stored}) >= 7
+          and ${digits.length} - length(${stored}) between 1 and 3
+          and right(${digits}, length(${stored})) = ${stored}
+        ))`,
         eq(customerContacts.isActive, true),
       ),
     )

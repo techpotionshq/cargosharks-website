@@ -2666,6 +2666,9 @@
       },
       "supplier_invoice": {
         "variance_flagged": "A supplier bill is over the accrual"
+      },
+      "rate_request": {
+        "late_reply": "An agent replies again on a decided rate request"
       }
     },
     "log": "Delivery",

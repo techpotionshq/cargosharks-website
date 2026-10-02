@@ -8,7 +8,13 @@
  */
 
 import type { Job } from 'pg-boss'
-import { JOBS, applyCarrierPollSchedule, applyInboundMailSchedule, getBoss } from '../queue'
+import {
+  JOBS,
+  applyCarrierPollSchedule,
+  applyInboundMailSchedule,
+  getBoss,
+  sendReceiptJob,
+} from '../queue'
 import { runFreeTimeAccrual } from './free-time-accrual'
 import { runFreeTimeWarnings } from './free-time-warning'
 import { runSlaEscalation } from './sla-escalation'
@@ -36,6 +42,7 @@ import {
   runInboundWhatsAppWebhook,
   type InboundWhatsAppWebhookInput,
 } from './inbound-whatsapp-webhook'
+import { runInboundRedrive } from './inbound-redrive'
 import { runWebhookDelivery } from './webhook-delivery'
 
 type Handler = (jobs: Job<Record<string, unknown>>[]) => Promise<void>
@@ -370,6 +377,18 @@ export async function registerWorkers(log: {
     shared with email, so a WhatsApp enquiry is read by the same model call and
     files the same rows as an emailed one.
   */
+  /*
+    The safety net under both routes above: a receipt recorded but never
+    processed — a send that failed after the receipt committed, or a job that
+    ran out of retries — is queued again. Logged only when it found something.
+  */
+  await work(JOBS.inboundRedrive, async () => {
+    const result = await runInboundRedrive((jobName, eventId) =>
+      sendReceiptJob(boss, jobName, eventId),
+    )
+    if (result.requeued > 0 || result.failed > 0) log.info(result, 'inbound receipts re-driven')
+  })
+
   await work(JOBS.inboundWhatsApp, async (jobs) => {
     for (const job of jobs) {
       const input = job.data as unknown as InboundWhatsAppWebhookInput

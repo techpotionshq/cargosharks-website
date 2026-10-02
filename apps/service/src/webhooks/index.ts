@@ -9,9 +9,22 @@
 
 import type { FastifyInstance } from 'fastify'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { and, eq } from 'drizzle-orm'
 import { inboundWebhookEvents, systemActor, withActor } from '@qabandi/db'
-import { JOBS, getBoss } from '../queue'
+import { JOBS, getBoss, sendReceiptJob } from '../queue'
 import { config } from '../config'
+
+/**
+ * The largest inbound-email body `/webhooks/email` accepts.
+ *
+ * Fastify's default is 1 MB, and a provider posts attachments base64-encoded in
+ * the JSON — a third larger than the file — so any mail with a real attachment
+ * over about 700 KB was refused with a 413 before the handler ran, and the
+ * provider eventually gave up on it. A mailbox's own attachment ceiling
+ * defaults to 25 MB; 40 MB carries that after encoding, with the envelope.
+ * Oversized parts are still emptied downstream, as on the IMAP path.
+ */
+export const EMAIL_BODY_LIMIT_BYTES = 40 * 1024 * 1024
 
 export async function webhooks(app: FastifyInstance): Promise<void> {
   // Raw body is required for signature verification; a parsed-then-restringified
@@ -78,7 +91,7 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
   })
 
   /** Inbound email becomes an enquiry within a minute, attachments kept — FR-EQ-02. */
-  app.post('/email', async (request, reply) => {
+  app.post('/email', { bodyLimit: EMAIL_BODY_LIMIT_BYTES }, async (request, reply) => {
     const body = request.body as { raw: Buffer; parsed: Record<string, unknown> }
     const signature = request.headers['x-webhook-signature']
 
@@ -92,11 +105,26 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
 }
 
 /**
- * Records the receipt and enqueues once.
+ * Records the receipt and makes sure a job is queued for it.
  *
- * The unique key on (provider, external_id) is what makes a redelivery a
- * no-op. The enqueue happens in the same transaction as the receipt, so a
- * crash between the two cannot leave a recorded-but-unqueued event.
+ * The unique key on (provider, external_id) is what makes a redelivery of a
+ * *processed* event a no-op. The comment here used to claim the enqueue was in
+ * the receipt's transaction; it never was — the insert committed, and then
+ * `boss.send` ran on its own connection. A send that failed after the commit
+ * answered the provider 500, the provider retried, the retry hit the conflict
+ * and returned 202 having queued nothing, and the event was lost.
+ *
+ * Two changes close that, without pretending to a distributed transaction:
+ *
+ *  - a redelivery of a receipt that is still **unprocessed** queues the job
+ *    again instead of returning early, so the provider's own retry is the
+ *    re-drive;
+ *  - `runInboundRedrive` sweeps receipts left unprocessed (a send that failed
+ *    and was never retried, a job that exhausted its retries) and re-queues
+ *    them.
+ *
+ * A second job for one receipt is harmless: `ingestMessage` locks the receipt
+ * and stops at `processed_at`, so whichever runs second files nothing.
  */
 async function enqueueOnce(
   provider: string,
@@ -104,18 +132,32 @@ async function enqueueOnce(
   payload: Record<string, unknown>,
   jobName: string,
 ): Promise<void> {
-  const inserted = await withActor(systemActor(), async (tx) =>
-    tx
+  const eventId = await withActor(systemActor(), async (tx) => {
+    const inserted = await tx
       .insert(inboundWebhookEvents)
       .values({ provider, externalId, payload })
       .onConflictDoNothing()
-      .returning({ id: inboundWebhookEvents.id }),
-  )
+      .returning({ id: inboundWebhookEvents.id })
+    if (inserted.length > 0) return inserted[0]!.id
 
-  if (inserted.length === 0) return // Already seen; the provider is retrying.
+    // Seen before. Processed is done with; unprocessed still needs its job.
+    const [existing] = await tx
+      .select({ id: inboundWebhookEvents.id, processedAt: inboundWebhookEvents.processedAt })
+      .from(inboundWebhookEvents)
+      .where(
+        and(
+          eq(inboundWebhookEvents.provider, provider),
+          eq(inboundWebhookEvents.externalId, externalId),
+        ),
+      )
+      .limit(1)
+    return existing && !existing.processedAt ? existing.id : null
+  })
 
-  const boss = await getBoss()
-  await boss.send(jobName, { eventId: inserted[0]!.id })
+  if (!eventId) return // Already processed; the provider is retrying.
+
+  // A throw here answers 500, and the provider's retry lands in the branch above.
+  await sendReceiptJob(await getBoss(), jobName, eventId)
 }
 
 function verifyHmac(

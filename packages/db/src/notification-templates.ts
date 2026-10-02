@@ -257,6 +257,47 @@ Review it in Qabandi before it is approved for payment.
   ),
 
   /*
+    rate_request.late_reply (internal) — FR-RT-10.
+
+    The subject names the agent and the enquiry, because the decision — does
+    the new figure matter — starts from knowing whose mail it is and about
+    what. The request itself is untouched; this only says there is something
+    to read.
+  */
+  t(
+    'rate_request.late_reply',
+    'en',
+    'Another rate reply from {{partnerName}} on {{reference}}',
+    `
+Hello {{recipientName}}
+
+{{partnerName}} has written again about the rate request on {{reference}}. That
+request had already been read or decided, so the new mail has been filed on the
+enquiry but not read into the request, and nothing about the award has changed.
+
+Open the enquiry to read it and decide whether it changes anything.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'rate_request.late_reply',
+    'ar',
+    'رد آخر على طلب السعر من {{partnerName}} بخصوص {{reference}}',
+    `
+مرحباً {{recipientName}}
+
+أرسل {{partnerName}} رسالة جديدة بشأن طلب السعر الخاص بـ {{reference}}. وقد سبقت
+قراءة هذا الطلب أو البتّ فيه، لذا حُفظت الرسالة الجديدة على الاستفسار دون إدخالها
+في الطلب، ولم يتغيّر شيء في الترسية.
+
+يرجى فتح الاستفسار لقراءتها وتقرير ما إذا كانت تغيّر شيئاً.
+
+{{senderName}}
+`,
+  ),
+
+  /*
     The rate-card digest (internal) — FR-RT-11.
 
     The body opens with the date it was compiled, because two digests can sit
@@ -690,6 +731,20 @@ reference so that we can match it.
     'ar',
     'استثناء بدرجة {{severity}} على {{reference}}',
     '{{description}} — مُدرج في سجل الاستثناءات وبدأ احتساب مدة المعالجة.',
+  ),
+
+  // --- rate_request.late_reply ---------------------------------------------
+  ia(
+    'rate_request.late_reply',
+    'en',
+    'Another reply from {{partnerName}} on {{reference}}',
+    'The request was already read or decided, so the new mail is filed but not read into it. Open the enquiry to decide whether it changes anything.',
+  ),
+  ia(
+    'rate_request.late_reply',
+    'ar',
+    'رد آخر من {{partnerName}} على {{reference}}',
+    'سبق قراءة طلب السعر أو البتّ فيه، لذا حُفظت الرسالة الجديدة دون إدخالها في الطلب. افتح الاستفسار لتقرر إن كانت تغيّر شيئاً.',
   ),
 
   // --- supplier_invoice.variance_flagged ------------------------------------

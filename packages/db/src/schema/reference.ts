@@ -17,11 +17,12 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   text,
   unique,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
-import { amount, pk, quantity, rate, ref, timestamps, tsz } from './columns'
+import { amount, pk, quantity, ref, timestamps, tsz } from './columns'
 import { pgTable } from './table'
 import {
   basisEnum,
@@ -83,7 +84,18 @@ export const fxRates = pgTable(
     toCurrency: text('to_currency')
       .notNull()
       .references(() => currencies.code),
-    rate: rate('rate').notNull(),
+    /**
+     * Wider than the `rate()` a charge line stores, deliberately.
+     *
+     * The feed quotes from the base outwards and the inward rate is its
+     * reciprocal (`fx-refresh.ts`). For a weak currency that reciprocal is a
+     * small number — JPY→KWD is about 0.002 — and eight places kept six
+     * significant figures of it, so a large yen amount converted with a
+     * visible error before anybody had rounded anything. Fourteen places keep
+     * at least eleven. A charge line still stores its own struck rate at
+     * eight; this is the source it is struck from.
+     */
+    rate: numeric('rate', { precision: 24, scale: 14 }).notNull(),
     /** Which feed, or the principal who overrode it. */
     source: text('source').notNull().default('manual'),
     effectiveOn: date('effective_on').notNull(),

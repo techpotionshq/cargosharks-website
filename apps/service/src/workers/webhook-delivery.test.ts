@@ -70,8 +70,14 @@ const E_OTHER = '00000000-0000-7000-8000-00000000e0a3'
  */
 const E_DEAD = `00000000-0000-7000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`
 
+/**
+ * Healthy but quiet: its last delivery got through eight days ago and nothing
+ * has been raised for it since. Minted per run for `E_DEAD`'s reason.
+ */
+const E_QUIET = `00000000-0000-7000-8001-${Date.now().toString(16).padStart(12, '0').slice(-12)}`
+
 const SECRET = 'whsec_test_' + E_INVOICE.slice(-4)
-const MINE = [E_ALL, E_INVOICE, E_OTHER, E_DEAD]
+const MINE = [E_ALL, E_INVOICE, E_OTHER, E_DEAD, E_QUIET]
 
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
 let seq = 0
@@ -151,6 +157,7 @@ describe.skipIf(!enabled)('outbound webhook delivery', () => {
         [E_INVOICE, ['invoice.issued']],
         [E_OTHER, ['job.booked']],
         [E_DEAD, ['customs.hold']],
+        [E_QUIET, ['quiet.fixture']],
       ] as const) {
         await tx
           .insert(webhookEndpoints)
@@ -350,6 +357,23 @@ describe.skipIf(!enabled)('outbound webhook delivery', () => {
       }),
     )
 
+    /*
+      And one that worked: delivered eight days ago, nothing raised since. It
+      is quiet, not dead — "no success in a week" is not "failing for a week"
+      when there was nothing to send.
+    */
+    await withActor(systemActor([BRANCH]), (tx) =>
+      tx.insert(webhookDeliveries).values({
+        endpointId: E_QUIET,
+        eventKey: 'quiet.fixture',
+        payload: { event: 'quiet.fixture', data: { reference: `WH-${RUN}-quiet` } },
+        status: 'delivered',
+        attempts: 1,
+        deliveredAt: eightDaysAgo,
+        createdAt: eightDaysAgo,
+      }),
+    )
+
     vi.stubGlobal('fetch', fetchMock.mockImplementation(answer(503)))
     await flushWebhookDeliveries(now)
 
@@ -361,6 +385,7 @@ describe.skipIf(!enabled)('outbound webhook delivery', () => {
     // The one that delivered this week is left alone, and so is one with no history.
     expect((await endpoint(E_INVOICE)).isActive).toBe(true)
     expect((await endpoint(E_OTHER)).isActive).toBe(true)
+    expect((await endpoint(E_QUIET)).isActive).toBe(true)
 
     // Off means off: the next event it subscribed to is not expanded to it.
     const { reference } = await raiseEvent('customs.hold')

@@ -318,6 +318,7 @@ const {
   partnerContacts,
   partners,
   principals,
+  rateRequests,
   sealSecret,
   systemActor,
   withActor,
@@ -325,6 +326,7 @@ const {
 } = await import('@qabandi/db')
 
 const { runInboundMailPoll } = await import('./inbound-mail')
+const { rfqSubjectTag } = await import('./rfq-routing')
 
 const BRANCH = '00000000-0000-7000-8000-0000000ab001'
 const CUSTOMER = '00000000-0000-7000-8000-0000000ab002'
@@ -1221,6 +1223,85 @@ describe.skipIf(!enabled)('inbound mail against a database', () => {
           .where(eq(inboundWebhookEvents.externalId, returned.externalId)),
       )
       expect(receipt?.error).toBe('ignored: automatic mail')
+    })
+  })
+
+  /*
+    V2: a token we issued never opens an enquiry. Only `sent` and `responded`
+    requests used to match, so an agent's second mail — a revised rate after
+    the first was read, a reply to a renewal RFQ — landed on the board as a
+    customer's shipment request.
+  */
+  describe('a second reply on a rate request', () => {
+    async function request(over: { enquiryId: string | null; status: 'accepted' | 'parsed' }) {
+      seq += 1
+      const token = `late${RUN}x${seq}`.replace(/[^A-Za-z0-9]/g, '')
+      const [row] = await withActor(sys, (tx) =>
+        tx
+          .insert(rateRequests)
+          .values({
+            branchId: BRANCH,
+            enquiryId: over.enquiryId,
+            partnerId: PARTNER,
+            status: over.status,
+            token,
+          })
+          .returning({ id: rateRequests.id }),
+      )
+      return { id: row!.id, token }
+    }
+
+    it('files it on the enquiry, leaves the decision, and tells a person', async () => {
+      await runInboundMailPoll(
+        new Date('2026-08-18T09:00:00Z'),
+        sourceOf(mail({ subject: `Late RFQ enquiry ${RUN}` })),
+      )
+      const enquiry = await enquiryNoted(`Late RFQ enquiry ${RUN}`)
+      const req = await request({ enquiryId: enquiry.id, status: 'accepted' })
+      const before = (await enquiriesFromRun()).length
+
+      const reply = mail({
+        from: 'desk@agent.test',
+        subject: `Re: Rate request ${rfqSubjectTag(req.token)} — revised rate attached`,
+      })
+      const result = await runInboundMailPoll(new Date('2026-08-18T09:05:00Z'), sourceOf(reply))
+
+      expect(result.rateReplies).toBe(1)
+      expect(result.created).toBe(0)
+      expect((await enquiriesFromRun()).length).toBe(before)
+      expect((await messagesOn(enquiry.id)).map((m) => m.externalRef)).toContain(reply.externalId)
+
+      const [row] = await withActor(sys, (tx) =>
+        tx.select().from(rateRequests).where(eq(rateRequests.id, req.id)),
+      )
+      expect(row!.status).toBe('accepted')
+
+      const alerts = await withActor(sys, (tx) =>
+        tx
+          .select({ eventKey: notificationOutbox.eventKey })
+          .from(notificationOutbox)
+          .where(eq(notificationOutbox.enquiryId, enquiry.id)),
+      )
+      expect(alerts.map((a) => a.eventKey)).toContain('rate_request.late_reply')
+    })
+
+    it('never opens an enquiry for a reply to a renewal RFQ', async () => {
+      const req = await request({ enquiryId: null, status: 'parsed' })
+      const before = (await enquiriesFromRun()).length
+
+      const reply = mail({
+        from: 'desk@agent.test',
+        subject: `Re: Renewal ${rfqSubjectTag(req.token)}`,
+      })
+      const result = await runInboundMailPoll(new Date('2026-08-18T09:10:00Z'), sourceOf(reply))
+
+      expect(result.rateReplies).toBe(1)
+      expect(result.created).toBe(0)
+      expect((await enquiriesFromRun()).length).toBe(before)
+      const [filed] = await withActor(sys, (tx) =>
+        tx.select().from(messages).where(eq(messages.externalRef, reply.externalId)),
+      )
+      expect(filed?.enquiryId).toBeNull()
     })
   })
 })

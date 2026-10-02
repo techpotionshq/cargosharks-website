@@ -26,7 +26,7 @@
  * the reply *claims* that disagrees with ours is surfaced, never acted on.
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import {
   assets,
   enquiries,
@@ -166,8 +166,8 @@ export async function extractRateReply(
 
   const status: 'parsed' | 'declined' = extracted.declined ? 'declined' : 'parsed'
 
-  await withActor(actor, async (tx: Tx) => {
-    await tx
+  const written = await withActor(actor, async (tx: Tx) =>
+    tx
       .update(rateRequests)
       .set({
         status,
@@ -204,8 +204,34 @@ export async function extractRateReply(
           partial: summary.partial,
         },
       })
-      .where(eq(rateRequests.id, input.rateRequestId))
-  })
+      /*
+        Only while the request is still waiting on this answer.
+
+        A pg-boss retry can land after a person — or the auto-promote sweep —
+        has already accepted, declined or superseded the request. Writing
+        `parsed` then would put a decided request back on the comparison board
+        as a fresh reply, and an `accepted` one back in front of the promotion
+        that already happened. The model's reading is still in the ledger; the
+        decision stands.
+      */
+      .where(
+        and(
+          eq(rateRequests.id, input.rateRequestId),
+          inArray(rateRequests.status, ['sent', 'responded']),
+        ),
+      )
+      .returning({ id: rateRequests.id }),
+  )
+
+  if (written.length === 0) {
+    return {
+      invocationId,
+      status,
+      lines: extracted.lines.rows.length,
+      rejected: extracted.lines.issues.length,
+      skipped: 'request_already_decided',
+    }
+  }
 
   return {
     invocationId,
