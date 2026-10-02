@@ -14,11 +14,10 @@ import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { listCustomers } from '@/features/customers/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { Button, EmptyState, PageHeader } from '@/ui/layout'
+import { Button } from '@/ui/layout'
+import { RECORD_LINK, Register } from '@/ui/register'
 import { Badge } from '@/ui/status'
-import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
-import { FOCUS_RING } from '@/ui/control'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('customers')
@@ -40,95 +39,76 @@ export default async function CustomersPage({
   const rows = await listCustomers(session.actor, q)
   const mayWrite = can(session, 'customer.write')
 
+  const action = mayWrite ? (
+    <Button href="/customers/new" variant="primary" icon="plus">
+      {t('new')}
+    </Button>
+  ) : null
+
   return (
-    <>
-      <PageHeader
-        eyebrow={t('eyebrow')}
-        title={t('title')}
-        description={t('subtitle')}
-        actions={
-          mayWrite ? (
-            <Button href="/customers/new" variant="primary" icon="plus">
-              {t('new')}
-            </Button>
-          ) : null
-        }
-      />
-
-      <form action="/customers" className="relative mb-4 max-w-sm">
-        <Icon
-          name="search"
-          size={16}
-          className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-ink-subtle"
-        />
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ''}
-          placeholder={t('searchPlaceholder')}
-          aria-label={tc('search')}
-          className={`h-9 w-full rounded-sm border border-line-strong bg-surface ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
-        />
-      </form>
-
-      {rows.length === 0 ? (
-        <div className="rounded-card border border-line bg-surface">
-          <EmptyState
-            icon="customers"
-            title={q ? t('noneMatching') : t('noneYet')}
-            description={q ? t('noneMatchingHint') : t('noneYetHint')}
-            action={
-              mayWrite && !q ? (
-                <Button href="/customers/new" variant="primary" icon="plus">
-                  {t('new')}
-                </Button>
-              ) : null
-            }
-          />
-        </div>
-      ) : (
-        <TableShell>
-          <THead>
-            <TR>
-              <TH>{t('code')}</TH>
-              <TH>{t('name')}</TH>
-              <TH>{t('country')}</TH>
-              <TH>{t('branch')}</TH>
-              <TH align="end">{t('openJobs')}</TH>
-              <TH>{tc('status')}</TH>
+    <Register
+      eyebrow={t('eyebrow')}
+      title={t('title')}
+      description={t('subtitle')}
+      actions={action}
+      search={{
+        action: '/customers',
+        value: q,
+        placeholder: t('searchPlaceholder'),
+        label: tc('search'),
+      }}
+      isEmpty={rows.length === 0}
+      empty={{
+        icon: 'customers',
+        title: q ? t('noneMatching') : t('noneYet'),
+        description: q ? t('noneMatchingHint') : t('noneYetHint'),
+        action: q ? undefined : (action ?? undefined),
+      }}
+    >
+      <TableShell>
+        <THead>
+          <TR>
+            <TH>{t('code')}</TH>
+            <TH>{t('name')}</TH>
+            <TH priority="low">{t('country')}</TH>
+            <TH priority="low">{t('branch')}</TH>
+            <TH priority="low" align="end">
+              {t('openJobs')}
+            </TH>
+            <TH>{tc('status')}</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {rows.map((row) => (
+            <TR key={row.id}>
+              <TD className="whitespace-nowrap">
+                <Link href={`/customers/${row.id}`} className={RECORD_LINK}>
+                  {row.code}
+                </Link>
+              </TD>
+              <TD className="font-medium text-ink">
+                <Link href={`/customers/${row.id}`} className="hover:underline">
+                  {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
+                </Link>
+              </TD>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.countryCode ?? '—'}
+              </TD>
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {row.branchCode ?? '—'}
+              </TD>
+              <TD priority="low" align="end" numeric>
+                {row.openJobs}
+              </TD>
+              <TD>
+                <Badge tone={row.isActive ? 'positive' : 'muted'}>
+                  {row.isActive ? tc('active') : tc('inactive')}
+                </Badge>
+              </TD>
             </TR>
-          </THead>
-          <TBody>
-            {rows.map((row) => (
-              <TR key={row.id}>
-                <TD className="whitespace-nowrap">
-                  <Link
-                    href={`/customers/${row.id}`}
-                    className="ref text-ink hover:text-accent hover:underline"
-                  >
-                    {row.code}
-                  </Link>
-                </TD>
-                <TD className="font-medium text-ink">
-                  <Link href={`/customers/${row.id}`} className="hover:underline">
-                    {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
-                  </Link>
-                </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.countryCode ?? '—'}</TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.branchCode ?? '—'}</TD>
-                <TD align="end" numeric>
-                  {row.openJobs}
-                </TD>
-                <TD>
-                  <Badge tone={row.isActive ? 'positive' : 'muted'}>
-                    {row.isActive ? tc('active') : tc('inactive')}
-                  </Badge>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </TableShell>
-      )}
-    </>
+          ))}
+        </TBody>
+      </TableShell>
+    </Register>
   )
 }

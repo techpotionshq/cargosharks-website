@@ -61,11 +61,13 @@ export default async function ConsolidationsPage() {
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('masterBill')}</TH>
-                <TH>{t('carrier')}</TH>
-                <TH>{t('route')}</TH>
+                <TH priority="low">{t('masterBill')}</TH>
+                <TH priority="low">{t('carrier')}</TH>
+                <TH priority="low">{t('route')}</TH>
                 <TH align="end">{t('houses')}</TH>
-                <TH align="end">{t('volume')}</TH>
+                <TH priority="low" align="end">
+                  {t('volume')}
+                </TH>
                 <TH align="end">{t('etd')}</TH>
                 <TH align="end">{tc('status')}</TH>
               </TR>
@@ -84,21 +86,21 @@ export default async function ConsolidationsPage() {
                       {tMode(row.mode as 'sea_lcl')}
                     </span>
                   </TD>
-                  <TD numeric className="text-ink-muted">
+                  <TD priority="low" numeric className="text-ink-muted">
                     {row.masterBillNumber ?? '—'}
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {[row.vesselName, row.voyageNumber].filter(Boolean).join(' / ') ||
                       row.flightNumber ||
                       '—'}
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {[row.originName, row.destinationName].filter(Boolean).join(' → ') || '—'}
                   </TD>
                   <TD align="end" numeric>
                     {row.houseCount}
                   </TD>
-                  <TD align="end" numeric className="text-ink-muted">
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
                     {Number(row.volumeCbm).toFixed(2)}
                   </TD>
                   <TD align="end" numeric className="text-ink-muted">

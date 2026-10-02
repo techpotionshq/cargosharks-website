@@ -25,18 +25,34 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>
+}) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
   const t = await getTranslations('payments')
+  const tc = await getTranslations('common')
+  const view = (await searchParams).view === 'unallocated' ? 'unallocated' : 'all'
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
 
-  const [rows, summary] = await Promise.all([
+  const [all, summary] = await Promise.all([
     listPayments(session.actor, locale),
     paymentSummary(session.actor),
   ])
+
+  // Decimal, never a float: this is money minus money, and the filter below
+  // and the flag on each row must agree to the last fils.
+  const remaining = (row: (typeof all)[number]) => dec(row.amount).minus(dec(row.allocated))
+  /*
+    The filter the summary promised. "Unallocated 3" sat above the table with
+    no way to see which three; it is the one figure here a finance clerk acts
+    on, so it is now a filter of its own, counted from the same rows.
+  */
+  const rows = view === 'unallocated' ? all.filter((row) => remaining(row).gt(0)) : all
 
   return (
     <Register
@@ -53,6 +69,15 @@ export default async function PaymentsPage() {
         { label: t('count'), value: summary.count },
         { label: t('unallocated'), value: summary.unallocated },
       ]}
+      filters={[
+        { label: tc('all'), href: '/payments', count: all.length, active: view === 'all' },
+        {
+          label: t('unallocated'),
+          href: '/payments?view=unallocated',
+          count: summary.unallocated,
+          active: view === 'unallocated',
+        },
+      ]}
       isEmpty={rows.length === 0}
       empty={{ icon: 'payments', title: t('noneYet'), description: t('noneYetHint') }}
     >
@@ -61,25 +86,28 @@ export default async function PaymentsPage() {
           <TR>
             <TH>{t('receivedOn')}</TH>
             <TH>{t('customer')}</TH>
-            <TH>{t('reference')}</TH>
-            <TH>{t('method')}</TH>
+            <TH priority="low">{t('reference')}</TH>
+            <TH priority="low">{t('method')}</TH>
             <TH align="end">{t('amount')}</TH>
             <TH align="end">{t('allocated')}</TH>
-            <TH>{t('recordedBy')}</TH>
+            <TH priority="lowest">{t('recordedBy')}</TH>
             <TH align="end">{t('allocate')}</TH>
           </TR>
         </THead>
         <TBody>
           {rows.map((row) => {
-            const unallocated = Number(row.amount) - Number(row.allocated)
+            const unallocated = remaining(row)
+            const open = unallocated.gt(0)
             return (
-              <TR key={row.id} flag={unallocated > 0 ? 'caution' : undefined}>
+              <TR key={row.id} flag={open ? 'caution' : undefined}>
                 <TD className="whitespace-nowrap text-ink">
                   {formatDate(new Date(row.receivedOn), locale, timeZone)}
                 </TD>
                 <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
-                <TD className="ref text-ink-muted">{row.reference ?? '—'}</TD>
-                <TD>
+                <TD priority="low" className="ref text-ink-muted">
+                  {row.reference ?? '—'}
+                </TD>
+                <TD priority="low">
                   {row.method ? (
                     <Badge tone="info">{t(`methods.${row.method}`)}</Badge>
                   ) : (
@@ -87,25 +115,23 @@ export default async function PaymentsPage() {
                   )}
                 </TD>
                 <TD align="end" numeric>
-                  {formatMoney({ amount: Number(row.amount), currency: row.currency }, locale)}
+                  {formatMoney({ amount: row.amount, currency: row.currency }, locale)}
                 </TD>
-                <TD
-                  align="end"
-                  numeric
-                  className={unallocated > 0 ? 'text-caution' : 'text-ink-subtle'}
-                >
-                  {unallocated > 0
+                <TD align="end" numeric className={open ? 'text-caution' : 'text-ink-subtle'}>
+                  {open
                     ? t('unallocatedAmount', {
                         amount: formatMoney(
-                          { amount: unallocated, currency: row.currency },
+                          { amount: unallocated.toFixed(), currency: row.currency },
                           locale,
                         ),
                       })
                     : t('fullyAllocated')}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.recordedBy ?? '—'}</TD>
+                <TD priority="lowest" className="whitespace-nowrap text-ink-muted">
+                  {row.recordedBy ?? '—'}
+                </TD>
                 <TD align="end">
-                  {unallocated > 0 ? (
+                  {open ? (
                     <AllocateReceiptDialog
                       paymentId={row.id}
                       // Decimal, at the currency's precision: this is typed

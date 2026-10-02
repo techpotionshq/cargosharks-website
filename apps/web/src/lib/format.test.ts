@@ -29,6 +29,20 @@ import {
 
 describe('formatMoney', () => {
   /**
+   * The database's own string, straight through. A `numeric(19,6)` arrives as
+   * `"1840.500000"`, and it is formatted at the currency's precision without
+   * ever becoming a float — including a value a float cannot hold exactly.
+   */
+  it('formats a decimal string without converting it to a number', () => {
+    expect(formatMoney({ amount: '1840.500000', currency: 'KWD' }, 'en')).toMatch(
+      /^KWD\s1,840\.500$/,
+    )
+    expect(formatMoney({ amount: '9007199254740993.125', currency: 'KWD' }, 'en')).toMatch(
+      /^KWD\s9,007,199,254,740,993\.125$/,
+    )
+  })
+
+  /**
    * The trap the module exists for. KWD carries three decimals — 1.5 KWD is
    * `1.500`, and a quotation printing `1.50` looks wrong to everyone reading
    * it. The minor units come from `Intl`, never from a table here.

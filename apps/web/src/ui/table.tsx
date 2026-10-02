@@ -16,6 +16,29 @@
 
 import type { ReactNode } from 'react'
 
+/**
+ * Which columns survive a narrow screen.
+ *
+ * Every register used to keep every column at every width and scroll
+ * sideways, and on a 390px phone the first viewport held a reference and a
+ * customer name — the status, the money and the date were all off to the
+ * inline end, behind a scroll nobody could see was there. A column now says
+ * how much it matters: `low` columns (customer, lane, owner — context the row
+ * carries elsewhere) leave below `md`; `lowest` (vessel, broker) leave below
+ * `xl`, which is what stops the ops board overflowing at 1440. Reference,
+ * status and money are never marked, so they are what a phone sees.
+ *
+ * The same value goes on the `TH` and on every `TD` in the column — a table
+ * has no column element that can hide a whole column for us.
+ */
+export type ColumnPriority = 'high' | 'low' | 'lowest'
+
+const PRIORITY_CLASS: Record<ColumnPriority, string> = {
+  high: '',
+  low: 'hidden md:table-cell',
+  lowest: 'hidden xl:table-cell',
+}
+
 export function TableShell({
   children,
   className,
@@ -60,7 +83,9 @@ export function TableShell({
     // Wide boards scroll inside their own card rather than the page.
     <div
       className={[
-        'w-full overflow-x-auto',
+        // `qb-scroll-x` draws a soft edge on whichever side has more columns
+        // behind it — see globals.css.
+        'qb-scroll-x w-full overflow-x-auto',
         scroll === 'fill' ? 'qb-scroll min-h-0 flex-1 overflow-y-auto' : '',
         className,
       ]
@@ -103,10 +128,12 @@ export function THead({ children }: { readonly children: ReactNode }) {
 export function TH({
   children,
   align = 'start',
+  priority = 'high',
   className,
 }: {
   readonly children?: ReactNode
   readonly align?: 'start' | 'end'
+  readonly priority?: ColumnPriority
   readonly className?: string
 }) {
   return (
@@ -115,6 +142,7 @@ export function TH({
       className={[
         'px-3 py-2.5 text-[0.6875rem] font-semibold tracking-[0.06em] whitespace-nowrap text-ink-subtle uppercase',
         align === 'end' ? 'text-end' : 'text-start',
+        PRIORITY_CLASS[priority],
         className,
       ]
         .filter(Boolean)
@@ -139,13 +167,19 @@ export function TR({
   readonly className?: string
   readonly flag?: 'critical' | 'caution' | 'positive'
 }) {
+  /*
+    An inset shadow has no logical form — `2px 0` is the *left* edge in both
+    directions — so the rule sat on the far side of an Arabic row, beside the
+    last column instead of the reference. The `rtl:` twin moves it to the
+    inline start, which is where the eye enters the row.
+  */
   const flagClass =
     flag === 'critical'
-      ? 'shadow-[inset_2px_0_0_0_var(--qb-critical)]'
+      ? 'shadow-[inset_2px_0_0_0_var(--qb-critical)] rtl:shadow-[inset_-2px_0_0_0_var(--qb-critical)]'
       : flag === 'caution'
-        ? 'shadow-[inset_2px_0_0_0_var(--qb-caution)]'
+        ? 'shadow-[inset_2px_0_0_0_var(--qb-caution)] rtl:shadow-[inset_-2px_0_0_0_var(--qb-caution)]'
         : flag === 'positive'
-          ? 'shadow-[inset_2px_0_0_0_var(--qb-positive)]'
+          ? 'shadow-[inset_2px_0_0_0_var(--qb-positive)] rtl:shadow-[inset_-2px_0_0_0_var(--qb-positive)]'
           : ''
 
   return (
@@ -163,11 +197,13 @@ export function TD({
   children,
   align = 'start',
   numeric = false,
+  priority = 'high',
   className,
 }: {
   readonly children?: ReactNode
   readonly align?: 'start' | 'end'
   readonly numeric?: boolean
+  readonly priority?: ColumnPriority
   readonly className?: string
 }) {
   return (
@@ -175,7 +211,10 @@ export function TD({
       className={[
         'px-3 py-2.5 align-middle text-ink',
         align === 'end' ? 'text-end' : 'text-start',
-        numeric ? 'numeric' : '',
+        // A figure never wraps: "KWD 1,840.500" broken after the code is two
+        // half-numbers, and a column of them stops aligning on the decimal.
+        numeric ? 'numeric whitespace-nowrap' : '',
+        PRIORITY_CLASS[priority],
         className,
       ]
         .filter(Boolean)

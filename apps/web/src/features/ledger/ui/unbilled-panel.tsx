@@ -51,7 +51,7 @@ export async function UnbilledPanel() {
 
   const billable = can(session, 'invoice.approve')
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, lang)
+    formatMoney({ amount: amount, currency }, lang)
 
   return (
     <Card className="mb-4" padding="none">

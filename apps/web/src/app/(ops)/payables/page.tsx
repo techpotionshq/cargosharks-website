@@ -89,7 +89,7 @@ export default async function PayablesPage({
   )
 
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
+    formatMoney({ amount: amount, currency }, locale)
 
   return (
     <>
@@ -157,7 +157,9 @@ export default async function PayablesPage({
                   <TH>{t('reference')}</TH>
                   <TH>{t('supplier')}</TH>
                   <TH align="end">{t('total')}</TH>
-                  <TH align="end">{t('variance')}</TH>
+                  <TH priority="low" align="end">
+                    {t('variance')}
+                  </TH>
                   <TH align="end">{t('due')}</TH>
                   <TH align="end">{tc('status')}</TH>
                 </TR>
@@ -189,6 +191,7 @@ export default async function PayablesPage({
                         is how an exchange movement gets read as an overcharge.
                       */}
                       <TD
+                        priority="low"
                         align="end"
                         numeric
                         className={variance > 0 ? 'font-semibold text-critical' : 'text-ink-muted'}
@@ -243,7 +246,7 @@ export default async function PayablesPage({
               <TR>
                 <TH>{t('paymentPartner')}</TH>
                 <TH>{t('paymentPaidOn')}</TH>
-                <TH>{t('paymentReference')}</TH>
+                <TH priority="low">{t('paymentReference')}</TH>
                 <TH align="end">{t('paymentAmount')}</TH>
                 <TH align="end">{t('paymentUnallocated')}</TH>
                 <TH align="end" />
@@ -261,7 +264,9 @@ export default async function PayablesPage({
                         ? formatDate(new Date(payment.paidOn), locale, timeZone)
                         : '—'}
                     </TD>
-                    <TD className="ref text-ink-muted">{payment.reference ?? '—'}</TD>
+                    <TD priority="low" className="ref text-ink-muted">
+                      {payment.reference ?? '—'}
+                    </TD>
                     <TD align="end" numeric>
                       {money(payment.amount, payment.currency)}
                     </TD>

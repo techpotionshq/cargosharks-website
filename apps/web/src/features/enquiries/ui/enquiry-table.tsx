@@ -53,12 +53,16 @@ export async function EnquiryTable({
       <THead>
         <TR>
           <TH>{t('reference')}</TH>
-          <TH>{t('customer')}</TH>
-          <TH>{t('lane')}</TH>
-          <TH>{t('mode')}</TH>
-          <TH>{t('owner')}</TH>
+          <TH priority="low">{t('customer')}</TH>
+          <TH priority="low">{t('lane')}</TH>
+          <TH priority="low">{t('mode')}</TH>
+          <TH priority="low">{t('owner')}</TH>
           <TH>{t('status')}</TH>
-          {showMargin ? <TH align="end">{t('value')}</TH> : null}
+          {showMargin ? (
+            <TH priority="low" align="end">
+              {t('value')}
+            </TH>
+          ) : null}
           {showMargin ? <TH align="end">{t('margin')}</TH> : null}
           <TH align="end">{t('slaDue')}</TH>
         </TR>
@@ -88,15 +92,15 @@ export async function EnquiryTable({
                 Both name columns exist on every entity a document renders
                 (§11); the Arabic one is preferred when the user reads Arabic.
               */}
-              <TD className="max-w-56 truncate">
+              <TD priority="low" className="max-w-56 truncate">
                 {locale === 'ar' ? row.customerNameAr : row.customerName}
               </TD>
 
-              <TD className="text-ink-muted">
+              <TD priority="low" className="text-ink-muted">
                 <Lane origin={row.originName} destination={row.destinationName} />
               </TD>
 
-              <TD>
+              <TD priority="low">
                 {row.mode ? (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-ink-muted">
                     <Icon name={modeIcon(row.mode)} size={15} />
@@ -108,6 +112,7 @@ export async function EnquiryTable({
               </TD>
 
               <TD
+                priority="low"
                 className={`whitespace-nowrap ${row.owner ? 'text-ink' : 'text-ink-subtle italic'}`}
               >
                 {row.owner ?? tc('unassigned')}
@@ -120,7 +125,7 @@ export async function EnquiryTable({
               </TD>
 
               {showMargin ? (
-                <TD align="end" numeric className="text-ink-muted">
+                <TD priority="low" align="end" numeric className="text-ink-muted">
                   {formatMoney(row.quotedSell, locale, { showCurrency: false })}
                 </TD>
               ) : null}

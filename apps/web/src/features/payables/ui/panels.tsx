@@ -23,7 +23,7 @@ import { unmatchSupplierLine } from '../form-actions'
 import type { PartnerAccount, SupplierInvoiceDetail } from '../queries'
 
 function display(amount: string, currency: string, locale: 'en' | 'ar'): string {
-  return formatMoney({ amount: Number(amount), currency }, locale)
+  return formatMoney({ amount: amount, currency }, locale)
 }
 
 /**

@@ -67,7 +67,7 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   ])
 
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
+    formatMoney({ amount: amount, currency }, locale)
 
   const candidates: MatchCandidateOption[] = candidateRows.map((c) => ({
     id: c.id,

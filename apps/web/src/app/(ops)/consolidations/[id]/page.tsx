@@ -291,10 +291,7 @@ export default async function ConsolidationDetailPage({
                       for the dirham.
                     */}
                       <span className="numeric shrink-0 text-[0.875rem] font-medium">
-                        {formatMoney(
-                          { amount: Number(charge.amount), currency: charge.currency },
-                          locale,
-                        )}
+                        {formatMoney({ amount: charge.amount, currency: charge.currency }, locale)}
                       </span>
                     </div>
 
@@ -415,7 +412,7 @@ export default async function ConsolidationDetailPage({
                             */}
                               <span className="numeric shrink-0 text-ink">
                                 {formatMoney(
-                                  { amount: Number(share.shareAmount), currency: charge.currency },
+                                  { amount: share.shareAmount, currency: charge.currency },
                                   locale,
                                 )}
                               </span>

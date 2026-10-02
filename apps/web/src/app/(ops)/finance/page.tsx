@@ -90,7 +90,7 @@ export default async function FinancePage() {
   */
   const lead = ageing.byCurrency[0]?.currency ?? invoices.outstanding[0]?.currency ?? 'KWD'
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale, { showCurrency: false })
+    formatMoney({ amount: amount, currency }, locale, { showCurrency: false })
 
   const owed = ageing.byCurrency.map(({ currency, total }) => ({ currency, amount: total }))
   // A currency with nothing late is left out rather than printed as a zero.
@@ -310,10 +310,7 @@ export default async function FinancePage() {
                     </TD>
                     <TD align="end" numeric className="font-semibold">
                       {/* With its code: two rows may be two currencies. */}
-                      {formatMoney(
-                        { amount: Number(debtor.balance), currency: debtor.currency },
-                        locale,
-                      )}
+                      {formatMoney({ amount: debtor.balance, currency: debtor.currency }, locale)}
                     </TD>
                     <TD align="end">
                       {debtor.daysOverdue > 0 ? (

@@ -223,16 +223,14 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       {Number(line.quantity)}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
-                      {formatMoney({ amount: Number(line.rate), currency: line.currency }, locale, {
+                      {formatMoney({ amount: line.rate, currency: line.currency }, locale, {
                         showCurrency: false,
                       })}
                     </TD>
                     <TD align="end" numeric className="font-semibold">
-                      {formatMoney(
-                        { amount: Number(line.amount), currency: line.currency },
-                        locale,
-                        { showCurrency: false },
-                      )}
+                      {formatMoney({ amount: line.amount, currency: line.currency }, locale, {
+                        showCurrency: false,
+                      })}
                     </TD>
                   </TR>
                 ))}

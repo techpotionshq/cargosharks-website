@@ -52,7 +52,7 @@ export default async function SettlementsPage({
   ])
 
   const money = (amount: string, currency: string) =>
-    formatMoney({ amount: Number(amount), currency }, locale)
+    formatMoney({ amount: amount, currency }, locale)
 
   return (
     <>
@@ -76,7 +76,7 @@ export default async function SettlementsPage({
               <TR>
                 <TH>{t('reference')}</TH>
                 <TH>{t('agent')}</TH>
-                <TH>{t('period')}</TH>
+                <TH priority="low">{t('period')}</TH>
                 <TH align="end">{t('theyOweUsShort')}</TH>
                 <TH align="end">{t('weOweThemShort')}</TH>
                 <TH align="end">{t('residual')}</TH>
@@ -95,7 +95,7 @@ export default async function SettlementsPage({
                     </Link>
                   </TD>
                   <TD className="text-ink-muted">{row.partnerName}</TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {formatDate(row.periodFrom, locale, timeZone)} —{' '}
                     {formatDate(row.periodTo, locale, timeZone)}
                   </TD>

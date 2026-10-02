@@ -92,12 +92,12 @@ export default async function QuotesPage({
         <THead>
           <TR>
             <TH>{t('reference')}</TH>
-            <TH>{t('customer')}</TH>
+            <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{t('sell')}</TH>
             <TH align="end">{t('margin')}</TH>
-            <TH>{t('validUntil')}</TH>
-            <TH>{t('preparedBy')}</TH>
+            <TH priority="low">{t('validUntil')}</TH>
+            <TH priority="low">{t('preparedBy')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -113,7 +113,9 @@ export default async function QuotesPage({
                     </span>
                   ) : null}
                 </TD>
-                <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
+                <TD priority="low" className="font-medium text-ink">
+                  {row.customerName ?? '—'}
+                </TD>
                 <TD>
                   <Badge tone={quoteTone(row.status)} dot>
                     {t(`statuses.${row.status}`)}
@@ -121,7 +123,7 @@ export default async function QuotesPage({
                 </TD>
                 <TD align="end" numeric>
                   {row.totalSell
-                    ? formatMoney({ amount: Number(row.totalSell), currency: row.currency }, locale)
+                    ? formatMoney({ amount: row.totalSell, currency: row.currency }, locale)
                     : '—'}
                 </TD>
                 <TD
@@ -139,10 +141,12 @@ export default async function QuotesPage({
                 >
                   {margin === null ? '—' : `${margin.toFixed(1)}%`}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.validUntil ? formatDate(new Date(row.validUntil), locale, timeZone) : '—'}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">{row.preparedBy ?? '—'}</TD>
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                  {row.preparedBy ?? '—'}
+                </TD>
               </TR>
             )
           })}

@@ -249,10 +249,10 @@ export default async function ReportsPage({
                   <TD>{labelOf(row)}</TD>
                   <TD className="text-end tabular-nums">{formatNumber(row.jobCount, locale)}</TD>
                   <TD className="text-end tabular-nums">
-                    {formatMoney({ amount: Number(row.revenue), currency: row.currency }, locale)}
+                    {formatMoney({ amount: row.revenue, currency: row.currency }, locale)}
                   </TD>
                   <TD className="text-end tabular-nums">
-                    {formatMoney({ amount: Number(row.cost), currency: row.currency }, locale)}
+                    {formatMoney({ amount: row.cost, currency: row.currency }, locale)}
                   </TD>
                   <TD className="text-end tabular-nums">
                     {/*
@@ -263,16 +263,10 @@ export default async function ReportsPage({
                     */}
                     {negative ? (
                       <Badge tone="critical">
-                        {formatMoney(
-                          { amount: Number(row.grossProfit), currency: row.currency },
-                          locale,
-                        )}
+                        {formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)}
                       </Badge>
                     ) : (
-                      formatMoney(
-                        { amount: Number(row.grossProfit), currency: row.currency },
-                        locale,
-                      )
+                      formatMoney({ amount: row.grossProfit, currency: row.currency }, locale)
                     )}
                   </TD>
                   <TD className="text-end tabular-nums">

@@ -53,7 +53,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
   const [t, tc] = await Promise.all([getTranslations('settlements'), getTranslations('common')])
 
   const money = (amount: string) =>
-    formatMoney({ amount: Number(amount), currency: settlement.currency }, locale)
+    formatMoney({ amount: amount, currency: settlement.currency }, locale)
 
   const mayRun = can(session, 'settlement.run')
 

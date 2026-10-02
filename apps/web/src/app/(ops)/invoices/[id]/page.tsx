@@ -65,14 +65,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const tp = await getTranslations('paymentForm')
 
   const money = (amount: string | number) =>
-    formatMoney({ amount: Number(amount), currency: invoice.currency }, locale)
+    formatMoney({ amount: amount, currency: invoice.currency }, locale)
   /*
     The tiles carry the figure alone and the currency as the tile's unit,
     which wraps beneath it. With the Arabic currency name inside the figure
     the amounts ran past the tile edge at 1280px.
   */
   const figure = (amount: string | number) =>
-    formatMoney({ amount: Number(amount), currency: invoice.currency }, locale, {
+    formatMoney({ amount: amount, currency: invoice.currency }, locale, {
       showCurrency: false,
     })
 

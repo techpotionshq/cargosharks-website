@@ -226,10 +226,10 @@ export default async function JobsPage({
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('customer')}</TH>
-                <TH>{t('route')}</TH>
-                <TH>{t('vessel')}</TH>
-                <TH>{t('progress')}</TH>
+                <TH priority="low">{t('customer')}</TH>
+                <TH priority="low">{t('route')}</TH>
+                <TH priority="lowest">{t('vessel')}</TH>
+                <TH priority="low">{t('progress')}</TH>
                 <TH>{t('status')}</TH>
                 <TH>{t('customs')}</TH>
                 <TH align="end">{t('eta')}</TH>
@@ -261,22 +261,22 @@ export default async function JobsPage({
                       </span>
                     </TD>
 
-                    <TD className="max-w-52 truncate">
+                    <TD priority="low" className="max-w-52 truncate">
                       {pickName(locale, job.customerName, job.customerNameAr)}
                     </TD>
 
-                    <TD className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
                       <Lane
                         origin={pickName(locale, job.originName, job.originNameAr)}
                         destination={pickName(locale, job.destinationName, job.destinationNameAr)}
                       />
                     </TD>
 
-                    <TD className="max-w-48 truncate text-ink-muted">
+                    <TD priority="lowest" className="max-w-48 truncate text-ink-muted">
                       {job.vesselOrFlight ?? '—'}
                     </TD>
 
-                    <TD>
+                    <TD priority="low">
                       <MilestoneDots
                         total={job.milestonesTotal}
                         completed={job.milestonesDone}
