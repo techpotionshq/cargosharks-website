@@ -542,6 +542,8 @@ export async function draftQuoteCoverNote(
     })
 
     if (!response.ok) {
+      // 504: the model ran out of time or dropped its answer — worth another try (ai-12).
+      if (response.status === 504) return failWith(tv('coverNoteTimedOut'))
       return failWith(response.status === 503 ? tv('coverNoteNoModel') : tv('coverNoteFailed'))
     }
 

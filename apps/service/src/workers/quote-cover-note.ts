@@ -134,6 +134,14 @@ export async function draftQuoteCoverNote(
           }),
         },
       ],
+      /*
+        Under the screen's own two-minute wait (`ledger/form-actions.ts`), not
+        the adapter's one: a covering note in Arabic ran past sixty seconds on
+        the live model and failed while the person was still prepared to wait
+        (ai-12). The margin leaves the route time to answer before the browser
+        gives up.
+      */
+      timeoutMs: 105_000,
     },
   )
 

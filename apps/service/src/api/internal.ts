@@ -31,6 +31,7 @@ import { eq } from 'drizzle-orm'
 import { assets, principals, systemActor, withActor, type Actor } from '@qabandi/db'
 import { fileStore, mailSettings, modelProvider, sendMail, smtpOptions } from '../adapters/index'
 import { FileStoreError } from '../adapters/file-store'
+import { ModelError } from '../adapters/model'
 import { config } from '../config'
 import { DocumentNotFoundError, renderInvoicePdf, renderQuotationPdf } from '../pdf/documents'
 import {
@@ -954,6 +955,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       // "not offering that right now" the screen falls back from, not a fault.
       if (error instanceof AiUnavailableError) {
         return reply.code(503).send({ error: error.code, message: error.message })
+      }
+      /*
+        The provider had a bad minute — a timeout, a dropped body (ai-12). A
+        504 with the code, so the screen can say "it took too long, try again"
+        rather than reporting a fault in our service.
+      */
+      if (error instanceof ModelError && error.retryable) {
+        return reply.code(504).send({ error: error.code, message: error.message })
       }
       throw error
     }

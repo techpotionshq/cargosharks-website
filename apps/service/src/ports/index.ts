@@ -385,6 +385,15 @@ export interface ModelRequest {
   readonly tools?: readonly ModelTool[]
   readonly maxOutputTokens?: number
   /**
+   * This call's own ceiling, in milliseconds, over the adapter's default.
+   *
+   * For a surface a person is waiting on whose answer is long by nature — the
+   * Arabic covering note took over the default minute on the live model and
+   * failed at 60s while the screen was prepared to wait two (ai-12). Not a way
+   * to make a worker wait forever: the caller names a number.
+   */
+  readonly timeoutMs?: number
+  /**
    * Zero unless a surface argues otherwise, and none of them do yet.
    *
    * Every surface in this system extracts a fact that is either on the page

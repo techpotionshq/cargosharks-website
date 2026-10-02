@@ -49,7 +49,6 @@ import type {
   ModelToolCall,
 } from '../ports/index'
 import { DEFAULT_MODEL } from '@qabandi/core'
-import { config } from '../config'
 import type { LiveIntegration } from '../settings'
 
 /**
@@ -84,7 +83,27 @@ export class ModelError extends Error {
     this.code = code
     this.status = status
   }
+
+  /**
+   * Whether asking again could plausibly work.
+   *
+   * A timeout, a dropped or unreadable body, an empty reply and a rate limit
+   * are all the provider having a bad minute; a refusal, a missing key or an
+   * empty balance are not, and retrying them spends money to learn the same
+   * thing. Read by callers deciding between "try again" and "tell somebody".
+   */
+  get retryable(): boolean {
+    return RETRYABLE.has(this.code)
+  }
 }
+
+const RETRYABLE: ReadonlySet<string> = new Set([
+  'model.timeout',
+  'model.unreachable',
+  'model.rate_limited',
+  'model.unreadable_response',
+  'model.empty_response',
+])
 
 /* -------------------------------------------------------------------------
  * The Release One behaviour, kept as a real implementation
@@ -182,8 +201,7 @@ export function openRouterModel(options: OpenRouterOptions): ModelProvider {
 
     async complete(request: ModelRequest): Promise<ModelResponse> {
       const response = await send(options, request, false)
-      const raw: unknown = await response.json().catch(() => null)
-      return readCompletion(raw as ChatCompletion, options.model)
+      return readCompletion(await readBody(response, timeoutFor(options, request)), options.model)
     },
 
     /**
@@ -199,6 +217,46 @@ export function openRouterModel(options: OpenRouterOptions): ModelProvider {
       yield* readStream(response, options.model)
     },
   }
+}
+
+/**
+ * The body of a successful response, or a typed reason it could not be read.
+ *
+ * This was `response.json().catch(() => null)`, and the null then reached
+ * `readCompletion` as `payload.choices` — a `TypeError` in the ledger and a
+ * 500 at the route (ai-12). The live case was a timeout: the headers arrived
+ * inside the minute and the body did not, so the abort fired *while reading*,
+ * after `send` had stopped watching for it. A body that times out is a
+ * timeout; one that is not JSON is an unreadable response. Both are typed and
+ * retryable, so the ledger row and the caller say what happened.
+ */
+async function readBody(response: Response, timeoutMs: number): Promise<ChatCompletion> {
+  let text: string
+  try {
+    text = await response.text()
+  } catch (error) {
+    const timedOut =
+      error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+    throw new ModelError(
+      timedOut ? 'model.timeout' : 'model.unreadable_response',
+      timedOut
+        ? `The model did not finish answering within ${timeoutMs}ms.`
+        : `The provider's response could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  try {
+    return JSON.parse(text) as ChatCompletion
+  } catch {
+    throw new ModelError(
+      'model.unreadable_response',
+      `The provider answered with something that is not JSON (${text.length} bytes).`,
+    )
+  }
+}
+
+/** The request's own ceiling where it set one, the deployment's otherwise. */
+function timeoutFor(options: OpenRouterOptions, request: ModelRequest): number {
+  return request.timeoutMs ?? options.timeoutMs
 }
 
 /** The request body and the POST, shared by both methods. */
@@ -269,14 +327,14 @@ async function send(
       page; it looks like a worker that quietly stopped doing its other
       work, which is far harder to notice.
     */
-      signal: AbortSignal.timeout(options.timeoutMs),
+      signal: AbortSignal.timeout(timeoutFor(options, request)),
     })
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'TimeoutError'
     throw new ModelError(
       timedOut ? 'model.timeout' : 'model.unreachable',
       timedOut
-        ? `The model did not answer within ${options.timeoutMs}ms.`
+        ? `The model did not answer within ${timeoutFor(options, request)}ms.`
         : `Could not reach the model provider: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
@@ -318,7 +376,11 @@ async function send(
  * — are all ordinary, and all of them arrive from a live provider rather than
  * from a fixture unless somebody writes one.
  */
-export function readCompletion(payload: ChatCompletion, requested: string): ModelResponse {
+export function readCompletion(payload: ChatCompletion | null, requested: string): ModelResponse {
+  // A null body is an empty response, never a TypeError (ai-12).
+  if (!payload || typeof payload !== 'object') {
+    throw new ModelError('model.empty_response', 'The provider returned an empty body.')
+  }
   const choice = payload.choices?.[0]
 
   if (!choice) {
@@ -678,7 +740,7 @@ export async function* readStream(
  * No surface parameter, and no driver check. There is one model, and the key
  * decides whether there is a provider at all.
  */
-export function modelProviderFrom(settings: LiveIntegration): ModelProvider {
+export function modelProviderFrom(settings: LiveIntegration, appUrl?: string): ModelProvider {
   const apiKey = settings.secret('apiKey')
   if (!apiKey) return noModel
 
@@ -692,7 +754,13 @@ export function modelProviderFrom(settings: LiveIntegration): ModelProvider {
     */
     model: settings.text('model') || DEFAULT_MODEL,
     timeoutMs: TIMEOUT_MS,
-    appUrl: config.WEB_URL,
+    /*
+      Passed in rather than read from `config` here (ai-12b). Importing
+      `config` made this file — and so `verify:model`, which imports it — demand
+      a `DATABASE_URL` before it would test a key, which is the one thing that
+      script promises not to do.
+    */
+    appUrl,
     appTitle: 'Qabandi',
   })
 }
