@@ -18,7 +18,7 @@ Section 6 lists what is missing, deliberately and in full.
 
 | Measure | How | Where |
 | --- | --- | --- |
-| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 83 of 89 tables. 205 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
+| Separation enforced by the database | Row-level security, `ENABLE` **and** `FORCE`, on 87 of 93 tables. 211 policies. Reading a table and writing it are separate policies where the two differ: a principal can read its own grants but writing one needs `admin.users.write` in that branch, and a trigger refuses changes to a principal's own type, customer, partner or credential link. | `migrations/0004_rls.sql`, `0050_fix_pass_policies.sql` |
 | No unscoped path to data | `db` is not exported for query use. Every read opens one transaction through `withActor`, which stamps the principal into transaction-local settings the policies read. | `packages/db/src/actor.ts` |
 | Safe under connection pooling | `set_config(..., true)` makes each setting transaction-local, so a pooled connection cannot carry one tenant's identity into the next request. | `actor.ts` |
 | Least privilege at the role level | The application connects as `app_user`: `NOBYPASSRLS`, owns nothing, and `DELETE` is revoked. Migrations run as a separate `app_migrator`. | `migrations/01-roles.sql` |
@@ -57,7 +57,7 @@ Left unset, the process starts anywhere the packets never leave the machine and 
 
 ## 3. Audit and accountability
 
-- **Audit is a trigger, not a convention.** 81 triggers. The first set was
+- **Audit is a trigger, not a convention.** 85 triggers. The first set was
   attached by a loop over every base table; a table added later is attached in
   its own migration, and `pnpm test:db` fails the build for any business table
   that has no trigger.
@@ -136,17 +136,17 @@ everything above.
 ## How the numbers are produced
 
 Counted against a freshly migrated and seeded database (migrations through
-`0055`), 2026-10-02:
+`0057`), 2026-10-02:
 
 ```sql
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
- where n.nspname = 'public' and c.relkind = 'r';                    -- 89
+ where n.nspname = 'public' and c.relkind = 'r';                    -- 93
 select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
  where n.nspname = 'public' and c.relkind = 'r'
-   and c.relrowsecurity and c.relforcerowsecurity;                  -- 83
-select count(*) from pg_policies where schemaname = 'public';       -- 205
+   and c.relrowsecurity and c.relforcerowsecurity;                  -- 87
+select count(*) from pg_policies where schemaname = 'public';       -- 211
 select count(*) from pg_trigger
- where tgname like '%\_audit' and not tgisinternal;                 -- 81
+ where tgname like '%\_audit' and not tgisinternal;                 -- 85
 ```
 
 The permission count is `node scripts/check-permissions.mjs` ("38 enforced

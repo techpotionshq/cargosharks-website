@@ -59,7 +59,7 @@ engineering one — see the note at the foot.
 | **Categories of data** | Principal id, table, row id, operation, timestamp, client IP address, before/after values — which will include personal data wherever the audited row did |
 | **Lawful basis** | Legal obligation and legitimate interest; an audit trail is itself a security measure |
 | **Retention** | **Not set.** NFR-10 requires a minimum of twelve months, searchable and exportable. The search and the CSV export are built (`Security_Measures.md` §6); the retention period is not |
-| **Where** | `audit_log`, written by 81 triggers |
+| **Where** | `audit_log`, written by 85 triggers |
 | **Note** | Insert-only. `DELETE` is revoked. This is the table that collides hardest with erasure rights |
 
 ## 4. Vendor support access *(role: processor)*
@@ -77,19 +77,19 @@ engineering one — see the note at the foot.
 
 | | |
 | --- | --- |
-| **Purpose** | Turning emailed enquiries into structured records |
-| **Categories of data** | Sender address, message body, attachments — uncontrolled, because anyone may write in |
+| **Purpose** | Turning emailed and WhatsApp enquiries into structured records — and, where a branch switches the intake agent on, answering the sender: at most one confirmation and a capped number of clarifications per enquiry |
+| **Categories of data** | Sender address or phone number, message body, attachments — uncontrolled, because anyone may write in |
 | **Lawful basis** | The controller's legitimate interest in answering enquiries |
 | **Retention** | **Not set** |
-| **Where** | `mailboxes`, `messages`, `message_attachments` |
-| **Note** | The mailbox is on the open internet. Mailbox passwords are sealed with AES-256-GCM under a key held outside the database |
+| **Where** | `mailboxes`, `whatsapp_numbers`, `messages`, `message_attachments`, `intake_conversations`, `intake_turns` |
+| **Note** | The mailbox is on the open internet. Mailbox passwords are sealed with AES-256-GCM under a key held outside the database. The intake agent ships off per branch; when on, its replies are stored as outbound messages and every decision — including a decision not to reply — is recorded in `intake_turns` |
 
 ## 6. The AI surface *(role: processor)*
 
 | | |
 | --- | --- |
 | **Purpose** | Extracting structure from enquiries and documents; answering operator questions |
-| **Categories of data** | Enquiry and document text, which may contain any of the above |
+| **Categories of data** | Enquiry and document text, which may contain any of the above. The intake agent sends every customer message in a conversation, and any PDF or image attached to the new ones, in one request per turn |
 | **Recipient** | OpenRouter, and the model provider it routes to |
 | **Transfers** | Outside the Gulf. **The mechanism is not settled** — item 17 |
 | **Retention** | `ai_invocations` stores the verbatim request and response. **Not set**, and whether it should be truncated or redacted is item 28 |
