@@ -675,6 +675,9 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     const human = await runIntakeTurn(id, at(450), { resolveWhatsApp: wa.resolve })
     expect(human.decision?.reason).toBe('human_active')
     expect(wa.sent).toHaveLength(0)
+    // Silenced whatever the model would have read, so it is not asked (D10).
+    expect(human.modelCalled).toBe(false)
+    expect(model.calls).toHaveLength(0)
   })
 
   it('stays quiet once an operator takes over, without spending a model call', async () => {
@@ -900,8 +903,26 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     })
     const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
     const { id } = await conversationFor(first.enquiryId!)
+    model.calls.length = 0
     const turn = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
     expect(turn.decision?.reason).toBe('loop_guard')
+    expect(wa.sent).toHaveLength(0)
+    expect(model.calls).toHaveLength(0)
+  })
+
+  it('spends no model call on a sender writing in a burst', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
+    const enquiryId = first.enquiryId!
+    for (let i = 1; i <= 21; i += 1) await say(sender, `Line ${i} of the order sheet`, i * 5)
+    const { id } = await conversationFor(enquiryId)
+    model.calls.length = 0
+    const turn = await runIntakeTurn(id, at(400), { resolveWhatsApp: wa.resolve })
+    expect(turn.decision?.reason).toBe('loop_guard')
+    expect(turn.modelCalled).toBe(false)
+    expect(model.calls).toHaveLength(0)
+    expect(await invocationsFor(enquiryId)).toBe(0)
     expect(wa.sent).toHaveLength(0)
   })
 

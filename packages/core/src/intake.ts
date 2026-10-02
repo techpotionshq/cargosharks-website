@@ -705,9 +705,7 @@ export function decideIntakeReply(input: IntakeDecisionInput): IntakeDecision {
   if (input.newContent === 'automatic') return silent('automatic')
   if (input.newContent === 'chit_chat') return silent('chit_chat')
 
-  const humanActive =
-    input.humanActiveAt !== null &&
-    input.now.getTime() - input.humanActiveAt.getTime() < input.settings.humanTakeoverHours * HOUR
+  const humanActive = isHumanActive(input)
 
   if (input.completeness.complete) {
     if (input.alreadyReady) return silent('already_complete')
@@ -730,6 +728,55 @@ export function decideIntakeReply(input: IntakeDecisionInput): IntakeDecision {
   }
   if (input.senderGuard) return silent('loop_guard')
   return { action: 'clarify', reason: 'clarified', markReady: false }
+}
+
+/** A person has been on this conversation inside the takeover window. */
+function isHumanActive(
+  input: Pick<IntakeDecisionInput, 'now' | 'humanActiveAt' | 'settings'>,
+): boolean {
+  return (
+    input.humanActiveAt !== null &&
+    input.now.getTime() - input.humanActiveAt.getTime() < input.settings.humanTakeoverHours * HOUR
+  )
+}
+
+/**
+ * Why this turn will say nothing whatever a model reads, or null when reading
+ * could still change the answer.
+ *
+ * Run before the model call, so a turn `decideIntakeReply` is bound to silence
+ * does not pay for one: an operator who took over, a sender tripping the daily
+ * cap or the burst rule, a switched-off agent, a closed enquiry, a message with
+ * nothing to read. Each of these silences both branches of the decision, the
+ * complete one and the incomplete one, which is the test for belonging here.
+ * The handoff, the cap and the cooldown do not: a read that completes the
+ * enquiry turns any of them into a confirmation, so those turns still read.
+ *
+ * What a skipped read forfeits is the ready flag a completing read would have
+ * raised under a takeover or a loop breaker. That is the right side to err on:
+ * a person on the conversation reads the customer's words themselves, and a
+ * sender in a loop is the one place a model call per message is the incident.
+ */
+export function silencedBeforeReading(
+  input: Pick<
+    IntakeDecisionInput,
+    | 'now'
+    | 'agentEnabled'
+    | 'enquiryOpen'
+    | 'newContent'
+    | 'humanActiveAt'
+    | 'senderGuard'
+    | 'settings'
+  >,
+): IntakeReason | null {
+  if (!input.agentEnabled) return 'agent_off'
+  if (!input.enquiryOpen) return 'closed'
+  if (input.newContent === 'none') return 'no_new_content'
+  if (input.newContent === 'automatic') return 'automatic'
+  if (input.newContent === 'chit_chat') return 'chit_chat'
+  if (isHumanActive(input)) return 'human_active'
+  if (input.senderGuard) return 'loop_guard'
+  return null
 }
 
 /* -------------------------------------------------------------------------

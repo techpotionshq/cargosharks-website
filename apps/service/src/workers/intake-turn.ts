@@ -77,6 +77,7 @@ import {
   isNoReplyAddress,
   missingPhrase,
   renderTemplate,
+  silencedBeforeReading,
   type Completeness,
   type IntakeDecision,
   type IntakeLocale,
@@ -309,14 +310,24 @@ export async function runIntakeTurn(
 
   /*
     The one model call, and only when it can change something: the agent is on,
-    the enquiry is still being collected, and the customer said something a
-    model could read. Chit-chat, an auto-responder and a switched-off agent cost
-    nothing.
+    the enquiry is still being collected, the customer said something a model
+    could read, and nothing already guarantees silence. Chit-chat, an
+    auto-responder, a switched-off agent, an operator who took over and a sender
+    tripping a loop breaker cost nothing; `silencedBeforeReading` holds the list.
   */
   let invocationId: string | null = null
   let modelCalled = false
   let modelFailure: IntakeReason | null = null
-  if (agentEnabled && enquiryOpen && newContent === 'substantive') {
+  const silenced = silencedBeforeReading({
+    now: asOf,
+    agentEnabled,
+    enquiryOpen,
+    newContent,
+    humanActiveAt: loaded.humanActiveAt,
+    senderGuard: loaded.senderGuard,
+    settings,
+  })
+  if (silenced === null) {
     const extract = deps.extract ?? ((input: ExtractEnquiryInput) => extractEnquiry(input))
     try {
       modelCalled = true
