@@ -43,12 +43,15 @@ const escape = (value: string) => value.replace(/[&<>"']/g, (c) => `&#${c.charCo
  * origin is not followed, so this page cannot be used to bounce somebody off
  * our domain to one of an attacker's choosing.
  */
-function backHref(request: Request): string {
+export function backHref(request: Request): string {
   const referer = request.headers.get('referer')
   if (!referer) return '/'
   try {
     const from = new URL(referer)
-    return from.origin === new URL(request.url).origin ? `${from.pathname}${from.search}` : '/'
+    if (from.origin !== new URL(request.url).origin) return '/'
+    // A path starting "//" is another site to a browser (`//evil.example/x`),
+    // even when it arrived on our own origin; collapse the leading slashes.
+    return `/${from.pathname.replace(/^\/+/, '')}${from.search}`
   } catch {
     return '/'
   }
