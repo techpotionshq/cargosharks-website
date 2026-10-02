@@ -302,6 +302,42 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(await billStatus(id)).toBe('received')
     })
 
+    /** QA P2-8: an empty bill passed the variance gate as clean and was stranded. */
+    it('refuses to approve a bill with no lines', async () => {
+      const reference = nextRef()
+      await saveSupplierInvoice(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          reference,
+          currency: 'KWD',
+          fxRate: '1',
+          invoiceDate: '2026-08-18',
+          taxAmount: '0',
+        }),
+      )
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: supplierInvoices.id })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.reference, reference)),
+      )
+
+      const state = await setSupplierInvoiceStatus(
+        {},
+        form({
+          supplierInvoiceId: row!.id,
+          action: 'approve',
+          acceptVariance: 'on',
+          reason: 'x y z',
+        }),
+      )
+
+      expect(state.message).toBe('payablesValidation.billHasNoLines')
+      expect(await billStatus(row!.id)).toBe('received')
+    })
+
     it('approves when the variance is accepted with a reason', async () => {
       const id = await enterBill()
 

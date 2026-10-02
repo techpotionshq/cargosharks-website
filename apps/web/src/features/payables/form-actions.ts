@@ -527,6 +527,11 @@ export async function setSupplierInvoiceStatus(
         branchId: supplierInvoices.branchId,
         status: supplierInvoices.status,
         fxRate: supplierInvoices.fxRate,
+        total: supplierInvoices.total,
+        // Qualified by hand: Drizzle prints a single-table select's columns
+        // unqualified, and a bare "id" inside the subquery is the line's.
+        lines: sql<number>`(select count(*)::int from supplier_invoice_lines l
+                             where l.supplier_invoice_id = supplier_invoices.id)`,
       })
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, billId))
@@ -538,6 +543,18 @@ export async function setSupplierInvoiceStatus(
     if (action === 'approve') {
       if (bill.status !== 'received' && bill.status !== 'disputed') {
         return { error: 'not_approvable' as const }
+      }
+
+      /*
+        Nothing to approve (QA P2-8). A bill with no lines has a total of
+        zero, and the variance check below counts lines, so an empty bill
+        passed it as perfectly clean, was approved, and then sat in the
+        payables list with nothing a payment could ever settle and no way
+        back to editable. Compared on `numeric` in the database's terms, as
+        a string, never as a float.
+      */
+      if (Number(bill.lines) === 0 || !dec(bill.total ?? 0).gt(0)) {
+        return { error: 'empty' as const }
       }
 
       /*
@@ -660,6 +677,7 @@ export async function setSupplierInvoiceStatus(
   const messages: Record<string, string> = {
     not_found: tv('billGone'),
     not_approvable: tv('billNotAwaitingApproval'),
+    empty: tv('billHasNoLines'),
     needs_review: tv('varianceNeedsReview'),
     needs_reason: tv('sayWhy'),
     paid_against: tv('billPaidAgainst'),
