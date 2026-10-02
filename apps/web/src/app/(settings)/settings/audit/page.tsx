@@ -86,6 +86,24 @@ export default async function AuditPage({
 
   const filters = { table, op, q, from, to }
 
+  /*
+    Names, not identifiers. The log printed `free_time_clocks`, `INSERT` and
+    `internal` in both languages; an auditor reading it is not a DBA. Every
+    audited table has a label (check-messages holds the list to the schema);
+    a value the catalogue does not know — a table added since, an operation
+    from a future trigger — still shows as itself rather than as a key path.
+  */
+  const tableLabel = (name: string) =>
+    t.has(`tables.${name}`) ? t(`tables.${name}` as 'tables.jobs') : name
+  const opLabel = (value: string) =>
+    t.has(`ops.${value}`) ? t(`ops.${value}` as 'ops.INSERT') : value
+  const principalTypeLabel = (value: string | null) =>
+    value === null
+      ? ''
+      : t.has(`principalTypes.${value}`)
+        ? t(`principalTypes.${value}` as 'principalTypes.internal')
+        : value
+
   const [rows, tables] = await Promise.all([
     listAudit(session.actor, filters),
     auditTableCounts(session.actor),
@@ -167,7 +185,7 @@ export default async function AuditPage({
       filters={[
         { label: tc('all'), href: href({ table: undefined }), active: !table },
         ...tables.map((row) => ({
-          label: row.tableName,
+          label: tableLabel(row.tableName),
           href: href({ table: row.tableName }),
           count: row.count,
           active: table === row.tableName,
@@ -195,15 +213,18 @@ export default async function AuditPage({
               */}
               <span className="flex flex-wrap items-center gap-1.5">
                 {t('operation')}
+                {/* The word, not "I U D": three initials of SQL verbs read as
+                    nothing in English and as Latin noise on an Arabic header. */}
                 {OPERATIONS.map((value) => (
                   <a
                     key={value}
                     href={href({ op: op === value ? undefined : value })}
-                    className={`rounded-sm px-1 text-micro ${
+                    aria-pressed={op === value}
+                    className={`rounded-sm px-1 text-micro normal-case tracking-normal ${
                       op === value ? 'bg-brand text-on-brand' : 'text-ink-subtle hover:text-ink'
                     }`}
                   >
-                    {value.charAt(0)}
+                    {opLabel(value)}
                   </a>
                 ))}
               </span>
@@ -227,11 +248,13 @@ export default async function AuditPage({
                 </span>
               </TD>
               <TD>
-                <Badge tone={OP_TONE[row.op as keyof typeof OP_TONE] ?? 'muted'}>{row.op}</Badge>
+                <Badge tone={OP_TONE[row.op as keyof typeof OP_TONE] ?? 'muted'}>
+                  {opLabel(row.op)}
+                </Badge>
               </TD>
-              <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
-                {row.tableName}
-                <span className="block font-sans text-caption text-ink-muted md:hidden">
+              <TD className="text-ink">
+                {tableLabel(row.tableName)}
+                <span className="block text-caption text-ink-muted @3xl:hidden">
                   {(locale === 'ar' && row.principalNameAr
                     ? row.principalNameAr
                     : row.principalName) ?? t('system')}
@@ -244,7 +267,7 @@ export default async function AuditPage({
                     : row.principalName) ?? t('system')}
                 </span>
                 <span className="mt-0.5 block text-caption text-ink-subtle">
-                  {row.principalType}
+                  {principalTypeLabel(row.principalType)}
                 </span>
               </TD>
               <TD priority="low" className="ref whitespace-nowrap text-ink-muted">

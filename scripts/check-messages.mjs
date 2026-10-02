@@ -313,6 +313,50 @@ for (const [enumName, groups] of Object.entries(ENUM_GROUPS)) {
   }
 }
 
+// --- 3a. every audited table has a name ------------------------------------
+
+/**
+ * The audit log names the table a write landed in, and used to print it raw —
+ * `free_time_clocks`, `principal_branch_roles` — in both languages. Every table
+ * the `0003` trigger loop audits is a `pgTable` in the schema (the same three
+ * exclusions apply), so each is required to have a label under `audit.tables`,
+ * and a new table cannot reach the log as a bare identifier.
+ */
+const auditedTables = [
+  ...new Set([...schemaSource.matchAll(/pgTable\(\s*'([a-z_]+)'/g)].map((match) => match[1])),
+].filter(
+  (name) =>
+    !name.startsWith('auth_') &&
+    !['audit_log', 'rate_limit_buckets', 'inbound_webhook_events'].includes(name),
+)
+for (const language of ['en', 'ar']) {
+  const missing = auditedTables.filter((name) => !defined[language].has(`audit.tables.${name}`))
+  if (missing.length) {
+    console.error(`\naudit.tables (${language}) has no name for: ${missing.join(', ')}`)
+    failures += missing.length
+  }
+}
+
+// --- 3a'. one set of digits ------------------------------------------------
+
+/**
+ * Every figure in the product is Latin-digit — `formatNumber` and the money
+ * formatters force `nu-latn` — so a catalogue string that types "٣٠" puts one
+ * Arabic-Indic number on a screen of Western ones (the rates tile did, beside
+ * four tiles of Latin digits).
+ */
+function walkStrings(node, path, visit) {
+  if (typeof node === 'string') return visit(path, node)
+  for (const [key, value] of Object.entries(node))
+    walkStrings(value, path ? `${path}.${key}` : key, visit)
+}
+walkStrings(catalogues.ar, '', (path, text) => {
+  if (/[\u0660-\u0669\u06f0-\u06f9]/.test(text)) {
+    console.error(`\n${path} (ar) uses Arabic-Indic digits; the product writes 0–9: ${text}`)
+    failures++
+  }
+})
+
 // --- 3b. every notification event has a label ------------------------------
 
 /**

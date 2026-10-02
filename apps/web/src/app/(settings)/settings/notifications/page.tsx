@@ -137,9 +137,10 @@ export default async function NotificationsPage() {
               overdue`, finds nothing, and throws MISSING_MESSAGE for every
               event on the page.
             */}
+            {/* No eyebrow: it was the event's key (`invoice.overdue`), an
+                identifier in both languages above a title that already names it. */}
             <CardHeader
               icon="bell"
-              eyebrow={event.key}
               title={t(`events.${event.key}` as 'events.job.created')}
               // From the catalogue, nested by prefix like the titles. The
               // `summary` in core is the developer's description and is
@@ -283,9 +284,13 @@ export default async function NotificationsPage() {
             <TBody>
               {deliveries.map((row) => (
                 <TR key={row.id}>
-                  <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
-                    {row.eventKey}
-                    <span className="block font-sans text-caption text-ink-muted md:hidden">
+                  {/* The event's name, as the switches above call it; a key the
+                      catalogue does not know yet still shows as itself. */}
+                  <TD className="text-ink">
+                    {t.has(`events.${row.eventKey}`)
+                      ? t(`events.${row.eventKey}` as 'events.job.created')
+                      : row.eventKey}
+                    <span className="block font-sans text-caption text-ink-muted @3xl:hidden">
                       {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
                     </span>
                   </TD>
