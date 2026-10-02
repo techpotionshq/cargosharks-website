@@ -1222,6 +1222,14 @@ export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
     if (error instanceof Error && error.message === 'invoice_no_lines') {
       return failWith(tv('invoiceNoLines'))
     }
+    // "Credit note raised" on an invoice with nothing left to credit.
+    if (error instanceof CreditRefused) {
+      return failWith(
+        error.reason === 'exceeds_creditable'
+          ? tv('creditExceedsOwed', { creditable: error.creditable, currency: error.currency })
+          : tv('amountMustBePositive'),
+      )
+    }
     throw error
   }
 
@@ -1317,7 +1325,16 @@ async function raiseCreditNote(
 
   const spec = { code: original.currency, minorUnits: await minorUnits(tx, original.currency) }
   const invoice = { ...original, lines }
-  const credit = amount === 'rest' ? creditableAmount(invoice).toFixed(spec.minorUnits) : amount
+  /*
+    "The rest" rounds down to the currency's places. An older invoice can carry
+    a total finer than its currency (1681.301650 KWD), and rounding that up
+    asks for more than is owed, which the planner rightly refuses; the fraction
+    of a fils left over is below anything the currency can pay.
+  */
+  const credit =
+    amount === 'rest'
+      ? creditableAmount(invoice).toFixed(spec.minorUnits, 1 /* Decimal.ROUND_DOWN */)
+      : amount
   const planned = planCreditNote(invoice, credit, spec)
   if (!planned.ok) throw new CreditRefused(planned.reason, planned.creditable, original.currency)
   const { plan } = planned

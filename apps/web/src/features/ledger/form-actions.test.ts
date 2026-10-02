@@ -799,6 +799,16 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       expect(await credited(invoiceId)).toMatchObject({ status: 'credited' })
     })
 
+    it('credits an older invoice whose total is finer than its currency', async () => {
+      // Totals written before line rounding can carry six places on a KWD invoice.
+      const invoiceId = await issuedInvoice('100.000650')
+      const state = await setInvoiceStatus({}, form({ invoiceId, status: 'credited' }))
+      expect(state.message).toBeUndefined()
+      const notes = await notesFor(invoiceId)
+      expect(notes.map((n) => n.total)).toEqual([expect.stringMatching(/^100\.0+$/)])
+      expect(await credited(invoiceId)).toMatchObject({ status: 'credited' })
+    })
+
     it('refuses a draft, a credit note, and an invoice in another branch', async () => {
       const draft = await draftInvoice('10.000')
       expect((await creditInvoice({}, form({ invoiceId: draft, amount: '1' }))).message).toBe(
