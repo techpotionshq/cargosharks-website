@@ -321,10 +321,10 @@ function headerOf(parsed: ParsedMail, name: string): string {
  * headers alone, which is where the `Message-ID` we sent is quoted back. The
  * `global` variants are the same thing for an SMTPUTF8 message (RFC 6533).
  */
-const BOUNCE_PARTS =
+export const BOUNCE_PARTS =
   /^(message\/(rfc822|global|delivery-status|global-delivery-status|global-headers)|text\/rfc822-headers)$/i
 
-const DAEMON_SENDERS = new Set(['mailer-daemon', 'postmaster', 'mail-daemon', 'maildaemon'])
+export const DAEMON_SENDERS = new Set(['mailer-daemon', 'postmaster', 'mail-daemon', 'maildaemon'])
 
 /**
  * Which message of ours this bounce reports undeliverable, and why — FR-NT-06.
@@ -364,8 +364,42 @@ export function bounceOf(parsed: ParsedMail): InboundMessage['bounceOf'] {
   const parts = parsed.attachments
     .filter((part) => BOUNCE_PARTS.test(part.contentType ?? ''))
     .map((part) => (part.content as Buffer).toString('utf8'))
+  const threaded = parsed.references
+    ? Array.isArray(parsed.references)
+      ? parsed.references.at(-1)
+      : parsed.references
+    : undefined
+  return readBounce({
+    fromDaemon,
+    text: parsed.text ?? '',
+    parts,
+    subject: parsed.subject ?? '',
+    inReplyTo: parsed.inReplyTo,
+    threaded,
+  })
+}
+
+/**
+ * The reading half of `bounceOf`, on plain strings — shared with the webhook.
+ *
+ * A bounce that reaches us through a provider's inbound webhook
+ * (`inbound-email-webhook.ts`) arrives as JSON, not as a parsed MIME tree, and
+ * it used to be ignored as automatic mail without ever marking the delivery it
+ * reports failed. Both paths now hand the same strings to this one reader, so
+ * a bounce means the same thing whichever door it came through.
+ */
+export function readBounce(input: {
+  readonly fromDaemon: boolean
+  readonly text: string
+  /** The report and original parts, decoded — `BOUNCE_PARTS` content types. */
+  readonly parts: readonly string[]
+  readonly subject: string
+  readonly inReplyTo?: string
+  readonly threaded?: string
+}): InboundMessage['bounceOf'] {
+  const { fromDaemon, parts } = input
   // Folded lines unfolded, so a `Diagnostic-Code` the MTA wrapped reads whole.
-  const text = [parsed.text ?? '', ...parts].join('\n').replace(/\r?\n[ \t]+/g, ' ')
+  const text = [input.text, ...parts].join('\n').replace(/\r?\n[ \t]+/g, ' ')
 
   const actions = [...text.matchAll(/^Action:\s*([a-z-]+)/gim)].map((m) => m[1]!.toLowerCase())
   if (actions.length > 0) {
@@ -373,7 +407,7 @@ export function bounceOf(parsed: ParsedMail): InboundMessage['bounceOf'] {
   } else if (!fromDaemon) {
     // A report with no per-recipient actions says nothing about failure.
     return undefined
-  } else if (/\b(delay(ed)?|warning|will (be )?retr(y|ied))\b/i.test(parsed.subject ?? '')) {
+  } else if (/\b(delay(ed)?|warning|will (be )?retr(y|ied))\b/i.test(input.subject)) {
     return undefined
   }
 
@@ -388,13 +422,8 @@ export function bounceOf(parsed: ParsedMail): InboundMessage['bounceOf'] {
   */
   const idIn = (source: string): string | undefined =>
     /^Message-ID:\s*(<[^<>\s]+>)/im.exec(source)?.[1]
-  const threaded = parsed.references
-    ? Array.isArray(parsed.references)
-      ? parsed.references.at(-1)
-      : parsed.references
-    : undefined
   const messageId =
-    parts.map(idIn).find(Boolean) ?? idIn(parsed.text ?? '') ?? parsed.inReplyTo ?? threaded
+    parts.map(idIn).find(Boolean) ?? idIn(input.text) ?? input.inReplyTo ?? input.threaded
   if (!messageId) return undefined
 
   /*
@@ -408,14 +437,14 @@ export function bounceOf(parsed: ParsedMail): InboundMessage['bounceOf'] {
   */
   const diagnostic = /^Diagnostic-Code:\s*(?:[a-z-]+;\s*)?(.+)$/im.exec(text)?.[1]
   const status = /^Status:\s*([245]\.\d{1,3}\.\d{1,3})/im.exec(text)?.[1]
-  const replyLine = /^.*\b[45]\d\d[ -].*$/m.exec(parsed.text ?? '')?.[0]
+  const replyLine = /^.*\b[45]\d\d[ -].*$/m.exec(input.text)?.[0]
   const reason = (diagnostic ?? (status ? `status ${status}` : undefined) ?? replyLine ?? '')
     .trim()
     .slice(0, 500)
 
   return {
     messageId: messageId.startsWith('<') ? messageId : `<${messageId}>`,
-    reason: reason || parsed.subject?.trim() || 'returned as undeliverable',
+    reason: reason || input.subject.trim() || 'returned as undeliverable',
   }
 }
 

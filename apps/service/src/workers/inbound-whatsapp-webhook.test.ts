@@ -15,7 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { toWhatsAppInboundMessage } from './inbound-whatsapp-webhook'
 import { kapsoChannel } from '../adapters/whatsapp'
 
@@ -479,6 +479,24 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
     expect(ack.sent[0]!.to).toBe(KNOWN_PHONE)
     expect(ack.sent[0]!.from).toBe(PHONE_NUMBER_ID)
     expect(ack.sent[0]!.body).toContain(enquiry!.reference)
+
+    /*
+      Once, on the channel they used. A known customer's WhatsApp enquiry also
+      queued the email acknowledgement, so the same customer was greeted twice —
+      the second time by email, outside every WhatsApp guard.
+    */
+    const emailed = await withActor(sys, (tx) =>
+      tx
+        .select({ id: notificationOutbox.id })
+        .from(notificationOutbox)
+        .where(
+          and(
+            eq(notificationOutbox.enquiryId, result.enquiryId!),
+            eq(notificationOutbox.eventKey, 'enquiry.received'),
+          ),
+        ),
+    )
+    expect(emailed).toEqual([])
   })
 
   it('opens an enquiry for an unknown sender and still acknowledges', async () => {
@@ -593,6 +611,86 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
 
   const thread = (enquiryId: string) =>
     withActor(sys, (tx) => tx.select().from(messages).where(eq(messages.enquiryId, enquiryId)))
+
+  /*
+    The same wamid under a fresh idempotency key — a provider redelivering as a
+    new delivery — is the same message, and files nothing a second time.
+  */
+  it('files a message once even when it is redelivered under a new receipt', async () => {
+    const sender = senderNo(20)
+    const ack = capturingChannel()
+    const wamid = `wamid.${RUN}-DUP`
+    const first = await runInboundWhatsAppWebhook(
+      { eventId: await fileReceipt(from(sender, wamid, 'Rate for 1x20GP please', 1000)) },
+      RUN_AT,
+      noEnqueue,
+      ack.resolve,
+    )
+    const second = await runInboundWhatsAppWebhook(
+      { eventId: await fileReceipt(from(sender, wamid, 'Rate for 1x20GP please', 1000)) },
+      RUN_AT,
+      noEnqueue,
+      ack.resolve,
+    )
+    expect(first.outcome).toBe('created')
+    expect(second.outcome).toBe('duplicate')
+    const rows = await withActor(sys, (tx) =>
+      tx.select({ id: messages.id }).from(messages).where(eq(messages.externalRef, wamid)),
+    )
+    expect(rows).toHaveLength(1)
+  })
+
+  /*
+    A failed acknowledgement used to leave no trace at all. It is now retried
+    while the failure looks like the provider's, and recorded on the receipt
+    when it still fails — with no outbound row claiming a message was sent.
+  */
+  it('retries a failing acknowledgement, then records why it was not sent', async () => {
+    const sender = senderNo(21)
+    let attempts = 0
+    const failing = async () => ({
+      key: 'whatsapp' as const,
+      async send() {
+        attempts += 1
+        return { accepted: false, error: 'kapso 503: upstream unavailable' }
+      },
+    })
+    const eventId = await fileReceipt(from(sender, `wamid.${RUN}-FAIL`, 'Quote please', 1100))
+    const result = await runInboundWhatsAppWebhook(
+      { eventId },
+      RUN_AT,
+      noEnqueue,
+      failing,
+      undefined,
+      [0, 0],
+    )
+    expect(result.outcome).toBe('created')
+    expect(attempts).toBe(3)
+    const [receipt] = await withActor(sys, (tx) =>
+      tx
+        .select({ error: inboundWebhookEvents.error })
+        .from(inboundWebhookEvents)
+        .where(eq(inboundWebhookEvents.id, eventId)),
+    )
+    expect(receipt?.error).toMatch(/acknowledgement not sent after 3 attempt\(s\): kapso 503/)
+    const outbound = (await thread(result.enquiryId!)).filter((m) => m.direction === 'outbound')
+    expect(outbound).toEqual([])
+  })
+
+  it('does not retry an acknowledgement the provider refused as wrong', async () => {
+    const sender = senderNo(22)
+    let attempts = 0
+    const refusing = async () => ({
+      key: 'whatsapp' as const,
+      async send() {
+        attempts += 1
+        return { accepted: false, error: 'kapso 400: recipient not on WhatsApp' }
+      },
+    })
+    const eventId = await fileReceipt(from(sender, `wamid.${RUN}-BAD`, 'Quote please', 1200))
+    await runInboundWhatsAppWebhook({ eventId }, RUN_AT, noEnqueue, refusing, undefined, [0, 0])
+    expect(attempts).toBe(1)
+  })
 
   /*
     V1. "Hi", "2x40HC", "Shanghai to Shuwaikh" as three messages used to make
