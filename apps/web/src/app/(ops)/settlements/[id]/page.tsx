@@ -7,8 +7,9 @@
  * settlement recorded before the agent has seen it, or a statement that keeps
  * changing until the money lands.
  *
- * Both are forms rather than links: a `GET` that claims a month's invoices
- * could be fired by a link preview in somebody's chat client.
+ * All three are confirmed dialogs posting forms rather than links: a `GET`
+ * that claims a month's invoices could be fired by a link preview in
+ * somebody's chat client, and a bare button could be fired by a stray click.
  */
 
 import Link from 'next/link'
@@ -16,13 +17,12 @@ import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { recordId } from '@/lib/ids'
-import { can } from '@/lib/permissions'
 import { getSettlement } from '@/features/payables/queries'
-import { advanceSettlement } from '@/features/payables/form-actions'
+import { SettlementActions } from '@/features/payables/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
-import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 
@@ -55,8 +55,6 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
   const money = (amount: string) =>
     formatMoney({ amount: amount, currency: settlement.currency }, locale)
 
-  const mayRun = can(session, 'settlement.run')
-
   return (
     <>
       <PageHeader
@@ -73,29 +71,12 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
         }
         title={settlement.reference}
         actions={
-          mayRun ? (
-            <span className="flex flex-wrap items-center gap-2">
-              {settlement.status === 'draft' ? (
-                <form action={advanceSettlement}>
-                  <input type="hidden" name="settlementId" value={id} />
-                  <input type="hidden" name="action" value="agree" />
-                  {/* The settlement's next step is its one primary action. */}
-                  <Button type="submit" variant="primary" icon="check">
-                    {t('agree')}
-                  </Button>
-                </form>
-              ) : null}
-              {settlement.status === 'agreed' ? (
-                <form action={advanceSettlement}>
-                  <input type="hidden" name="settlementId" value={id} />
-                  <input type="hidden" name="action" value="settle" />
-                  <Button type="submit" variant="primary" icon="sealed">
-                    {t('markSettled')}
-                  </Button>
-                </form>
-              ) : null}
-            </span>
-          ) : null
+          <SettlementActions
+            settlementId={id}
+            status={settlement.status}
+            residual={money(settlement.residualAmount)}
+            direction={settlement.residualDirection}
+          />
         }
       />
 

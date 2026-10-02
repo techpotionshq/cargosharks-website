@@ -4187,5 +4187,25 @@
     "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
     "effectiveOn": "Effective from",
     "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
+  },
+  "settlementActions": {
+    "agree": "Agree statement",
+    "agreeTitle": "Agree this statement with the agent",
+    "agreeDescription": "Freezes the figures and sets off both sides in the ledgers.",
+    "agreeNote": "Agreeing claims every document on this statement and settles the set-off amount against them. Do it once the agent has confirmed the figures; a later change means voiding and drafting again.",
+    "agreeDone": "Statement agreed.",
+    "close": "Close settlement",
+    "closeTitle": "Close this settlement",
+    "closeDescription": "Marks the statement finished. It moves no money.",
+    "closeTheyOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's invoices: record their payment as a receipt on those invoices, then close this.",
+    "closeWeOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's bills: record our payment to them on their supplier page, then close this.",
+    "closeSquare": "The two sides cancelled exactly, so nothing is left to pay either way.",
+    "closeDone": "Settlement closed.",
+    "void": "Void settlement",
+    "voidTitle": "Void this settlement",
+    "voidDescription": "Releases the documents it claimed and gives back what it set off.",
+    "voidReason": "Reason",
+    "voidReasonHint": "Kept on the settlement. The agent disputed a line, or the period was wrong.",
+    "voidDone": "Settlement voided."
   }
 }

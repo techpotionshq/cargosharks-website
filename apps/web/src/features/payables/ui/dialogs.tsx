@@ -24,6 +24,7 @@ import {
   readSupplierBill,
   recordSupplierPayment,
   saveSupplierInvoice,
+  setSettlementStatus,
   setSupplierInvoiceStatus,
   setPartnerTolerance,
 } from '../form-actions'
@@ -903,5 +904,117 @@ export async function PartnerToleranceDialog({
         cancel: tc('cancel'),
       }}
     />
+  )
+}
+
+/**
+ * Agree, close and void — a settlement's three acts, each behind a confirm.
+ *
+ * They were bare submit buttons on the settlement page, posting to a wrapper
+ * that threw its result away: agreeing a month's set-off took one stray click,
+ * a refusal ("the documents changed under it") was shown nowhere, and void —
+ * which the action has always supported — had no button at all (QA P2-10).
+ *
+ * "Residual settled" became "Close settlement", with the residual spelled out:
+ * the set-off is applied at agreement, and the residual stays open on the
+ * documents until somebody records the actual receipt or payment. The old
+ * label read as though clicking it settled the residual, and it moves no money.
+ */
+export async function SettlementActions({
+  settlementId,
+  status,
+  residual,
+  direction,
+}: {
+  readonly settlementId: string
+  readonly status: string
+  /** Already formatted in the settlement's currency. */
+  readonly residual: string
+  readonly direction: string
+}) {
+  const session = await requireSession()
+  if (!can(session, 'settlement.run')) return null
+  if (status !== 'draft' && status !== 'agreed') return null
+
+  const [t, tc] = await Promise.all([
+    getTranslations('settlementActions'),
+    getTranslations('common'),
+  ])
+
+  const hidden = (action: string): FieldSpec[] => [
+    { kind: 'hidden', name: 'settlementId', value: settlementId },
+    { kind: 'hidden', name: 'action', value: action },
+  ]
+
+  const closeNote =
+    direction === 'they_owe_us'
+      ? t('closeTheyOwe', { amount: residual })
+      : direction === 'we_owe_them'
+        ? t('closeWeOwe', { amount: residual })
+        : t('closeSquare')
+
+  return (
+    <>
+      {status === 'draft' ? (
+        <RecordDialog
+          action={setSettlementStatus}
+          icon="check"
+          size="sm"
+          fields={[...hidden('agree'), { kind: 'note', text: t('agreeNote') }]}
+          labels={{
+            open: t('agree'),
+            title: t('agreeTitle'),
+            description: t('agreeDescription'),
+            submit: t('agree'),
+            submitting: tc('saving'),
+            cancel: tc('cancel'),
+            success: t('agreeDone'),
+          }}
+        />
+      ) : (
+        <RecordDialog
+          action={setSettlementStatus}
+          icon="sealed"
+          size="sm"
+          fields={[...hidden('settle'), { kind: 'note', text: closeNote, tone: 'caution' }]}
+          labels={{
+            open: t('close'),
+            title: t('closeTitle'),
+            description: t('closeDescription'),
+            submit: t('close'),
+            submitting: tc('saving'),
+            cancel: tc('cancel'),
+            success: t('closeDone'),
+          }}
+        />
+      )}
+      <RecordDialog
+        action={setSettlementStatus}
+        icon="close"
+        size="sm"
+        variant="danger"
+        fields={[
+          ...hidden('void'),
+          {
+            kind: 'textarea',
+            name: 'reason',
+            label: t('voidReason'),
+            span: 12,
+            required: true,
+            rows: 3,
+            hint: t('voidReasonHint'),
+          },
+        ]}
+        labels={{
+          open: t('void'),
+          title: t('voidTitle'),
+          description: t('voidDescription'),
+          submit: t('void'),
+          submitting: tc('saving'),
+          cancel: tc('cancel'),
+          success: t('voidDone'),
+        }}
+      />
+    </>
   )
 }
