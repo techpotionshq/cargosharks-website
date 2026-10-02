@@ -451,7 +451,8 @@
     "viewShipment": "عرض الشحنة",
     "progress": "{done} من {total} مراحل",
     "documentCount": "{count, plural, one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}",
-    "etaPassed": "تجاوزت موعد الوصول"
+    "etaPassed": "تجاوزت موعد الوصول",
+    "backToShipments": "جميع الشحنات"
   },
   "agent": {
     "title": "الشحنات المسندة",

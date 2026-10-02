@@ -74,13 +74,13 @@ export default async function PortalHome() {
               shipment.eta.getTime() < now &&
               !['delivered', 'completed', 'closed', 'cancelled'].includes(shipment.status)
             /*
-              The card opens the shipment's tracking view where it can: the
-              public tracking page takes a reference and a second identifier
-              the customer already holds, and their own reference is one.
+              Every card opens the shipment, signed in (QA P2-12). It used to
+              open public `/track` with the customer reference as the second
+              identifier, so a job without one had no link, and each click
+              spent the anonymous lookup budget until the portal throttled its
+              own customer.
             */
-            const track = shipment.customerReference
-              ? `/track?reference=${encodeURIComponent(shipment.reference)}&verifier=${encodeURIComponent(shipment.customerReference)}`
-              : null
+            const track = `/portal/shipments/${shipment.id}`
             return (
               <li key={shipment.id}>
                 <Card className="transition-shadow hover:shadow-raised">
@@ -169,13 +169,11 @@ export default async function PortalHome() {
                       })}
                     />
                   </div>
-                  {track ? (
-                    <div className="mt-3 flex justify-end">
-                      <Button href={track} variant="ghost" size="sm" iconEnd="chevron-end">
-                        {t('viewShipment')}
-                      </Button>
-                    </div>
-                  ) : null}
+                  <div className="mt-3 flex justify-end">
+                    <Button href={track} variant="ghost" size="sm" iconEnd="chevron-end">
+                      {t('viewShipment')}
+                    </Button>
+                  </div>
                 </Card>
               </li>
             )

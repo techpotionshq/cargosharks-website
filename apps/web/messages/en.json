@@ -451,7 +451,8 @@
     "viewShipment": "View shipment",
     "progress": "{done} of {total} steps",
     "documentCount": "{count, plural, one {# document} other {# documents}}",
-    "etaPassed": "Past its ETA"
+    "etaPassed": "Past its ETA",
+    "backToShipments": "All shipments"
   },
   "agent": {
     "title": "Assigned shipments",
