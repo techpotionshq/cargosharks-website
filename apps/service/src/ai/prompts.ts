@@ -417,7 +417,9 @@ export function quoteCoverNoteUserPrompt(facts: {
  * for the reason the file header gives.
  */
 // @2: `containerCount` joined the fields (F50) — a model on @1 was never asked for it.
-export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@2'
+// @3: `containerType` joined them, and a chat transcript became a thing it reads —
+//     the intake agent sends a whole WhatsApp conversation as one source.
+export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@3'
 
 export function enquirySystemPrompt(vocabulary: {
   readonly modes: readonly string[]
@@ -428,6 +430,9 @@ export function enquirySystemPrompt(vocabulary: {
     'You read enquiry emails for a freight forwarder in Kuwait and return structured facts.',
     'They arrive from shippers, consignees and overseas agents, in English, in Arabic, or',
     'in both inside one message. Many are three lines long and quote a rate request.',
+    'Some are a WhatsApp conversation instead: several short customer messages, oldest',
+    'first. Read them together as one enquiry; where a later message corrects an earlier',
+    'one ("sorry, 3 containers not 2"), the later one is the fact.',
     '',
     'Return one entry per fact you actually find. Rules, in order of importance:',
     '',
@@ -454,6 +459,9 @@ export function enquirySystemPrompt(vocabulary: {
     '   needs, as a whole number of one or more: "2 x 40HC" is 2, "one 20ft" is 1. It',
     '   is not `pieces` — cartons, pallets and packages are never containers. Omit it',
     '   for any other mode, and omit it if the mail does not state a count.',
+    '   `containerType` is the box for a sea_fcl shipment, as one of 20GP, 40GP, 40HC,',
+    '   20RF, 40RF: "40ft high cube" is 40HC, "20 dry" is 20GP. Omit it when the size',
+    '   or the kind is not stated — a bare "40ft" could be 40GP or 40HC.',
     '',
     `5. \`mode\` is one of: ${vocabulary.modes.join(', ')}.`,
     '   Two 40HC or any container count is `sea_fcl`; loose cargo by sea is `sea_lcl`;',
@@ -489,3 +497,11 @@ export function enquirySystemPrompt(vocabulary: {
 /** What the user turn says, beside the mail itself. */
 export const ENQUIRY_USER_PROMPT =
   'Read this enquiry email and return the shipment facts it states.'
+
+/**
+ * Said only when documents ride along, so a text-only read is byte-for-byte
+ * the prompt it always was and the ledger can still compare the two.
+ */
+export const ENQUIRY_DOCUMENTS_NOTE =
+  'The attached documents are part of the enquiry — a packing list or an invoice ' +
+  'often states the weight, the volume or the goods; read them too.'

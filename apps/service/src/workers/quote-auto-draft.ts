@@ -25,6 +25,7 @@
 
 import { and, desc, eq, sql } from 'drizzle-orm'
 import {
+  intakeNotReady,
   priceEnquiryToQuote,
   quotes,
   systemActor,
@@ -153,6 +154,8 @@ async function loadEligible(tx: Tx): Promise<{ enquiryId: string }[]> {
      where e.status in ('new', 'assigned', 'rating')
        and not exists (select 1 from quotes q where q.enquiry_id = e.id)
        and (e.mode is distinct from 'sea_fcl' or e.container_count is not null)
+       -- Not while the intake agent is still collecting it (see rate-auto-fanout).
+       and not ${intakeNotReady(sql`e.id`)}
      order by a.awarded_at desc, e.created_at desc
      limit ${ENQUIRY_BATCH}
   `)

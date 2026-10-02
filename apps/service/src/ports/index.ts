@@ -53,6 +53,15 @@ export interface OutboundMessage {
    * number the account owns — is free to ignore it.
    */
   readonly from?: string
+  /**
+   * The provider id of the message this answers — an email `Message-ID`.
+   *
+   * The intake agent replies inside the customer's own thread, so their mail
+   * client files the clarification under the enquiry they sent and their reply
+   * to it comes back with an `In-Reply-To` that `findTarget` threads. Channels
+   * with no threading header ignore it.
+   */
+  readonly inReplyTo?: string
   /** The approved template name, where the channel requires one. */
   readonly providerTemplateName?: string
   readonly attachments?: readonly { filename: string; content: Buffer; contentType: string }[]

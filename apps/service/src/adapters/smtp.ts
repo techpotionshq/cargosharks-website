@@ -401,6 +401,14 @@ function buildMessage(message: OutboundMessage, from: string, messageId: string)
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: ${messageId}`,
     /*
+      Threading, where this answers somebody. A header value is the sender's
+      own text, so only a well-formed `<…>` id with no line break is copied —
+      anything else would be a header injection carried in from an inbound mail.
+    */
+    ...(message.inReplyTo && /^<[^<>\r\n]+>$/.test(message.inReplyTo)
+      ? [`In-Reply-To: ${message.inReplyTo}`, `References: ${message.inReplyTo}`]
+      : []),
+    /*
       RFC 3834: a machine wrote this, so no machine should answer it.
 
       Every message through this adapter is generated — a notification rendered

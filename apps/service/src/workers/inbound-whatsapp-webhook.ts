@@ -50,7 +50,13 @@ import {
 } from '@qabandi/db'
 import type { InboundMessage, NotificationChannel } from '../ports/index'
 import { resolveWhatsAppChannel } from '../adapters/index'
-import { ingestMessage, type BranchRef, type EnqueueExtraction } from './inbound-mail'
+import { sendWithRetry } from './send-retry'
+import {
+  ingestMessage,
+  type BranchRef,
+  type EnqueueExtraction,
+  type NudgeIntakeTurn,
+} from './inbound-mail'
 
 /** How the ack resolves a channel — the real resolver, or a test's stand-in. */
 export type ResolveWhatsAppChannel = () => Promise<NotificationChannel | null>
@@ -61,7 +67,8 @@ export interface InboundWhatsAppWebhookInput {
 }
 
 export interface InboundWhatsAppWebhookResult {
-  readonly outcome: 'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply'
+  readonly outcome:
+    'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply' | 'filed'
   readonly enquiryId?: string | null
   /** Why nothing happened, where nothing did. */
   readonly reason?: string
@@ -75,6 +82,9 @@ export async function runInboundWhatsAppWebhook(
   asOf = new Date(),
   enqueue?: EnqueueExtraction,
   resolveChannel: ResolveWhatsAppChannel = resolveWhatsAppChannel,
+  nudge?: NudgeIntakeTurn,
+  /** The pauses between acknowledgement attempts — the real backoff, or none in a test. */
+  sendDelays?: readonly number[],
 ): Promise<InboundWhatsAppWebhookResult> {
   const [event] = await withActor(systemActor(), async (tx) =>
     tx
@@ -116,7 +126,16 @@ export async function runInboundWhatsAppWebhook(
     return { outcome: 'skipped', reason }
   }
 
-  const handled = await ingestMessage(message, branch, asOf, enqueue, { id: event.id })
+  const handled = await ingestMessage(
+    message,
+    branch,
+    asOf,
+    enqueue,
+    { id: event.id },
+    undefined,
+    undefined,
+    nudge,
+  )
 
   /*
     Acknowledge on the same channel — FR-NT-01, the WhatsApp shape of it.
@@ -141,19 +160,31 @@ export async function runInboundWhatsAppWebhook(
     sender is acknowledged at most once per window; and a sender writing faster
     than a person types is not acknowledged at all. See `acknowledgementRefused`.
   */
-  if (handled.outcome === 'created' && handled.enquiryId) {
-    await acknowledge(message, handled.enquiryId, branch, resolveChannel, asOf).catch(
-      (error: unknown) => {
-        // Swallowed by design; the enquiry stands with or without the reply.
-        console.error(
-          {
-            enquiryId: handled.enquiryId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'inbound whatsapp: acknowledgement not sent',
-        )
-      },
-    )
+  /*
+    Not when the intake agent holds the conversation (`handled.intake`): it
+    answers once the customer has finished typing — with what is still missing,
+    or with "we have everything" — and an acknowledgement two minutes earlier is
+    exactly the reply-to-every-message it replaces.
+  */
+  if (handled.outcome === 'created' && handled.enquiryId && !handled.intake) {
+    await acknowledge(
+      message,
+      handled.enquiryId,
+      branch,
+      resolveChannel,
+      asOf,
+      event.id,
+      sendDelays,
+    ).catch((error: unknown) => {
+      // Swallowed by design; the enquiry stands with or without the reply.
+      console.error(
+        {
+          enquiryId: handled.enquiryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'inbound whatsapp: acknowledgement not sent',
+      )
+    })
   }
 
   return { outcome: handled.outcome, enquiryId: handled.enquiryId }
@@ -231,6 +262,8 @@ async function acknowledge(
   branch: BranchRef,
   resolveChannel: ResolveWhatsAppChannel,
   asOf: Date,
+  eventId: string,
+  sendDelays?: readonly number[],
 ): Promise<void> {
   const channel = await resolveChannel()
   if (!channel) return // WhatsApp is off; the enquiry is filed, just not greeted.
@@ -251,14 +284,35 @@ async function acknowledge(
   if (!row?.reference) return
 
   const body = acknowledgementBody(row.reference)
-  const sent = await channel.send({
-    to: message.from,
-    // The business number that received it — the branch's own, from the receipt.
-    from: message.mailbox,
-    body,
-    locale: 'en',
-  })
-  if (!sent.accepted) return
+  const sent = await sendWithRetry(
+    channel,
+    {
+      to: message.from,
+      // The business number that received it — the branch's own, from the receipt.
+      from: message.mailbox,
+      body,
+      locale: 'en',
+    },
+    sendDelays,
+  )
+  if (!sent.accepted) {
+    /*
+      Recorded, not only logged: on the receipt, where "why was this customer
+      never greeted" is looked for, beside the intake that did succeed. The
+      enquiry stands; the acknowledgement is what failed.
+    */
+    const reason =
+      `acknowledgement not sent after ${sent.attempts} attempt(s): ` +
+      (sent.error ?? 'the provider refused the message')
+    console.error({ enquiryId, eventId, reason }, 'inbound whatsapp: acknowledgement failed')
+    await withActor(systemActor(), (tx) =>
+      tx
+        .update(inboundWebhookEvents)
+        .set({ error: reason.slice(0, 1000), updatedAt: asOf })
+        .where(eq(inboundWebhookEvents.id, eventId)),
+    )
+    return
+  }
 
   /*
     The acknowledgement goes on the thread as an outbound message, with the
