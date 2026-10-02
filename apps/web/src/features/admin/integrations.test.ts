@@ -283,7 +283,8 @@ describe.skipIf(!enabled)('integrations', () => {
           form({ key: 'einvoice', driver: 'none', apiKey: 'unsealable' }),
         )
         expect(state.message).toMatch(/^adminValidation\.credentialCannotBeSealed:/)
-        expect(state.message).toContain('MAILBOX_ENCRYPTION_KEY')
+        // The reason is a translated sentence now, not secrets.ts's English (U1).
+        expect(state.message).toContain('adminValidation.keyMissing')
         expect(state.values).not.toHaveProperty('apiKey')
       } finally {
         withEnv('MAILBOX_ENCRYPTION_KEY', key)
@@ -364,10 +365,11 @@ describe.skipIf(!enabled)('integrations', () => {
       const key = process.env.MAILBOX_ENCRYPTION_KEY
       try {
         withEnv('MAILBOX_ENCRYPTION_KEY', undefined)
-        expect(await integrationKeyProblem()).toMatch(/not set/)
+        // Data, not an English sentence — the page words it (U1).
+        expect(await integrationKeyProblem()).toEqual({ ok: false, reason: 'missing' })
 
         withEnv('MAILBOX_ENCRYPTION_KEY', 'a passphrase somebody typed')
-        expect(await integrationKeyProblem()).toMatch(/must be 32 bytes/)
+        expect(await integrationKeyProblem()).toMatchObject({ reason: 'length', expected: 32 })
       } finally {
         withEnv('MAILBOX_ENCRYPTION_KEY', key)
       }

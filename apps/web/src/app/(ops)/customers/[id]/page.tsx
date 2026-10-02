@@ -10,6 +10,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
@@ -18,6 +19,7 @@ import { RetireCustomerDialog } from '@/features/customers/ui/dialogs'
 import { creditView } from '@/features/credit/queries'
 import { CreditStandingCard } from '@/features/credit/ui/panels'
 import { customerFormLabels } from '@/features/customers/ui/labels'
+import { PortalContactsCard } from '@/features/admin/ui/portal-contacts'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { trimDecimal } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
@@ -31,7 +33,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const customer = await getCustomer(session.actor, id)
   if (!customer) return { title: 'Customer' }
   // The tab says what the heading says (F27).
@@ -43,7 +45,7 @@ export async function generateMetadata({
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
 
   const customer = await getCustomer(session.actor, id)
   if (!customer) notFound()
@@ -165,6 +167,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </TableShell>
         </Card>
       ) : null}
+
+      {/* Who at this customer can sign in to the portal (A7). Renders only
+          for somebody who may grant a login. */}
+      <PortalContactsCard customerId={id} className="mb-4" />
 
       {mayWrite ? (
         <CustomerForm

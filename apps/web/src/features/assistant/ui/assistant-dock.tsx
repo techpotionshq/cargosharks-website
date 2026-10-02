@@ -244,6 +244,7 @@ export function AssistantDock({
             loading={assistant.loadingThread}
             configured={configured}
             unreachable={assistant.unreachable}
+            serviceMissing={assistant.serviceMissing}
             autoFocus
           />
         </div>

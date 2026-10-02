@@ -16,7 +16,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
 import { listMailboxes, mailboxKeyConfigured } from '@/features/admin/mailboxes'
 import { MailboxDialog, ToggleMailboxButton } from '@/features/admin/ui/mailbox-dialogs'
 import { loadOptions } from '@/lib/options'
@@ -71,7 +71,9 @@ export default async function MailboxesPage() {
     administrator of Kuwait seeing Dubai in this list is the interface making a
     promise the tenancy model never made.
   */
-  const assignable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+  // Administered, not merely held (A2) — the action refuses the rest.
+  const administered = new Set(branchesWhere(session, 'admin.mailboxes.write'))
+  const assignable = options.branches.filter((branch) => administered.has(branch.value))
 
   return (
     <Register

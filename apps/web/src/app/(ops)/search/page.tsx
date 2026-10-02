@@ -13,10 +13,10 @@
 
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { Metadata } from 'next'
+import type { Metadata, Route } from 'next'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { MIN_QUERY_LENGTH, search, totalHits } from '@/features/search/queries'
+import { MIN_QUERY_LENGTH, recordHref, search, totalHits } from '@/features/search/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay } from '@/lib/format'
 import { Card } from '@/ui/card'
@@ -67,6 +67,11 @@ export default async function SearchPage({
     const exactContainer = results.containers.find((row) => equalsLoosely(row.containerNo, query))
     const target = exactJob?.id ?? exactContainer?.jobId
     if (target) redirect(`/jobs/${target}`)
+    // The same for an enquiry, quote, invoice or consolidation reference (U4).
+    const exactRecord = results.records.find((row) =>
+      equalsLoosely(row.matchedValue ?? row.reference, query),
+    )
+    if (exactRecord) redirect(recordHref(exactRecord.kind, exactRecord.id) as Route)
   }
 
   return (
@@ -162,6 +167,45 @@ export default async function SearchPage({
                       </TD>
                       <TD align="end" numeric>
                         {formatDay(job.eta, locale, timeZone)}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </TableShell>
+            </Panel>
+          ) : null}
+
+          {results.records.length > 0 ? (
+            /*
+              Enquiries, quotes, invoices and consolidations by their own
+              references, and consolidations by their master bill (U4).
+            */
+            <Panel padding="none" icon="document" title={t('records')}>
+              <TableShell minWidth="none">
+                <THead>
+                  <TR>
+                    <TH>{tJob('reference')}</TH>
+                    <TH>{t('kind')}</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {results.records.map((row) => (
+                    <TR key={`${row.kind}-${row.id}`}>
+                      <TD className="whitespace-nowrap">
+                        <Link
+                          href={recordHref(row.kind, row.id) as Route}
+                          className="ref numeric font-medium text-brand hover:underline"
+                        >
+                          {row.reference}
+                        </Link>
+                        {row.matchedValue ? (
+                          <span className="ref numeric mt-0.5 block text-[0.6875rem] text-ink-subtle">
+                            {t('fields.masterBill')} {row.matchedValue}
+                          </span>
+                        ) : null}
+                      </TD>
+                      <TD className="text-ink-muted">
+                        {t(`kinds.${row.kind}` as 'kinds.enquiry')}
                       </TD>
                     </TR>
                   ))}

@@ -35,8 +35,15 @@ import 'server-only'
  * ## What is not recorded
  *
  * The address that was tried, when it belongs to nobody. An unknown address
- * writes nothing and reads nothing — see `signIn` in `actions.ts`, which is
- * careful to spend the same work on it either way.
+ * writes nothing and reads nothing.
+ *
+ * ## Who calls these
+ *
+ * `lib/auth-guard.ts`, from inside Better Auth's own hook pipeline — not the
+ * sign-in server action, which is where they used to be called from. The
+ * catch-all `/api/auth/[...all]` route exposes `POST /sign-in/email` directly,
+ * and a control that lives in one caller of an endpoint is skipped by every
+ * other caller (A1). They moved here from `features/auth` with it.
  */
 
 import { eq, sql } from 'drizzle-orm'

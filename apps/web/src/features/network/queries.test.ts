@@ -14,8 +14,14 @@ const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const { PARTNER, homeActor, world } = await import('@/lib/testing/fixtures')
-const { listPartners, listLocations, countNetwork, partnerTypeCounts, getPartnerDetail } =
-  await import('./queries')
+const {
+  listPartners,
+  listLocations,
+  countNetwork,
+  partnerTypeCounts,
+  getPartnerDetail,
+  listAgentShipments,
+} = await import('./queries')
 
 describe.skipIf(!enabled)('network reads', () => {
   beforeAll(async () => {
@@ -70,5 +76,46 @@ describe.skipIf(!enabled)('network reads', () => {
 
   it('returns nothing for a partner that does not exist', async () => {
     expect(await getPartnerDetail(homeActor, '00000000-0000-7000-8000-0000000000f4')).toBeFalsy()
+  })
+
+  /*
+    A9. The agent home read nothing, so an agency named on live shipments was
+    told "Nothing assigned to you". The scoping is the policy's: the agent
+    sees the job its partner is named on and not the one it is not.
+  */
+  it("lists the shipments an agent's partner is named on, and only those", async () => {
+    const { HOME_JOB, AWAY_JOB, HOME_BRANCH } = await import('@/lib/testing/fixtures')
+    const { jobPartners, systemActor, withActor } = await import('@qabandi/db')
+    await withActor(systemActor(), (tx) =>
+      tx
+        .insert(jobPartners)
+        .values({
+          jobId: HOME_JOB,
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          role: 'origin_agent',
+        })
+        .onConflictDoNothing(),
+    )
+
+    const agent = {
+      principalId: '00000000-0000-7000-8000-0000000000f5',
+      type: 'agent_contact' as const,
+      branchIds: [],
+      customerId: null,
+      partnerId: PARTNER,
+      ip: null,
+    }
+    const rows = await listAgentShipments(agent, 'ar')
+    const ids = rows.map((row) => row.id)
+
+    expect(ids).toContain(HOME_JOB)
+    expect(ids).not.toContain(AWAY_JOB)
+    // Nothing of the customer's leaves this query.
+    expect(rows.every((row) => row.customerReference === null)).toBe(true)
+  })
+
+  it('lists nothing for a principal with no partner', async () => {
+    expect(await listAgentShipments(homeActor)).toEqual([])
   })
 })

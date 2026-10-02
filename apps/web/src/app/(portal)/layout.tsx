@@ -11,7 +11,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
-import { getSession } from '@/lib/session'
+import { getSession, homeFor } from '@/lib/session'
+import { useDemoLogin, usePilotFixtures } from '@/lib/pilot/source'
 import { getBrand } from '@/lib/brand'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { signOut } from '@/features/auth/actions'
@@ -22,6 +23,24 @@ import { LanguageSwitch } from '@/ui/preferences'
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
   if (!session) redirect('/sign-in')
+
+  /*
+    The portal is the customer's — A9.
+
+    This checked only that *somebody* was signed in, so an agent contact saw
+    the portal's list of every job their partner is named on, and internal
+    staff saw it with no customer scoping at all (RLS gives staff every job in
+    their branches). Each audience is sent to its own shell, as the agent
+    shell already does for everyone who is not an agent.
+
+    The one exception is the fixture deployment with no demo login, where the
+    only principal there is is the internal pilot persona: the offline sweep
+    and the hosted walkthrough preview the portal through it, and there is no
+    customer to sign in as instead.
+  */
+  if (session.actor.type !== 'customer_contact' && !(usePilotFixtures() && !useDemoLogin())) {
+    redirect(homeFor(session))
+  }
 
   const brand = getBrand()
   const resolved = await getLocale()

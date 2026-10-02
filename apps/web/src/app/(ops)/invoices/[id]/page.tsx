@@ -24,6 +24,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import { InvoiceLineDialog, InvoiceStatusActions } from '@/features/ledger/ui/invoice-actions'
 import { PaymentDialog } from '@/features/ledger/ui/dialogs'
@@ -43,7 +44,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const invoice = await getInvoiceDetail(session.actor, id)
   return { title: invoice?.seriesNo ?? 'Invoice' }
 }
@@ -52,7 +53,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const invoice = await getInvoiceDetail(session.actor, id, locale)

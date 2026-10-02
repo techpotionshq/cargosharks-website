@@ -314,7 +314,9 @@ async function disableDeadEndpoints(now: Date): Promise<number> {
       update webhook_endpoints e
          set is_active = false,
              disabled_at = now(),
-             disabled_reason = ${`Nothing delivered since ${cutoff.toISOString().slice(0, 10)}`},
+             -- A code and its day, not a sentence: the settings page translates
+             -- it, and an English sentence stored here showed on Arabic pages (U1).
+             disabled_reason = ${`no_delivery_since:${cutoff.toISOString().slice(0, 10)}`},
              updated_at = now()
        where e.is_active
          and exists (

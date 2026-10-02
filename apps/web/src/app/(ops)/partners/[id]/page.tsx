@@ -18,6 +18,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getPartnerDetail, listPartnerCredentials } from '@/features/network/queries'
 import {
   PartnerComplianceDialog,
@@ -43,7 +44,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const partner = await getPartnerDetail(session.actor, id, locale)
@@ -59,7 +60,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const partner = await getPartnerDetail(session.actor, id, locale)

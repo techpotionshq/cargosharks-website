@@ -47,9 +47,18 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
    */
   app.get<{ Querystring: Record<string, string> }>('/whatsapp', async (request, reply) => {
     const query = request.query
+    /*
+      A token must be configured to compare against — A14. With none set, a
+      request that also omitted `hub.verify_token` compared `undefined ===
+      undefined` and was answered, so anybody could complete the handshake and
+      register this endpoint to a Meta app of their own.
+    */
+    const expected = config.WHATSAPP_WEBHOOK_VERIFY_TOKEN
     if (
+      expected &&
       query['hub.mode'] === 'subscribe' &&
-      query['hub.verify_token'] === config.WHATSAPP_WEBHOOK_VERIFY_TOKEN
+      typeof query['hub.verify_token'] === 'string' &&
+      query['hub.verify_token'] === expected
     ) {
       return reply.code(200).send(query['hub.challenge'])
     }

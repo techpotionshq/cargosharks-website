@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { AssistantProposal, Turn } from './conversation'
+import { assistantFailure, isUnreachable } from '../failures'
 
 export interface ThreadSummary {
   readonly id: string
@@ -39,7 +40,8 @@ type StreamEvent =
       readonly threadId?: string
       readonly title?: string
     }
-  | { readonly type: 'failed'; readonly code: string; readonly message: string }
+  /** `message` is the service's English sentence, never shown — `code` is (U1). */
+  | { readonly type: 'failed'; readonly code: string; readonly message?: string }
 
 interface StoredTurn {
   readonly role: 'user' | 'assistant'
@@ -72,6 +74,15 @@ export interface Assistant {
    * asking it, which is what this reports.
    */
   readonly unreachable: boolean
+  /**
+   * The assistant has no service to run in — `SERVICE_URL` is not set (U3).
+   *
+   * Apart from `unreachable` for the same reason `unreachable` is apart from
+   * "no key": the fix is a deployment setting, not "try again in a minute",
+   * and saying "your key is set, something is down" sent people looking for
+   * an outage that did not exist.
+   */
+  readonly serviceMissing: boolean
   readonly threads: readonly ThreadSummary[]
   /**
    * The inbox has not come back yet.
@@ -98,16 +109,19 @@ export function useAssistant(active: boolean): Assistant {
   const [threads, setThreads] = useState<readonly ThreadSummary[]>([])
   const [loadingThreads, setLoadingThreads] = useState(true)
   const [unreachable, setUnreachable] = useState(false)
+  const [serviceMissing, setServiceMissing] = useState(false)
   const [threadId, setThreadId] = useState<string | null>(null)
   const [turns, setTurns] = useState<readonly Turn[]>([])
   const [pending, setPending] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
 
   const refreshThreads = useCallback(() => {
-    void post<{ ok: boolean; threads?: ThreadSummary[] }>({ op: 'threads' })
+    void post<{ ok: boolean; reason?: string; threads?: ThreadSummary[] }>({ op: 'threads' })
       .then((body) => {
         setThreads(body.threads ?? [])
-        setUnreachable(!body.ok)
+        const missing = !body.ok && body.reason === 'serviceNotConfigured'
+        setServiceMissing(missing)
+        setUnreachable(!body.ok && !missing)
       })
       .catch(() => {
         setThreads([])
@@ -163,12 +177,8 @@ export function useAssistant(active: boolean): Assistant {
       })
 
       if (!response.ok || !response.body) {
-        const failure = (await response.json().catch(() => ({}))) as { unavailable?: string }
-        onEvent({
-          type: 'failed',
-          code: 'unreachable',
-          message: failure.unavailable ?? 'The assistant could not answer.',
-        })
+        const failure = (await response.json().catch(() => ({}))) as { reason?: string }
+        onEvent({ type: 'failed', code: failure.reason ?? 'unreachable' })
         return
       }
 
@@ -264,10 +274,13 @@ export function useAssistant(active: boolean): Assistant {
         }
 
         if (event.type === 'failed') {
-          // A failed call is not a missing key. The two get different notices
-          // because they have different fixes and different people to fix them.
-          setUnreachable(event.code === 'unreachable')
-          patch(() => ({ role: 'assistant', content: event.message, unavailable: true }))
+          // A failed call is not a missing key, and neither is a missing
+          // service. Each gets its own notice because each has a different
+          // fix and a different person to fix it.
+          const failure = assistantFailure(event.code)
+          setServiceMissing(failure === 'serviceNotConfigured')
+          setUnreachable(isUnreachable(failure))
+          patch(() => ({ role: 'assistant', content: '', failure, unavailable: true }))
           return
         }
 
@@ -296,7 +309,8 @@ export function useAssistant(active: boolean): Assistant {
           setUnreachable(true)
           patch(() => ({
             role: 'assistant',
-            content: 'The assistant could not be reached.',
+            content: '',
+            failure: 'unreachable',
             unavailable: true,
           }))
         })
@@ -317,6 +331,7 @@ export function useAssistant(active: boolean): Assistant {
 
   return {
     unreachable,
+    serviceMissing,
     threads,
     loadingThreads,
     threadId,

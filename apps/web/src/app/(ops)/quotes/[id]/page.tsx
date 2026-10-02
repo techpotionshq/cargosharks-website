@@ -25,6 +25,7 @@ import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { todayIn } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { getQuoteDetail } from '@/features/ledger/queries'
 import { QuoteStatusActions } from '@/features/ledger/ui/quote-actions'
 import { QuoteLineDialog } from '@/features/ledger/ui/dialogs'
@@ -47,7 +48,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const quote = await getQuoteDetail(session.actor, id)
   return { title: quote?.reference ?? 'Quotation' }
 }
@@ -56,7 +57,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
-  const { id } = await params
+  const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const quote = await getQuoteDetail(session.actor, id, locale)

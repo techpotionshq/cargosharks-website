@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { usePilotFixtures } from '@/lib/pilot/source'
+import { fileRefusal } from '@/lib/file-refusal'
+import { isUuid } from '@/lib/ids'
 
 /**
  * The quotation PDF — bilingual, rendered on demand — FR-EQ-08.
@@ -32,23 +34,19 @@ export async function GET(
   // Fixture mode has no database behind it, so there is no quote to render.
   // A 501 with a reason beats a proxy error that reads like the service is down.
   if (usePilotFixtures()) {
-    return NextResponse.json(
-      { error: 'not_available', detail: 'Document rendering needs a database.' },
-      { status: 501 },
-    )
+    return fileRefusal(request, 'not_available')
   }
 
   const { id } = await context.params
+  // Not a uuid is not a record, and used to reach the service as a 500 (A17).
+  if (!isUuid(id)) return fileRefusal(request, 'not_found')
   const locale = new URL(request.url).searchParams.get('locale') === 'ar' ? 'ar' : 'en'
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
 
   if (!serviceUrl || !secret) {
-    return NextResponse.json(
-      { error: 'not_configured', detail: 'SERVICE_URL and INTERNAL_API_SECRET are required.' },
-      { status: 503 },
-    )
+    return fileRefusal(request, 'not_configured')
   }
 
   const response = await fetch(
@@ -69,10 +67,7 @@ export async function GET(
   if (!response.ok) {
     // Passed through unchanged: a quote outside this principal's branches is
     // invisible, not forbidden (FR-ID-04).
-    return NextResponse.json(
-      { error: response.status === 404 ? 'not_found' : 'render_failed' },
-      { status: response.status === 404 ? 404 : 502 },
-    )
+    return fileRefusal(request, response.status === 404 ? 'not_found' : 'render_failed')
   }
 
   return new Response(response.body, {

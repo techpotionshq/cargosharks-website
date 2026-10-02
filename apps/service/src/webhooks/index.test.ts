@@ -49,6 +49,8 @@ const harness = vi.hoisted(() => ({
   failNext: false,
   /** Cleared per test so "no secret configured" can be posed. */
   emailSecret: undefined as string | undefined,
+  /** Unset per test so "no verify token configured" can be posed (A14). */
+  verifyTokenUnset: false,
 }))
 
 vi.mock('../config', () => ({
@@ -63,7 +65,7 @@ vi.mock('../config', () => ({
       return harness.emailSecret
     },
     get WHATSAPP_WEBHOOK_VERIFY_TOKEN() {
-      return VERIFY_TOKEN
+      return harness.verifyTokenUnset ? undefined : VERIFY_TOKEN
     },
   },
 }))
@@ -169,6 +171,24 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       })
 
       expect(reply.statusCode).toBe(403)
+    })
+
+    /**
+     * A14. With no token configured, a request that also sent none compared
+     * `undefined === undefined` and was answered.
+     */
+    it('answers nobody when no verify token is configured', async () => {
+      harness.verifyTokenUnset = true
+      try {
+        const reply = await app.inject({
+          method: 'GET',
+          url: '/whatsapp?hub.mode=subscribe&hub.challenge=12345',
+        })
+        expect(reply.statusCode).toBe(403)
+        expect(reply.body).not.toBe('12345')
+      } finally {
+        harness.verifyTokenUnset = false
+      }
     })
 
     it('refuses a mode that is not a subscription', async () => {

@@ -45,10 +45,12 @@
 
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { assets, documents, withActor } from '@qabandi/db'
+import { assets, documentTypes, documents, systemActor, withActor } from '@qabandi/db'
 import { getSession } from '@/lib/session'
+import { fileRefusal } from '@/lib/file-refusal'
+import { isUuid } from '@/lib/ids'
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
   if (!session) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
@@ -56,16 +58,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params
 
+  // Not a uuid is not a document — and used to be a 500 from the cast (A17).
+  if (!isUuid(id)) return fileRefusal(request, 'not_found')
+
   const record = await withActor(session.actor, async (tx) => {
     const [row] = await tx
       .select({
-        storageKey: assets.storageKey,
-        fileName: assets.fileName,
-        contentType: assets.contentType,
+        assetId: documents.assetId,
         releasedAt: documents.releasedAt,
+        supersededById: documents.supersededById,
+        isCustomerVisible: documentTypes.isCustomerVisible,
       })
       .from(documents)
-      .innerJoin(assets, eq(assets.id, documents.assetId))
+      .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
       .where(eq(documents.id, id))
       .limit(1)
     return row
@@ -73,18 +78,48 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   // Invisible under RLS and genuinely absent are the same answer here.
   if (!record) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+    return fileRefusal(request, 'not_found')
   }
 
   /**
-   * A customer may only have what has been released.
+   * Somebody outside the operator may only have what the portal would show
+   * them — A12.
    *
-   * Internal staff can retrieve a draft — reviewing one before it goes out is
-   * the point of having drafts — but nobody outside the operator can.
+   * Released, current, and of a type marked for customers: the same three
+   * conditions the portal and the tracking page list documents by. This
+   * checked only the first, so a customer holding the id of a superseded bill
+   * of lading, or of an internal-only document type on their own job, could
+   * download it by typing the URL. Internal staff can retrieve any of them —
+   * reviewing a draft or an old version is the point of keeping them.
    */
-  if (!record.releasedAt && session.actor.type !== 'internal') {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  const customerMayHave =
+    record.releasedAt !== null && record.supersededById === null && record.isCustomerVisible
+  if (session.actor.type !== 'internal' && !customerMayHave) {
+    return fileRefusal(request, 'not_found')
   }
+
+  /*
+    The file behind the document, read as the system principal.
+
+    `assets` is scoped for staff only — its policy is false for a customer or
+    agent contact — so the join this used to do under the caller's actor found
+    nothing for them, and every portal download was a 404 whatever the
+    document. The decision is made above, on the document, under the caller's
+    own RLS and the three conditions; this reads one asset by the id that
+    decision produced, and nothing a caller supplies reaches it.
+  */
+  const [file] = await withActor(systemActor(), (tx) =>
+    tx
+      .select({
+        storageKey: assets.storageKey,
+        fileName: assets.fileName,
+        contentType: assets.contentType,
+      })
+      .from(assets)
+      .where(eq(assets.id, record.assetId))
+      .limit(1),
+  )
+  if (!file) return fileRefusal(request, 'not_found')
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
@@ -97,16 +132,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
      * is infrastructure the operator has not connected yet. Saying so is more
      * useful than an error page, and it is the truth.
      */
-    return NextResponse.json(
-      {
-        error: 'storage_not_configured',
-        message:
-          'The file store is reached through the service. Set SERVICE_URL and ' +
-          'INTERNAL_API_SECRET to enable downloads; the document record itself is intact.',
-        fileName: record.fileName,
-      },
-      { status: 503 },
-    )
+    return fileRefusal(request, 'not_configured', { fileName: file.fileName })
   }
 
   /**
@@ -120,15 +146,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const signed = await fetch(`${serviceUrl.replace(/\/$/, '')}/internal/files/signed-url`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-internal-secret': secret },
-    body: JSON.stringify({ storageKey: record.storageKey, fileName: record.fileName }),
+    body: JSON.stringify({ storageKey: file.storageKey, fileName: file.fileName }),
     cache: 'no-store',
   })
 
   if (!signed.ok) {
-    return NextResponse.json(
-      { error: 'storage_unavailable', fileName: record.fileName },
-      { status: 502 },
-    )
+    return fileRefusal(request, 'storage_unavailable', { fileName: file.fileName })
   }
 
   const { url } = (await signed.json()) as { url: string }

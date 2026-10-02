@@ -8,12 +8,15 @@
  * own.
  */
 
-import { asc, eq, ilike, or, sql } from 'drizzle-orm'
-import { locations, partners, withActor, type Actor } from '@qabandi/db'
+import { and, asc, eq, ilike, isNull, or, sql, type AnyColumn } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
+import { jobMilestones, jobs, locations, partners, withActor, type Actor } from '@qabandi/db'
+import type { Mode, PortalShipment } from '@/lib/pilot/types'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { demoPartnerName } from '@/lib/pilot/demo'
 import {
+  pilotAgentShipments,
   pilotLocations,
   pilotNetworkCounts,
   pilotPartner,
@@ -294,6 +297,81 @@ export async function agentPartnerName(actor: Actor, locale: 'en' | 'ar'): Promi
     if (!row) return null
     // `||`: an empty Arabic name is as unset as a null one.
     return (locale === 'ar' ? row.nameAr : row.nameEn) || row.nameEn
+  })
+}
+
+/**
+ * The shipments an agent contact's partner is named on — FR-AG, A9.
+ *
+ * The agent home said "Nothing assigned to you" for everyone, because it read
+ * nothing. There is no `where partner_id = ?` here, by the same design as the
+ * customer portal: the `agent_contact` arm of the jobs policy matches only
+ * jobs whose `job_partners` name `app.partner_id()`, so the scoping is the
+ * database's and this is only the projection — no customer, no money, no
+ * owner. Places and milestones in the reader's language.
+ */
+export async function listAgentShipments(
+  actor: Actor,
+  locale: 'en' | 'ar' = 'en',
+): Promise<PortalShipment[]> {
+  if (!actor.partnerId) return []
+  if (usePilotFixtures()) return pilotAgentShipments(actor.partnerId, Date.now(), locale)
+
+  const ar = locale === 'ar'
+  const origin = alias(locations, 'origin')
+  const destination = alias(locations, 'destination')
+  const name = (en: AnyColumn, arabic: AnyColumn) =>
+    ar ? sql<string | null>`coalesce(nullif(${arabic}, ''), ${en})` : sql<string | null>`${en}`
+
+  return withActor(actor, async (tx) => {
+    const rows = await tx
+      .select({
+        id: jobs.id,
+        reference: jobs.reference,
+        status: jobs.status,
+        mode: jobs.mode,
+        eta: jobs.eta,
+        originName: name(origin.nameEn, origin.nameAr),
+        destinationName: name(destination.nameEn, destination.nameAr),
+        milestonesTotal: sql<number>`(
+          select count(*)::int from ${jobMilestones}
+           where ${jobMilestones.jobId} = "jobs"."id"
+        )`,
+        milestonesDone: sql<number>`(
+          select count(*)::int from ${jobMilestones}
+           where ${jobMilestones.jobId} = "jobs"."id"
+             and ${jobMilestones.actualAt} is not null
+        )`,
+        nextMilestone: sql<string | null>`(
+          select ${ar ? sql`coalesce(nullif(${jobMilestones.nameAr}, ''), ${jobMilestones.nameEn})` : jobMilestones.nameEn}
+            from ${jobMilestones}
+           where ${jobMilestones.jobId} = "jobs"."id"
+             and ${jobMilestones.actualAt} is null
+           order by ${jobMilestones.seq}
+           limit 1
+        )`,
+      })
+      .from(jobs)
+      .leftJoin(origin, eq(origin.id, jobs.originId))
+      .leftJoin(destination, eq(destination.id, jobs.destinationId))
+      .where(and(isNull(jobs.cancelledAt), sql`${jobs.status} <> 'draft'`))
+      .orderBy(asc(jobs.eta))
+      .limit(50)
+
+    return rows.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      customerReference: null,
+      status: row.status,
+      mode: row.mode as Mode,
+      originName: row.originName ?? '—',
+      destinationName: row.destinationName ?? '—',
+      eta: row.eta,
+      milestonesTotal: row.milestonesTotal,
+      milestonesDone: row.milestonesDone,
+      documentsReleased: 0,
+      nextMilestone: row.nextMilestone,
+    }))
   })
 }
 

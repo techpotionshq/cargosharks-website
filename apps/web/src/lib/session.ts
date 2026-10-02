@@ -16,6 +16,7 @@ import { allPermissionKeys } from '@qabandi/core'
 import { usePilotFixtures, useDemoLogin } from '@/lib/pilot/source'
 import { demoSession } from '@/lib/pilot/demo'
 import { DEFAULT_TIME_ZONE, resolveTimeZone } from '@/lib/time'
+import { clientAddressFrom } from '@/lib/client-address'
 import {
   authSession,
   principalBranchRoles,
@@ -38,10 +39,26 @@ export interface Session {
     /** The zone this principal reads dates in — `lib/time.ts`. */
     readonly timezone: string
   }
-  /** Permission keys across every branch the principal holds a role in. */
+  /**
+   * Permission keys across every branch the principal holds a role in.
+   *
+   * Pooled, so it answers "may this person do X *anywhere*" — which is the
+   * right question for what a navigation offers, and the wrong one for a write
+   * against a particular branch's record. Those ask `canIn` (`permissions.ts`),
+   * which reads `branchPermissions` below.
+   */
   readonly permissions: ReadonlySet<string>
   /** Roles per branch — FR-ID-02. The same user is not the same everywhere. */
   readonly branchRoles: ReadonlyMap<string, string>
+  /**
+   * Permission keys per branch — FR-ID-02, A2.
+   *
+   * Optional only so that a session built by hand (the unit tests' harnesses,
+   * which hold one role everywhere) need not restate it; `canIn` then reads
+   * `permissions` for every branch in `branchRoles`, which is what such a
+   * session means. Every session resolved from a database sets it.
+   */
+  readonly branchPermissions?: ReadonlyMap<string, ReadonlySet<string>>
   readonly requiresTwoFactor: boolean
 }
 
@@ -188,12 +205,18 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
     const branchRoles = new Map<string, string>()
     const permissions = new Set<string>()
+    const branchPermissions = new Map<string, Set<string>>()
     let requiresTwoFactor = false
 
     for (const r of branchRoleRows) {
       branchRoles.set(r.branchId, r.roleKey)
       if (r.requiresTwoFactor) requiresTwoFactor = true
-      if (r.permissionKey && r.allowed) permissions.add(r.permissionKey)
+      let inBranch = branchPermissions.get(r.branchId)
+      if (!inBranch) branchPermissions.set(r.branchId, (inBranch = new Set()))
+      if (r.permissionKey && r.allowed) {
+        permissions.add(r.permissionKey)
+        inBranch.add(r.permissionKey)
+      }
     }
 
     const actor: Actor = {
@@ -220,6 +243,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       },
       permissions,
       branchRoles,
+      branchPermissions,
       requiresTwoFactor,
     }
   })
@@ -297,8 +321,7 @@ async function sessionToken(): Promise<string | null> {
   return null
 }
 
+/** The audit trail's address — `lib/client-address.ts` says which entry and why. */
 async function clientIp(): Promise<string | null> {
-  const store = await headers()
-  const forwarded = store.get('x-forwarded-for')
-  return forwarded?.split(',')[0]?.trim() ?? null
+  return clientAddressFrom(await headers())
 }

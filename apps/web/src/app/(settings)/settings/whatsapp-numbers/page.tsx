@@ -15,7 +15,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
 import { listWhatsappNumbers } from '@/features/admin/whatsapp-numbers'
 import {
   WhatsappNumberDialog,
@@ -56,7 +56,9 @@ export default async function WhatsappNumbersPage() {
   // Only branches this administrator holds a role in — `whatsapp_numbers_scope`
   // scopes the insert to `app.branch_ids()`, so offering an unheld branch would
   // be a choice the database refuses after the form is filled in.
-  const assignable = options.branches.filter((branch) => session.branchRoles.has(branch.value))
+  // Administered, not merely held (A2) — the action refuses the rest.
+  const administered = new Set(branchesWhere(session, 'admin.mailboxes.write'))
+  const assignable = options.branches.filter((branch) => administered.has(branch.value))
 
   return (
     <Register

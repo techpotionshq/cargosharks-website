@@ -259,15 +259,48 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
     })
 
     /** Empty means everything — what a customer integrating a whole pipeline asks for. */
-    it('subscribes to every event when none are named, with no customer or branch', async () => {
+    it('subscribes to every event when none are named, with no customer', async () => {
       const url = nextUrl()
-      const state = await createWebhookEndpoint({}, form({ url }))
+      const state = await createWebhookEndpoint({}, form({ url, branchId: HOME_BRANCH }))
 
       expect(state.errors).toBeUndefined()
       const row = await endpointByUrl(url)
       expect(row?.events).toEqual([])
       expect(row?.customerId).toBeNull()
-      expect(row?.branchId).toBeNull()
+    })
+
+    /**
+     * A4. No branch is every branch's events, and the session here administers
+     * two branches of a database that holds more. Deployment-wide is for an
+     * administrator of every branch; anybody else is asked to choose one.
+     */
+    it('refuses an endpoint for every branch from an administrator of only some', async () => {
+      const url = nextUrl()
+      const state = await createWebhookEndpoint({}, form({ url }))
+
+      expect(state.errors?.branchId).toBe('adminValidation.webhookEveryBranch')
+      expect(await endpointByUrl(url)).toBeUndefined()
+    })
+
+    /** A2. Holding the key in one branch is not holding it in another. */
+    it('refuses a branch where the administrator holds a role but not the key', async () => {
+      harness.session = {
+        ...session,
+        branchPermissions: new Map([
+          [HOME_BRANCH, new Set(['admin.api_keys.write'])],
+          [AWAY_BRANCH, new Set<string>()],
+        ]),
+      }
+      try {
+        const url = nextUrl()
+        const state = await createWebhookEndpoint({}, form({ url, branchId: AWAY_BRANCH }))
+        expect(state.errors?.branchId).toBe('adminValidation.apiAccessNotAdministered')
+        await expect(
+          createApiKey({}, form({ name: nextName(), customerId: CUSTOMER, branchId: AWAY_BRANCH })),
+        ).rejects.toThrow()
+      } finally {
+        harness.session = session
+      }
     })
 
     it('refuses plain HTTP, because a signature does not stop anyone reading', async () => {
@@ -289,9 +322,11 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
     })
 
     it('refuses a branch the administrator is not in', async () => {
-      await expect(
-        createWebhookEndpoint({}, form({ url: nextUrl(), branchId: FOREIGN_BRANCH })),
-      ).rejects.toThrow()
+      const state = await createWebhookEndpoint(
+        {},
+        form({ url: nextUrl(), branchId: FOREIGN_BRANCH }),
+      )
+      expect(state.errors?.branchId).toBe('adminValidation.apiAccessNotAdministered')
     })
 
     it('lists an endpoint with its delivery counts and never its secret', async () => {
@@ -328,7 +363,7 @@ describe.skipIf(!enabled)('API keys and webhooks', () => {
       const disabled = await endpointById(id)
       expect(disabled?.isActive).toBe(false)
       expect(disabled?.disabledAt).toBeInstanceOf(Date)
-      expect(disabled?.disabledReason).toBe('Switched off by an administrator')
+      expect(disabled?.disabledReason).toBe('switched_off')
 
       await setWebhookEndpointActive({}, form({ endpointId: id, isActive: 'on' }))
       const enabled = await endpointById(id)

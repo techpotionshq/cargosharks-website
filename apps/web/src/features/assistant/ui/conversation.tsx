@@ -31,6 +31,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Icon } from '@/ui/icon'
 import { Markdown } from './markdown'
+import type { AssistantFailure } from '../failures'
 
 export interface AssistantProposal {
   readonly entity: 'job' | 'enquiry' | 'quote' | 'invoice' | 'customs'
@@ -57,6 +58,8 @@ export interface Turn {
    */
   readonly used?: readonly { name: string }[]
   readonly unavailable?: boolean
+  /** Why it is unavailable, as a code the labels word (U1) — `failures.ts`. */
+  readonly failure?: AssistantFailure
   readonly truncated?: boolean
   /** Still arriving — renders a caret and suppresses the empty-answer copy. */
   readonly streaming?: boolean
@@ -98,6 +101,11 @@ export interface ConversationLabels {
   readonly openSettings: string
   readonly unreachable: string
   readonly unreachableHint: string
+  /** No service to run in — `SERVICE_URL` unset (U3). */
+  readonly serviceMissing: string
+  readonly serviceMissingHint: string
+  /** One sentence per failure code, in the reader's language (U1). */
+  readonly failures: Record<AssistantFailure, string>
   readonly suggestions: readonly string[]
 }
 
@@ -202,6 +210,8 @@ export interface ConversationProps {
    * nothing.
    */
   readonly unreachable?: boolean
+  /** There is no service to ask — `SERVICE_URL` is not set (U3). */
+  readonly serviceMissing?: boolean
 }
 
 export function Conversation({
@@ -213,6 +223,7 @@ export function Conversation({
   autoFocus,
   configured,
   unreachable,
+  serviceMissing,
 }: ConversationProps) {
   /*
     A name in, a sentence out. Falls back to the generic line rather than to
@@ -375,7 +386,7 @@ export function Conversation({
                       {turn.unavailable ? (
                         <p className="flex items-start gap-2 text-[0.875rem] leading-relaxed text-ink-muted italic">
                           <Icon name="alert" size={14} className="mt-1 shrink-0 text-caution" />
-                          {turn.content}
+                          {turn.failure ? labels.failures[turn.failure] : turn.content}
                         </p>
                       ) : turn.content ? (
                         <div className="text-ink">
@@ -501,7 +512,22 @@ export function Conversation({
         </div>
       </div>
 
-      {unreachable && configured !== false ? (
+      {serviceMissing && configured !== false ? (
+        /*
+          Not "something is down": nothing is running. The fix is a deployment
+          setting an administrator makes once, and saying so is the difference
+          between a support call about an outage and a line in the env file.
+        */
+        <div className="flex shrink-0 items-start gap-2.5 border-t border-caution/25 bg-caution-soft px-4 py-2.5">
+          <Icon name="alert" size={14} className="mt-0.5 shrink-0 text-caution" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <p className="text-[0.75rem] font-semibold text-caution">{labels.serviceMissing}</p>
+            <p className="text-[0.75rem] text-ink-muted">{labels.serviceMissingHint}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {unreachable && !serviceMissing && configured !== false ? (
         /*
           Above a live composer, not instead of it. The key is set and the
           question is valid; something between here and the model is down, and

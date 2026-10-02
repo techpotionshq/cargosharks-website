@@ -111,7 +111,7 @@
   },
   "search": {
     "title": "Search",
-    "subtitle": "References, container numbers and customers, across every shipment you can see.",
+    "subtitle": "Shipment, enquiry, quote, invoice and consolidation references, bills of lading, container numbers and customers — across everything you can see.",
     "prompt": "Type a reference, a container number or a customer name.",
     "promptHint": "Master and house bill numbers, booking numbers and the customer's own reference all match too.",
     "empty": "Nothing matches “{query}”.",
@@ -130,6 +130,14 @@
       "booking": "booking",
       "customerReference": "customer reference",
       "customer": "customer"
+    },
+    "records": "Enquiries, quotes, invoices and consolidations",
+    "kind": "Record",
+    "kinds": {
+      "enquiry": "Enquiry",
+      "quote": "Quotation",
+      "invoice": "Invoice",
+      "consolidation": "Consolidation"
     }
   },
   "dashboard": {
@@ -417,7 +425,9 @@
       "planned": "Planned",
       "revised": "Revised"
     },
-    "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over."
+    "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over.",
+    "throttled": "Too many lookups for now.",
+    "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you."
   },
   "public": {
     "footerRights": "All rights reserved."
@@ -435,9 +445,10 @@
   },
   "agent": {
     "title": "Assigned shipments",
-    "subtitle": "Shipments where you are named as a partner, and open rate requests.",
+    "subtitle": "Shipments where your company is named as a partner.",
     "empty": "Nothing assigned to you.",
-    "rateRequests": "Rate requests"
+    "rateRequests": "Rate requests",
+    "emptyHint": "When your company is named on a shipment, it appears here. Rate requests arrive by email."
   },
   "rates": {
     "title": "Rate cards",
@@ -610,7 +621,8 @@
     "submitting": "Sending…",
     "sent": "If that address belongs to an account, a link is on its way. It expires in one hour.",
     "errorMissing": "Enter your email address.",
-    "backToSignIn": "Back to sign in"
+    "backToSignIn": "Back to sign in",
+    "errorThrottled": "Too many reset requests. Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "resetPassword": {
     "title": "Set a new password",
@@ -945,10 +957,13 @@
     "rolesTitle": "Roles",
     "rolesHint": "The permission matrix is seeded and editable without a release.",
     "addTitle": "Adding someone",
-    "addBody": "The product is invitation-only, so there is no sign-up form. Accounts are created from a shell on the server, which is also the password-reset path.",
+    "addBody": "The product is invitation-only, so there is no sign-up form. Invite someone with the button above: they receive an email with a link to set their own password. The first administrator is created from a shell on the server.",
     "addNote": "Re-running for an existing email resets that password. Administrator and Finance additionally require TOTP enrolment.",
     "forbidden": "You cannot view users",
-    "forbiddenHint": "Your role does not include admin.users.write."
+    "forbiddenHint": "Your role does not include admin.users.write.",
+    "awaitingPassword": "Invited — no password set yet",
+    "noLoginYet": "No login yet",
+    "sendSignInLink": "Send sign-in link"
   },
   "branches": {
     "eyebrow": "Administration",
@@ -1042,6 +1057,27 @@
     "rule": "Rule",
     "kind": "Kind",
     "terms": "Terms",
+    "bases": {
+      "flat": "Flat",
+      "per_unit": "Per piece",
+      "per_kg": "Per kg",
+      "per_container": "Per container",
+      "per_day": "Per day",
+      "percent": "Percentage"
+    },
+    "categories": {
+      "freight": "Freight",
+      "origin": "Origin",
+      "destination": "Destination",
+      "customs": "Customs",
+      "transport": "Transport",
+      "documentation": "Documentation",
+      "special": "Special",
+      "other": "Other",
+      "commercial": "Commercial",
+      "compliance": "Compliance",
+      "partner_compliance": "Partner compliance"
+    },
     "fxRates": "Exchange rates",
     "fxRatesHint": "The newest rate for each pair. Quotations convert every rate card into the branch currency at these.",
     "noFxRates": "No exchange rates yet",
@@ -2688,6 +2724,41 @@
       "read": "Read",
       "failed": "Failed",
       "suppressed": "Held back"
+    },
+    "summaries": {
+      "enquiry": {
+        "created": "A new enquiry has arrived and needs an owner.",
+        "received": "A customer’s enquiry has been received, and acknowledged to them.",
+        "sla_breached": "First response is past its SLA."
+      },
+      "quote": {
+        "sent": "A quotation has been sent to the customer.",
+        "expiring": "A sent quotation reaches the end of its validity soon."
+      },
+      "job": {
+        "created": "A shipment has been booked.",
+        "milestone_reached": "A shipment milestone has been completed.",
+        "eta_changed": "The estimated arrival of a shipment has moved."
+      },
+      "free_time": {
+        "expiring": "A container is about to start accruing demurrage, detention or storage."
+      },
+      "rate_card": {
+        "expiring": "Rate cards reach the end of their validity within the month."
+      },
+      "exception": {
+        "opened": "An exception has been raised against a shipment."
+      },
+      "document": {
+        "released": "A document has been released to the customer."
+      },
+      "invoice": {
+        "issued": "An invoice has been issued.",
+        "overdue": "An issued invoice has passed its due date unpaid."
+      },
+      "supplier_invoice": {
+        "variance_flagged": "A supplier invoice was read with a line billed over what the job accrued."
+      }
     }
   },
   "milestoneForm": {
@@ -2825,7 +2896,11 @@
     "failedCount": "{count} failing",
     "off": "Off",
     "enable": "Turn on",
-    "disable": "Turn off"
+    "disable": "Turn off",
+    "disabledReasons": {
+      "switchedOff": "Switched off by an administrator",
+      "noDeliverySince": "Nothing delivered since {day}"
+    }
   },
   "chargeableForm": {
     "open": "Add a rule",
@@ -3218,7 +3293,8 @@
     "notInUse": "Not in use",
     "configure": "Configure",
     "offHint": "Set to “{driver}”. Nothing is configured here, and nothing needs to be — open Configure to switch it on.",
-    "offHintPlain": "Not switched on. Open Configure to set it up."
+    "offHintPlain": "Not switched on. Open Configure to set it up.",
+    "keyCommand": "Generate a valid key on the server with:"
   },
   "assistant": {
     "title": "Assistant",
@@ -3272,6 +3348,22 @@
       "clearance": "What is sitting in customs clearance?",
       "freeTime": "Whose free time runs out this week?",
       "exceptions": "What should I look at today?"
+    },
+    "serviceMissing": "The assistant service is not connected",
+    "serviceMissingHint": "The assistant runs in the background service, and this deployment is not connected to it. Nothing is down; an administrator needs to set SERVICE_URL and INTERNAL_API_SECRET.",
+    "failures": {
+      "serviceNotConfigured": "The assistant service is not connected on this deployment.",
+      "noBranch": "You are not assigned to a branch, so the assistant has nothing to look at.",
+      "threadsFailed": "Your conversations could not be loaded.",
+      "threadFailed": "That conversation could not be opened.",
+      "closeFailed": "That conversation could not be closed.",
+      "couldNotAnswer": "The assistant could not answer.",
+      "couldNotFinish": "The assistant could not finish that answer.",
+      "timedOut": "The assistant did not answer in time. Try a narrower question.",
+      "unreachable": "The assistant could not be reached.",
+      "notAvailable": "The assistant is not available on this deployment.",
+      "aiNotConfigured": "No model is configured for this deployment.",
+      "aiBudgetExhausted": "This month's model budget has been spent. The assistant is back next month, or when an administrator raises the ceiling."
     }
   },
   "proposals": {
@@ -3354,7 +3446,8 @@
       "code": "Authentication code",
       "submit": "Turn on two-factor",
       "submitting": "Turning on…"
-    }
+    },
+    "errorMissingOrBackup": "Enter the 6-digit code from your authenticator app, or one of your backup codes."
   },
   "rateRequests": {
     "title": "Rates from agents",
@@ -3479,6 +3572,21 @@
     "unknownContainerType": "Not a known container type. Choose one from the list.",
     "unknownCurrency": "Not a known currency. Use a three-letter code from the currency table.",
     "mailboxGone": "That mailbox is no longer visible. Reload the page and try again.",
+    "personSpansOtherBranches": "This person also works in a branch you do not administer. You can change their access in your branches, but their name, address, language and whether they can sign in are for an administrator of every branch they work in.",
+    "signInLinkSent": "A link to set a password has been emailed to {email}. It works for one hour.",
+    "signInLinkSuspended": "This account is suspended. Restore it before sending a sign-in link.",
+    "signInLink": {
+      "not_configured": "No email was sent: the mail service is not configured on this deployment. The account exists; send the link again once mail works.",
+      "refused": "No email was sent: the mail service refused it. The account exists; check the outbound mail settings and try again.",
+      "unreachable": "No email was sent: the mail service could not be reached. The account exists; try again in a few minutes.",
+      "throttled": "Several links have already gone to this address in the last hour. Ask them to use the newest one, or try again later.",
+      "no_login": "No email was sent: this person has no login to set a password for."
+    },
+    "webhookEveryBranch": "Choose a branch. Sending every branch's events needs administrator rights in every branch.",
+    "apiAccessNotAdministered": "You do not administer API access in that branch.",
+    "portalCustomerInactive": "This customer is retired, so nobody can be given a portal login for it.",
+    "keyMissing": "MAILBOX_ENCRYPTION_KEY is not set on this deployment, so mailbox passwords and integration credentials can be neither stored nor read.",
+    "keyWrongLength": "MAILBOX_ENCRYPTION_KEY must be {expected} bytes, base64-encoded; this one decodes to {bytes}.",
     "fxRateExample": "A rate above zero, with up to eight decimals — for example 0.30700000.",
     "fxSameCurrency": "Choose two different currencies."
   },
@@ -3950,6 +4058,49 @@
     "london": "London",
     "newYork": "New York",
     "utc": "UTC"
+  },
+  "portalContacts": {
+    "eyebrow": "Customer portal",
+    "title": "Portal logins",
+    "description": "People at this customer who can sign in to see their own shipments, documents and invoices — and nothing else.",
+    "none": "Nobody at this customer has a portal login yet.",
+    "invite": "Give portal access",
+    "inviteTitle": "Give someone portal access",
+    "inviteDescription": "Creates their login and emails them a link to set their own password.",
+    "inviteSubmit": "Create login and send link",
+    "inviteNote": "They will see only this customer's records. The link works for one hour; you can send another from this card.",
+    "name": "Name",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "email": "Email",
+    "locale": "Language for emails",
+    "locales": {
+      "en": "English",
+      "ar": "Arabic"
+    }
+  },
+  "fileRefusal": {
+    "back": "Go back",
+    "not_found": {
+      "title": "This document is not available",
+      "body": "It does not exist, or it is not one you can open. Check the link, or ask the person who sent it."
+    },
+    "not_configured": {
+      "title": "Documents cannot be produced on this system yet",
+      "body": "The document service is not connected. The record itself is safe; an administrator needs to finish setting up the service before files can be generated or downloaded."
+    },
+    "not_available": {
+      "title": "Documents are not part of this demo",
+      "body": "This demo runs on sample data with no document service behind it, so files cannot be generated here."
+    },
+    "render_failed": {
+      "title": "The document could not be produced",
+      "body": "The document service did not finish. Try again in a minute; if it keeps failing, tell your administrator."
+    },
+    "storage_unavailable": {
+      "title": "The file could not be fetched",
+      "body": "The file store did not answer. Try again in a minute; if it keeps failing, tell your administrator."
+    }
   },
   "fxRateForm": {
     "open": "Add an exchange rate",

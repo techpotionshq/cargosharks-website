@@ -238,16 +238,17 @@ vi.mock('../accounting/export', async () => ({
 // covering-note handler pulls `locations`, `customers`, `quotes`); the harness
 // stubs `db` and `withActor` on top so the tested handlers run against fakes and
 // never touch a database.
+//
+// The principal is answered through `withActor` and nowhere else. This stub
+// used to answer it from bare `db`, which is exactly the un-actored read that
+// FORCE RLS turns into "nobody" against a real database (A8) — the fake made
+// the bug pass. `db` is now inert, so a handler that reaches for it again
+// gets nothing here either.
+const PRINCIPALS = { locale: 'locale', email: 'email', nameEn: 'name_en', nameAr: 'name_ar' }
 vi.mock('@qabandi/db', async () => ({
   ...(await vi.importActual<typeof import('@qabandi/db')>('@qabandi/db')),
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => ({ limit: async () => (harness.principal ? [harness.principal] : []) }),
-      }),
-    }),
-  },
-  principals: { locale: 'locale', email: 'email', nameEn: 'name_en', nameAr: 'name_ar' },
+  db: {},
+  principals: PRINCIPALS,
   assets: {},
   withActor: async (_actor: unknown, fn: (tx: unknown) => unknown) =>
     fn({
@@ -258,7 +259,16 @@ vi.mock('@qabandi/db', async () => ({
         }),
       }),
       select: () => ({
-        from: () => ({ where: () => ({ limit: async () => harness.assetRows }) }),
+        from: (table: unknown) => ({
+          where: () => ({
+            limit: async () =>
+              table === PRINCIPALS
+                ? harness.principal
+                  ? [harness.principal]
+                  : []
+                : harness.assetRows,
+          }),
+        }),
       }),
     }),
 }))

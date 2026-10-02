@@ -34,8 +34,10 @@ const app = Fastify({
     config.NODE_ENV === 'development'
       ? { transport: { target: 'pino-pretty' }, level: 'debug' }
       : { level: 'info' },
-  // Trust the proxy so `x-forwarded-for` reaches the audit trail intact (§5.4).
-  trustProxy: true,
+  // Trust exactly the proxies we run, so `x-forwarded-for` reaches the audit
+  // trail and the rate limiter as our proxy wrote it, not as the caller did
+  // (§5.4, A15 — `TRUSTED_PROXY_HOPS` in `config.ts`).
+  trustProxy: config.TRUSTED_PROXY_HOPS,
 })
 
 await app.register(helmet)

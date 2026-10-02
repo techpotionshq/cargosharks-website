@@ -17,7 +17,7 @@
  * here goes through `withActor`, and the trigger records it.
  */
 
-import { and, asc, desc, eq, gte, ilike, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, lt, notInArray, or, sql } from 'drizzle-orm'
 import {
   auditLog,
   branches,
@@ -69,6 +69,15 @@ export interface UserRow {
   readonly isActive: boolean
   readonly lastSeenAt: Date | null
   readonly hasLogin: boolean
+  /**
+   * Whether the login has a password yet — A7.
+   *
+   * An invitation creates the login and mails a link; the credential exists
+   * only once the person has followed it. Until then the register says so and
+   * offers to send the link again, instead of a tick that implied they could
+   * already sign in.
+   */
+  readonly hasPassword: boolean
   /** `KWI: Operations Manager`, one per branch — FR-ID-02. */
   readonly assignments: { branchCode: string; roleKey: string; requiresTwoFactor: boolean }[]
 }
@@ -88,8 +97,18 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
         isActive: principals.isActive,
         lastSeenAt: principals.lastSeenAt,
         hasLogin: sql<boolean>`${principals.authUserId} is not null`,
+        // `auth_account` sits outside RLS with the other `auth_*` tables, and
+        // only the existence of a credential leaves this query — never a hash.
+        hasPassword: sql<boolean>`exists (
+          select 1 from auth_account a
+           where a.user_id = "principals"."auth_user_id" and a.provider_id = 'credential'
+        )`,
       })
       .from(principals)
+      // Staff only. Portal and agent logins became readable to staff (A7) so
+      // the customer page can show who has access; they are managed there,
+      // per company, and listing them here would bury the staff register.
+      .where(notInArray(principals.type, ['customer_contact', 'agent_contact']))
       .orderBy(asc(principals.nameEn))
       .limit(200)
 
@@ -124,6 +143,45 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       assignments: byPrincipal.get(person.id) ?? [],
     }))
   })
+}
+
+export interface PortalContactRow {
+  readonly id: string
+  readonly nameEn: string
+  readonly nameAr: string | null
+  readonly email: string
+  readonly isActive: boolean
+  readonly hasPassword: boolean
+  readonly lastSeenAt: Date | null
+}
+
+/** The portal logins one customer has. */
+export async function listPortalContacts(
+  actor: Actor,
+  customerId: string,
+): Promise<PortalContactRow[]> {
+  // The hosted demo's portal persona is not a row; the card offers the invite
+  // and lists nobody, which is the honest picture of a fixture deployment.
+  if (usePilotFixtures()) return []
+
+  return withActor(actor, (tx) =>
+    tx
+      .select({
+        id: principals.id,
+        nameEn: principals.nameEn,
+        nameAr: principals.nameAr,
+        email: principals.email,
+        isActive: principals.isActive,
+        lastSeenAt: principals.lastSeenAt,
+        hasPassword: sql<boolean>`exists (
+          select 1 from auth_account a
+           where a.user_id = "principals"."auth_user_id" and a.provider_id = 'credential'
+        )`,
+      })
+      .from(principals)
+      .where(and(eq(principals.type, 'customer_contact'), eq(principals.customerId, customerId)))
+      .orderBy(asc(principals.nameEn)),
+  )
 }
 
 /** The permission matrix as the interface renders it — role by permission. */

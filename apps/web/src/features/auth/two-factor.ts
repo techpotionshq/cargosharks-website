@@ -66,17 +66,35 @@ export async function verifyChallenge(
   formData: FormData,
 ): Promise<ChallengeState> {
   const t = await getTranslations('twoFactor')
-  const code = digits(formData.get('code'))
 
-  if (!code) return { error: t('errorMissing') }
+  /*
+    A backup code, or the six digits — A6.
+
+    The page has always said "enter one of your backup codes" beneath this
+    field, and the field could not take one: it stripped every non-digit and
+    required exactly six, while Better Auth's codes look like `aB3x9-Q7kLm`.
+    A person who lost their phone was locked out with the recovery path
+    printed in front of them. The shape decides which endpoint to ask; the
+    library spends the backup code, so each one works once.
+  */
+  const backup = backupCode(formData.get('code'))
+  const code = backup ? null : digits(formData.get('code'))
+
+  if (!backup && !code) return { error: t('errorMissingOrBackup') }
 
   let response: Response
   try {
-    response = await auth.api.verifyTOTP({
-      body: { code },
-      headers: await headers(),
-      asResponse: true,
-    })
+    response = backup
+      ? await auth.api.verifyBackupCode({
+          body: { code: backup },
+          headers: await headers(),
+          asResponse: true,
+        })
+      : await auth.api.verifyTOTP({
+          body: { code: code! },
+          headers: await headers(),
+          asResponse: true,
+        })
   } catch {
     /*
       One message for a wrong code, an expired window, a code already spent and
@@ -218,6 +236,22 @@ export async function completeEnrolment(
 function digits(raw: FormDataEntryValue | null): string | null {
   const cleaned = String(raw ?? '').replaceAll(/\D/g, '')
   return cleaned.length === 6 ? cleaned : null
+}
+
+/**
+ * A backup code in Better Auth's shape — ten letters and digits, shown as
+ * `aB3x9-Q7kLm` — or null.
+ *
+ * Case is kept, because the codes are case-sensitive. Spaces are dropped and
+ * the dash is optional on the way in and restored on the way out, since a
+ * code copied from a printout or typed from a phone arrives every way. Ten
+ * characters cannot be mistaken for six digits, which is what lets one field
+ * take both.
+ */
+function backupCode(raw: FormDataEntryValue | null): string | null {
+  const compact = String(raw ?? '').replaceAll(/\s/g, '')
+  const match = /^([A-Za-z0-9]{5})-?([A-Za-z0-9]{5})$/.exec(compact)
+  return match ? `${match[1]}-${match[2]}` : null
 }
 
 /** Forward Better Auth's `Set-Cookie` headers onto the real navigation. */

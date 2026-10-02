@@ -17,8 +17,10 @@
  *      on the job is not a customer document, and an internal exception is not
  *      a customer notice.
  *
- * Rate limiting sits in front of this in the service (§8), because a control
- * that lives only in the page is a control that a second caller forgets.
+ * Rate limiting sits in front of this in the page (`recordTrackingLookup` in
+ * `lib/throttle.ts`, A10). This used to say the service limited it, and the
+ * page never went through the service, so nothing did. A second caller of
+ * this function must spend the same budgets.
  */
 
 import 'server-only'

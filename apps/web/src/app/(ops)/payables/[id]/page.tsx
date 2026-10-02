@@ -16,6 +16,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { recordId } from '@/lib/ids'
 import { can } from '@/lib/permissions'
 import { getSupplierInvoice } from '@/features/payables/queries'
 import { listMatchCandidates } from '@/features/costing/queries'
@@ -46,7 +47,7 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const session = await requireSession()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-  const { id } = await params
+  const id = recordId((await params).id)
 
   const bill = await getSupplierInvoice(session.actor, id, locale)
   if (!bill) notFound()
