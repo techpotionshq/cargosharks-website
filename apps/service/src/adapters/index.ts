@@ -106,7 +106,8 @@ const noted = new Map<string, string | null>()
 
 async function safely<T>(
   key: string,
-  fallback: T,
+  /** The default, given the reason the configured driver would not build. */
+  fallback: (reason: string) => T,
   build: () => T,
   log?: (o: unknown, m: string) => void,
 ): Promise<T> {
@@ -124,7 +125,7 @@ async function safely<T>(
       await noteIntegrationResult(key, message).catch(() => {})
       log?.({ integration: key, err: message }, 'integration is misconfigured; using the default')
     }
-    return fallback
+    return fallback(message)
   }
 }
 
@@ -179,24 +180,70 @@ export async function resolveEmailChannel(
 
   if (settings.driver === 'log') return logChannel(log)
 
+  /*
+    A relay that will not build is *not* the log driver.
+
+    It used to be: `safely` fell back to `logChannel`, which answers every
+    send with `accepted: true`, so a stray `SMTP_USER` with no password marked
+    every customer's mail `sent` with a `log:` reference while none of it left
+    the building, and the intake agent filed its emailed confirmation as a sent
+    message. The log driver is a deliberate choice an administrator makes, and
+    only that. A broken relay now refuses each send with the reason, so the
+    dispatcher keeps the delivery queued with the error and fails it after its
+    retries, the intake turn records `send_error`, and the RFQ sender records a
+    failed attempt: every screen tells the truth, and a fix on the settings
+    screen is picked up by the next retry.
+  */
   return safely(
     'smtp',
-    logChannel(log),
+    (reason) => unconfiguredMailChannel(reason),
     () => {
-      /*
-        A user with no password is refused rather than sent.
-
-        The adapter would otherwise offer the username and no credential, which
-        most relays answer by accepting the connection and rejecting the
-        recipient — a per-message failure that reads as a bad address.
-      */
-      if (settings.text('user') && !settings.secret('password')) {
-        throw new Error('A mail username is set with no password. Set both, or neither.')
-      }
+      const problem = mailRelayProblem(settings)
+      if (problem) throw new Error(problem)
       return smtpChannel(smtpOptions(settings))
     },
     log,
   )
+}
+
+/**
+ * What mail is doing, in the words the boot log prints.
+ *
+ * Three states, never two: sending, deliberately not sending, and refusing
+ * because the relay is broken. The third used to print as the first, which is
+ * how a deployment could log a relay host while every message went nowhere.
+ */
+export function describeMail(mail: LiveIntegration): string {
+  if (mail.driver === 'log') return 'log (not sending: MAIL_DRIVER=log)'
+  const relay =
+    `smtp ${mail.text('host') ?? 'localhost'}:${mail.number('port', 1025)}` +
+    (mail.fromRow ? ' (from settings)' : '')
+  const problem = mailRelayProblem(mail)
+  return problem ? `${relay} REFUSING every send: ${problem}` : relay
+}
+
+/**
+ * Why this relay cannot send, or null when it may try.
+ *
+ * A user with no password is refused rather than sent. The adapter would
+ * otherwise offer the username and no credential, which most relays answer by
+ * accepting the connection and rejecting the recipient, a per-message failure
+ * that reads as a bad address. Shared with the boot line, which must say the
+ * same thing the channel does.
+ */
+export function mailRelayProblem(settings: LiveIntegration): string | null {
+  if (settings.text('user') && !settings.secret('password')) {
+    return 'A mail username is set with no password. Set both, or neither.'
+  }
+  return null
+}
+
+/** An email channel that refuses every send, naming why mail is not configured. */
+export function unconfiguredMailChannel(reason: string): NotificationChannel {
+  return {
+    key: 'email',
+    send: async () => ({ accepted: false, error: `mail is not configured: ${reason}` }),
+  }
 }
 
 /**
@@ -208,7 +255,12 @@ export async function resolveEmailChannel(
  */
 export async function fxSource(log?: (o: unknown, m: string) => void): Promise<FxRateSource> {
   const settings = await integration('fx')
-  return safely('fx', manualFxSource, () => resolveFxSource(settings), log)
+  return safely(
+    'fx',
+    () => manualFxSource,
+    () => resolveFxSource(settings),
+    log,
+  )
 }
 
 /** The carrier feed — one driver row plus one credential row per carrier. */
@@ -230,7 +282,7 @@ export async function carrierTracking(
 
   return safely(
     'carrierTracking',
-    manualCarrierTracking,
+    () => manualCarrierTracking,
     () => resolveCarrierTracking(settings),
     log,
   )
@@ -239,7 +291,12 @@ export async function carrierTracking(
 /** The e-invoice transmitter. `none` until a deployment appoints a provider. */
 async function eInvoiceTransmit(log?: (o: unknown, m: string) => void): Promise<EInvoiceTransmit> {
   const settings = await integration('einvoice')
-  return safely('einvoice', noTransmit, () => resolveEInvoiceTransmit(settings), log)
+  return safely(
+    'einvoice',
+    () => noTransmit,
+    () => resolveEInvoiceTransmit(settings),
+    log,
+  )
 }
 
 /**
@@ -257,7 +314,12 @@ async function eInvoiceTransmit(log?: (o: unknown, m: string) => void): Promise<
  */
 export async function modelProvider(log?: (o: unknown, m: string) => void): Promise<ModelProvider> {
   const settings = await integration('ai')
-  return safely('ai', noModel, () => modelProviderFrom(settings, config.WEB_URL), log)
+  return safely(
+    'ai',
+    () => noModel,
+    () => modelProviderFrom(settings, config.WEB_URL),
+    log,
+  )
 }
 
 /**
@@ -499,11 +561,7 @@ export async function describeAdapters(): Promise<Record<string, string>> {
       you edited is not the one in use" are different problems with the same
       symptom, and this is the only place that distinguishes them.
     */
-    email:
-      mail.driver === 'log'
-        ? 'log (not sending)'
-        : `smtp ${mail.text('host') ?? 'localhost'}:${mail.number('port', 1025)}` +
-          (mail.fromRow ? ' (from settings)' : ''),
+    email: describeMail(mail),
     /*
       Read from config for the same reason as `email` above: "off" and "on but
       polling nothing" look identical from outside, and this is the line that
