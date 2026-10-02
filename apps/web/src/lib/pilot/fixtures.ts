@@ -3416,6 +3416,11 @@ export function pilotRateCardSummary(): RateCardSummary {
     ).length,
     lanesCovered: buyKeys.size,
     uncoveredLanes: [...trafficked].filter((key) => !buyKeys.has(key)).length,
+    cards: {
+      all: RATE_CARD_SEEDS.length,
+      buy: RATE_CARD_SEEDS.filter((c) => c.direction === 'buy').length,
+      sell: RATE_CARD_SEEDS.filter((c) => c.direction === 'sell').length,
+    },
   }
 }
 

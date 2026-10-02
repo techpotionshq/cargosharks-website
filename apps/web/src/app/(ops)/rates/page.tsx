@@ -72,9 +72,6 @@ export default async function RatesPage({
   const tEnq = await getTranslations('enquiry')
   const tDash = await getTranslations('dashboard')
 
-  const buyCount = rows.filter((row) => row.direction === 'buy').length
-  const sellCount = rows.filter((row) => row.direction === 'sell').length
-
   return (
     <>
       <div className="mb-4 grid grid-cols-2 gap-4 @3xl:grid-cols-4">
@@ -267,17 +264,17 @@ export default async function RatesPage({
         title={t('title')}
         description={t('subtitle')}
         filters={[
-          { label: tc('all'), href: '/rates', count: rows.length, active: !direction },
+          { label: tc('all'), href: '/rates', count: summary.cards.all, active: !direction },
           {
             label: t('buy'),
             href: '/rates?direction=buy',
-            count: buyCount,
+            count: summary.cards.buy,
             active: direction === 'buy',
           },
           {
             label: t('sell'),
             href: '/rates?direction=sell',
-            count: sellCount,
+            count: summary.cards.sell,
             active: direction === 'sell',
           },
         ]}

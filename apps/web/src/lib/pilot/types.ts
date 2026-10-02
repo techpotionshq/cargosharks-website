@@ -593,6 +593,11 @@ export interface RateCardSummary {
   readonly lanesCovered: number
   /** Lanes with traffic and no live buy card — quoting those is guessing. */
   readonly uncoveredLanes: number
+  /**
+   * Every card the reader can see, by direction, before the register's tab
+   * filters it, so the All/Buying/Selling counts do not change with the tab.
+   */
+  readonly cards: { readonly all: number; readonly buy: number; readonly sell: number }
 }
 
 /** Mirrors `LaneMarginRow`. `marginPct` is null where one side is missing. */
