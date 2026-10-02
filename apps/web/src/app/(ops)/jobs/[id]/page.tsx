@@ -520,7 +520,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <CardHeader
               icon="document"
               eyebrow={t('documents')}
-              title={t('documents')}
+              title={t('documentVault')}
               description={t('documentsHint')}
             />
           </div>

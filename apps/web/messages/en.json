@@ -386,7 +386,8 @@
     },
     "noClocks": "No free time running",
     "noClocksHint": "Start a clock when a box is discharged or collected — the accrual and the charge line follow by themselves.",
-    "clockStopped": "Stopped {on}"
+    "clockStopped": "Stopped {on}",
+    "documentVault": "Shipment files"
   },
   "mode": {
     "sea_fcl": "Sea FCL",
@@ -1094,7 +1095,8 @@
     "fxPair": "Pair",
     "fxEffective": "From",
     "fxManual": "Entered by hand",
-    "fxSource": "Where from"
+    "fxSource": "Where from",
+    "calendarsGlance": "Calendars at a glance"
   },
   "audit": {
     "eyebrow": "Administration",
@@ -3318,7 +3320,7 @@
       "platform": "Platform",
       "carriers": "Carriers",
       "finance": "Finance",
-      "intelligence": "Document extraction"
+      "intelligence": "AI services"
     },
     "groupHints": {
       "platform": "Where documents are kept, and how mail comes in and goes out. Without these the product cannot store a file or write to a customer.",

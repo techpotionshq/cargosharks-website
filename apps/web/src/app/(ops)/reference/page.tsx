@@ -264,7 +264,7 @@ export default async function ReferencePage() {
             below it absorbs whatever the row's cap leaves over.
           */}
           <Card className="shrink-0">
-            <CardHeader icon="calendar" eyebrow={t('eyebrow')} title={t('calendars')} />
+            <CardHeader icon="calendar" eyebrow={t('eyebrow')} title={t('calendarsGlance')} />
             <p className="mt-1 mb-4 text-body-sm text-ink-muted">{t('calendarsHint')}</p>
             <ul className="flex flex-col gap-2">
               {sample.calendars.map((calendar) => (

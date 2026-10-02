@@ -71,6 +71,19 @@ export function CardHeader({
   actions,
   className,
 }: CardHeaderProps) {
+  /*
+    An eyebrow that only repeats the title is dropped.
+
+    Several cards take both from the same catalogue word — the job file's
+    containers card read "CONTAINERS / Containers" — and the eyebrow's job is
+    to place a card in a section, which an echo of its own title cannot do.
+    Only plain strings are compared; a node is assumed to mean something.
+  */
+  const echoesTitle =
+    typeof eyebrow === 'string' &&
+    typeof title === 'string' &&
+    eyebrow.trim().toLocaleLowerCase() === title.trim().toLocaleLowerCase()
+
   return (
     /*
       Wraps, and the title claims its width first.
@@ -93,7 +106,7 @@ export function CardHeader({
           </span>
         ) : null}
         <div className="min-w-0">
-          {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
+          {eyebrow && !echoesTitle ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
           <h2 className="text-title font-semibold text-balance text-ink">{title}</h2>
           {description ? (
             // `break-words`: a description naming a template key or an address
