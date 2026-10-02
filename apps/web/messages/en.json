@@ -2415,7 +2415,9 @@
     "source": {
       "consol_allocation": "Allocated from a consolidation",
       "consol_allocation_reversal": "Reversed consolidation allocation",
-      "free_time_clock": "Accrued by the free-time clock"
+      "free_time_clock": "Accrued by the free-time clock",
+      "quote_line": "From the accepted quotation",
+      "quote_cost": "Buy rate on the accepted quotation"
     },
     "match": {
       "na": "—",
@@ -4076,7 +4078,8 @@
     "quoteNotBookable": "That quotation could not be found.",
     "quoteNotAccepted": "Only an accepted quotation can be booked.",
     "quoteOtherCustomer": "That quotation is for a different customer or branch.",
-    "quoteAlreadyBooked": "A shipment has already been opened from that quotation."
+    "quoteAlreadyBooked": "A shipment has already been opened from that quotation.",
+    "quoteNoFxRate": "This quotation is priced in a currency with no exchange rate to the branch's currency on file. Add the rate, then book it."
   },
   "supportValidation": {
     "supportSessionCannotGrant": "A support session cannot grant support access",

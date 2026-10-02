@@ -361,6 +361,19 @@ export async function priceEnquiryToQuote(
           rate: line.rate.times(line.fx.rate).toDecimalPlaces(6).toString(),
           amount: toScale(line.amountInBase, lookup),
           currency: line.amountInBase.currency,
+          /*
+            The cost as the partner will bill it: the charge, the card's own
+            currency, rate and amount, and the rate it was converted at. Booking
+            the quotation carries these into the job's cost lines (D13), so the
+            accrual sits in the currency a supplier invoice is matched in and
+            its base amount is exactly the one this quotation totalled.
+          */
+          chargeTypeId: buyCard ? chargeTypeIdFor(line.chargeTypeKey, buyCard) : null,
+          partnerId: buyCard?.partnerId ?? null,
+          cardCurrency: line.amount.currency,
+          cardRate: line.rate.toString(),
+          cardAmount: toScale(line.amount, lookup),
+          fxRate: line.fx.rate.toString(),
         })),
         exclusions: splitLines(enquiry.exclusionsEn),
         exclusionsAr: splitLines(enquiry.exclusionsAr),

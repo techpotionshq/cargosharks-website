@@ -2415,7 +2415,9 @@
     "source": {
       "consol_allocation": "موزّع من تجميعة",
       "consol_allocation_reversal": "عكس توزيع تجميعة",
-      "free_time_clock": "استحق بعدّاد وقت السماح"
+      "free_time_clock": "استحق بعدّاد وقت السماح",
+      "quote_line": "من عرض السعر المقبول",
+      "quote_cost": "سعر الشراء في عرض السعر المقبول"
     },
     "match": {
       "na": "—",
@@ -4076,7 +4078,8 @@
     "quoteNotBookable": "تعذر العثور على عرض السعر هذا.",
     "quoteNotAccepted": "لا يمكن حجز شحنة إلا من عرض سعر مقبول.",
     "quoteOtherCustomer": "عرض السعر هذا لعميل أو فرع آخر.",
-    "quoteAlreadyBooked": "تم فتح شحنة من عرض السعر هذا بالفعل."
+    "quoteAlreadyBooked": "تم فتح شحنة من عرض السعر هذا بالفعل.",
+    "quoteNoFxRate": "هذا العرض مسعّر بعملة لا يوجد لها سعر صرف مسجّل مقابل عملة الفرع. أضف السعر ثم احجز الشحنة."
   },
   "supportValidation": {
     "supportSessionCannotGrant": "لا يمكن لجلسة دعم أن تمنح وصول الدعم",
