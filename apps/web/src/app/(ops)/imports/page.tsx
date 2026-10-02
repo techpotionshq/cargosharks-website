@@ -70,28 +70,28 @@ export default async function ImportsPage({
 
   /**
    * The pilot runs on fixtures with no database behind them, so there is
-   * nothing to import *into*. Saying so is better than offering a form whose
-   * submit button fails on a connection error.
+   * nothing to import *into*. The notice says so; "Check" still reads and
+   * validates a file against the pilot's own reference data, and only the
+   * import itself is refused, in words. The pickers are filled either way:
+   * a customer sheet with no branch to choose could not even be checked.
    */
   const fixtures = usePilotFixtures()
 
   let branches: Choice[] = []
   let partners: Choice[] = []
-  if (!fixtures) {
-    const resolved = await getLocale()
-    const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
-    if (needsBranch) {
-      branches = (await importableBranches(session.actor, locale)).map((branch) => ({
-        value: branch.id,
-        label: `${branch.code} — ${branch.name}`,
-      }))
-    }
-    if (needsPartner) {
-      partners = (await ratePartners(session.actor, locale)).map((partner) => ({
-        value: partner.id,
-        label: `${partner.code} — ${partner.name}`,
-      }))
-    }
+  const resolved = await getLocale()
+  const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
+  if (needsBranch) {
+    branches = (await importableBranches(session.actor, locale)).map((branch) => ({
+      value: branch.id,
+      label: `${branch.code} — ${branch.name}`,
+    }))
+  }
+  if (needsPartner) {
+    partners = (await ratePartners(session.actor, locale)).map((partner) => ({
+      value: partner.id,
+      label: `${partner.code} — ${partner.name}`,
+    }))
   }
 
   const kindLabel = (key: string): string => {
@@ -160,6 +160,7 @@ export default async function ImportsPage({
     error_unknown_reference: t('errorUnknownReference'),
     error_conflict: t('errorConflict'),
     error_unknown_kind: t('errorUnknownKind'),
+    error_needs_database: t('errorNeedsDatabase'),
     error_unknown: t('errorUnknown'),
   }
 

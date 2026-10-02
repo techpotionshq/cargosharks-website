@@ -1968,7 +1968,8 @@
     "errorUnknownKind": "Unknown import.",
     "errorUnknown": "The import could not be completed.",
     "kindOpenJobs": "Open jobs",
-    "kindOpenReceivables": "Open receivables"
+    "kindOpenReceivables": "Open receivables",
+    "errorNeedsDatabase": "Importing needs a database, and this environment runs on pilot fixtures without one. The check above is real; run the import on an instance with its own database."
   },
   "support": {
     "bannerRead": "Support has read access to your data",

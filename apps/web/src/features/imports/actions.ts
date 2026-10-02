@@ -65,6 +65,7 @@ import {
   resolveJobReferences,
   resolveRateReferences,
 } from './queries'
+import { usePilotFixtures } from '@/lib/pilot/source'
 import { CONFLICT_STATES, REFERENCE_STATES, sqlState } from './sql-state'
 import type { ImportIssue } from './issue-messages'
 
@@ -156,6 +157,14 @@ export async function runImport(_previous: ImportState, form: FormData): Promise
   }
 
   if (intent === 'check' || !report.ok) return base
+
+  /*
+    The pilot has nothing to write into. The check above is real — read
+    against the pilot's own reference data — but a commit would reach the
+    writers' `withActor` and fail on the missing connection, so it is
+    refused here in words rather than as a 500.
+  */
+  if (usePilotFixtures()) return { ...base, error: 'needs_database' }
 
   try {
     const committed = await write(session, kindKey, report, { branchId, form })

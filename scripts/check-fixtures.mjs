@@ -44,11 +44,6 @@ const USE_SERVER = /^\s*['"]use server['"]/m
  */
 const ALLOWED = new Map([
   [
-    'apps/web/src/features/imports/queries.ts',
-    'guarded one level up: imports/page.tsx tests usePilotFixtures() and says there is ' +
-      'nothing to import into, rather than offering a form whose submit fails.',
-  ],
-  [
     'apps/web/src/app/api/assets/[id]/route.ts',
     'streams a stored object. Fixture mode has no object store, and a download route ' +
       'that answered with an invented file would be worse than one that 404s.',

@@ -24,6 +24,12 @@ import {
   type Actor,
 } from '@qabandi/db'
 import { named } from '@/lib/named'
+import { usePilotFixtures } from '@/lib/pilot/source'
+import {
+  pilotImportReference,
+  pilotImportableBranches,
+  pilotRatePartners,
+} from '@/lib/pilot/fixtures'
 import type { ImportKind } from './descriptors'
 
 export interface ImportReference {
@@ -38,6 +44,13 @@ export interface ImportReference {
  * import has no reason to read the charge catalogue.
  */
 export async function loadReference(actor: Actor, kind: ImportKind): Promise<ImportReference> {
+  /*
+    The pilot checks a file against its own reference data, so "Check" is a
+    real answer offline. It returned a 500 ("DATABASE_URL is not set") while
+    the page said only that nothing could be imported.
+  */
+  if (usePilotFixtures()) return pilotImportReference(kind)
+
   return withActor(actor, async (tx) => {
     const lookups: Record<string, ReadonlySet<string>> = {}
     const existing: Record<string, ReadonlySet<string>> = {}
@@ -221,6 +234,9 @@ export async function importableBranches(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
 ): Promise<{ id: string; code: string; name: string }[]> {
+  // The customer and cutover sheets have nowhere to go without a branch.
+  if (usePilotFixtures()) return pilotImportableBranches(locale)
+
   return withActor(actor, async (tx) =>
     tx
       .select({
@@ -241,6 +257,8 @@ export async function ratePartners(
   actor: Actor,
   locale: 'en' | 'ar' = 'en',
 ): Promise<{ id: string; code: string; name: string }[]> {
+  if (usePilotFixtures()) return pilotRatePartners(locale)
+
   return withActor(actor, async (tx) =>
     tx
       .select({

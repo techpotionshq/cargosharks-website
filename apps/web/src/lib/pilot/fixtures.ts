@@ -6171,6 +6171,71 @@ export function pilotOptions(locale: 'en' | 'ar' = 'en'): ReferenceOptions {
   }
 }
 
+// --- bulk import — features/imports/queries.ts ------------------------------
+
+/**
+ * Serves `loadReference` — the code sets a sheet is checked against.
+ *
+ * So "Check" works on the pilot: a file is read, mapped and validated against
+ * the same ports, currencies and existing codes the screens show, and a
+ * customer code the pilot already has is refused as a duplicate exactly as it
+ * would be against a database. Only the commit needs one, and says so.
+ *
+ * Keyed by the sheet's name rather than its type, which lives in the slice;
+ * the sets mirror the query's, upper-cased as it upper-cases them.
+ */
+export function pilotImportReference(kind: string): {
+  lookups: Record<string, ReadonlySet<string>>
+  existing: Record<string, ReadonlySet<string>>
+} {
+  const upper = (values: readonly string[]) => new Set(values.map((v) => v.toUpperCase()))
+  const lookups: Record<string, ReadonlySet<string>> = {}
+  const existing: Record<string, ReadonlySet<string>> = {}
+  const isCutover = kind === 'open-jobs' || kind === 'open-receivables'
+
+  if (kind !== 'rate-cards' && kind !== 'customer-contacts' && !isCutover) {
+    lookups.countries = upper(COUNTRIES.map((c) => c.code))
+  }
+  if (['customers', 'partners', 'rate-cards', 'open-receivables'].includes(kind)) {
+    lookups.currencies = upper(CURRENCY_ROWS.map((c) => c.code))
+  }
+  if (kind === 'rate-cards' || kind === 'open-jobs') lookups.locations = upper([...PORT_CODES])
+  if (kind === 'rate-cards') lookups.chargeTypes = upper(CHARGE_TYPE_ROWS.map((c) => c.key))
+  if (kind === 'open-jobs') {
+    lookups.incoterms = upper(INCOTERM_ROWS.map((i) => i.code))
+    existing.reference = upper(pilotJobs().map((job) => job.reference))
+  }
+  if (kind === 'customers') existing.code = upper(CUSTOMERS.map((c) => c.code))
+  if (kind === 'partners') existing.code = upper(PARTNERS.map((p) => p.code))
+  if (kind === 'locations') existing.unlocode = upper([...PORT_CODES])
+  if (kind === 'open-receivables') {
+    existing.seriesNo = upper(
+      pilotInvoices()
+        .map((row) => row.seriesNo)
+        .filter((value): value is string => value !== null),
+    )
+  }
+  return { lookups, existing }
+}
+
+/** Serves `importableBranches` — the destination selector, in the reader's language. */
+export function pilotImportableBranches(
+  locale: 'en' | 'ar' = 'en',
+): { id: string; code: string; name: string }[] {
+  return BRANCHES.map((b) => ({ id: b.id, code: b.code, name: pickName(locale, b.en, b.ar) }))
+}
+
+/** Serves `ratePartners` — the agents and carriers a tariff can belong to. */
+export function pilotRatePartners(
+  locale: 'en' | 'ar' = 'en',
+): { id: string; code: string; name: string }[] {
+  return PARTNERS.map((p) => ({
+    id: partnerId(p.id),
+    code: p.code,
+    name: pickName(locale, p.en, p.ar),
+  }))
+}
+
 // --- proof of delivery — features/pod/queries.ts ----------------------------
 
 /**
