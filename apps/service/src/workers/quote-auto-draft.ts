@@ -15,6 +15,16 @@
  * enquiry writes that quotation and moves it to `quoted`, so the next sweep
  * passes it by — the quote is its own loop-breaker.
  *
+ * ## A draft that needs review says so
+ *
+ * Pricing freezes `review` into the quotation's snapshot — a charge sold below
+ * its cost, or sold with nothing bought for it outside what the awarded rate
+ * covers (`draftConcerns` in core has the rule and why). Such a draft is still
+ * written, because it is the coordinator's starting point either way, but it
+ * is counted as `flagged` and the quotation screen puts the reasons above the
+ * lines. Nothing in the pipeline sends a quotation; this makes sure the person
+ * who does is told what to look at first (ai-13).
+ *
  * ## The covering note is best-effort
  *
  * The quotation is the deliverable; the note is prose on top of it. Drafting it
@@ -43,13 +53,15 @@ export interface AutoDraftResult {
   readonly enabled: boolean
   /** Enquiries a draft quotation was written for. */
   readonly drafted: number
+  /** Of those, drafts marked as needing review before they are sent. */
+  readonly flagged: number
   /** Eligible enquiries that could not be priced — no cover, no margin, or a gap. */
   readonly skipped: number
   /** Enquiries whose pricing threw — logged with the reason, retried next sweep. */
   readonly failed: number
 }
 
-const EMPTY: AutoDraftResult = { enabled: false, drafted: 0, skipped: 0, failed: 0 }
+const EMPTY: AutoDraftResult = { enabled: false, drafted: 0, flagged: 0, skipped: 0, failed: 0 }
 
 type CoverNoteDrafter = (input: {
   actor: Actor
@@ -74,6 +86,7 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
   const eligible = await withActor(actor, (tx) => loadEligible(tx))
 
   let drafted = 0
+  let flagged = 0
   let skipped = 0
   let failed = 0
 
@@ -92,16 +105,19 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
       }
       drafted += 1
 
+      const [quote] = await withActor(actor, (tx) =>
+        tx
+          .select({ id: quotes.id, branchId: quotes.branchId, snapshot: quotes.pricedSnapshot })
+          .from(quotes)
+          .where(and(eq(quotes.enquiryId, candidate.enquiryId), eq(quotes.status, 'draft')))
+          .orderBy(desc(quotes.version))
+          .limit(1),
+      )
+      const review = quote?.snapshot?.review as { needed?: boolean } | undefined
+      if (review?.needed) flagged += 1
+
       // Best-effort: the quotation stands even if the note cannot be drafted.
       try {
-        const [quote] = await withActor(actor, (tx) =>
-          tx
-            .select({ id: quotes.id, branchId: quotes.branchId })
-            .from(quotes)
-            .where(and(eq(quotes.enquiryId, candidate.enquiryId), eq(quotes.status, 'draft')))
-            .orderBy(desc(quotes.version))
-            .limit(1),
-        )
         if (quote) {
           await coverNote({ actor, branchId: quote.branchId, quoteId: quote.id, locale: 'en' })
         }
@@ -126,7 +142,7 @@ export async function autoDraftQuotes(deps: AutoDraftDeps = {}): Promise<AutoDra
     }
   }
 
-  return { enabled: true, drafted, skipped, failed }
+  return { enabled: true, drafted, flagged, skipped, failed }
 }
 
 /**

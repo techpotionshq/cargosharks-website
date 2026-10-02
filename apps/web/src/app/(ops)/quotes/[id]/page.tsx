@@ -165,6 +165,30 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         </Notice>
       ) : null}
 
+      {/*
+        A draft the pricing marked for review (ai-13): a charge sold below its
+        cost, or sold with nothing bought for it. Said above the figures, by
+        charge, because the headline margin can look healthy over a line that
+        loses money — which is exactly how the live case got past.
+      */}
+      {quote.status === 'draft' && quote.review?.needed ? (
+        <Notice tone="caution" icon="alert" className="mb-4">
+          <p className="font-medium">{t('reviewTitle')}</p>
+          <ul className="mt-1 list-disc ps-5">
+            {quote.review.concerns.map((concern) => {
+              const charge = quote.reviewNames?.[concern.chargeTypeKey] ?? concern.chargeTypeKey
+              return (
+                <li key={`${concern.kind}-${concern.chargeTypeKey}`}>
+                  {concern.kind === 'negative_margin'
+                    ? t('reviewNegativeMargin', { charge, margin: concern.marginPercent })
+                    : t('reviewUnbacked', { charge })}
+                </li>
+              )
+            })}
+          </ul>
+        </Notice>
+      ) : null}
+
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Metric label={t('sell')} value={money(sell)} icon="quotes" tone="brand" />
         <Metric label={t('cost')} value={money(cost)} icon="finance" hint={t('costHint')} />

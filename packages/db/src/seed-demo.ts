@@ -1147,19 +1147,27 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
     them — so the Shanghai card priced "Air Freight" on a sea lane and "Road
     Freight" at 340 USD per kilogram, and a two-container quote came to
     millions. A demo priced like that teaches the evaluator the engine is
-    broken. Rates are buy-side USD per 40HC; the sell card sits 28% above.
+    broken. Rates are buy-side USD per 40HC.
+
+    The sell side is set per charge (ai-13). It was one 28% uplift on every
+    line, which put the demo's headline margin near 22% against house terms of
+    15%, and — against an agent's real award — sold charges at a loss without
+    any line looking odd. Now freight carries the thinnest margin, as it does in
+    the trade, local charges a little more, and the whole card lands about 13%
+    over buy: every line above its own cost, and a figure an evaluator
+    recognises.
   */
   const TARIFF = [
-    { key: 'ocean_freight', basis: 'per_container', rate: 1450 },
-    { key: 'thc_origin', basis: 'per_container', rate: 140 },
-    { key: 'thc_destination', basis: 'per_container', rate: 185 },
-    { key: 'haulage', basis: 'per_container', rate: 220 },
-    { key: 'documentation', basis: 'flat', rate: 75 },
-    { key: 'delivery_order', basis: 'flat', rate: 60 },
+    { key: 'ocean_freight', basis: 'per_container', rate: 1450, sell: 1625 },
+    { key: 'thc_origin', basis: 'per_container', rate: 140, sell: 160 },
+    { key: 'thc_destination', basis: 'per_container', rate: 185, sell: 215 },
+    { key: 'haulage', basis: 'per_container', rate: 220, sell: 260 },
+    { key: 'documentation', basis: 'flat', rate: 75, sell: 100 },
+    { key: 'delivery_order', basis: 'flat', rate: 60, sell: 75 },
   ] as const
   const anyCharge = TARIFF.flatMap((line) => {
     const row = chargeRows.find((r: { key: string }) => r.key === line.key)
-    return row ? [{ ...row, basis: line.basis, rate: line.rate }] : []
+    return row ? [{ ...row, basis: line.basis, rate: line.rate, sell: line.sell }] : []
   })
 
   const [existingCard] = await tx.select({ id: rateCards.id }).from(rateCards).limit(1)
@@ -1194,15 +1202,14 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
           })
           .returning({ id: rateCards.id })
 
-        // Sell sits above buy by a margin that varies by charge, which is what
-        // makes the margin column on the quote register interesting.
-        const uplift = direction === 'sell' ? 1.28 : 1
+        // Sell sits above buy by a margin that varies by charge (see TARIFF),
+        // which is what makes the margin column on the quote register honest.
         await tx.insert(rateCardLines).values(
           anyCharge.map((row, index) => ({
             rateCardId: card!.id,
             chargeTypeId: row.id,
             basis: row.basis,
-            rate: String(Math.round(row.rate * uplift)),
+            rate: String(direction === 'sell' ? row.sell : row.rate),
             currency: 'USD',
             containerType: row.basis === 'per_container' ? '40HC' : null,
             sortOrder: index,

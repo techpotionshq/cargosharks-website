@@ -45,6 +45,7 @@ const actor = systemActor()
 const RUN = Date.now().toString(36).toUpperCase().slice(-5)
 let seq = 0
 let oceanFreightId: string
+let haulageId: string
 
 const gate = (driver: string): LiveIntegration => ({
   key: 'quoteAutoDraft',
@@ -129,6 +130,41 @@ async function buyCard(
   return { partnerId, cardId }
 }
 
+/** A sell card over a lane, one line per charge given — the price, not a margin. */
+async function sellCard(
+  originId: string,
+  destinationId: string,
+  lines: readonly { chargeTypeId: string; rate: string }[],
+): Promise<void> {
+  await withActor(actor, async (tx) => {
+    const [card] = await tx
+      .insert(rateCards)
+      .values({
+        direction: 'sell',
+        branchId: BRANCH,
+        mode: 'sea_fcl',
+        originId,
+        destinationId,
+        validity: '[2020-01-01,2040-01-01)',
+        validFrom: '2020-01-01',
+        validTo: '2040-01-01',
+        currency: 'KWD',
+        createdById: SYSTEM_PRINCIPAL_ID,
+      })
+      .returning({ id: rateCards.id })
+    await tx.insert(rateCardLines).values(
+      lines.map((line, index) => ({
+        rateCardId: card!.id,
+        chargeTypeId: line.chargeTypeId,
+        basis: 'per_container' as const,
+        rate: line.rate,
+        currency: 'KWD',
+        sortOrder: index,
+      })),
+    )
+  })
+}
+
 /**
  * A partner id that sorts before any random one.
  *
@@ -146,10 +182,13 @@ const lowestPartnerId = () => `00000000-0000-4000-8000-${randomUUID().slice(-12)
  * and the award names the first card — the shape of QUO-2026-00004 (F67),
  * where the lane lookup alone would pick the rival.
  */
-async function coveredEnquiry(options: { rival?: boolean } = {}): Promise<string> {
+async function coveredEnquiry(
+  options: { rival?: boolean; sell?: readonly { chargeTypeId: string; rate: string }[] } = {},
+): Promise<string> {
   const originId = await makeLocation()
   const destinationId = await makeLocation()
   const awardedCard = await buyCard(originId, destinationId, '500', '2020-01-01')
+  if (options.sell) await sellCard(originId, destinationId, options.sell)
   const partnerId = awardedCard.partnerId
   if (options.rival) {
     await buyCard(originId, destinationId, '300', '2021-01-01', lowestPartnerId())
@@ -226,8 +265,18 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
         .where(eq(chargeTypes.key, 'ocean_freight'))
         .limit(1),
     )
-    if (!calendar || !ocean) throw new Error('Run `pnpm db:seed` before the auto-draft tests')
+    const [haulage] = await withActor(actor, (tx) =>
+      tx
+        .select({ id: chargeTypes.id })
+        .from(chargeTypes)
+        .where(eq(chargeTypes.key, 'haulage'))
+        .limit(1),
+    )
+    if (!calendar || !ocean || !haulage) {
+      throw new Error('Run `pnpm db:seed` before the auto-draft tests')
+    }
     oceanFreightId = ocean.id
+    haulageId = haulage.id
 
     await withActor(actor, async (tx) => {
       await tx
@@ -328,5 +377,61 @@ describe.skipIf(!enabled)('autoDraftQuotes', () => {
 
     expect('reference' in first).toBe(true)
     expect(second).toEqual({ error: 'already_quoted' })
+  })
+
+  /*
+    ai-13: a sell card that sells what the awarded rate never quoted — haulage
+    on a port-to-port award — and freight below the agent's figure. The draft
+    is still written, as the coordinator's starting point, but marked for
+    review with both reasons frozen into its snapshot.
+  */
+  it('marks a draft for review when a charge sells below cost or was never bought', async () => {
+    const id = await coveredEnquiry({
+      sell: [
+        { chargeTypeId: oceanFreightId, rate: '450' },
+        { chargeTypeId: haulageId, rate: '120' },
+      ],
+    })
+
+    const result = await autoDraftQuotes({
+      source: gate('auto'),
+      draftCoverNote: vi.fn(async () => ({})),
+    })
+
+    expect(result.flagged).toBeGreaterThanOrEqual(1)
+    const [row] = await withActor(actor, (tx) =>
+      tx
+        .select({ snapshot: quotes.pricedSnapshot, status: quotes.status })
+        .from(quotes)
+        .where(eq(quotes.enquiryId, id))
+        .limit(1),
+    )
+    expect(row!.status).toBe('draft')
+    expect(row!.snapshot!.review).toEqual({
+      needed: true,
+      concerns: [
+        {
+          kind: 'negative_margin',
+          chargeTypeKey: 'ocean_freight',
+          sell: '450',
+          cost: '500',
+          marginPercent: '-11.1',
+        },
+        { kind: 'unbacked_charge', chargeTypeKey: 'haulage' },
+      ],
+    })
+  })
+
+  it('does not mark a draft priced at the house margin off the awarded rate', async () => {
+    const id = await coveredEnquiry()
+    await autoDraftQuotes({ source: gate('auto'), draftCoverNote: vi.fn(async () => ({})) })
+    const [row] = await withActor(actor, (tx) =>
+      tx
+        .select({ snapshot: quotes.pricedSnapshot })
+        .from(quotes)
+        .where(eq(quotes.enquiryId, id))
+        .limit(1),
+    )
+    expect(row!.snapshot!.review).toEqual({ needed: false, concerns: [] })
   })
 })

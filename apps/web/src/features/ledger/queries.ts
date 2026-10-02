@@ -525,6 +525,19 @@ export interface QuoteDetail {
   /** The covering note the model drafts and a coordinator edits — one per language. */
   readonly coverNoteEn: string | null
   readonly coverNoteAr: string | null
+  /**
+   * Why this draft should be looked at before it is sent, frozen at pricing
+   * (ai-13) — absent on a quotation priced before the review existed.
+   */
+  readonly review?: {
+    readonly needed: boolean
+    readonly concerns: readonly (
+      | { kind: 'negative_margin'; chargeTypeKey: string; marginPercent: string }
+      | { kind: 'unbacked_charge'; chargeTypeKey: string }
+    )[]
+  } | null
+  /** The concerns' charge names in the reader's language, by key. */
+  readonly reviewNames?: Readonly<Record<string, string>> | null
   readonly lines: readonly {
     id: string
     chargeName: string
@@ -575,6 +588,13 @@ export async function getQuoteDetail(
              e.mode::text as mode,
              q.priced_snapshot ->> 'notes' as notes,
              q.cover_note_en as "coverNoteEn", q.cover_note_ar as "coverNoteAr",
+             q.priced_snapshot -> 'review' as review,
+             (select json_object_agg(ct.key, ${chargeName})
+                from charge_types ct
+               where ct.key in (
+                 select c ->> 'chargeTypeKey'
+                   from jsonb_array_elements(coalesce(q.priced_snapshot -> 'review' -> 'concerns', '[]'::jsonb)) c
+               )) as "reviewNames",
              coalesce((
                select json_agg(json_build_object(
                         'id', ql.id, 'chargeName', ${chargeName}, 'description', ql.description,

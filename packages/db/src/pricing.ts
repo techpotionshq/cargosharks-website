@@ -29,6 +29,7 @@ import {
   dayIn,
   dec,
   distributeMargin,
+  draftConcerns,
   fxRate,
   identityRate,
   priceLines,
@@ -295,6 +296,27 @@ export async function priceEnquiryToQuote(
   */
   const sellCurrency = opts.baseCurrency
 
+  /*
+    Whether this draft needs a person before it is sent (ai-13): a charge sold
+    below its cost, or sold with nothing bought for it — outside the scope the
+    awarded rate quoted. `draftConcerns` in core states the rule and why it is
+    per charge type. Frozen with the rest of the decision, so the quotation
+    screen shows the reasons as they were when it was priced.
+  */
+  const concerns = sellCard
+    ? draftConcerns({
+        revenue: revenue.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          amountInBase: roundWith(line.amountInBase, lookup),
+        })),
+        cost: cost.map((line) => ({
+          chargeTypeKey: line.chargeTypeKey,
+          amountInBase: roundWith(line.amountInBase, lookup),
+        })),
+      })
+    : // Buy plus house margin sells exactly what was bought, each above cost.
+      []
+
   const validUntil = new Date(pricedAt)
   validUntil.setUTCDate(validUntil.getUTCDate() + VALIDITY_DAYS)
 
@@ -342,6 +364,7 @@ export async function priceEnquiryToQuote(
         })),
         exclusions: splitLines(enquiry.exclusionsEn),
         exclusionsAr: splitLines(enquiry.exclusionsAr),
+        review: { needed: concerns.length > 0, concerns },
       },
       /*
         Lines in the quotation's currency, like its total.

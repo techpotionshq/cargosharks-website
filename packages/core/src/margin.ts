@@ -118,3 +118,101 @@ export function variancePercent(estimate: Money, actual: Money): Decimal | null 
   if (isZero(estimate)) return null
   return subtract(actual, estimate).amount.div(estimate.amount).times(100)
 }
+
+/* -------------------------------------------------------------------------
+ * Whether a priced draft needs a person before it goes anywhere — ai-13
+ * ---------------------------------------------------------------------- */
+
+/** One priced line, reduced to what the review reads: its charge and base amount. */
+export interface ReviewLine {
+  readonly chargeTypeKey: string
+  readonly amountInBase: Money
+}
+
+/** Why a draft quotation should be looked at before it is sent. */
+export type DraftConcern =
+  /** This charge sells for less than it costs. */
+  | {
+      readonly kind: 'negative_margin'
+      readonly chargeTypeKey: string
+      readonly sell: string
+      readonly cost: string
+      /** Gross margin on this charge, one decimal, negative. */
+      readonly marginPercent: string
+    }
+  /**
+   * This charge is sold with nothing bought for it: the rate the draft was
+   * costed on did not quote it, so nobody has priced the service being sold.
+   */
+  | { readonly kind: 'unbacked_charge'; readonly chargeTypeKey: string }
+
+/**
+ * The rule auto-draft applies before leaving a quotation for a person (ai-13).
+ *
+ * A live auto-draft priced a port-to-port award against a sell card that also
+ * sold destination THC and haulage — services nobody had bought — and its
+ * delivery order sold at −48.1% against the agent's figure, under a headline
+ * margin that looked healthy. Both are visible only line by line. The rule:
+ *
+ *   1. **Negative margin.** Summed per charge type, a sell below its cost is a
+ *      concern. Per charge rather than per line, because a sell card and a buy
+ *      card split the same charge differently and only the sums compare.
+ *   2. **Sold outside the requested scope.** The scope is what the buy side —
+ *      the awarded agent rate, or the buy card the lane fell back to — quoted:
+ *      its charge types. A charge sold with no cost behind it is a service the
+ *      agent was not asked for or did not price (the haulage on a port-to-port
+ *      award), and selling it means selling something nobody has bought.
+ *
+ * Charge-type granular rather than by `charge_types.category`, deliberately:
+ * the live case had a delivery order bought, so "destination" was covered by
+ * category, and the unbought destination THC and haulage would have passed.
+ * The cost of the finer rule is that a house fee with no agent cost (our own
+ * documentation charge) also asks for review — which is a person glancing at
+ * a line, not a refusal, and the right side to err on before a price leaves.
+ *
+ * With no buy lines at all there is nothing to compare against and nothing is
+ * flagged: that is a sell-card-only price, which a person chose to make.
+ *
+ * Returns the concerns, in the sell lines' order; empty means none.
+ */
+export function draftConcerns(input: {
+  readonly revenue: readonly ReviewLine[]
+  readonly cost: readonly ReviewLine[]
+}): DraftConcern[] {
+  if (input.cost.length === 0) return []
+
+  const totals = (lines: readonly ReviewLine[]) => {
+    const out = new Map<string, Decimal>()
+    for (const line of lines) {
+      out.set(
+        line.chargeTypeKey,
+        (out.get(line.chargeTypeKey) ?? dec(0)).plus(line.amountInBase.amount),
+      )
+    }
+    return out
+  }
+  const sold = totals(input.revenue)
+  const bought = totals(input.cost)
+
+  const concerns: DraftConcern[] = []
+  for (const [key, sell] of sold) {
+    const cost = bought.get(key)
+    if (cost === undefined || cost.isZero()) {
+      concerns.push({ kind: 'unbacked_charge', chargeTypeKey: key })
+      continue
+    }
+    if (sell.lessThan(cost)) {
+      const marginPercent = sell.isZero()
+        ? '-100.0'
+        : sell.minus(cost).dividedBy(sell).times(100).toFixed(1)
+      concerns.push({
+        kind: 'negative_margin',
+        chargeTypeKey: key,
+        sell: sell.toFixed(),
+        cost: cost.toFixed(),
+        marginPercent,
+      })
+    }
+  }
+  return concerns
+}

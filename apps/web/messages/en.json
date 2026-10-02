@@ -1702,7 +1702,10 @@
       "sent": "Quotation sent.",
       "accepted": "Quotation marked accepted.",
       "rejected": "Quotation marked rejected."
-    }
+    },
+    "reviewTitle": "Check this draft before sending it",
+    "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
+    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it."
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
