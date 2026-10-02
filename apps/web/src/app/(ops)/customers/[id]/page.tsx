@@ -129,10 +129,16 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <THead>
               <TR>
                 <TH>{t('branch')}</TH>
-                <TH align="end">{t('paymentTermsDays')}</TH>
+                {/* Branch, credit limit and hold status on a phone — the
+                    three a credit question needs; the rest wait. */}
+                <TH priority="low" align="end">
+                  {t('paymentTermsDays')}
+                </TH>
                 <TH align="end">{t('creditLimit')}</TH>
-                <TH align="end">{t('freeTimeDays')}</TH>
-                <TH>{t('defaultIncoterm')}</TH>
+                <TH priority="low" align="end">
+                  {t('freeTimeDays')}
+                </TH>
+                <TH priority="low">{t('defaultIncoterm')}</TH>
                 <TH>{tc('status')}</TH>
               </TR>
             </THead>
@@ -140,7 +146,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
               {customer.terms.map((term) => (
                 <TR key={term.branchId}>
                   <TD className="ref whitespace-nowrap">{term.branchCode}</TD>
-                  <TD align="end" numeric>
+                  <TD priority="low" align="end" numeric>
                     {term.paymentTermsDays}
                   </TD>
                   <TD align="end" numeric>
@@ -148,10 +154,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                       ? `${trimDecimal(term.creditLimit)} ${term.creditCurrency ?? ''}`.trim()
                       : '—'}
                   </TD>
-                  <TD align="end" numeric>
+                  <TD priority="low" align="end" numeric>
                     {term.freeTimeDays ?? '—'}
                   </TD>
-                  <TD className="ref">{term.defaultIncoterm ?? '—'}</TD>
+                  <TD priority="low" className="ref">
+                    {term.defaultIncoterm ?? '—'}
+                  </TD>
                   <TD>
                     {term.isOnHold ? (
                       <Badge tone="critical" icon="hold">

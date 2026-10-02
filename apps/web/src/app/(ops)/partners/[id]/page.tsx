@@ -200,8 +200,9 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
               <THead>
                 <TR>
                   <TH>{t('reference')}</TH>
-                  <TH>{t('customer')}</TH>
-                  <TH>{t('role')}</TH>
+                  {/* Reference, status and arrival on a phone. */}
+                  <TH priority="low">{t('customer')}</TH>
+                  <TH priority="low">{t('role')}</TH>
                   <TH>{tc('status')}</TH>
                   <TH>{t('eta')}</TH>
                 </TR>
@@ -220,8 +221,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                         <span className="block text-[0.75rem] text-ink-subtle">{job.lane}</span>
                       ) : null}
                     </TD>
-                    <TD className="text-ink-muted">{job.customerName ?? '—'}</TD>
-                    <TD className="text-ink-muted">{t(`roles.${job.role}` as 'roles.carrier')}</TD>
+                    <TD priority="low" className="text-ink-muted">
+                      {job.customerName ?? '—'}
+                    </TD>
+                    <TD priority="low" className="text-ink-muted">
+                      {t(`roles.${job.role}` as 'roles.carrier')}
+                    </TD>
                     <TD>
                       <Badge tone={jobTone(job.status)} dot>
                         {tJob(`statuses.${job.status}` as 'statuses.booked')}

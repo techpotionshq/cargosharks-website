@@ -275,17 +275,26 @@ export default async function NotificationsPage() {
             <THead>
               <TR>
                 <TH>{t('event')}</TH>
-                <TH>{t('recipient')}</TH>
-                <TH>{t('when')}</TH>
+                {/* Event and outcome across a phone; when follows the event
+                    there (below). */}
+                <TH priority="low">{t('recipient')}</TH>
+                <TH priority="low">{t('when')}</TH>
                 <TH>{t('outcome')}</TH>
               </TR>
             </THead>
             <TBody>
               {deliveries.map((row) => (
                 <TR key={row.id}>
-                  <TD className="ref whitespace-nowrap text-ink">{row.eventKey}</TD>
-                  <TD className="max-w-xs truncate text-ink-muted">{row.recipient ?? '—'}</TD>
-                  <TD className="whitespace-nowrap text-ink-muted">
+                  <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
+                    {row.eventKey}
+                    <span className="block font-sans text-[0.75rem] text-ink-muted md:hidden">
+                      {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
+                    </span>
+                  </TD>
+                  <TD priority="low" className="max-w-xs truncate text-ink-muted">
+                    {row.recipient ?? '—'}
+                  </TD>
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
                     {formatDateTime(row.sentAt ?? row.createdAt, locale, timeZone)}
                   </TD>
                   <TD>
@@ -313,7 +322,7 @@ export default async function NotificationsPage() {
                       {/* The reason, where there is one — that is the whole
                           value of a delivery log. */}
                       {(row.lastError ?? row.suppressedReason) ? (
-                        <span className="text-[0.6875rem] text-ink-subtle">
+                        <span className="text-[0.6875rem] break-words text-ink-subtle">
                           {row.lastError ?? row.suppressedReason}
                         </span>
                       ) : null}

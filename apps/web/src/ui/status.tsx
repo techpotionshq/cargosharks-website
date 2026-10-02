@@ -53,6 +53,8 @@ export interface BadgeProps {
 export function Badge({ children, tone = 'muted', icon, dot = false, className }: BadgeProps) {
   return (
     <span
+      // A hook for `TD`, which lets a pill wrap on a phone — see table.tsx.
+      data-badge=""
       className={[
         'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.75rem] font-medium ring-1 ring-inset whitespace-nowrap',
         PILL_CLASS[tone],
@@ -61,8 +63,10 @@ export function Badge({ children, tone = 'muted', icon, dot = false, className }
         .filter(Boolean)
         .join(' ')}
     >
-      {dot ? <span className={`size-1.5 rounded-full ${DOT_CLASS[tone]}`} /> : null}
-      {icon ? <Icon name={icon} size={13} strokeWidth={2} /> : null}
+      {dot ? (
+        <span data-dot="" className={`size-1.5 shrink-0 rounded-full ${DOT_CLASS[tone]}`} />
+      ) : null}
+      {icon ? <Icon name={icon} size={13} strokeWidth={2} className="shrink-0" /> : null}
       {children}
     </span>
   )

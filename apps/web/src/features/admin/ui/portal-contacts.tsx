@@ -94,46 +94,57 @@ export async function PortalContactsCard({
           <THead>
             <TR>
               <TH>{t('name')}</TH>
-              <TH>{t('email')}</TH>
-              <TH>{tUsers('signIn')}</TH>
-              <TH>{tUsers('lastSeen')}</TH>
+              <TH priority="low">{t('email')}</TH>
+              <TH priority="low">{tUsers('signIn')}</TH>
+              <TH priority="low">{tUsers('lastSeen')}</TH>
               <TH>{tc('status')}</TH>
             </TR>
           </THead>
           <TBody>
-            {contacts.map((contact) => (
-              <TR key={contact.id}>
-                <TD className="font-medium text-ink">
-                  {locale === 'ar' && contact.nameAr ? contact.nameAr : contact.nameEn}
-                </TD>
-                <TD className="ref text-ink-muted">{contact.email}</TD>
-                <TD>
-                  {contact.hasPassword ? (
-                    <Icon name="check" size={16} className="text-positive" />
-                  ) : (
-                    <span className="flex flex-col items-start gap-1">
-                      <span className="text-[0.75rem] text-ink-subtle">
-                        {tUsers('awaitingPassword')}
+            {contacts.map((contact) => {
+              const signIn = contact.hasPassword ? (
+                <Icon name="check" size={16} className="text-positive" />
+              ) : (
+                <span className="flex flex-col items-start gap-1">
+                  <span className="text-[0.75rem] text-ink-subtle">
+                    {tUsers('awaitingPassword')}
+                  </span>
+                  {contact.isActive ? (
+                    <SignInLinkButton principalId={contact.id} label={tUsers('sendSignInLink')} />
+                  ) : null}
+                </span>
+              )
+              return (
+                <TR key={contact.id}>
+                  {/* Stacked on a phone, as on the users register: the email
+                      and an unfinished sign-in (with its button) follow the
+                      name, and only last seen waits for a wider screen. */}
+                  <TD className="font-medium text-ink">
+                    {locale === 'ar' && contact.nameAr ? contact.nameAr : contact.nameEn}
+                    <span className="md:hidden">
+                      <span className="ref mt-0.5 block text-[0.75rem] font-normal wrap-anywhere text-ink-muted">
+                        {contact.email}
                       </span>
-                      {contact.isActive ? (
-                        <SignInLinkButton
-                          principalId={contact.id}
-                          label={tUsers('sendSignInLink')}
-                        />
-                      ) : null}
+                      {contact.hasPassword ? null : (
+                        <span className="mt-1.5 block font-normal">{signIn}</span>
+                      )}
                     </span>
-                  )}
-                </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
-                  {contact.lastSeenAt ? formatRelative(contact.lastSeenAt, locale, now) : '—'}
-                </TD>
-                <TD>
-                  <Badge tone={contact.isActive ? 'positive' : 'muted'}>
-                    {contact.isActive ? tc('active') : tc('inactive')}
-                  </Badge>
-                </TD>
-              </TR>
-            ))}
+                  </TD>
+                  <TD priority="low" className="ref text-ink-muted">
+                    {contact.email}
+                  </TD>
+                  <TD priority="low">{signIn}</TD>
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                    {contact.lastSeenAt ? formatRelative(contact.lastSeenAt, locale, now) : '—'}
+                  </TD>
+                  <TD>
+                    <Badge tone={contact.isActive ? 'positive' : 'muted'}>
+                      {contact.isActive ? tc('active') : tc('inactive')}
+                    </Badge>
+                  </TD>
+                </TR>
+              )
+            })}
           </TBody>
         </TableShell>
       )}

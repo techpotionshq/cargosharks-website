@@ -89,79 +89,102 @@ export default async function UsersPage() {
           <THead>
             <TR>
               <TH>{t('name')}</TH>
-              <TH>{t('email')}</TH>
-              <TH>{t('assignments')}</TH>
-              <TH>{t('signIn')}</TH>
-              <TH>{t('lastSeen')}</TH>
+              <TH priority="low">{t('email')}</TH>
+              <TH priority="low">{t('assignments')}</TH>
+              <TH priority="low">{t('signIn')}</TH>
+              <TH priority="low">{t('lastSeen')}</TH>
               <TH>{tc('status')}</TH>
               <TH align="end" />
             </TR>
           </THead>
           <TBody>
-            {people.map((person) => (
-              <TR key={person.id}>
-                <TD className="font-medium text-ink">
-                  {locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
-                </TD>
-                <TD className="ref text-ink-muted">{person.email}</TD>
-                <TD>
-                  {person.assignments.length === 0 ? (
-                    <span className="text-ink-subtle">{t('noAssignments')}</span>
-                  ) : (
-                    <span className="flex flex-wrap gap-1">
-                      {person.assignments.map((assignment) => (
-                        <Badge
-                          key={`${assignment.branchCode}-${assignment.roleKey}`}
-                          tone="info"
-                          icon={assignment.requiresTwoFactor ? 'hold' : undefined}
-                        >
-                          <span className="ref">{assignment.branchCode}</span>
-                          <span className="mx-1 opacity-50">·</span>
-                          {tNav(`roles.${assignment.roleKey}`)}
-                        </Badge>
-                      ))}
-                    </span>
-                  )}
-                </TD>
-                <TD>
-                  {person.type === 'system' ? (
-                    <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
-                  ) : person.hasPassword ? (
-                    <Icon name="check" size={16} className="text-positive" />
-                  ) : (
-                    /*
+            {people.map((person) => {
+              const name = locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn
+              const assignments =
+                person.assignments.length === 0 ? (
+                  <span className="text-ink-subtle">{t('noAssignments')}</span>
+                ) : (
+                  <span className="flex flex-wrap gap-1">
+                    {person.assignments.map((assignment) => (
+                      <Badge
+                        key={`${assignment.branchCode}-${assignment.roleKey}`}
+                        tone="info"
+                        icon={assignment.requiresTwoFactor ? 'hold' : undefined}
+                      >
+                        <span className="ref">{assignment.branchCode}</span>
+                        <span className="mx-1 opacity-50">·</span>
+                        {tNav(`roles.${assignment.roleKey}`)}
+                      </Badge>
+                    ))}
+                  </span>
+                )
+              const signIn =
+                person.type === 'system' ? (
+                  <span className="text-[0.75rem] text-ink-subtle">{t('systemOnly')}</span>
+                ) : person.hasPassword ? (
+                  <Icon name="check" size={16} className="text-positive" />
+                ) : (
+                  /*
                     Invited, or recorded before invitations created a login —
                     either way they cannot sign in yet, and the register says
                     so rather than drawing a tick (A7). The button reports
                     what became of the mail.
                   */
-                    <span className="flex flex-col items-start gap-1">
-                      <span className="text-[0.75rem] text-ink-subtle">
-                        {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
+                  <span className="flex flex-col items-start gap-1">
+                    <span className="text-[0.75rem] text-ink-subtle">
+                      {person.hasLogin ? t('awaitingPassword') : t('noLoginYet')}
+                    </span>
+                    {person.isActive ? (
+                      <SignInLinkButton principalId={person.id} label={t('sendSignInLink')} />
+                    ) : null}
+                  </span>
+                )
+              return (
+                <TR key={person.id}>
+                  {/*
+                    A stacked row on a phone. Seven columns of a person — five
+                    of them free text or a wrap of role pills — were 622px
+                    wider than the screen, and hiding them left a name with
+                    nothing to say about it. So below md this cell carries the
+                    email, the roles and, when there is one, the sign-in
+                    problem with its button; status and the suspend action stay
+                    as columns. Last seen is the only fact a phone gives up.
+                  */}
+                  <TD className="font-medium text-ink">
+                    {name}
+                    <span className="md:hidden">
+                      <span className="ref mt-0.5 block text-[0.75rem] font-normal wrap-anywhere text-ink-muted">
+                        {person.email}
                       </span>
-                      {person.isActive ? (
-                        <SignInLinkButton principalId={person.id} label={t('sendSignInLink')} />
+                      <span className="mt-1.5 block font-normal">{assignments}</span>
+                      {person.type !== 'system' && !person.hasPassword ? (
+                        <span className="mt-1.5 block font-normal">{signIn}</span>
                       ) : null}
                     </span>
-                  )}
-                </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
-                  {person.lastSeenAt ? formatRelative(person.lastSeenAt, locale, now) : '—'}
-                </TD>
-                <TD>
-                  <Badge tone={person.isActive ? 'positive' : 'muted'}>
-                    {person.isActive ? tc('active') : tc('inactive')}
-                  </Badge>
-                </TD>
-                <TD align="end">
-                  <SuspendUserDialog
-                    principalId={person.id}
-                    name={locale === 'ar' && person.nameAr ? person.nameAr : person.nameEn}
-                    isActive={person.isActive}
-                  />
-                </TD>
-              </TR>
-            ))}
+                  </TD>
+                  <TD priority="low" className="ref text-ink-muted">
+                    {person.email}
+                  </TD>
+                  <TD priority="low">{assignments}</TD>
+                  <TD priority="low">{signIn}</TD>
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                    {person.lastSeenAt ? formatRelative(person.lastSeenAt, locale, now) : '—'}
+                  </TD>
+                  <TD>
+                    <Badge tone={person.isActive ? 'positive' : 'muted'}>
+                      {person.isActive ? tc('active') : tc('inactive')}
+                    </Badge>
+                  </TD>
+                  <TD align="end">
+                    <SuspendUserDialog
+                      principalId={person.id}
+                      name={name}
+                      isActive={person.isActive}
+                    />
+                  </TD>
+                </TR>
+              )
+            })}
           </TBody>
         </TableShell>
       </Card>
@@ -191,7 +214,11 @@ export default async function UsersPage() {
                     <span className="font-medium text-ink">
                       {locale === 'ar' ? role.nameAr : role.nameEn}
                     </span>
-                    <span className="ref ms-2 text-[0.75rem] text-ink-subtle">{role.key}</span>
+                    {/* Under the name on a phone; beside it the pair could
+                        not break and was the table's whole overflow. */}
+                    <span className="ref block text-[0.75rem] text-ink-subtle md:ms-2 md:inline">
+                      {role.key}
+                    </span>
                   </TD>
                   <TD align="end" numeric>
                     {role.permissions}

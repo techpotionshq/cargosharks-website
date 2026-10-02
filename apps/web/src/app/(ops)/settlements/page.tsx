@@ -75,10 +75,17 @@ export default async function SettlementsPage({
             <THead>
               <TR>
                 <TH>{t('reference')}</TH>
-                <TH>{t('agent')}</TH>
+                {/* A netting statement's answer is the residual — who owes
+                    whom, and how much. The two gross sides it nets wait for a
+                    wider screen; the agent follows the reference on a phone. */}
+                <TH priority="low">{t('agent')}</TH>
                 <TH priority="low">{t('period')}</TH>
-                <TH align="end">{t('theyOweUsShort')}</TH>
-                <TH align="end">{t('weOweThemShort')}</TH>
+                <TH priority="low" align="end">
+                  {t('theyOweUsShort')}
+                </TH>
+                <TH priority="low" align="end">
+                  {t('weOweThemShort')}
+                </TH>
                 <TH align="end">{t('residual')}</TH>
                 <TH align="end">{tc('status')}</TH>
               </TR>
@@ -93,20 +100,25 @@ export default async function SettlementsPage({
                     >
                       {row.reference}
                     </Link>
+                    <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                      {row.partnerName}
+                    </span>
                   </TD>
-                  <TD className="text-ink-muted">{row.partnerName}</TD>
+                  <TD priority="low" className="text-ink-muted">
+                    {row.partnerName}
+                  </TD>
                   <TD priority="low" className="text-ink-muted">
                     {formatDate(row.periodFrom, locale, timeZone)} —{' '}
                     {formatDate(row.periodTo, locale, timeZone)}
                   </TD>
-                  <TD align="end" numeric>
+                  <TD priority="low" align="end" numeric>
                     {money(row.receivableTotal, row.currency)}
                   </TD>
-                  <TD align="end" numeric>
+                  <TD priority="low" align="end" numeric>
                     {money(row.payableTotal, row.currency)}
                   </TD>
                   <TD align="end" numeric>
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                       {money(row.residualAmount, row.currency)}
                       <Badge tone={DIRECTION_TONE[row.residualDirection] ?? 'muted'}>
                         {t(`directions.${row.residualDirection}` as 'directions.square')}

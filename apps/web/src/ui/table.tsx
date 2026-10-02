@@ -146,7 +146,12 @@ export function TH({
     <th
       scope="col"
       className={[
-        'px-3 py-2.5 text-[0.6875rem] font-semibold tracking-[0.06em] whitespace-nowrap text-ink-subtle uppercase',
+        // Below md the padding tightens and a header may wrap onto a second
+        // line. A phone has room for three or four columns, and 24px of
+        // padding per column plus a header held to one line ("CLEARANCE DUE")
+        // was exactly the margin by which the last of them fell off-screen.
+        // 12px between columns at phone width still reads as a gap.
+        'px-1.5 py-2.5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase sm:px-2 md:px-3 md:whitespace-nowrap',
         align === 'end' ? 'text-end' : 'text-start',
         PRIORITY_CLASS[priority],
         className,
@@ -215,7 +220,13 @@ export function TD({
   return (
     <td
       className={[
-        'px-3 py-2.5 align-middle text-ink',
+        // Tighter below md for the same reason as the header; see `TH`. A
+        // status pill may also wrap there: "Awaiting documents" held to one
+        // line was the widest thing in several registers, and it pushed the
+        // figure beside it off a phone. Two lines of pill is still a pill.
+        // Its leading dot goes too: the pill's own colour already carries the
+        // tone, and the dot's 12px was the last few pixels of a phone row.
+        'px-1.5 py-2.5 align-middle text-ink sm:px-2 md:px-3 max-md:[&_[data-badge]]:whitespace-normal max-md:[&_[data-dot]]:hidden',
         align === 'end' ? 'text-end' : 'text-start',
         // A figure never wraps: "KWD 1,840.500" broken after the code is two
         // half-numbers, and a column of them stops aligning on the decimal.

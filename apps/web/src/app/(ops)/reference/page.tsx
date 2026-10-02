@@ -198,20 +198,27 @@ export default async function ReferencePage() {
               <TR>
                 <TH>{t('key')}</TH>
                 <TH>{t('name')}</TH>
-                <TH>{t('category')}</TH>
-                <TH>{t('basis')}</TH>
+                {/* Key, name and whether it is mapped — the last is the state
+                    that stops a period closing, so it is what a phone keeps. */}
+                <TH priority="low">{t('category')}</TH>
+                <TH priority="low">{t('basis')}</TH>
                 <TH>{t('accounts')}</TH>
               </TR>
             </THead>
             <TBody>
               {charges.map((row) => (
                 <TR key={row.key}>
-                  <TD className="ref whitespace-nowrap text-ink">{row.key}</TD>
+                  {/* A key may break anywhere on a phone — `customs_clearance_fee`
+                      has no space to break at, and held whole it was the
+                      column that pushed the mapping off-screen. */}
+                  <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">{row.key}</TD>
                   <TD className="text-ink">{locale === 'ar' ? row.nameAr : row.nameEn}</TD>
-                  <TD>
+                  <TD priority="low">
                     <Badge tone="muted">{categoryLabel(row.category)}</Badge>
                   </TD>
-                  <TD className="text-ink-muted">{basisLabel(row.basis)}</TD>
+                  <TD priority="low" className="text-ink-muted">
+                    {basisLabel(row.basis)}
+                  </TD>
                   {/*
                     Unmapped is the state that stops a period closing, and this
                     is the screen where it gets fixed — so it is shown here
@@ -353,16 +360,18 @@ export default async function ReferencePage() {
                   <TH>{t('shape')}</TH>
                   <TH align="end">{t('seq')}</TH>
                   <TH>{t('step')}</TH>
-                  <TH>{t('owner')}</TH>
+                  <TH priority="low">{t('owner')}</TH>
                   <TH align="end" />
                 </TR>
               </THead>
               <TBody>
                 {milestones.map((row) => (
                   <TR key={row.id}>
-                    <TD className="whitespace-nowrap">
+                    <TD className="md:whitespace-nowrap">
                       <Badge tone="muted">{row.mode}</Badge>
-                      <span className="ms-1.5 text-[0.75rem] text-ink-subtle">{row.direction}</span>
+                      <span className="block text-[0.75rem] text-ink-subtle md:ms-1.5 md:inline">
+                        {row.direction}
+                      </span>
                     </TD>
                     <TD align="end" numeric>
                       {row.seq}
@@ -371,14 +380,20 @@ export default async function ReferencePage() {
                       <span className="font-medium text-ink">
                         {locale === 'ar' ? row.nameAr : row.nameEn}
                       </span>
-                      <span className="ref ms-2 text-[0.6875rem] text-ink-subtle">{row.code}</span>
+                      {/* Its own line on a phone: beside the name the pair had
+                          no break opportunity and set the column's width. */}
+                      <span className="ref block text-[0.6875rem] text-ink-subtle wrap-anywhere md:ms-2 md:inline">
+                        {row.code}
+                      </span>
                       {row.customerVisible ? null : (
                         <Badge tone="muted" className="ms-2">
                           {t('internalOnly')}
                         </Badge>
                       )}
                     </TD>
-                    <TD className="text-ink-muted">{row.ownerRole ?? '—'}</TD>
+                    <TD priority="low" className="text-ink-muted">
+                      {row.ownerRole ?? '—'}
+                    </TD>
                     <TD align="end">
                       <MilestoneTemplateDialog defaults={row} />
                     </TD>
@@ -426,7 +441,7 @@ export default async function ReferencePage() {
             <THead>
               <TR>
                 <TH>{t('calendar')}</TH>
-                <TH>{t('weekend')}</TH>
+                <TH priority="low">{t('weekend')}</TH>
                 <TH>{t('hours')}</TH>
                 <TH align="end">{t('holidays')}</TH>
                 <TH align="end" />
@@ -439,11 +454,11 @@ export default async function ReferencePage() {
                     <span className="font-medium text-ink">
                       {locale === 'ar' ? row.nameAr : row.nameEn}
                     </span>
-                    <span className="ref ms-2 text-[0.6875rem] text-ink-subtle">
+                    <span className="ref block text-[0.6875rem] text-ink-subtle md:ms-2 md:inline">
                       {row.timeZone}
                     </span>
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {row.weekend.map((day) => t(`weekdays.${day}` as 'weekdays.0')).join(', ')}
                   </TD>
                   <TD numeric className="whitespace-nowrap text-ink-muted">
@@ -628,7 +643,7 @@ export default async function ReferencePage() {
                   <TH>{t('fxPair')}</TH>
                   <TH align="end">{t('rate')}</TH>
                   <TH>{t('fxEffective')}</TH>
-                  <TH>{t('fxSource')}</TH>
+                  <TH priority="low">{t('fxSource')}</TH>
                   <TH align="end" />
                 </TR>
               </THead>
@@ -645,7 +660,7 @@ export default async function ReferencePage() {
                       {trimDecimal(row.rate)}
                     </TD>
                     <TD className="numeric text-ink-muted">{row.effectiveOn}</TD>
-                    <TD className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
                       {row.source === 'manual' ? t('fxManual') : row.source}
                     </TD>
                     <TD align="end">

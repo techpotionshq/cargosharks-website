@@ -395,10 +395,19 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <THead>
                 <TR>
                   <TH>{t('charge')}</TH>
-                  <TH>{t('basis')}</TH>
-                  <TH align="end">{t('quantity')}</TH>
-                  <TH align="end">{t('buy')}</TH>
-                  <TH align="end">{t('sell')}</TH>
+                  {/* On a phone a line is its charge, its margin and its
+                      amount; the arithmetic behind them waits for a wider
+                      screen, and the totals row below follows suit. */}
+                  <TH priority="low">{t('basis')}</TH>
+                  <TH priority="low" align="end">
+                    {t('quantity')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('buy')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('sell')}
+                  </TH>
                   <TH align="end">{t('margin')}</TH>
                   <TH align="end">{t('amount')}</TH>
                 </TR>
@@ -424,18 +433,20 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
                   return (
                     <TR key={line.chargeCode}>
                       <TD className="font-medium">{locale === 'ar' ? line.nameAr : line.nameEn}</TD>
-                      <TD className="text-ink-muted">{t(`bases.${line.basis}` as 'bases.flat')}</TD>
-                      <TD align="end" numeric>
+                      <TD priority="low" className="text-ink-muted">
+                        {t(`bases.${line.basis}` as 'bases.flat')}
+                      </TD>
+                      <TD priority="low" align="end" numeric>
                         {line.quantity}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {line.buyRate === null
                           ? tc('notRecorded')
                           : formatMoney({ amount: line.buyRate, currency }, locale, {
                               showCurrency: false,
                             })}
                       </TD>
-                      <TD align="end" numeric>
+                      <TD priority="low" align="end" numeric>
                         {formatMoney({ amount: line.sellRate, currency }, locale, {
                           showCurrency: false,
                         })}
@@ -459,12 +470,12 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               <tfoot>
                 <tr className="border-t-2 border-line-strong bg-surface-sunken">
                   <TD className="font-semibold">{t('total')}</TD>
-                  <TD />
-                  <TD />
-                  <TD align="end" numeric className="font-medium text-ink-muted">
+                  <TD priority="low" />
+                  <TD priority="low" />
+                  <TD priority="low" align="end" numeric className="font-medium text-ink-muted">
                     {formatMoney(comparison.options[0]?.buy, locale, { showCurrency: false })}
                   </TD>
-                  <TD align="end" numeric className="font-semibold">
+                  <TD priority="low" align="end" numeric className="font-semibold">
                     {formatMoney(comparison.options[0]?.sell, locale, { showCurrency: false })}
                   </TD>
                   <TD align="end" numeric className="font-semibold text-positive">

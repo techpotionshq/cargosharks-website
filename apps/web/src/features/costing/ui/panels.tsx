@@ -135,13 +135,26 @@ export async function JobLedgerCard({
         <TableShell minWidth="none">
           <THead>
             <TR>
-              <TH>{t('direction')}</TH>
+              {/*
+                A phone keeps the charge, its amount and whether it is verified.
+                Revenue or cost rides in front of the charge name there (below);
+                the counterparty, the base-currency figure and the edit button
+                wait for a wider screen — a charge line is edited in a form with
+                eleven fields, which is desk work.
+              */}
+              <TH priority="low">{t('direction')}</TH>
               <TH>{t('charge')}</TH>
-              <TH>{t('counterparty')}</TH>
+              <TH priority="low">{t('counterparty')}</TH>
               <TH align="end">{t('amount')}</TH>
-              <TH align="end">{t('inBase', { currency: baseCurrency })}</TH>
+              <TH priority="low" align="end">
+                {t('inBase', { currency: baseCurrency })}
+              </TH>
               <TH>{t('verified')}</TH>
-              {mayWrite ? <TH align="end">{tc('actions')}</TH> : null}
+              {mayWrite ? (
+                <TH priority="low" align="end">
+                  {tc('actions')}
+                </TH>
+              ) : null}
             </TR>
           </THead>
           <TBody>
@@ -151,12 +164,17 @@ export async function JobLedgerCard({
 
               return (
                 <TR key={line.id}>
-                  <TD>
+                  <TD priority="low">
                     <Badge tone={line.direction === 'revenue' ? 'info' : 'muted'}>
                       {t(line.direction === 'revenue' ? 'revenueShort' : 'costShort')}
                     </Badge>
                   </TD>
                   <TD>
+                    <span className="mb-1 block md:hidden">
+                      <Badge tone={line.direction === 'revenue' ? 'info' : 'muted'}>
+                        {t(line.direction === 'revenue' ? 'revenueShort' : 'costShort')}
+                      </Badge>
+                    </span>
                     <span className="font-medium">{line.chargeTypeName}</span>
                     {line.description ? (
                       <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
@@ -176,11 +194,13 @@ export async function JobLedgerCard({
                       </span>
                     ) : null}
                   </TD>
-                  <TD className="text-ink-muted">{line.counterpartyName ?? '—'}</TD>
-                  <TD align="end" className="tabular-nums">
+                  <TD priority="low" className="text-ink-muted">
+                    {line.counterpartyName ?? '—'}
+                  </TD>
+                  <TD align="end" numeric>
                     {display(line.amount, line.currency, locale)}
                   </TD>
-                  <TD align="end" className="tabular-nums text-ink-muted">
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
                     {display(line.amountBase, line.baseCurrency, locale)}
                   </TD>
                   <TD>
@@ -192,7 +212,7 @@ export async function JobLedgerCard({
                     ) : null}
                   </TD>
                   {mayWrite ? (
-                    <TD align="end">
+                    <TD priority="low" align="end">
                       {frozen ? (
                         <span className="text-[0.6875rem] text-ink-subtle">
                           {t(line.isBilled ? 'frozenBilled' : 'frozenMatched')}

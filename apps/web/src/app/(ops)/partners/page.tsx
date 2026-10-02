@@ -88,7 +88,7 @@ export default async function PartnersPage({
           <TR>
             <TH>{t('code')}</TH>
             <TH>{t('name')}</TH>
-            <TH>{t('type')}</TH>
+            <TH priority="low">{t('type')}</TH>
             <TH priority="low">{t('country')}</TH>
             <TH priority="low" align="end">
               {t('paymentTerms')}
@@ -109,7 +109,7 @@ export default async function PartnersPage({
               <TD className="font-medium text-ink">
                 {locale === 'ar' && row.legalNameAr ? row.legalNameAr : row.legalNameEn}
               </TD>
-              <TD>
+              <TD priority="low">
                 <Badge tone="info">{t(`types.${row.type}`)}</Badge>
               </TD>
               <TD priority="low" className="whitespace-nowrap text-ink-muted">

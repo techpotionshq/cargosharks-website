@@ -358,7 +358,7 @@ export function ImportConsole({
                         {issue.line}
                       </TD>
                       <TD className="text-ink-muted">{issue.column ?? '—'}</TD>
-                      <TD className="text-ink">{issue.message}</TD>
+                      <TD className="break-words text-ink">{issue.message}</TD>
                     </TR>
                   ))}
                 </TBody>

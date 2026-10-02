@@ -195,7 +195,9 @@ export default async function RatesPage({
               <TR>
                 <TH>{t('lane')}</TH>
                 <TH priority="low">{tEnq('mode')}</TH>
-                <TH align="end">{t('buyTotal')}</TH>
+                <TH priority="low" align="end">
+                  {t('buyTotal')}
+                </TH>
                 <TH align="end">{t('sellTotal')}</TH>
                 <TH align="end">{tEnq('margin')}</TH>
               </TR>
@@ -212,7 +214,7 @@ export default async function RatesPage({
                   </TD>
                   {/* `numeric` arrives as a six-decimal string; rendering it
                       raw put "USD 1690.000000" in a money column. */}
-                  <TD align="end" numeric className="text-ink-muted">
+                  <TD priority="low" align="end" numeric className="text-ink-muted">
                     {row.buyTotal
                       ? formatMoney(
                           { amount: row.buyTotal, currency: row.currency ?? 'USD' },
@@ -291,7 +293,9 @@ export default async function RatesPage({
               <TH priority="low" align="end">
                 {t('lines')}
               </TH>
-              <TH>{t('validity')}</TH>
+              {/* Live / expiring already answers "can I price on it" on a
+                  phone; the exact dates wait for a wider screen. */}
+              <TH priority="low">{t('validity')}</TH>
               <TH>{tc('status')}</TH>
             </TR>
           </THead>
@@ -328,7 +332,7 @@ export default async function RatesPage({
                     row.lineCount
                   )}
                 </TD>
-                <TD className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {formatDate(new Date(row.validFrom), locale, timeZone)}
                   {row.validTo
                     ? ` — ${formatDate(new Date(row.validTo), locale, timeZone)}`

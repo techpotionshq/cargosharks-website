@@ -155,12 +155,16 @@ export default async function PayablesPage({
               <THead>
                 <TR>
                   <TH>{t('reference')}</TH>
-                  <TH>{t('supplier')}</TH>
+                  {/* Supplier and due date become second lines on a phone
+                      (below), leaving reference, total and status across. */}
+                  <TH priority="low">{t('supplier')}</TH>
                   <TH align="end">{t('total')}</TH>
                   <TH priority="low" align="end">
                     {t('variance')}
                   </TH>
-                  <TH align="end">{t('due')}</TH>
+                  <TH priority="low" align="end">
+                    {t('due')}
+                  </TH>
                   <TH align="end">{tc('status')}</TH>
                 </TR>
               </THead>
@@ -179,10 +183,20 @@ export default async function PayablesPage({
                         <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
                           {formatDate(row.invoiceDate, locale, timeZone)}
                         </span>
+                        <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                          {row.partnerName}
+                        </span>
                       </TD>
-                      <TD className="text-ink-muted">{row.partnerName}</TD>
+                      <TD priority="low" className="text-ink-muted">
+                        {row.partnerName}
+                      </TD>
                       <TD align="end" numeric>
                         {money(row.total, row.currency)}
+                        {row.dueOn ? (
+                          <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
+                            {t('due')} {formatDate(row.dueOn, locale, timeZone)}
+                          </span>
+                        ) : null}
                       </TD>
                       {/*
                         The variance is in base currency and the total is in
@@ -198,11 +212,11 @@ export default async function PayablesPage({
                       >
                         {money(row.varianceBase, row.baseCurrency)}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {row.dueOn ? formatDate(row.dueOn, locale, timeZone) : '—'}
                       </TD>
                       <TD align="end">
-                        <span className="inline-flex items-center gap-1.5">
+                        <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                           {row.unmatchedCount > 0 ? (
                             <Badge tone="caution">
                               {t('unmatched', { n: row.unmatchedCount })}
@@ -245,9 +259,13 @@ export default async function PayablesPage({
             <THead>
               <TR>
                 <TH>{t('paymentPartner')}</TH>
-                <TH>{t('paymentPaidOn')}</TH>
+                {/* What is left to allocate is this table's figure; the paid
+                    date follows the partner on a phone (below). */}
+                <TH priority="low">{t('paymentPaidOn')}</TH>
                 <TH priority="low">{t('paymentReference')}</TH>
-                <TH align="end">{t('paymentAmount')}</TH>
+                <TH priority="low" align="end">
+                  {t('paymentAmount')}
+                </TH>
                 <TH align="end">{t('paymentUnallocated')}</TH>
                 <TH align="end" />
               </TR>
@@ -258,8 +276,15 @@ export default async function PayablesPage({
                 const bills = billsByPartner.get(payment.partnerId) ?? []
                 return (
                   <TR key={payment.id}>
-                    <TD className="font-medium text-ink">{payment.partnerName}</TD>
-                    <TD className="whitespace-nowrap text-ink-muted">
+                    <TD className="font-medium text-ink">
+                      {payment.partnerName}
+                      {payment.paidOn ? (
+                        <span className="block text-[0.6875rem] font-normal text-ink-subtle md:hidden">
+                          {formatDate(new Date(payment.paidOn), locale, timeZone)}
+                        </span>
+                      ) : null}
+                    </TD>
+                    <TD priority="low" className="whitespace-nowrap text-ink-muted">
                       {payment.paidOn
                         ? formatDate(new Date(payment.paidOn), locale, timeZone)
                         : '—'}
@@ -267,7 +292,7 @@ export default async function PayablesPage({
                     <TD priority="low" className="ref text-ink-muted">
                       {payment.reference ?? '—'}
                     </TD>
-                    <TD align="end" numeric>
+                    <TD priority="low" align="end" numeric>
                       {money(payment.amount, payment.currency)}
                     </TD>
                     <TD align="end" numeric className="font-semibold text-caution">

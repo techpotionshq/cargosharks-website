@@ -76,7 +76,10 @@ export default async function ExceptionsPage({
       <TableShell>
         <THead>
           <TR>
-            <TH>{t('shipment')}</TH>
+            {/* On a phone the shipment reference moves under the problem
+                (below), so the row is problem, severity and due — what a
+                person paged about an exception needs first. */}
+            <TH priority="low">{t('shipment')}</TH>
             <TH>{t('problem')}</TH>
             <TH priority="low">{t('customer')}</TH>
             <TH>{t('severity')}</TH>
@@ -93,17 +96,22 @@ export default async function ExceptionsPage({
             const overdue = !row.closedAt && row.dueAt !== null && row.dueAt.getTime() < now
             return (
               <TR key={row.id} flag={overdue ? 'critical' : undefined}>
-                <TD>
+                <TD priority="low">
                   <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
                 </TD>
                 <TD>
+                  <span className="block md:hidden">
+                    <RecordLink href={`/jobs/${row.jobId}`}>{row.jobReference}</RecordLink>
+                  </span>
                   <span className="font-medium text-ink">
                     {locale === 'ar' ? row.nameAr : row.nameEn}
                   </span>
                   {row.description ? (
                     <span
                       dir="auto"
-                      className="mt-0.5 block max-w-md truncate text-[0.75rem] text-ink-muted"
+                      // Two wrapped lines on a phone, where a one-line
+                      // truncation at this column's width shows four words.
+                      className="mt-0.5 line-clamp-2 text-[0.75rem] break-words text-ink-muted md:block md:max-w-md md:truncate"
                     >
                       {row.description}
                     </span>

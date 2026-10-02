@@ -84,12 +84,17 @@ export default async function PaymentsPage({
       <TableShell>
         <THead>
           <TR>
-            <TH>{t('receivedOn')}</TH>
+            {/* On a phone a receipt is who paid, how much, and what is left to
+                allocate: the date and the allocation ride as second lines
+                under the customer and the amount (below). */}
+            <TH priority="low">{t('receivedOn')}</TH>
             <TH>{t('customer')}</TH>
             <TH priority="low">{t('reference')}</TH>
             <TH priority="low">{t('method')}</TH>
             <TH align="end">{t('amount')}</TH>
-            <TH align="end">{t('allocated')}</TH>
+            <TH priority="low" align="end">
+              {t('allocated')}
+            </TH>
             <TH priority="lowest">{t('recordedBy')}</TH>
             <TH align="end">{t('allocate')}</TH>
           </TR>
@@ -98,12 +103,25 @@ export default async function PaymentsPage({
           {rows.map((row) => {
             const unallocated = remaining(row)
             const open = unallocated.gt(0)
+            const allocation = open
+              ? t('unallocatedAmount', {
+                  amount: formatMoney(
+                    { amount: unallocated.toFixed(), currency: row.currency },
+                    locale,
+                  ),
+                })
+              : t('fullyAllocated')
             return (
               <TR key={row.id} flag={open ? 'caution' : undefined}>
-                <TD className="whitespace-nowrap text-ink">
+                <TD priority="low" className="whitespace-nowrap text-ink">
                   {formatDate(new Date(row.receivedOn), locale, timeZone)}
                 </TD>
-                <TD className="font-medium text-ink">{row.customerName ?? '—'}</TD>
+                <TD className="font-medium text-ink">
+                  {row.customerName ?? '—'}
+                  <span className="block text-[0.6875rem] font-normal whitespace-nowrap text-ink-subtle md:hidden">
+                    {formatDate(new Date(row.receivedOn), locale, timeZone)}
+                  </span>
+                </TD>
                 <TD priority="low" className="ref text-ink-muted">
                   {row.reference ?? '—'}
                 </TD>
@@ -116,16 +134,21 @@ export default async function PaymentsPage({
                 </TD>
                 <TD align="end" numeric>
                   {formatMoney({ amount: row.amount, currency: row.currency }, locale)}
+                  <span
+                    // May wrap after the figure: on one line this second line
+                    // was wider than the amount it sits under.
+                    className={`block text-[0.6875rem] whitespace-normal md:hidden ${open ? 'text-caution' : 'text-ink-subtle'}`}
+                  >
+                    {allocation}
+                  </span>
                 </TD>
-                <TD align="end" numeric className={open ? 'text-caution' : 'text-ink-subtle'}>
-                  {open
-                    ? t('unallocatedAmount', {
-                        amount: formatMoney(
-                          { amount: unallocated.toFixed(), currency: row.currency },
-                          locale,
-                        ),
-                      })
-                    : t('fullyAllocated')}
+                <TD
+                  priority="low"
+                  align="end"
+                  numeric
+                  className={open ? 'text-caution' : 'text-ink-subtle'}
+                >
+                  {allocation}
                 </TD>
                 <TD priority="lowest" className="whitespace-nowrap text-ink-muted">
                   {row.recordedBy ?? '—'}

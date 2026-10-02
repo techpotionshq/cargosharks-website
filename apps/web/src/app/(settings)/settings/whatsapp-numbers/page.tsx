@@ -78,9 +78,12 @@ export default async function WhatsappNumbersPage() {
           <TR>
             <TH>{t('branch')}</TH>
             <TH>{t('label')}</TH>
-            <TH>{t('displayNumber')}</TH>
-            <TH>{t('phoneNumberId')}</TH>
-            <TH>{t('lastMessage')}</TH>
+            {/* The number follows its label on a phone (below). */}
+            <TH priority="low">{t('displayNumber')}</TH>
+            {/* The provider's ID and the last message wait for a wider
+                screen; which number and whether it is on is what a phone keeps. */}
+            <TH priority="low">{t('phoneNumberId')}</TH>
+            <TH priority="low">{t('lastMessage')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{tc('actions')}</TH>
           </TR>
@@ -89,12 +92,19 @@ export default async function WhatsappNumbersPage() {
           {rows.map((row) => (
             <TR key={row.id}>
               <TD>{row.branchCode}</TD>
-              <TD>{row.label ?? '—'}</TD>
-              <TD>{row.displayNumber ?? '—'}</TD>
               <TD>
+                {row.label ?? '—'}
+                {row.displayNumber ? (
+                  <span className="numeric block text-[0.75rem] whitespace-nowrap text-ink-muted md:hidden">
+                    {row.displayNumber}
+                  </span>
+                ) : null}
+              </TD>
+              <TD priority="low">{row.displayNumber ?? '—'}</TD>
+              <TD priority="low">
                 <span className="text-muted">{row.phoneNumberId}</span>
               </TD>
-              <TD>
+              <TD priority="low">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}
               </TD>
               <TD>

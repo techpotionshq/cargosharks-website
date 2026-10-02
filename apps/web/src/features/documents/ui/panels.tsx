@@ -54,7 +54,8 @@ export async function PartiesCard({
             <TR>
               <TH>{t('role')}</TH>
               <TH>{t('name')}</TH>
-              <TH>{t('where')}</TH>
+              {/* The city follows the name on a phone (below). */}
+              <TH priority="low">{t('where')}</TH>
               <TH align="end">{tc('actions')}</TH>
             </TR>
           </THead>
@@ -69,8 +70,13 @@ export async function PartiesCard({
                       {party.nameAr}
                     </span>
                   ) : null}
+                  {party.city || party.country ? (
+                    <span className="mt-0.5 block text-[0.6875rem] text-ink-muted md:hidden">
+                      {[party.city, party.country].filter(Boolean).join(', ')}
+                    </span>
+                  ) : null}
                 </TD>
-                <TD className="text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {[party.city, party.country].filter(Boolean).join(', ') || '—'}
                 </TD>
                 <TD align="end">
@@ -139,7 +145,11 @@ export async function CargoCard({
           <THead>
             <TR>
               <TH>{t('description')}</TH>
-              <TH align="end">{t('packages')}</TH>
+              {/* Weight and volume stay across a phone; the package count
+                  follows the description there (below). */}
+              <TH priority="low" align="end">
+                {t('packages')}
+              </TH>
               <TH align="end">{t('gross')}</TH>
               <TH align="end">{t('volume')}</TH>
               <TH align="end">{tc('actions')}</TH>
@@ -154,8 +164,13 @@ export async function CargoCard({
                     {[line.hsCode, line.containerNo].filter(Boolean).join(' · ') ||
                       t('unclassified')}
                   </span>
+                  {line.packageCount ? (
+                    <span className="numeric block text-[0.6875rem] text-ink-muted md:hidden">
+                      {line.packageCount} {line.packageType ?? ''}
+                    </span>
+                  ) : null}
                 </TD>
-                <TD align="end" numeric className="text-ink-muted">
+                <TD priority="low" align="end" numeric className="text-ink-muted">
                   {line.packageCount ?? '—'} {line.packageType ?? ''}
                 </TD>
                 <TD align="end" numeric className="text-ink-muted">
@@ -189,7 +204,7 @@ export async function CargoCard({
             ))}
             <TR>
               <TD className="font-semibold">{t('totals')}</TD>
-              <TD align="end" numeric className="font-semibold">
+              <TD priority="low" align="end" numeric className="font-semibold">
                 {totals.packages}
               </TD>
               <TD align="end" numeric className="font-semibold">

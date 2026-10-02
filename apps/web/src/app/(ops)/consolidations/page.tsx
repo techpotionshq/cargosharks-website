@@ -109,7 +109,9 @@ export default async function ConsolidationsPage() {
                     {formatDate(row.etd, locale, timeZone)}
                   </TD>
                   <TD align="end">
-                    <span className="inline-flex items-center gap-1.5">
+                    {/* Wraps, so the two pills stack on a phone instead of
+                        holding the status off the screen's edge. */}
+                    <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                       {/*
                         An unallocated cost is the one thing on this row that
                         needs doing, so it is flagged beside the status rather

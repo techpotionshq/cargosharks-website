@@ -235,7 +235,7 @@ export default async function JobsPage({
                 <TH priority="lowest">{t('vessel')}</TH>
                 <TH priority="low">{t('progress')}</TH>
                 <TH>{t('status')}</TH>
-                <TH>{t('customs')}</TH>
+                <TH priority="low">{t('customs')}</TH>
                 <TH align="end">{t('eta')}</TH>
               </TR>
             </THead>
@@ -292,9 +292,19 @@ export default async function JobsPage({
                       <Badge tone={jobTone(job.status)} dot>
                         {t(`statuses.${job.status}` as 'statuses.booked')}
                       </Badge>
+                      {/* The customs column leaves a phone, but a hold is the
+                          one customs state that changes what someone does
+                          next, so it follows the status there. */}
+                      {job.customsStatus === 'held' ? (
+                        <span className="mt-1 block md:hidden">
+                          <Badge tone={customsTone(job.customsStatus)} icon="hold">
+                            {t('customsStatuses.held')}
+                          </Badge>
+                        </span>
+                      ) : null}
                     </TD>
 
-                    <TD>
+                    <TD priority="low">
                       {job.customsStatus ? (
                         <Badge
                           tone={customsTone(job.customsStatus)}

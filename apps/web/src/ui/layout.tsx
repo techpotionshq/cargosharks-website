@@ -299,7 +299,14 @@ export function Lane({
   readonly className?: string
 }) {
   return (
-    <span className={['inline-flex items-center gap-1.5', className].filter(Boolean).join(' ')}>
+    // Wraps below md, origin over destination: held to one line, a lane was
+    // the widest cell in a phone register and its two names truncated to
+    // "Ista… → Shuw…" — the one fact the column exists to show.
+    <span
+      className={['inline-flex flex-wrap items-center gap-x-1.5 md:flex-nowrap', className]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <span className="truncate">{origin}</span>
       <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
       <span className="truncate">{destination}</span>

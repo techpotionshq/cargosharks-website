@@ -63,7 +63,13 @@ export async function EnquiryTable({
               {t('value')}
             </TH>
           ) : null}
-          {showMargin ? <TH align="end">{t('margin')}</TH> : null}
+          {/* The queue is worked by its clock: on a phone the SLA column is
+              the figure that stays, and margin waits for a wider screen. */}
+          {showMargin ? (
+            <TH priority="low" align="end">
+              {t('margin')}
+            </TH>
+          ) : null}
           <TH align="end">{t('slaDue')}</TH>
         </TR>
       </THead>
@@ -131,7 +137,7 @@ export async function EnquiryTable({
               ) : null}
 
               {showMargin ? (
-                <TD align="end" numeric>
+                <TD priority="low" align="end" numeric>
                   {row.quotedMargin === null ? (
                     <span className="text-ink-subtle">—</span>
                   ) : (
@@ -169,7 +175,14 @@ export async function EnquiryTable({
                     title={formatDateTime(row.slaDueAt, locale, timeZone)}
                   >
                     {formatRelative(row.slaDueAt, locale, now)}
-                    {breached ? ` · ${t('overdue')}` : ''}
+                    {/* Its own line on a phone, where "6 hours ago · Overdue"
+                        on one line was wider than the column could be. */}
+                    {breached ? (
+                      <>
+                        <span className="hidden md:inline"> · </span>
+                        <span className="block md:inline">{t('overdue')}</span>
+                      </>
+                    ) : null}
                   </span>
                 ) : (
                   <span className="text-ink-subtle">—</span>

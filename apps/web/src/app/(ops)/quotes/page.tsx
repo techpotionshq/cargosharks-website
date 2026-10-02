@@ -95,7 +95,10 @@ export default async function QuotesPage({
             <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{t('sell')}</TH>
-            <TH align="end">{t('margin')}</TH>
+            {/* Margin rides under the sell figure on a phone (below). */}
+            <TH priority="low" align="end">
+              {t('margin')}
+            </TH>
             <TH priority="low">{t('validUntil')}</TH>
             <TH priority="low">{t('preparedBy')}</TH>
           </TR>
@@ -103,12 +106,23 @@ export default async function QuotesPage({
         <TBody>
           {rows.map((row) => {
             const margin = marginPercent(row.totalSell, row.totalCost)
+            const marginClass =
+              margin === null
+                ? 'text-ink-subtle'
+                : margin < 8
+                  ? 'font-semibold text-critical'
+                  : margin < 15
+                    ? 'text-caution'
+                    : 'text-ink'
+            const marginText = margin === null ? '—' : `${margin.toFixed(1)}%`
             return (
               <TR key={row.id}>
                 <TD>
                   <RecordLink href={`/quotes/${row.id}`}>{row.reference}</RecordLink>
                   {row.version > 1 ? (
-                    <span className="numeric ms-1.5 text-[0.75rem] text-ink-subtle">
+                    // Under the reference on a phone: beside it, the pair
+                    // could not break and set the column's floor.
+                    <span className="numeric block text-[0.75rem] text-ink-subtle md:ms-1.5 md:inline">
                       v{row.version}
                     </span>
                   ) : null}
@@ -125,21 +139,15 @@ export default async function QuotesPage({
                   {row.totalSell
                     ? formatMoney({ amount: row.totalSell, currency: row.currency }, locale)
                     : '—'}
+                  {/* A quote's sell figure without its margin is half the
+                      answer, so a phone gets the margin as a second line
+                      rather than a column it would have to scroll to. */}
+                  <span className={`block text-[0.6875rem] md:hidden ${marginClass}`}>
+                    {marginText}
+                  </span>
                 </TD>
-                <TD
-                  align="end"
-                  numeric
-                  className={
-                    margin === null
-                      ? 'text-ink-subtle'
-                      : margin < 8
-                        ? 'font-semibold text-critical'
-                        : margin < 15
-                          ? 'text-caution'
-                          : 'text-ink'
-                  }
-                >
-                  {margin === null ? '—' : `${margin.toFixed(1)}%`}
+                <TD priority="low" align="end" numeric className={marginClass}>
+                  {marginText}
                 </TD>
                 <TD priority="low" className="whitespace-nowrap text-ink-muted">
                   {row.validUntil ? formatDate(new Date(row.validUntil), locale, timeZone) : '—'}

@@ -203,8 +203,12 @@ export default async function ConsolidationDetailPage({
               <THead>
                 <TR>
                   <TH>{t('house')}</TH>
-                  <TH>{tc('customer')}</TH>
-                  <TH align="end">{t('packages')}</TH>
+                  {/* House, volume, status and detach on a phone; the
+                      customer follows the house bill there (below). */}
+                  <TH priority="low">{tc('customer')}</TH>
+                  <TH priority="low" align="end">
+                    {t('packages')}
+                  </TH>
                   <TH align="end">{t('volume')}</TH>
                   <TH align="end">{tc('status')}</TH>
                   <TH align="end">{tc('actions')}</TH>
@@ -220,9 +224,14 @@ export default async function ConsolidationDetailPage({
                       >
                         {house.houseBillNumber ?? house.reference}
                       </Link>
+                      <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                        {house.customerName}
+                      </span>
                     </TD>
-                    <TD className="text-ink-muted">{house.customerName}</TD>
-                    <TD align="end" numeric className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
+                      {house.customerName}
+                    </TD>
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
                       {house.packages}
                     </TD>
                     <TD align="end" numeric className="text-ink-muted">
@@ -246,8 +255,8 @@ export default async function ConsolidationDetailPage({
                 ))}
                 <TR>
                   <TD className="font-semibold">{tc('total')}</TD>
-                  <TD />
-                  <TD align="end" numeric className="font-semibold">
+                  <TD priority="low" />
+                  <TD priority="low" align="end" numeric className="font-semibold">
                     {consol.houses.reduce((acc, h) => acc + h.packages, 0)}
                   </TD>
                   <TD align="end" numeric className="font-semibold">

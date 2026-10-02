@@ -92,7 +92,11 @@ export default async function CustomsPage({
             <TH priority="low">{t('filed')}</TH>
             <TH>{t('slaDue')}</TH>
             <TH priority="lowest">{t('broker')}</TH>
-            <TH align="end">{t('duty')}</TH>
+            {/* The broker's question on a phone is "when is it due", not "how
+                much duty" — the duty is on the job. */}
+            <TH priority="low" align="end">
+              {t('duty')}
+            </TH>
           </TR>
         </THead>
         <TBody>
@@ -139,7 +143,7 @@ export default async function CustomsPage({
                 <TD priority="lowest" className="text-ink-muted">
                   {(locale === 'ar' && row.brokerNameAr) || row.brokerName || '—'}
                 </TD>
-                <TD align="end" numeric>
+                <TD priority="low" align="end" numeric>
                   {/* At the currency's own precision: trimmed, a KWD duty of
                       1840.500 read "1840.5 KWD". */}
                   {row.dutyAmount

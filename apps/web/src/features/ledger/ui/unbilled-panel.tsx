@@ -80,7 +80,8 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
               {t('lines')}
             </TH>
             <TH align="end">{t('amount')}</TH>
-            <TH>{t('oldest')}</TH>
+            {/* Under the shipment on a phone (below). */}
+            <TH priority="low">{t('oldest')}</TH>
             <TH />
           </TR>
         </THead>
@@ -90,7 +91,12 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
 
             return (
               <TR key={row.jobId}>
-                <TD className="ref">{row.reference}</TD>
+                <TD className="ref">
+                  {row.reference}
+                  <span className="block text-[0.6875rem] text-ink-subtle md:hidden">
+                    {formatDate(row.oldestAt, lang, timeZone)}
+                  </span>
+                </TD>
                 <TD priority="low">
                   {row.customerName ?? <span className="text-ink-subtle">—</span>}
                 </TD>
@@ -105,7 +111,7 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
                     </Badge>
                   ) : null}
                 </TD>
-                <TD>{formatDate(row.oldestAt, lang, timeZone)}</TD>
+                <TD priority="low">{formatDate(row.oldestAt, lang, timeZone)}</TD>
                 <TD>
                   {billable && !mixed ? (
                     <BillJobButton jobId={row.jobId} label={t('bill')} />

@@ -94,10 +94,12 @@ export default async function MailboxesPage() {
           <TR>
             <TH>{t('branch')}</TH>
             <TH>{t('username')}</TH>
-            <TH>{t('host')}</TH>
-            <TH>{t('folder')}</TH>
-            <TH>{t('lastPolled')}</TH>
-            <TH>{t('lastMessage')}</TH>
+            {/* Which mailbox, and whether it is working: on a phone the
+                connection details wait for a wider screen. */}
+            <TH priority="low">{t('host')}</TH>
+            <TH priority="low">{t('folder')}</TH>
+            <TH priority="low">{t('lastPolled')}</TH>
+            <TH priority="low">{t('lastMessage')}</TH>
             <TH>{tc('status')}</TH>
             <TH align="end">{tc('actions')}</TH>
           </TR>
@@ -106,12 +108,12 @@ export default async function MailboxesPage() {
           {rows.map((row) => (
             <TR key={row.id}>
               <TD>{row.branchCode}</TD>
-              <TD>{row.username}</TD>
-              <TD>
+              <TD className="wrap-anywhere">{row.username}</TD>
+              <TD priority="low">
                 {row.host}
                 <span className="text-muted">:{row.port}</span>
               </TD>
-              <TD>
+              <TD priority="low">
                 {row.folder}
                 {row.archiveFolder ? (
                   // The arrow is direction-neutral on purpose: `→` would point
@@ -119,8 +121,10 @@ export default async function MailboxesPage() {
                   <span className="text-muted"> · {row.archiveFolder}</span>
                 ) : null}
               </TD>
-              <TD>{row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale, timeZone) : '—'}</TD>
-              <TD>
+              <TD priority="low">
+                {row.lastPolledAt ? formatDateTime(row.lastPolledAt, locale, timeZone) : '—'}
+              </TD>
+              <TD priority="low">
                 {row.lastMessageAt ? formatDateTime(row.lastMessageAt, locale, timeZone) : '—'}
               </TD>
               <TD>
@@ -138,7 +142,7 @@ export default async function MailboxesPage() {
                   */
                   <div className="flex flex-col items-start gap-1">
                     <Badge tone="critical">{t('erroring')}</Badge>
-                    <span className="text-xs text-muted">{row.lastError}</span>
+                    <span className="text-xs break-words text-muted">{row.lastError}</span>
                   </div>
                 ) : (
                   <Badge tone="positive">{tc('active')}</Badge>

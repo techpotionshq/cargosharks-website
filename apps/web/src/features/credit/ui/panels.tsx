@@ -20,7 +20,7 @@ import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatMoney } from '@/lib/format'
 import { Card, CardHeader } from '@/ui/card'
 import { EmptyState, Field } from '@/ui/layout'
 import { Badge, type Tone } from '@/ui/status'
@@ -142,17 +142,34 @@ export async function CreditStandingCard({
           <THead>
             <TR>
               <TH>{t('approvedAt')}</TH>
-              <TH>{t('approvedBy')}</TH>
+              {/* When, its scope and the exposure it let through stay across
+                  a phone; who approved it and why follow the date there
+                  (below) rather than leaving the record. */}
+              <TH priority="low">{t('approvedBy')}</TH>
               <TH>{t('scope')}</TH>
               <TH align="end">{t('exposureThen')}</TH>
-              <TH>{t('reason')}</TH>
+              <TH priority="low">{t('reason')}</TH>
             </TR>
           </THead>
           <TBody>
             {view.overrides.map((o) => (
               <TR key={o.id}>
-                <TD>{formatDate(o.approvedAt, lang, timeZone)}</TD>
-                <TD>{lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}</TD>
+                <TD>
+                  {/* Held to one line from md only: this table sits inside a
+                      padded card, 40px narrower than a register on a phone. */}
+                  <span className="md:whitespace-nowrap">
+                    {formatDate(o.approvedAt, lang, timeZone)}
+                  </span>
+                  <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                    {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
+                  </span>
+                  <span className="mt-0.5 block text-[0.75rem] break-words text-ink-subtle md:hidden">
+                    {o.reason}
+                  </span>
+                </TD>
+                <TD priority="low">
+                  {lang === 'ar' ? (o.approvedByAr ?? o.approvedByEn) : o.approvedByEn}
+                </TD>
                 <TD>
                   {o.expiresOn ? (
                     <Badge tone={o.isLive ? 'caution' : 'muted'}>
@@ -164,10 +181,24 @@ export async function CreditStandingCard({
                     </Badge>
                   )}
                 </TD>
+                {/*
+                  At the currency's precision — the raw columns printed
+                  "20550.000000 / 120000.000000 KWD". The limit takes its own
+                  line on a phone, where the pair on one line was the table's
+                  whole overflow.
+                */}
                 <TD align="end" numeric>
-                  {o.exposure} / {o.creditLimit} {o.currency}
+                  <span className="block md:inline">
+                    {formatMoney({ amount: o.exposure, currency: o.currency }, lang)}
+                  </span>
+                  <span className="block text-ink-muted md:inline">
+                    <span className="hidden md:inline"> </span>/{' '}
+                    {formatMoney({ amount: o.creditLimit, currency: o.currency }, lang)}
+                  </span>
                 </TD>
-                <TD className="max-w-[22rem] whitespace-normal text-ink-muted">{o.reason}</TD>
+                <TD priority="low" className="max-w-[22rem] whitespace-normal text-ink-muted">
+                  {o.reason}
+                </TD>
               </TR>
             ))}
           </TBody>

@@ -193,7 +193,7 @@ export default async function AuditPage({
                 the table for them would cost more room than the column it
                 filters. Clicking the active one clears it.
               */}
-              <span className="flex items-center gap-1.5">
+              <span className="flex flex-wrap items-center gap-1.5">
                 {t('operation')}
                 {OPERATIONS.map((value) => (
                   <a
@@ -209,10 +209,12 @@ export default async function AuditPage({
               </span>
             </TH>
             <TH>{t('table')}</TH>
-            <TH>{t('who')}</TH>
-            <TH>{t('branch')}</TH>
-            <TH>{t('record')}</TH>
-            <TH>{t('ip')}</TH>
+            {/* When, what and to which table; who did it follows the table
+                name on a phone (below), and the forensic columns wait. */}
+            <TH priority="low">{t('who')}</TH>
+            <TH priority="low">{t('branch')}</TH>
+            <TH priority="low">{t('record')}</TH>
+            <TH priority="low">{t('ip')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -227,8 +229,15 @@ export default async function AuditPage({
               <TD>
                 <Badge tone={OP_TONE[row.op as keyof typeof OP_TONE] ?? 'muted'}>{row.op}</Badge>
               </TD>
-              <TD className="ref whitespace-nowrap text-ink">{row.tableName}</TD>
-              <TD className="whitespace-nowrap">
+              <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">
+                {row.tableName}
+                <span className="block font-sans text-[0.75rem] text-ink-muted md:hidden">
+                  {(locale === 'ar' && row.principalNameAr
+                    ? row.principalNameAr
+                    : row.principalName) ?? t('system')}
+                </span>
+              </TD>
+              <TD priority="low" className="whitespace-nowrap">
                 <span className="text-ink">
                   {(locale === 'ar' && row.principalNameAr
                     ? row.principalNameAr
@@ -238,11 +247,15 @@ export default async function AuditPage({
                   {row.principalType}
                 </span>
               </TD>
-              <TD className="ref whitespace-nowrap text-ink-muted">{row.branchCode ?? '—'}</TD>
-              <TD className="ref max-w-40 truncate text-[0.75rem] text-ink-subtle">
+              <TD priority="low" className="ref whitespace-nowrap text-ink-muted">
+                {row.branchCode ?? '—'}
+              </TD>
+              <TD priority="low" className="ref max-w-40 truncate text-[0.75rem] text-ink-subtle">
                 {row.rowId ?? '—'}
               </TD>
-              <TD className="ref whitespace-nowrap text-ink-subtle">{row.ip ?? '—'}</TD>
+              <TD priority="low" className="ref whitespace-nowrap text-ink-subtle">
+                {row.ip ?? '—'}
+              </TD>
             </TR>
           ))}
         </TBody>

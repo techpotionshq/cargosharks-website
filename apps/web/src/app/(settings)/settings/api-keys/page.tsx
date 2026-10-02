@@ -100,9 +100,12 @@ export default async function ApiKeysPage() {
           <THead>
             <TR>
               <TH>{t('key')}</TH>
-              <TH>{t('customer')}</TH>
-              <TH>{t('lastUsed')}</TH>
-              <TH>{t('expires')}</TH>
+              {/* A phone keeps the key, whether it is live, and the revoke
+                  button — the reason to open this screen in a hurry. Whose
+                  data it reads follows the key's name there (below). */}
+              <TH priority="low">{t('customer')}</TH>
+              <TH priority="low">{t('lastUsed')}</TH>
+              <TH priority="low">{t('expires')}</TH>
               <TH>{tc('status')}</TH>
               <TH align="end" />
             </TR>
@@ -117,14 +120,17 @@ export default async function ApiKeysPage() {
                     {/* The prefix is stored in clear precisely so a key is
                         identifiable in a list without being usable from one. */}
                     <span className="ref text-[0.6875rem] text-ink-subtle">{key.prefix}…</span>
+                    <span className="block text-[0.75rem] text-ink-muted md:hidden">
+                      {(locale === 'ar' && key.customerNameAr) || key.customerName || '—'}
+                    </span>
                   </TD>
-                  <TD className="text-ink-muted">
+                  <TD priority="low" className="text-ink-muted">
                     {(locale === 'ar' && key.customerNameAr) || key.customerName || '—'}
                   </TD>
-                  <TD className="whitespace-nowrap text-ink-muted">
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
                     {key.lastUsedAt ? formatDate(key.lastUsedAt, locale, timeZone) : t('neverUsed')}
                   </TD>
-                  <TD className="whitespace-nowrap text-ink-muted">
+                  <TD priority="low" className="whitespace-nowrap text-ink-muted">
                     {key.expiresAt ? formatDate(key.expiresAt, locale, timeZone) : t('noExpiry')}
                   </TD>
                   <TD>
@@ -194,8 +200,8 @@ export default async function ApiKeysPage() {
             <THead>
               <TR>
                 <TH>{t('url')}</TH>
-                <TH>{t('customer')}</TH>
-                <TH>{t('events')}</TH>
+                <TH priority="low">{t('customer')}</TH>
+                <TH priority="low">{t('events')}</TH>
                 <TH align="end">{t('deliveries')}</TH>
                 <TH>{tc('status')}</TH>
                 <TH align="end" />
@@ -204,13 +210,17 @@ export default async function ApiKeysPage() {
             <TBody>
               {endpoints.map((endpoint) => (
                 <TR key={endpoint.id}>
-                  <TD className="ref max-w-xs truncate text-ink">{endpoint.url}</TD>
-                  <TD className="text-ink-muted">
+                  {/* Wraps anywhere on a phone: a URL has no spaces, and
+                      truncated to a phone's column it is only "https://". */}
+                  <TD className="ref text-ink wrap-anywhere md:max-w-xs md:truncate">
+                    {endpoint.url}
+                  </TD>
+                  <TD priority="low" className="text-ink-muted">
                     {(locale === 'ar' && endpoint.customerNameAr) ||
                       endpoint.customerName ||
                       t('everyCustomer')}
                   </TD>
-                  <TD className="text-[0.75rem] text-ink-muted">
+                  <TD priority="low" className="text-[0.75rem] text-ink-muted">
                     {endpoint.events.length === 0 ? t('allEvents') : endpoint.events.join(', ')}
                   </TD>
                   <TD align="end" numeric className="whitespace-nowrap">

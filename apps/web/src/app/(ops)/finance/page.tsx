@@ -427,8 +427,10 @@ export default async function FinancePage({
             <THead>
               <TR>
                 <TH>{t('exportPeriod')}</TH>
-                <TH>{t('exportBranch')}</TH>
-                <TH align="end">{t('exportRows')}</TH>
+                <TH priority="low">{t('exportBranch')}</TH>
+                <TH priority="low" align="end">
+                  {t('exportRows')}
+                </TH>
                 <TH>{t('exportStatus')}</TH>
                 <TH align="end" />
               </TR>
@@ -438,9 +440,13 @@ export default async function FinancePage({
                 const period = `${formatDate(new Date(row.periodFrom), locale, timeZone)} — ${formatDate(new Date(row.periodTo), locale, timeZone)}`
                 return (
                   <TR key={row.id}>
-                    <TD className="font-medium whitespace-nowrap text-ink">{period}</TD>
-                    <TD className="ref">{row.branchCode ?? '—'}</TD>
-                    <TD align="end" numeric>
+                    {/* The period may break at its dash on a phone; on one
+                        line it was the whole width of the screen. */}
+                    <TD className="font-medium text-ink md:whitespace-nowrap">{period}</TD>
+                    <TD priority="low" className="ref">
+                      {row.branchCode ?? '—'}
+                    </TD>
+                    <TD priority="low" align="end" numeric>
                       {formatNumber(row.rowCount, locale)}
                     </TD>
                     <TD>

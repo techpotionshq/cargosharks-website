@@ -71,11 +71,22 @@ export async function SupplierInvoiceLinesCard({
           <THead>
             <TR>
               <TH>{t('theirLine')}</TH>
-              <TH align="end">{t('billed')}</TH>
-              <TH align="end">{t('accrued')}</TH>
+              {/* Variance and verdict are the review; on a phone the billed
+                  figure follows the line (below), and accrued and the match
+                  action — a dialog of candidate costs, desk work — wait. */}
+              <TH priority="low" align="end">
+                {t('billed')}
+              </TH>
+              <TH priority="low" align="end">
+                {t('accrued')}
+              </TH>
               <TH align="end">{t('variance')}</TH>
               <TH>{t('verdict')}</TH>
-              {mayMatch ? <TH align="end">{tc('actions')}</TH> : null}
+              {mayMatch ? (
+                <TH priority="low" align="end">
+                  {tc('actions')}
+                </TH>
+              ) : null}
             </TR>
           </THead>
           <TBody>
@@ -87,6 +98,12 @@ export async function SupplierInvoiceLinesCard({
                     {line.chargeTypeName ?? t('unmapped')}
                     {line.jobReference ? ` · ${line.jobReference}` : ''}
                   </span>
+                  <span className="mt-0.5 block text-[0.75rem] text-ink-muted md:hidden">
+                    {t('billed')}{' '}
+                    <span className="numeric whitespace-nowrap text-ink">
+                      {display(line.amount, bill.currency, locale)}
+                    </span>
+                  </span>
                   {/*
                     What each match claims, under the line it claims it from.
                     "Which of our costs does this cover" is the question the
@@ -96,7 +113,7 @@ export async function SupplierInvoiceLinesCard({
                   {line.matches.map((match) => (
                     <span
                       key={match.id}
-                      className="mt-1 flex items-center gap-2 text-[0.6875rem] text-ink-muted"
+                      className="mt-1 flex flex-wrap items-center gap-x-2 text-[0.6875rem] text-ink-muted"
                     >
                       <span aria-hidden>↳</span>
                       <span>
@@ -120,7 +137,7 @@ export async function SupplierInvoiceLinesCard({
                     </span>
                   ))}
                 </TD>
-                <TD align="end" className="tabular-nums">
+                <TD priority="low" align="end" className="tabular-nums">
                   {display(line.amount, bill.currency, locale)}
                   {bill.currency !== bill.baseCurrency ? (
                     <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
@@ -128,12 +145,13 @@ export async function SupplierInvoiceLinesCard({
                     </span>
                   ) : null}
                 </TD>
-                <TD align="end" className="tabular-nums text-ink-muted">
+                <TD priority="low" align="end" className="tabular-nums text-ink-muted">
                   {display(line.accruedBase, bill.baseCurrency, locale)}
                 </TD>
                 <TD
                   align="end"
-                  className={`tabular-nums ${line.needsReview ? 'font-semibold text-critical' : 'text-ink-muted'}`}
+                  numeric
+                  className={line.needsReview ? 'font-semibold text-critical' : 'text-ink-muted'}
                 >
                   {display(line.varianceBase, bill.baseCurrency, locale)}
                   {line.variancePercent ? (
@@ -155,7 +173,7 @@ export async function SupplierInvoiceLinesCard({
                   ) : null}
                 </TD>
                 {mayMatch ? (
-                  <TD align="end">
+                  <TD priority="low" align="end">
                     <MatchDialog
                       billId={bill.id}
                       lineId={line.id}
@@ -244,10 +262,16 @@ export async function PartnerAccountCard({
             <TableShell minWidth="none">
               <THead>
                 <TR>
-                  <TH>{t('date')}</TH>
+                  {/* Document and running balance on a phone; the date follows
+                      the document there (below). */}
+                  <TH priority="low">{t('date')}</TH>
                   <TH>{t('document')}</TH>
-                  <TH align="end">{t('theyOweUsShort')}</TH>
-                  <TH align="end">{t('weOweThemShort')}</TH>
+                  <TH priority="low" align="end">
+                    {t('theyOweUsShort')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('weOweThemShort')}
+                  </TH>
                   <TH align="end">{t('balance')}</TH>
                 </TR>
               </THead>
@@ -256,17 +280,23 @@ export async function PartnerAccountCard({
                   const signed = Number(line.signedAmount.amount.toString())
                   return (
                     <TR key={line.id}>
-                      <TD className="text-ink-muted">{formatDate(line.date, locale, timeZone)}</TD>
+                      <TD priority="low" className="text-ink-muted">
+                        {formatDate(line.date, locale, timeZone)}
+                      </TD>
                       <TD>
                         <span className="font-mono text-[0.8125rem]">{line.reference}</span>
                         <span className="mt-0.5 block text-[0.6875rem] text-ink-subtle">
                           {t(`kinds.${line.kind}` as 'kinds.invoice')}
+                          <span className="md:hidden">
+                            {' · '}
+                            {formatDate(line.date, locale, timeZone)}
+                          </span>
                         </span>
                       </TD>
-                      <TD align="end" className="tabular-nums">
+                      <TD priority="low" align="end" className="tabular-nums">
                         {signed > 0 ? display(String(signed), currency, locale) : '—'}
                       </TD>
-                      <TD align="end" className="tabular-nums">
+                      <TD priority="low" align="end" className="tabular-nums">
                         {signed < 0 ? display(String(-signed), currency, locale) : '—'}
                       </TD>
                       <TD align="end" className="tabular-nums font-medium">

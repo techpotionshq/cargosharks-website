@@ -226,9 +226,17 @@ export default async function ReportsPage({
           <THead>
             <TR>
               <TH>{t(`dimension.${dimension}` as 'dimension.customer')}</TH>
-              <TH className="text-end">{t('jobs')}</TH>
-              <TH className="text-end">{t('revenue')}</TH>
-              <TH className="text-end">{t('cost')}</TH>
+              {/* Profit and margin are the report's answer; volume, revenue
+                  and cost are how it got there, and wait for a wider screen. */}
+              <TH priority="low" className="text-end">
+                {t('jobs')}
+              </TH>
+              <TH priority="low" className="text-end">
+                {t('revenue')}
+              </TH>
+              <TH priority="low" className="text-end">
+                {t('cost')}
+              </TH>
               <TH className="text-end">{t('grossProfit')}</TH>
               <TH className="text-end">{t('marginPercent')}</TH>
             </TR>
@@ -247,11 +255,13 @@ export default async function ReportsPage({
               return (
                 <TR key={`${row.key}:${row.currency}`}>
                   <TD>{labelOf(row)}</TD>
-                  <TD className="text-end tabular-nums">{formatNumber(row.jobCount, locale)}</TD>
-                  <TD className="text-end tabular-nums">
+                  <TD priority="low" className="text-end tabular-nums">
+                    {formatNumber(row.jobCount, locale)}
+                  </TD>
+                  <TD priority="low" className="text-end tabular-nums">
                     {formatMoney({ amount: row.revenue, currency: row.currency }, locale)}
                   </TD>
-                  <TD className="text-end tabular-nums">
+                  <TD priority="low" className="text-end tabular-nums">
                     {formatMoney({ amount: row.cost, currency: row.currency }, locale)}
                   </TD>
                   <TD className="text-end tabular-nums">

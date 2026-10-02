@@ -235,10 +235,10 @@ export default async function BrandPage() {
             <table className="w-full border-collapse text-[0.8125rem]">
               <thead>
                 <tr className="border-b border-line">
-                  <th className="px-5 py-2.5 text-start text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('variable')}
                   </th>
-                  <th className="px-5 py-2.5 text-start text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+                  <th className="px-3 py-2.5 text-start md:px-5 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
                     {t('value')}
                   </th>
                 </tr>
@@ -246,8 +246,13 @@ export default async function BrandPage() {
               <tbody className="divide-y divide-line">
                 {ENV_OVERRIDES.map((row) => (
                   <tr key={row.variable} className="hover:bg-surface-sunken">
-                    <td className="ref px-5 py-2 text-ink">{row.variable}</td>
-                    <td className="numeric px-5 py-2 text-ink-muted">{row.describe(brand)}</td>
+                    {/* Narrower padding and a variable name that may break
+                        anywhere on a phone: `QABANDI_BRAND_…` has no space to
+                        break at, and held whole it pushed its value off-screen. */}
+                    <td className="ref px-3 py-2 text-ink wrap-anywhere md:px-5">{row.variable}</td>
+                    <td className="numeric px-3 py-2 break-words text-ink-muted md:px-5">
+                      {row.describe(brand)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

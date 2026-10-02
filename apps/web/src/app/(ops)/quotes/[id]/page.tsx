@@ -216,9 +216,15 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <THead>
                 <TR>
                   <TH>{t('charge')}</TH>
-                  <TH>{t('basis')}</TH>
-                  <TH align="end">{t('quantity')}</TH>
-                  <TH align="end">{t('rate')}</TH>
+                  {/* Charge and amount on a phone; how it was priced waits
+                      for a wider screen. */}
+                  <TH priority="low">{t('basis')}</TH>
+                  <TH priority="low" align="end">
+                    {t('quantity')}
+                  </TH>
+                  <TH priority="low" align="end">
+                    {t('rate')}
+                  </TH>
                   <TH align="end">{t('amount')}</TH>
                 </TR>
               </THead>
@@ -234,13 +240,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       ) : null}
                     </TD>
                     {/* The basis in the reader's language — it was the enum, spaced out. */}
-                    <TD className="text-ink-muted">
+                    <TD priority="low" className="text-ink-muted">
                       {tBasis(`bases.${line.basis}` as 'bases.flat')}
                     </TD>
-                    <TD align="end" numeric className="text-ink-muted">
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
                       {Number(line.quantity)}
                     </TD>
-                    <TD align="end" numeric className="text-ink-muted">
+                    <TD priority="low" align="end" numeric className="text-ink-muted">
                       {formatMoney({ amount: line.rate, currency: line.currency }, locale, {
                         showCurrency: false,
                       })}

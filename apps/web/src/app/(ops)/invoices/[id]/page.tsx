@@ -202,9 +202,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <THead>
                   <TR>
                     <TH>{t('description')}</TH>
-                    <TH align="end">{t('quantity')}</TH>
-                    <TH align="end">{t('unitPrice')}</TH>
-                    <TH align="end">{t('tax')}</TH>
+                    {/* A line and its amount on a phone; the invoice PDF
+                        and a wider screen carry the working. */}
+                    <TH priority="low" align="end">
+                      {t('quantity')}
+                    </TH>
+                    <TH priority="low" align="end">
+                      {t('unitPrice')}
+                    </TH>
+                    <TH priority="low" align="end">
+                      {t('tax')}
+                    </TH>
                     <TH align="end">{t('amount')}</TH>
                   </TR>
                 </THead>
@@ -212,13 +220,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   {invoice.lines.map((line) => (
                     <TR key={line.id}>
                       <TD className="font-medium text-ink">{line.descriptionEn}</TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {Number(line.quantity)}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {money(line.unitPrice)}
                       </TD>
-                      <TD align="end" numeric className="text-ink-muted">
+                      <TD priority="low" align="end" numeric className="text-ink-muted">
                         {Number(line.taxAmount) === 0 ? '—' : money(line.taxAmount)}
                       </TD>
                       <TD align="end" numeric className="font-semibold">

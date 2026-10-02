@@ -67,7 +67,7 @@ export default async function DocumentsPage() {
             </TH>
             <TH>{tc('status')}</TH>
             <TH priority="low">{t('author')}</TH>
-            <TH>{t('created')}</TH>
+            <TH priority="low">{t('created')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -107,7 +107,7 @@ export default async function DocumentsPage() {
               <TD priority="low" className="whitespace-nowrap text-ink-muted">
                 {row.authorName ?? '—'}
               </TD>
-              <TD className="whitespace-nowrap text-ink-muted">
+              <TD priority="low" className="whitespace-nowrap text-ink-muted">
                 {formatDateTime(row.createdAt, locale, timeZone)}
               </TD>
             </TR>
