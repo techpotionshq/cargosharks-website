@@ -26,6 +26,8 @@ export {
   type SigV4Credentials,
 } from './s3'
 
+let sharedMemoryStore: FileStore | undefined
+
 /**
  * Resolve the driver named in the environment, and refuse a half-configured
  * one.
@@ -37,7 +39,14 @@ export {
  * made a mistake, and this is the cheapest possible moment to tell them.
  */
 export function resolveFileStore(settings: LiveIntegration): FileStore {
-  if (settings.driver === 'memory') return memoryFileStore()
+  /*
+    One memory store per process, not one per call. `fileStore()` is resolved
+    at every use, so a fresh store each time lost the bytes between the write
+    that filed an inbound attachment and the read that showed it to a model —
+    "memory" meant "nowhere". It still loses everything at a restart, which is
+    what the driver has always promised.
+  */
+  if (settings.driver === 'memory') return (sharedMemoryStore ??= memoryFileStore())
 
   const endpoint = settings.text('endpoint')
   const bucket = settings.text('bucket')
