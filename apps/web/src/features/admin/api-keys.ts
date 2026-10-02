@@ -45,6 +45,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 export interface ApiKeyRow {
   readonly id: string
@@ -116,7 +117,10 @@ const keySchema = (tv: Translate) =>
  * expensive to attack, and a 256-bit random secret is not guessable. Applying
  * a slow KDF to it would add latency to every API request and no security.
  */
-export async function createApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const createApiKey = refuseForbidden(async function createApiKey(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
   const tv = await getTranslations('adminValidation')
@@ -170,10 +174,13 @@ export async function createApiKey(_previous: ActionState, form: FormData): Prom
     reads everything before the last colon.
   */
   return succeed(`${prefix}.${secret}`)
-}
+})
 
 /** Revoke a key. Never deletes it — see the module docstring. */
-export async function revokeApiKey(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const revokeApiKey = refuseForbidden(async function revokeApiKey(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.api_keys.write')
 
@@ -201,7 +208,7 @@ export async function revokeApiKey(_previous: ActionState, form: FormData): Prom
 
   revalidatePath('/settings/api-keys')
   return succeed(keyId)
-}
+})
 
 /* ------------------------------------------------------ outbound webhooks */
 
@@ -272,7 +279,7 @@ const endpointSchema = (tv: Translate) =>
  * that this is a shared secret, not a credential the receiver proves identity
  * with.
  */
-export async function createWebhookEndpoint(
+export const createWebhookEndpoint = refuseForbidden(async function createWebhookEndpoint(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -333,10 +340,10 @@ export async function createWebhookEndpoint(
 
   revalidatePath('/settings/api-keys')
   return succeed(secret)
-}
+})
 
 /** Switch a subscriber off, or back on after their URL is fixed. */
-export async function setWebhookEndpointActive(
+export const setWebhookEndpointActive = refuseForbidden(async function setWebhookEndpointActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -369,7 +376,7 @@ export async function setWebhookEndpointActive(
 
   revalidatePath('/settings/api-keys')
   return succeed(endpointId)
-}
+})
 
 /**
  * May this administrator act on a key or endpoint scoped to `branchId` —

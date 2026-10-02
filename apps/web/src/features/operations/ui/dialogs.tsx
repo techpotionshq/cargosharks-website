@@ -9,6 +9,7 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
 import { can } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
@@ -708,7 +709,8 @@ export async function FreeTimeClockDialog({
       span: 4,
       required: true,
       mono: true,
-      defaultValue: defaults?.perDiem ?? terms?.perDiem,
+      defaultValue:
+        amountInput(defaults?.perDiem, defaults?.currency ?? terms?.currency) ?? terms?.perDiem,
     },
     {
       kind: 'text',

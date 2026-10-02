@@ -43,6 +43,7 @@ import {
 import {
   branches,
   chargeLines,
+  chargeTypes,
   checkCredit,
   currencies,
   enquiries,
@@ -59,6 +60,7 @@ import {
   rederiveInvoiceSettlement,
   retireQuoteVersion,
   withActor,
+  type Tx,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
@@ -71,7 +73,9 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -89,6 +93,7 @@ const money = (message: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^\d+(\.\d{1,6})?$/, message)
 
 /**
@@ -136,7 +141,10 @@ const quoteSchema = (tv: Translate) =>
  * March's buying rates keeps March's margin forever, which is the only way the
  * margin column on the register means anything.
  */
-export async function createQuote(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const createQuote = refuseForbidden(async function createQuote(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
   const tv = await getTranslations('ledgerValidation')
@@ -233,6 +241,32 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
         })
         .returning({ id: quotes.id, reference: quotes.reference })
 
+      /*
+        A revision starts from the version it replaces (QA P2-5).
+
+        "New quotation" on a priced enquiry made v2 with no lines at all, so
+        the customer's revised offer printed a total over an empty table and
+        every charge had to be typed again. The previous version's lines are
+        copied onto the new draft, where they stay editable, and — the S10
+        rule — once a draft has lines they are the offer, so the sell total
+        follows them. Only lines in the new version's currency travel: a
+        revision into another currency is a new price, and a quotation with
+        lines in two currencies has no total.
+      */
+      if (next.previousId) {
+        const copied = await tx.execute(sql`
+          insert into quote_lines
+                 (quote_id, charge_type_id, description, basis, quantity, rate, amount,
+                  currency, sort_order)
+          select ${row!.id}, charge_type_id, description, basis, quantity, rate, amount,
+                 currency, sort_order
+            from quote_lines
+           where quote_id = ${next.previousId} and currency = ${data.currency}
+           order by sort_order, created_at
+        `)
+        if ((copied.rowCount ?? 0) > 0) await totalFollowsLines(tx, row!.id)
+      }
+
       await retireQuoteVersion(tx, next.previousId, row!.id)
 
       return { reference: row!.reference }
@@ -245,10 +279,33 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
   revalidatePath(`/enquiries/${data.enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome.reference)
+})
+
+/**
+ * A draft's sell total, restated as the sum of its lines, and its frozen
+ * margin percentage restated against the cost it already carries (S10). In
+ * SQL, on `numeric`: the total is money and never passes through a float.
+ */
+async function totalFollowsLines(tx: Tx, quoteId: string): Promise<void> {
+  await tx.execute(sql`
+    update quotes q
+       set total_sell = l.total,
+           priced_snapshot = jsonb_set(
+             coalesce(q.priced_snapshot, '{}'::jsonb), '{marginPct}',
+             to_jsonb(case when l.total > 0
+                           then round((l.total - coalesce(q.total_cost, 0)) / l.total * 100, 2)
+                           else 0 end)),
+           updated_at = now()
+      from (select sum(amount) as total from quote_lines where quote_id = ${quoteId}) l
+     where q.id = ${quoteId}
+  `)
 }
 
 /** Add a priced line to a draft quotation. */
-export async function addQuoteLine(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const addQuoteLine = refuseForbidden(async function addQuoteLine(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
   const tv = await getTranslations('ledgerValidation')
@@ -326,19 +383,7 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
       them, and the frozen margin percentage is restated against the cost the
       quotation already carries.
     */
-    const quoteId = data.quoteId
-    await tx.execute(sql`
-      update quotes q
-         set total_sell = l.total,
-             priced_snapshot = jsonb_set(
-               coalesce(q.priced_snapshot, '{}'::jsonb), '{marginPct}',
-               to_jsonb(case when l.total > 0
-                             then round((l.total - coalesce(q.total_cost, 0)) / l.total * 100, 2)
-                             else 0 end)),
-             updated_at = now()
-        from (select sum(amount) as total from quote_lines where quote_id = ${quoteId}) l
-       where q.id = ${quoteId}
-    `)
+    await totalFollowsLines(tx, data.quoteId)
     return null
   })
 
@@ -353,10 +398,13 @@ export async function addQuoteLine(_previous: ActionState, form: FormData): Prom
 
   revalidatePath(`/quotes/${data.quoteId}`)
   return succeed(data.chargeTypeId)
-}
+})
 
 /** Send, accept or reject — the three moves that change a quote's meaning. */
-export async function setQuoteStatus(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setQuoteStatus = refuseForbidden(async function setQuoteStatus(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
 
   const quoteId = read(form, 'quoteId')
@@ -491,7 +539,7 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/quotes/${quoteId}`)
   revalidatePath('/enquiries')
   return succeed(status)
-}
+})
 
 /**
  * Ask the model to draft the quotation's covering note — FR-... the generative
@@ -503,7 +551,7 @@ export async function setQuoteStatus(_previous: ActionState, form: FormData): Pr
  * `quote.send` — the permission that also governs sending it. The model writes
  * prose; every figure stays owned by the pricing already frozen on the quote.
  */
-export async function draftQuoteCoverNote(
+export const draftQuoteCoverNote = refuseForbidden(async function draftQuoteCoverNote(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -560,7 +608,7 @@ export async function draftQuoteCoverNote(
   } catch {
     return failWith(tv('coverNoteTimedOut'))
   }
-}
+})
 
 /**
  * Every code `quote-cover-note.ts` in the service refuses with. Mirrored rather
@@ -608,7 +656,7 @@ const coverNoteSchema = z.object({
  * is history — and the `where` guards that again against a race, so a note
  * cannot appear on a quote that has just been sent.
  */
-export async function setQuoteCoverNote(
+export const setQuoteCoverNote = refuseForbidden(async function setQuoteCoverNote(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -641,7 +689,7 @@ export async function setQuoteCoverNote(
 
   revalidatePath(`/quotes/${quoteId}`)
   return succeed('saved')
-}
+})
 
 // --- invoices --------------------------------------------------------------
 
@@ -788,7 +836,10 @@ const invoiceSchema = (tv: Translate) =>
  * recomputed the header and silently threw the typed subtotal away. Every
  * total on an invoice is now a sum of its lines, however it was raised.
  */
-export async function createInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const createInvoice = refuseForbidden(async function createInvoice(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
   const tv = await getTranslations('ledgerValidation')
@@ -867,10 +918,13 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
   revalidatePath('/invoices')
   revalidatePath('/finance')
   return succeed(data.customerId)
-}
+})
 
 /** Add a charge line to a draft invoice, and roll the totals forward. */
-export async function addInvoiceLine(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const addInvoiceLine = refuseForbidden(async function addInvoiceLine(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
   const tv = await getTranslations('ledgerValidation')
@@ -949,10 +1003,10 @@ export async function addInvoiceLine(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/invoices/${data.invoiceId}`)
   revalidatePath('/invoices')
   return succeed(data.descriptionEn)
-}
+})
 
 /** Approve, issue, void or credit. Each is a different permission. */
-export async function setInvoiceStatus(
+export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1158,7 +1212,7 @@ export async function setInvoiceStatus(
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath('/finance')
   return succeed(status)
-}
+})
 
 /**
  * The credit note behind "Credit note raised", and behind a partial credit —
@@ -1347,13 +1401,18 @@ class CreditRefused extends Error {
  * The branch is the invoice's, checked with `assertCanIn`: `invoice.credit`
  * held in Dubai does not credit a Kuwait invoice.
  */
-export async function creditInvoice(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const creditInvoice = refuseForbidden(async function creditInvoice(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.credit')
   const tv = await getTranslations('ledgerValidation')
 
   const invoiceId = read(form, 'invoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   const notes = read(form, 'notes')?.slice(0, 1000) ?? null
   if (!invoiceId) return failWith(tv('nothingToUpdate'))
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
@@ -1403,7 +1462,7 @@ export async function creditInvoice(_previous: ActionState, form: FormData): Pro
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath('/finance')
   return succeed(raised.seriesNo)
-}
+})
 
 /**
  * The credit gate on invoice issuance.
@@ -1494,7 +1553,10 @@ const paymentSchema = (tv: Translate) =>
       .or(z.literal('').transform(() => undefined)),
   })
 
-export async function recordPayment(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const recordPayment = refuseForbidden(async function recordPayment(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'payment.record')
   const tv = await getTranslations('ledgerValidation')
@@ -1566,10 +1628,10 @@ export async function recordPayment(_previous: ActionState, form: FormData): Pro
   revalidatePath('/invoices')
   revalidatePath('/finance')
   return succeed(data.amount)
-}
+})
 
 /** Match an existing receipt against an invoice. */
-export async function allocatePayment(
+export const allocatePayment = refuseForbidden(async function allocatePayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1579,7 +1641,9 @@ export async function allocatePayment(
 
   const paymentId = read(form, 'paymentId')
   const invoiceId = read(form, 'invoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   if (!paymentId || !invoiceId) return fail({ invoiceId: tv('chooseInvoiceToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
     return fail({ amount: tv('enterAllocation') }, echo(form))
@@ -1597,7 +1661,7 @@ export async function allocatePayment(
   revalidatePath('/invoices')
   revalidatePath('/finance')
   return succeed(invoiceId)
-}
+})
 
 /**
  * Why an allocation was refused, as the field error that says so — or null
@@ -1807,7 +1871,10 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
  * already holds the rate each line was booked at, which is a different number
  * and the right one for the cost side only.
  */
-export async function billJob(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const billJob = refuseForbidden(async function billJob(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'invoice.approve')
   const tv = await getTranslations('ledgerValidation')
@@ -1836,12 +1903,15 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         id: chargeLines.id,
         description: chargeLines.description,
         chargeTypeId: chargeLines.chargeTypeId,
+        chargeNameEn: chargeTypes.nameEn,
+        chargeNameAr: chargeTypes.nameAr,
         quantity: chargeLines.quantity,
         rate: chargeLines.rate,
         amount: chargeLines.amount,
         currency: chargeLines.currency,
       })
       .from(chargeLines)
+      .leftJoin(chargeTypes, eq(chargeTypes.id, chargeLines.chargeTypeId))
       .where(
         and(
           eq(chargeLines.jobId, jobId),
@@ -1902,14 +1972,18 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
         invoiceId,
         chargeTypeId: line.chargeTypeId,
         /*
-          The line's own description, or the shipment reference as a fallback.
+          The line's own description, else the charge's name — in both
+          languages, because the Arabic invoice prints `description_ar`.
 
           `description` is nullable on `charge_lines` and `description_en` is
           not on `invoice_lines`, which is the right way round: an internal
           ledger line may be terse, and a document a customer reads may not be
-          blank.
+          blank. The fallback was the shipment reference, so an undescribed
+          line read "KWI-JOB-2026-00012" in English and nothing in Arabic (QA
+          P2-6); the charge type is what the line actually is.
         */
-        descriptionEn: line.description ?? job.reference,
+        descriptionEn: line.description ?? line.chargeNameEn ?? job.reference,
+        descriptionAr: line.chargeNameAr ?? null,
         quantity: line.quantity,
         unitPrice: line.rate,
         amount: line.amount,
@@ -1961,4 +2035,4 @@ export async function billJob(_previous: ActionState, form: FormData): Promise<A
   revalidatePath(`/invoices/${outcome.invoiceId}`)
   revalidatePath(`/jobs/${jobId}`)
   return succeed(outcome.invoiceId)
-}
+})

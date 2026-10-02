@@ -24,6 +24,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
+import { can } from '@/lib/permissions'
 import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import {
@@ -35,7 +36,7 @@ import { PaymentDialog } from '@/features/ledger/ui/dialogs'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format'
 import { Icon } from '@/ui/icon'
-import { EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
+import { Button, EmptyState, Field, Grid, PageHeader } from '@/ui/layout'
 import { Notice } from '@/ui/notice'
 import { Metric } from '@/ui/metric'
 import { Panel } from '@/ui/panel'
@@ -59,6 +60,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'receivable.read')) notFound()
   const id = recordId((await params).id)
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
@@ -96,6 +101,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const payable = invoice.status === 'issued' || invoice.status === 'part_paid'
   const overdue =
     payable && owing && invoice.dueOn !== null && new Date(invoice.dueOn).getTime() < Date.now()
+  // Built here rather than inline: `check-links.mjs` reads an interpolated
+  // href only up to its first `${`.
+  const pdf = `/api/invoices/${invoice.id}/pdf`
 
   return (
     <>
@@ -143,6 +151,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               />
             ) : null}
             <MoreMenu label={tc('more')}>
+              {/*
+                The document the customer receives, in both languages (QA
+                P2-7). The route always existed and nothing linked to it, so an
+                issued invoice could not be printed from its own page. A draft
+                prints too, marked as one, which is how it is checked before
+                issue.
+              */}
+              <Button variant="menu" href={pdf} download icon="download">
+                {t('pdf')}
+              </Button>
+              <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
+                {t('pdfAr')}
+              </Button>
               {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
               {/* Only where a receipt can land: issued and still owed. A draft,
                 an approved-but-unnumbered, a credited or a voided invoice was

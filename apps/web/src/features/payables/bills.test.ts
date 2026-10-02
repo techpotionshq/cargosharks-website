@@ -35,7 +35,7 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { supplierInvoiceLines, supplierInvoices, supplierPayments, withActor } =
+const { currencies, fxRates, supplierInvoiceLines, supplierInvoices, supplierPayments, withActor } =
   await import('@qabandi/db')
 
 const { HOME_BRANCH, AWAY_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
@@ -302,6 +302,42 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(await billStatus(id)).toBe('received')
     })
 
+    /** QA P2-8: an empty bill passed the variance gate as clean and was stranded. */
+    it('refuses to approve a bill with no lines', async () => {
+      const reference = nextRef()
+      await saveSupplierInvoice(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          reference,
+          currency: 'KWD',
+          fxRate: '1',
+          invoiceDate: '2026-08-18',
+          taxAmount: '0',
+        }),
+      )
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ id: supplierInvoices.id })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.reference, reference)),
+      )
+
+      const state = await setSupplierInvoiceStatus(
+        {},
+        form({
+          supplierInvoiceId: row!.id,
+          action: 'approve',
+          acceptVariance: 'on',
+          reason: 'x y z',
+        }),
+      )
+
+      expect(state.message).toBe('payablesValidation.billHasNoLines')
+      expect(await billStatus(row!.id)).toBe('received')
+    })
+
     it('approves when the variance is accepted with a reason', async () => {
       const id = await enterBill()
 
@@ -530,6 +566,92 @@ describe.skipIf(!enabled)('supplier bills', () => {
     it('records a payment to a supplier', async () => {
       const id = await payment('100.000')
       expect(id).toBeTruthy()
+    })
+
+    /*
+      QA P1-2. The form prefilled 1, the action defaulted a blank to 1, and a
+      USD payment was stored at fx_rate 1 against a KWD branch. Blank now takes
+      the latest rate on file, as a bill does (O3); nothing on file is a
+      sentence on the field. Test currency codes of this suite's own, because
+      the database is never emptied and a real currency's rate would leak into
+      every other suite that converts it.
+    */
+    it('takes the latest rate on file for a payment typed without one', async () => {
+      const today = new Date().toISOString().slice(0, 10)
+      await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        await tx
+          .insert(currencies)
+          .values([
+            { code: 'XTS', nameEn: 'Test currency', nameAr: 'عملة اختبار', minorUnits: 2 },
+            { code: 'XXX', nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 },
+          ])
+          .onConflictDoNothing()
+        await tx
+          .insert(fxRates)
+          .values({
+            fromCurrency: 'XTS',
+            toCurrency: 'KWD',
+            rate: '0.30700000',
+            source: 'payables-test',
+            effectiveOn: today,
+          })
+          .onConflictDoNothing()
+      })
+
+      const reference = `PAY-FX-${(seq += 1)}-${Date.now()}`
+      const paid = (currency: string, ref: string) =>
+        recordSupplierPayment(
+          {},
+          form({
+            branchId: HOME_BRANCH,
+            partnerId: PARTNER,
+            amount: '100.00',
+            currency,
+            fxRate: '',
+            paidOn: '2026-08-18',
+            method: 'transfer',
+            reference: ref,
+          }),
+        )
+
+      expect((await paid('XTS', reference)).errors).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ fxRate: supplierPayments.fxRate })
+          .from(supplierPayments)
+          .where(eq(supplierPayments.reference, reference)),
+      )
+      expect(row?.fxRate).toBe('0.30700000')
+
+      const none = await paid('XXX', `${reference}-none`)
+      expect(none.errors?.fxRate).toBe(
+        'payablesValidation.noRateOnFilePayment:{"from":"XXX","to":"KWD"}',
+      )
+    })
+
+    /** QA P3: "1,200.500", as every invoice prints it, was refused as not a number. */
+    it('reads a grouped amount as the figure it is', async () => {
+      const reference = `PAY-GRP-${(seq += 1)}-${Date.now()}`
+      const state = await recordSupplierPayment(
+        {},
+        form({
+          branchId: HOME_BRANCH,
+          partnerId: PARTNER,
+          amount: '1,200.500',
+          currency: 'KWD',
+          paidOn: '2026-08-18',
+          method: 'transfer',
+          reference,
+        }),
+      )
+      expect(state.errors).toBeUndefined()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ amount: supplierPayments.amount })
+          .from(supplierPayments)
+          .where(eq(supplierPayments.reference, reference)),
+      )
+      expect(row?.amount).toBe('1200.500000')
     })
 
     it('reports field errors rather than throwing on a bad payment form', async () => {

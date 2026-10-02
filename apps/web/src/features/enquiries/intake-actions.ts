@@ -23,8 +23,12 @@ import { intakeConversations, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan, assertCanIn } from '@/lib/permissions'
 import { fail, succeed, type ActionState } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
-export async function setIntakeAgent(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setIntakeAgent = refuseForbidden(async function setIntakeAgent(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
   const t = await getTranslations('intakeAgent')
@@ -58,4 +62,4 @@ export async function setIntakeAgent(_previous: ActionState, form: FormData): Pr
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(enquiryId)
-}
+})

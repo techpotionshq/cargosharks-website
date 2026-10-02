@@ -23,7 +23,6 @@ import {
   canTransition,
   decideProposal,
   enquiryMachine,
-  entryPermission,
   isTerminal,
   slaDueAt,
   type WorkingCalendar,
@@ -39,17 +38,21 @@ import {
   workingCalendars,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch, assertCanIn } from '@/lib/permissions'
+import { assertCan, assertInBranch, assertCanIn, canIn } from '@/lib/permissions'
 import { echo, fail, failWith, fieldErrors, succeed, type ActionState } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { createEnquirySchema } from './schema'
 import { enquiryColumn, resolveProposal } from './proposals'
 import { describeFailure } from './proposal-failures'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /** Enquiry SLA: four working hours to a first response — FR-EQ-01. */
 const FIRST_RESPONSE_MINUTES = 4 * 60
 
-export async function submitEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const submitEnquiry = refuseForbidden(async function submitEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
   const tv = await getTranslations('enquiriesValidation')
@@ -118,7 +121,7 @@ export async function submitEnquiry(_previous: ActionState, form: FormData): Pro
   revalidatePath('/enquiries')
   revalidatePath('/dashboard')
   return succeed(reference)
-}
+})
 
 /** Hands the enquiry to a person. The board's most-used single action. */
 /**
@@ -131,7 +134,7 @@ export async function submitEnquiry(_previous: ActionState, form: FormData): Pro
  * column did, has no count and no other way to get one — enquiries have no edit
  * form — so this is the one-field form beside the price button.
  */
-export async function setEnquiryContainerCount(
+export const setEnquiryContainerCount = refuseForbidden(async function setEnquiryContainerCount(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -178,9 +181,9 @@ export async function setEnquiryContainerCount(
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(String(count))
-}
+})
 
-export async function assignEnquiryAction(
+export const assignEnquiryAction = refuseForbidden(async function assignEnquiryAction(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -215,10 +218,10 @@ export async function assignEnquiryAction(
   revalidatePath('/enquiries')
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(ownerId)
-}
+})
 
 /** Marks the first reply as sent — the moment the SLA clock stops. */
-export async function respondEnquiryAction(
+export const respondEnquiryAction = refuseForbidden(async function respondEnquiryAction(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -239,10 +242,10 @@ export async function respondEnquiryAction(
   revalidatePath('/enquiries')
   revalidatePath('/dashboard')
   return succeed(enquiryId)
-}
+})
 
 /** Closes it won or lost. `lostReason` is required on a loss — it is the data. */
-export async function closeEnquiryAction(
+export const closeEnquiryAction = refuseForbidden(async function closeEnquiryAction(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -302,7 +305,7 @@ export async function closeEnquiryAction(
   revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome)
-}
+})
 
 /**
  * Loads the branch's working calendar — NFR-03.
@@ -383,7 +386,10 @@ async function nextReference(
  * working on it or whether it has been forgotten; `rating` is the difference.
  * And a cancelled enquiry that stays `new` is chased for ever.
  */
-export async function advanceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const advanceEnquiry = refuseForbidden(async function advanceEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   const tv = await getTranslations('enquiriesValidation')
 
@@ -394,10 +400,6 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
   if (!enquiryId || (to !== 'cancelled' && to !== 'rating')) {
     return failWith(tv('nothingToDo'))
   }
-
-  // The key the machine declares for the move, rather than one restated here.
-  const required = entryPermission(enquiryMachine, to)
-  if (required) assertCan(session, required)
 
   /*
     A cancellation needs a reason, and reuses `lost_reason`.
@@ -417,14 +419,25 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
       .where(eq(enquiries.id, enquiryId))
       .limit(1)
     if (!current) return 'not_found' as const
-    if (required) assertCanIn(session, required, current.branchId)
-    else assertInBranch(session, current.branchId)
 
+    /*
+      The key the machine declares for *this* move, read off the transition
+      once the row says where it is coming from.
+
+      `rating` is reached two ways and they are different authorities:
+      starting to price an assigned enquiry is `enquiry.rate`, sending a quoted
+      one back for revision is `quote.revise`. `entryPermission` refuses to
+      pick between them by design, and asking it here made "Start rating" a
+      500 on every enquiry.
+    */
+    let required: string | undefined
     try {
-      assertTransition(enquiryMachine, current.status, to)
+      required = assertTransition(enquiryMachine, current.status, to).requires
     } catch {
       return 'illegal' as const
     }
+    if (required && !canIn(session, required, current.branchId)) return 'forbidden' as const
+    if (!required) assertInBranch(session, current.branchId)
 
     await tx
       .update(enquiries)
@@ -441,6 +454,7 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
   })
 
   if (outcome === 'not_found') return failWith(tv('enquiryNotFound'))
+  if (outcome === 'forbidden') return failWith(tv('notPermitted'))
   if (outcome === 'illegal') {
     return failWith(tv('illegalTransition'))
   }
@@ -449,7 +463,7 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(enquiryId)
-}
+})
 
 // --- what a model read -----------------------------------------------------
 
@@ -477,7 +491,10 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
  * different visibility than the update runs under, and refusing ambiguity is
  * the whole safeguard — two matches is refused as firmly as none.
  */
-export async function acceptProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const acceptProposal = refuseForbidden(async function acceptProposal(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
   const tv = await getTranslations('enquiriesValidation')
@@ -559,7 +576,7 @@ export async function acceptProposal(_previous: ActionState, form: FormData): Pr
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(enquiryId)
-}
+})
 
 /**
  * Accept every open suggestion on an enquiry in one action — the one-click fill.
@@ -573,7 +590,7 @@ export async function acceptProposal(_previous: ActionState, form: FormData): Pr
  * person to look at. It confirms what a coordinator has already read three inches
  * above the form, in one click instead of twelve.
  */
-export async function acceptAllProposals(
+export const acceptAllProposals = refuseForbidden(async function acceptAllProposals(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -648,7 +665,7 @@ export async function acceptAllProposals(
     return failWith(tv('noneApplied'))
   }
   return succeed(String(result.applied))
-}
+})
 
 /**
  * Rejecting one, which is a decision and is recorded as one.
@@ -658,7 +675,10 @@ export async function acceptAllProposals(
  * answers are thrown away cannot be measured, and `AI-19`'s golden set is
  * assembled from exactly these.
  */
-export async function rejectProposal(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const rejectProposal = refuseForbidden(async function rejectProposal(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'enquiry.assign')
   const tv = await getTranslations('enquiriesValidation')
@@ -688,7 +708,7 @@ export async function rejectProposal(_previous: ActionState, form: FormData): Pr
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(enquiryId)
-}
+})
 
 function readField(form: FormData, key: string): string | undefined {
   const value = form.get(key)

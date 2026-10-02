@@ -56,6 +56,7 @@ import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntakeSettings } from '@/lib/pilot/fixtures'
 import type { IntakeSettingsRowLike } from '@/lib/pilot/types'
 import { echo, fail, succeed, type ActionState } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /**
  * The requirement choices the form offers, per mode — `all` meaning every mode.
@@ -136,7 +137,7 @@ export async function listIntakeSettings(): Promise<IntakeSettingsRowLike[]> {
 const NUMBER_FIELDS = Object.keys(INTAKE_SETTING_BOUNDS) as (keyof typeof INTAKE_SETTING_BOUNDS)[]
 
 /** Save one branch's settings and required details. */
-export async function saveIntakeSettings(
+export const saveIntakeSettings = refuseForbidden(async function saveIntakeSettings(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -223,4 +224,4 @@ export async function saveIntakeSettings(
 
   revalidatePath('/settings/intake-agent')
   return succeed(branchId)
-}
+})

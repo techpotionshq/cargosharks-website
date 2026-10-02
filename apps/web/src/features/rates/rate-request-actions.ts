@@ -32,6 +32,7 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /** A token that survives a mail round-trip — hex, matched by `rfq-routing.ts`. */
 function newToken(): string {
@@ -45,7 +46,10 @@ function newToken(): string {
  * this enquiry is skipped rather than asked twice — the picker greys them out,
  * and this is the guard behind that in case two coordinators pick at once.
  */
-export async function requestRates(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const requestRates = refuseForbidden(async function requestRates(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'rate.card.write')
   const tv = await getTranslations('ratesValidation')
@@ -93,7 +97,7 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
 
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(String(count))
-}
+})
 
 /**
  * Promote a parsed reply into a versioned buy card, and mark it accepted.
@@ -104,7 +108,7 @@ export async function requestRates(_previous: ActionState, form: FormData): Prom
  * awarded it or the machine did. This is the thin half a click needs: the
  * permission, and turning the result into a form state.
  */
-export async function acceptRateReply(
+export const acceptRateReply = refuseForbidden(async function acceptRateReply(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -140,7 +144,7 @@ export async function acceptRateReply(
   if (enquiryId) revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/rates')
   return succeed(result.cardId)
-}
+})
 
 /**
  * A promotion refusal, in the reader's language.

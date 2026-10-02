@@ -40,6 +40,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -98,7 +99,10 @@ const partySchema = (tv: Translate) =>
       .or(z.literal('').transform(() => undefined)),
   })
 
-export async function saveJobParty(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveJobParty = refuseForbidden(async function saveJobParty(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('documentsValidation')
@@ -166,7 +170,7 @@ export async function saveJobParty(_previous: ActionState, form: FormData): Prom
 
   revalidatePath(`/jobs/${data.jobId}`)
   return succeed(data.nameEn)
-}
+})
 
 // --- cargo -----------------------------------------------------------------
 
@@ -193,7 +197,10 @@ const cargoSchema = (tv: Translate) =>
       .or(z.literal('').transform(() => undefined)),
   })
 
-export async function saveCargoLine(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveCargoLine = refuseForbidden(async function saveCargoLine(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('documentsValidation')
@@ -258,7 +265,7 @@ export async function saveCargoLine(_previous: ActionState, form: FormData): Pro
 
   revalidatePath(`/jobs/${data.jobId}`)
   return succeed(data.descriptionEn)
-}
+})
 
 // --- issuing ---------------------------------------------------------------
 
@@ -326,7 +333,10 @@ async function allocateHouseBillNumber(
  * are hidden fields the panel wrote; missing or unknown, they are a tampered
  * form and still throw.
  */
-export async function issueDocument(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const issueDocument = refuseForbidden(async function issueDocument(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'document.generate')
   const tv = await getTranslations('documentsValidation')
@@ -378,7 +388,7 @@ export async function issueDocument(_previous: ActionState, form: FormData): Pro
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/documents')
   return succeed(kind)
-}
+})
 
 /** What the service's refusal carries. `message`, where sent, is English and never shown. */
 interface IssueRefusalBody {
@@ -463,7 +473,7 @@ function issueRefusal(
  * back as sentences under the button rather than as an error page. The job id
  * is a hidden field; missing, it is a tampered form and still throws.
  */
-export async function surrenderHouseBill(
+export const surrenderHouseBill = refuseForbidden(async function surrenderHouseBill(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -519,4 +529,4 @@ export async function surrenderHouseBill(
 
   revalidatePath(`/jobs/${jobId}`)
   return succeed(jobId)
-}
+})

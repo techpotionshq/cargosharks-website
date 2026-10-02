@@ -91,7 +91,7 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
    * screens get the permission gates they were missing: three of the five were
    * offered to every signed-in account, including `read_only`.
    */
-  const sections: NavSection[] = [
+  const allSections: NavSection[] = [
     {
       label: t('sections.commercial'),
       items: [
@@ -171,21 +171,33 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
     {
       label: t('sections.finance'),
       items: [
-        { href: '/finance', label: t('finance'), icon: 'finance' },
-        { href: '/invoices', label: t('invoices'), icon: 'invoices' },
-        { href: '/payments', label: t('payments'), icon: 'payments' },
+        /*
+          Each ledger behind its own read key, as the pages are (QA P2-11).
+          The links were drawn for everybody and the pages let everybody in.
+        */
+        ...(can(session, 'receivable.read')
+          ? [
+              { href: '/finance', label: t('finance'), icon: 'finance' as const },
+              { href: '/invoices', label: t('invoices'), icon: 'invoices' as const },
+              { href: '/payments', label: t('payments'), icon: 'payments' as const },
+            ]
+          : []),
         /*
           Payables sits under Payments rather than beside Invoices, and the
           order is what the finance day actually looks like: money in, money
           out, and then the agents where both directions meet.
         */
-        {
-          href: '/payables',
-          label: t('payables'),
-          icon: 'payments',
-          badge: counts.payablesToReview,
-        },
-        { href: '/settlements', label: t('settlements'), icon: 'finance' },
+        ...(can(session, 'payable.read')
+          ? [
+              {
+                href: '/payables',
+                label: t('payables'),
+                icon: 'payments' as const,
+                badge: counts.payablesToReview,
+              },
+              { href: '/settlements', label: t('settlements'), icon: 'finance' as const },
+            ]
+          : []),
         /*
           Last in the finance section, and gated.
 
@@ -201,6 +213,9 @@ export default async function OpsLayout({ children }: { children: React.ReactNod
       ],
     },
   ]
+  // A section whose every entry is gated away (a customs broker's Finance)
+  // would draw its heading over nothing.
+  const sections = allSections.filter((section) => section.items.length > 0)
 
   const displayName =
     locale === 'ar' && session.principal.nameAr

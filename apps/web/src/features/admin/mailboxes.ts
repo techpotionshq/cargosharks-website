@@ -46,6 +46,7 @@ import {
   type ActionState,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 export interface MailboxRow {
   readonly id: string
@@ -127,7 +128,10 @@ const mailboxSchema = z.object({
  * field clearing the password — turns a small edit into a silently broken
  * mailbox that reports itself as configured.
  */
-export async function saveMailbox(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveMailbox = refuseForbidden(async function saveMailbox(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.mailboxes.write')
   const tv = await getTranslations('adminValidation')
@@ -258,7 +262,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
 
   revalidatePath('/settings/mailboxes')
   return succeed(data.username)
-}
+})
 
 /**
  * Stop reading a mailbox, or start again.
@@ -266,7 +270,7 @@ export async function saveMailbox(_previous: ActionState, form: FormData): Promi
  * Deactivating is how a mailbox is removed: the poll skips inactive rows, and
  * the row stays as the record of what was being read and when.
  */
-export async function setMailboxActive(
+export const setMailboxActive = refuseForbidden(async function setMailboxActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -299,4 +303,4 @@ export async function setMailboxActive(
 
   revalidatePath('/settings/mailboxes')
   return succeed(mailboxId)
-}
+})

@@ -550,6 +550,11 @@ export interface QuoteDetail {
   }[]
   /** Earlier versions of the same quotation, newest first. */
   readonly history: readonly { id: string; reference: string; version: number; status: string }[]
+  /**
+   * The shipment this quotation was booked as, if it has been (QA P3).
+   * Optional because the pilot fixture does not carry it.
+   */
+  readonly bookedJob?: { readonly id: string; readonly reference: string } | null
 }
 
 /**
@@ -609,7 +614,12 @@ export async function getQuoteDetail(
                         'id', h.id, 'reference', h.reference,
                         'version', h.version, 'status', h.status::text) order by h.version desc)
                  from quotes h
-                where h.enquiry_id = q.enquiry_id and h.id <> q.id), '[]'::json) as history
+                where h.enquiry_id = q.enquiry_id and h.id <> q.id), '[]'::json) as history,
+             (select json_build_object('id', j.id, 'reference', j.reference)
+                from jobs j
+               where j.quote_id = q.id and j.cancelled_at is null
+               order by j.created_at
+               limit 1) as "bookedJob"
         from quotes q
         join enquiries e on e.id = q.enquiry_id
         left join branches  b on b.id = q.branch_id

@@ -924,7 +924,9 @@ describe.skipIf(!enabled)('reference configuration — FR-AD-03', () => {
         saveFreeTimeRule,
         saveFxRate,
       ]) {
-        await expect(action({}, form({}))).rejects.toThrow()
+        await expect(action({}, form({}))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       }
     } finally {
       harness.session = session

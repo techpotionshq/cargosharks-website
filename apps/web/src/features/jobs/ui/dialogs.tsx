@@ -13,7 +13,7 @@
 
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addJobPartner, saveJob } from '../form-actions'
@@ -107,7 +107,10 @@ export async function JobDialog({
     getTranslations('job'),
   ])
 
-  const defaultBranch = defaults?.branchId ?? [...session.branchRoles.keys()][0]
+  // The branches this person may book (or edit) in — QA P2-4. Every active
+  // branch was offered, and choosing one they only read was a 500.
+  const permission = editing ? 'job.update' : 'job.book'
+  const defaultBranch = defaults?.branchId ?? branchesWhere(session, permission)[0]
 
   const fields: FieldSpec[] = [
     ...(editing ? [{ kind: 'hidden' as const, name: 'jobId', value: defaults!.id! }] : []),
@@ -131,7 +134,7 @@ export async function JobDialog({
           label: t('branch'),
           span: 4,
           required: true,
-          options: options.branches,
+          options: permittedBranches(session, permission, options.branches),
           defaultValue: defaultBranch,
         },
         {

@@ -71,7 +71,9 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -86,6 +88,7 @@ const decimalString = (label: string) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^\d+(\.\d{1,6})?$/, label)
 
 const optionalUuid = z
@@ -125,7 +128,7 @@ const billSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
-export async function saveSupplierInvoice(
+export const saveSupplierInvoice = refuseForbidden(async function saveSupplierInvoice(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -244,7 +247,7 @@ export async function saveSupplierInvoice(
     }
     throw error
   }
-}
+})
 
 const lineSchema = (tv: Translate) =>
   z.object({
@@ -257,7 +260,7 @@ const lineSchema = (tv: Translate) =>
     taxAmount: decimalString(tv('enterTaxOrZero')),
   })
 
-export async function addSupplierInvoiceLine(
+export const addSupplierInvoiceLine = refuseForbidden(async function addSupplierInvoiceLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -318,7 +321,7 @@ export async function addSupplierInvoiceLine(
 
   revalidatePath(`/payables/${data.supplierInvoiceId}`)
   return succeed(data.supplierInvoiceId)
-}
+})
 
 /**
  * Totals derived from the lines, in one statement, so they cannot drift.
@@ -357,7 +360,7 @@ const lineTax = (billId: string) =>
 
 // --- matching --------------------------------------------------------------
 
-export async function matchSupplierLine(
+export const matchSupplierLine = refuseForbidden(async function matchSupplierLine(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -367,7 +370,9 @@ export async function matchSupplierLine(
 
   const lineId = read(form, 'supplierInvoiceLineId')
   const chargeLineId = read(form, 'chargeLineId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
   const billId = read(form, 'supplierInvoiceId')
 
   if (!lineId || !chargeLineId || !billId) {
@@ -461,7 +466,7 @@ export async function matchSupplierLine(
 
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 export async function unmatchSupplierLine(form: FormData): Promise<void> {
   const session = await requireSession()
@@ -502,7 +507,7 @@ export async function unmatchSupplierLine(form: FormData): Promise<void> {
 
 // --- approval --------------------------------------------------------------
 
-export async function setSupplierInvoiceStatus(
+export const setSupplierInvoiceStatus = refuseForbidden(async function setSupplierInvoiceStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -527,6 +532,11 @@ export async function setSupplierInvoiceStatus(
         branchId: supplierInvoices.branchId,
         status: supplierInvoices.status,
         fxRate: supplierInvoices.fxRate,
+        total: supplierInvoices.total,
+        // Qualified by hand: Drizzle prints a single-table select's columns
+        // unqualified, and a bare "id" inside the subquery is the line's.
+        lines: sql<number>`(select count(*)::int from supplier_invoice_lines l
+                             where l.supplier_invoice_id = supplier_invoices.id)`,
       })
       .from(supplierInvoices)
       .where(eq(supplierInvoices.id, billId))
@@ -538,6 +548,18 @@ export async function setSupplierInvoiceStatus(
     if (action === 'approve') {
       if (bill.status !== 'received' && bill.status !== 'disputed') {
         return { error: 'not_approvable' as const }
+      }
+
+      /*
+        Nothing to approve (QA P2-8). A bill with no lines has a total of
+        zero, and the variance check below counts lines, so an empty bill
+        passed it as perfectly clean, was approved, and then sat in the
+        payables list with nothing a payment could ever settle and no way
+        back to editable. Compared on `numeric` in the database's terms, as
+        a string, never as a float.
+      */
+      if (Number(bill.lines) === 0 || !dec(bill.total ?? 0).gt(0)) {
+        return { error: 'empty' as const }
       }
 
       /*
@@ -660,6 +682,7 @@ export async function setSupplierInvoiceStatus(
   const messages: Record<string, string> = {
     not_found: tv('billGone'),
     not_approvable: tv('billNotAwaitingApproval'),
+    empty: tv('billHasNoLines'),
     needs_review: tv('varianceNeedsReview'),
     needs_reason: tv('sayWhy'),
     paid_against: tv('billPaidAgainst'),
@@ -672,7 +695,7 @@ export async function setSupplierInvoiceStatus(
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- paying ----------------------------------------------------------------
 
@@ -682,7 +705,11 @@ const supplierPaymentSchema = (tv: Translate) =>
     partnerId: z.uuid(tv('chooseSupplier')),
     amount: decimalString(tv('enterAmountPaid')),
     currency: z.string().trim().length(3),
-    fxRate: decimalString(tv('enterExchangeRate')),
+    // Blank takes the latest rate on file, as a bill does (O3). It defaulted
+    // to 1 and booked a USD payment at face value in the branch's currency.
+    fxRate: decimalString(tv('enterExchangeRate'))
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
     paidOn: isoDate(tv),
     method: z.string().trim().min(1, tv('howPaid')).max(40),
     reference: z
@@ -693,7 +720,7 @@ const supplierPaymentSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
-export async function recordSupplierPayment(
+export const recordSupplierPayment = refuseForbidden(async function recordSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -706,7 +733,7 @@ export async function recordSupplierPayment(
     partnerId: read(form, 'partnerId'),
     amount: read(form, 'amount') ?? '',
     currency: read(form, 'currency') ?? 'KWD',
-    fxRate: read(form, 'fxRate') ?? '1',
+    fxRate: read(form, 'fxRate'),
     paidOn: read(form, 'paidOn') ?? '',
     method: read(form, 'method') ?? 'transfer',
     reference: read(form, 'reference'),
@@ -716,23 +743,40 @@ export async function recordSupplierPayment(
   const data = parsed.data
   assertCanIn(session, 'payable.pay', data.branchId)
 
-  await withActor(session.actor, async (tx) => {
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [branch] = await tx
+      .select({ baseCurrency: branches.baseCurrency })
+      .from(branches)
+      .where(eq(branches.id, data.branchId))
+      .limit(1)
+    const base = branch?.baseCurrency ?? data.currency
+    const fxRate = data.fxRate ?? (await latestFxRate(tx, data.currency, base))
+    if (fxRate === null) return { error: 'no_rate' as const, base }
+
     await tx.insert(supplierPayments).values({
       branchId: data.branchId,
       partnerId: data.partnerId,
       amount: data.amount,
       currency: data.currency,
-      fxRate: data.fxRate,
+      fxRate,
       paidOn: data.paidOn,
       method: data.method,
       reference: data.reference,
       recordedById: session.actor.principalId,
     })
+    return { error: null }
   })
+
+  if (outcome.error === 'no_rate') {
+    return fail(
+      { fxRate: tv('noRateOnFilePayment', { from: data.currency, to: outcome.base }) },
+      echo(form),
+    )
+  }
 
   revalidatePath('/payables')
   return succeed(data.partnerId)
-}
+})
 
 /**
  * Allocating a payment across their bills — both ceilings, in one transaction.
@@ -743,7 +787,7 @@ export async function recordSupplierPayment(
  * of two-ceiling arithmetic would mean two places to get three-decimal
  * subtraction wrong, and the first version of that arithmetic was wrong.
  */
-export async function allocateSupplierPayment(
+export const allocateSupplierPayment = refuseForbidden(async function allocateSupplierPayment(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -753,7 +797,9 @@ export async function allocateSupplierPayment(
 
   const paymentId = read(form, 'supplierPaymentId')
   const billId = read(form, 'supplierInvoiceId')
-  const amount = read(form, 'amount')
+  // Grouped or Arabic-digit amounts read as the figure they are (QA P3).
+  const rawAmount = read(form, 'amount')
+  const amount = rawAmount === undefined ? undefined : normaliseAmount(rawAmount)
 
   if (!paymentId || !billId) return fail({ supplierInvoiceId: tv('chooseBillToSettle') })
   if (!amount || !/^\d+(\.\d{1,6})?$/.test(amount)) {
@@ -887,7 +933,7 @@ export async function allocateSupplierPayment(
   revalidatePath('/payables')
   revalidatePath(`/payables/${billId}`)
   return succeed(billId)
-}
+})
 
 // --- netting ---------------------------------------------------------------
 
@@ -909,7 +955,7 @@ const settlementSchema = (tv: Translate) =>
  * re-derives it shows a different figure the moment a late invoice is captured
  * into the period.
  */
-export async function draftSettlement(
+export const draftSettlement = refuseForbidden(async function draftSettlement(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1092,7 +1138,7 @@ export async function draftSettlement(
 
   revalidatePath('/settlements')
   return succeed(outcome.id!)
-}
+})
 
 /**
  * Agreeing, settling, voiding.
@@ -1102,7 +1148,7 @@ export async function draftSettlement(
  * the same invoice out of next month's statement. `settle` records that the
  * residual actually moved.
  */
-export async function setSettlementStatus(
+export const setSettlementStatus = refuseForbidden(async function setSettlementStatus(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1265,7 +1311,7 @@ export async function setSettlementStatus(
   revalidatePath('/payables')
   revalidatePath(`/settlements/${settlementId}`)
   return succeed(settlementId)
-}
+})
 
 /** A settlement whose documents moved under it; caught into a sentence. */
 class SettlementChanged extends Error {
@@ -1311,7 +1357,7 @@ export async function advanceSettlement(form: FormData): Promise<void> {
 }
 
 /** Linking a partner to the customer record they invoice us as — enables netting. */
-export async function linkPartnerAccount(
+export const linkPartnerAccount = refuseForbidden(async function linkPartnerAccount(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1337,10 +1383,10 @@ export async function linkPartnerAccount(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 /** Tolerances live on the partner and on the charge type — this is the partner half. */
-export async function setPartnerTolerance(
+export const setPartnerTolerance = refuseForbidden(async function setPartnerTolerance(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1349,8 +1395,8 @@ export async function setPartnerTolerance(
   const tv = await getTranslations('payablesValidation')
 
   const partnerId = read(form, 'partnerId')
-  const percent = read(form, 'varianceTolerancePercent') ?? '0'
-  const absolute = read(form, 'varianceToleranceAbsolute') ?? '0'
+  const percent = normaliseAmount(read(form, 'varianceTolerancePercent') ?? '0')
+  const absolute = normaliseAmount(read(form, 'varianceToleranceAbsolute') ?? '0')
   if (!partnerId) return failWith(tv('nothingToDo'))
 
   if (!/^\d+(\.\d{1,6})?$/.test(percent) || !/^\d+(\.\d{1,6})?$/.test(absolute)) {
@@ -1370,7 +1416,7 @@ export async function setPartnerTolerance(
 
   revalidatePath(`/partners/${partnerId}`)
   return succeed(partnerId)
-}
+})
 
 // --- reading a bill --------------------------------------------------------
 
@@ -1407,7 +1453,7 @@ export async function setPartnerTolerance(
  * captures it by hand, which is exactly where they were before this existed.
  * The upload still happened, so the scan is on file either way.
  */
-export async function readSupplierBill(
+export const readSupplierBill = refuseForbidden(async function readSupplierBill(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1513,7 +1559,7 @@ export async function readSupplierBill(
   } catch {
     return failWith(tv('readTimedOut'), echo(form))
   }
-}
+})
 
 /** The part of the service's reply this action reads. */
 interface BillReading {

@@ -112,6 +112,19 @@ test.describe('customer and partner surfaces', () => {
     await visitAndAssertHealthy(page, '/portal', testInfo)
   })
 
+  /*
+    QA P2-12: every portal card opens the shipment signed in, by id, rather
+    than through public tracking — which needed a customer reference the job
+    might not have, and spent the anonymous lookup budget on every click.
+  */
+  test('opens a shipment from the customer portal', async ({ page }, testInfo) => {
+    await visitAndAssertHealthy(page, '/portal', testInfo)
+    const first = page.locator('a[href^="/portal/shipments/"]').first()
+    const href = await first.getAttribute('href')
+    expect(href, 'the portal linked no shipment').toBeTruthy()
+    await visitAndAssertHealthy(page, href!, testInfo)
+  })
+
   test('renders the public tracking page without a session', async ({ browser }, testInfo) => {
     // A fresh context: the tracking page is the one surface that must work for
     // someone who has never signed in, and reusing the suite's context would

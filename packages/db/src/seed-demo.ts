@@ -45,11 +45,12 @@
  */
 
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { D } from '@qabandi/core'
+import { D, money, netPosition } from '@qabandi/core'
 import { loadEnv } from './env'
 import { createDatabase } from './client'
 import { systemActor, withActor } from './actor'
 import { locationSeedRows } from './places'
+import { rederiveBillSettlement, rederiveInvoiceSettlement } from './settled'
 import {
   assets,
   branches,
@@ -2230,24 +2231,37 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
   const agentPartner = partner.get('SHACO')
 
   if (agentCustomer && agentPartner) {
+    /*
+      The partner's account with us, linked — what "Link partner account" on
+      the partner page does. Without it the partner page offered no current
+      account and the app's own "Draft settlement" refused this partner, while
+      a settlement against them sat in the register (QA P3).
+    */
+    await tx
+      .update(partners)
+      .set({ settlementCustomerId: agentCustomer.id, settlementCurrency: 'KWD' })
+      .where(eq(partners.id, agentPartner))
+
+    // Guarded by the partner, not by a reference: the reference is the app's
+    // own sequence now, and differs on every database.
     const [already] = await tx
       .select({ id: partnerSettlements.id })
       .from(partnerSettlements)
-      .where(eq(partnerSettlements.reference, 'SET-KWI-2026-0001'))
+      .where(eq(partnerSettlements.partnerId, agentPartner))
       .limit(1)
 
     if (!already) {
       const branchId = branchBy.get('KWI')!
 
       // Two cross-trade invoices out to them.
-      const receivables = []
+      const receivables: { id: string; total: string; amountPaid: string }[] = []
       for (const [index, amount] of [420, 380].entries()) {
         const [invoice] = await tx
           .insert(invoices)
           .values({
             branchId,
             customerId: agentCustomer.id,
-            // Guarded by the settlement's reference above, like the shipment
+            // Guarded by the settlement check above, like the shipment
             // invoices are by the shipment's.
             seriesNo: await nextInvoiceNumber(tx, branchId),
             status: 'issued',
@@ -2263,82 +2277,144 @@ async function seedDemo(tx: any, reset: boolean): Promise<void> {
             issuedById: owner(1),
             notes: 'Cross-trade handling, billed to the origin agent.',
           })
-          .returning({ id: invoices.id, total: invoices.total })
+          .returning({
+            id: invoices.id,
+            total: invoices.total,
+            amountPaid: invoices.amountPaid,
+          })
         receivables.push(invoice!)
       }
 
-      // Their bills to us, the two the statement claims.
-      const payablesToNet = await tx
-        .select({ id: supplierInvoices.id, total: supplierInvoices.total })
-        .from(supplierInvoices)
-        .where(eq(supplierInvoices.partnerId, agentPartner))
+      /*
+        Their bill to us, approved — the side a set-off can claim.
 
-      const receivableTotal = receivables.reduce((sum, row) => sum + Number(row.total), 0)
-      const payableTotal = payablesToNet.reduce(
-        (sum: number, row: { total: string }) => sum + Number(row.total),
-        0,
+        The statement used to claim SOL/26/1188, which is still `received`:
+        unapproved, so the app's own agree step would have refused it as
+        changed under the statement. A bill is nettable once finance has
+        released it, the same rule `draftSettlement` reads.
+      */
+      const job = jobByRef.get('KWI-JOB-0007')
+      const [bill] = await tx
+        .insert(supplierInvoices)
+        .values({
+          branchId,
+          partnerId: agentPartner,
+          reference: 'SOL/26/1102',
+          status: 'approved',
+          currency: 'KWD',
+          subtotal: '300',
+          taxAmount: '0',
+          total: '300',
+          amountPaid: '0',
+          invoiceDate: isoDay(days(-30)),
+          dueOn: isoDay(days(15)),
+          receivedAt: days(-30),
+          approvedById: owner(1),
+          approvedAt: days(-28),
+        })
+        .returning({
+          id: supplierInvoices.id,
+          total: supplierInvoices.total,
+          amountPaid: supplierInvoices.amountPaid,
+        })
+      if (job) {
+        await tx.insert(supplierInvoiceLines).values({
+          supplierInvoiceId: bill!.id,
+          branchId,
+          jobId: job.id,
+          description: 'ORIGIN HANDLING — JANUARY STATEMENT',
+          quantity: '1',
+          unitPrice: '300',
+          amount: '300',
+          sortOrder: 0,
+        })
+      }
+
+      /*
+        The statement, built the way `draftSettlement` builds it: open
+        balances summed as Decimal, netted by core's `netPosition`, and each
+        line claiming only what the offset reaches, oldest first — the larger
+        side partly. It used to sum floats and claim every document in full,
+        so agreeing it would have settled 800 of invoices with 105 of bills.
+      */
+      const open = (rows: { total: string; amountPaid: string }[]) =>
+        rows.reduce((acc, r) => acc.plus(new D(r.total).minus(new D(r.amountPaid))), new D(0))
+      const net = netPosition(
+        money(open(receivables).toFixed(), 'KWD'),
+        money(open([bill!]).toFixed(), 'KWD'),
+        'KWD',
       )
-      const offset = Math.min(receivableTotal, payableTotal)
-      const residual = Math.abs(receivableTotal - payableTotal)
 
       const [settlement] = await tx
         .insert(partnerSettlements)
         .values({
-          reference: 'SET-KWI-2026-0001',
+          // The app's own sequence and shape (QA P3): this was the hand-typed
+          // SET-KWI-2026-0001 beside the app's SET-2026-00001.
+          reference: sql`'SET-' || to_char(now(), 'YYYY') || '-' ||
+                         lpad(nextval('settlement_reference_seq')::text, 5, '0')`,
           branchId,
           partnerId: agentPartner,
           status: 'agreed',
           currency: 'KWD',
           periodFrom: isoDay(days(-60)),
           periodTo: isoDay(days(-1)),
-          receivableTotal: String(receivableTotal),
-          payableTotal: String(payableTotal),
-          offsetAmount: String(offset),
-          residualAmount: String(residual),
-          /*
-            Which way the remainder moves, stated rather than inferred from a
-            sign. `residual_amount` is always positive and the direction is its
-            own column, because "they owe us 380" and "we owe them 380" are
-            different sentences and a minus sign is a poor way to say which.
-          */
-          residualDirection:
-            receivableTotal > payableTotal
-              ? 'they_owe_us'
-              : receivableTotal < payableTotal
-                ? 'we_owe_them'
-                : 'square',
+          receivableTotal: net.receivable.amount.toFixed(),
+          payableTotal: net.payable.amount.toFixed(),
+          offsetAmount: net.offset.amount.toFixed(),
+          residualAmount: net.residual.amount.toFixed(),
+          residualDirection: net.direction,
           agreedAt: days(-1),
           agreedById: owner(1),
           notes: 'Netted against the January statement; residual on the next remittance.',
         })
         .returning({ id: partnerSettlements.id })
 
-      for (const invoice of receivables) {
+      const claim = (rows: { id: string; total: string; amountPaid: string }[]) => {
+        let left = net.offset.amount
+        return rows.flatMap((r) => {
+          const balance = new D(r.total).minus(new D(r.amountPaid))
+          const take = D.min(balance, left)
+          left = left.minus(take)
+          return take.greaterThan(0)
+            ? [{ id: r.id, amount: take.toFixed(), isFull: take.eq(balance) }]
+            : []
+        })
+      }
+
+      for (const line of claim(receivables)) {
         await tx.insert(partnerSettlementLines).values({
           settlementId: settlement!.id,
           branchId,
           kind: 'invoice',
-          invoiceId: invoice.id,
-          amount: invoice.total,
-          isFull: true,
+          invoiceId: line.id,
+          amount: line.amount,
+          isFull: line.isFull,
         })
       }
-
-      for (const bill of payablesToNet as { id: string; total: string }[]) {
+      for (const line of claim([bill!])) {
         await tx.insert(partnerSettlementLines).values({
           settlementId: settlement!.id,
           branchId,
           kind: 'bill',
-          supplierInvoiceId: bill.id,
-          amount: bill.total,
-          isFull: true,
+          supplierInvoiceId: line.id,
+          amount: line.amount,
+          isFull: line.isFull,
         })
-        // A bill consumed by a set-off was not paid, and says so.
+        // Claimed by the agreed statement, as the app's agree step does.
         await tx
           .update(supplierInvoices)
           .set({ settlementId: settlement!.id })
-          .where(eq(supplierInvoices.id, bill.id))
+          .where(eq(supplierInvoices.id, line.id))
       }
+
+      /*
+        And settled in both sub-ledgers, through the same rule the app's agree
+        step applies (QA P3). The statement was seeded agreed while its
+        invoices stayed fully owed in ageing and dunning and its bill stayed
+        payable — the double count the agree step exists to prevent.
+      */
+      for (const invoice of receivables) await rederiveInvoiceSettlement(tx, invoice.id)
+      await rederiveBillSettlement(tx, bill!.id)
     }
   }
 }

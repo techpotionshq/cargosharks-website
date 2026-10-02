@@ -939,7 +939,9 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
         // The first is allowed on `quote.send` alone.
         expect((await priceEnquiry({}, form({ enquiryId: id }))).message).toBeUndefined()
 
-        await expect(priceEnquiry({}, form({ enquiryId: id }))).rejects.toThrow('quote.revise')
+        await expect(priceEnquiry({}, form({ enquiryId: id }))).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = session
       }
@@ -1000,7 +1002,7 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
       try {
         await expect(
           priceEnquiry({}, form({ enquiryId: await enquiry(await lane()) })),
-        ).rejects.toThrow('quote.send')
+        ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
       } finally {
         harness.session = session
       }

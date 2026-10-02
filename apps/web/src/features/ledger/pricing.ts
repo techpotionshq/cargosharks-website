@@ -17,6 +17,7 @@ import { priceEnquiryToQuote, withActor, type PricingRefusal } from '@qabandi/db
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -31,7 +32,10 @@ function read(form: FormData, key: string): string | undefined {
  * fault. Branch scoping is RLS's: an enquiry outside the actor's branches is
  * invisible and comes back `not_found`, which is also the right answer to give.
  */
-export async function priceEnquiry(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const priceEnquiry = refuseForbidden(async function priceEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'quote.send')
   const tv = await getTranslations('ledgerValidation')
@@ -53,7 +57,7 @@ export async function priceEnquiry(_previous: ActionState, form: FormData): Prom
   revalidatePath(`/enquiries/${enquiryId}`)
   revalidatePath('/dashboard')
   return succeed(outcome.reference)
-}
+})
 
 /*
   A switch of literal translator calls rather than a lookup table of keys, so

@@ -35,6 +35,8 @@ export interface UserDefaults {
   readonly locale?: string
   readonly roleId?: string | null
   readonly branchIds?: readonly string[]
+  /** The role held in each branch — what the edit form pre-selects. */
+  readonly grants?: readonly { readonly branchId: string; readonly roleId: string }[]
   readonly isActive?: boolean
 }
 
@@ -70,8 +72,7 @@ export async function UserDialog({
   const administered = new Set(branchesWhere(session, 'admin.users.write'))
   const grantable = options.branches.filter((branch) => administered.has(branch.value))
 
-  const fields: FieldSpec[] = [
-    ...(editing ? [{ kind: 'hidden' as const, name: 'principalId', value: defaults!.id! }] : []),
+  const nameFields: FieldSpec[] = [
     {
       kind: 'text',
       name: 'nameEn',
@@ -87,74 +88,124 @@ export async function UserDialog({
       span: 6,
       defaultValue: defaults?.nameAr,
     },
-    {
-      kind: 'email',
-      name: 'email',
-      label: t('email'),
-      span: 6,
-      required: true,
-      hint: t('emailHint'),
-      defaultValue: defaults?.email,
-    },
-    {
-      kind: 'tel',
-      name: 'phone',
-      label: t('phone'),
-      span: 6,
-      defaultValue: defaults?.phone,
-    },
-    {
-      kind: 'select',
-      name: 'roleId',
-      label: t('role'),
-      span: 6,
-      required: true,
-      hint: t('roleHint'),
-      options: options.roles,
-      placeholder: tc('choose'),
-      defaultValue: defaults?.roleId,
-    },
-    {
-      kind: 'select',
-      name: 'locale',
-      label: t('locale'),
-      span: 6,
-      required: true,
-      hint: t('localeHint'),
-      options: [
-        { value: 'en', label: t('locales.en') },
-        { value: 'ar', label: t('locales.ar') },
-      ],
-      defaultValue: defaults?.locale ?? 'en',
-    },
-    /*
-      Branch access is a checkbox per branch rather than a multi-select,
-      because with two or three branches the whole choice should be visible
-      and a multi-select hides it behind a click. `name` repeats so the form
-      submits an array (FR-ID-02: a role *per branch*).
-    */
-    {
-      kind: 'section',
-      title: t('access'),
-      hint: t('accessHint'),
-      fields: grantable.map((branch) => ({
-        kind: 'switch' as const,
-        name: 'branchIds',
-        label: branch.label,
-        span: 6 as const,
-        defaultChecked: defaults?.branchIds?.includes(branch.value) ?? false,
-      })),
-    },
-    { kind: 'note', text: t('passwordNote') },
-    {
-      kind: 'switch',
-      name: 'isActive',
-      label: t('active'),
-      span: 12,
-      hint: t('activeHint'),
-      defaultChecked: defaults?.isActive ?? true,
-    },
   ]
+  const localeField: FieldSpec = {
+    kind: 'select',
+    name: 'locale',
+    label: t('locale'),
+    span: 6,
+    required: true,
+    hint: t('localeHint'),
+    options: [
+      { value: 'en', label: t('locales.en') },
+      { value: 'ar', label: t('locales.ar') },
+    ],
+    defaultValue: defaults?.locale ?? 'en',
+  }
+  const activeField: FieldSpec = {
+    kind: 'switch',
+    name: 'isActive',
+    label: t('active'),
+    span: 12,
+    hint: t('activeHint'),
+    defaultChecked: defaults?.isActive ?? true,
+  }
+
+  const fields: FieldSpec[] = editing
+    ? [
+        { kind: 'hidden', name: 'principalId', value: defaults!.id! },
+        /*
+          The address is the login, so it is carried rather than offered: the
+          sign-in identity (`auth_user.email`) does not follow an edit here,
+          and a principal whose address no longer matches their login is a
+          person who cannot sign in.
+        */
+        { kind: 'hidden', name: 'email', value: defaults?.email ?? '' },
+        ...nameFields,
+        {
+          kind: 'tel',
+          name: 'phone',
+          label: t('phone'),
+          span: 6,
+          defaultValue: defaults?.phone,
+        },
+        localeField,
+        /*
+          A role per branch, which is what FR-ID-02 says a grant is. The
+          invitation offers one role across the branches ticked because that
+          is how a new colleague usually starts; changing someone is where
+          "finance in Kuwait, read-only in Dubai" actually gets decided.
+          Only branches this administrator administers (A2) — grants elsewhere
+          are not shown and not touched by the action.
+        */
+        {
+          kind: 'section',
+          title: t('access'),
+          hint: t('rolesPerBranchHint'),
+          fields: grantable.map((branch) => ({
+            kind: 'select' as const,
+            name: `role:${branch.value}`,
+            label: branch.label,
+            span: 6 as const,
+            options: [{ value: '', label: t('noAccess') }, ...options.roles],
+            defaultValue: defaults?.grants?.find((g) => g.branchId === branch.value)?.roleId ?? '',
+          })),
+        },
+        activeField,
+      ]
+    : [
+        ...nameFields,
+        {
+          kind: 'email',
+          name: 'email',
+          label: t('email'),
+          span: 6,
+          required: true,
+          hint: t('emailHint'),
+          defaultValue: defaults?.email,
+        },
+        {
+          kind: 'tel',
+          name: 'phone',
+          label: t('phone'),
+          span: 6,
+          defaultValue: defaults?.phone,
+        },
+        {
+          kind: 'select',
+          name: 'roleId',
+          label: t('role'),
+          span: 6,
+          required: true,
+          hint: t('roleHint'),
+          options: options.roles,
+          placeholder: tc('choose'),
+          defaultValue: defaults?.roleId,
+        },
+        localeField,
+        /*
+          Branch access is a checkbox per branch rather than a multi-select,
+          because with two or three branches the whole choice should be visible
+          and a multi-select hides it behind a click. `name` repeats and each
+          box carries its branch's id, so the form submits an array of ids
+          (FR-ID-02). Without `value` every box sent "on" (QA P1-3).
+        */
+        {
+          kind: 'section',
+          title: t('access'),
+          hint: t('accessHint'),
+          fields: grantable.map((branch) => ({
+            kind: 'switch' as const,
+            name: 'branchIds',
+            value: branch.value,
+            label: branch.label,
+            span: 6 as const,
+            defaultChecked: defaults?.branchIds?.includes(branch.value) ?? false,
+          })),
+        },
+        { kind: 'note', text: t('passwordNote') },
+        activeField,
+      ]
 
   return (
     <RecordDialog

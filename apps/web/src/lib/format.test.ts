@@ -26,6 +26,7 @@ import {
   formatRelative,
   formatTime,
   trimDecimal,
+  amountInput,
 } from './format'
 
 describe('formatMoneyParts', () => {
@@ -360,5 +361,24 @@ describe('formatLane', () => {
     expect(formatLane('Shuwaikh', 'Jebel Ali')).not.toContain('->')
     // Arabic reorders the names, so the arrow has to point the other way.
     expect(formatLane('الشويخ', 'جبل علي', 'ar')).toBe('الشويخ ← جبل علي')
+  })
+})
+
+/** QA P3: edit dialogs showed "25.000000" and a dollar balance as "4350.000". */
+describe('amountInput', () => {
+  it("puts a stored amount back at its currency's places", () => {
+    expect(amountInput('25.000000', 'KWD')).toBe('25.000')
+    expect(amountInput('4350.000', 'USD')).toBe('4350.00')
+    expect(amountInput('0.5', 'KWD')).toBe('0.500')
+  })
+
+  it('trims an amount whose currency it does not know', () => {
+    expect(amountInput('25.000000', 'XTS')).toBe('25')
+    expect(amountInput('25.000000', null)).toBe('25')
+  })
+
+  it('leaves an empty value empty', () => {
+    expect(amountInput(null, 'KWD')).toBeUndefined()
+    expect(amountInput('', 'KWD')).toBeUndefined()
   })
 })

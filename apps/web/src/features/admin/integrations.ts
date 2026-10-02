@@ -55,6 +55,7 @@ import { assertCan } from '@/lib/permissions'
 import { echo, fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotIntegrationSettings } from '@/lib/pilot/fixtures'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 interface IntegrationFieldView {
   readonly name: string
@@ -317,7 +318,7 @@ function validate(
  * administrators saving at once from producing a duplicate the constraint
  * would then reject with a message nobody can act on.
  */
-export async function saveIntegration(
+export const saveIntegration = refuseForbidden(async function saveIntegration(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -464,7 +465,7 @@ export async function saveIntegration(
     revalidatePath('/settings/integrations')
     return state
   })
-}
+})
 
 /**
  * Stop using a row, or start again.
@@ -475,7 +476,7 @@ export async function saveIntegration(
  * different and much more useful operation than deleting, which §5.5 forbids
  * anyway.
  */
-export async function setIntegrationActive(
+export const setIntegrationActive = refuseForbidden(async function setIntegrationActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -496,4 +497,4 @@ export async function setIntegrationActive(
 
   revalidatePath('/settings/integrations')
   return succeed(key)
-}
+})

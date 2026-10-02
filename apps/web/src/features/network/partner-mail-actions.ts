@@ -19,6 +19,7 @@ import { jobs, messageAttachments, messages, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCanIn, canIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState } from '@/lib/form-state'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /** The filed mail a form names, if the reader can see it at all. */
 async function filedMail(actor: Parameters<typeof withActor>[0], messageId: string) {
@@ -33,7 +34,7 @@ async function filedMail(actor: Parameters<typeof withActor>[0], messageId: stri
 }
 
 /** Put the mail on a job of the same branch, by the reference a person types. */
-export async function attachPartnerMailToJob(
+export const attachPartnerMailToJob = refuseForbidden(async function attachPartnerMailToJob(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -67,10 +68,10 @@ export async function attachPartnerMailToJob(
   revalidatePath(`/partners/${mail.partnerId}`)
   revalidatePath(`/jobs/${attached}`)
   return succeed(mail.id)
-}
+})
 
 /** Nothing to do with it — kept, and off the list. */
-export async function markPartnerMailHandled(
+export const markPartnerMailHandled = refuseForbidden(async function markPartnerMailHandled(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -93,7 +94,7 @@ export async function markPartnerMailHandled(
   )
   revalidatePath(`/partners/${mail.partnerId}`)
   return succeed(mail.id)
-}
+})
 
 /**
  * Read one attachment as this supplier's bill — the same service call the
@@ -101,7 +102,7 @@ export async function markPartnerMailHandled(
  * the bill lands in `received` for finance to approve exactly as a scanned one
  * does. The mail is marked dealt with once a bill is written.
  */
-export async function readPartnerMailAsBill(
+export const readPartnerMailAsBill = refuseForbidden(async function readPartnerMailAsBill(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -159,4 +160,4 @@ export async function readPartnerMailAsBill(
   } catch {
     return failWith(t('readTimedOut'))
   }
-}
+})

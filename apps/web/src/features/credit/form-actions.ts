@@ -45,6 +45,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { todayIn } from '@/lib/time'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -79,7 +80,7 @@ const overrideSchema = (tv: Translate) =>
       .transform((v) => v || null),
   })
 
-export async function recordCreditOverride(
+export const recordCreditOverride = refuseForbidden(async function recordCreditOverride(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -147,4 +148,4 @@ export async function recordCreditOverride(
   if (data.jobId) revalidatePath(`/jobs/${data.jobId}`)
   if (data.invoiceId) revalidatePath(`/invoices/${data.invoiceId}`)
   return succeed(data.customerId)
-}
+})

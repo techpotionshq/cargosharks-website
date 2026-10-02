@@ -46,6 +46,10 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
+  // The ledger's own read key (QA P2-11): a session alone let every internal
+  // role, read-only included, open it. Not found rather than forbidden, as
+  // with every screen a principal has no business knowing about.
+  if (!can(session, 'payable.read')) notFound()
   const resolved = await getLocale()
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const id = recordId((await params).id)
@@ -70,10 +74,15 @@ export default async function SupplierInvoicePage({ params }: { params: Promise<
   const money = (amount: string, currency: string) =>
     formatMoney({ amount: amount, currency }, locale)
 
+  /*
+    The shipment in the label as well as the group heading (QA P2-9): a
+    native picker shows only the chosen option's own text once closed, so
+    "Ocean Freight — US$150.00" alone did not say which of thirty jobs it was.
+  */
   const candidates: MatchCandidateOption[] = candidateRows.map((c) => ({
     id: c.id,
     group: c.jobReference,
-    label: `${c.chargeTypeName} — ${money(c.amount, c.currency)}${
+    label: `${c.jobReference} · ${c.chargeTypeName} — ${money(c.amount, c.currency)}${
       Number(c.matchedAmount) > 0 ? ` (${t('alreadyMatched')})` : ''
     }`,
   }))

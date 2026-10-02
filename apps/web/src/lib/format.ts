@@ -30,6 +30,7 @@
  */
 export const TIME_ZONE = DEFAULT_TIME_ZONE
 
+import { fromDb, toScale } from '@qabandi/core'
 import { DEFAULT_TIME_ZONE } from '@/lib/time'
 
 type Locale = 'en' | 'ar'
@@ -178,6 +179,29 @@ export function trimDecimal(value: string | null | undefined): string | null {
   if (!value.includes('.')) return value
   const trimmed = value.replace(/\.?0+$/, '')
   return trimmed === '' || trimmed === '-' ? '0' : trimmed
+}
+
+/**
+ * A stored amount, put back into an editable field at its currency's places —
+ * QA P3.
+ *
+ * Edit dialogs were handed the column as stored, so a per-diem the operator
+ * typed as 25 came back as "25.000000", and a USD balance as "4350.000" (a
+ * hand-written `toFixed(3)`, KWD's places on a dollar figure). Rounded with
+ * the money engine at the currency's minor units, as Decimal, never through a
+ * float. A currency the seed does not know falls back to `trimDecimal`.
+ */
+export function amountInput(
+  value: string | null | undefined,
+  currency: string | null | undefined,
+): string | undefined {
+  if (value === null || value === undefined || value === '') return undefined
+  if (!currency) return trimDecimal(value) ?? undefined
+  try {
+    return toScale(fromDb(value, currency))
+  } catch {
+    return trimDecimal(value) ?? undefined
+  }
 }
 
 /**

@@ -46,6 +46,7 @@ const {
   branches,
   customers,
   customsStages,
+  equipment,
   exceptionCodes,
   exceptions,
   freeTimeClocks,
@@ -434,7 +435,7 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await withoutKey('customs.file', async () => {
           await expect(
             saveCustomsStage({}, form({ jobId, status: 'declaration_filed' })),
-          ).rejects.toThrow('customs.file')
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -445,9 +446,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         await saveCustomsStage({}, form({ jobId, status: 'assessed' }))
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
 
@@ -473,9 +474,9 @@ describe.skipIf(!enabled)('operations mutations', () => {
         const jobId = await job()
 
         await withoutKey('customs.pay', async () => {
-          await expect(saveCustomsStage({}, form({ jobId, status: 'duty_paid' }))).rejects.toThrow(
-            'customs.pay',
-          )
+          await expect(
+            saveCustomsStage({}, form({ jobId, status: 'duty_paid' })),
+          ).resolves.toMatchObject({ message: expect.stringContaining('forbiddenAction') })
         })
       })
     })
@@ -574,6 +575,23 @@ describe.skipIf(!enabled)('operations mutations', () => {
       const jobId = await job()
       const state = await addContainer({}, form({ jobId, containerNo: 'MSK-441' }))
       expect(state.errors?.containerNo).toBeDefined()
+    })
+
+    /** QA P3: an empty form saved a blank equipment row nobody could name. */
+    it('refuses a container with neither a number nor a type', async () => {
+      const jobId = await job()
+      const state = await addContainer({}, form({ jobId }))
+      expect(state.errors?.containerNo).toBe('operationsValidation.containerNeedsNumberOrType')
+      const rows = await withActor(actor, (tx) =>
+        tx.select().from(equipment).where(eq(equipment.jobId, jobId)),
+      )
+      expect(rows).toEqual([])
+    })
+
+    it('accepts a box booked by type before its number is known', async () => {
+      const jobId = await job()
+      const state = await addContainer({}, form({ jobId, containerType: '40HC' }))
+      expect(state.errors).toBeUndefined()
     })
 
     /**

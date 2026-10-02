@@ -65,7 +65,9 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -137,7 +139,7 @@ const consolidationSchema = (tv: Translate) =>
       path: ['eta'],
     })
 
-export async function saveConsolidation(
+export const saveConsolidation = refuseForbidden(async function saveConsolidation(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -229,7 +231,7 @@ export async function saveConsolidation(
 
   revalidatePath('/consolidations')
   return succeed(reference)
-}
+})
 
 /**
  * Put a shipment under this master.
@@ -240,7 +242,10 @@ export async function saveConsolidation(
  * The master's id is a hidden field the page wrote, so its absence is a
  * tampered form rather than a mistake, and it still throws.
  */
-export async function attachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const attachHouse = refuseForbidden(async function attachHouse(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
   const tv = await getTranslations('consolidationValidation')
@@ -296,7 +301,7 @@ export async function attachHouse(_previous: ActionState, form: FormData): Promi
   revalidatePath(`/consolidations/${consolidationId}`)
   revalidatePath(`/jobs/${jobId}`)
   return succeed(jobId)
-}
+})
 
 /**
  * Take a house off the master.
@@ -305,7 +310,10 @@ export async function attachHouse(_previous: ActionState, form: FormData): Promi
  * house whose costs were split — so it comes back as a sentence under the
  * button. Both ids are hidden fields, and a missing one is still thrown.
  */
-export async function detachHouse(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const detachHouse = refuseForbidden(async function detachHouse(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'consol.write')
   const tv = await getTranslations('consolidationValidation')
@@ -366,7 +374,7 @@ export async function detachHouse(_previous: ActionState, form: FormData): Promi
   revalidatePath(`/consolidations/${consolidationId}`)
   revalidatePath(`/jobs/${jobId}`)
   return succeed(jobId)
-}
+})
 
 export async function closeConsolidation(form: FormData): Promise<void> {
   const session = await requireSession()
@@ -391,6 +399,7 @@ const money6 = (tv: Translate) =>
   z
     .string()
     .trim()
+    .overwrite(normaliseAmount)
     .regex(/^-?\d+(\.\d{1,6})?$/, tv('amountNumber'))
 
 const chargeSchema = (tv: Translate) =>
@@ -420,7 +429,7 @@ const chargeSchema = (tv: Translate) =>
     counterpartyPartnerId: optionalUuid,
   })
 
-export async function addConsolCharge(
+export const addConsolCharge = refuseForbidden(async function addConsolCharge(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -528,7 +537,7 @@ export async function addConsolCharge(
 
   revalidatePath(`/consolidations/${data.consolidationId}`)
   return succeed(data.amount)
-}
+})
 
 /**
  * Withdraw a master cost that was never split — O12.
@@ -619,7 +628,7 @@ export async function restoreConsolCharge(form: FormData): Promise<void> {
  * sentence the operator can act on — "every house has a zero volume, so there
  * is nothing to split by" names the fix.
  */
-export async function allocateConsolCharge(
+export const allocateConsolCharge = refuseForbidden(async function allocateConsolCharge(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -827,7 +836,7 @@ export async function allocateConsolCharge(
     }
     throw error
   }
-}
+})
 
 /** A manual share that is not an amount, carried out of the transaction. */
 class ShareRefusal extends Error {
@@ -1038,7 +1047,7 @@ export async function reverseConsolAllocation(form: FormData): Promise<void> {
  * would put figures on a record that reads as agreed. The one act this
  * performs is the one the screen is about: these shipments belong together.
  */
-export async function consolidateCluster(
+export const consolidateCluster = refuseForbidden(async function consolidateCluster(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -1149,4 +1158,4 @@ export async function consolidateCluster(
   revalidatePath('/consolidations')
   revalidatePath(`/consolidations/${outcome.consolidationId}`)
   return succeed(outcome.reference)
-}
+})

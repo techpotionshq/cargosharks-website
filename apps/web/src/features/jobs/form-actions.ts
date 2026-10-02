@@ -57,6 +57,7 @@ import {
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { dayIn } from '@/lib/time'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -178,7 +179,10 @@ class JobRefusal extends Error {
   }
 }
 
-export async function saveJob(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveJob = refuseForbidden(async function saveJob(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, read(form, 'jobId') ? 'job.update' : 'job.book')
   const tv = await getTranslations('jobsValidation')
@@ -500,7 +504,7 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
   revalidatePath('/jobs')
   revalidatePath('/dashboard')
   return succeed(reference)
-}
+})
 
 /**
  * The credit gate on booking.
@@ -610,7 +614,10 @@ async function claimQuote(
 }
 
 /** Name a carrier, agent, broker or haulier on the shipment. */
-export async function addJobPartner(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const addJobPartner = refuseForbidden(async function addJobPartner(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('jobsValidation')
@@ -647,4 +654,4 @@ export async function addJobPartner(_previous: ActionState, form: FormData): Pro
   revalidatePath(`/jobs/${data.jobId}`)
   revalidatePath('/partners')
   return succeed(data.partnerId)
-}
+})

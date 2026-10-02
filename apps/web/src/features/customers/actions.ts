@@ -25,6 +25,7 @@ import { assertCan, assertCanIn } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 export interface CustomerFormState {
   /** Field-keyed messages, so each input can render its own error. */
@@ -54,7 +55,7 @@ function echo(form: FormData): Record<string, string> {
   return out
 }
 
-export async function createCustomer(
+export const createCustomer = refuseForbidden(async function createCustomer(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
@@ -115,9 +116,9 @@ export async function createCustomer(
 
   revalidatePath('/customers')
   redirect(`/customers/${createdId}`)
-}
+})
 
-export async function updateCustomer(
+export const updateCustomer = refuseForbidden(async function updateCustomer(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
@@ -195,7 +196,7 @@ export async function updateCustomer(
   revalidatePath('/customers')
   revalidatePath(`/customers/${data.customerId}`)
   return { message: 'saved' }
-}
+})
 
 /**
  * Deactivate rather than delete — FR-ID-09, §5.5.
@@ -203,7 +204,7 @@ export async function updateCustomer(
  * A customer with shipment history cannot be removed without taking the
  * history with it, so the record stays and stops being selectable.
  */
-export async function setCustomerActive(
+export const setCustomerActive = refuseForbidden(async function setCustomerActive(
   _previous: CustomerFormState,
   form: FormData,
 ): Promise<CustomerFormState> {
@@ -238,4 +239,4 @@ export async function setCustomerActive(
   revalidatePath('/customers')
   revalidatePath(`/customers/${customerId}`)
   return { message: 'saved' }
-}
+})

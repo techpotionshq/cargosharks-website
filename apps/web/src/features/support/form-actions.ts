@@ -39,6 +39,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /**
  * The longest a grant may run.
@@ -76,7 +77,7 @@ const grantSchema = (tv: Translate) =>
       .transform((v) => v ?? ''),
   })
 
-export async function grantSupportAccess(
+export const grantSupportAccess = refuseForbidden(async function grantSupportAccess(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -181,4 +182,4 @@ export async function grantSupportAccess(
   // The banner lives in the ops layout, so every internal path shows it.
   revalidatePath('/', 'layout')
   return succeed()
-}
+})

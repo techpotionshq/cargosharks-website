@@ -19,7 +19,7 @@ if (APP_URL) process.env.DATABASE_URL = APP_URL
 
 const { AWAY_JOB, CUSTOMER, HOME_BRANCH, HOME_JOB, bothBranchesActor, homeActor, world } =
   await import('@/lib/testing/fixtures')
-const { freeTimeClocks, jobs, withActor } = await import('@qabandi/db')
+const { commodities, freeTimeClocks, jobs, withActor } = await import('@qabandi/db')
 const { shiftDay, todayIn } = await import('@qabandi/core')
 const { listJobs, getJobDetail, listOpenExceptions, listRunningClocks } = await import('./queries')
 
@@ -145,6 +145,34 @@ describe.skipIf(!enabled)('job register', () => {
     it('reads a job the actor may see', async () => {
       const detail = await getJobDetail(homeActor, HOME_JOB)
       expect(detail?.reference).toBe('FXH-JOB-FIXTURE-1')
+    })
+
+    /** QA P3: the commodity was the literal '—' whatever the job carried. */
+    it('names the commodity the job carries, in both languages', async () => {
+      const code = `QAC-${Date.now()}`
+      const job = await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        const [commodity] = await tx
+          .insert(commodities)
+          .values({ code, nameEn: 'Dates, packed', nameAr: 'تمور معبأة' })
+          .returning({ id: commodities.id })
+        const [row] = await tx
+          .insert(jobs)
+          .values({
+            reference: `FXH-COM-${Date.now()}`,
+            branchId: HOME_BRANCH,
+            customerId: CUSTOMER,
+            commodityId: commodity!.id,
+            mode: 'sea_fcl',
+            tradeDirection: 'import',
+            status: 'booked',
+          })
+          .returning({ id: jobs.id })
+        return row!
+      })
+
+      const detail = await getJobDetail(bothBranchesActor, job.id)
+      expect(detail?.commodity).toBe('Dates, packed')
+      expect(detail?.commodityAr).toBe('تمور معبأة')
     })
 
     it('returns nothing for an id that does not exist', async () => {

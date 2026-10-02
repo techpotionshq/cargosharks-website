@@ -40,6 +40,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 /** Uppercase, URL-safe, and never containing a space that breaks a search. */
 const entityCode = (tv: Translate) =>
@@ -98,7 +99,10 @@ const partnerSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function savePartner(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const savePartner = refuseForbidden(async function savePartner(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'partner.write')
   const tv = await getTranslations('networkValidation')
@@ -153,7 +157,7 @@ export async function savePartner(_previous: ActionState, form: FormData): Promi
 
   revalidatePath('/partners')
   return succeed(data.code)
-}
+})
 
 // --- places ----------------------------------------------------------------
 
@@ -186,7 +190,10 @@ const locationSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function saveLocation(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveLocation = refuseForbidden(async function saveLocation(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   // Places are reference data, so they sit behind the reference permission
   // rather than a places-specific one — the same gate as commodities and
@@ -235,7 +242,7 @@ export async function saveLocation(_previous: ActionState, form: FormData): Prom
 
   revalidatePath('/locations')
   return succeed(data.nameEn)
-}
+})
 
 /**
  * Retire a record rather than delete it — §5.5, FR-ID-09.
@@ -243,7 +250,7 @@ export async function saveLocation(_previous: ActionState, form: FormData): Prom
  * Exposed as one action for both tables because the semantics are identical
  * and the alternative is two functions that differ by a table name.
  */
-export async function setNetworkActive(
+export const setNetworkActive = refuseForbidden(async function setNetworkActive(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -274,7 +281,7 @@ export async function setNetworkActive(
 
   revalidatePath(kind === 'partner' ? '/partners' : '/locations')
   return succeed(id)
-}
+})
 
 /* ------------------------------------------------ what a partner is made of */
 
@@ -301,7 +308,7 @@ const contactSchema = (tv: Translate) =>
  * — you know the operations manager's mobile long before you invite them to
  * anything.
  */
-export async function savePartnerContact(
+export const savePartnerContact = refuseForbidden(async function savePartnerContact(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -368,7 +375,7 @@ export async function savePartnerContact(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.nameEn)
-}
+})
 
 const coverageSchema = z.object({
   coverageId: z.uuid().optional(),
@@ -395,7 +402,7 @@ const coverageSchema = z.object({
  * PostgreSQL 18's skip scan is what lets a query that leaves `mode` open still
  * use it.
  */
-export async function savePartnerCoverage(
+export const savePartnerCoverage = refuseForbidden(async function savePartnerCoverage(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -449,7 +456,7 @@ export async function savePartnerCoverage(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.mode)
-}
+})
 
 const complianceSchema = (tv: Translate) =>
   z.object({
@@ -478,7 +485,7 @@ const complianceSchema = (tv: Translate) =>
  * is what proves the agent was covered on the day the shipment moved, which is
  * the only day anybody ever asks about.
  */
-export async function savePartnerCompliance(
+export const savePartnerCompliance = refuseForbidden(async function savePartnerCompliance(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -524,4 +531,4 @@ export async function savePartnerCompliance(
 
   revalidatePath(`/partners/${data.partnerId}`)
   return succeed(data.documentTypeId)
-}
+})

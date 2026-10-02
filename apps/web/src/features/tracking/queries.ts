@@ -40,10 +40,12 @@ import {
   locations,
   systemActor,
   withActor,
+  type Actor,
+  type Tx,
 } from '@qabandi/db'
 import type { Mode, TrackingResult } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotTracking } from '@/lib/pilot/fixtures'
+import { pilotJob, pilotPortalShipments, pilotTracking } from '@/lib/pilot/fixtures'
 import { pickName } from '@/lib/named'
 
 const origin = alias(locations, 'origin')
@@ -92,28 +94,7 @@ export async function trackShipment(
    *     cannot be steered into reading a row it was not asked for.
    */
   return withActor(systemActor(), async (tx) => {
-    const [row] = await tx
-      .select({
-        id: jobs.id,
-        reference: jobs.reference,
-        status: jobs.status,
-        mode: jobs.mode,
-        etd: jobs.etd,
-        eta: jobs.eta,
-        ata: jobs.ata,
-        vesselName: jobs.vesselName,
-        voyageNumber: jobs.voyageNumber,
-        flightNumber: jobs.flightNumber,
-        customerName: customers.legalNameEn,
-        originName: origin.nameEn,
-        originNameAr: origin.nameAr,
-        destinationName: destination.nameEn,
-        destinationNameAr: destination.nameAr,
-      })
-      .from(jobs)
-      .leftJoin(customers, eq(customers.id, jobs.customerId))
-      .leftJoin(origin, eq(origin.id, jobs.originId))
-      .leftJoin(destination, eq(destination.id, jobs.destinationId))
+    const [row] = await jobRow(tx)
       .where(
         and(
           eq(sql`upper(${jobs.reference})`, ref),
@@ -134,117 +115,189 @@ export async function trackShipment(
       .limit(1)
 
     if (!row) return undefined
-
-    const [milestoneRows, containerRows, documentRows, noticeRows] = await inSeries([
-      () =>
-        tx
-          .select({
-            code: jobMilestones.code,
-            nameEn: jobMilestones.nameEn,
-            nameAr: jobMilestones.nameAr,
-            plannedAt: jobMilestones.plannedAt,
-            revisedAt: jobMilestones.revisedAt,
-            actualAt: jobMilestones.actualAt,
-          })
-          .from(jobMilestones)
-          // The flag is honoured here, not in the component (FR-DC-03).
-          .where(and(eq(jobMilestones.jobId, row.id), eq(jobMilestones.customerVisible, true)))
-          .orderBy(asc(jobMilestones.seq)),
-      () =>
-        tx
-          .select({
-            containerNo: equipment.containerNo,
-            type: equipment.containerType,
-            dischargedAt: equipment.dischargedAt,
-            gateOutAt: equipment.gateOutAt,
-            emptyReturnedAt: equipment.emptyReturnedAt,
-          })
-          .from(equipment)
-          .where(eq(equipment.jobId, row.id)),
-      () =>
-        tx
-          .select({
-            id: documents.id,
-            version: documents.version,
-            releasedAt: documents.releasedAt,
-            code: documentTypes.code,
-            nameEn: documentTypes.nameEn,
-            nameAr: documentTypes.nameAr,
-            byteSize: assets.byteSize,
-          })
-          .from(documents)
-          .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
-          .innerJoin(assets, eq(assets.id, documents.assetId))
-          .where(
-            and(
-              eq(documents.jobId, row.id),
-              // Released, current, and of a type marked customer-visible.
-              sql`${documents.releasedAt} is not null`,
-              isNull(documents.supersededById),
-              eq(documentTypes.isCustomerVisible, true),
-            ),
-          ),
-      () =>
-        tx
-          .select({
-            code: exceptionCodes.code,
-            nameEn: exceptionCodes.nameEn,
-            nameAr: exceptionCodes.nameAr,
-          })
-          .from(exceptions)
-          .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
-          .where(
-            and(
-              eq(exceptions.jobId, row.id),
-              isNull(exceptions.closedAt),
-              eq(exceptions.customerVisible, true),
-            ),
-          ),
-    ])
-
-    return {
-      reference: row.reference,
-      status: row.status,
-      mode: row.mode as Mode,
-      customerName: row.customerName ?? '',
-      originName: row.originName ?? '—',
-      originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
-      destinationName: row.destinationName ?? '—',
-      destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
-      vesselOrFlight:
-        row.flightNumber ??
-        (row.vesselName
-          ? `${row.vesselName}${row.voyageNumber ? ` ${row.voyageNumber}` : ''}`
-          : null),
-      etd: row.etd,
-      eta: row.eta,
-      ata: row.ata,
-      containers: containerRows.map((c) => ({
-        containerNo: c.containerNo ?? '—',
-        type: c.type ?? '—',
-        sealNo: null,
-        dischargedAt: c.dischargedAt,
-        gateOutAt: c.gateOutAt,
-        emptyReturnedAt: c.emptyReturnedAt,
-      })),
-      milestones: milestoneRows.map((m) => ({
-        code: m.code,
-        nameEn: m.nameEn,
-        nameAr: m.nameAr,
-        plannedAt: m.plannedAt,
-        revisedAt: m.revisedAt,
-        actualAt: m.actualAt,
-      })),
-      documents: documentRows.map((d) => ({
-        id: d.id,
-        code: d.code,
-        nameEn: d.nameEn,
-        nameAr: d.nameAr,
-        version: d.version,
-        releasedAt: d.releasedAt,
-        sizeKb: Math.round(d.byteSize / 1024),
-      })),
-      notices: noticeRows,
-    }
+    return project(tx, row)
   })
+}
+
+/**
+ * One of a signed-in customer's own shipments, by id — QA P2-12.
+ *
+ * The portal linked each card to the public `/track` page with the customer
+ * reference as the verifier, which had two faults: a job with no customer
+ * reference got no link at all, and a customer clicking through their own
+ * list spent the per-address lookup budget public tracking needs against
+ * enumeration, until their own portal was throttled. A signed-in contact has
+ * no need of a second identifier — the session is the proof — so this reads
+ * by id under *their* actor, and the `customer_contact` arm of the jobs policy
+ * is what limits it to their company's shipments. Same projection as public
+ * tracking, so the two pages can never disagree about what a customer sees.
+ */
+export async function trackOwnShipment(
+  actor: Actor,
+  jobId: string,
+): Promise<TrackingResult | undefined> {
+  if (usePilotFixtures()) {
+    // The pilot portal persona's own list, and the public lookup under one of
+    // the identifiers the fixture job carries.
+    if (!pilotPortalShipments().some((shipment) => shipment.id === jobId)) return undefined
+    const job = pilotJob(jobId)
+    const verifier =
+      job?.customerReference ??
+      job?.bookingNumber ??
+      job?.masterBillNumber ??
+      job?.houseBillNumber ??
+      job?.containers[0]?.containerNo
+    return job && verifier ? pilotTracking(job.reference, verifier) : undefined
+  }
+
+  return withActor(actor, async (tx) => {
+    const [row] = await jobRow(tx)
+      .where(and(eq(jobs.id, jobId), sql`${jobs.status} <> 'draft'`))
+      .limit(1)
+    if (!row) return undefined
+    return project(tx, row)
+  })
+}
+
+/** The job columns both lookups project — never a buy rate, a margin or a note. */
+function jobRow(tx: Tx) {
+  return tx
+    .select({
+      id: jobs.id,
+      reference: jobs.reference,
+      status: jobs.status,
+      mode: jobs.mode,
+      etd: jobs.etd,
+      eta: jobs.eta,
+      ata: jobs.ata,
+      vesselName: jobs.vesselName,
+      voyageNumber: jobs.voyageNumber,
+      flightNumber: jobs.flightNumber,
+      customerName: customers.legalNameEn,
+      originName: origin.nameEn,
+      originNameAr: origin.nameAr,
+      destinationName: destination.nameEn,
+      destinationNameAr: destination.nameAr,
+    })
+    .from(jobs)
+    .leftJoin(customers, eq(customers.id, jobs.customerId))
+    .leftJoin(origin, eq(origin.id, jobs.originId))
+    .leftJoin(destination, eq(destination.id, jobs.destinationId))
+}
+
+type JobRow = Awaited<ReturnType<ReturnType<typeof jobRow>['limit']>>[number]
+
+/** Everything around the job a customer may see: released, current, customer-visible. */
+async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
+  const [milestoneRows, containerRows, documentRows, noticeRows] = await inSeries([
+    () =>
+      tx
+        .select({
+          code: jobMilestones.code,
+          nameEn: jobMilestones.nameEn,
+          nameAr: jobMilestones.nameAr,
+          plannedAt: jobMilestones.plannedAt,
+          revisedAt: jobMilestones.revisedAt,
+          actualAt: jobMilestones.actualAt,
+        })
+        .from(jobMilestones)
+        // The flag is honoured here, not in the component (FR-DC-03).
+        .where(and(eq(jobMilestones.jobId, row.id), eq(jobMilestones.customerVisible, true)))
+        .orderBy(asc(jobMilestones.seq)),
+    () =>
+      tx
+        .select({
+          containerNo: equipment.containerNo,
+          type: equipment.containerType,
+          dischargedAt: equipment.dischargedAt,
+          gateOutAt: equipment.gateOutAt,
+          emptyReturnedAt: equipment.emptyReturnedAt,
+        })
+        .from(equipment)
+        .where(eq(equipment.jobId, row.id)),
+    () =>
+      tx
+        .select({
+          id: documents.id,
+          version: documents.version,
+          releasedAt: documents.releasedAt,
+          code: documentTypes.code,
+          nameEn: documentTypes.nameEn,
+          nameAr: documentTypes.nameAr,
+          byteSize: assets.byteSize,
+        })
+        .from(documents)
+        .innerJoin(documentTypes, eq(documentTypes.id, documents.documentTypeId))
+        .innerJoin(assets, eq(assets.id, documents.assetId))
+        .where(
+          and(
+            eq(documents.jobId, row.id),
+            // Released, current, and of a type marked customer-visible.
+            sql`${documents.releasedAt} is not null`,
+            isNull(documents.supersededById),
+            eq(documentTypes.isCustomerVisible, true),
+          ),
+        ),
+    () =>
+      tx
+        .select({
+          code: exceptionCodes.code,
+          nameEn: exceptionCodes.nameEn,
+          nameAr: exceptionCodes.nameAr,
+        })
+        .from(exceptions)
+        .innerJoin(exceptionCodes, eq(exceptionCodes.id, exceptions.exceptionCodeId))
+        .where(
+          and(
+            eq(exceptions.jobId, row.id),
+            isNull(exceptions.closedAt),
+            eq(exceptions.customerVisible, true),
+          ),
+        ),
+  ])
+
+  return {
+    reference: row.reference,
+    status: row.status,
+    mode: row.mode as Mode,
+    customerName: row.customerName ?? '',
+    originName: row.originName ?? '—',
+    originNameAr: pickName('ar', row.originName, row.originNameAr) ?? '—',
+    destinationName: row.destinationName ?? '—',
+    destinationNameAr: pickName('ar', row.destinationName, row.destinationNameAr) ?? '—',
+    vesselOrFlight:
+      row.flightNumber ??
+      (row.vesselName
+        ? `${row.vesselName}${row.voyageNumber ? ` ${row.voyageNumber}` : ''}`
+        : null),
+    etd: row.etd,
+    eta: row.eta,
+    ata: row.ata,
+    containers: containerRows.map((c) => ({
+      containerNo: c.containerNo ?? '—',
+      type: c.type ?? '—',
+      sealNo: null,
+      dischargedAt: c.dischargedAt,
+      gateOutAt: c.gateOutAt,
+      emptyReturnedAt: c.emptyReturnedAt,
+    })),
+    milestones: milestoneRows.map((m) => ({
+      code: m.code,
+      nameEn: m.nameEn,
+      nameAr: m.nameAr,
+      plannedAt: m.plannedAt,
+      revisedAt: m.revisedAt,
+      actualAt: m.actualAt,
+    })),
+    documents: documentRows.map((d) => ({
+      id: d.id,
+      code: d.code,
+      nameEn: d.nameEn,
+      nameAr: d.nameAr,
+      version: d.version,
+      releasedAt: d.releasedAt,
+      sizeKb: Math.round(d.byteSize / 1024),
+    })),
+    notices: noticeRows,
+  }
 }

@@ -156,6 +156,20 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       />
 
       {/*
+        Where the shipment went (QA P3). "Open shipment" closed its dialog and
+        the button vanished — the quote can be booked once — and nothing on
+        the page said it had worked or where the job was.
+      */}
+      {quote.bookedJob ? (
+        <Notice tone="positive" icon="check" className="mb-4">
+          {t('bookedAs')}{' '}
+          <Link href={`/jobs/${quote.bookedJob.id}`} className="ref font-medium underline">
+            {quote.bookedJob.reference}
+          </Link>
+        </Notice>
+      ) : null}
+
+      {/*
         An expired quotation still shows its numbers — someone is looking at it
         precisely because a customer came back late — but it says so first.
       */}

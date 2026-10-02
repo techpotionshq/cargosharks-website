@@ -113,7 +113,8 @@
     "themeSystem": "Match the device",
     "more": "More",
     "loading": "Loading…",
-    "home": "Home"
+    "home": "Home",
+    "forbiddenAction": "Your role does not allow this here. If you need it, ask an administrator to grant it in this branch."
   },
   "search": {
     "title": "Search",
@@ -294,7 +295,9 @@
     "priceIt": "Price it",
     "pricing": "Pricing…",
     "awaitingTitle": "Enquiry",
-    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in."
+    "awaitingSubtitle": "Not priced yet — the quotation appears here once a rate is in.",
+    "subtitleManual": "Priced by hand, buy and sell side by side.",
+    "subtitleMixed": "Priced from the rate card and by hand, buy and sell side by side."
   },
   "job": {
     "title": "Operations board",
@@ -451,7 +454,8 @@
     "viewShipment": "View shipment",
     "progress": "{done} of {total} steps",
     "documentCount": "{count, plural, one {# document} other {# documents}}",
-    "etaPassed": "Past its ETA"
+    "etaPassed": "Past its ETA",
+    "backToShipments": "All shipments"
   },
   "agent": {
     "title": "Assigned shipments",
@@ -1096,7 +1100,9 @@
     "fxEffective": "From",
     "fxManual": "Entered by hand",
     "fxSource": "Where from",
-    "calendarsGlance": "Calendars at a glance"
+    "calendarsGlance": "Calendars at a glance",
+    "editCatalogues": "Edit the catalogues",
+    "editCataloguesHint": "Correct a name, change a mapping, or retire a row nobody uses. Nothing is deleted: a retired row stays on the records that used it and can be switched back on."
   },
   "audit": {
     "eyebrow": "Administration",
@@ -1323,7 +1329,8 @@
       "per_container": "Per container",
       "per_day": "Per day",
       "percent": "Percent"
-    }
+    },
+    "revisionNote": "The current version's lines are carried onto the revision, where you can change them. Once a quotation has lines, its sell price is their total."
   },
   "invoiceForm": {
     "open": "New invoice",
@@ -1479,7 +1486,9 @@
     "restore": "Restore",
     "restoreTitle": "Restore {name}",
     "restoreDescription": "Gives their access back, with the same branches and roles they had.",
-    "restoreNote": "They can sign in again with the assignments already on their account."
+    "restoreNote": "They can sign in again with the assignments already on their account.",
+    "noAccess": "No access",
+    "rolesPerBranchHint": "The role this person holds in each branch you administer. Branches you do not administer are left as they are."
   },
   "branchForm": {
     "open": "Add branch",
@@ -1628,7 +1637,10 @@
     "cancelReasonHint": "Kept on the record, and it is what the “why are we not winning work” report reads.",
     "respondDone": "Reply recorded. The clock has stopped.",
     "assignDone": "Enquiry assigned.",
-    "closeDone": "Enquiry closed."
+    "closeDone": "Enquiry closed.",
+    "reopenRating": "Reopen for revision",
+    "reopenRatingTitle": "Send this back to rating",
+    "reopenRatingDescription": "The customer asked for a different price. The enquiry goes back to rating so a revised quotation can be prepared."
   },
   "quoteDetail": {
     "version": "v{version}",
@@ -1703,6 +1715,7 @@
       "accepted": "Quotation marked accepted.",
       "rejected": "Quotation marked rejected."
     },
+    "bookedAs": "Booked as shipment",
     "reviewTitle": "Check this draft before sending it",
     "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
     "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it."
@@ -1811,7 +1824,9 @@
     "credited": "Credited",
     "creditNotes": "Credit notes",
     "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
-    "creditsInvoice": "Credits invoice"
+    "creditsInvoice": "Credits invoice",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
@@ -3486,7 +3501,9 @@
     "oldest": "Oldest line",
     "bill": "Draft invoice",
     "mixedCurrency": "Mixed currencies — bill separately",
-    "showAll": "Show all {count}"
+    "showAll": "Show all {count}",
+    "billed": "Draft invoice created.",
+    "openDraft": "Open the draft"
   },
   "grouping": {
     "title": "Could share a container",
@@ -3722,7 +3739,8 @@
     "goodsValueNumber": "The goods value must be a number",
     "checkFigures": "Check the figures.",
     "noCargoToClassify": "This shipment has no cargo lines yet, so there is nothing to classify. Add them under Cargo.",
-    "estimateUnmatched": "Estimated {duty} {currency}, but {count, plural, one {# line had} other {# lines had}} no tariff row. Add the HS codes, or add the rates under Reference data → Tariff."
+    "estimateUnmatched": "Estimated {duty} {currency}, but {count, plural, one {# line had} other {# lines had}} no tariff row. Add the HS codes, or add the rates under Reference data → Tariff.",
+    "containerNeedsNumberOrType": "Enter the container number, or at least its type if the number is not known yet."
   },
   "payablesValidation": {
     "enterDate": "Enter a date",
@@ -3816,6 +3834,8 @@
     "paymentCurrencyMismatch": "The payment is in {paid} and the bill in {billed}. Allocate it to a bill in the same currency.",
     "billNotDisputable": "Only a bill that has not been paid, netted or exported can be disputed. Raise the difference with the supplier as a credit or a new bill.",
     "billNoExchangeRate": "The bill is in {currency} and there is no exchange rate to {base} on file, so it was not written. Capture it by hand with the agreed rate — the scan is on file.",
+    "billHasNoLines": "This bill has no lines, so there is nothing to approve. Add what the supplier charged first.",
+    "noRateOnFilePayment": "No {from} to {to} rate is on file. Enter the rate the payment was made at.",
     "billAlreadyCaptured": "Bill {reference} from this supplier is already captured, so nothing new was written.",
     "openCapturedBill": "Open the bill"
   },
@@ -3874,7 +3894,8 @@
     "lostNotYet": "A new enquiry cannot be closed as lost. Assign it first, or cancel it.",
     "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
     "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
-    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25."
+    "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
+    "notPermitted": "Your role does not allow this in this enquiry's branch."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
@@ -4203,6 +4224,26 @@
     "rateHint": "For example, 0.307 for USD into KWD. Up to eight decimals.",
     "effectiveOn": "Effective from",
     "effectiveOnHint": "It applies from this day until a newer rate for the pair is entered."
+  },
+  "settlementActions": {
+    "agree": "Agree statement",
+    "agreeTitle": "Agree this statement with the agent",
+    "agreeDescription": "Freezes the figures and sets off both sides in the ledgers.",
+    "agreeNote": "Agreeing claims every document on this statement and settles the set-off amount against them. Do it once the agent has confirmed the figures; a later change means voiding and drafting again.",
+    "agreeDone": "Statement agreed.",
+    "close": "Close settlement",
+    "closeTitle": "Close this settlement",
+    "closeDescription": "Marks the statement finished. It moves no money.",
+    "closeTheyOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's invoices: record their payment as a receipt on those invoices, then close this.",
+    "closeWeOwe": "The set-off was applied when the statement was agreed. The residual of {amount} is still open on the agent's bills: record our payment to them on their supplier page, then close this.",
+    "closeSquare": "The two sides cancelled exactly, so nothing is left to pay either way.",
+    "closeDone": "Settlement closed.",
+    "void": "Void settlement",
+    "voidTitle": "Void this settlement",
+    "voidDescription": "Releases the documents it claimed and gives back what it set off.",
+    "voidReason": "Reason",
+    "voidReasonHint": "Kept on the settlement. The agent disputed a line, or the period was wrong.",
+    "voidDone": "Settlement voided."
   },
   "intakeAgent": {
     "title": "Intake agent",

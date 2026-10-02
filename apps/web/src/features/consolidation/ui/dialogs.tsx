@@ -10,8 +10,9 @@
  */
 
 import { getLocale, getTranslations } from 'next-intl/server'
+import { amountInput } from '@/lib/format'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { addConsolCharge, saveConsolidation } from '../form-actions'
@@ -81,8 +82,8 @@ export async function ConsolidationDialog({
           label: t('branch'),
           span: 6,
           required: true,
-          options: options.branches,
-          defaultValue: defaults?.branchId ?? [...session.branchRoles.keys()][0],
+          options: permittedBranches(session, 'consol.write', options.branches),
+          defaultValue: defaults?.branchId ?? branchesWhere(session, 'consol.write')[0],
         },
         {
           kind: 'select',
@@ -312,7 +313,7 @@ export async function ConsolChargeDialog({
       span: 4,
       required: true,
       mono: true,
-      defaultValue: defaults?.amount,
+      defaultValue: amountInput(defaults?.amount, defaults?.currency),
     },
     {
       kind: 'select',

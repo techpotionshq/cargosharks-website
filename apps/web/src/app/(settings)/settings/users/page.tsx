@@ -187,7 +187,33 @@ export default async function UsersPage() {
                       {person.isActive ? tc('active') : tc('inactive')}
                     </Badge>
                   </TD>
-                  <TD align="end">
+                  <TD align="end" className="whitespace-nowrap">
+                    {/*
+                      Edit: name, language, whether they can sign in, and the
+                      role in each branch this administrator administers (QA
+                      P1-3). Not for the system principal, which nobody signs
+                      in as and whose grants the workers depend on.
+                    */}
+                    {person.type === 'system' ? null : (
+                      <UserDialog
+                        iconOnly
+                        variant="ghost"
+                        defaults={{
+                          id: person.id,
+                          nameEn: person.nameEn,
+                          nameAr: person.nameAr,
+                          email: person.email,
+                          phone: person.phone,
+                          locale: person.locale,
+                          isActive: person.isActive,
+                          grants: person.assignments.flatMap((a) =>
+                            a.branchId && a.roleId
+                              ? [{ branchId: a.branchId, roleId: a.roleId }]
+                              : [],
+                          ),
+                        }}
+                      />
+                    )}
                     <SuspendUserDialog
                       principalId={person.id}
                       name={name}

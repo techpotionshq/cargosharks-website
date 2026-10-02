@@ -116,7 +116,12 @@ export async function UnbilledPanel({ showAll = false }: { readonly showAll?: bo
                 <TD priority="low">{formatDate(row.oldestAt, lang, timeZone)}</TD>
                 <TD>
                   {billable && !mixed ? (
-                    <BillJobButton jobId={row.jobId} label={t('bill')} />
+                    <BillJobButton
+                      jobId={row.jobId}
+                      label={t('bill')}
+                      done={t('billed')}
+                      open={t('openDraft')}
+                    />
                   ) : mixed ? (
                     <span className="text-caption text-ink-subtle">{t('mixedCurrency')}</span>
                   ) : null}

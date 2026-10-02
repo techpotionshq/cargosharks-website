@@ -329,7 +329,9 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {job.customerReference ?? '—'}
               </Field>
               <Field label={t('incoterm')}>{job.incoterm ?? '—'}</Field>
-              <Field label={t('commodity')}>{job.commodity}</Field>
+              <Field label={t('commodity')}>
+                {locale === 'ar' && job.commodityAr ? job.commodityAr : job.commodity}
+              </Field>
               <Field label={t('weight')}>
                 {/* <bdi>: "30,992 kg" is one Latin unit; in Arabic, unisolated, the
                     unit drifted to the start of the figure. */}

@@ -56,8 +56,10 @@ import {
   type ActionState,
   type Translate,
 } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
 import { dayIn, todayIn } from '@/lib/time'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -129,7 +131,10 @@ const raiseSchema = (tv: Translate) =>
       .transform((v) => (v ? v.toUpperCase() : null)),
   })
 
-export async function raiseException(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const raiseException = refuseForbidden(async function raiseException(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('operationsValidation')
@@ -208,7 +213,7 @@ export async function raiseException(_previous: ActionState, form: FormData): Pr
   revalidatePath(`/jobs/${data.jobId}`)
   revalidatePath('/dashboard')
   return succeed(data.jobId)
-}
+})
 
 /**
  * Close one out.
@@ -218,7 +223,10 @@ export async function raiseException(_previous: ActionState, form: FormData): Pr
  * done*, and an exception closed with an empty resolution converts a record
  * into a deleted row that still takes up space.
  */
-export async function closeException(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const closeException = refuseForbidden(async function closeException(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('operationsValidation')
@@ -240,7 +248,7 @@ export async function closeException(_previous: ActionState, form: FormData): Pr
   revalidatePath('/exceptions')
   revalidatePath('/dashboard')
   return succeed(exceptionId)
-}
+})
 
 // --- customs ---------------------------------------------------------------
 
@@ -300,7 +308,7 @@ const customsSchema = (tv: Translate) =>
  * `released → held` is refused here even though the select would offer it,
  * because the select is generated from the enum and the enum is not the rule.
  */
-export async function saveCustomsStage(
+export const saveCustomsStage = refuseForbidden(async function saveCustomsStage(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -405,7 +413,7 @@ export async function saveCustomsStage(
   revalidatePath('/customs')
   revalidatePath(`/jobs/${data.jobId}`)
   return succeed(data.status)
-}
+})
 
 // --- milestones ------------------------------------------------------------
 
@@ -416,7 +424,7 @@ export async function saveCustomsStage(
  * a one-field form rather than a dialog: the time defaults to now, and the
  * common case is one click.
  */
-export async function completeMilestone(
+export const completeMilestone = refuseForbidden(async function completeMilestone(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -509,45 +517,60 @@ export async function completeMilestone(
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/dashboard')
   return succeed(milestoneId)
-}
+})
 
 // --- equipment -------------------------------------------------------------
 
 const containerSchema = (tv: Translate) =>
-  z.object({
-    jobId: z.uuid(),
-    /**
-     * ISO 6346: four letters then seven digits, the last of which is a check
-     * digit. Validated for *shape* only — the check digit is not verified here
-     * because a container number typed off a photograph of a rusty door is
-     * routinely one character out, and refusing it would mean the operator
-     * cannot record the box that is physically in front of them.
-     */
-    containerNo: z
-      .string()
-      .trim()
-      .optional()
-      .transform((v) => (v ? v.toUpperCase().replace(/\s+/g, '') : null))
-      .refine((v) => v === null || /^[A-Z]{4}\d{6,7}$/.test(v), {
-        message: tv('containerNoFormat'),
-      }),
-    containerType: z
-      .string()
-      .trim()
-      .max(20)
-      .optional()
-      .transform((v) => v || null),
-    sealNo: z
-      .string()
-      .trim()
-      .max(40)
-      .optional()
-      .transform((v) => v || null),
-    grossWeightKg: optionalAmount(tv('numbersOnly')),
-    tareWeightKg: optionalAmount(tv('numbersOnly')),
-  })
+  z
+    .object({
+      jobId: z.uuid(),
+      /**
+       * ISO 6346: four letters then seven digits, the last of which is a check
+       * digit. Validated for *shape* only — the check digit is not verified here
+       * because a container number typed off a photograph of a rusty door is
+       * routinely one character out, and refusing it would mean the operator
+       * cannot record the box that is physically in front of them.
+       */
+      containerNo: z
+        .string()
+        .trim()
+        .optional()
+        .transform((v) => (v ? v.toUpperCase().replace(/\s+/g, '') : null))
+        .refine((v) => v === null || /^[A-Z]{4}\d{6,7}$/.test(v), {
+          message: tv('containerNoFormat'),
+        }),
+      containerType: z
+        .string()
+        .trim()
+        .max(20)
+        .optional()
+        .transform((v) => v || null),
+      sealNo: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .transform((v) => v || null),
+      grossWeightKg: optionalAmount(tv('numbersOnly')),
+      tareWeightKg: optionalAmount(tv('numbersOnly')),
+    })
+    /*
+      Something that identifies the box (QA P3). Every field was optional, so
+      "Add a container" with nothing typed saved a blank equipment row: a box
+      the job counts, the free-time clock can attach to, and nobody can name.
+      A number, or at least a type for a box booked before its number is
+      known.
+    */
+    .refine((v) => v.containerNo !== null || v.containerType !== null, {
+      message: tv('containerNeedsNumberOrType'),
+      path: ['containerNo'],
+    })
 
-export async function addContainer(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const addContainer = refuseForbidden(async function addContainer(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'job.update')
   const tv = await getTranslations('operationsValidation')
@@ -569,7 +592,7 @@ export async function addContainer(_previous: ActionState, form: FormData): Prom
 
   revalidatePath(`/jobs/${data.jobId}`)
   return succeed(data.containerNo ?? 'container')
-}
+})
 
 // --- shipment status -------------------------------------------------------
 
@@ -588,7 +611,10 @@ export async function addContainer(_previous: ActionState, form: FormData): Prom
  * a closed or cancelled shipment does not reopen (§5.5). Everything else stays
  * as free as the enum, which is what the coordinator's screen needs.
  */
-export async function setJobStatus(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setJobStatus = refuseForbidden(async function setJobStatus(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   // Bound before the permission check only because the first refusal comes
   // before it: which key applies depends on the status that was sent.
@@ -669,7 +695,7 @@ export async function setJobStatus(_previous: ActionState, form: FormData): Prom
   revalidatePath(`/jobs/${jobId}`)
   revalidatePath('/dashboard')
   return succeed(status)
-}
+})
 
 // --- documents ---------------------------------------------------------------
 
@@ -771,6 +797,7 @@ const clockSchema = (tv: Translate) =>
     perDiem: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('amountPerDay')),
     currency: z
       .string()
@@ -796,7 +823,7 @@ const clockSchema = (tv: Translate) =>
  * they were wrong (§5.5). The worker skips clocks with an end date, so this is
  * the whole of "stop it".
  */
-export async function saveFreeTimeClock(
+export const saveFreeTimeClock = refuseForbidden(async function saveFreeTimeClock(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -874,7 +901,7 @@ export async function saveFreeTimeClock(
   revalidatePath('/jobs')
   revalidatePath('/dashboard')
   return succeed(data.kind)
-}
+})
 
 /**
  * The terms this branch grants, for the form's defaults — FR-AD-03.

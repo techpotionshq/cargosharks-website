@@ -51,6 +51,7 @@ const {
 } = await import('@/lib/testing/fixtures')
 
 const { saveJob, addJobPartner } = await import('./form-actions')
+const { getQuoteDetail } = await import('@/features/ledger/queries')
 
 const session = {
   actor: bothBranchesActor,
@@ -395,6 +396,10 @@ describe.skipIf(!enabled)('booking a shipment', () => {
       const state = await saveJob({}, booking({ quoteId }))
       expect(state.errors).toBeUndefined()
       expect(await enquiryStatus(enquiryId)).toBe('won')
+
+      // QA P3: the quotation page says where the shipment went.
+      const detail = await getQuoteDetail(bothBranchesActor, quoteId)
+      expect(detail?.bookedJob?.reference).toBe(String(state.ok).replace(/:\d+$/, ''))
     })
 
     it('refuses a quotation that was never accepted', async () => {

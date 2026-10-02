@@ -54,6 +54,7 @@ import {
   type Translate,
 } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -82,12 +83,56 @@ const userSchema = (tv: Translate) =>
     email: z.email(tv('validEmail')).transform((v) => v.toLowerCase()),
     phone: optional(40),
     locale: z.enum(['en', 'ar']),
-    roleId: z.uuid(tv('chooseRole')),
-    branchIds: z.array(z.uuid()).min(1, tv('atLeastOneBranch')),
+    /*
+      One branch-and-role pair per grant. An invitation submits one role and
+      the branches ticked; an edit submits a role per branch (`role:<id>`).
+      Both arrive here as the same list, so the rules below are written once.
+    */
+    grants: z
+      .array(
+        z.object({ branchId: z.uuid(tv('atLeastOneBranch')), roleId: z.uuid(tv('chooseRole')) }),
+      )
+      .min(1, tv('atLeastOneBranch')),
     isActive: z.coerce.boolean(),
   })
 
-export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
+/**
+ * The grants a user form asks for, whichever shape it was.
+ *
+ * The edit form names a select per branch `role:<branchId>`, blank for no
+ * access. The invitation names one `roleId` and ticks `branchIds`. A blank
+ * role on the invitation still produces its pairs, so the schema reports
+ * "choose a role" against the field rather than "choose a branch".
+ */
+function readGrants(form: FormData): { branchId: string; roleId: string }[] {
+  const perBranch = [...form.keys()].filter((key) => key.startsWith('role:'))
+  if (perBranch.length) {
+    return [...new Set(perBranch)]
+      .map((key) => ({ branchId: key.slice('role:'.length), roleId: read(form, key) ?? '' }))
+      .filter((grant) => grant.roleId !== '')
+  }
+  const roleId = read(form, 'roleId') ?? ''
+  return readAll(form, 'branchIds').map((branchId) => ({ branchId, roleId }))
+}
+
+/** The schema's errors, moved onto the controls that draw them. */
+function userFieldErrors(error: Parameters<typeof fieldErrors>[0]): Record<string, string> {
+  const errors = fieldErrors(error)
+  const grant = error.issues.find((issue) => issue.path[0] === 'grants')
+  if (grant) {
+    delete errors.grants
+    // A role missing on a pair is the role picker's to say; anything else
+    // about the list is "which branches".
+    if (grant.path[2] === 'roleId') errors.roleId = grant.message
+    else errors.branchIds = grant.message
+  }
+  return errors
+}
+
+export const saveUser = refuseForbidden(async function saveUser(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
   const tv = await getTranslations('adminValidation')
@@ -99,11 +144,10 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
     email: read(form, 'email') ?? '',
     phone: read(form, 'phone'),
     locale: read(form, 'locale') ?? 'en',
-    roleId: read(form, 'roleId'),
-    branchIds: readAll(form, 'branchIds'),
+    grants: readGrants(form),
     isActive: form.get('isActive') !== null,
   })
-  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+  if (!parsed.success) return fail(userFieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
 
@@ -119,8 +163,14 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
    * this is ever skipped.
    */
   const administered = new Set(branchesWhere(session, 'admin.users.write'))
-  if (data.branchIds.some((id) => !administered.has(id))) {
+  if (data.grants.some((grant) => !administered.has(grant.branchId))) {
     return fail({ branchIds: tv('grantOwnBranchesOnly') }, echo(form))
+  }
+
+  // Suspending yourself from the edit form is the same lock-out as from the
+  // suspend button, and is refused for the same reason.
+  if (data.principalId === session.principal.id && !data.isActive) {
+    return failWith(tv('cannotSuspendSelf'), echo(form))
   }
 
   /*
@@ -214,13 +264,13 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
           )
       }
 
-      for (const branchId of data.branchIds) {
+      for (const { branchId, roleId } of data.grants) {
         await tx
           .insert(principalBranchRoles)
-          .values({ principalId, branchId, roleId: data.roleId, isActive: true })
+          .values({ principalId, branchId, roleId, isActive: true })
           .onConflictDoUpdate({
             target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
-            set: { roleId: data.roleId, isActive: true, updatedAt: new Date() },
+            set: { roleId, isActive: true, updatedAt: new Date() },
           })
       }
     })
@@ -244,7 +294,7 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
 
   revalidatePath('/settings/users')
   return succeed(data.email)
-}
+})
 
 /**
  * The login behind a new principal — A7.
@@ -350,7 +400,10 @@ async function personChanged(
  * `admin.users.write` in every branch they hold a role in (A2). An
  * administrator of one branch can still take away the grant in theirs.
  */
-export async function setUserActive(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const setUserActive = refuseForbidden(async function setUserActive(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   assertCan(session, 'admin.users.write')
   const tv = await getTranslations('adminValidation')
@@ -379,7 +432,7 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
 
   revalidatePath('/settings/users')
   return succeed(principalId)
-}
+})
 
 /**
  * Send a person the link that sets their password — A7.
@@ -389,7 +442,7 @@ export async function setUserActive(_previous: ActionState, form: FormData): Pro
  * invited before invitations created a login at all: those get their
  * `auth_user` here. The message says what actually happened to the mail.
  */
-export async function sendUserSignInLink(
+export const sendUserSignInLink = refuseForbidden(async function sendUserSignInLink(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -448,7 +501,7 @@ export async function sendUserSignInLink(
   }
 
   return signInLinkState(tv, await sendSignInLink(target.email), target.email)
-}
+})
 
 /** The sentence for what became of a link, as an `ActionState`. */
 function signInLinkState(tv: Translate, outcome: SignInLinkOutcome, email: string): ActionState {
@@ -565,7 +618,10 @@ const branchSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function saveBranch(_previous: ActionState, form: FormData): Promise<ActionState> {
+export const saveBranch = refuseForbidden(async function saveBranch(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
   const session = await requireSession()
   /*
     Not `admin.reference.write`, which is what this used to be.
@@ -705,7 +761,7 @@ export async function saveBranch(_previous: ActionState, form: FormData): Promis
 
   revalidatePath('/settings/branches')
   return succeed(data.code)
-}
+})
 
 // --- reference tables ------------------------------------------------------
 
@@ -750,7 +806,7 @@ const referenceSchema = (tv: Translate) =>
     isActive: z.coerce.boolean(),
   })
 
-export async function saveReferenceRecord(
+export const saveReferenceRecord = refuseForbidden(async function saveReferenceRecord(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -831,7 +887,7 @@ export async function saveReferenceRecord(
 
   revalidatePath('/reference')
   return succeed(data.code)
-}
+})
 
 /** The roles a user can be given, for the invite form's select. */
 export async function listAssignableRoles(): Promise<{ id: string; key: string; name: string }[]> {
@@ -909,7 +965,7 @@ const templateSchema = (tv: Translate) =>
  * updates that branch's own copy and leaves the default alone, which is what
  * makes "Dubai says it differently" a row rather than a release.
  */
-export async function saveNotificationTemplate(
+export const saveNotificationTemplate = refuseForbidden(async function saveNotificationTemplate(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -999,7 +1055,7 @@ export async function saveNotificationTemplate(
 
   revalidatePath('/settings/notifications')
   return succeed(`${data.eventKey}:${data.locale}`)
-}
+})
 
 // --- which notifications send at all ---------------------------------------
 

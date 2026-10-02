@@ -41,7 +41,9 @@ import { branches, customsStages, dutyRates, jobCargo, jobs, withActor } from '@
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 import { localeParse } from '@/lib/validate'
+import { refuseForbidden } from '@/lib/refuse-forbidden'
 
 function read(form: FormData, key: string): string | undefined {
   const value = form.get(key)
@@ -57,6 +59,7 @@ const schema = (tv: Translate) =>
     goodsValue: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('goodsValueNumber')),
     /*
       The same shape as the goods value. `^\d*\.?\d*$` let a lone "." through,
@@ -65,12 +68,14 @@ const schema = (tv: Translate) =>
     freightValue: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
       .optional()
       .transform((v) => v || '0'),
     insuranceValue: z
       .string()
       .trim()
+      .overwrite(normaliseAmount)
       .regex(/^\d+(\.\d{1,6})?$/, tv('numbersOnly'))
       .optional()
       .transform((v) => v || '0'),
@@ -85,7 +90,7 @@ const schema = (tv: Translate) =>
     useGeneralRate: z.coerce.boolean().optional(),
   })
 
-export async function estimateJobDuty(
+export const estimateJobDuty = refuseForbidden(async function estimateJobDuty(
   _previous: ActionState,
   form: FormData,
 ): Promise<ActionState> {
@@ -293,4 +298,4 @@ export async function estimateJobDuty(
   }
 
   return succeed(outcome.duty)
-}
+})

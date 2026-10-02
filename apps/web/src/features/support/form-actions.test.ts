@@ -281,7 +281,9 @@ describe.skipIf(!enabled)('granting support access', () => {
     it('refuses a caller who may not administer users', async () => {
       harness.session = sessionWith([])
       try {
-        await expect(grantSupportAccess({}, grantForm())).rejects.toThrow('admin.users.write')
+        await expect(grantSupportAccess({}, grantForm())).resolves.toMatchObject({
+          message: expect.stringContaining('forbiddenAction'),
+        })
       } finally {
         harness.session = sessionWith(['admin.users.write'])
       }
