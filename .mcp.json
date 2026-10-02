@@ -6,6 +6,13 @@
       "headers": {
         "Authorization": "Bearer ${COOLIFY_API_KEY}"
       }
+    },
+    "kapso": {
+      "type": "http",
+      "url": "https://api.kapso.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${KAPSO_API_KEY}"
+      }
     }
   }
 }
