@@ -3,7 +3,7 @@
 *Every third party that can hold or see customer data, what it does, and what
 happens if it is switched off.*
 
-Last reviewed: **2026-08-25**.
+Last reviewed: **2026-10-02**.
 
 A customer's data-protection addendum will require this list, a notice period
 before it changes, and a right to object. **The notice period and the objection
