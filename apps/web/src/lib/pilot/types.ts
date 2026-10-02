@@ -2072,6 +2072,86 @@ export interface EnquiryIntakeLike {
   readonly recent: readonly IntakeTurnLike[]
 }
 
+/**
+ * An enquiry's editable facts, for the "Edit details" dialog.
+ *
+ * The labels ride along with the ids because the option lists are capped
+ * (`loadOptions`): a port outside the first six hundred would otherwise be
+ * missing from its own select, and saving the dialog unchanged would clear it.
+ */
+export interface EnquiryEditLike {
+  readonly id: string
+  readonly branchId: string
+  readonly status: string
+  readonly customerId: string | null
+  readonly customerLabel: string | null
+  readonly contactName: string | null
+  readonly contactEmail: string | null
+  readonly mode: string | null
+  readonly tradeDirection: string | null
+  readonly originId: string | null
+  readonly originLabel: string | null
+  readonly destinationId: string | null
+  readonly destinationLabel: string | null
+  readonly commodityId: string | null
+  readonly commodityLabel: string | null
+  readonly incoterm: string | null
+  readonly readyOn: string | null
+  /** `numeric` as text, never a number (KWD-grade decimals, CLAUDE.md). */
+  readonly grossWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+  readonly containerType: string | null
+  readonly isDangerous: boolean
+  readonly notes: string | null
+}
+
+/** A file that came with, or went with, one message on the thread. */
+export interface ConversationAttachmentLike {
+  /** Null where there are no bytes to serve — the fixture thread, or a dropped oversize file. */
+  readonly assetId: string | null
+  readonly fileName: string
+}
+
+/** One message on an enquiry's thread, for the conversation panel. */
+export interface ConversationMessageLike {
+  readonly id: string
+  readonly channel: 'whatsapp' | 'email' | 'other'
+  readonly direction: 'inbound' | 'outbound'
+  readonly at: Date
+  readonly fromAddress: string | null
+  readonly subject: string | null
+  readonly body: string
+  /**
+   * Who wrote an outbound message: the intake agent or another automation
+   * (`agent`), a named member of staff (`staff` with `authorName`), or a person
+   * outside the product, from their own phone (`staff` with no name).
+   * Null on inbound.
+   */
+  readonly author: 'agent' | 'staff' | null
+  readonly authorName: string | null
+  readonly attachments: readonly ConversationAttachmentLike[]
+}
+
+/** An enquiry's whole thread, and whether a reply can go back on it. */
+export interface EnquiryConversationLike {
+  readonly branchId: string
+  /** Oldest first. */
+  readonly messages: readonly ConversationMessageLike[]
+  /**
+   * The channel a reply goes back on, and who it reaches — null when nothing
+   * on the thread says where (an enquiry typed in with no message on it).
+   */
+  readonly replyChannel: 'whatsapp' | 'email' | null
+  readonly replyTo: string | null
+  /**
+   * When the customer last wrote on WhatsApp. Meta refuses free text more than
+   * 24 hours after it, so the panel can warn before the send fails.
+   */
+  readonly lastInboundAt: Date | null
+}
+
 /** One branch's intake-agent settings, for Settings › Intake agent. */
 export interface IntakeSettingsRowLike {
   readonly branchId: string

@@ -108,6 +108,9 @@ import type {
   MailboxRowLike,
   WhatsappNumberRowLike,
   EnquiryIntakeLike,
+  EnquiryConversationLike,
+  ConversationMessageLike,
+  EnquiryEditLike,
   IntakeSettingsRowLike,
   PartnerMailLike,
   MatchCandidateRow,
@@ -9437,6 +9440,110 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
         sendError: null,
       },
     ],
+  }
+}
+
+/**
+ * The WhatsApp thread behind the intake panel above, as the conversation panel
+ * shows it: the greeting the agent let pass, the messages it read in one turn
+ * (in the words the suggestions panel cites as evidence), the clarification it
+ * sent, and the packing list the customer answered with. Served for every enquiry, as `pilotEnquiryIntake` is, so whichever file
+ * a visitor opens tells the same story. Read-only: the reply box refuses in
+ * fixture mode like every other write.
+ */
+export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationLike {
+  const minutesAgo = (m: number) => new Date(now - 1000 * 60 * m)
+  const customer = '+965 6555 0142'
+  const office = '+965 2200 1234'
+  const inbound = (
+    id: string,
+    at: Date,
+    body: string,
+    attachments: ConversationMessageLike['attachments'] = [],
+  ): ConversationMessageLike => ({
+    id,
+    channel: 'whatsapp',
+    direction: 'inbound',
+    at,
+    fromAddress: customer,
+    subject: null,
+    body,
+    author: null,
+    authorName: null,
+    attachments,
+  })
+  return {
+    branchId: BRANCHES[0]!.id,
+    replyChannel: 'whatsapp',
+    replyTo: customer,
+    lastInboundAt: minutesAgo(6),
+    messages: [
+      inbound('conv-demo-1', minutesAgo(20), 'Good morning 👋'),
+      // The same words the suggestions panel quotes as its evidence.
+      inbound(
+        'conv-demo-2',
+        minutesAgo(17),
+        "We have 2 × 40'HC of steel coils to move\nex Ningbo, cargo ready at the mill",
+      ),
+      inbound('conv-demo-3', minutesAgo(16), 'Delivered to our yard in Shuwaikh'),
+      {
+        id: 'conv-demo-4',
+        channel: 'whatsapp',
+        direction: 'outbound',
+        at: minutesAgo(14),
+        fromAddress: office,
+        subject: null,
+        body: pilotEnquiryIntake(now).recent[0]!.replyBody ?? '',
+        author: 'agent',
+        authorName: null,
+        attachments: [],
+      },
+      // No bytes behind a fixture, so the file is named and not linked.
+      inbound('conv-demo-5', minutesAgo(6), 'Gross 38,400 kgs in total. Packing list attached', [
+        { assetId: null, fileName: 'packing-list.jpg' },
+      ]),
+    ],
+  }
+}
+
+/**
+ * The "Edit details" dialog's defaults on the fixture board, read off the same
+ * seed the register shows, with ids that match `pilotOptions` so every select
+ * opens on the value the facts card states.
+ */
+export function pilotEnquiryForEdit(id: string): EnquiryEditLike | undefined {
+  const seed = ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === id)
+  if (!seed) return undefined
+  const branch = BRANCHES.find((b) => b.code === seed.branch) ?? BRANCHES[0]!
+  // The comparison fixture's own rules, so the dialog agrees with the facts card.
+  const importing = ['KW', 'AE'].includes(PORTS[seed.destination].country)
+  const fcl = seed.mode === 'sea_fcl'
+  const count = fcl && seed.sell !== undefined ? 1 : null
+  return {
+    id,
+    branchId: branch.id,
+    status: seed.status,
+    customerId: customerId(seed.customer),
+    customerLabel: null,
+    contactName: null,
+    contactEmail: null,
+    mode: seed.mode,
+    tradeDirection: importing ? 'import' : 'export',
+    originId: locationId(seed.origin),
+    originLabel: null,
+    destinationId: locationId(seed.destination),
+    destinationLabel: null,
+    commodityId: null,
+    commodityLabel: null,
+    incoterm: importing ? 'CFR' : 'FOB',
+    readyOn: null,
+    grossWeightKg: null,
+    volumeCbm: null,
+    pieces: null,
+    containerCount: count,
+    containerType: count ? '40HC' : null,
+    isDangerous: false,
+    notes: null,
   }
 }
 

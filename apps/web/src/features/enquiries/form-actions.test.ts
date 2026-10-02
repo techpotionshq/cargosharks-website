@@ -47,6 +47,7 @@ vi.mock('next-intl/server', () => ({
 
 const {
   aiInvocations,
+  commodities,
   enquiries,
   extractionProposals,
   notificationOutbox,
@@ -75,6 +76,7 @@ const {
   acceptProposal,
   acceptAllProposals,
   setEnquiryContainerCount,
+  updateEnquiry,
 } = await import('./form-actions')
 
 const session = {
@@ -852,6 +854,224 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     it('asks for an enquiry when none was named', async () => {
       const state = await acceptAllProposals({}, form({}))
       expect(state.message).toBe('enquiriesValidation.nothingToDo')
+    })
+  })
+
+  /*
+    D4: an open enquiry's facts can be corrected after it arrived, under the
+    rules that raised it, and a hand edit settles what the model proposed for
+    the field it changed.
+  */
+  describe('editing an open enquiry', () => {
+    let invocationId: string
+    let commodityId: string
+    beforeAll(async () => {
+      invocationId = await withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        const [row] = await tx
+          .insert(aiInvocations)
+          .values({
+            branchId: HOME_BRANCH,
+            principalId: bothBranchesActor.principalId,
+            surface: 'enquiry_extract',
+            modelRequested: 'test-model',
+            promptVersion: 'test',
+            inputHash: `edit-${Date.now()}`,
+          })
+          .returning({ id: aiInvocations.id })
+        return row!.id
+      })
+      const [commodity] = await withActor(bothBranchesActor, (tx) =>
+        tx.select({ id: commodities.id }).from(commodities).limit(1),
+      )
+      if (!commodity) throw new Error('Run `pnpm db:seed` before this suite')
+      commodityId = commodity.id
+    })
+
+    const editForm = (id: string, extra: Record<string, string> = {}) =>
+      form({
+        enquiryId: id,
+        customerId: CUSTOMER,
+        mode: 'sea_fcl',
+        tradeDirection: 'import',
+        ...extra,
+      })
+
+    const facts = async (id: string) => {
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            commodityId: enquiries.commodityId,
+            originId: enquiries.originId,
+            destinationId: enquiries.destinationId,
+            grossWeightKg: enquiries.grossWeightKg,
+            containerType: enquiries.containerType,
+            incoterm: enquiries.incoterm,
+            branchId: enquiries.branchId,
+            channel: enquiries.channel,
+          })
+          .from(enquiries)
+          .where(eq(enquiries.id, id))
+          .limit(1),
+      )
+      return row!
+    }
+
+    async function propose(enquiryId: string, field: string, value: string) {
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx.insert(extractionProposals).values({
+          branchId: HOME_BRANCH,
+          invocationId,
+          targetTable: 'enquiries',
+          targetId: enquiryId,
+          field,
+          value,
+          status: 'proposed',
+          confidence: '0.9',
+        }),
+      )
+    }
+
+    const proposalsOf = (enquiryId: string) =>
+      withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({
+            field: extractionProposals.field,
+            status: extractionProposals.status,
+            decidedById: extractionProposals.decidedById,
+            closedAt: extractionProposals.closedAt,
+          })
+          .from(extractionProposals)
+          .where(eq(extractionProposals.targetId, enquiryId)),
+      )
+
+    it('corrects the commodity, the lane and the cargo, and keeps branch and channel', async () => {
+      const row = await raise()
+
+      const state = await updateEnquiry(
+        {},
+        editForm(row.id, {
+          commodityId,
+          originId: ORIGIN,
+          destinationId: DESTINATION,
+          grossWeightKg: '1250.5',
+          containerType: '40hc',
+          incoterm: 'FOB',
+          branchId: AWAY_BRANCH,
+          channel: 'whatsapp',
+        }),
+      )
+
+      expect(state.errors).toBeUndefined()
+      expect(state.message).toBeUndefined()
+      const after = await facts(row.id)
+      expect(after.commodityId).toBe(commodityId)
+      expect(after.originId).toBe(ORIGIN)
+      expect(after.destinationId).toBe(DESTINATION)
+      expect(after.grossWeightKg).toMatch(/^1250\.50*$/)
+      expect(after.containerType).toBe('40HC')
+      expect(after.incoterm).toBe('FOB')
+      // Never read off the form: an edit does not move an enquiry or rewrite how it came.
+      expect(after.branchId).toBe(HOME_BRANCH)
+      expect(after.channel).toBe('email')
+    })
+
+    it('refuses what raising one refuses, in the same words', async () => {
+      const row = await raise()
+
+      const weight = await updateEnquiry({}, editForm(row.id, { grossWeightKg: '1e3' }))
+      expect(weight.errors?.grossWeightKg).toBe('enquiriesValidation.weightAmount')
+
+      const lane = await updateEnquiry(
+        {},
+        editForm(row.id, { originId: ORIGIN, destinationId: ORIGIN }),
+      )
+      expect(lane.errors?.destinationId).toBe('enquiriesValidation.originDestinationDiffer')
+
+      const nobody = await updateEnquiry({}, form({ enquiryId: row.id }))
+      expect(nobody.errors?.customerId).toBe('enquiriesValidation.customerOrEmail')
+
+      const box = await updateEnquiry({}, editForm(row.id, { containerType: 'NOPE' }))
+      expect(box.errors?.containerType).toBe('enquiriesValidation.containerTypeUnknown')
+
+      expect((await facts(row.id)).originId).toBeNull()
+    })
+
+    it('refuses a closed enquiry, and leaves it as it was', async () => {
+      const row = await raise()
+      await assignEnquiryAction({}, form({ enquiryId: row.id, ownerId: PRINCIPAL }))
+      await closeEnquiryAction(
+        {},
+        form({ enquiryId: row.id, outcome: 'lost', reason: 'Went elsewhere' }),
+      )
+
+      const state = await updateEnquiry({}, editForm(row.id, { incoterm: 'CIF' }))
+
+      expect(state.message).toBe('enquiriesValidation.editClosed')
+      expect((await facts(row.id)).incoterm).toBeNull()
+    })
+
+    it('refuses an enquiry in a branch where the editor only reads', async () => {
+      const row = await raise({ branchId: AWAY_BRANCH })
+      harness.session = {
+        ...session,
+        branchPermissions: new Map([
+          [HOME_BRANCH, new Set(['enquiry.assign'])],
+          [AWAY_BRANCH, new Set(['enquiry.read'])],
+        ]),
+      }
+      try {
+        const state = await updateEnquiry({}, editForm(row.id, { incoterm: 'CIF' }))
+        expect(state.message).toEqual(expect.stringContaining('forbiddenAction'))
+      } finally {
+        harness.session = session
+      }
+      expect((await facts(row.id)).incoterm).toBeNull()
+    })
+
+    it('settles the proposal for a field set by hand, and leaves the others open', async () => {
+      const row = await raise()
+      await propose(row.id, 'commodity', 'steel pipes')
+      await propose(row.id, 'incoterm', 'CIF')
+
+      const state = await updateEnquiry({}, editForm(row.id, { commodityId }))
+      expect(state.errors).toBeUndefined()
+
+      const proposals = await proposalsOf(row.id)
+      const commodity = proposals.find((p) => p.field === 'commodity')!
+      expect(commodity.status).toBe('superseded')
+      expect(commodity.decidedById).toBe(PRINCIPAL)
+      expect(commodity.closedAt).toBeInstanceOf(Date)
+      // Untouched by this edit, so still waiting for a person.
+      expect(proposals.find((p) => p.field === 'incoterm')!.status).toBe('proposed')
+    })
+
+    it('leaves a proposal open when its field was saved unchanged', async () => {
+      const row = await raise({ grossWeightKg: '2400.5' })
+      await propose(row.id, 'grossWeightKg', '2500')
+
+      // The column reads back as 2400.500000; the form sends what a person sees.
+      await updateEnquiry({}, editForm(row.id, { grossWeightKg: '2400.50' }))
+
+      expect((await proposalsOf(row.id))[0]!.status).toBe('proposed')
+    })
+
+    /*
+      A WhatsApp lead from an unknown number has no customer and no email: its
+      way to answer is the thread. Editing one must not demand a customer.
+    */
+    it('saves a WhatsApp enquiry with no customer and no email', async () => {
+      const row = await raise()
+      await withActor({ ...bothBranchesActor, type: 'system' }, (tx) =>
+        tx
+          .update(enquiries)
+          .set({ channel: 'whatsapp', customerId: null, contactEmail: null })
+          .where(eq(enquiries.id, row.id)),
+      )
+
+      const state = await updateEnquiry({}, form({ enquiryId: row.id, incoterm: 'EXW' }))
+
+      expect(state.errors).toBeUndefined()
+      expect((await facts(row.id)).incoterm).toBe('EXW')
     })
   })
 })

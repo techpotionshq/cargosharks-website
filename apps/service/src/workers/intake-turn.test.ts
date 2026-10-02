@@ -150,6 +150,7 @@ type WhatsAppMediaSource = import('../adapters/whatsapp').WhatsAppMediaSource
 const { ingestMessage } = await import('./inbound-mail')
 const { runIntakeTurn, transcript, withoutQuotedHistory } = await import('./intake-turn')
 const { extractEnquiry } = await import('./enquiry-extract')
+const { sendEnquiryReply } = await import('./enquiry-reply')
 
 const BRANCH = '00000000-0000-7000-8000-0000000f1001'
 const STAFF = '00000000-0000-7000-8000-0000000f1003'
@@ -696,6 +697,54 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     expect(await openProposalFields(enquiryId)).toEqual(
       expect.arrayContaining(['origin', 'destination', 'containerCount']),
     )
+  })
+
+  /*
+    D5: a reply sent from the enquiry screen is the coordinator's, not the
+    agent's. It goes out from the branch number, files under their own id and
+    stamps the conversation, so the agent's next turn stays silent.
+  */
+  it('stands down after a coordinator replies from the enquiry screen', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'السلام عليكم', 0)
+    const enquiryId = first.enquiryId!
+    const { id } = await conversationFor(enquiryId)
+
+    const sent = await sendEnquiryReply(
+      {
+        actor: { principalId: STAFF, type: 'internal', branchIds: [BRANCH] },
+        enquiryId,
+        body: 'Hello, this is the desk. How can we help?',
+        asOf: at(60),
+      },
+      { resolveWhatsApp: wa.resolve, sendDelays: [] },
+    )
+    expect(sent.ok).toBe(true)
+    expect(wa.sent).toHaveLength(1)
+    expect(wa.sent[0]).toMatchObject({ to: sender, from: PHONE_NUMBER_ID })
+
+    const [filed] = await withActor(sys, (tx) =>
+      tx
+        .select({
+          authorId: messages.authorId,
+          fromAddress: messages.fromAddress,
+          externalRef: messages.externalRef,
+        })
+        .from(messages)
+        .where(and(eq(messages.enquiryId, enquiryId), eq(messages.direction, 'outbound'))),
+    )
+    expect(filed).toMatchObject({
+      authorId: STAFF,
+      fromAddress: '+965 2200 1234',
+      externalRef: wa.sent[0]!.ref,
+    })
+    expect((await conversationFor(enquiryId)).lastStaffActivityAt?.getTime()).toBe(at(60).getTime())
+
+    await say(sender, 'I need 2 containers from Ningbo to Kuwait', 120)
+    const turn = await runIntakeTurn(id, at(300), { resolveWhatsApp: wa.resolve })
+    expect(turn.decision?.reason).toBe('human_active')
+    expect(wa.sent).toHaveLength(1)
   })
 
   it('stays quiet once an operator takes over, without spending a model call', async () => {

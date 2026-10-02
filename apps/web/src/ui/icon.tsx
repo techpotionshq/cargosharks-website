@@ -33,6 +33,7 @@ import {
   CalendarBlank,
   CaretDown,
   CaretRight,
+  ChatsCircle,
   ChartLineUp,
   Check,
   Circle,
@@ -53,7 +54,10 @@ import {
   MapPin,
   Moon,
   Package,
+  PaperPlaneRight,
+  Paperclip,
   Path,
+  PencilSimple,
   Plus,
   Receipt,
   Scales,
@@ -141,6 +145,11 @@ const ICONS = {
   more: DotsThree,
   expand: ArrowsOutSimple,
   collapse: ArrowsInSimple,
+  edit: PencilSimple,
+  /** Sending a reply. Points the way text runs, so it is mirrored in Arabic. */
+  send: PaperPlaneRight,
+  attachment: Paperclip,
+  conversation: ChatsCircle,
 } as const satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof ICONS
@@ -154,6 +163,7 @@ const MIRRORED = new Set<IconName>([
   'sign-out',
   'external',
   'tracking',
+  'send',
 ])
 
 type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
