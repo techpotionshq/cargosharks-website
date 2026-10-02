@@ -1,0 +1,57 @@
+Photography — Unsplash Licence (free for commercial use, no attribution required;
+credit given here as a courtesy and to record provenance).
+
+hero-port-dusk.webp      unsplash.com/photos/1590496793907-4d66e2994b4d
+containers-aerial.webp   unsplash.com/photos/1562892302-97faedd66f1c
+containers-stack.webp    unsplash.com/photos/1605732562742-3023a888e56e
+ship-aerial.webp         unsplash.com/photos/1518527989017-5baca7a58d3c
+
+Downloaded 24 August 2026 at w=2000, q=72, and re-encoded to WebP on 25 August.
+Only the WebP is kept. The JPEGs were the download rather than a source anyone
+edits, and the four of them were 2.8 MB in a directory that now serves 1 MB.
+
+To redo it: re-download from the URLs above and re-encode with sharp, the way
+docs/marketing/capture.mjs does for the screenshots — that file carries the
+import path and the reason sharp is reached by path rather than declared.
+
+  sharp(input).resize({ width: W }).webp({ quality: Q }).toFile(output)
+
+W and Q differ per file, because only one of these is looked at:
+
+  hero-port-dusk       2000  76   full-bleed behind the headline
+  containers-aerial    1600  62   a divider strip, cropped to a band
+  containers-stack     1600  58   sits under two blur layers
+  ship-aerial          1600  62   sits under the pilot section's dark scrim
+
+── Mega-menu photography, added 25 August 2026 ──────────────────────────────────
+
+Same Unsplash Licence as above (free for commercial use, no attribution
+required; credited here as a courtesy and to record provenance).
+
+menu-port.webp       Haris Illahi   unsplash.com/photos/ip0yX8W1veE
+menu-loading.webp    Haris Illahi   unsplash.com/photos/Dzh-udFZXrA
+menu-stack.webp      雙 film        unsplash.com/photos/1gveplodu04
+
+Fetched straight from the Unsplash CDN as WebP rather than downloaded and
+re-encoded, which is what the four above needed:
+
+  https://images.unsplash.com/<photo-id>?w=760&q=62&fm=webp&fit=crop
+
+760px because the panel renders them at about 330 CSS pixels, so that is 2x for
+a retina screen and there is nothing left for sharp to do. They were fetched at
+w=1000 first, which put one of them at 340 KB for a thumbnail nobody sees until
+they open a menu; 760 halves the set to 436 KB total.
+
+**They are files in this directory, not hot-linked.** Nothing under `src/`
+references images.unsplash.com — the CDN is where they came from, once, and the
+build copies these three into `out/pic/photos/` like every other asset. A
+marketing site that fetched its own furniture from a third party at run time
+would also be handing that third party a log of every visitor, which is exactly
+what `/privacy/` says does not happen.
+
+A fourth was downloaded and then deleted rather than used: a warehouse
+interior with a forklift (Bernd Dittrich, unsplash.com/photos/F2C_mSrb6iM).
+It is a good photograph and it would have been a false promise — the product
+has no warehouse module, and `/what-we-do/` §07 says so in as many words. The
+"Trust" panel uses containers-aerial.webp instead, which had been sitting
+unused since August.

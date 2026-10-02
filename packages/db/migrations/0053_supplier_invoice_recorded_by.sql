@@ -1,3 +1,0 @@
-ALTER TABLE "supplier_invoices" ADD COLUMN "recorded_by_id" uuid;--> statement-breakpoint
-ALTER TABLE "supplier_invoices" ADD CONSTRAINT "supplier_invoices_recorded_by_id_principals_id_fk" FOREIGN KEY ("recorded_by_id") REFERENCES "public"."principals"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "supplier_invoices_recorded_by_idx" ON "supplier_invoices" USING btree ("recorded_by_id","created_at");

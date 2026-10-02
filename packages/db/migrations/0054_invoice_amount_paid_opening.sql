@@ -1,1 +1,0 @@
-ALTER TABLE "invoices" ADD COLUMN "amount_paid_opening" numeric(19, 6) DEFAULT '0' NOT NULL;

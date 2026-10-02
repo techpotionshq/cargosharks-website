@@ -1,1 +1,0 @@
-CREATE INDEX "messages_partner_idx" ON "messages" USING btree ("partner_id","created_at");

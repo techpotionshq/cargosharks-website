@@ -1,5 +1,0 @@
-#!/bin/sh
-# Wired by the `prepare` script in package.json (`git config core.hooksPath`),
-# so a fresh clone gets it from `pnpm install` rather than from a README step
-# somebody has to remember. `git commit --no-verify` skips it.
-exec node scripts/pre-commit.mjs
