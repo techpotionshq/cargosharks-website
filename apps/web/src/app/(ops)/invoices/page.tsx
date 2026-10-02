@@ -157,12 +157,22 @@ export default async function InvoicesPage({
                     word in SQL.
                   */}
                   <RecordLink href={`/invoices/${row.id}`}>
-                    {row.seriesNo ?? t('statuses.draft')}
+                    {/* The word stands in for a number, so it is set as a
+                        word: in the reference face, monospaced Arabic pulled
+                        "مسودة" apart into separate letters. */}
+                    {row.seriesNo ?? (
+                      <span className="font-sans tracking-normal rtl:font-arabic">
+                        {t('statuses.draft')}
+                      </span>
+                    )}
                   </RecordLink>
+                  {/* Under the number on a phone: inline, it wrapped there
+                      anyway and carried its 8px start margin onto the new
+                      line, so the pill sat indented under the number. */}
                   {row.isCreditNote ? (
-                    <Badge tone="caution" className="ms-2">
-                      {t('creditNote')}
-                    </Badge>
+                    <span className="mt-1 block md:ms-2 md:mt-0 md:inline">
+                      <Badge tone="caution">{t('creditNote')}</Badge>
+                    </span>
                   ) : null}
                 </TD>
                 <TD priority="low" className="font-medium text-ink">

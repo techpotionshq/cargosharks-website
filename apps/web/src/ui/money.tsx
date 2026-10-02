@@ -41,8 +41,12 @@ export function Money({
     <span className={['numeric whitespace-nowrap', className].filter(Boolean).join(' ')}>
       {parts.currency ? (
         <>
-          <span className="font-normal text-ink-muted">{parts.currency}</span>
-          {' '}
+          {/* `dir="auto"`: an Arabic symbol is right-to-left, but "US$" in
+              an Arabic cell rendered "$US" until it was isolated as Latin. */}
+          <span dir="auto" className="font-normal text-ink-muted">
+            {parts.currency}
+          </span>
+          &nbsp;
         </>
       ) : null}
       <span dir="ltr">

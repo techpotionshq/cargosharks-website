@@ -94,10 +94,13 @@ export function Metric({
         Smaller below `sm`: two tiles share a 390px phone, and "KWD 5,000.000"
         at the desktop size was wider than its tile and pushed the page
         sideways. The unit may drop under the figure rather than overflow.
+        A step smaller again from lg to 2xl, where four tiles share a row
+        beside the sidebar: "KWD 111,674.395" ran past its tile's edge on
+        the margin report at 1440.
       */}
       <p className="mt-3 flex flex-wrap items-baseline gap-1.5">
         <span
-          className={`numeric font-display text-headline leading-none font-semibold tracking-tight text-ink sm:text-display-lg ${
+          className={`numeric font-display text-headline leading-none font-semibold tracking-tight text-ink sm:text-display-lg lg:text-display 2xl:text-display-lg ${
             live ? 'accruing' : ''
           }`}
         >

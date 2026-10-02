@@ -235,7 +235,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                     <TD className="font-medium text-ink">
                       {line.chargeName}
                       {line.description ? (
-                        <span className="block text-caption font-normal text-ink-subtle">
+                        <span dir="auto" className="block text-caption font-normal text-ink-subtle">
                           {line.description}
                         </span>
                       ) : null}

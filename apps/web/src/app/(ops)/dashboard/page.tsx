@@ -326,8 +326,11 @@ export default async function DashboardPage() {
                         {/* The description is the human sentence — "container
                             held for inspection, broker notified". Falling back
                             to the customer name keeps the row informative when
-                            nobody has written one. */}
-                        <p className="mt-0.5 truncate text-body-sm text-ink-muted">
+                            nobody has written one. `dir="auto"` because it
+                            is free text: an English sentence in the Arabic
+                            board truncated from its start ("…hamber
+                            attestation before release"). */}
+                        <p dir="auto" className="mt-0.5 truncate text-body-sm text-ink-muted">
                           {exception.description ??
                             nameOf(exception.customerName, exception.customerNameAr)}
                         </p>

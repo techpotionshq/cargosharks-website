@@ -178,7 +178,7 @@ export async function JobLedgerCard({
                     </span>
                     <span className="font-medium">{line.chargeTypeName}</span>
                     {line.description ? (
-                      <span className="mt-0.5 block text-micro text-ink-subtle">
+                      <span dir="auto" className="mt-0.5 block text-micro text-ink-subtle">
                         {line.description}
                       </span>
                     ) : null}

@@ -247,7 +247,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             ))}
           </ul>
           {job.customsNote ? (
-            <p className="mt-3 border-t border-line pt-3 text-body-sm text-ink-muted">
+            // `dir="auto"`: the note is free text in whatever language the
+            // broker wrote it. An English note in the Arabic page had its full
+            // stop thrown to the start of the line.
+            <p dir="auto" className="mt-3 border-t border-line pt-3 text-body-sm text-ink-muted">
               {job.customsNote}
             </p>
           ) : null}
@@ -458,7 +461,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       </span>
                       {clock.counterparty ? (
                         <span>
-                          {t('counterparty')} {clock.counterparty}
+                          {/* <bdi>: a Latin carrier name after "مستحقة لـ" let
+                              the bidi algorithm move the preposition to the
+                              far end of the name. */}
+                          {t('counterparty')} <bdi>{clock.counterparty}</bdi>
                         </span>
                       ) : null}
                     </div>

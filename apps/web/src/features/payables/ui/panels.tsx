@@ -93,7 +93,9 @@ export async function SupplierInvoiceLinesCard({
             {bill.lines.map((line) => (
               <TR key={line.id}>
                 <TD>
-                  <span className="font-medium">{line.description}</span>
+                  <span dir="auto" className="font-medium">
+                    {line.description}
+                  </span>
                   <span className="mt-0.5 block text-micro text-ink-subtle">
                     {line.chargeTypeName ?? t('unmapped')}
                     {line.jobReference ? ` · ${line.jobReference}` : ''}

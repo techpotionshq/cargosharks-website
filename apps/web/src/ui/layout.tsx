@@ -212,9 +212,13 @@ export function EmptyState({
           .join(' ')}
       >
         <Icon name={icon} size={15} className="mt-px shrink-0 text-ink-subtle" />
+        {/* The title is a phrase with no full stop ("Nothing delivered yet"),
+            so run straight into the hint it read as one broken sentence:
+            "Nothing delivered yet Capture the signature…". Weight and a dash
+            make it a heading and its note, in either language. */}
         <span>
-          {title}
-          {description ? <span className="text-ink-subtle"> {description}</span> : null}
+          <span className="font-medium">{title}</span>
+          {description ? <span className="text-ink-subtle"> — {description}</span> : null}
         </span>
         {action}
       </div>
