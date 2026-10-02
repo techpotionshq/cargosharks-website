@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "coolify": {
+      "type": "http",
+      "url": "https://coolify.techpotions.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${COOLIFY_API_KEY}"
+      }
+    }
+  }
+}
