@@ -29,7 +29,7 @@ import { z } from 'zod'
 import { SEED_CURRENCIES, dec, type CurrencySpec } from '@qabandi/core'
 import { chargeLines, branches, jobs, latestFxRate, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   databaseMessage,
   echo,
@@ -144,7 +144,7 @@ export async function saveChargeLine(_previous: ActionState, form: FormData): Pr
         .limit(1)
 
       if (!job) return { error: 'not_found' as const }
-      assertInBranch(session, job.branchId)
+      assertCanIn(session, 'job.update', job.branchId)
 
       const baseSpec = spec(job.baseCurrency)
       const fxRate =

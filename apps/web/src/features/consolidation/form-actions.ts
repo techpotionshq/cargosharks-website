@@ -55,7 +55,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -166,7 +166,7 @@ export async function saveConsolidation(
 
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'consol.write', data.branchId)
 
   const reference = await withActor(session.actor, async (tx) => {
     const timeZone = await branchTimeZone(tx, { branchId: data.branchId })
@@ -1008,7 +1008,7 @@ export async function consolidateCluster(
   if (!branchId || !mode || !originId || !destinationId || jobIds.length < 2) {
     return failWith(tv('clusterIncomplete'))
   }
-  assertInBranch(session, branchId)
+  assertCanIn(session, 'consol.write', branchId)
 
   const outcome = await withActor(session.actor, async (tx) => {
     /*

@@ -58,7 +58,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -178,7 +178,7 @@ export async function createQuote(_previous: ActionState, form: FormData): Promi
         .where(eq(enquiries.id, data.enquiryId))
         .limit(1)
       if (!enquiry) throw new Error('not_found')
-      assertInBranch(session, enquiry.branchId)
+      assertCanIn(session, 'quote.send', enquiry.branchId)
       if (['won', 'lost', 'cancelled', 'expired'].includes(enquiry.status)) {
         return { error: tv('quoteEnquiryClosed') }
       }
@@ -805,7 +805,7 @@ export async function createInvoice(_previous: ActionState, form: FormData): Pro
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'invoice.approve', data.branchId)
 
   const rate = data.taxTreatment === 'standard' ? data.taxRatePercent : '0'
 
@@ -1344,7 +1344,7 @@ export async function recordPayment(_previous: ActionState, form: FormData): Pro
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'payment.record', data.branchId)
 
   try {
     const outcome = await withActor(session.actor, async (tx) => {

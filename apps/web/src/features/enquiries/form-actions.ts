@@ -39,7 +39,7 @@ import {
   workingCalendars,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertInBranch, assertCanIn } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -95,7 +95,7 @@ export async function submitEnquiry(_previous: ActionState, form: FormData): Pro
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'enquiry.assign', data.branchId)
 
   const reference = await withActor(session.actor, async (tx) => {
     const calendar = await loadCalendar(tx, data.branchId)
@@ -429,7 +429,8 @@ export async function advanceEnquiry(_previous: ActionState, form: FormData): Pr
       .where(eq(enquiries.id, enquiryId))
       .limit(1)
     if (!current) return 'not_found' as const
-    assertInBranch(session, current.branchId)
+    if (required) assertCanIn(session, required, current.branchId)
+    else assertInBranch(session, current.branchId)
 
     try {
       assertTransition(enquiryMachine, current.status, to)

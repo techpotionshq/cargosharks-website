@@ -43,7 +43,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   databaseMessage,
   echo,
@@ -216,7 +216,7 @@ export async function saveJob(_previous: ActionState, form: FormData): Promise<A
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, read(form, 'jobId') ? 'job.update' : 'job.book', data.branchId)
 
   /*
     Credit is checked on booking, not on update.

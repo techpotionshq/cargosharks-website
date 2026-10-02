@@ -43,7 +43,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   importKind,
   importNeedsBranch,
@@ -125,7 +125,7 @@ export async function runImport(_previous: ImportState, form: FormData): Promise
   const needsBranch = importNeedsBranch(kindKey)
   if (needsBranch) {
     if (!branchId) return { kind: kindKey, fileName: file.name, error: 'no_branch' }
-    assertInBranch(session, branchId)
+    assertCanIn(session, entry.permission, branchId)
   }
 
   const text = await file.text()

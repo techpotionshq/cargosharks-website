@@ -21,7 +21,7 @@ import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
 import { customerBranchTerms, customers, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
@@ -68,7 +68,7 @@ export async function createCustomer(
   }
 
   const data = parsed.data
-  assertInBranch(session, data.primaryBranchId)
+  assertCanIn(session, 'customer.write', data.primaryBranchId)
 
   let createdId: string
   try {
@@ -134,7 +134,7 @@ export async function updateCustomer(
   }
 
   const data = parsed.data
-  assertInBranch(session, data.primaryBranchId)
+  assertCanIn(session, 'customer.write', data.primaryBranchId)
 
   try {
     await withActor(session.actor, async (tx) => {

@@ -59,7 +59,7 @@ import {
   withActor,
 } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   databaseMessage,
   echo,
@@ -148,7 +148,7 @@ export async function saveSupplierInvoice(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'payable.record', data.branchId)
 
   try {
     const outcome = await withActor(session.actor, async (tx) => {
@@ -289,7 +289,7 @@ export async function addSupplierInvoiceLine(
 
     if (!bill) return { error: 'not_found' as const }
     if (!['received', 'disputed'].includes(bill.status)) return { error: 'locked' as const }
-    assertInBranch(session, bill.branchId)
+    assertCanIn(session, 'payable.record', bill.branchId)
 
     const amount = dec(data.quantity)
       .times(dec(data.unitPrice))
@@ -411,7 +411,7 @@ export async function matchSupplierLine(
 
       if (!row || row.billed === null || !row.branch_id) return { error: 'not_found' as const }
       if (!['received', 'disputed'].includes(row.status ?? '')) return { error: 'locked' as const }
-      assertInBranch(session, row.branch_id)
+      assertCanIn(session, 'payable.record', row.branch_id)
 
       const currency = row.currency ?? 'KWD'
       const verdict = checkMatch(
@@ -531,7 +531,7 @@ export async function setSupplierInvoiceStatus(
       .limit(1)
 
     if (!bill) return { error: 'not_found' as const }
-    assertInBranch(session, bill.branchId)
+    assertCanIn(session, action === 'approve' ? 'payable.approve' : 'payable.record', bill.branchId)
 
     if (action === 'approve') {
       if (bill.status !== 'received' && bill.status !== 'disputed') {
@@ -712,7 +712,7 @@ export async function recordSupplierPayment(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'payable.pay', data.branchId)
 
   await withActor(session.actor, async (tx) => {
     await tx.insert(supplierPayments).values({
@@ -796,7 +796,7 @@ export async function allocateSupplierPayment(
     if (!['approved', 'part_paid'].includes(bill.status)) {
       return { error: 'not_approved' as const }
     }
-    assertInBranch(session, bill.branchId)
+    assertCanIn(session, 'payable.pay', bill.branchId)
     if (payment.partnerId !== bill.partnerId) return { error: 'other_partner' as const }
     if (payment.branchId !== bill.branchId) return { error: 'other_branch' as const }
     if (payment.currency !== bill.currency) {
@@ -925,7 +925,7 @@ export async function draftSettlement(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'settlement.run', data.branchId)
   if (data.periodTo < data.periodFrom) {
     return fail({ periodTo: tv('periodEndsBeforeStart') }, echo(form))
   }
@@ -1117,7 +1117,7 @@ export async function setSettlementStatus(
       .limit(1)
 
     if (!row) return { error: 'not_found' as const }
-    assertInBranch(session, row.branchId)
+    assertCanIn(session, 'settlement.run', row.branchId)
 
     if (action === 'agree') {
       if (row.status !== 'draft') return { error: 'not_draft' as const }
@@ -1423,7 +1423,7 @@ export async function readSupplierBill(
       echo(form),
     )
   }
-  assertInBranch(session, branchId)
+  assertCanIn(session, 'payable.record', branchId)
 
   if (!(file instanceof File) || file.size === 0) {
     return fail({ scan: tv('chooseSupplierInvoice') }, echo(form))

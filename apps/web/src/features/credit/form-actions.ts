@@ -34,7 +34,7 @@ import { z } from 'zod'
 import { toDb } from '@qabandi/core'
 import { checkCredit, creditOverrides, withActor } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import {
   echo,
   fail,
@@ -98,7 +98,7 @@ export async function recordCreditOverride(
   if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
-  assertInBranch(session, data.branchId)
+  assertCanIn(session, 'credit.override', data.branchId)
 
   if (data.expiresOn && data.expiresOn < todayIn()) {
     return fail({ expiresOn: tv('datePassed') }, echo(form))

@@ -29,7 +29,7 @@
 import { revalidatePath } from 'next/cache'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertInBranch } from '@/lib/permissions'
+import { assertCan, assertCanIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
 
 function read(form: FormData, key: string): string | undefined {
@@ -197,7 +197,7 @@ export async function createAccountingExport(
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to)) return failWith(tv('datesFormat'))
   if (to < from) return failWith(tv('periodEndsBeforeStart'))
 
-  assertInBranch(session, branchId)
+  assertCanIn(session, 'finance.export', branchId)
 
   const target = service()
   if (!target) return failWith(tv('exportServiceNotConfigured'))
