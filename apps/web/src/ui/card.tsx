@@ -96,7 +96,10 @@ export function CardHeader({
           {eyebrow ? <p className="eyebrow mb-1">{eyebrow}</p> : null}
           <h2 className="text-[0.9375rem] font-semibold text-balance text-ink">{title}</h2>
           {description ? (
-            <p className="mt-0.5 text-[0.8125rem] text-ink-muted">{description}</p>
+            // `break-words`: a description naming a template key or an address
+            // with no spaces in it pushed the notifications screen 37px past
+            // a phone's edge.
+            <p className="mt-0.5 text-[0.8125rem] break-words text-ink-muted">{description}</p>
           ) : null}
         </div>
       </div>

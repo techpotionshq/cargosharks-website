@@ -141,15 +141,17 @@ export function Readout({
               {fact.icon ? (
                 <Icon name={fact.icon} size={14} className="shrink-0 text-ink-subtle" />
               ) : null}
+              {/* Two lines before an ellipsis: "Received this …" told nobody
+                  anything, and the panel had the height to spare. */}
               <span
-                className="truncate"
+                className="line-clamp-2"
                 title={typeof fact.label === 'string' ? fact.label : undefined}
               >
                 {fact.label}
               </span>
             </dt>
             <dd
-              className="min-w-0 truncate text-end text-[0.8125rem] font-semibold text-ink"
+              className="line-clamp-2 min-w-0 text-end text-[0.8125rem] font-semibold break-words text-ink"
               title={typeof fact.value === 'string' ? fact.value : undefined}
             >
               {fact.value}

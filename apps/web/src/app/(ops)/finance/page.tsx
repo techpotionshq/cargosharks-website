@@ -47,11 +47,21 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
+/*
+  A sequential ramp, not a set of categories.
+
+  The buckets are one quantity — how late — cut into five, and they were drawn
+  in teal, amber, violet and red as if they were five unrelated things. The
+  eye then reads violet (61–90 days) as calmer than amber (31–60). The ramp
+  runs from the positive "current" through caution into critical, each step
+  mixed from the two status colours it sits between, so lateness reads as
+  getting worse left to right without a legend.
+*/
 const BUCKET_COLOR: Record<AgeingBucket['key'], string> = {
   current: 'var(--qb-positive)',
-  d1_30: 'var(--qb-chart-2)',
+  d1_30: 'color-mix(in oklab, var(--qb-caution) 55%, var(--qb-positive))',
   d31_60: 'var(--qb-caution)',
-  d61_90: 'var(--qb-chart-4)',
+  d61_90: 'color-mix(in oklab, var(--qb-caution) 45%, var(--qb-critical))',
   d90_plus: 'var(--qb-critical)',
 }
 
@@ -60,7 +70,11 @@ function formatZero(currency: string, locale: 'en' | 'ar'): string {
   return formatMoney({ amount: 0, currency }, locale)
 }
 
-export default async function FinancePage() {
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ unbilled?: string }>
+}) {
   const timeZone = await getTimeZone()
 
   const session = await requireSession()
@@ -129,18 +143,6 @@ export default async function FinancePage() {
         }
       />
 
-      {/*
-        Above the ageing, deliberately.
-
-        Everything below this line is money we have asked for and are waiting
-        on; this is money we have not asked for at all. It is the only figure
-        on the page that nothing else will surface — an overdue invoice chases
-        itself into a bucket, and an unbilled charge line ages silently because
-        no document was ever raised. It renders nothing when there is nothing
-        to chase, so a clean ledger keeps its usual page.
-      */}
-      <UnbilledPanel />
-
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           label={t('owed')}
@@ -156,7 +158,7 @@ export default async function FinancePage() {
           icon="alert"
           tone={overdue.length > 0 ? 'critical' : 'positive'}
           hint={t('overdueHint', { count: invoices.overdue })}
-          href="/invoices?status=issued"
+          href="/invoices?status=overdue"
         />
         <Metric
           label={t('received')}
@@ -179,6 +181,20 @@ export default async function FinancePage() {
           href="/payments"
         />
       </div>
+
+      {/*
+        Below the four figures and above the ageing, deliberately.
+
+        Below the figures because they are the page's headline and a long
+        table pushed them off a laptop screen; above the ageing because
+        everything below it is money we have asked for and are waiting on,
+        and this is money we have not asked for at all. It is the only figure
+        on the page that nothing else will surface — an overdue invoice chases
+        itself into a bucket, and an unbilled charge line ages silently because
+        no document was ever raised. It renders nothing when there is nothing
+        to chase, so a clean ledger keeps its usual page.
+      */}
+      <UnbilledPanel showAll={(await searchParams).unbilled === 'all'} />
 
       <Grid className="mb-4">
         {/* ---- the ageing report ------------------------------------- */}

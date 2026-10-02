@@ -17,7 +17,7 @@ import { listPortalShipments } from '@/features/portal/queries'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
 import { formatDay, formatNumber, formatRelative } from '@/lib/format'
 import { Card } from '@/ui/card'
-import { EmptyState, Lane, PageHeader } from '@/ui/layout'
+import { Button, EmptyState, Lane, PageHeader } from '@/ui/layout'
 import { StatTile } from '@/ui/stat'
 import { Badge, jobTone } from '@/ui/status'
 import { Icon, modeIcon } from '@/ui/icon'
@@ -62,80 +62,124 @@ export default async function PortalHome() {
         </Card>
       ) : (
         <ul className="flex flex-col gap-3">
-          {shipments.map((shipment) => (
-            <li key={shipment.id}>
-              <Card className="transition-shadow hover:shadow-raised">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="ref numeric text-[0.9375rem] font-semibold text-ink">
-                        {shipment.reference}
-                      </span>
-                      <Badge tone={jobTone(shipment.status)} dot>
-                        {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
-                      </Badge>
-                    </div>
-                    <p className="mt-1.5 flex items-center gap-2 text-[0.875rem] text-ink-muted">
-                      <Icon name={modeIcon(shipment.mode)} size={16} className="text-ink-subtle" />
-                      <Lane origin={shipment.originName} destination={shipment.destinationName} />
-                      <span className="text-ink-subtle">· {tMode(shipment.mode)}</span>
-                    </p>
-                    {shipment.customerReference ? (
-                      <p className="mt-1 text-[0.75rem] text-ink-subtle">
-                        {tJob('customerReference')}:{' '}
-                        <span className="ref numeric">{shipment.customerReference}</span>
+          {shipments.map((shipment) => {
+            /*
+              A late shipment says so. The ETA used to render the same way
+              whether it was next week or last Tuesday, and a customer reading
+              "3 days ago" under "ETA" had to work out for themselves that
+              something had slipped.
+            */
+            const late =
+              shipment.eta !== null &&
+              shipment.eta.getTime() < now &&
+              !['delivered', 'completed', 'closed', 'cancelled'].includes(shipment.status)
+            /*
+              The card opens the shipment's tracking view where it can: the
+              public tracking page takes a reference and a second identifier
+              the customer already holds, and their own reference is one.
+            */
+            const track = shipment.customerReference
+              ? `/track?reference=${encodeURIComponent(shipment.reference)}&verifier=${encodeURIComponent(shipment.customerReference)}`
+              : null
+            return (
+              <li key={shipment.id}>
+                <Card className="transition-shadow hover:shadow-raised">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="ref numeric text-[0.9375rem] font-semibold text-ink">
+                          {shipment.reference}
+                        </span>
+                        <Badge tone={jobTone(shipment.status)} dot>
+                          {tJob(`statuses.${shipment.status}` as 'statuses.booked')}
+                        </Badge>
+                      </div>
+                      <p className="mt-1.5 flex items-center gap-2 text-[0.875rem] text-ink-muted">
+                        <Icon
+                          name={modeIcon(shipment.mode)}
+                          size={16}
+                          className="text-ink-subtle"
+                        />
+                        <Lane origin={shipment.originName} destination={shipment.destinationName} />
+                        <span className="text-ink-subtle">· {tMode(shipment.mode)}</span>
                       </p>
-                    ) : null}
-                  </div>
-
-                  <div className="text-end">
-                    <p className="eyebrow mb-1">{tJob('eta')}</p>
-                    <p className="numeric text-[0.9375rem] font-semibold text-ink">
-                      {formatDay(shipment.eta, locale, timeZone)}
-                    </p>
-                    <p className="numeric text-[0.6875rem] text-ink-subtle">
-                      {formatRelative(shipment.eta, locale, now)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 border-t border-line pt-3">
-                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[0.75rem] text-ink-muted">
-                      {shipment.nextMilestone ? (
-                        <>
-                          <span className="text-ink-subtle">{t('nextStep')}: </span>
-                          <span className="font-medium text-ink">{shipment.nextMilestone}</span>
-                        </>
-                      ) : (
-                        tJob('statuses.completed')
-                      )}
-                    </span>
-                    <span className="numeric text-[0.75rem] text-ink-subtle">
-                      {shipment.milestonesDone}/{shipment.milestonesTotal}
-                      {shipment.documentsReleased > 0 ? (
-                        <>
-                          {' · '}
-                          <Icon
-                            name="document"
-                            size={12}
-                            className="inline align-[-1px] text-ink-subtle"
-                          />{' '}
-                          {shipment.documentsReleased}
-                        </>
+                      {shipment.customerReference ? (
+                        <p className="mt-1 text-[0.75rem] text-ink-subtle">
+                          {tJob('customerReference')}:{' '}
+                          <span className="ref numeric">{shipment.customerReference}</span>
+                        </p>
                       ) : null}
-                    </span>
+                    </div>
+
+                    <div className="text-end">
+                      <p className="eyebrow mb-1">{tJob('eta')}</p>
+                      <p className="numeric text-[0.9375rem] font-semibold text-ink">
+                        {formatDay(shipment.eta, locale, timeZone)}
+                      </p>
+                      {late ? (
+                        <Badge tone="caution" icon="clock" className="mt-1">
+                          {t('etaPassed')}
+                        </Badge>
+                      ) : (
+                        <p className="numeric text-[0.6875rem] text-ink-subtle">
+                          {formatRelative(shipment.eta, locale, now)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <Meter
-                    value={shipment.milestonesDone}
-                    max={shipment.milestonesTotal}
-                    tone="var(--qb-accent)"
-                    label={`${shipment.milestonesDone} / ${shipment.milestonesTotal}`}
-                  />
-                </div>
-              </Card>
-            </li>
-          ))}
+
+                  <div className="mt-4 border-t border-line pt-3">
+                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-[0.75rem] text-ink-muted">
+                        {shipment.nextMilestone ? (
+                          <>
+                            <span className="text-ink-subtle">{t('nextStep')}: </span>
+                            <span className="font-medium text-ink">{shipment.nextMilestone}</span>
+                          </>
+                        ) : (
+                          tJob('statuses.completed')
+                        )}
+                      </span>
+                      {/* Words, not "4/7 · 5": the second number had no unit at all. */}
+                      <span className="text-[0.75rem] text-ink-subtle">
+                        {t('progress', {
+                          done: shipment.milestonesDone,
+                          total: shipment.milestonesTotal,
+                        })}
+                        {shipment.documentsReleased > 0 ? (
+                          <>
+                            {' · '}
+                            <Icon
+                              name="document"
+                              size={12}
+                              className="inline align-[-1px] text-ink-subtle"
+                            />{' '}
+                            {t('documentCount', { count: shipment.documentsReleased })}
+                          </>
+                        ) : null}
+                      </span>
+                    </div>
+                    <Meter
+                      value={shipment.milestonesDone}
+                      max={shipment.milestonesTotal}
+                      tone="var(--qb-accent)"
+                      label={t('progress', {
+                        done: shipment.milestonesDone,
+                        total: shipment.milestonesTotal,
+                      })}
+                    />
+                  </div>
+                  {track ? (
+                    <div className="mt-3 flex justify-end">
+                      <Button href={track} variant="ghost" size="sm" iconEnd="chevron-end">
+                        {t('viewShipment')}
+                      </Button>
+                    </div>
+                  ) : null}
+                </Card>
+              </li>
+            )
+          })}
         </ul>
       )}
     </>

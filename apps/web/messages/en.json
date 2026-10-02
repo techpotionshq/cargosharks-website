@@ -447,7 +447,10 @@
     "nextStep": "Next step",
     "empty": "No shipments yet.",
     "emptyHint": "New bookings appear here as soon as they are confirmed.",
-    "viewShipment": "View shipment"
+    "viewShipment": "View shipment",
+    "progress": "{done} of {total} steps",
+    "documentCount": "{count, plural, one {# document} other {# documents}}",
+    "etaPassed": "Past its ETA"
   },
   "agent": {
     "title": "Assigned shipments",
@@ -3432,7 +3435,8 @@
     "amount": "Unbilled",
     "oldest": "Oldest line",
     "bill": "Draft invoice",
-    "mixedCurrency": "Mixed currencies — bill separately"
+    "mixedCurrency": "Mixed currencies — bill separately",
+    "showAll": "Show all {count}"
   },
   "grouping": {
     "title": "Could share a container",

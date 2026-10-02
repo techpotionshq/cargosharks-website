@@ -447,7 +447,10 @@
     "nextStep": "المرحلة التالية",
     "empty": "لا توجد شحنات بعد.",
     "emptyHint": "تظهر الحجوزات الجديدة هنا فور تأكيدها.",
-    "viewShipment": "عرض الشحنة"
+    "viewShipment": "عرض الشحنة",
+    "progress": "{done} من {total} مراحل",
+    "documentCount": "{count, plural, one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}",
+    "etaPassed": "تجاوزت موعد الوصول"
   },
   "agent": {
     "title": "الشحنات المسندة",
@@ -3432,7 +3435,8 @@
     "amount": "غير مفوتر",
     "oldest": "أقدم بند",
     "bill": "إنشاء مسودة فاتورة",
-    "mixedCurrency": "عملات مختلفة — تُفوتر منفصلة"
+    "mixedCurrency": "عملات مختلفة — تُفوتر منفصلة",
+    "showAll": "عرض الكل ({count})"
   },
   "grouping": {
     "title": "يمكن دمجها في حاوية",

@@ -322,20 +322,22 @@ export function Conversation({
               </div>
 
               {configured === false ? null : (
-                <ul className="flex flex-col divide-y divide-line border-y border-line">
+                /*
+                  Chips rather than a ruled list. A list of grey lines read as
+                  content — a table of contents to scroll past — and nobody
+                  could tell the lines were buttons until they hovered one.
+                  A bordered chip is a button at a glance, the row wraps in a
+                  narrow dock, and each is a 40px target.
+                */
+                <ul className="flex flex-wrap gap-2">
                   {labels.suggestions.map((suggestion) => (
                     <li key={suggestion}>
                       <button
                         type="button"
                         onClick={() => send(suggestion)}
-                        className="group flex w-full items-center gap-3 py-2.5 text-start text-[0.8125rem] text-ink-muted transition-colors hover:text-accent"
+                        className="inline-flex min-h-10 items-center rounded-full border border-line bg-surface px-3.5 py-2 text-start text-[0.8125rem] text-ink transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
                       >
-                        <span className="min-w-0 flex-1">{suggestion}</span>
-                        <Icon
-                          name="arrow-end"
-                          size={13}
-                          className="shrink-0 text-ink-subtle opacity-0 transition-opacity group-hover:text-accent group-hover:opacity-100"
-                        />
+                        {suggestion}
                       </button>
                     </li>
                   ))}

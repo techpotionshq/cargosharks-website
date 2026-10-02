@@ -213,9 +213,15 @@ export default async function DashboardPage() {
             value={overview.clocks.containersAtRisk}
             max={Math.max(overview.clocks.running, overview.clocks.containersAtRisk, 1)}
             tone="caution"
+            /*
+              The denominator is the meter's own maximum. Containers at risk
+              are counted per box and running clocks per clock, so a job with
+              three boxes on one clock read "3 of 1 container past their free
+              days" — a fraction over one, and the wrong plural.
+            */
             label={t('containersLabel', {
               atRisk: overview.clocks.containersAtRisk,
-              running: overview.clocks.running,
+              running: Math.max(overview.clocks.running, overview.clocks.containersAtRisk),
             })}
           />
         </Metric>
@@ -429,7 +435,8 @@ export default async function DashboardPage() {
           explain={t('enquiryTrendExplain')}
           bodyClassName="flex"
         >
-          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_15rem]">
+          {/* 17rem for the readout: at 15 its labels clipped to "Received this …". */}
+          <div className="grid flex-1 gap-6 lg:grid-cols-[1fr_17rem]">
             <TrendColumns
               className="flex flex-1 flex-col justify-end"
               height={190}
