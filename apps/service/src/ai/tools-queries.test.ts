@@ -52,6 +52,9 @@ const CODE = `TLQ-${RUN}`
 const JOB_REF = `TLQ-JOB-${RUN}`
 const LANE_A_REF = `TLQ-LCL-A-${RUN}`
 const LANE_B_REF = `TLQ-LCL-B-${RUN}`
+const ARRIVING_REF = `TLQ-AIR-SOON-${RUN}`
+const ARRIVED_REF = `TLQ-AIR-IN-${RUN}`
+const LATER_REF = `TLQ-AIR-LATER-${RUN}`
 
 const actor: Actor = { principalId: PRINCIPAL, type: 'internal', branchIds: [BRANCH] }
 const systemActor = { ...actor, type: 'system' as const }
@@ -190,7 +193,7 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       ])
 
       // Credit terms and one issued, unpaid invoice — a 10,000 limit against
-      // 3,000 outstanding, so the customer is comfortably within it.
+      // 3,000 outstanding (plus the part-paid one below), comfortably within it.
       await tx.insert(customerBranchTerms).values({
         customerId: CUSTOMER,
         branchId: BRANCH,
@@ -213,6 +216,61 @@ describe.skipIf(!enabled)('the finance read tools', () => {
         issuedAt: new Date('2026-08-01T12:00:00Z'),
         dueOn: '2026-08-31',
       })
+
+      // A part-paid invoice not yet due — off the overdue list, but a person
+      // can still ask what is left on it (ai-15).
+      await tx.insert(invoices).values({
+        branchId: BRANCH,
+        customerId: CUSTOMER,
+        seriesNo: `${CODE}-INV2`,
+        status: 'part_paid',
+        currency: 'KWD',
+        subtotal: '500.000',
+        taxAmount: '0.000',
+        total: '500.000',
+        amountPaid: '120.250',
+        amountCredited: '30.000',
+        taxTreatment: 'out_of_scope',
+        issuedAt: new Date(),
+        dueOn: day(20),
+      })
+
+      // An air import arriving in three days, one already arrived, and one
+      // due in three weeks — the arrival window has to pick the first only.
+      const soon = new Date(Date.now() + 3 * 86_400_000)
+      await tx.insert(jobs).values([
+        {
+          id: randomUUID(),
+          reference: ARRIVING_REF,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          mode: 'air' as const,
+          tradeDirection: 'import' as const,
+          status: 'in_transit' as const,
+          eta: soon,
+        },
+        {
+          id: randomUUID(),
+          reference: ARRIVED_REF,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          mode: 'air' as const,
+          tradeDirection: 'import' as const,
+          status: 'arrived' as const,
+          eta: soon,
+          ata: new Date(),
+        },
+        {
+          id: randomUUID(),
+          reference: LATER_REF,
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          mode: 'air' as const,
+          tradeDirection: 'export' as const,
+          status: 'booked' as const,
+          eta: new Date(Date.now() + 21 * 86_400_000),
+        },
+      ])
 
       // Two loose LCL shipments on one lane, undated so they share a window —
       // exactly the pair `clusterShipments` should group into one container.
@@ -239,11 +297,11 @@ describe.skipIf(!enabled)('the finance read tools', () => {
 
   describe('list_unbilled', () => {
     it('reports revenue earned but not invoiced, excluding accruals', async () => {
-      const rows = (await runTool(actor, 'list_unbilled', {})) as {
-        shipment: string
-        lines: number
-        amountBase: string
-      }[]
+      const { rows, total } = (await runTool(actor, 'list_unbilled', {})) as {
+        total: number
+        rows: { shipment: string; lines: number; amountBase: string }[]
+      }
+      expect(total).toBeGreaterThanOrEqual(rows.length)
 
       const mine = rows.find((row) => row.shipment === JOB_REF)
       expect(mine).toBeDefined()
@@ -282,11 +340,9 @@ describe.skipIf(!enabled)('the finance read tools', () => {
         ]),
       )
 
-      const rows = (await runTool(actor, 'list_free_time', { withinDays: 7 })) as {
-        shipment: string
-        kind: string
-        freeUntil: string
-      }[]
+      const { rows } = (await runTool(actor, 'list_free_time', { withinDays: 7 })) as {
+        rows: { shipment: string; kind: string; freeUntil: string }[]
+      }
       const mine = rows.filter((row) => row.shipment === JOB_REF)
       expect(mine.map((row) => row.kind)).toEqual(['demurrage'])
       // Day one is the start: five free days from two days ago end in two.
@@ -332,9 +388,10 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       expect(result.branches).toHaveLength(1)
       const branch = result.branches[0]!
       expect(branch.currency).toBe('KWD')
-      expect(Number(branch.outstanding)).toBeCloseTo(3000, 3)
+      // The overdue 3,000 plus the 349.750 still owed on the part-paid one.
+      expect(Number(branch.outstanding)).toBeCloseTo(3349.75, 3)
       expect(Number(branch.limit)).toBeCloseTo(10000, 3)
-      expect(Number(branch.headroom)).toBeCloseTo(7000, 3)
+      expect(Number(branch.headroom)).toBeCloseTo(6650.25, 3)
       expect(branch.outcome).toBe('within_limit')
       expect(branch.blocked).toBe(false)
       expect(branch.onHold).toBe(false)
@@ -386,7 +443,9 @@ describe.skipIf(!enabled)('the finance read tools', () => {
       const lapsed = await quote('sent', day(-5))
       const draft = await quote('draft', day(3))
 
-      const rows = (await runTool(actor, 'list_quotes_expiring', {})) as { reference: string }[]
+      const { rows } = (await runTool(actor, 'list_quotes_expiring', {})) as {
+        rows: { reference: string }[]
+      }
       const refs = new Set(rows.map((row) => row.reference))
 
       expect(refs.has(soon)).toBe(true)
@@ -398,10 +457,101 @@ describe.skipIf(!enabled)('the finance read tools', () => {
     it('widens to the horizon it is given', async () => {
       const distant = await quote('sent', day(45))
 
-      const rows = (await runTool(actor, 'list_quotes_expiring', { withinDays: 50 })) as {
-        reference: string
-      }[]
+      const { rows } = (await runTool(actor, 'list_quotes_expiring', { withinDays: 50 })) as {
+        rows: { reference: string }[]
+      }
       expect(new Set(rows.map((row) => row.reference)).has(distant)).toBe(true)
+    })
+  })
+
+  /*
+    ai-1: "sea" compared exactly against a column holding sea_fcl and sea_lcl
+    matched nothing. The family must find both.
+  */
+  describe('list_jobs', () => {
+    type Listed = { total: number; shown: number; rows: { reference: string; mode: string }[] }
+
+    it('finds full-container and groupage shipments when asked for sea', async () => {
+      const listed = (await runTool(actor, 'list_jobs', { mode: 'sea', limit: 50 })) as Listed
+      const refs = new Set(listed.rows.map((row) => row.reference))
+      expect(refs.has(JOB_REF)).toBe(true) // sea_fcl
+      expect(refs.has(LANE_A_REF)).toBe(true) // sea_lcl
+      expect(listed.rows.every((row) => row.mode.startsWith('sea_'))).toBe(true)
+      // Only this branch's shipments are visible: the fixture's three sea jobs.
+      expect(listed.total).toBe(3)
+    })
+
+    it('lists what is arriving in the window, soonest first, and not what has arrived', async () => {
+      const listed = (await runTool(actor, 'list_jobs', { arrivingWithinDays: 7 })) as Listed
+      expect(listed.rows.map((row) => row.reference)).toEqual([ARRIVING_REF])
+      expect(listed.total).toBe(1)
+    })
+
+    it('narrows by direction', async () => {
+      const listed = (await runTool(actor, 'list_jobs', { direction: 'export' })) as Listed
+      expect(listed.rows.map((row) => row.reference)).toEqual([LATER_REF])
+    })
+
+    it('reports every match in total even when fewer are shown', async () => {
+      const listed = (await runTool(actor, 'list_jobs', { limit: 2 })) as Listed
+      expect(listed.shown).toBe(2)
+      expect(listed.total).toBe(6)
+    })
+  })
+
+  describe('list_overdue_invoices', () => {
+    it('carries the balance per row and the outstanding sum per currency', async () => {
+      const listed = (await runTool(actor, 'list_overdue_invoices', {
+        customer: `${CODE}-C`,
+      })) as {
+        total: number
+        rows: { number: string; balance: string }[]
+        outstandingByCurrency: { currency: string; invoices: number; outstanding: string }[]
+      }
+      expect(listed.rows.map((row) => row.number)).toEqual([`${CODE}-INV1`])
+      expect(listed.total).toBe(1)
+      expect(Number(listed.rows[0]!.balance)).toBeCloseTo(3000, 3)
+      expect(listed.outstandingByCurrency).toEqual([
+        { currency: 'KWD', invoices: 1, outstanding: expect.any(String) },
+      ])
+    })
+  })
+
+  // ai-15: a named invoice's balance, whether or not it is overdue.
+  describe('get_invoice', () => {
+    it('reports the balance as total less paid less credited', async () => {
+      const result = (await runTool(actor, 'get_invoice', { number: `${CODE}-INV2` })) as {
+        found: boolean
+        invoice: { balance: string; status: string; daysOverdue: number | null }
+      }
+      expect(result.found).toBe(true)
+      expect(result.invoice.status).toBe('part_paid')
+      // 500.000 - 120.250 - 30.000, in numeric — never a float.
+      expect(result.invoice.balance).toBe('349.750000')
+      expect(result.invoice.daysOverdue).toBeNull()
+    })
+
+    it('finds one invoice by a distinctive fragment, and asks when several match', async () => {
+      const one = (await runTool(actor, 'get_invoice', { number: `${RUN}-INV2` })) as {
+        found: boolean
+      }
+      expect(one.found).toBe(true)
+
+      const several = (await runTool(actor, 'get_invoice', { number: `${CODE}-INV` })) as {
+        found: boolean
+        ambiguous: boolean
+        candidates: string[]
+      }
+      expect(several.found).toBe(false)
+      expect(several.ambiguous).toBe(true)
+      expect(several.candidates).toHaveLength(2)
+    })
+
+    it('does not distinguish a missing invoice from one it may not see', async () => {
+      const result = (await runTool(actor, 'get_invoice', { number: 'NO-SUCH-INV-XYZ' })) as {
+        found: boolean
+      }
+      expect(result.found).toBe(false)
     })
   })
 })

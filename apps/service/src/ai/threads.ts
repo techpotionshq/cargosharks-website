@@ -27,6 +27,7 @@ import {
   type Actor,
   type Tx,
 } from '@qabandi/db'
+import type { HistoryTurn, ToolTrace } from './assistant'
 
 export interface ThreadSummary {
   readonly id: string
@@ -67,6 +68,20 @@ export async function listThreads(actor: Actor, limit = 30): Promise<ThreadSumma
  * because it was expensive to re-read is the wrong economy.
  */
 export async function readThread(actor: Actor, threadId: string): Promise<StoredTurn[]> {
+  const rows = await storedTurns(actor, threadId)
+  /*
+    The panel is shown which tools ran, by name, and nothing else of them.
+    `used` now keeps each lookup's arguments and result for the model's sake
+    (ai-2); a person's own browser has no need of our raw rows, and every
+    column sent there is one more thing a screenshot carries.
+  */
+  return rows.map((row) => ({
+    ...row,
+    used: [...new Set(row.used.map((call) => String(call.name)))].map((name) => ({ name })),
+  }))
+}
+
+async function storedTurns(actor: Actor, threadId: string): Promise<StoredTurn[]> {
   const rows = await withActor(actor, (tx: Tx) =>
     tx
       .select({
@@ -91,21 +106,33 @@ export async function readThread(actor: Actor, threadId: string): Promise<Stored
 }
 
 /**
- * What the model is shown of a conversation: the words, and only the recent ones.
+ * What the model is shown of a conversation: the recent turns, with the
+ * lookups behind each answer.
  *
- * Tool results are not replayed, deliberately. They are the largest thing in a
- * transcript by a wide margin, and they go stale the moment anything moves — a
- * model reasoning from Tuesday's row counts will state them as today's. Asking
- * again is cheap and correct; remembering is neither.
+ * This used to be the words alone, on the reasoning that tool results are
+ * large and go stale. Both are true and the cure was worse (ai-2): follow-ups
+ * were answered from the assistant's own earlier prose, with invented figures
+ * and no lookup. Now each answer carries the calls it made and what they
+ * returned, stamped with when — `historyMessages` in `assistant.ts` decides how
+ * many of those are replayed, and the prompt says to look again for anything
+ * they do not answer.
+ *
+ * A row written before results were kept has `used` entries with a name only;
+ * those are not replayable calls and the turn goes back as words, as before.
  */
-export async function historyFor(
-  actor: Actor,
-  threadId: string,
-): Promise<{ role: 'user' | 'assistant'; content: string }[]> {
-  const turns = await readThread(actor, threadId)
-  return turns
-    .slice(-ASSISTANT_HISTORY_TURNS)
-    .map((turn) => ({ role: turn.role, content: turn.content }))
+export async function historyFor(actor: Actor, threadId: string): Promise<HistoryTurn[]> {
+  const turns = await storedTurns(actor, threadId)
+  return turns.slice(-ASSISTANT_HISTORY_TURNS).map((turn) => {
+    const calls = turn.used.filter(isTrace)
+    return calls.length > 0
+      ? { role: turn.role, content: turn.content, calls }
+      : { role: turn.role, content: turn.content }
+  })
+}
+
+/** A stored `used` entry that is a whole lookup, not just a tool's name. */
+function isTrace(entry: Record<string, unknown>): entry is Record<string, unknown> & ToolTrace {
+  return typeof entry.name === 'string' && 'result' in entry && typeof entry.at === 'string'
 }
 
 export interface RecordedExchange {

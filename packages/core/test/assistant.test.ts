@@ -3,7 +3,10 @@ import {
   ASSISTANT_LIMITS,
   ASSISTANT_TOOLS,
   assistantTool,
+  MODE_FILTERS,
   isProposableEntity,
+  modesFor,
+  normaliseToolArgs,
   proposableTransitions,
   proposeTransition,
   toolsFor,
@@ -198,5 +201,98 @@ describe('proposableTransitions', () => {
   it('reads the machines rather than a list of its own', () => {
     const invoiceOptions = proposableTransitions('invoice', 'approved', everything).map((t) => t.to)
     expect(invoiceOptions.sort()).toEqual(['draft', 'issued', 'void'])
+  })
+})
+
+/*
+  ai-1. `list_jobs` described its mode as "sea, air or land" and compared it
+  exactly against a column holding `sea_fcl` and `sea_lcl`, so "how many sea
+  shipments" was answered "none" on a board full of them. The parameters are
+  now enums and every closed value is held to its enum before a query runs.
+*/
+describe('closed tool parameters', () => {
+  const tool = (name: string) => assistantTool(name)!
+
+  it('declares every closed parameter as an enum that also admits null', () => {
+    const closed: string[] = []
+    for (const t of ASSISTANT_TOOLS) {
+      const props = (t.parameters as { properties: Record<string, { enum?: unknown[] }> })
+        .properties
+      for (const [key, schema] of Object.entries(props)) {
+        if (!schema.enum) continue
+        closed.push(`${t.name}.${key}`)
+        const required = (t.parameters as { required: string[] }).required
+        expect(required).toContain(key)
+      }
+    }
+    expect(closed).toEqual(
+      expect.arrayContaining([
+        'list_jobs.status',
+        'list_jobs.mode',
+        'list_jobs.direction',
+        'list_enquiries.status',
+        'list_exceptions.severity',
+        'propose_transition.entity',
+      ]),
+    )
+    const mode = (tool('list_jobs').parameters as { properties: { mode: { enum: unknown[] } } })
+      .properties.mode
+    expect(mode.enum).toContain(null)
+  })
+
+  it('offers the sea family and expands it to both stored sea modes', () => {
+    expect(MODE_FILTERS).toContain('sea')
+    expect(modesFor('sea')).toEqual(['sea_fcl', 'sea_lcl'])
+    expect(modesFor('air')).toEqual(['air'])
+    expect(modesFor('sea_lcl')).toEqual(['sea_lcl'])
+  })
+
+  it('forgives case, spacing and the names people use', () => {
+    const read = (args: Record<string, unknown>) => {
+      const result = normaliseToolArgs(tool('list_jobs'), args)
+      if (!result.ok) throw new Error(result.error)
+      return result.args
+    }
+    expect(read({ mode: 'Sea' }).mode).toBe('sea')
+    expect(read({ mode: 'ocean' }).mode).toBe('sea')
+    expect(read({ mode: 'FCL' }).mode).toBe('sea_fcl')
+    expect(read({ mode: 'road' }).mode).toBe('land')
+    expect(read({ status: 'In Transit' }).status).toBe('in_transit')
+    expect(read({ status: 'clearance' }).status).toBe('customs')
+    expect(read({ status: 'on-hold' }).status).toBe('on_hold')
+  })
+
+  it('reads a written-out null as no filter', () => {
+    const result = normaliseToolArgs(tool('list_jobs'), { mode: 'None', status: 'all' })
+    expect(result).toEqual({ ok: true, args: { mode: null, status: null, direction: null } })
+  })
+
+  it('leaves the open parameters alone', () => {
+    const result = normaliseToolArgs(tool('list_jobs'), { limit: 5, arrivingWithinDays: 7 })
+    expect(result.ok && result.args.limit).toBe(5)
+    expect(result.ok && result.args.arrivingWithinDays).toBe(7)
+  })
+
+  it('refuses a value outside the vocabulary and names the ones that work', () => {
+    const result = normaliseToolArgs(tool('list_enquiries'), { status: 'pending' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error).toContain('pending')
+      expect(result.error).toContain('assigned')
+    }
+  })
+
+  it('applies an alias only where the parameter has that value', () => {
+    // "clearance" is a shipment status; an enquiry has no such state.
+    expect(normaliseToolArgs(tool('list_enquiries'), { status: 'clearance' }).ok).toBe(false)
+  })
+
+  it('refuses a closed value that is not a string', () => {
+    expect(normaliseToolArgs(tool('list_exceptions'), { severity: 3 }).ok).toBe(false)
+  })
+
+  it('offers a tool for one invoice’s balance', () => {
+    expect(assistantTool('get_invoice')?.kind).toBe('read')
+    expect(assistantTool('get_invoice')?.requires).toBeUndefined()
   })
 })

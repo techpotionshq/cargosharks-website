@@ -3398,7 +3398,8 @@
       "list_quotes_expiring": "عروض الأسعار التي على وشك الانتهاء",
       "get_margin": "هامش ربح الشحنة",
       "get_customer_credit": "الوضع الائتماني للعميل",
-      "list_consolidation_candidates": "الشحنات القابلة للتجميع"
+      "list_consolidation_candidates": "الشحنات القابلة للتجميع",
+      "get_invoice": "الفاتورة"
     },
     "toolUnknown": "السجلات",
     "suggestions": {

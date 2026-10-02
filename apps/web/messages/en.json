@@ -3398,7 +3398,8 @@
       "list_quotes_expiring": "quotations about to expire",
       "get_margin": "the shipment's margin",
       "get_customer_credit": "the customer's credit standing",
-      "list_consolidation_candidates": "shipments that could be consolidated"
+      "list_consolidation_candidates": "shipments that could be consolidated",
+      "get_invoice": "the invoice"
     },
     "toolUnknown": "the records",
     "suggestions": {

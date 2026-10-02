@@ -680,11 +680,14 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         question: question.trim(),
         answer: answer.reply,
         proposals: answer.proposals as unknown as Record<string, unknown>[],
-        used: answer.used as unknown as Record<string, unknown>[],
+        // Each lookup with its result, so a follow-up is answered from them (ai-2).
+        used: answer.calls as unknown as Record<string, unknown>[],
         invocationId: answer.invocationIds.at(-1) ?? null,
       })
 
-      return reply.send({ ...answer, threadId: stored.threadId, title: stored.title })
+      // The results stay server-side; the browser is told which tools ran.
+      const { calls: _calls, ...visible } = answer
+      return reply.send({ ...visible, threadId: stored.threadId, title: stored.title })
     } catch (error) {
       if (error instanceof AiUnavailableError) {
         return reply.code(503).send({ error: error.code, message: error.message })
@@ -735,6 +738,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       let answer = ''
       let proposals: unknown[] = []
       let used: string[] = []
+      let calls: unknown[] = []
       let invocationIds: string[] = []
       let truncated: string | undefined
 
@@ -750,6 +754,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
           answer = event.reply
           proposals = event.proposals as unknown[]
           used = [...event.used]
+          calls = [...event.calls]
           invocationIds = [...event.invocationIds]
           truncated = event.truncated
         } else {
@@ -764,7 +769,12 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         question: question.trim(),
         answer,
         proposals: proposals as Record<string, unknown>[],
-        used: used.map((name) => ({ name })),
+        /*
+          Every lookup with its result, not only the tool names (ai-2): a
+          follow-up is answered from these, where before it was answered from
+          the assistant's own prose — with figures nobody had looked up.
+        */
+        used: calls as Record<string, unknown>[],
         invocationId: invocationIds.at(-1) ?? null,
       })
 

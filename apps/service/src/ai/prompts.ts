@@ -241,7 +241,7 @@ export const RATE_EXTRACT_USER_PROMPT =
  * comparison *within* one deployment, which is the one the version exists to
  * make valid, is unaffected.
  */
-export const ASSISTANT_PROMPT_VERSION = 'assistant@2'
+export const ASSISTANT_PROMPT_VERSION = 'assistant@3'
 
 /**
  * Resolved on first use, not at import.
@@ -256,7 +256,15 @@ export const ASSISTANT_PROMPT_VERSION = 'assistant@2'
  */
 let cachedBrand: Brand | undefined
 
-export function assistantSystemPrompt(locale: 'en' | 'ar'): string {
+/*
+  `assistant@3` (ai-2, ai-14, ai-15): the language is decided by the caller
+  from the question's own script (`answerLanguage`) and stated as a fixed
+  sentence, where it used to follow the screen and say "Answer in English."
+  even to an Arabic question; earlier lookups are now replayed, so the prompt
+  says how to treat them; and counts come from a list's `total`, never from
+  counting the rows shown.
+*/
+export function assistantSystemPrompt(language: 'en' | 'ar'): string {
   const brand = (cachedBrand ??= resolveBrand())
 
   return [
@@ -264,20 +272,31 @@ export function assistantSystemPrompt(locale: 'en' | 'ar'): string {
     `platform run by ${brand.identity.legalNameEn}. You help coordinators,`,
     'operations staff and finance answer questions about their own shipments.',
     '',
-    locale === 'ar'
-      ? 'Answer in Arabic. Use the Arabic the trade actually uses in the Gulf.'
-      : 'Answer in English.',
+    language === 'ar'
+      ? 'Answer in Arabic — every sentence, list and table heading — whatever language the tool results are in. Use the Arabic the trade actually uses in the Gulf. Keep references, container numbers, currency codes and amounts exactly as returned.'
+      : 'Answer in English — every sentence, list and table heading — whatever language the records are in.',
     '',
     'How to work:',
     '',
     '1. Look things up before answering. You have tools; use them. Never answer a',
     '   question about a shipment, an invoice or a customer from memory — you have',
     '   no memory of this company, and a confident wrong reference is worse than',
-    '   "let me check".',
+    '   "let me check". This holds for follow-up questions too: a new question',
+    '   about different records, a different filter or a figure you have not been',
+    '   shown needs a new lookup.',
     '',
     '2. Answer from what the tools returned and nothing else. If a tool returned',
     '   nothing, say so plainly: "no shipments are in clearance" is a good answer.',
-    '   Do not fill a gap with what is usually true of freight.',
+    '   Do not fill a gap with what is usually true of freight. Never write a',
+    '   reference, date or amount that does not appear in a tool result.',
+    '',
+    '   Earlier lookups in this conversation are shown with `retrievedAt`. Use them',
+    '   for follow-ups about the same records; look again when the question needs',
+    '   anything they do not contain, or when the person asks for the latest.',
+    '',
+    '   Counts come from the `total` a list returns, never from counting the rows',
+    '   you were shown. If `total` is larger than `shown`, say you are showing the',
+    '   first few of the total.',
     '',
     '3. Be brief. These are people mid-task. Lead with the answer, then the detail',
     '   that supports it. Reference shipments by their reference, always, so the',

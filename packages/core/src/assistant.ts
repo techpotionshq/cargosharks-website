@@ -51,6 +51,7 @@ import {
   type Transition,
 } from './states'
 import { AiError } from './ai'
+import { MODES } from './extraction'
 
 /* -------------------------------------------------------------------------
  * Tools
@@ -112,7 +113,163 @@ const objectSchema = (
 
 function nullable(schema: Record<string, unknown>): Record<string, unknown> {
   const type = schema.type
-  return { ...schema, type: Array.isArray(type) ? type : [type, 'null'] }
+  return {
+    ...schema,
+    type: Array.isArray(type) ? type : [type, 'null'],
+    // JSON Schema checks `enum` separately from `type`: a nullable enum whose
+    // list lacks null still refuses null, and a strict provider says so.
+    ...(Array.isArray(schema.enum) ? { enum: [...(schema.enum as unknown[]), null] } : {}),
+  }
+}
+
+/**
+ * A closed set of values, declared as one.
+ *
+ * Prose like "sea, air or land" in a description is how `list_jobs` came to be
+ * asked for `mode: "sea"` against a column holding `sea_fcl` and `sea_lcl`, and
+ * to answer "no sea shipments" on a board full of them (ai-1). An `enum` tells
+ * the model the real vocabulary, and `normaliseToolArgs` holds the line where a
+ * model writes something outside it anyway.
+ */
+const oneOf = (values: readonly string[], description?: string): Record<string, unknown> => ({
+  type: 'string',
+  enum: [...values],
+  ...(description ? { description } : {}),
+})
+
+/*
+  The vocabularies, read from the machines wherever one exists so a status
+  added to `states.ts` is a status the assistant can filter on.
+*/
+const JOB_STATUSES = jobMachine.states
+const ENQUIRY_STATUSES = enquiryMachine.states
+const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
+const TRADE_DIRECTIONS = ['import', 'export', 'cross_trade'] as const
+const PROPOSABLE = ['job', 'enquiry', 'quote', 'invoice', 'customs'] as const
+
+/**
+ * The modes a person asks about, which are not quite the modes we store.
+ *
+ * Nobody says "sea_fcl or sea_lcl"; they say "sea". So the filter offers the
+ * family as well as each stored mode, and `modesFor` expands it. Courier stays
+ * its own value: it is a different product with a different price, not a kind
+ * of air freight a coordinator would expect folded in.
+ */
+export const MODE_FILTERS = ['sea', ...MODES] as const
+export type ModeFilter = (typeof MODE_FILTERS)[number]
+
+export function modesFor(filter: ModeFilter): (typeof MODES)[number][] {
+  return filter === 'sea' ? ['sea_fcl', 'sea_lcl'] : [filter]
+}
+
+/**
+ * Words a model writes when it means `null`.
+ *
+ * Found in a live call: asked which invoices were overdue, a model chose the
+ * right tool and filled the optional customer filter with `"None"` — a search
+ * for a customer called None, which answered "nothing is overdue" on a day when
+ * several invoices were. `tools.ts` reads free-text filters through this set;
+ * `normaliseToolArgs` reads the closed ones through it too.
+ */
+export const NULLISH_WORDS: ReadonlySet<string> = new Set([
+  'none',
+  'null',
+  'nil',
+  'undefined',
+  'n/a',
+  'na',
+  'any',
+  'all',
+  '-',
+])
+
+/**
+ * What a model writes for a value it knows by another name.
+ *
+ * Per parameter, and applied only when the result is in that parameter's own
+ * enum — `"clearance"` means `customs` to a shipment and nothing to an enquiry,
+ * and the enum is what decides which.
+ */
+const ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  mode: {
+    ocean: 'sea',
+    ocean_freight: 'sea',
+    sea_freight: 'sea',
+    fcl: 'sea_fcl',
+    lcl: 'sea_lcl',
+    air_freight: 'air',
+    road: 'land',
+    truck: 'land',
+    trucking: 'land',
+    overland: 'land',
+    express: 'courier',
+  },
+  status: {
+    clearance: 'customs',
+    in_clearance: 'customs',
+    customs_clearance: 'customs',
+    transit: 'in_transit',
+    hold: 'on_hold',
+  },
+}
+
+export type NormalisedArgs =
+  | { readonly ok: true; readonly args: Record<string, unknown> }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Hold a model's arguments to the tool's declared vocabulary.
+ *
+ * Every parameter with an `enum`, on every tool — driven by the schema, so a
+ * tool added with a closed parameter is checked without anybody remembering to
+ * add it here. Case, spacing and hyphens are forgiven, a written-out null
+ * becomes null, a known alias becomes the stored value.
+ *
+ * Anything else is *refused*, with the values that would work, rather than
+ * passed through. Passed through, `status: "pending"` is a filter that matches
+ * nothing and an answer of "there are none", stated with confidence; refused,
+ * it is a turn in which the model picks a real status and asks again.
+ */
+export function normaliseToolArgs(
+  tool: AssistantTool,
+  args: Record<string, unknown>,
+): NormalisedArgs {
+  const properties = (tool.parameters.properties ?? {}) as Record<string, Record<string, unknown>>
+  const out: Record<string, unknown> = { ...args }
+
+  for (const [key, schema] of Object.entries(properties)) {
+    if (!Array.isArray(schema.enum)) continue
+    const allowed = (schema.enum as unknown[]).filter((v): v is string => typeof v === 'string')
+    const raw = args[key]
+
+    if (raw === null || raw === undefined) {
+      out[key] = null
+      continue
+    }
+    if (typeof raw !== 'string') {
+      return { ok: false, error: `${key} must be one of: ${allowed.join(', ')}.` }
+    }
+
+    const word = raw
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_')
+    if (word === '' || NULLISH_WORDS.has(word)) {
+      out[key] = null
+      continue
+    }
+
+    const value = allowed.includes(word) ? word : ALIASES[key]?.[word]
+    if (!value || !allowed.includes(value)) {
+      return {
+        ok: false,
+        error: `"${raw}" is not a ${key} ${tool.name} understands. Use one of: ${allowed.join(', ')} — or null for no filter.`,
+      }
+    }
+    out[key] = value
+  }
+
+  return { ok: true, args: out }
 }
 
 const REFERENCE = {
@@ -153,14 +310,21 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_jobs',
     kind: 'read',
     description:
-      'Shipments the person can see, newest first, optionally narrowed by status or mode. Use for questions like "what is in clearance" or "what is arriving this week".',
+      'Shipments the person can see, newest first, optionally narrowed by status, mode, direction or arrival window. Returns `total` (every match) and the first `shown` rows. Use for questions like "what is in clearance", "how many sea imports do we have" or "what is arriving this week" (arrivingWithinDays: 7).',
     parameters: objectSchema({
-      status: {
-        type: 'string',
+      status: oneOf(JOB_STATUSES, '"customs" means in customs clearance.'),
+      mode: oneOf(
+        MODE_FILTERS,
+        '"sea" covers both full-container (sea_fcl) and groupage (sea_lcl).',
+      ),
+      direction: oneOf(TRADE_DIRECTIONS),
+      arrivingWithinDays: {
+        type: 'integer',
+        minimum: 0,
+        maximum: 60,
         description:
-          'draft, booked, in_transit, arrived, customs, delivered, completed, closed, on_hold or cancelled.',
+          'Only shipments not yet arrived whose ETA falls between now and this many days ahead, soonest first.',
       },
-      mode: { type: 'string', description: 'sea, air or land.' },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),
   },
@@ -168,12 +332,9 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_enquiries',
     kind: 'read',
     description:
-      'Enquiries on the board, including how long is left on the four-working-hour first-response clock. Use for "what needs answering" and anything about the SLA.',
+      'Open enquiries on the board, including how long is left on the four-working-hour first-response clock. Returns `total` (every match) and the first `shown` rows. Use for "what needs answering", "how many enquiries are open" and anything about the SLA.',
     parameters: objectSchema({
-      status: {
-        type: 'string',
-        description: 'new, assigned, rating, quoted, won, lost, cancelled.',
-      },
+      status: oneOf(ENQUIRY_STATUSES),
       overdueOnly: { type: 'boolean', description: 'Only those past their SLA.' },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),
@@ -182,9 +343,9 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_exceptions',
     kind: 'read',
     description:
-      'Open exceptions across shipments, most severe and longest open first. Use for "what is going wrong" and "what should I look at today".',
+      'Open exceptions across shipments, most severe and longest open first. Returns `total` and the first `shown` rows. Use for "what is going wrong" and "what should I look at today".',
     parameters: objectSchema({
-      severity: { type: 'string', description: 'low, medium, high or critical.' },
+      severity: oneOf(SEVERITIES),
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),
   },
@@ -192,7 +353,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_free_time',
     kind: 'read',
     description:
-      'Containers whose free time is running out or has expired, and what the demurrage exposure is. Use for anything about detention, demurrage or storage.',
+      'Containers whose free time is running out or has expired, and what the demurrage exposure is. Returns `total` and the first `shown` rows. Use for anything about free time, detention, demurrage or storage.',
     parameters: objectSchema({
       withinDays: { type: 'integer', minimum: 0, maximum: 60 },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
@@ -202,17 +363,32 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_overdue_invoices',
     kind: 'read',
     description:
-      'Customer invoices past their due date with the amount outstanding and how many days late. Use for anything about receivables, ageing or chasing payment.',
+      'Customer invoices past their due date with the balance outstanding and how many days late, plus `total` and the outstanding sum per currency. Use for anything about receivables, ageing or chasing payment.',
     parameters: objectSchema({
       customer: { type: 'string', description: 'Narrow to one customer by name or code.' },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),
   },
   {
+    name: 'get_invoice',
+    kind: 'read',
+    description:
+      'One customer invoice by its number: customer, status, total, paid, credited, the balance still owed, due date and days overdue. Use whenever the person asks about a specific invoice, its balance or whether it is paid.',
+    parameters: objectSchema(
+      {
+        number: {
+          type: 'string',
+          description: 'The invoice number, e.g. KWI-INV-2026-00012 (or a distinctive part of it).',
+        },
+      },
+      ['number'],
+    ),
+  },
+  {
     name: 'list_unbilled',
     kind: 'read',
     description:
-      'Shipments carrying revenue that was earned but never invoiced, largest first, with the amount in the branch base currency. Use for "what have we not billed", "unbilled revenue" and anything about revenue leaking.',
+      'Shipments carrying revenue that was earned but never invoiced, largest first, with the amount in the branch base currency, plus `total`. Use for "what have we not billed", "unbilled revenue" and anything about revenue leaking.',
     parameters: objectSchema({
       limit: { type: 'integer', minimum: 1, maximum: 50 },
     }),
@@ -221,7 +397,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
     name: 'list_quotes_expiring',
     kind: 'read',
     description:
-      'Sent quotations approaching the end of their validity, soonest first, with the customer and the quoted total. Use for "which quotes are about to lapse" and following up before a price expires.',
+      'Sent quotations approaching the end of their validity, soonest first, with the customer and the quoted total, plus `total` (how many). Use for "which quotes are about to lapse" and following up before a price expires.',
     parameters: objectSchema({
       withinDays: { type: 'integer', minimum: 0, maximum: 60 },
       limit: { type: 'integer', minimum: 1, maximum: 50 },
@@ -282,10 +458,7 @@ export const ASSISTANT_TOOLS: readonly AssistantTool[] = [
       'Propose moving a shipment, enquiry, quote, invoice or customs file to a new state. This does NOT perform the change: it offers the person a button to confirm. Say that you have suggested it, never that you have done it.',
     parameters: objectSchema(
       {
-        entity: {
-          type: 'string',
-          description: 'job, enquiry, quote, invoice or customs.',
-        },
+        entity: oneOf(PROPOSABLE),
         reference: REFERENCE,
         to: { type: 'string', description: 'The state to move to.' },
         reason: { type: 'string', description: 'One line the person will see beside the button.' },
