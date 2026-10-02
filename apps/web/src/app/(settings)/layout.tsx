@@ -40,6 +40,7 @@ import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { MobileNav, SidebarNav, type NavSection } from '@/ui/nav'
 import { LanguageSwitch, ThemeSwitch, TimeZoneSwitch } from '@/ui/preferences'
+import { Toaster } from '@/ui/toast'
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -195,6 +196,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
         <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
       </div>
+
+      {/* The same "done" line the operations shell has — see `ui/toast.tsx`. */}
+      <Toaster labels={{ saved: tc('saved'), dismiss: tc('close') }} />
     </div>
   )
 }

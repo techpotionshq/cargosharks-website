@@ -30,7 +30,7 @@
  * product without anyone having to remember to make it so.
  */
 
-import { useActionState, useId, type ReactNode } from 'react'
+import { useActionState, useEffect, useId, useRef, type ReactNode } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import {
   ChoiceCards,
@@ -48,6 +48,9 @@ import {
 } from './form'
 import { Icon, type IconName } from './icon'
 import { Modal, ModalCancel, type ModalSize } from './modal'
+import { MENU_ITEM, MENU_ITEM_DANGER, buttonClass } from './control'
+import { useInMenu } from './menu'
+import { toast } from './toast'
 
 interface BaseField {
   readonly name: string
@@ -150,6 +153,12 @@ interface RecordDialogLabels {
   readonly submit: string
   readonly submitting: string
   readonly cancel: string
+  /**
+   * What the confirmation says once it worked — "Invoice issued", "Enquiry
+   * assigned". Omitted, the region's own "Saved." is used, which is right for
+   * an edit and too vague for a move that changes a record's state.
+   */
+  readonly success?: string
 }
 
 export interface RecordDialogProps {
@@ -167,24 +176,21 @@ export interface RecordDialogProps {
 }
 
 /*
-  All four triggers stand `h-9`, and that is the point of the map.
+  All four triggers are `Button`'s own `md`, and that is the point.
 
   These buttons share action bars with `Button` — the enquiry header alone
-  carries three of them next to "Price it" — and `Button`'s default size is
-  `h-9`. `ghost` used to be `h-8`, which is invisible in isolation and obvious
-  in a row: two dialogs, a link and a submit, none of them agreeing on a
-  baseline. Quiet is carried by colour and by the missing border; it is not
-  carried by being four pixels shorter than its neighbours.
+  carries three of them next to "Price it". `ghost` used to be `h-8`, which is
+  invisible in isolation and obvious in a row: two dialogs, a link and a
+  submit, none of them agreeing on a baseline. Quiet is carried by colour and
+  by the missing border; it is not carried by being four pixels shorter than
+  its neighbours. The shared `buttonClass` is what keeps it that way.
 */
-const TRIGGER: Record<string, string> = {
-  primary:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm bg-brand px-3.5 text-[0.875rem] font-semibold text-on-brand transition-colors hover:bg-brand-hover',
-  secondary:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm border border-line bg-surface px-3.5 text-[0.875rem] font-medium text-ink transition-colors hover:bg-surface-sunken',
-  ghost:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm px-3.5 text-[0.875rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink',
-  danger:
-    'inline-flex h-9 items-center gap-1.5 rounded-sm border border-critical/40 bg-surface px-3.5 text-[0.875rem] font-medium text-critical transition-colors hover:bg-critical-soft',
+const TRIGGER: Record<NonNullable<RecordDialogProps['variant']>, string> = {
+  primary: buttonClass('primary', 'md'),
+  secondary: buttonClass('secondary', 'md'),
+  ghost: buttonClass('ghost', 'md'),
+  // The trigger is outlined; the filled red is saved for the confirm inside.
+  danger: buttonClass('danger-outline', 'md'),
 }
 
 export function RecordDialog({
@@ -214,6 +220,23 @@ export function RecordDialog({
     one no longer is. `useActionState` already knows, so it is the source.
   */
   const formId = useId()
+  const inMenu = useInMenu()
+
+  /*
+    Say so when it worked.
+
+    The dialog closing was the only acknowledgement there was, and a dialog
+    also closes when it is cancelled — so after a status move nothing on the
+    screen distinguished "issued" from "never mind". Keyed on the token, like
+    the close itself, so two successes in a row both announce.
+  */
+  const announced = useRef(state.ok)
+  useEffect(() => {
+    if (state.ok && state.ok !== announced.current) {
+      announced.current = state.ok
+      toast(labels.success)
+    }
+  }, [state.ok, labels.success])
 
   return (
     <Modal
@@ -246,12 +269,21 @@ export function RecordDialog({
             title={iconOnly ? labels.open : undefined}
             aria-label={iconOnly ? labels.open : undefined}
             className={
-              iconOnly
-                ? 'flex size-8 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink'
-                : TRIGGER[variant]!
+              inMenu
+                ? variant === 'danger'
+                  ? MENU_ITEM_DANGER
+                  : MENU_ITEM
+                : iconOnly
+                  ? 'flex size-9 items-center justify-center rounded-sm text-ink-subtle transition-colors hover:bg-surface-sunken hover:text-ink max-md:size-10'
+                  : TRIGGER[variant]
             }
           >
-            <Icon name={icon ?? 'plus'} size={iconOnly ? 16 : 15} weight="bold" />
+            <Icon
+              name={icon ?? 'plus'}
+              size={iconOnly || inMenu ? 16 : 15}
+              weight={inMenu ? 'regular' : 'bold'}
+              className={inMenu && variant !== 'danger' ? 'text-ink-subtle' : undefined}
+            />
             {iconOnly ? null : labels.open}
           </button>
         ))
