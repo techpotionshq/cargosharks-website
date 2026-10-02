@@ -114,8 +114,13 @@ export default async function SettlementsPage({
                   </TD>
                   <TD priority="low" className="text-ink-muted">
                     {/* Isolated, as on the settlement itself. */}
-                    <bdi>{formatDate(row.periodFrom, locale, timeZone)}</bdi> —{' '}
-                    <bdi>{formatDate(row.periodTo, locale, timeZone)}</bdi>
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodFrom, locale, timeZone)}
+                    </bdi>{' '}
+                    —{' '}
+                    <bdi className="whitespace-nowrap">
+                      {formatDate(row.periodTo, locale, timeZone)}
+                    </bdi>
                   </TD>
                   <TD priority="low" align="end" numeric>
                     <Money

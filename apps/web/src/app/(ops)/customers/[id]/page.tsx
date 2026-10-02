@@ -72,7 +72,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     above already lists what each branch allows.
   */
   const credit = customer.primaryBranchId
-    ? await creditView(session.actor, id, customer.primaryBranchId)
+    ? await creditView(session.actor, id, customer.primaryBranchId, locale)
     : null
 
   const displayName =

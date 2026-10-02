@@ -5273,7 +5273,7 @@ const DUTY_ROWS = [
     hs: '870323',
     rate: '5.000',
     en: 'Motor cars, 1500–3000 cc',
-    ar: 'سيارات ركوب ١٥٠٠-٣٠٠٠ سي سي',
+    ar: 'سيارات ركوب 1500–3000 سي سي',
   },
   { country: 'KW', hs: '2402', rate: '100.000', en: 'Tobacco products', ar: 'منتجات التبغ' },
   {
@@ -8850,7 +8850,11 @@ export function pilotCreditStanding(
  * demonstrate a credit screen that has never had to make the interesting
  * decision, which is the one a forwarder asks about.
  */
-export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverrideRowLike[] {
+export function pilotCreditOverrides(
+  id: string,
+  now = Date.now(),
+  locale: 'en' | 'ar' = 'en',
+): CreditOverrideRowLike[] {
   // Customer 4 is the name that is most of the aged tail — see `INVOICE_SEEDS`.
   if (id !== customerId(4)) return []
 
@@ -8861,7 +8865,10 @@ export function pilotCreditOverrides(id: string, now = Date.now()): CreditOverri
       jobId: null,
       invoiceId: null,
       expiresOn: day(now, 21),
-      reason: 'Payment plan agreed with the finance director. Review at quarter end.',
+      reason:
+        locale === 'ar'
+          ? 'خطة سداد متفق عليها مع المدير المالي. تُراجع في نهاية الربع.'
+          : 'Payment plan agreed with the finance director. Review at quarter end.',
       approvedByEn: ownerName(3),
       approvedByAr: ownerName(3, 'ar'),
       approvedAt: at(now, -9, 11),

@@ -52,7 +52,8 @@ export function AssistantLauncher({ label }: { readonly label: string }) {
     >
       <Icon name="assistant" size={15} />
       {label}
-      <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-micro font-medium text-ink-subtle lg:inline">
+      {/* Muted ink: the subtle one on the sunken chip was 4.4:1 at 11px. */}
+      <kbd className="numeric hidden rounded-sm bg-surface-sunken px-1.5 py-px text-micro font-medium text-ink-muted lg:inline">
         ⌘K
       </kbd>
     </button>

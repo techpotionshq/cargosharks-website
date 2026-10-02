@@ -112,7 +112,9 @@ export default async function UsersPage() {
                         icon={assignment.requiresTwoFactor ? 'hold' : undefined}
                       >
                         <span className="ref">{assignment.branchCode}</span>
-                        <span className="mx-1 opacity-50">·</span>
+                        <span aria-hidden className="mx-1 opacity-50">
+                          ·
+                        </span>
                         {tNav(`roles.${assignment.roleKey}`)}
                       </Badge>
                     ))}

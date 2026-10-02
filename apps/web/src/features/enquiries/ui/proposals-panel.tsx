@@ -57,10 +57,19 @@ const FIELD_KEYS = [
 
 export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string }) {
   const session = await requireSession()
-  const [rows, t] = await Promise.all([
+  const [rows, t, tMode] = await Promise.all([
     enquiryProposals(session.actor, enquiryId),
     getTranslations('proposals'),
+    getTranslations('mode'),
   ])
+
+  /*
+    An enum the model proposed reads as its label: the row said "sea_fcl"
+    on both languages' screens, the one value a coordinator was asked to
+    confirm at a glance. Anything else is shown as the model read it.
+  */
+  const shown = (field: string, value: string) =>
+    field === 'mode' && tMode.has(value) ? tMode(value as 'air') : value
 
   if (rows.length === 0) return null
 
@@ -92,7 +101,7 @@ export async function ProposalsPanel({ enquiryId }: { readonly enquiryId: string
                   {label(t, row.field)}
                 </span>
                 <span className="text-title font-medium text-ink" dir="auto">
-                  {row.value}
+                  {shown(row.field, row.value)}
                 </span>
                 {row.targetWasEmpty ? null : (
                   /*

@@ -245,7 +245,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   ) : null}
                 </div>
                 <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
-                  <div className="text-end text-micro text-ink-subtle">
+                  {/* Muted: 11px subtle ink on the exception's tinted row was 4.4:1. */}
+                  <div className="text-end text-micro text-ink-muted">
                     <p>
                       {t('openedAt')} {formatRelative(exception.openedAt, locale, now)}
                     </p>

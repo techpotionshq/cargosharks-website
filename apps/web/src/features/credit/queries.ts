@@ -61,6 +61,8 @@ export async function creditView(
   actor: Actor,
   customerId: string,
   branchId: string,
+  /** For what the fixtures type — an override's reason — in the reader's language. */
+  locale: 'en' | 'ar' = 'en',
 ): Promise<CreditView> {
   /*
     Only the position comes from fixtures; the decision does not.
@@ -79,7 +81,7 @@ export async function creditView(
   const today = todayIn()
 
   const overrides = usePilotFixtures()
-    ? pilotCreditOverrides(customerId)
+    ? pilotCreditOverrides(customerId, Date.now(), locale)
     : await withActor(actor, (tx) =>
         tx
           .select({

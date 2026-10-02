@@ -122,8 +122,13 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
             <Field label={t('period')}>
               {/* Each date isolated: unmarked, "30 سبتمبر 2026 — 01 أكتوبر 2026"
                   reordered its digits across the dash in Arabic. */}
-              <bdi>{formatDate(settlement.periodFrom, locale, timeZone)}</bdi> —{' '}
-              <bdi>{formatDate(settlement.periodTo, locale, timeZone)}</bdi>
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodFrom, locale, timeZone)}
+              </bdi>{' '}
+              —{' '}
+              <bdi className="whitespace-nowrap">
+                {formatDate(settlement.periodTo, locale, timeZone)}
+              </bdi>
             </Field>
             <Field label={t('theyOweUs')}>{money(settlement.receivableTotal)}</Field>
             <Field label={t('weOweThem')}>{money(settlement.payableTotal)}</Field>

@@ -375,7 +375,8 @@ export function TickMeter({
           )
         })}
       </div>
-      {label ? <p className="mt-1.5 text-caption text-ink-subtle">{label}</p> : null}
+      {/* Muted for the reason the tile's hint is: subtle ink on a tint is under AA. */}
+      {label ? <p className="mt-1.5 text-caption text-ink-muted">{label}</p> : null}
     </div>
   )
 }
