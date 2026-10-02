@@ -122,10 +122,18 @@ export default async function InvoicesPage({
             <TH>{t('number')}</TH>
             <TH priority="low">{t('customer')}</TH>
             <TH>{tc('status')}</TH>
-            <TH align="end">{t('total')}</TH>
+            {/*
+              On a phone the row is the reference, the state and what is still
+              owed: the balance is the figure anyone acts on, and the total and
+              due date are one tap away on the invoice itself. Four columns at
+              390px pushed the money off the edge of the screen.
+            */}
+            <TH align="end" priority="low">
+              {t('total')}
+            </TH>
             <TH align="end">{t('balance')}</TH>
             <TH priority="low">{t('issued')}</TH>
-            <TH>{t('due')}</TH>
+            <TH priority="low">{t('due')}</TH>
           </TR>
         </THead>
         <TBody>
@@ -164,7 +172,7 @@ export default async function InvoicesPage({
                     {overdue ? t('statuses.overdue') : t(`statuses.${row.status}`)}
                   </Badge>
                 </TD>
-                <TD align="end" numeric>
+                <TD align="end" numeric priority="low">
                   {row.total
                     ? formatMoney({ amount: row.total, currency: row.currency }, locale)
                     : '—'}
@@ -180,6 +188,7 @@ export default async function InvoicesPage({
                   {row.issuedAt ? formatDate(row.issuedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD
+                  priority="low"
                   className={`whitespace-nowrap ${overdue ? 'font-semibold text-critical' : 'text-ink-muted'}`}
                 >
                   {row.dueOn ? formatDate(new Date(row.dueOn), locale, timeZone) : '—'}

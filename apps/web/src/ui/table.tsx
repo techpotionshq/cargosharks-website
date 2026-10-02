@@ -92,9 +92,15 @@ export function TableShell({
         .filter(Boolean)
         .join(' ')}
     >
+      {/*
+        The floor applies from md up only. Below md the low-priority columns
+        are already hidden (`priority` on TH/TD), and a 52rem floor on what is
+        left kept every register 476px wider than a phone, so the balance,
+        status and SLA columns that `priority` exists to keep sat off-screen.
+      */}
       <table
         className={`w-full border-collapse text-[0.8125rem] ${
-          minWidth === 'wide' ? 'min-w-208' : ''
+          minWidth === 'wide' ? 'md:min-w-208' : ''
         }`}
       >
         {children}
