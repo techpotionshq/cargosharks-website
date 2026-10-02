@@ -24,6 +24,7 @@ import {
   turnDueAt,
   withoutStrayContainerCount,
   readExtractedEnquiry,
+  silencedBeforeReading,
   statesContainerKind,
   type IntakeDecisionInput,
 } from '../src/index'
@@ -290,6 +291,71 @@ describe('the decision', () => {
       reason: 'loop_guard',
       markReady: true,
     })
+  })
+})
+
+describe('silence known before the model is asked', () => {
+  const now = new Date('2026-10-01T10:00:00Z')
+  const incomplete = evaluateCompleteness({ origin: 'x' }, DEFAULT_INTAKE_REQUIREMENTS)
+  const complete = evaluateCompleteness({}, [])
+  const base: IntakeDecisionInput = {
+    now,
+    agentEnabled: true,
+    enquiryOpen: true,
+    newContent: 'substantive',
+    completeness: incomplete,
+    alreadyReady: false,
+    handedOff: false,
+    clarificationsSent: 0,
+    lastClarifiedAt: null,
+    humanActiveAt: null,
+    senderGuard: null,
+    settings: DEFAULT_INTAKE_SETTINGS,
+  }
+  const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600_000)
+
+  it('names an agent switched off, a loop breaker, a closed enquiry and chit-chat, so the turn skips its model call', () => {
+    expect(silencedBeforeReading({ ...base, senderGuard: 'burst' })).toBe('loop_guard')
+    expect(silencedBeforeReading({ ...base, agentEnabled: false })).toBe('agent_off')
+    expect(silencedBeforeReading({ ...base, enquiryOpen: false })).toBe('closed')
+    expect(silencedBeforeReading({ ...base, newContent: 'chit_chat' })).toBe('chit_chat')
+    expect(silencedBeforeReading({ ...base, newContent: 'automatic' })).toBe('automatic')
+  })
+
+  it('still reads under a takeover, whose reply alone is silenced', () => {
+    const human = { ...base, humanActiveAt: hoursAgo(1) }
+    expect(silencedBeforeReading(human)).toBeNull()
+    // The coordinator gets the proposals and a completing read still marks ready.
+    expect(decideIntakeReply({ ...human, completeness: complete })).toEqual({
+      action: 'none',
+      reason: 'human_active',
+      markReady: true,
+    })
+  })
+
+  it('leaves the handoff, the cap and the cooldown to read, because a complete read confirms', () => {
+    const capped = { ...base, clarificationsSent: 2, lastClarifiedAt: hoursAgo(1), handedOff: true }
+    expect(silencedBeforeReading(capped)).toBeNull()
+    expect(decideIntakeReply({ ...capped, completeness: complete }).action).toBe('confirm')
+  })
+
+  it('only ever names a turn the decision would silence, complete or not', () => {
+    const variants: Partial<IntakeDecisionInput>[] = [
+      {},
+      { humanActiveAt: hoursAgo(1) },
+      { senderGuard: 'cap' },
+      { agentEnabled: false },
+      { enquiryOpen: false },
+      { newContent: 'automatic' },
+      { newContent: 'none' },
+    ]
+    for (const v of variants) {
+      const input = { ...base, ...v }
+      if (silencedBeforeReading(input) === null) continue
+      for (const completeness of [complete, incomplete]) {
+        expect(decideIntakeReply({ ...input, completeness }).action).toBe('none')
+      }
+    }
   })
 })
 

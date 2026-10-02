@@ -705,9 +705,7 @@ export function decideIntakeReply(input: IntakeDecisionInput): IntakeDecision {
   if (input.newContent === 'automatic') return silent('automatic')
   if (input.newContent === 'chit_chat') return silent('chit_chat')
 
-  const humanActive =
-    input.humanActiveAt !== null &&
-    input.now.getTime() - input.humanActiveAt.getTime() < input.settings.humanTakeoverHours * HOUR
+  const humanActive = isHumanActive(input)
 
   if (input.completeness.complete) {
     if (input.alreadyReady) return silent('already_complete')
@@ -730,6 +728,46 @@ export function decideIntakeReply(input: IntakeDecisionInput): IntakeDecision {
   }
   if (input.senderGuard) return silent('loop_guard')
   return { action: 'clarify', reason: 'clarified', markReady: false }
+}
+
+/** A person has been on this conversation inside the takeover window. */
+function isHumanActive(
+  input: Pick<IntakeDecisionInput, 'now' | 'humanActiveAt' | 'settings'>,
+): boolean {
+  return (
+    input.humanActiveAt !== null &&
+    input.now.getTime() - input.humanActiveAt.getTime() < input.settings.humanTakeoverHours * HOUR
+  )
+}
+
+/**
+ * Why reading this turn is worthless or abuse, or null when the model should
+ * read it.
+ *
+ * Run before the model call, so a turn that can neither change the enquiry nor
+ * deserves the spend does not pay for one: a switched-off agent, whose turns
+ * never read (a branch with the agent off must not pay per message), a closed
+ * enquiry, a message with
+ * nothing substantive in it (chit-chat, an auto-responder, an instant machine
+ * reply), and a sender tripping the daily cap or the burst rule, where a model
+ * call per message *is* the incident.
+ *
+ * A person on the conversation is deliberately not here. The reply stays
+ * silent, `decideIntakeReply`
+ * sees to that, but the read still happens: the coordinator who took over fills
+ * the enquiry from the proposals it leaves, and a completing read still raises
+ * the ready flag. That read is cheap and it is the useful part of the turn.
+ */
+export function silencedBeforeReading(
+  input: Pick<IntakeDecisionInput, 'agentEnabled' | 'enquiryOpen' | 'newContent' | 'senderGuard'>,
+): IntakeReason | null {
+  if (!input.agentEnabled) return 'agent_off'
+  if (!input.enquiryOpen) return 'closed'
+  if (input.newContent === 'none') return 'no_new_content'
+  if (input.newContent === 'automatic') return 'automatic'
+  if (input.newContent === 'chit_chat') return 'chit_chat'
+  if (input.senderGuard) return 'loop_guard'
+  return null
 }
 
 /* -------------------------------------------------------------------------

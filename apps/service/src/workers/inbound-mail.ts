@@ -769,8 +769,15 @@ export async function ingestMessage(
           `oversized` files are skipped. The adapter stores those as a stub
           rather than the bytes — a 40MB scan past the mailbox's limit — and
           asking a model to read a placeholder costs money to learn nothing.
+
+          Nor is a reply to one of our RFQs a bill, current or late. The agent
+          is a known partner and the tariff is a PDF, so it passed every test
+          above, and the invoice reader then either refused it (a model call to
+          learn nothing) or, for an offer whose figures happen to reconcile,
+          filed a quotation as a supplier invoice in `received`. The rate reader
+          after the commit is the one that reads it.
         */
-        if (partnerId && !file.oversized && READABLE_BILL.has(file.contentType)) {
+        if (!matched && partnerId && !file.oversized && READABLE_BILL.has(file.contentType)) {
           bills.push(asset!.id)
         }
       }
@@ -942,9 +949,9 @@ export async function ingestMessage(
     /*
       A matched RFQ reply, after the commit — FR-RT-10.
 
-      The bills above already read attachments from a known supplier; this reads
-      the reply itself for the charges in its body, and writes them to the
-      request as a proposal a coordinator ranks and accepts. Wrapped like the
+      This reads the reply, body and attachments both, for its charges, and
+      writes them to the request as a proposal a coordinator ranks and accepts;
+      the bill reader above skips it, because an offer is not an invoice. Wrapped like the
       rest: a down queue leaves the reply filed and the request `responded`, and
       a re-run of the poll cannot re-file it, because the receipt is claimed.
     */

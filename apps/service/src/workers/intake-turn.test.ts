@@ -16,7 +16,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 /*
   A scripted model under the real ledger. It reads the transcript the turn sends
@@ -94,8 +94,9 @@ function readFacts(text: string) {
   const type = /\b(40HC|20GP|40GP)\b/i.exec(text)
   if (type && !out.some((f) => f.field === 'containerType')) add('containerType', type[1]!)
   if (/\bby air\b|air ?freight|جوي/i.test(text)) add('mode', 'air')
+  // The last lane named wins, as a careful reader takes a customer's correction.
   const lane =
-    /\bfrom ([A-Z][a-z]+) to ([A-Z][a-z]+)/.exec(text) ??
+    [...text.matchAll(/\bfrom ([A-Z][a-z]+) to ([A-Z][a-z]+)/g)].at(-1) ??
     /\b([A-Z][a-z]+) to ([A-Z][a-z]+)\b/.exec(text)
   if (lane) {
     add('origin', lane[1]!)
@@ -125,6 +126,7 @@ const {
   assets,
   branches,
   enquiries,
+  extractionProposals,
   intakeConversations,
   intakeNotReady,
   intakeRequirements,
@@ -283,6 +285,21 @@ async function invocationsFor(enquiryId: string) {
       .where(eq(aiInvocations.enquiryId, enquiryId)),
   )
   return row!.n
+}
+
+async function openProposalFields(enquiryId: string): Promise<string[]> {
+  const rows = await withActor(sys, (tx) =>
+    tx
+      .select({ field: extractionProposals.field })
+      .from(extractionProposals)
+      .where(
+        and(
+          eq(extractionProposals.targetId, enquiryId),
+          eq(extractionProposals.status, 'proposed'),
+        ),
+      ),
+  )
+  return rows.map((r) => r.field)
 }
 
 async function isHeld(enquiryId: string): Promise<boolean> {
@@ -599,6 +616,50 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     expect(wa.sent).toHaveLength(2)
   })
 
+  it('lets a later message correct a fact an earlier turn proposed', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2x40HC furniture from China to Kuwait', 0)
+    const enquiryId = first.enquiryId!
+    const { id } = await conversationFor(enquiryId)
+    await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+
+    await say(sender, 'Sorry, I mean from Shanghai to Shuwaikh', 2 * HOUR)
+    await runIntakeTurn(id, at(2 * HOUR + 130), { resolveWhatsApp: wa.resolve })
+
+    const rows = await withActor(sys, (tx) =>
+      tx
+        .select({
+          field: extractionProposals.field,
+          value: extractionProposals.value,
+          status: extractionProposals.status,
+          decidedById: extractionProposals.decidedById,
+        })
+        .from(extractionProposals)
+        .where(
+          and(
+            eq(extractionProposals.targetId, enquiryId),
+            inArray(extractionProposals.field, ['origin', 'destination', 'commodity']),
+          ),
+        )
+        .orderBy(extractionProposals.createdAt),
+    )
+    const of = (field: string) =>
+      rows.filter((r) => r.field === field).map((r) => [r.value, r.status])
+    // The first answer is kept as history, closed by the newer read; one open answer each.
+    expect(of('origin')).toEqual([
+      ['China', 'superseded'],
+      ['Shanghai', 'proposed'],
+    ])
+    expect(of('destination')).toEqual([
+      ['Kuwait', 'superseded'],
+      ['Shuwaikh', 'proposed'],
+    ])
+    // An answer read again unchanged is neither duplicated nor superseded.
+    expect(of('commodity')).toEqual([['furniture', 'proposed']])
+    expect(rows.find((r) => r.status === 'superseded')?.decidedById).toBe(SYSTEM_PRINCIPAL_ID)
+  })
+
   it('answers neither a greeting alone nor anything once a person has replied', async () => {
     const sender = newSender()
     const wa = recorder('whatsapp')
@@ -629,6 +690,12 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     const human = await runIntakeTurn(id, at(450), { resolveWhatsApp: wa.resolve })
     expect(human.decision?.reason).toBe('human_active')
     expect(wa.sent).toHaveLength(0)
+    // Still read, so the person who took over has the customer's facts proposed.
+    expect(human.modelCalled).toBe(true)
+    expect(model.calls).toHaveLength(1)
+    expect(await openProposalFields(enquiryId)).toEqual(
+      expect.arrayContaining(['origin', 'destination', 'containerCount']),
+    )
   })
 
   it('stays quiet once an operator takes over, without spending a model call', async () => {
@@ -854,8 +921,87 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     })
     const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
     const { id } = await conversationFor(first.enquiryId!)
+    model.calls.length = 0
     const turn = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
     expect(turn.decision?.reason).toBe('loop_guard')
+    expect(wa.sent).toHaveLength(0)
+    expect(model.calls).toHaveLength(0)
+  })
+
+  it('counts replies the provider refused toward the caps, and records each failure', async () => {
+    const sender = newSender()
+    let attempts = 0
+    // Kapso refusing every message, as Meta does outside the 24-hour window.
+    const refusing = async () => ({
+      key: 'whatsapp' as const,
+      async send() {
+        attempts += 1
+        return { accepted: false, error: 'Kapso 422: outside the 24h window' }
+      },
+    })
+    const deps = { resolveWhatsApp: refusing, sendDelays: [] }
+
+    // One enquiry: asked, refused; asked again after the cooldown, refused; then a person.
+    const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
+    const { id } = await conversationFor(first.enquiryId!)
+    const one = await runIntakeTurn(id, at(130), deps)
+    expect(one.decision?.action).toBe('clarify')
+    expect(one.sendError).toContain('422')
+    await say(sender, 'Still need that rate please', 7 * HOUR)
+    expect((await runIntakeTurn(id, at(7 * HOUR + 130), deps)).decision?.action).toBe('clarify')
+    await say(sender, 'Hello? Any rate for the Ningbo boxes', 14 * HOUR)
+    expect((await runIntakeTurn(id, at(14 * HOUR + 130), deps)).decision?.action).toBe('handoff')
+    const turns = await turnsFor(id)
+    // Each refused reply is on its turn for the desk to see, with no message filed.
+    expect(turns.filter((t) => t.sendError?.includes('422'))).toHaveLength(2)
+    expect(turns.every((t) => t.replyMessageId === null)).toBe(true)
+
+    /*
+      Two more enquiries from the same sender, each asked and refused: four in a
+      day. WhatsApp threads a sender onto their open enquiry, so each is closed
+      before the next opens.
+    */
+    const close = (enquiryId: string) =>
+      withActor(sys, (tx) =>
+        tx
+          .update(enquiries)
+          .set({ status: 'cancelled', closedAt: new Date() })
+          .where(eq(enquiries.id, enquiryId)),
+      )
+    let previous = first.enquiryId!
+    for (const [i, lane] of ['Busan to Kuwait', 'Qingdao to Kuwait'].entries()) {
+      await close(previous)
+      const start = 15 * HOUR + i * HOUR
+      const next = await say(sender, `Also 3 containers ${lane}`, start)
+      expect(next.enquiryId).not.toBe(previous)
+      previous = next.enquiryId!
+      const c = await conversationFor(previous)
+      expect((await runIntakeTurn(c.id, at(start + 130), deps)).decision?.action).toBe('clarify')
+    }
+    await close(previous)
+    expect(attempts).toBe(4)
+
+    // The fifth is stopped by the daily cap, although nothing was ever delivered.
+    const fifth = await say(sender, 'And 1 container Xiamen to Kuwait', 18 * HOUR)
+    const c5 = await conversationFor(fifth.enquiryId!)
+    const capped = await runIntakeTurn(c5.id, at(18 * HOUR + 130), deps)
+    expect(capped.decision?.reason).toBe('loop_guard')
+    expect(attempts).toBe(4)
+  })
+
+  it('spends no model call on a sender writing in a burst', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const first = await say(sender, 'Need 2 containers Ningbo to Kuwait', 0)
+    const enquiryId = first.enquiryId!
+    for (let i = 1; i <= 21; i += 1) await say(sender, `Line ${i} of the order sheet`, i * 5)
+    const { id } = await conversationFor(enquiryId)
+    model.calls.length = 0
+    const turn = await runIntakeTurn(id, at(400), { resolveWhatsApp: wa.resolve })
+    expect(turn.decision?.reason).toBe('loop_guard')
+    expect(turn.modelCalled).toBe(false)
+    expect(model.calls).toHaveLength(0)
+    expect(await invocationsFor(enquiryId)).toBe(0)
     expect(wa.sent).toHaveLength(0)
   })
 
