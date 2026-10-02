@@ -2051,6 +2051,41 @@ export interface EnquiryIntakeLike {
   readonly recent: readonly IntakeTurnLike[]
 }
 
+/**
+ * An enquiry's editable facts, for the "Edit details" dialog.
+ *
+ * The labels ride along with the ids because the option lists are capped
+ * (`loadOptions`): a port outside the first six hundred would otherwise be
+ * missing from its own select, and saving the dialog unchanged would clear it.
+ */
+export interface EnquiryEditLike {
+  readonly id: string
+  readonly branchId: string
+  readonly status: string
+  readonly customerId: string | null
+  readonly customerLabel: string | null
+  readonly contactName: string | null
+  readonly contactEmail: string | null
+  readonly mode: string | null
+  readonly tradeDirection: string | null
+  readonly originId: string | null
+  readonly originLabel: string | null
+  readonly destinationId: string | null
+  readonly destinationLabel: string | null
+  readonly commodityId: string | null
+  readonly commodityLabel: string | null
+  readonly incoterm: string | null
+  readonly readyOn: string | null
+  /** `numeric` as text, never a number (KWD-grade decimals, CLAUDE.md). */
+  readonly grossWeightKg: string | null
+  readonly volumeCbm: string | null
+  readonly pieces: number | null
+  readonly containerCount: number | null
+  readonly containerType: string | null
+  readonly isDangerous: boolean
+  readonly notes: string | null
+}
+
 /** One branch's intake-agent settings, for Settings › Intake agent. */
 export interface IntakeSettingsRowLike {
   readonly branchId: string

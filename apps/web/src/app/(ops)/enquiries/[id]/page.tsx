@@ -42,6 +42,7 @@ import { QuoteDialog } from '@/features/ledger/ui/dialogs'
 import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 import { MoreMenu } from '@/ui/menu'
 import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
+import { EditEnquiryDialog } from '@/features/enquiries/ui/edit-enquiry-dialog'
 
 export async function generateMetadata({
   params,
@@ -159,6 +160,12 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         actionsAfter={
           comparison.isClosed ? null : (
             <MoreMenu label={tc('more')}>
+              {/*
+                First in the menu: correcting what the customer asked for comes
+                before moving the enquiry on, and it is where the proposals
+                panel sends a coordinator whose suggestion matched nothing (D4).
+              */}
+              <EditEnquiryDialog enquiryId={id} />
               <EnquiryActions
                 enquiryId={id}
                 hasResponded={comparison.hasResponded}

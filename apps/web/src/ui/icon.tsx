@@ -54,6 +54,7 @@ import {
   Moon,
   Package,
   Path,
+  PencilSimple,
   Plus,
   Receipt,
   Scales,
@@ -141,6 +142,7 @@ const ICONS = {
   more: DotsThree,
   expand: ArrowsOutSimple,
   collapse: ArrowsInSimple,
+  edit: PencilSimple,
 } as const satisfies Record<string, PhosphorIcon>
 
 export type IconName = keyof typeof ICONS

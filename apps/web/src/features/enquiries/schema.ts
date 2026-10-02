@@ -15,7 +15,18 @@ import type { Translate } from '@/lib/form-state'
   A factory of the translator: the two refinements below carry messages the
   operator reads, and a locale exists only per request.
 */
-export const createEnquirySchema = (tv: Translate<'enquiriesValidation'>) =>
+export const createEnquirySchema = (
+  tv: Translate<'enquiriesValidation'>,
+  /*
+    For editing an enquiry that arrived on WhatsApp. The customer-or-email rule
+    is "we must have a way to answer", and such an enquiry has one on its
+    thread even when the sender matched no customer and gave no email (the
+    intake leaves `contact_email` empty for WhatsApp on purpose). Without this
+    the "Edit details" dialog could not save one until somebody invented a
+    customer for it.
+  */
+  options: { readonly reachableOnThread?: boolean } = {},
+) =>
   insertEnquiry
     .pick({
       branchId: true,
@@ -69,7 +80,7 @@ export const createEnquirySchema = (tv: Translate<'enquiriesValidation'>) =>
         .max(9999, tv('containerCountWhole'))
         .nullish(),
     })
-    .refine((value) => value.customerId || value.contactEmail, {
+    .refine((value) => options.reachableOnThread || value.customerId || value.contactEmail, {
       message: tv('customerOrEmail'),
       path: ['customerId'],
     })

@@ -107,6 +107,7 @@ import type {
   MailboxRowLike,
   WhatsappNumberRowLike,
   EnquiryIntakeLike,
+  EnquiryEditLike,
   IntakeSettingsRowLike,
   PartnerMailLike,
   MatchCandidateRow,
@@ -9400,6 +9401,47 @@ export function pilotEnquiryIntake(now = Date.now()): EnquiryIntakeLike {
         sendError: null,
       },
     ],
+  }
+}
+
+/**
+ * The "Edit details" dialog's defaults on the fixture board, read off the same
+ * seed the register shows, with ids that match `pilotOptions` so every select
+ * opens on the value the facts card states.
+ */
+export function pilotEnquiryForEdit(id: string): EnquiryEditLike | undefined {
+  const seed = ENQUIRY_SEEDS.find((s) => `enq-${s.seq}` === id)
+  if (!seed) return undefined
+  const branch = BRANCHES.find((b) => b.code === seed.branch) ?? BRANCHES[0]!
+  // The comparison fixture's own rules, so the dialog agrees with the facts card.
+  const importing = ['KW', 'AE'].includes(PORTS[seed.destination].country)
+  const fcl = seed.mode === 'sea_fcl'
+  const count = fcl && seed.sell !== undefined ? 1 : null
+  return {
+    id,
+    branchId: branch.id,
+    status: seed.status,
+    customerId: customerId(seed.customer),
+    customerLabel: null,
+    contactName: null,
+    contactEmail: null,
+    mode: seed.mode,
+    tradeDirection: importing ? 'import' : 'export',
+    originId: locationId(seed.origin),
+    originLabel: null,
+    destinationId: locationId(seed.destination),
+    destinationLabel: null,
+    commodityId: null,
+    commodityLabel: null,
+    incoterm: importing ? 'CFR' : 'FOB',
+    readyOn: null,
+    grossWeightKg: null,
+    volumeCbm: null,
+    pieces: null,
+    containerCount: count,
+    containerType: count ? '40HC' : null,
+    isDangerous: false,
+    notes: null,
   }
 }
 

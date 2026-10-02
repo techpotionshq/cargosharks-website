@@ -1282,7 +1282,14 @@
       "walk_in": "Walk-in"
     },
     "containers": "Containers",
-    "containersHint": "Sea FCL only — the quotation is priced per container."
+    "containersHint": "Sea FCL only — the quotation is priced per container.",
+    "editOpen": "Edit details",
+    "editTitle": "Edit enquiry details",
+    "editDescription": "Correct what the customer asked for. A field you change here settles any suggestion read for it from their messages.",
+    "editSubmit": "Save changes",
+    "editDone": "Enquiry updated",
+    "containerType": "Container type",
+    "whoEditHint": "The branch and the channel it came in by stay as they are."
   },
   "partnerForm": {
     "open": "Add partner",
@@ -3990,8 +3997,8 @@
     "suggestionFieldFilled": "That field has been filled in since, so the suggestion was not applied.",
     "actionFailed": "That did not work.",
     "noneApplied": "None could be applied — those fields have since been filled in.",
-    "suggestionNotOnFile": "“{value}” is not a place or commodity on file, so it was not applied. Add it, or set the field by hand.",
-    "suggestionAmbiguous": "“{value}” matches {count} records, and guessing between them is how the wrong one gets written. Set the field by hand.",
+    "suggestionNotOnFile": "“{value}” is not a place or commodity on file, so it was not applied. Add it, or choose the field yourself with Edit details.",
+    "suggestionAmbiguous": "“{value}” matches {count} records, and guessing between them is how the wrong one gets written. Choose the right one yourself with Edit details.",
     "suggestionInvalid": "“{value}” is not a valid value — expected {expected}.",
     "suggestionUnknownField": "That suggestion names a field this screen cannot set.",
     "customerOrEmail": "An enquiry needs either a known customer or a contact email",
@@ -4008,7 +4015,9 @@
     "containerCountNotHere": "A container count belongs only on an open sea FCL enquiry.",
     "weightAmount": "Enter the weight in kilograms as plain digits, such as 1250.5.",
     "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
-    "notPermitted": "Your role does not allow this in this enquiry's branch."
+    "notPermitted": "Your role does not allow this in this enquiry's branch.",
+    "editClosed": "This enquiry is closed, so its details can no longer be changed.",
+    "containerTypeUnknown": "Choose a container type from the list."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",

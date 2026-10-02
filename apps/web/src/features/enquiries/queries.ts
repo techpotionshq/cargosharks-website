@@ -13,6 +13,7 @@ import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   branches,
+  commodities,
   customers,
   enquiries,
   locations,
@@ -21,10 +22,10 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
-import type { EnquirySummary, Mode } from '@/lib/pilot/types'
+import type { EnquiryEditLike, EnquirySummary, Mode } from '@/lib/pilot/types'
 import { named } from '@/lib/named'
 import { usePilotFixtures } from '@/lib/pilot/source'
-import { pilotEnquiries } from '@/lib/pilot/fixtures'
+import { pilotEnquiries, pilotEnquiryForEdit } from '@/lib/pilot/fixtures'
 
 const origin = alias(locations, 'origin')
 const destination = alias(locations, 'destination')
@@ -200,5 +201,64 @@ export async function getEnquiry(actor: Actor, id: string) {
   return withActor(actor, async (tx) => {
     const [row] = await tx.select().from(enquiries).where(eq(enquiries.id, id)).limit(1)
     return row
+  })
+}
+
+/**
+ * The editable facts of one enquiry, for the "Edit details" dialog.
+ *
+ * The current customer, ports and commodity come back with their labels as well
+ * as their ids: `loadOptions` caps each list, and a select whose value is not
+ * among its options submits nothing — so saving the dialog unchanged on an
+ * enquiry to a port past the cap would have cleared the port. The dialog adds
+ * the current row back when the list left it out.
+ */
+export async function enquiryForEdit(
+  actor: Actor,
+  id: string,
+  locale: 'en' | 'ar' = 'en',
+): Promise<EnquiryEditLike | undefined> {
+  if (usePilotFixtures()) return pilotEnquiryForEdit(id)
+
+  return withActor(actor, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: enquiries.id,
+        branchId: enquiries.branchId,
+        status: enquiries.status,
+        customerId: enquiries.customerId,
+        customerLabel: sql<string | null>`case when ${customers.id} is null then null
+          else ${customers.code} || ' — ' || ${named(locale, customers.legalNameEn, customers.legalNameAr)} end`,
+        contactName: enquiries.contactName,
+        contactEmail: enquiries.contactEmail,
+        mode: enquiries.mode,
+        tradeDirection: enquiries.tradeDirection,
+        originId: enquiries.originId,
+        originLabel: sql<string | null>`case when ${origin.id} is null then null
+          else coalesce(${origin.unlocode} || ' — ', '') || ${named(locale, origin.nameEn, origin.nameAr)} end`,
+        destinationId: enquiries.destinationId,
+        destinationLabel: sql<string | null>`case when ${destination.id} is null then null
+          else coalesce(${destination.unlocode} || ' — ', '') || ${named(locale, destination.nameEn, destination.nameAr)} end`,
+        commodityId: enquiries.commodityId,
+        commodityLabel: sql<string | null>`case when ${commodities.id} is null then null
+          else ${commodities.code} || ' — ' || ${named(locale, commodities.nameEn, commodities.nameAr)} end`,
+        incoterm: enquiries.incoterm,
+        readyOn: enquiries.readyOn,
+        grossWeightKg: enquiries.grossWeightKg,
+        volumeCbm: enquiries.volumeCbm,
+        pieces: enquiries.pieces,
+        containerCount: enquiries.containerCount,
+        containerType: enquiries.containerType,
+        isDangerous: enquiries.isDangerous,
+        notes: enquiries.notes,
+      })
+      .from(enquiries)
+      .leftJoin(customers, eq(customers.id, enquiries.customerId))
+      .leftJoin(origin, eq(origin.id, enquiries.originId))
+      .leftJoin(destination, eq(destination.id, enquiries.destinationId))
+      .leftJoin(commodities, eq(commodities.id, enquiries.commodityId))
+      .where(eq(enquiries.id, id))
+      .limit(1)
+    return row ?? undefined
   })
 }

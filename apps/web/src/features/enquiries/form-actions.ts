@@ -17,7 +17,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import {
   assertTransition,
   canTransition,
@@ -30,6 +30,7 @@ import {
 import {
   branches,
   calendarHolidays,
+  containerTypes,
   enquiries,
   extractionProposals,
   notificationOutbox,
@@ -187,6 +188,220 @@ export const setEnquiryContainerCount = refuseForbidden(async function setEnquir
   revalidatePath(`/enquiries/${enquiryId}`)
   return succeed(String(count))
 })
+
+/**
+ * The proposal field each editable column answers, so a hand edit can close
+ * what the model proposed for it. The inverse of the resolver's `column`
+ * (`resolveProposal` in `@qabandi/db`): `origin` lands in `originId`.
+ */
+const PROPOSAL_FIELD_OF = {
+  mode: 'mode',
+  tradeDirection: 'tradeDirection',
+  originId: 'origin',
+  destinationId: 'destination',
+  commodityId: 'commodity',
+  incoterm: 'incoterm',
+  readyOn: 'readyOn',
+  grossWeightKg: 'grossWeightKg',
+  volumeCbm: 'volumeCbm',
+  pieces: 'pieces',
+  containerCount: 'containerCount',
+  containerType: 'containerType',
+  isDangerous: 'isDangerous',
+} as const
+
+/**
+ * Edit an open enquiry's facts — the "Edit details" dialog (D4).
+ *
+ * Until this, an enquiry's commodity, lane, customer and cargo could be set
+ * only when it was typed in, or by accepting what a model read. The proposals
+ * panel told the coordinator to "set the field by hand" with nowhere to do it,
+ * so a mail that said "steel pipes" could reach "Building materials" only by
+ * adding a commodity at /reference and accepting the proposal.
+ *
+ * ## The same rules as raising one
+ *
+ * Validated by `createEnquirySchema`, the schema `submitEnquiry` uses, so a
+ * weight, a lane or a container count refused there is refused here in the
+ * same words. The branch and the channel are the row's own and never read off
+ * the form: moving an enquiry between legal entities is not an edit, and the
+ * channel is a fact about how it arrived.
+ *
+ * ## Open only, in the enquiry's own branch
+ *
+ * A closed enquiry is a record (won, lost, cancelled, expired), and rewriting
+ * its lane would change what the loss report says it was. Checked against the
+ * row as it is under the lock, not as the dialog saw it. The key is
+ * `enquiry.assign` in the enquiry's branch, the authority every other write on
+ * an open enquiry asks for (A2).
+ *
+ * ## A hand edit settles the proposal for that field
+ *
+ * A changed field closes the open proposals for it as `superseded`, decided by
+ * this person: somebody chose the value, which is a stronger answer than
+ * either accepting or rejecting what the model read, and the panel stops
+ * asking. A field left as it was leaves its proposals alone, and a field
+ * cleared does too, since an empty column is exactly what a proposal is for.
+ *
+ * The audit trigger on `enquiries` records the before and after; nothing here
+ * writes a trail of its own.
+ */
+export const updateEnquiry = refuseForbidden(async function updateEnquiry(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'enquiry.assign')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('enquiriesValidation')
+
+  const read = (key: string): string | undefined => {
+    const value = form.get(key)
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+  }
+
+  const enquiryId = read('enquiryId')
+  if (!enquiryId) return failWith(tv('missingEnquiry'))
+
+  const [current] = await withActor(session.actor, (tx) =>
+    tx
+      .select({ branchId: enquiries.branchId, channel: enquiries.channel })
+      .from(enquiries)
+      .where(eq(enquiries.id, enquiryId))
+      .limit(1),
+  )
+  // Invisible under RLS is not-found, never forbidden (FR-ID-04).
+  if (!current) return failWith(tv('enquiryNotFound'))
+  assertCanIn(session, 'enquiry.assign', current.branchId)
+
+  const parsed = await localeParse(
+    createEnquirySchema(tv, { reachableOnThread: current.channel === 'whatsapp' }),
+    {
+      branchId: current.branchId,
+      customerId: read('customerId') ?? null,
+      contactName: read('contactName') ?? null,
+      contactEmail: read('contactEmail') ?? null,
+      channel: current.channel,
+      mode: read('mode') ?? null,
+      tradeDirection: read('tradeDirection') ?? null,
+      originId: read('originId') ?? null,
+      destinationId: read('destinationId') ?? null,
+      commodityId: read('commodityId') ?? null,
+      incoterm: read('incoterm') ?? null,
+      readyOn: read('readyOn') ?? null,
+      grossWeightKg: read('grossWeightKg') ?? null,
+      volumeCbm: read('volumeCbm') ?? null,
+      pieces: read('pieces') ? Number(read('pieces')) : null,
+      containerCount: read('containerCount') ? Number(read('containerCount')) : null,
+      isDangerous: form.get('isDangerous') !== null,
+      notes: read('notes') ?? null,
+    },
+  )
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+
+  const { branchId: _branch, channel: _channel, ...data } = parsed.data
+  const containerType = read('containerType')?.toUpperCase() ?? null
+
+  const outcome = await withActor(session.actor, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(enquiries)
+      .where(eq(enquiries.id, enquiryId))
+      .limit(1)
+      .for('update')
+    if (!before) return 'not_found' as const
+    if (isTerminal(enquiryMachine, before.status)) return 'closed' as const
+
+    /*
+      The container type is a code we hold, and the column's foreign key would
+      refuse an unknown one as a database error. Asked here so it is a field
+      error instead; retired codes stay valid on the row that already has one.
+    */
+    if (containerType && containerType !== before.containerType) {
+      const [known] = await tx
+        .select({ code: containerTypes.code })
+        .from(containerTypes)
+        .where(and(eq(containerTypes.code, containerType), eq(containerTypes.isActive, true)))
+        .limit(1)
+      if (!known) return 'container_type' as const
+    }
+
+    const after = { ...data, containerType }
+    const changedFields = (Object.keys(PROPOSAL_FIELD_OF) as (keyof typeof PROPOSAL_FIELD_OF)[])
+      .filter((column) => after[column] !== null && !sameValue(before[column], after[column]))
+      .map((column) => PROPOSAL_FIELD_OF[column])
+
+    await tx
+      .update(enquiries)
+      .set({ ...after, updatedAt: new Date() })
+      .where(eq(enquiries.id, enquiryId))
+
+    if (changedFields.length > 0) {
+      await tx
+        .update(extractionProposals)
+        .set({
+          status: 'superseded',
+          decidedById: session.actor.principalId,
+          decidedAt: new Date(),
+          closedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(extractionProposals.targetTable, 'enquiries'),
+            eq(extractionProposals.targetId, enquiryId),
+            eq(extractionProposals.status, 'proposed'),
+            inArray(extractionProposals.field, changedFields),
+          ),
+        )
+    }
+
+    // Replies already read were priced against the old count (R1); see
+    // `setEnquiryContainerCount` above.
+    if (!sameValue(before.containerCount, after.containerCount)) {
+      await resummariseRateReplies(tx, enquiryId)
+    }
+    return 'ok' as const
+  })
+
+  if (outcome === 'not_found') return failWith(tv('enquiryNotFound'))
+  if (outcome === 'closed') return failWith(tv('editClosed'), echo(form))
+  if (outcome === 'container_type') {
+    return fail({ containerType: tv('containerTypeUnknown') }, echo(form))
+  }
+
+  revalidatePath('/enquiries')
+  revalidatePath(`/enquiries/${enquiryId}`)
+  return succeed(enquiryId)
+})
+
+/**
+ * Whether a column holds the same value after the edit as before.
+ *
+ * Decimals compare as written, with trailing zeros dropped: the column returns
+ * `2400.500000` and the form sends `2400.5`, and the two are one weight. Never
+ * through `Number`, for the reason money never goes through it here.
+ */
+function sameValue(before: unknown, after: unknown): boolean {
+  if (before === null || before === undefined) return after === null || after === undefined
+  if (after === null || after === undefined) return false
+  const decimal = /^\d+(\.\d+)?$/
+  if (typeof before === 'string' && typeof after === 'string') {
+    if (decimal.test(before) && decimal.test(after)) {
+      return canonicalDecimal(before) === canonicalDecimal(after)
+    }
+    return before === after
+  }
+  return String(before) === String(after)
+}
+
+function canonicalDecimal(value: string): string {
+  const [whole = '0', fraction = ''] = value.split('.')
+  const int = whole.replace(/^0+(?=\d)/, '')
+  const frac = fraction.replace(/0+$/, '')
+  return frac ? `${int}.${frac}` : int
+}
 
 export const assignEnquiryAction = refuseForbidden(async function assignEnquiryAction(
   _previous: ActionState,
