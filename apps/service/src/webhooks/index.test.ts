@@ -496,6 +496,36 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
       expect(await recorded(`camel-${RUN}`)).toHaveLength(1)
       expect(await recorded(`hyphen-${RUN}`)).toHaveLength(1)
     })
+
+    /*
+      ai-8: Postmark's own id is `MessageID`, and a re-post that differs by a
+      byte must still be the same event — before, it fell through to the hash.
+    */
+    it('keys a Postmark delivery on MessageID, so a changed re-post is deduplicated', async () => {
+      const id = `pm-${RUN}`
+      const first = JSON.stringify({ MessageID: id, Subject: 'Rate please' })
+      const again = JSON.stringify({ MessageID: id, Subject: 'Rate please', RetryCount: 1 })
+
+      await post('/email', first, { 'x-webhook-signature': sign(first, EMAIL_SECRET) })
+      await markProcessed(id)
+      harness.sent.length = 0
+      const second = await post('/email', again, {
+        'x-webhook-signature': sign(again, EMAIL_SECRET),
+      })
+
+      expect(second.statusCode).toBe(202)
+      expect(harness.sent).toEqual([])
+      expect(await recorded(id)).toHaveLength(1)
+    })
+
+    it('falls back to the Message-ID header when there is no provider id', async () => {
+      const header = `<hdr-${RUN}@mail.example>`
+      const raw = JSON.stringify({ Headers: [{ Name: 'Message-ID', Value: header }] })
+
+      await post('/email', raw, { 'x-webhook-signature': sign(raw, EMAIL_SECRET) })
+
+      expect(await recorded(header)).toHaveLength(1)
+    })
   })
 
   describe('a body that is not JSON', () => {
@@ -505,7 +535,8 @@ describe.skipIf(!enabled)('the inbound webhook edge', () => {
         'x-webhook-signature': 'whatever',
       })
 
-      expect(reply.statusCode).toBeGreaterThanOrEqual(400)
+      // 400 exactly: a 5xx is retried by the provider, for hours (ai-19).
+      expect(reply.statusCode).toBe(400)
       expect(harness.sent).toEqual([])
     })
   })

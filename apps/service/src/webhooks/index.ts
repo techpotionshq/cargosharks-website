@@ -33,7 +33,12 @@ export async function webhooks(app: FastifyInstance): Promise<void> {
     try {
       done(null, { raw: body as Buffer, parsed: JSON.parse((body as Buffer).toString('utf8')) })
     } catch (error) {
-      done(error as Error, undefined)
+      /*
+        400, not the 500 an unmarked parser error becomes (ai-19). A provider
+        retries a 5xx — Kapso and Postmark for hours — and a body that is not
+        JSON will not become JSON on the tenth attempt.
+      */
+      done(Object.assign(error as Error, { statusCode: 400 }), undefined)
     }
   })
 
@@ -202,12 +207,37 @@ function whatsAppExternalId(header: unknown, payload: Record<string, unknown>): 
 }
 
 function externalId(payload: Record<string, unknown>): string {
+  /*
+    Postmark sends its own id as `MessageID` and the sender's in `Headers`
+    (ai-8). Neither was read, so every inbound mail fell through to the hash —
+    and a redelivery differing by one byte (a re-stamped header, a retry
+    counter) hashed differently and was filed twice.
+  */
   const candidate =
-    (payload.id as string | undefined) ??
-    (payload.messageId as string | undefined) ??
-    (payload['message-id'] as string | undefined)
+    nonEmpty(payload.id) ??
+    nonEmpty(payload.messageId) ??
+    nonEmpty(payload.MessageID) ??
+    nonEmpty(payload['message-id']) ??
+    headerMessageId(payload.Headers)
   if (candidate) return candidate
   // No provider id means no idempotency key; hash the payload so a redelivery
   // of the identical body is still recognised.
   return createHmac('sha256', 'fallback').update(JSON.stringify(payload)).digest('hex')
+}
+
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+/** The RFC 5322 `Message-ID` from Postmark's `Headers: [{ Name, Value }]`. */
+function headerMessageId(headers: unknown): string | undefined {
+  if (!Array.isArray(headers)) return undefined
+  const found = headers.find(
+    (h): h is { Name: string; Value: unknown } =>
+      typeof h === 'object' &&
+      h !== null &&
+      typeof (h as { Name?: unknown }).Name === 'string' &&
+      (h as { Name: string }).Name.toLowerCase() === 'message-id',
+  )
+  return found ? nonEmpty(found.Value) : undefined
 }
