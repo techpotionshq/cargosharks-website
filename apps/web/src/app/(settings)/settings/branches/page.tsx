@@ -105,11 +105,13 @@ export default async function BranchesPage() {
               <TD priority="low" className="ref whitespace-nowrap text-ink">
                 {row.baseCurrency}
               </TD>
+              {/* The zone sits under the calendar's name: on one line the
+                  pair was 222px, and eleven columns at 1280 have 966px. */}
               <TD priority="low" className="whitespace-nowrap">
                 {row.calendarName ? (
                   <span className="text-ink-muted">
                     {(locale === 'ar' && row.calendarNameAr) || row.calendarName}
-                    <span className="ms-1.5 text-[0.75rem] text-ink-subtle">{row.timeZone}</span>
+                    <span className="ref block text-[0.75rem] text-ink-subtle">{row.timeZone}</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 font-medium text-caution">

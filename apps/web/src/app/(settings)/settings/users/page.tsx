@@ -162,8 +162,20 @@ export default async function UsersPage() {
                       ) : null}
                     </span>
                   </TD>
+                  {/* A break opportunity before the @: an address has no
+                      space to wrap at, and held whole it was 270px of a 966px
+                      card — the 8px by which this register scrolled at 1280.
+                      Mailbox over domain still reads as one address. */}
                   <TD priority="low" className="ref text-ink-muted">
-                    {person.email}
+                    {person.email.includes('@') ? (
+                      <>
+                        {person.email.slice(0, person.email.indexOf('@'))}
+                        <wbr />
+                        {person.email.slice(person.email.indexOf('@'))}
+                      </>
+                    ) : (
+                      person.email
+                    )}
                   </TD>
                   <TD priority="low">{assignments}</TD>
                   <TD priority="low">{signIn}</TD>

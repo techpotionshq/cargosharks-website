@@ -254,18 +254,30 @@ export default async function JobsPage({
                       >
                         {job.reference}
                       </Link>
-                      <span className="mt-0.5 flex items-center gap-1 text-[0.6875rem] text-ink-subtle">
-                        <Icon name={modeIcon(job.mode)} size={12} />
-                        {tMode(job.mode)}
-                        {job.containerCount > 0
-                          ? ` · ${job.containerCount} ${
+                      {/* The reference never breaks; the line under it may.
+                          "Sea FCL · 3 containers" was the widest thing in the
+                          cell, and the last 10px by which the board scrolled
+                          at 1280. */}
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[0.6875rem] whitespace-normal text-ink-subtle">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                          <Icon name={modeIcon(job.mode)} size={12} />
+                          {tMode(job.mode)}
+                        </span>
+                        {job.containerCount > 0 ? (
+                          <span className="whitespace-nowrap">
+                            {`· ${job.containerCount} ${
                               job.containerCount === 1 ? tc('container') : tc('containers')
-                            }`
-                          : ''}
+                            }`}
+                          </span>
+                        ) : null}
                       </span>
                     </TD>
 
-                    <TD priority="low" className="max-w-52 truncate">
+                    {/* Customer and vessel wrap rather than truncate: the
+                        reference beside them is two lines already, and a
+                        truncated cell still asks the table for the width of
+                        its whole unbroken text. */}
+                    <TD priority="low" className="min-w-28">
                       {pickName(locale, job.customerName, job.customerNameAr)}
                     </TD>
 
@@ -276,7 +288,7 @@ export default async function JobsPage({
                       />
                     </TD>
 
-                    <TD priority="lowest" className="max-w-48 truncate text-ink-muted">
+                    <TD priority="lowest" className="min-w-28 text-ink-muted">
                       {job.vesselOrFlight ?? '—'}
                     </TD>
 

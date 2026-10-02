@@ -109,9 +109,14 @@ export default async function ExceptionsPage({
                   {row.description ? (
                     <span
                       dir="auto"
-                      // Two wrapped lines on a phone, where a one-line
-                      // truncation at this column's width shows four words.
-                      className="mt-0.5 line-clamp-2 text-[0.75rem] break-words text-ink-muted md:block md:max-w-md md:truncate"
+                      // Two wrapped lines at every width. A one-line
+                      // truncation shows four words on a phone, and on a
+                      // desktop it held the column at 374px — a truncated
+                      // cell still asks the table for its unbroken width —
+                      // which is what made the register scroll at 1280. The
+                      // title keeps the whole description a hover away.
+                      title={row.description}
+                      className="mt-0.5 line-clamp-2 max-w-md text-[0.75rem] break-words text-ink-muted"
                     >
                       {row.description}
                     </span>
@@ -133,7 +138,7 @@ export default async function ExceptionsPage({
                 >
                   {row.dueAt ? formatRelative(row.dueAt, locale, now) : '—'}
                 </TD>
-                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                <TD priority="low" className="text-ink-muted">
                   {row.owner ?? t('unassigned')}
                 </TD>
                 <TD priority="low" align="end" numeric>

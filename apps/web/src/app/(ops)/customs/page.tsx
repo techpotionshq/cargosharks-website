@@ -132,7 +132,10 @@ export default async function CustomsPage({
                 <TD priority="low" className="ref whitespace-nowrap text-ink">
                   {row.declarationNo ?? '—'}
                 </TD>
-                <TD priority="low" className="whitespace-nowrap text-ink-muted">
+                {/* May break between date and time: on one line "27 Sept,
+                    13:40" was the 25px by which this register scrolled at
+                    1280. */}
+                <TD priority="low" className="text-ink-muted">
                   {row.filedAt ? formatDateTime(row.filedAt, locale, timeZone) : '—'}
                 </TD>
                 <TD

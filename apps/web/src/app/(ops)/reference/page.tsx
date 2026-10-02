@@ -12,6 +12,7 @@
  */
 
 import type { Metadata } from 'next'
+import { Fragment } from 'react'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import {
@@ -210,8 +211,22 @@ export default async function ReferencePage() {
                 <TR key={row.key}>
                   {/* A key may break anywhere on a phone — `customs_clearance_fee`
                       has no space to break at, and held whole it was the
-                      column that pushed the mapping off-screen. */}
-                  <TD className="ref text-ink wrap-anywhere md:whitespace-nowrap">{row.key}</TD>
+                      column that pushed the mapping off-screen. Wider, it
+                      breaks only after an underscore (a `<wbr>`, so a copied
+                      key is still the key): whole, it held this half-width
+                      card 9px past its edge at 1280. */}
+                  <TD className="ref text-ink wrap-anywhere md:wrap-normal">
+                    {row.key.split('_').map((part, i) => (
+                      <Fragment key={i}>
+                        {i > 0 ? (
+                          <>
+                            _<wbr />
+                          </>
+                        ) : null}
+                        {part}
+                      </Fragment>
+                    ))}
+                  </TD>
                   <TD className="text-ink">{locale === 'ar' ? row.nameAr : row.nameEn}</TD>
                   <TD priority="low">
                     <Badge tone="muted">{categoryLabel(row.category)}</Badge>
@@ -224,7 +239,10 @@ export default async function ReferencePage() {
                     is the screen where it gets fixed — so it is shown here
                     rather than only inside the export's refusal.
                   */}
-                  <TD className="ref whitespace-nowrap">
+                  {/* May break after the slash, revenue over cost: held to
+                      one line it was the 37px by which this card scrolled
+                      at 1280, sharing the row with the milestone panel. */}
+                  <TD className="ref">
                     {row.revenueAccountCode || row.costAccountCode ? (
                       <span className="text-ink-muted">
                         {row.revenueAccountCode ?? '—'} / {row.costAccountCode ?? '—'}
@@ -454,7 +472,10 @@ export default async function ReferencePage() {
                     <span className="font-medium text-ink">
                       {locale === 'ar' ? row.nameAr : row.nameEn}
                     </span>
-                    <span className="ref block text-[0.6875rem] text-ink-subtle md:ms-2 md:inline">
+                    {/* Under the name at every width: beside it, "Kuwait
+                        Asia/Kuwait" made the column wider than this
+                        half-width card could give it. */}
+                    <span className="ref block text-[0.6875rem] text-ink-subtle">
                       {row.timeZone}
                     </span>
                   </TD>

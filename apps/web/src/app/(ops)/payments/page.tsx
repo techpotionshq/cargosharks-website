@@ -148,7 +148,11 @@ export default async function PaymentsPage({
                   numeric
                   className={open ? 'text-caution' : 'text-ink-subtle'}
                 >
-                  {allocation}
+                  {/* May wrap after the figure, which itself never breaks
+                      (Intl joins code and amount with a no-break space):
+                      "KWD 1,500.000 unmatched" on one line was 192px, and
+                      the reason this register scrolled at 1280. */}
+                  <span className="whitespace-normal">{allocation}</span>
                 </TD>
                 <TD priority="lowest" className="whitespace-nowrap text-ink-muted">
                   {row.recordedBy ?? '—'}

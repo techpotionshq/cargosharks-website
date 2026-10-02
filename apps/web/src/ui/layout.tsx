@@ -299,17 +299,25 @@ export function Lane({
   readonly className?: string
 }) {
   return (
-    // Wraps below md, origin over destination: held to one line, a lane was
-    // the widest cell in a phone register and its two names truncated to
-    // "Ista… → Shuw…" — the one fact the column exists to show.
+    // Wraps, origin over destination, whenever the line does not fit: held to
+    // one line, a lane was the widest cell in a phone register and its two
+    // names truncated to "Ista… → Shuw…" — the one fact the column exists to
+    // show. It used to stop wrapping at md, and then "Nhava Sheva → Shuwaikh"
+    // on one line was 286px of a 966px card and the reason the enquiry and
+    // job registers scrolled sideways at 1280. Wrapping costs nothing where
+    // there is room: a table gives a cell its one-line width when it can.
     <span
-      className={['inline-flex flex-wrap items-center gap-x-1.5 md:flex-nowrap', className]
+      className={['inline-flex flex-wrap items-center gap-x-1.5', className]
         .filter(Boolean)
         .join(' ')}
     >
       <span className="truncate">{origin}</span>
-      <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
-      <span className="truncate">{destination}</span>
+      {/* The arrow travels with the destination (a no-break pair): wrapped on
+          its own, it sat alone on a middle line between two place names. */}
+      <span className="inline-flex min-w-0 items-center gap-x-1.5">
+        <Icon name="arrow-end" size={13} className="shrink-0 opacity-60" />
+        <span className="truncate">{destination}</span>
+      </span>
     </span>
   )
 }
