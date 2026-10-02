@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { brandCss, faviconDataUri, resolveBrand } from '@qabandi/brand'
-import { fontVariables } from '@/lib/fonts'
+import { fontStylesheet } from '@/lib/fonts'
 import type { Lang } from '@/content/copy'
 import '@/app/globals.css'
 
@@ -22,9 +22,12 @@ export function Document({ lang, children }: { lang: Lang; children: ReactNode }
   const brand = resolveBrand()
 
   return (
-    <html lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'} className={fontVariables}>
+    <html lang={lang} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       <head>
         <style id="qb-brand" dangerouslySetInnerHTML={{ __html: brandCss(brand) }} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href={fontStylesheet} />
         <link rel="icon" href={faviconDataUri(brand)} />
         {/* The supplied `.ico` as well: browsers ask for `/favicon.ico` at the
             root by convention whatever the markup says. */}

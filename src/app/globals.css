@@ -97,6 +97,10 @@
  * about an asset that ships.
  */
 :root {
+  /* The families `lib/fonts.ts` loads, by the names Google Fonts gives them. */
+  --font-manrope: 'Manrope';
+  --font-plex-mono: 'IBM Plex Mono';
+  --font-plex-arabic: 'IBM Plex Sans Arabic';
   --pg-font-display: var(--font-manrope), var(--qb-font-display);
   --pg-font-sans: var(--font-manrope), var(--qb-font-sans);
   --pg-font-mono: var(--font-plex-mono), var(--qb-font-mono);
