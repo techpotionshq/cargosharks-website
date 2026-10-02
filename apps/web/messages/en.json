@@ -4496,5 +4496,39 @@
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
     "readTimedOut": "Reading the file took too long. Try again."
+  },
+  "conversation": {
+    "title": "Conversation",
+    "description": "{count, plural, one {# message} other {# messages}} · replies go out on {channel}",
+    "descriptionNoReply": "{count, plural, one {# message} other {# messages}}",
+    "channels": {
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "other": "In the app"
+    },
+    "fromCustomer": "Customer",
+    "byAgent": "Automatic reply",
+    "byStaff": "{name}",
+    "byStaffOutside": "Staff, from outside the app",
+    "showQuoted": "Show earlier messages quoted in this email",
+    "attachments": "Attachments",
+    "noFile": "The file itself was not kept",
+    "empty": "No messages on this enquiry yet.",
+    "windowWarning": "The customer last wrote on WhatsApp more than 24 hours ago. WhatsApp only accepts a free-text reply within 24 hours of their last message, so this will probably be refused until they write again or an approved template is sent.",
+    "replyLabel": "Reply to the customer",
+    "replyPlaceholder": "Write your reply…",
+    "replyHint": "Sent on {channel} to {to}, in your name. The intake agent stays quiet while you have the conversation.",
+    "send": "Send reply",
+    "sending": "Sending…",
+    "sent": "Reply sent",
+    "notFound": "This enquiry could not be found.",
+    "bodyRequired": "Write a reply first.",
+    "bodyTooLong": "A reply can be at most {max} characters.",
+    "serviceNotConfigured": "Replies are sent by the service, and it is not configured on this deployment. Nothing was sent.",
+    "serviceUnreachable": "The service did not answer, so the reply was not sent. Try again in a moment.",
+    "windowClosed": "WhatsApp refused the reply: it has been more than 24 hours since the customer last wrote. They need to send a message first, or the conversation must be reopened with an approved template.",
+    "noThread": "There is no message from the customer to answer on this enquiry, so there is nowhere to send a reply.",
+    "channelOff": "This channel is not switched on for this deployment, so the reply was not sent. An administrator can turn it on under Settings › Integrations.",
+    "sendFailed": "The reply was not sent. The provider said: {detail}"
   }
 }

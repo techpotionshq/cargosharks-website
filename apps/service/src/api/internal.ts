@@ -44,6 +44,7 @@ import { DocumentTypeNotSeededError, storeJobDocument } from '../pdf/store'
 import { ExportError, buildAccountingExport, voidAccountingExport } from '../accounting/export'
 import { extractSupplierInvoice } from '../workers/invoice-extract'
 import { draftQuoteCoverNote } from '../workers/quote-cover-note'
+import { sendEnquiryReply } from '../workers/enquiry-reply'
 import { AiUnavailableError } from '../ai/ledger'
 import { ask, askStreaming } from '../ai/assistant'
 import { closeThread, historyFor, listThreads, readThread, recordExchange } from '../ai/threads'
@@ -77,6 +78,11 @@ interface AccountingExportRequest {
 interface VoidExportRequest {
   readonly actor?: Actor
   readonly reason?: string
+}
+
+interface EnquiryReplyRequest {
+  readonly actor?: Actor
+  readonly body?: string
 }
 
 interface PasswordResetRequest {
@@ -967,6 +973,44 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
       throw error
     }
   })
+
+  /**
+   * A coordinator's reply to the customer, from the enquiry screen (D5).
+   *
+   * Here rather than in the web app because the provider credentials are only
+   * here; see `workers/enquiry-reply.ts`. The actor both scopes what may be
+   * answered (RLS) and is the message's author, which is what makes the intake
+   * agent stand down. Each refusal travels as a code the web translates: 422
+   * for the ones the coordinator can act on (nothing to answer, the WhatsApp
+   * window closed), 503 for a channel switched off, 502 for a provider that
+   * refused, with its words beside the code.
+   */
+  app.post<{ Params: { id: string }; Body: EnquiryReplyRequest }>(
+    '/enquiries/:id/reply',
+    async (request, reply) => {
+      const { actor, body } = request.body ?? {}
+      if (!actor?.principalId || !actor.type) {
+        return reply.code(400).send({ error: 'no_actor' })
+      }
+      if (typeof body !== 'string') return reply.code(400).send({ error: 'empty' })
+
+      const result = await sendEnquiryReply({ actor, enquiryId: request.params.id, body })
+      if (result.ok) {
+        return reply.send({ messageId: result.messageId, channel: result.channel })
+      }
+      const status =
+        result.code === 'not_found'
+          ? 404
+          : result.code === 'empty' || result.code === 'too_long'
+            ? 400
+            : result.code === 'channel_off'
+              ? 503
+              : result.code === 'send_failed'
+                ? 502
+                : 422
+      return reply.code(status).send({ error: result.code, detail: result.detail ?? null })
+    },
+  )
 
   app.post<{ Body: PasswordResetRequest }>('/mail/password-reset', async (request, reply) => {
     const { email, url } = request.body ?? {}

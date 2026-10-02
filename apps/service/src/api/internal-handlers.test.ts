@@ -171,6 +171,21 @@ vi.mock('../workers/quote-cover-note', () => ({
       : { invocationId: 'inv-1', note: 'We are pleased to enclose…', locale: input.locale },
 }))
 
+/*
+  The reply worker, as the route sees it: a result per code, so the status each
+  refusal travels as is asserted here and the send itself in its own suite.
+*/
+vi.mock('../workers/enquiry-reply', () => ({
+  sendEnquiryReply: async (input: { enquiryId: string; body: string }) =>
+    input.enquiryId === 'sent'
+      ? { ok: true, messageId: 'msg-1', channel: 'whatsapp' }
+      : {
+          ok: false,
+          code: input.enquiryId,
+          detail: input.enquiryId === 'send_failed' ? '550' : undefined,
+        },
+}))
+
 vi.mock('../workers/invoice-extract', async () => {
   const { readExtractedInvoice } =
     await vi.importActual<typeof import('@qabandi/core')>('@qabandi/core')
@@ -891,6 +906,38 @@ describe('the internal API’s handlers', () => {
 
       expect(response.statusCode).toBe(400)
       expect(response.json().error).toBe('invalid_request')
+    })
+  })
+
+  describe('replying to a customer from an enquiry', () => {
+    it('refuses a reply that names no principal', async () => {
+      const response = await post('/enquiries/sent/reply', { body: 'Hello' })
+      expect(response.statusCode).toBe(400)
+      expect(response.json()).toEqual({ error: 'no_actor' })
+    })
+
+    it('answers with the message it filed', async () => {
+      const response = await post('/enquiries/sent/reply', { actor: ACTOR, body: 'Hello' })
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ messageId: 'msg-1', channel: 'whatsapp' })
+    })
+
+    it.each([
+      ['not_found', 404],
+      ['empty', 400],
+      ['no_thread', 422],
+      ['whatsapp_window', 422],
+      ['channel_off', 503],
+      ['send_failed', 502],
+    ])('sends %s as %i, with the code for the screen to translate', async (code, status) => {
+      const response = await post(`/enquiries/${code}/reply`, { actor: ACTOR, body: 'Hello' })
+      expect(response.statusCode).toBe(status)
+      expect(response.json().error).toBe(code)
+    })
+
+    it('passes the provider’s words on beside a refused send', async () => {
+      const response = await post('/enquiries/send_failed/reply', { actor: ACTOR, body: 'Hello' })
+      expect(response.json().detail).toBe('550')
     })
   })
 })

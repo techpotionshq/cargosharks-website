@@ -43,6 +43,7 @@ import { EnquiryPricingHeader } from '@/features/ledger/ui/price-button'
 import { MoreMenu } from '@/ui/menu'
 import { ContainerCountForm } from '@/features/enquiries/ui/container-count-form'
 import { EditEnquiryDialog } from '@/features/enquiries/ui/edit-enquiry-dialog'
+import { ConversationPanel } from '@/features/enquiries/ui/conversation-panel'
 
 export async function generateMetadata({
   params,
@@ -313,6 +314,14 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         silence. Above the proposals, because it is what produced them.
       */}
       <IntakeAgentPanel enquiryId={id} />
+
+      {/*
+        What the customer actually wrote, and what we wrote back, in order —
+        and the box to answer them in (D5). Under the agent's panel, which
+        explains its own replies on this thread, and above the proposals read
+        from it.
+      */}
+      <ConversationPanel enquiryId={id} />
 
       <ProposalsPanel enquiryId={id} />
 
