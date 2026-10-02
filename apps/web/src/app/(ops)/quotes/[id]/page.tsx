@@ -334,6 +334,15 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 {quote.notes}
               </p>
             ) : null}
+            {/* What the customer said when they declined on the portal (D12). */}
+            {quote.decisionNote ? (
+              <div className="mt-4 border-t border-line pt-4">
+                <p className="eyebrow mb-1">{t('customerReason')}</p>
+                <p dir="auto" className="text-body-sm text-ink-muted">
+                  {quote.decisionNote}
+                </p>
+              </div>
+            ) : null}
           </Panel>
 
           {/*

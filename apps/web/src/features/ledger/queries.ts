@@ -525,6 +525,8 @@ export interface QuoteDetail {
   /** The covering note the model drafts and a coordinator edits — one per language. */
   readonly coverNoteEn: string | null
   readonly coverNoteAr: string | null
+  /** The customer's reason for declining on the portal (D12), where they gave one. */
+  readonly decisionNote?: string | null
   /**
    * Why this draft should be looked at before it is sent, frozen at pricing
    * (ai-13) — absent on a quotation priced before the review existed.
@@ -593,6 +595,7 @@ export async function getQuoteDetail(
              e.mode::text as mode,
              q.priced_snapshot ->> 'notes' as notes,
              q.cover_note_en as "coverNoteEn", q.cover_note_ar as "coverNoteAr",
+             q.decision_note as "decisionNote",
              q.priced_snapshot -> 'review' as review,
              (select json_object_agg(ct.key, ${chargeName})
                 from charge_types ct

@@ -19,6 +19,7 @@ import { signOut } from '@/features/auth/actions'
 import { Logo } from '@/ui/logo'
 import { Icon } from '@/ui/icon'
 import { LanguageSwitch } from '@/ui/preferences'
+import { PortalTabs } from '@/features/portal/ui/portal-tabs'
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession()
@@ -47,6 +48,7 @@ export default async function PortalLayout({ children }: { children: React.React
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const t = await getTranslations('nav')
   const tc = await getTranslations('common')
+  const tp = await getTranslations('portal')
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -69,13 +71,6 @@ export default async function PortalLayout({ children }: { children: React.React
           </Link>
 
           <nav className="ms-auto flex items-center gap-1">
-            <Link
-              href="/portal"
-              className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
-            >
-              <Icon name="jobs" size={16} />
-              <span className="hidden sm:inline">{t('portal')}</span>
-            </Link>
             <Link
               href="/track"
               className="inline-flex h-9 items-center gap-1.5 rounded-sm px-3 text-body font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink"
@@ -107,6 +102,22 @@ export default async function PortalLayout({ children }: { children: React.React
               </button>
             </form>
           </nav>
+        </div>
+        {/*
+          Shipments, quotations, invoices (D12). The card promised a customer
+          "their own shipments, documents and invoices", and the portal had
+          only the first; the shipments link that sat in the row above moved
+          down here to become the first of three.
+        */}
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <PortalTabs
+            label={tp('sections')}
+            tabs={[
+              { href: '/portal', label: t('portal'), icon: 'jobs' },
+              { href: '/portal/quotes', label: t('quotes'), icon: 'quotes' },
+              { href: '/portal/invoices', label: t('invoices'), icon: 'invoices' },
+            ]}
+          />
         </div>
       </header>
 

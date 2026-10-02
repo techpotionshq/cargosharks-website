@@ -460,7 +460,8 @@
     "progress": "{done} of {total} steps",
     "documentCount": "{count, plural, one {# document} other {# documents}}",
     "etaPassed": "Past its ETA",
-    "backToShipments": "All shipments"
+    "backToShipments": "All shipments",
+    "sections": "Your account"
   },
   "agent": {
     "title": "Assigned shipments",
@@ -1827,7 +1828,8 @@
     "bookedAs": "Booked as shipment",
     "reviewTitle": "Check this draft before sending it",
     "reviewNegativeMargin": "{charge} sells below what it costs ({margin}% margin).",
-    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it."
+    "reviewUnbacked": "{charge} is sold, but the rate it was costed on does not include it — nothing has been bought for it.",
+    "customerReason": "Customer's reason for declining"
   },
   "invoiceDetail": {
     "unnumbered": "Not yet numbered",
@@ -2870,7 +2872,9 @@
       },
       "quote": {
         "sent": "A quotation is sent",
-        "expiring": "A quotation is about to expire"
+        "expiring": "A quotation is about to expire",
+        "accepted": "A customer accepts a quotation",
+        "declined": "A customer declines a quotation"
       },
       "enquiry": {
         "created": "An enquiry arrives",
@@ -2927,7 +2931,9 @@
       },
       "quote": {
         "sent": "A quotation has been sent to the customer.",
-        "expiring": "A sent quotation reaches the end of its validity soon."
+        "expiring": "A sent quotation reaches the end of its validity soon.",
+        "accepted": "A customer accepted a quotation on the portal.",
+        "declined": "A customer declined a quotation on the portal."
       },
       "job": {
         "created": "A shipment has been booked.",
@@ -4487,5 +4493,101 @@
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
     "readTimedOut": "Reading the file took too long. Try again."
+  },
+  "portalQuotes": {
+    "title": "My quotations",
+    "subtitle": "The prices we sent you. Accept or decline an offer while it is valid.",
+    "awaiting": "Awaiting your answer",
+    "accepted": "Accepted",
+    "empty": "No quotations yet.",
+    "emptyHint": "A quotation appears here when we send it to you.",
+    "validUntil": "Valid until",
+    "total": "Total",
+    "statusSent": "Awaiting your answer",
+    "statusAccepted": "Accepted",
+    "statusRejected": "Declined",
+    "statusExpired": "Expired",
+    "expiredBadge": "Expired",
+    "expiredOn": "This offer expired on {on}. Ask us for a new price.",
+    "validNotice": "This offer is valid until the end of {on}, Kuwait time.",
+    "viewQuote": "View quotation",
+    "backToQuotes": "All quotations",
+    "lines": "Charges",
+    "charge": "Charge",
+    "basis": "Basis",
+    "quantity": "Quantity",
+    "rate": "Rate",
+    "amount": "Amount",
+    "noLines": "This quotation has no itemised charges. The total is the price we offer.",
+    "about": "Details",
+    "enquiry": "Your enquiry",
+    "issuedBy": "Issued by",
+    "incoterm": "Incoterm",
+    "sentAt": "Sent",
+    "decidedAt": "Answered",
+    "version": "Version {version}",
+    "coverNote": "Our note",
+    "yourReason": "Your reason",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)",
+    "accept": {
+      "open": "Accept",
+      "title": "Accept quotation {reference}?",
+      "description": "We book the shipment at this price after you accept.",
+      "note": "You agree to the total and the terms in this quotation. Our team contacts you to book the shipment.",
+      "submit": "Accept quotation",
+      "done": "Quotation accepted. We will contact you to book the shipment."
+    },
+    "decline": {
+      "open": "Decline",
+      "title": "Decline quotation {reference}?",
+      "description": "Tell us why, so that we can give you a better offer next time.",
+      "reason": "Reason (optional)",
+      "placeholder": "For example: the price is too high, or the transit time is too long.",
+      "submit": "Decline quotation",
+      "done": "Quotation declined. Thank you for telling us."
+    },
+    "refusedExpired": "This offer has expired. Ask us for a new price.",
+    "refusedDecided": "You already answered this quotation.",
+    "refusedMissing": "This quotation is no longer available. We may have sent you a newer version. Refresh the page."
+  },
+  "portalInvoices": {
+    "title": "My invoices",
+    "subtitle": "Issued invoices, what you paid, and what is still due.",
+    "outstanding": "Balance due",
+    "outstandingHint": "One figure for each currency. We do not add amounts in different currencies.",
+    "overdueCount": "Overdue invoices",
+    "nothingDue": "Nothing due",
+    "empty": "No invoices yet.",
+    "emptyHint": "An invoice appears here when we issue it.",
+    "issued": "Issued",
+    "due": "Due",
+    "total": "Total",
+    "paid": "Paid",
+    "credited": "Credited",
+    "balance": "Balance",
+    "overdue": "Overdue",
+    "overdueSince": "Overdue since {on}",
+    "creditNote": "Credit note",
+    "creditsInvoice": "Credits invoice {number}",
+    "creditNotes": "Credit notes",
+    "statusIssued": "Issued",
+    "statusPartPaid": "Part paid",
+    "statusPaid": "Paid",
+    "statusCredited": "Credited",
+    "viewInvoice": "View invoice",
+    "backToInvoices": "All invoices",
+    "lines": "Lines",
+    "description": "Description",
+    "quantity": "Quantity",
+    "unitPrice": "Unit price",
+    "amount": "Amount",
+    "tax": "Tax",
+    "subtotal": "Before tax",
+    "noLines": "This invoice has no lines.",
+    "about": "Details",
+    "issuedBy": "Issued by",
+    "pdf": "PDF (EN)",
+    "pdfAr": "PDF (AR)"
   }
 }
