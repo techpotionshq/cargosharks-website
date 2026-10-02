@@ -210,6 +210,7 @@ export function RecordDialog({
   trigger,
 }: RecordDialogProps) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {})
+  const attempt = useAttemptKey(state)
   /*
     The form's id, so the submit button can sit outside it.
 
@@ -294,7 +295,7 @@ export function RecordDialog({
         ))
       }
     >
-      <form id={formId} action={formAction}>
+      <form key={attempt} id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} />
           {unplaced(fields, state).map((message) => (
@@ -307,6 +308,30 @@ export function RecordDialog({
       </form>
     </Modal>
   )
+}
+
+/**
+ * A fresh key for every answer the action gives — QA P1-3.
+ *
+ * After a form action React resets the form, and an uncontrolled `<select>`
+ * resets to the option it was *mounted* with, not to the echoed value the
+ * re-render asked for: an invitation refused for having no branch came back
+ * with its role picker blank, so ticking the branch and saving again failed a
+ * second time, on the role. Keying the form on the answer remounts the fields
+ * with the echoed values as their defaults, which every control honours.
+ *
+ * Keyed by the state object itself, so a re-render of the same answer keeps
+ * the same key and nothing the person is typing is thrown away.
+ */
+function useAttemptKey(state: ActionState): number {
+  const keys = useRef(new WeakMap<ActionState, number>())
+  const next = useRef(0)
+  let key = keys.current.get(state)
+  if (key === undefined) {
+    key = next.current++
+    keys.current.set(state, key)
+  }
+  return key
 }
 
 /**
