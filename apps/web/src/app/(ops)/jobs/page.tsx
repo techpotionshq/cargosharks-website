@@ -151,7 +151,7 @@ export default async function JobsPage({
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <Link
                       href={`/jobs/${clock.jobId}`}
-                      className="ref numeric text-[0.8125rem] font-medium text-brand hover:underline"
+                      className="ref numeric text-[0.8125rem] font-medium text-ink hover:text-accent hover:underline"
                     >
                       {clock.jobReference}
                     </Link>
@@ -246,7 +246,7 @@ export default async function JobsPage({
                     <TD className="whitespace-nowrap">
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="ref numeric font-medium text-brand hover:underline"
+                        className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                       >
                         {job.reference}
                       </Link>

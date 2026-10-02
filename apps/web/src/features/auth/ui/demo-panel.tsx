@@ -58,7 +58,7 @@ export function DemoPanel({
 
   return (
     <div className="mt-4 flex items-center gap-2 rounded-md border border-line bg-surface-sunken px-2.5 py-1.5">
-      <span className="eyebrow flex items-center gap-1 text-brand">
+      <span className="eyebrow flex items-center gap-1 text-accent">
         <Icon name="live" size={11} />
         {labels.title}
       </span>

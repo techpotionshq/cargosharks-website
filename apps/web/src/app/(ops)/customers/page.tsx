@@ -18,6 +18,7 @@ import { Button, EmptyState, PageHeader } from '@/ui/layout'
 import { Badge } from '@/ui/status'
 import { Icon } from '@/ui/icon'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
+import { FOCUS_RING } from '@/ui/control'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('customers')
@@ -66,7 +67,7 @@ export default async function CustomersPage({
           defaultValue={q ?? ''}
           placeholder={t('searchPlaceholder')}
           aria-label={tc('search')}
-          className="h-9 w-full rounded-sm border border-line bg-surface ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none"
+          className={`h-9 w-full rounded-sm border border-line-strong bg-surface ps-8 pe-3 text-[0.8125rem] text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
         />
       </form>
 
@@ -101,7 +102,10 @@ export default async function CustomersPage({
             {rows.map((row) => (
               <TR key={row.id}>
                 <TD className="whitespace-nowrap">
-                  <Link href={`/customers/${row.id}`} className="ref text-brand hover:underline">
+                  <Link
+                    href={`/customers/${row.id}`}
+                    className="ref text-ink hover:text-accent hover:underline"
+                  >
                     {row.code}
                   </Link>
                 </TD>

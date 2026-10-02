@@ -80,7 +80,7 @@ export default async function PublicLayout({ children }: { children: React.React
           <dl className="flex flex-col gap-2 text-[0.8125rem]">
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="enquiries" size={15} className="text-ink-subtle" />
-              <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-brand">
+              <a href={`mailto:${brand.contact.supportEmail}`} className="hover:text-accent">
                 {brand.contact.supportEmail}
               </a>
             </div>
@@ -88,7 +88,7 @@ export default async function PublicLayout({ children }: { children: React.React
               <Icon name="partners" size={15} className="text-ink-subtle" />
               <a
                 href={`tel:${brand.contact.supportPhone.replace(/\s/g, '')}`}
-                className="numeric hover:text-brand"
+                className="numeric hover:text-accent"
                 dir="ltr"
               >
                 {brand.contact.supportPhone}
@@ -96,7 +96,7 @@ export default async function PublicLayout({ children }: { children: React.React
             </div>
             <div className="flex items-center gap-2 text-ink-muted">
               <Icon name="tracking" size={15} className="text-ink-subtle" />
-              <Link href="/track" className="hover:text-brand">
+              <Link href="/track" className="hover:text-accent">
                 {t('tracking')}
               </Link>
             </div>

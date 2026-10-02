@@ -178,7 +178,7 @@ export default async function SettlementPage({ params }: { params: Promise<{ id:
                             ? `/invoices/${line.documentId}`
                             : `/payables/${line.documentId}`
                         }
-                        className="ref numeric hover:text-brand"
+                        className="ref numeric hover:text-accent"
                       >
                         {line.reference}
                       </Link>

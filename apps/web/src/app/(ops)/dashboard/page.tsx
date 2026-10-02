@@ -313,7 +313,7 @@ export default async function DashboardPage() {
                           <span className="text-[0.875rem] font-medium text-ink">
                             {nameOf(exception.nameEn, exception.nameAr)}
                           </span>
-                          <span className="ref numeric text-[0.75rem] text-brand">
+                          <span className="ref numeric text-[0.75rem] font-medium text-ink">
                             {exception.jobReference}
                           </span>
                         </div>

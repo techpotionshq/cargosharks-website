@@ -12,6 +12,7 @@ import { useActionState } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import { Button } from '@/ui/layout'
 import { setEnquiryContainerCount } from '../form-actions'
+import { FOCUS_RING } from '@/ui/control'
 
 export function ContainerCountForm({
   enquiryId,
@@ -41,7 +42,7 @@ export function ContainerCountForm({
           step={1}
           required
           defaultValue={state.values?.containerCount ?? current ?? ''}
-          className="h-9 w-24 rounded-sm border border-line bg-surface-sunken px-2 text-[0.875rem] text-ink focus:border-brand focus:bg-surface focus:outline-none"
+          className={`h-9 w-24 rounded-sm border border-line-strong bg-surface-sunken px-2 text-[0.875rem] text-ink focus:bg-surface ${FOCUS_RING}`}
         />
       </label>
       <Button type="submit" variant="secondary" size="sm" disabled={pending}>

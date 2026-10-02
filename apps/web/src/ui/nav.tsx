@@ -45,7 +45,8 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
     <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
       {sections.map((section) => (
         <div key={section.label}>
-          <p className="mb-1.5 px-3 text-[0.625rem] font-semibold tracking-[0.14em] text-chrome-ink-muted/70 uppercase">
+          {/* Full-strength muted ink: at /70 the group names measured 2.6:1. */}
+          <p className="mb-1.5 px-3 text-[0.625rem] font-semibold tracking-[0.14em] text-chrome-ink-muted uppercase">
             {section.label}
           </p>
           <ul className="flex flex-col gap-0.5">
@@ -60,20 +61,25 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                     className={[
                       'group relative flex items-center gap-2.5 rounded-sm py-[0.44rem] ps-3 pe-2 text-[0.8125rem] transition-colors',
                       active
-                        ? 'bg-brand-soft font-semibold text-brand-soft-ink'
+                        ? 'bg-accent-soft font-semibold text-accent'
                         : 'font-medium text-chrome-ink-muted hover:bg-surface-sunken hover:text-chrome-ink',
                     ].join(' ')}
                   >
                     {/*
-                      A soft brand wash for the active row, with a solid rule on
-                      the inline-start edge. The rule is what survives at a
-                      glance — the wash alone is too quiet on a light chrome,
-                      and a fully saturated pill at every level of the tree
-                      competes with the alarm colours on the board it frames.
+                      A soft wash for the active row, with a solid rule on the
+                      inline-start edge. The rule is what survives at a glance —
+                      the wash alone is too quiet on a light chrome, and a fully
+                      saturated pill at every level of the tree competes with
+                      the alarm colours on the board it frames.
+
+                      Both in the accent, the navy the chrome is cut from. In
+                      the brand red the lit row carried the same colour as the
+                      exception count beside it, and "you are here" read as
+                      "something is wrong here".
                     */}
                     <span
                       className={[
-                        'absolute inset-y-1.5 start-0 w-[3px] rounded-e-full bg-brand transition-opacity',
+                        'absolute inset-y-1.5 start-0 w-[3px] rounded-e-full bg-accent transition-opacity',
                         active ? 'opacity-100' : 'opacity-0',
                       ].join(' ')}
                     />
@@ -81,7 +87,7 @@ export function SidebarNav({ sections }: { readonly sections: readonly NavSectio
                       name={item.icon}
                       size={17}
                       weight={active ? 'fill' : 'regular'}
-                      className={active ? 'text-brand' : 'text-ink-subtle'}
+                      className={active ? 'text-accent' : 'text-ink-subtle'}
                     />
                     <span className="truncate">{item.label}</span>
                     {item.badge ? (
@@ -113,7 +119,7 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
   const items = sections.flatMap((section) => section.items)
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-2 md:hidden">
+    <nav className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-3 py-1.5 md:hidden">
       {items.map((item) => {
         const active = isActive(pathname, item.href)
         return (
@@ -121,10 +127,12 @@ export function MobileNav({ sections }: { readonly sections: readonly NavSection
             key={item.href}
             href={item.href as Route}
             aria-current={active ? 'page' : undefined}
+            // 40px tall: this strip is the only navigation a phone has, and
+            // at 32px its pills were the most-missed targets in the product.
             className={[
-              'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.8125rem] transition-colors',
+              'flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[0.8125rem] transition-colors',
               active
-                ? 'bg-brand-soft font-semibold text-brand-soft-ink'
+                ? 'bg-accent-soft font-semibold text-accent'
                 : 'font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
             ].join(' ')}
           >

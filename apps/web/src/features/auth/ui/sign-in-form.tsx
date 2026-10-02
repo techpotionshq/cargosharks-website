@@ -12,6 +12,7 @@
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { signIn, type SignInState } from '../actions'
+import { FOCUS_RING } from '@/ui/control'
 
 interface Labels {
   readonly email: string
@@ -31,8 +32,7 @@ interface Defaults {
   readonly password: string
 }
 
-const FIELD =
-  'h-10 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:border-brand focus:bg-surface focus:outline-none'
+const FIELD = `h-10 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink focus:bg-surface ${FOCUS_RING}`
 
 function Submit({ labels }: { readonly labels: Labels }) {
   const { pending } = useFormStatus()

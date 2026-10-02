@@ -328,13 +328,13 @@ export function Conversation({
                       <button
                         type="button"
                         onClick={() => send(suggestion)}
-                        className="group flex w-full items-center gap-3 py-2.5 text-start text-[0.8125rem] text-ink-muted transition-colors hover:text-brand"
+                        className="group flex w-full items-center gap-3 py-2.5 text-start text-[0.8125rem] text-ink-muted transition-colors hover:text-accent"
                       >
                         <span className="min-w-0 flex-1">{suggestion}</span>
                         <Icon
                           name="arrow-end"
                           size={13}
-                          className="shrink-0 text-ink-subtle opacity-0 transition-opacity group-hover:text-brand group-hover:opacity-100"
+                          className="shrink-0 text-ink-subtle opacity-0 transition-opacity group-hover:text-accent group-hover:opacity-100"
                         />
                       </button>
                     </li>
@@ -410,7 +410,7 @@ export function Conversation({
                       */}
                       {turn.streaming && !turn.content && turn.step ? (
                         <p className="flex items-center gap-2 text-[0.8125rem] text-ink-muted">
-                          <Icon name="search" size={14} className="animate-pulse text-brand" />
+                          <Icon name="search" size={14} className="animate-pulse text-accent" />
                           {labels.checking.replace('%label%', toolLabel(turn.step))}
                         </p>
                       ) : null}

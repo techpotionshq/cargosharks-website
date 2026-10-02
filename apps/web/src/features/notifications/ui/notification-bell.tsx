@@ -63,7 +63,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
             <form action={clearNotifications}>
               <button
                 type="submit"
-                className="text-[0.75rem] font-medium text-brand hover:underline"
+                className="text-[0.75rem] font-medium text-accent hover:underline"
               >
                 {t('markAllRead')}
               </button>
@@ -91,7 +91,7 @@ export async function NotificationBell({ inbox }: { readonly inbox: Inbox }) {
                   >
                     {/* Unread pip, holding the same column whether lit or not. */}
                     <span className="mt-1.5 flex w-2 shrink-0 justify-center">
-                      {item.read ? null : <Icon name="dot" size={8} className="text-brand" />}
+                      {item.read ? null : <Icon name="dot" size={8} className="text-accent" />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span

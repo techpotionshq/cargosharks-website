@@ -49,6 +49,8 @@
   --color-brand-soft-ink: var(--qb-brand-soft-ink);
   --color-accent: var(--qb-accent);
   --color-accent-soft: var(--qb-accent-soft);
+  /* Its own token so `outline-focus` never resolves to the error red. */
+  --color-focus: var(--qb-focus);
 
   --color-brand-50: var(--qb-primary-50);
   --color-brand-100: var(--qb-primary-100);
@@ -235,6 +237,22 @@
   }
 
   /**
+   * A reference or a figure is its own direction island.
+   *
+   * `KWI-2026-01041` and `1,580.000 KWD` are left-to-right runs, and dropped
+   * into an Arabic sentence without isolation the bidi algorithm lets their
+   * neutral characters — the hyphens, the comma, the space before the
+   * currency — attach to the Arabic around them. The reference then reads
+   * `01041-2026-KWI` and the currency jumps to the wrong end of the amount.
+   * `isolate` makes each one a single unit whatever surrounds it, and costs
+   * nothing in English.
+   */
+  .ref,
+  .numeric {
+    unicode-bidi: isolate;
+  }
+
+  /**
    * The section eyebrow: small, tracked, muted. Used above every card title so
    * the dashboard reads as one system rather than a pile of panels.
    */
@@ -386,6 +404,33 @@
   }
 
   /**
+   * A table that scrolls sideways says so.
+   *
+   * Four background layers, the old scroll-shadow technique: two soft shadows
+   * pinned to the box's edges (`scroll`), and two covers in the surface colour
+   * that travel with the content (`local`). At rest the covers sit over the
+   * shadows; scroll, and the cover on the side you scrolled from moves away and
+   * uncovers its shadow. So the edge darkens only where there really is more
+   * table, on either side, in either direction — no script, and nothing to
+   * mirror for Arabic because both edges are always handled.
+   *
+   * The covers are the card's colour, so a table sitting on something other
+   * than `surface` names its own with `--qb-scroll-cover`.
+   */
+  .qb-scroll-x {
+    --qb-scroll-edge: color-mix(in oklab, var(--qb-ink) 12%, transparent);
+    background:
+      linear-gradient(to right, var(--qb-scroll-cover, var(--qb-surface)) 40%, transparent) left
+        center / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--qb-scroll-cover, var(--qb-surface)) 40%, transparent) right
+        center / 2.5rem 100% no-repeat local,
+      linear-gradient(to right, var(--qb-scroll-edge), transparent) left center / 0.75rem 100%
+        no-repeat scroll,
+      linear-gradient(to left, var(--qb-scroll-edge), transparent) right center / 0.75rem 100%
+        no-repeat scroll;
+  }
+
+  /**
    * The board's section rule.
    *
    * A hairline with the section title sitting on it, used instead of a card
@@ -453,6 +498,29 @@
   .qb-scroll::-webkit-scrollbar-thumb:hover {
     background-color: var(--qb-ink-subtle);
   }
+}
+
+/**
+ * The same rule for every tracked, upper-cased label, not only `.eyebrow`.
+ *
+ * Column headers, form labels, section titles and the sidebar's group
+ * names are written as `uppercase tracking-…` utilities, and in Arabic the
+ * tracking pulls the letters of each word apart — the joins between them
+ * break, and a header reads as a row of isolated glyphs. Arabic also has no
+ * case to raise, so the small sizes those labels use (11px, 10px) are pure
+ * loss there: they are lifted a step so the script's dots stay legible.
+ *
+ * Unlayered, like the viewport rules below, because the thing it overrides is
+ * a utility — and utilities are the last layer, so a rule inside
+ * `@layer components` loses to `tracking-wide` whatever its specificity.
+ */
+[lang='ar'] .uppercase {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[lang='ar'] .uppercase:is(.text-\[0\.625rem\], .text-\[0\.6875rem\]) {
+  font-size: 0.75rem;
 }
 
 /*

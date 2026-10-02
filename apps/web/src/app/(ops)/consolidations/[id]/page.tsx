@@ -207,7 +207,7 @@ export default async function ConsolidationDetailPage({
                     <TD>
                       <Link
                         href={`/jobs/${house.jobId}`}
-                        className="ref numeric font-medium hover:text-brand"
+                        className="ref numeric font-medium hover:text-accent"
                       >
                         {house.houseBillNumber ?? house.reference}
                       </Link>

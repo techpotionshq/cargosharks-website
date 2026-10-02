@@ -247,7 +247,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               <Field label={t('enquiry')}>
                 <Link
                   href={`/enquiries/${quote.enquiryId}`}
-                  className="ref text-brand hover:underline"
+                  className="ref text-ink hover:text-accent hover:underline"
                 >
                   {quote.enquiryReference}
                 </Link>
@@ -291,7 +291,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                       href={`/quotes/${version.id}` as Route}
                       className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken"
                     >
-                      <span className="ref numeric text-[0.8125rem] text-brand">
+                      <span className="ref numeric text-[0.8125rem] text-accent">
                         {version.reference}
                       </span>
                       <span className="flex items-center gap-2">

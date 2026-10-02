@@ -55,7 +55,7 @@ export default async function SettingsIndexPage() {
               href={{ pathname: area.href }}
               className="group flex items-start gap-3.5 rounded-lg border border-line bg-surface p-5 transition-colors hover:border-brand"
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-surface-sunken text-ink-subtle transition-colors group-hover:bg-brand-soft group-hover:text-brand">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-surface-sunken text-ink-subtle transition-colors group-hover:bg-brand-soft group-hover:text-accent">
                 <Icon name={area.icon} size={18} />
               </span>
               <span className="min-w-0">
@@ -86,7 +86,7 @@ export default async function SettingsIndexPage() {
       <p className="mt-6 flex items-center gap-2 text-[0.8125rem] text-ink-muted">
         <Icon name="reference" size={15} className="shrink-0 text-ink-subtle" />
         {t('referenceMoved')}{' '}
-        <Link href="/reference" className="font-medium text-brand hover:underline">
+        <Link href="/reference" className="font-medium text-accent hover:underline">
           {t('referenceLink')}
         </Link>
       </p>

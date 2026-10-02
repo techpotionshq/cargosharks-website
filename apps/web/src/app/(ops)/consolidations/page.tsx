@@ -76,7 +76,7 @@ export default async function ConsolidationsPage() {
                   <TD>
                     <Link
                       href={`/consolidations/${row.id}`}
-                      className="ref numeric font-medium hover:text-brand"
+                      className="ref numeric font-medium hover:text-accent"
                     >
                       {row.reference}
                     </Link>

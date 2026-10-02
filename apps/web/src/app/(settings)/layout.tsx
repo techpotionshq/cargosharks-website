@@ -180,7 +180,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <div className="ms-auto flex items-center gap-1.5">
             <Link
               href="/dashboard"
-              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:border-brand hover:text-brand sm:inline-flex"
+              className="hidden items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink-muted transition-colors hover:border-brand hover:text-accent sm:inline-flex"
             >
               <Icon name="dashboard" size={14} />
               {tc('operations')}

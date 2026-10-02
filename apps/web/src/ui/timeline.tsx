@@ -73,11 +73,11 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
             )}
 
             {/*
-              Done is green; the step in progress is the brand colour.
+              Done is green; the step in progress is the accent.
 
               A completed milestone used to be a white tick on a red disc, and
               on a board where red means *alarm* a column of six red ticks
-              reads as six problems. Green says finished, the brand ring says
+              reads as six problems. Green says finished, the accent ring says
               "this is where it is now", and the two together let someone see
               progress without reading a word.
             */}
@@ -87,7 +87,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                 done
                   ? 'border-positive bg-positive text-on-brand'
                   : current
-                    ? 'border-brand bg-surface text-brand ring-4 ring-brand/15'
+                    ? 'border-accent bg-surface text-accent ring-4 ring-accent/15'
                     : 'border-line bg-surface text-ink-subtle',
               ].join(' ')}
             >
@@ -95,7 +95,7 @@ export function MilestoneTimeline({ milestones, formatDate, labels, className }:
                 <Icon name="check" size={13} strokeWidth={2.75} />
               ) : (
                 <span
-                  className={`size-1.5 rounded-full ${current ? 'bg-brand' : 'bg-line-strong'}`}
+                  className={`size-1.5 rounded-full ${current ? 'bg-accent' : 'bg-line-strong'}`}
                 />
               )}
             </span>

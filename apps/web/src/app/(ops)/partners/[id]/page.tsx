@@ -207,7 +207,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     <TD>
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="ref numeric font-medium text-brand hover:underline"
+                        className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                       >
                         {job.reference}
                       </Link>
@@ -269,12 +269,12 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                     ) : null}
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-ink-muted">
                       {contact.email ? (
-                        <a href={`mailto:${contact.email}`} className="hover:text-brand">
+                        <a href={`mailto:${contact.email}`} className="hover:text-accent">
                           {contact.email}
                         </a>
                       ) : null}
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="numeric hover:text-brand">
+                        <a href={`tel:${contact.phone}`} className="numeric hover:text-accent">
                           {contact.phone}
                         </a>
                       ) : null}

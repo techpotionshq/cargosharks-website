@@ -170,7 +170,7 @@ export default async function PayablesPage({
                       <TD>
                         <Link
                           href={`/payables/${row.id}`}
-                          className="ref numeric font-medium hover:text-brand"
+                          className="ref numeric font-medium hover:text-accent"
                         >
                           {row.reference}
                         </Link>

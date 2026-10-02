@@ -36,6 +36,7 @@ import { Icon, modeIcon } from '@/ui/icon'
 import { MilestoneTimeline } from '@/ui/timeline'
 import { Meter } from '@/ui/chart'
 import { pickName } from '@/lib/named'
+import { FOCUS_RING } from '@/ui/control'
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('track')
@@ -88,7 +89,7 @@ export default async function TrackPage({
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
       {!result ? (
         <header className="mb-8 text-center">
-          <span className="mb-4 inline-flex size-12 items-center justify-center rounded-lg bg-brand-soft text-brand-soft-ink">
+          <span className="mb-4 inline-flex size-12 items-center justify-center rounded-lg bg-accent-soft text-accent">
             <Icon name="tracking" size={24} />
           </span>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
@@ -113,7 +114,7 @@ export default async function TrackPage({
                 // References are Latin identifiers in both languages; forcing
                 // LTR stops the caret jumping around in an Arabic interface.
                 dir="ltr"
-                className="ref numeric h-11 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
               />
             </label>
 
@@ -126,7 +127,7 @@ export default async function TrackPage({
                 placeholder={t('verifierPlaceholder')}
                 autoComplete="off"
                 dir="ltr"
-                className="ref numeric h-11 rounded-sm border border-line bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:bg-surface focus:outline-none"
+                className={`ref numeric h-11 rounded-sm border border-line-strong bg-surface-sunken px-3 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:bg-surface ${FOCUS_RING}`}
               />
             </label>
           </div>
@@ -191,7 +192,7 @@ export default async function TrackPage({
               <Meter
                 value={done}
                 max={total}
-                tone={result.ata ? 'var(--qb-positive)' : 'var(--qb-brand)'}
+                tone={result.ata ? 'var(--qb-positive)' : 'var(--qb-accent)'}
                 label={t('progress', { done, total })}
               />
             </div>
@@ -324,7 +325,7 @@ export default async function TrackPage({
                     phone: () => (
                       <a
                         href={`tel:${brand.contact.supportPhone.replace(/\s/g, '')}`}
-                        className="numeric font-medium text-brand hover:underline"
+                        className="numeric font-medium text-accent hover:underline"
                         dir="ltr"
                       >
                         {brand.contact.supportPhone}
@@ -333,7 +334,7 @@ export default async function TrackPage({
                     email: () => (
                       <a
                         href={`mailto:${brand.contact.supportEmail}`}
-                        className="font-medium text-brand hover:underline"
+                        className="font-medium text-accent hover:underline"
                       >
                         {brand.contact.supportEmail}
                       </a>

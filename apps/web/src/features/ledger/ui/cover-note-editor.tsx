@@ -19,6 +19,7 @@ import { useActionState } from 'react'
 import type { ActionState } from '@/lib/form-state'
 import { Button } from '@/ui/layout'
 import { draftQuoteCoverNote, setQuoteCoverNote } from '../form-actions'
+import { FOCUS_RING } from '@/ui/control'
 
 export interface CoverNoteLabels {
   readonly english: string
@@ -115,7 +116,7 @@ function LocaleNote({
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           rows={4}
           placeholder={labels.placeholder}
-          className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none"
+          className={`w-full rounded-sm border border-line-strong bg-surface px-3 py-2 text-[0.875rem] leading-relaxed text-ink placeholder:text-ink-subtle ${FOCUS_RING}`}
         />
         {draftState.message ? (
           <p className="mt-1 text-[0.8125rem] text-caution">{draftState.message}</p>

@@ -89,7 +89,7 @@ export default async function SettlementsPage({
                   <TD>
                     <Link
                       href={`/settlements/${row.id}`}
-                      className="ref numeric font-medium hover:text-brand"
+                      className="ref numeric font-medium hover:text-accent"
                     >
                       {row.reference}
                     </Link>

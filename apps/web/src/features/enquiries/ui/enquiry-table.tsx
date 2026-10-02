@@ -75,7 +75,7 @@ export async function EnquiryTable({
               <TD className="whitespace-nowrap">
                 <Link
                   href={`/enquiries/${row.id}`}
-                  className="ref numeric font-medium text-brand hover:underline"
+                  className="ref numeric font-medium text-ink hover:text-accent hover:underline"
                 >
                   {row.reference}
                 </Link>

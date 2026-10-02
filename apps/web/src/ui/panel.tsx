@@ -85,7 +85,7 @@ export function Panel({
       {footerHref ? (
         <Link
           href={footerHref as Route}
-          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-brand"
+          className="flex items-center justify-center gap-1.5 border-t border-line px-5 py-2.5 text-[0.8125rem] font-medium text-ink-muted transition-colors hover:bg-surface-sunken hover:text-accent"
         >
           {footerLabel}
           <Icon name="chevron-end" size={14} />
@@ -200,7 +200,7 @@ export function EventRow({
   readonly last?: boolean
 }) {
   const dot = {
-    brand: 'bg-brand',
+    brand: 'bg-accent',
     positive: 'bg-positive',
     caution: 'bg-caution',
     critical: 'bg-critical',

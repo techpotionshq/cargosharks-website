@@ -93,7 +93,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow={<span className="ref text-brand">{customer.code}</span>}
+        eyebrow={<span className="ref">{customer.code}</span>}
         title={displayName}
         description={t('detailSubtitle')}
         actions={

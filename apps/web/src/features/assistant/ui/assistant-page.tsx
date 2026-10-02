@@ -77,7 +77,7 @@ export function AssistantPage({
           <button
             type="button"
             onClick={assistant.startNew}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[0.75rem] font-medium text-ink shadow-card transition-colors hover:border-brand hover:text-brand"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[0.75rem] font-medium text-ink shadow-card transition-colors hover:border-brand hover:text-accent"
           >
             <Icon name="plus" size={13} />
             {labels.newThread}

@@ -232,7 +232,7 @@ export default async function SignInPage({
           <p className="mt-3 text-end">
             <Link
               href="/forgot-password"
-              className="text-[0.8125rem] font-medium text-brand hover:underline"
+              className="text-[0.8125rem] font-medium text-accent hover:underline"
             >
               {t('forgotPassword')}
             </Link>
@@ -249,7 +249,7 @@ export default async function SignInPage({
             <p className="text-[0.8125rem] text-ink-muted">{t('customerPrompt')}</p>
             <Link
               href="/track"
-              className="mt-1.5 inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-brand hover:underline"
+              className="mt-1.5 inline-flex items-center gap-1.5 text-[0.875rem] font-medium text-accent hover:underline"
             >
               <Icon name="tracking" size={15} />
               {t('customerLink')}

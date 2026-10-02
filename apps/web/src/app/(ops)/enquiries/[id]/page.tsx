@@ -175,7 +175,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
           {timing ? (
             <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-brand text-on-brand">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent text-on-brand">
                 <Icon name="clock" size={18} />
               </span>
               <div>
@@ -262,7 +262,7 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
             {comparison.options.map((option) => (
               <Card
                 key={option.id}
-                className={option.isRecommended ? 'ring-2 ring-brand/30' : undefined}
+                className={option.isRecommended ? 'ring-2 ring-accent/30' : undefined}
               >
                 <div className={solo ? 'md:grid md:grid-cols-2 md:items-center md:gap-8' : ''}>
                   <div className="min-w-0">

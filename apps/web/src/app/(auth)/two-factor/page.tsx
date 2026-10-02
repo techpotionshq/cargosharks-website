@@ -80,7 +80,10 @@ export default async function TwoFactorPage() {
           no session yet — it simply returns to the form.
         */}
         <p className="mt-3 text-center">
-          <Link href="/sign-in" className="text-[0.8125rem] font-medium text-brand hover:underline">
+          <Link
+            href="/sign-in"
+            className="text-[0.8125rem] font-medium text-accent hover:underline"
+          >
             {t('back')}
           </Link>
         </p>
