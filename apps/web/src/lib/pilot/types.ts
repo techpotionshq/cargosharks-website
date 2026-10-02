@@ -652,6 +652,9 @@ export interface CustomerDetail extends CustomerRow {
     readonly creditCurrency: string | null
     readonly freeTimeDays: number | null
     readonly defaultIncoterm: string | null
+    /** The house margin "Price it" uses over a buying rate (D8). */
+    readonly defaultMarginKind: string | null
+    readonly defaultMarginValue: string | null
     readonly isOnHold: boolean
   }[]
 }

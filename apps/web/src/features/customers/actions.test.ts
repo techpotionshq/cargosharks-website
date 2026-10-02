@@ -295,6 +295,73 @@ describe.skipIf(!enabled)('customers', () => {
       expect(await termsFor(row.id, HOME_BRANCH)).toBeDefined()
     })
 
+    /**
+     * D8. "Price it" over a buying rate needs a house margin, and no screen
+     * wrote one, so the one-click path refused for every customer without SQL.
+     */
+    it('sets, changes and clears the house margin as a decimal', async () => {
+      const { code, row } = await existing()
+
+      const set = await updateCustomer(
+        {},
+        customerForm({
+          customerId: row.id,
+          code,
+          defaultMarginKind: 'absolute',
+          defaultMarginValue: '1,250.125',
+        }),
+      )
+      expect(set.message).toBe('saved')
+      let terms = await termsFor(row.id, HOME_BRANCH)
+      expect(terms?.defaultMarginKind).toBe('absolute')
+      // Three decimals survive, because KWD has three.
+      expect(terms?.defaultMarginValue).toBe('1250.125000')
+
+      await updateCustomer(
+        {},
+        customerForm({
+          customerId: row.id,
+          code,
+          defaultMarginKind: 'percent',
+          defaultMarginValue: '15',
+        }),
+      )
+      terms = await termsFor(row.id, HOME_BRANCH)
+      expect(terms?.defaultMarginKind).toBe('percent')
+      expect(terms?.defaultMarginValue).toBe('15.000000')
+
+      await updateCustomer({}, customerForm({ customerId: row.id, code }))
+      terms = await termsFor(row.id, HOME_BRANCH)
+      expect(terms?.defaultMarginKind).toBeNull()
+      expect(terms?.defaultMarginValue).toBeNull()
+    })
+
+    it('refuses half a margin, a zero, a word and an unknown kind', async () => {
+      const { code, row } = await existing()
+      const attempt = (extra: Record<string, string>) =>
+        updateCustomer({}, customerForm({ customerId: row.id, code, ...extra }))
+
+      expect((await attempt({ defaultMarginKind: 'percent' })).errors?.defaultMarginValue).toBe(
+        'customersValidation.marginNeedsValue',
+      )
+      expect((await attempt({ defaultMarginValue: '10' })).errors?.defaultMarginKind).toBe(
+        'customersValidation.marginNeedsKind',
+      )
+      expect(
+        (await attempt({ defaultMarginKind: 'percent', defaultMarginValue: '0' })).errors
+          ?.defaultMarginValue,
+      ).toBe('customersValidation.marginPositive')
+      expect(
+        (await attempt({ defaultMarginKind: 'percent', defaultMarginValue: 'lots' })).errors
+          ?.defaultMarginValue,
+      ).toBeDefined()
+      expect(
+        (await attempt({ defaultMarginKind: 'markup', defaultMarginValue: '10' })).errors
+          ?.defaultMarginKind,
+      ).toBeDefined()
+      expect((await termsFor(row.id, HOME_BRANCH))?.defaultMarginKind).toBeNull()
+    })
+
     it('reports a code taken by somebody else rather than raising', async () => {
       const first = await existing()
       const second = await existing()

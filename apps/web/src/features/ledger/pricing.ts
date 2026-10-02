@@ -13,7 +13,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTranslations } from 'next-intl/server'
-import { priceEnquiryToQuote, withActor, type PricingRefusal } from '@qabandi/db'
+import { eq } from 'drizzle-orm'
+import { enquiries, priceEnquiryToQuote, withActor, type PricingRefusal } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
 import { assertCan } from '@/lib/permissions'
 import { failWith, succeed, type ActionState, type Translate } from '@/lib/form-state'
@@ -54,7 +55,33 @@ export const priceEnquiry = refuseForbidden(async function priceEnquiry(
     }),
   )
 
-  if ('error' in outcome) return failWith(refusal(tv, outcome.error))
+  if ('error' in outcome) {
+    /*
+      "Add one on their account" with no way there was half an answer (D8):
+      the house margin is set in the customer's commercial terms, so the
+      refusal links to them. Read under the same actor, so a customer the
+      coordinator cannot see gets no link rather than a dead one.
+    */
+    if (outcome.error === 'no_margin') {
+      const [row] = await withActor(session.actor, (tx) =>
+        tx
+          .select({ customerId: enquiries.customerId })
+          .from(enquiries)
+          .where(eq(enquiries.id, enquiryId))
+          .limit(1),
+      )
+      if (row?.customerId) {
+        return {
+          message: refusal(tv, outcome.error),
+          link: {
+            href: `/customers/${row.customerId}#commercial-terms`,
+            label: tv('openCustomerTerms'),
+          },
+        }
+      }
+    }
+    return failWith(refusal(tv, outcome.error))
+  }
 
   revalidatePath('/quotes')
   revalidatePath(`/enquiries/${enquiryId}`)

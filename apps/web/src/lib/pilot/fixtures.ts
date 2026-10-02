@@ -3592,6 +3592,9 @@ export function pilotCustomer(id: string): CustomerDetail | null {
         creditCurrency: home.currency,
         freeTimeDays: 10,
         defaultIncoterm: 'CFR',
+        // A house margin, so the pilot shows "Price it" over a buying card.
+        defaultMarginKind: 'percent',
+        defaultMarginValue: '15.000000',
         /*
           One customer on stop, and it is the one carrying the 130-day debt.
           A credit hold that does not line up with the receivables screen is a

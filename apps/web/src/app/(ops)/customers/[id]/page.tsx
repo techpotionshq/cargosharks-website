@@ -139,6 +139,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   {t('freeTimeDays')}
                 </TH>
                 <TH priority="low">{t('defaultIncoterm')}</TH>
+                <TH priority="low">{t('marginKind')}</TH>
                 <TH>{tc('status')}</TH>
               </TR>
             </THead>
@@ -159,6 +160,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
                   </TD>
                   <TD priority="low" className="ref">
                     {term.defaultIncoterm ?? '—'}
+                  </TD>
+                  <TD priority="low">
+                    {term.defaultMarginKind && term.defaultMarginValue
+                      ? `${t(`marginKinds.${term.defaultMarginKind}` as 'marginKinds.percent')} · ${trimDecimal(term.defaultMarginValue)}`
+                      : '—'}
                   </TD>
                   <TD>
                     {term.isOnHold ? (
@@ -201,6 +207,8 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             creditCurrency: primaryTerms?.creditCurrency ?? null,
             freeTimeDays: primaryTerms?.freeTimeDays ?? null,
             defaultIncoterm: primaryTerms?.defaultIncoterm ?? null,
+            defaultMarginKind: primaryTerms?.defaultMarginKind ?? null,
+            defaultMarginValue: trimDecimal(primaryTerms?.defaultMarginValue),
           }}
         />
       ) : (

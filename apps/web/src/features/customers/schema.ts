@@ -8,8 +8,10 @@
  */
 
 import { z } from 'zod'
-import { insertCustomer } from '@qabandi/db'
+import { dec } from '@qabandi/core'
+import { insertCustomer, marginKindEnum } from '@qabandi/db'
 import type { Translate } from '@/lib/form-state'
+import { normaliseAmount } from '@/lib/amount'
 
 /**
  * The customer code is a human key — it goes on a quotation, gets read down a
@@ -32,12 +34,7 @@ const optionalText = z
   .optional()
   .transform((value) => (value ? value : null))
 
-/*
-  Factories rather than constants: the messages are catalogue keys, and a
-  locale only exists per request. The action binds `customersValidation` and
-  hands the translator in.
-*/
-export const customerFormSchema = (tv: Translate<'customersValidation'>) =>
+const customerFormObject = (tv: Translate<'customersValidation'>) =>
   insertCustomer
     .pick({
       legalNameEn: true,
@@ -87,12 +84,67 @@ export const customerFormSchema = (tv: Translate<'customersValidation'>) =>
         .or(z.literal('').transform(() => undefined)),
       freeTimeDays: z.coerce.number().int().min(0).max(120).optional(),
       defaultIncoterm: optionalText,
+
+      /**
+       * The house margin "Price it" lays over a buying rate when no selling
+       * card covers the lane (FR-EQ-05, `houseMargin` in `db/pricing.ts`).
+       * Nothing wrote it before (D8), so that path refused for every customer
+       * without SQL. Text checked as a decimal and never coerced to a float:
+       * an absolute or target figure is money in the branch's currency, and
+       * KWD carries three decimals.
+       */
+      defaultMarginKind: z
+        .enum(marginKindEnum.enumValues)
+        .optional()
+        .or(z.literal('').transform(() => undefined)),
+      defaultMarginValue: z
+        .string()
+        .trim()
+        .overwrite(normaliseAmount)
+        .regex(/^(\d{1,13}(\.\d{1,6})?)?$/, tv('numbersOnly'))
+        .optional()
+        .transform((value) => (value ? value : null)),
     })
 
-export const updateCustomerSchema = (tv: Translate<'customersValidation'>) =>
-  customerFormSchema(tv).extend({
-    customerId: z.uuid(),
+const DECIMAL = /^\d{1,13}(\.\d{1,6})?$/
+
+/**
+ * A margin is a kind and a value together, or neither. Half of one is a rule
+ * `houseMargin` silently ignores, and a zero is a quotation sold at cost.
+ */
+function withMarginRule<Schema extends ReturnType<typeof customerFormObject>>(
+  schema: Schema,
+  tv: Translate<'customersValidation'>,
+) {
+  return schema.superRefine((data, ctx) => {
+    const { defaultMarginKind: kind, defaultMarginValue: value } = data
+    if (kind && !value) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['defaultMarginValue'],
+        message: tv('marginNeedsValue'),
+      })
+    } else if (value && !kind) {
+      ctx.addIssue({ code: 'custom', path: ['defaultMarginKind'], message: tv('marginNeedsKind') })
+    } else if (value && DECIMAL.test(value) && dec(value).lte(0)) {
+      // Tested again because a refinement still runs after the field's own
+      // pattern refused it, and `dec` throws on text that is not a number.
+      ctx.addIssue({ code: 'custom', path: ['defaultMarginValue'], message: tv('marginPositive') })
+    }
   })
+}
+
+/*
+  Factories rather than constants: the messages are catalogue keys, and a
+  locale only exists per request. The action binds `customersValidation` and
+  hands the translator in. The margin rule is applied last, because an object
+  carrying a refinement can no longer be extended.
+*/
+export const customerFormSchema = (tv: Translate<'customersValidation'>) =>
+  withMarginRule(customerFormObject(tv), tv)
+
+export const updateCustomerSchema = (tv: Translate<'customersValidation'>) =>
+  withMarginRule(customerFormObject(tv).extend({ customerId: z.uuid() }), tv)
 
 /** Parses a `FormData` into the shape the schema expects. */
 export function customerFormData(form: FormData): Record<string, unknown> {
@@ -115,5 +167,7 @@ export function customerFormData(form: FormData): Record<string, unknown> {
     creditCurrency: read('creditCurrency'),
     freeTimeDays: read('freeTimeDays') || undefined,
     defaultIncoterm: read('defaultIncoterm'),
+    defaultMarginKind: read('defaultMarginKind'),
+    defaultMarginValue: read('defaultMarginValue'),
   }
 }

@@ -703,7 +703,15 @@
     "restore": "Bring back",
     "restoreTitle": "Bring {name} back",
     "restoreDescription": "Makes them selectable again on new work.",
-    "restoreNote": "They become selectable again everywhere they were before."
+    "restoreNote": "They become selectable again everywhere they were before.",
+    "marginKind": "House margin",
+    "marginValue": "Margin",
+    "marginHint": "Used when only a buying rate covers a lane. A percentage is of cost; a fixed amount or selling price is in the branch currency.",
+    "marginKinds": {
+      "percent": "Percentage over cost",
+      "absolute": "Fixed amount over cost",
+      "target_sell": "Fixed selling price"
+    }
   },
   "setup": {
     "title": "Finish setting up",
@@ -4089,7 +4097,10 @@
     "chooseBranch": "Choose a branch",
     "numbersOnly": "Numbers only",
     "codeInUse": "That customer code is already in use.",
-    "nothingToUpdate": "Nothing to update."
+    "nothingToUpdate": "Nothing to update.",
+    "marginNeedsValue": "Enter the margin, or clear the kind",
+    "marginNeedsKind": "Choose how the margin applies",
+    "marginPositive": "The margin must be more than zero"
   },
   "podValidation": {
     "notCoordinate": "Not a coordinate",
@@ -4198,7 +4209,8 @@
     "creditNoRate": "There is no exchange rate from {currency} to {limit}, so this invoice cannot be measured against the customer's credit limit. Enter a rate, or ask a branch manager to record an override.",
     "creditAmountNumber": "Enter the amount to credit, in figures.",
     "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
-    "creditTooPrecise": "This currency does not have that many decimal places."
+    "creditTooPrecise": "This currency does not have that many decimal places.",
+    "openCustomerTerms": "Set the house margin"
   },
   "validation": {
     "invalidType": "Enter a valid value.",
