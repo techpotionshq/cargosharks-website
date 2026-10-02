@@ -28,6 +28,7 @@ import {
   canIn,
   canOpenSettings,
   inBranch,
+  permittedBranches,
   settingsAreasFor,
 } from './permissions'
 import type { Session } from './session'
@@ -233,6 +234,17 @@ describe('permissions in a branch', () => {
     expect(canIn(split, 'admin.users.write', KUWAIT)).toBe(false)
     expect(() => assertCanIn(split, 'admin.users.write', KUWAIT)).toThrow(ForbiddenError)
     expect(branchesWhere(split, 'admin.users.write')).toEqual([DUBAI])
+  })
+
+  /** QA P2-4: a picker offered Kuwait to someone who only reads it, and the form 500'd. */
+  it('narrows a branch picker to the branches the form may act in', () => {
+    const choices = [
+      { value: KUWAIT, label: 'KWI' },
+      { value: DUBAI, label: 'DXB' },
+      { value: '00000000-0000-7000-8000-0000000000b9', label: 'QAT' },
+    ]
+    expect(permittedBranches(split, 'admin.users.write', choices)).toEqual([choices[1]])
+    expect(permittedBranches(split, 'job.read', choices)).toEqual([choices[0], choices[1]])
   })
 
   it('refuses a branch the principal holds no role in at all', () => {

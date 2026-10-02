@@ -10,7 +10,7 @@
 
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { branchesWhere, can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { branchBaseCurrency, defaultBillBranch } from '../queries'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
@@ -100,7 +100,7 @@ export async function SupplierInvoiceDialog({
           label: t('branch'),
           span: 6,
           required: true,
-          options: options.branches,
+          options: permittedBranches(session, 'payable.record', options.branches),
           placeholder: tc('choose'),
           // Never the first in row order for everyone — that put KWI bills
           // in DXB — but the person's own branch, as `defaultBillBranch` reads it.
@@ -255,8 +255,8 @@ export async function ReadBillDialog({
       label: t('branch'),
       span: 6,
       required: true,
-      options: options.branches,
-      defaultValue: defaults?.branchId ?? [...session.branchRoles.keys()][0],
+      options: permittedBranches(session, 'payable.record', options.branches),
+      defaultValue: defaults?.branchId ?? branchesWhere(session, 'payable.record')[0],
     },
     {
       kind: 'select',
@@ -550,8 +550,7 @@ export async function SupplierPaymentDialog({
 
   // Only branches this person may pay from, and the default currency is that
   // branch's own (QA P1-2) rather than KWD everywhere.
-  const payable = branchesWhere(session, 'payable.pay')
-  const branchChoices = options.branches.filter((b) => payable.includes(b.value))
+  const branchChoices = permittedBranches(session, 'payable.pay', options.branches)
   const branchId = branchChoices[0]?.value
   const base = await branchBaseCurrency(session.actor, branchId)
 
@@ -718,12 +717,9 @@ export async function SettlementDialog({
     .toISOString()
     .slice(0, 10)
 
-  // Only branches this person may pay from, and the default currency is that
-  // branch's own (QA P1-2) rather than KWD everywhere.
-  const payable = branchesWhere(session, 'payable.pay')
-  const branchChoices = options.branches.filter((b) => payable.includes(b.value))
-  const branchId = branchChoices[0]?.value
-  const base = await branchBaseCurrency(session.actor, branchId)
+  // Only branches this person may settle in (QA P2-4): the action's
+  // `assertCanIn` refused the others as a 500.
+  const branchChoices = permittedBranches(session, 'settlement.run', options.branches)
 
   const fields: FieldSpec[] = [
     {
@@ -733,7 +729,7 @@ export async function SettlementDialog({
       span: 6,
       required: true,
       options: branchChoices,
-      defaultValue: branchId,
+      defaultValue: branchChoices[0]?.value,
     },
     {
       kind: 'select',

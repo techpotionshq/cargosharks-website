@@ -15,7 +15,7 @@
 
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { EnquiryDialog } from './enquiry-dialog'
 
@@ -46,14 +46,16 @@ export async function NewEnquiryButton({
   // The branch someone works in most of the time. With one branch there is no
   // decision to make, so it is preselected and the field becomes a
   // confirmation rather than a question.
-  const defaultBranchId = [...session.branchRoles.keys()][0]
+  // Only branches the enquiry can be raised in (`enquiry.assign`, which is
+  // what `submitEnquiry` asks there) — QA P2-4.
+  const defaultBranchId = branchesWhere(session, 'enquiry.assign')[0]
 
   return (
     <EnquiryDialog
       variant={variant}
       defaultBranchId={defaultBranchId}
       options={{
-        branches: options.branches,
+        branches: permittedBranches(session, 'enquiry.assign', options.branches),
         customers: options.customers,
         locations: options.locations,
         commodities: options.commodities,

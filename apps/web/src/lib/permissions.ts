@@ -204,6 +204,25 @@ export function branchesWhere(session: Session, permission: string): string[] {
 }
 
 /**
+ * A branch picker's options, narrowed to the branches this person may do the
+ * form's work in — QA P2-4.
+ *
+ * Pickers listed every active branch, and the action's `assertCanIn` refused
+ * the ones the person only reads, as a 500: a Kuwait finance user who could
+ * see Dubai was offered Dubai on "New invoice" and crashed the form choosing
+ * it. The list now asks the action's own question. A picker that ends up
+ * empty is a dialog the caller should not render.
+ */
+export function permittedBranches<T extends { readonly value: string }>(
+  session: Session,
+  permission: string,
+  choices: readonly T[],
+): T[] {
+  const allowed = new Set(branchesWhere(session, permission))
+  return choices.filter((choice) => allowed.has(choice.value))
+}
+
+/**
  * The actions to render on a record, derived from the state machine rather
  * than restated in the component. A new transition appears in the interface by
  * virtue of existing in `core/states.ts`.

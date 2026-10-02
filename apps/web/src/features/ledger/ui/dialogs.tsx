@@ -13,7 +13,7 @@ import { fromDb, toScale } from '@qabandi/core'
 import { isLocale } from '@/i18n/request'
 import { named } from '@/lib/named'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can, permittedBranches } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import type { OpenEnquiryRow, OutstandingInvoiceRow } from '@/lib/pilot/types'
@@ -87,7 +87,7 @@ export async function QuoteDialog({
   ])
 
   const enquiries = enquiryId ? [] : await loadOpenEnquiries(session, await pickerLocale())
-  const defaultBranch = branchId ?? [...session.branchRoles.keys()][0]
+  const defaultBranch = branchId ?? branchesWhere(session, 'quote.send')[0]
 
   const fields: FieldSpec[] = [
     ...(enquiryId
@@ -117,7 +117,7 @@ export async function QuoteDialog({
           label: t('branch'),
           span: 6 as const,
           required: true,
-          options: options.branches,
+          options: permittedBranches(session, 'quote.send', options.branches),
           defaultValue: defaultBranch,
         },
     {
@@ -206,7 +206,7 @@ export async function InvoiceDialog({
     getTranslations('common'),
   ])
 
-  const defaultBranch = [...session.branchRoles.keys()][0]
+  const defaultBranch = branchesWhere(session, 'invoice.approve')[0]
 
   const fields: FieldSpec[] = [
     {
@@ -215,7 +215,7 @@ export async function InvoiceDialog({
       label: t('branch'),
       span: 6,
       required: true,
-      options: options.branches,
+      options: permittedBranches(session, 'invoice.approve', options.branches),
       defaultValue: defaultBranch,
     },
     {
@@ -382,7 +382,10 @@ export async function PaymentDialog({
     asked.
   */
   const defaultBranch =
-    branchId ?? (session.branchRoles.size === 1 ? [...session.branchRoles.keys()][0] : undefined)
+    branchId ??
+    (branchesWhere(session, 'payment.record').length === 1
+      ? branchesWhere(session, 'payment.record')[0]
+      : undefined)
   const defaultRate =
     branchId && currency ? await defaultRateToBase(session, branchId, currency) : undefined
 
@@ -393,7 +396,7 @@ export async function PaymentDialog({
       label: t('branch'),
       span: 6,
       required: true,
-      options: options.branches,
+      options: permittedBranches(session, 'payment.record', options.branches),
       placeholder: tc('choose'),
       defaultValue: defaultBranch,
     },
