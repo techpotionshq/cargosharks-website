@@ -34,7 +34,7 @@
 
 export interface NotificationTemplateSeed {
   readonly eventKey: string
-  readonly channel: 'email' | 'in_app'
+  readonly channel: 'email' | 'in_app' | 'whatsapp'
   readonly locale: 'en' | 'ar'
   readonly subject: string
   readonly body: string
@@ -72,6 +72,23 @@ function ia(
   body: string,
 ): NotificationTemplateSeed {
   return { eventKey, channel: 'in_app', locale, subject, body: body.trim() }
+}
+
+/**
+ * A chat message, for the channel the intake agent answers WhatsApp on.
+ *
+ * One short paragraph and a dash-signature, because a WhatsApp message that
+ * opens "Hello" and closes with a letterhead reads as a mail merge pasted into
+ * a chat. The subject is required by the table's shape and by the template
+ * editor, and is never shown to the customer.
+ */
+function wa(
+  eventKey: string,
+  locale: 'en' | 'ar',
+  subject: string,
+  body: string,
+): NotificationTemplateSeed {
+  return { eventKey, channel: 'whatsapp', locale, subject, body: body.trim() }
 }
 
 export const NOTIFICATION_TEMPLATES: readonly NotificationTemplateSeed[] = [
@@ -295,6 +312,188 @@ Open the enquiry to read it and decide whether it changes anything.
 
 {{senderName}}
 `,
+  ),
+
+  /*
+    The intake agent — FR-EQ-02.
+
+    `intake.clarify` and `intake.confirm` go to whoever wrote in, on the channel
+    they wrote on, at most once each per window — the turn worker owns those
+    rules (`intake-turn.ts`) and the loop breakers with them. The wording asks
+    for exactly what is missing and promises nothing the desk has not decided:
+    "we will come back with a quotation", never a time.
+  */
+  t(
+    'intake.clarify',
+    'en',
+    '{{reference}}: a few details so we can quote',
+    `
+Hello {{recipientName}}
+
+Thank you for your enquiry, which we have logged as {{reference}}. To prepare
+your quotation we still need {{missing}}.
+
+A short reply with these is all we need.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'intake.clarify',
+    'ar',
+    '{{reference}}: بعض التفاصيل لإعداد عرض السعر',
+    `
+مرحباً {{recipientName}}
+
+شكراً لاستفسارك، وقد سجّلناه برقم {{reference}}. لإعداد عرض السعر نحتاج أيضاً إلى
+{{missing}}.
+
+يكفينا ردّ قصير بهذه التفاصيل.
+
+{{senderName}}
+`,
+  ),
+  wa(
+    'intake.clarify',
+    'en',
+    'Details needed for {{reference}}',
+    'Thank you — to prepare your quotation ({{reference}}) we still need {{missing}}. — {{senderName}}',
+  ),
+  wa(
+    'intake.clarify',
+    'ar',
+    'تفاصيل مطلوبة للطلب {{reference}}',
+    'شكراً لك. لإعداد عرض السعر ({{reference}}) نحتاج أيضاً إلى {{missing}}. — {{senderName}}',
+  ),
+  t(
+    'intake.confirm',
+    'en',
+    '{{reference}}: we have everything we need',
+    `
+Hello {{recipientName}}
+
+Thank you — we have everything we need for your enquiry {{reference}}. Our team
+will come back to you with a quotation. Please quote this reference in any reply.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'intake.confirm',
+    'ar',
+    '{{reference}}: وصلتنا كل التفاصيل',
+    `
+مرحباً {{recipientName}}
+
+شكراً لك، وصلتنا كل التفاصيل اللازمة لاستفسارك {{reference}}. سيعود إليك فريقنا
+بعرض السعر. يُرجى ذكر هذا الرقم في أي مراسلة.
+
+{{senderName}}
+`,
+  ),
+  wa(
+    'intake.confirm',
+    'en',
+    'Enquiry {{reference}} complete',
+    'Thank you — we have everything we need for {{reference}}. Our team will come back to you with a quotation. — {{senderName}}',
+  ),
+  wa(
+    'intake.confirm',
+    'ar',
+    'اكتمل الطلب {{reference}}',
+    'شكراً لك، وصلتنا كل التفاصيل اللازمة للطلب {{reference}}. سيعود إليك فريقنا بعرض السعر. — {{senderName}}',
+  ),
+  t(
+    'intake.handoff',
+    'en',
+    'Enquiry {{reference}} needs a person',
+    `
+Hello {{recipientName}}
+
+The intake agent has asked the customer on {{reference}} for the missing details
+as many times as it is allowed to, and still lacks {{missing}}. It has stopped
+writing to them.
+
+Please pick the enquiry up.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'intake.handoff',
+    'ar',
+    'الاستفسار {{reference}} يحتاج إلى متابعة شخصية',
+    `
+مرحباً {{recipientName}}
+
+طلب مساعد الاستقبال من العميل في {{reference}} التفاصيل الناقصة بالعدد المسموح به،
+وما زال ينقصه {{missingAr}}. وقد توقّف عن مراسلته.
+
+يرجى متابعة الاستفسار.
+
+{{senderName}}
+`,
+  ),
+  ia(
+    'intake.handoff',
+    'en',
+    'Enquiry {{reference}} needs a person',
+    'The intake agent has stopped asking the customer and still lacks {{missing}}.',
+  ),
+  ia(
+    'intake.handoff',
+    'ar',
+    'الاستفسار {{reference}} يحتاج إلى متابعة شخصية',
+    'توقّف مساعد الاستقبال عن مراسلة العميل وما زال ينقصه {{missingAr}}.',
+  ),
+
+  /*
+    partner.mail_filed (internal) — a supplier's mail that is not a bill and not
+    an enquiry. The subject is theirs, quoted, so the reader can tell a rate
+    notice from a complaint before opening anything.
+  */
+  t(
+    'partner.mail_filed',
+    'en',
+    'Mail from {{partnerName}}: {{subject}}',
+    `
+Hello {{recipientName}}
+
+{{partnerName}} has written to the intake mailbox ("{{subject}}"). It is a
+supplier, so the mail was not opened as a customer enquiry, and it carried no
+bill to read.
+
+Please read it in the mailbox and act on it if it needs anything.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'partner.mail_filed',
+    'ar',
+    'رسالة من {{partnerName}}: {{subject}}',
+    `
+مرحباً {{recipientName}}
+
+كتب {{partnerName}} إلى صندوق الاستقبال ("{{subject}}"). ولأنه مورّد، لم تُفتح
+الرسالة كاستفسار عميل، ولم تتضمن فاتورة لقراءتها.
+
+يرجى قراءتها في صندوق البريد واتخاذ ما يلزم.
+
+{{senderName}}
+`,
+  ),
+  ia(
+    'partner.mail_filed',
+    'en',
+    'Mail from {{partnerName}}: {{subject}}',
+    'A supplier wrote to the intake mailbox with no bill attached; read it in the mailbox.',
+  ),
+  ia(
+    'partner.mail_filed',
+    'ar',
+    'رسالة من {{partnerName}}: {{subject}}',
+    'كتب مورّد إلى صندوق الاستقبال دون فاتورة مرفقة؛ يرجى قراءتها في صندوق البريد.',
   ),
 
   /*

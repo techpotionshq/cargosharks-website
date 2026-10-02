@@ -11,9 +11,15 @@
  * there is no administrator yet.
  */
 
-import { sql } from 'drizzle-orm'
+import { isNull, sql } from 'drizzle-orm'
 import { loadEnv } from './env'
-import { ADMIN_PERMISSIONS, SEED_KW_TARIFF, permissionKeys } from '@qabandi/core'
+import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_INTAKE_REQUIREMENTS,
+  DEFAULT_INTAKE_SETTINGS,
+  SEED_KW_TARIFF,
+  permissionKeys,
+} from '@qabandi/core'
 import { createDatabase } from './client'
 import { NOTIFICATION_TEMPLATES } from './notification-templates'
 import { locationSeedRows } from './places'
@@ -31,6 +37,8 @@ import {
   locations,
   milestoneTemplates,
   notificationTemplates,
+  intakeRequirements,
+  intakeSettings,
   principals,
   rolePermissions,
   roles,
@@ -825,6 +833,41 @@ async function main(): Promise<void> {
             updatedAt: new Date(),
           },
         })
+
+      /*
+        The intake agent's defaults — the rows every branch inherits until an
+        administrator gives it its own (FR-AD-03).
+
+        Inserted once and then left alone, unlike the templates above: these are
+        numbers an operator may have tuned, and a re-seed that put the quiet
+        window back to 120 seconds would be a release overwriting a decision.
+        The settings default to *off* (`DEFAULT_INTAKE_SETTINGS`), so a fresh
+        deployment holds no automatic conversation nobody switched on. The
+        requirement rows are written only when no default set exists at all, for
+        the same reason — they have no natural key to conflict on, and a second
+        copy would ask every question twice in the list an administrator edits.
+      */
+      await db
+        .insert(intakeSettings)
+        .values({ branchId: null, ...DEFAULT_INTAKE_SETTINGS })
+        .onConflictDoNothing()
+
+      const [anyDefault] = await db
+        .select({ id: intakeRequirements.id })
+        .from(intakeRequirements)
+        .where(isNull(intakeRequirements.branchId))
+        .limit(1)
+      if (!anyDefault) {
+        await db.insert(intakeRequirements).values(
+          DEFAULT_INTAKE_REQUIREMENTS.map((requirement, position) => ({
+            branchId: null,
+            mode: requirement.mode,
+            key: requirement.key,
+            fields: [...requirement.fields],
+            position,
+          })),
+        )
+      }
 
       /*
         The tariff, as far as a generic seed can honestly go.
