@@ -39,7 +39,14 @@ const { creditStanding, creditOverridesFor, checkCredit, noExposure } =
 const { branches, principals } = await import('../src/schema/identity')
 const { customers, customerBranchTerms, creditOverrides } = await import('../src/schema/commercial')
 const { invoices } = await import('../src/schema/finance')
-const { fxRates, workingCalendars } = await import('../src/schema/reference')
+const { currencies, fxRates, workingCalendars } = await import('../src/schema/reference')
+
+/*
+  ISO 4217's "no currency", which no suite and no seed gives a rate. GBP used to
+  play this part until `db:seed-demo` started writing rates (S12), and CI runs
+  this suite again after the demo load for coverage.
+*/
+const UNRATED = 'XXX'
 
 import type { Actor } from '../src/actor'
 
@@ -162,6 +169,11 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
           invoiceSeries: 'CRD',
           calendarId: calendar.id,
         })
+        .onConflictDoNothing()
+
+      await tx
+        .insert(currencies)
+        .values({ code: UNRATED, nameEn: 'No currency', nameAr: 'بلا عملة', minorUnits: 2 })
         .onConflictDoNothing()
 
       /*
@@ -313,12 +325,12 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
     it('reports an invoice it cannot convert rather than leaving it out', async () => {
       const id = await limited()
       await owed(id, '75.000')
-      await owed(id, '500.00', { currency: 'GBP', subtotal: '500.00' })
+      await owed(id, '500.00', { currency: UNRATED, subtotal: '500.00' })
 
       const standing = await creditStanding(actor, id, BRANCH)
 
       expect(standing.unconvertible).toHaveLength(1)
-      expect(standing.unconvertible[0]?.currency).toBe('GBP')
+      expect(standing.unconvertible[0]?.currency).toBe(UNRATED)
       expect(Number(standing.unconvertible[0]?.amount)).toBeCloseTo(500, 2)
       // What it could convert is still counted, not abandoned alongside it.
       expect(Number(standing.outstanding.amount)).toBeCloseTo(75, 3)
@@ -385,17 +397,17 @@ describe.skipIf(!enabled)('a customer’s credit standing', () => {
       const refused = await checkCredit(actor, {
         customerId: id,
         branchId: BRANCH,
-        proposed: money('1000000.00', 'GBP'),
+        proposed: money('1000000.00', UNRATED),
         refuseUnconvertible: true,
       })
       expect(refused.allowed).toBe(false)
-      expect(refused.unconverted).toBe('GBP')
+      expect(refused.unconverted).toBe(UNRATED)
 
       // The booking screen has not opted in, and keeps its own judgement.
       const booking = await checkCredit(actor, {
         customerId: id,
         branchId: BRANCH,
-        proposed: money('1000000.00', 'GBP'),
+        proposed: money('1000000.00', UNRATED),
       })
       expect(booking.allowed).toBe(true)
     })
