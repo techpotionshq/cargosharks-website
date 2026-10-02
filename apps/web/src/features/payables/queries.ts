@@ -1111,3 +1111,47 @@ function sumStrings(values: readonly string[]): string {
 function subtractStrings(a: string, b: string): string {
   return toDecimal(a).minus(toDecimal(b)).toFixed()
 }
+
+/**
+ * The branch "Capture bill" opens on — U5.
+ *
+ * It opened on none for anyone in more than one branch, so a clerk who only
+ * ever keys Kuwait's bills picked Kuwait every time, and the one time they
+ * did not, the bill went to Dubai. In order:
+ *
+ *   1. the only branch where they hold `payable.record`, if there is one;
+ *   2. the branch of the last bill they captured themselves, if it is still
+ *      one they may record in;
+ *   3. the first branch they may record in, in the order the picker lists
+ *      them.
+ *
+ * Still a default, never a decision: the field stays editable and the action
+ * checks the branch it is handed. `permitted` is the caller's
+ * `branchesWhere(session, 'payable.record')`; `listed` the picker's order.
+ */
+export async function defaultBillBranch(
+  actor: Actor,
+  permitted: readonly string[],
+  listed: readonly string[],
+): Promise<string | undefined> {
+  if (permitted.length <= 1) return permitted[0]
+  const first = listed.find((id) => permitted.includes(id)) ?? permitted[0]
+
+  // The pilot has no bill anybody captured, so there is no last one to read.
+  if (usePilotFixtures()) return first
+
+  const [last] = await withActor(actor, (tx) =>
+    tx
+      .select({ branchId: supplierInvoices.branchId })
+      .from(supplierInvoices)
+      .where(
+        and(
+          eq(supplierInvoices.recordedById, actor.principalId),
+          inArray(supplierInvoices.branchId, [...permitted]),
+        ),
+      )
+      .orderBy(desc(supplierInvoices.createdAt))
+      .limit(1),
+  )
+  return last?.branchId ?? first
+}

@@ -153,6 +153,18 @@ describe.skipIf(!enabled)('supplier bills', () => {
       expect(await billStatus(id)).toBe('received')
     })
 
+    /** U5. Who captured it is what the next capture's branch default reads. */
+    it('records who captured it', async () => {
+      const id = await enterBill()
+      const [row] = await withActor(bothBranchesActor, (tx) =>
+        tx
+          .select({ by: supplierInvoices.recordedById })
+          .from(supplierInvoices)
+          .where(eq(supplierInvoices.id, id)),
+      )
+      expect(row!.by).toBe(PRINCIPAL)
+    })
+
     it('adds a line and totals it onto the bill', async () => {
       const id = await enterBill('250.000')
 

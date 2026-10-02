@@ -365,6 +365,13 @@
       "when": 1790930119870,
       "tag": "0052_invoice_amount_credited_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1790930753633,
+      "tag": "0053_supplier_invoice_recorded_by",
+      "breakpoints": true
     }
   ]
 }

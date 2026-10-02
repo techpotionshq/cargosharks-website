@@ -178,6 +178,8 @@ export async function saveSupplierInvoice(
             taxAmount: data.taxAmount,
             total: data.taxAmount,
             notes: data.notes,
+            // What the next capture's branch default is read from (U5).
+            recordedById: session.principal.id,
           })
           .returning({ id: supplierInvoices.id })
         return { id: row!.id, error: null }

@@ -10,7 +10,8 @@
 
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
-import { can } from '@/lib/permissions'
+import { branchesWhere, can } from '@/lib/permissions'
+import { defaultBillBranch } from '../queries'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { todayIn } from '@/lib/time'
@@ -75,6 +76,15 @@ export async function SupplierInvoiceDialog({
   ])
 
   const editing = Boolean(defaults?.id)
+  // The bill's own branch when editing; otherwise the one this person
+  // records bills in, or last did (U5).
+  const branchId =
+    defaults?.branchId ??
+    (await defaultBillBranch(
+      session.actor,
+      branchesWhere(session, 'payable.record'),
+      options.branches.map((b) => b.value),
+    ))
 
   const fields: FieldSpec[] = [
     ...(editing
@@ -92,12 +102,9 @@ export async function SupplierInvoiceDialog({
           required: true,
           options: options.branches,
           placeholder: tc('choose'),
-          // The bill's own branch when editing; otherwise a choice for anyone
-          // in more than one branch, not the first in row order — which put
-          // KWI bills in DXB.
-          defaultValue:
-            defaults?.branchId ??
-            (session.branchRoles.size === 1 ? [...session.branchRoles.keys()][0] : undefined),
+          // Never the first in row order for everyone — that put KWI bills
+          // in DXB — but the person's own branch, as `defaultBillBranch` reads it.
+          defaultValue: branchId,
         },
         {
           kind: 'select',
