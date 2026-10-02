@@ -324,7 +324,8 @@ describe('silence known before the model is asked', () => {
   it('still reads under a takeover, whose reply alone is silenced', () => {
     const human = { ...base, humanActiveAt: hoursAgo(1) }
     expect(silencedBeforeReading(human)).toBeNull()
-    expect(silencedBeforeReading({ ...base, agentEnabled: false })).toBeNull()
+    const switchedOff = { ...base, agentEnabled: false }
+    expect(silencedBeforeReading(switchedOff)).toBeNull()
     // The coordinator gets the proposals and a completing read still marks ready.
     expect(decideIntakeReply({ ...human, completeness: complete })).toEqual({
       action: 'none',
