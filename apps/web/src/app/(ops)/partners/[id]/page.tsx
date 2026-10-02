@@ -86,6 +86,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   const tp = await getTranslations('partners')
   const tf = await getTranslations('partnerForm')
   const tJob = await getTranslations('job')
+  const tMode = await getTranslations('mode')
 
   const displayName =
     locale === 'ar' && partner.legalNameAr ? partner.legalNameAr : partner.legalNameEn
@@ -337,7 +338,11 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
                 {credentials.coverage.map((row) => (
                   <TR key={row.id}>
                     <TD>
-                      <Badge tone={row.isActive ? 'info' : 'muted'}>{row.mode}</Badge>
+                      <Badge tone={row.isActive ? 'info' : 'muted'}>
+                        {/* The translated mode, as every other screen shows it;
+                            the raw enum is a fallback for a value with no label. */}
+                        {tMode.has(row.mode as 'air') ? tMode(row.mode as 'air') : row.mode}
+                      </Badge>
                     </TD>
                     <TD className="text-ink">{row.lane}</TD>
                     <TD align="end" numeric className="text-ink-muted">
