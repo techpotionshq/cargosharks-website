@@ -387,16 +387,28 @@ export function Textarea({
 export function Switch({
   label,
   name,
+  value,
   hint,
   defaultChecked = false,
   span = 6,
 }: {
   readonly label: ReactNode
   readonly name: string
+  /*
+    What a checked box submits. Omitted, the browser sends "on", which is
+    right for a lone yes/no and wrong for a group: the branch switches on the
+    user form all submitted "on" under one name, so the server received
+    ["on", "on"] for "these two branches" and every invitation failed a uuid
+    check (QA P1-3). A grouped switch passes the option's own value.
+  */
+  readonly value?: string
   readonly hint?: ReactNode
   readonly defaultChecked?: boolean
   readonly span?: Span
 }) {
+  // One id per box, not per name. A group shared `id="branchIds"`, so every
+  // label pointed at the first checkbox and clicking "DXB" toggled "KWI".
+  const id = value === undefined ? name : `${name}-${value}`
   return (
     // `row-span-3` even though a switch has no label band of its own: it makes
     // the switch occupy the same three rows a `Field` does, so one sitting
@@ -415,7 +427,7 @@ export function Switch({
         twice. The grid cell already stretches; this is the label taking it.
       */}
       <label
-        htmlFor={name}
+        htmlFor={id}
         /*
           The ring is drawn on the label because the input is `sr-only`: a
           visually hidden checkbox can take focus, but its own outline is a
@@ -425,8 +437,9 @@ export function Switch({
         className="flex h-full cursor-pointer items-start gap-3 rounded-sm border border-line bg-surface p-3 transition-colors hover:border-line-strong has-checked:border-accent/40 has-checked:bg-accent-soft/50 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus"
       >
         <input
-          id={name}
+          id={id}
           name={name}
+          value={value}
           type="checkbox"
           defaultChecked={defaultChecked}
           className="peer sr-only"

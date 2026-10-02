@@ -1479,7 +1479,9 @@
     "restore": "Restore",
     "restoreTitle": "Restore {name}",
     "restoreDescription": "Gives their access back, with the same branches and roles they had.",
-    "restoreNote": "They can sign in again with the assignments already on their account."
+    "restoreNote": "They can sign in again with the assignments already on their account.",
+    "noAccess": "No access",
+    "rolesPerBranchHint": "The role this person holds in each branch you administer. Branches you do not administer are left as they are."
   },
   "branchForm": {
     "open": "Add branch",

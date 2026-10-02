@@ -82,10 +82,51 @@ const userSchema = (tv: Translate) =>
     email: z.email(tv('validEmail')).transform((v) => v.toLowerCase()),
     phone: optional(40),
     locale: z.enum(['en', 'ar']),
-    roleId: z.uuid(tv('chooseRole')),
-    branchIds: z.array(z.uuid()).min(1, tv('atLeastOneBranch')),
+    /*
+      One branch-and-role pair per grant. An invitation submits one role and
+      the branches ticked; an edit submits a role per branch (`role:<id>`).
+      Both arrive here as the same list, so the rules below are written once.
+    */
+    grants: z
+      .array(
+        z.object({ branchId: z.uuid(tv('atLeastOneBranch')), roleId: z.uuid(tv('chooseRole')) }),
+      )
+      .min(1, tv('atLeastOneBranch')),
     isActive: z.coerce.boolean(),
   })
+
+/**
+ * The grants a user form asks for, whichever shape it was.
+ *
+ * The edit form names a select per branch `role:<branchId>`, blank for no
+ * access. The invitation names one `roleId` and ticks `branchIds`. A blank
+ * role on the invitation still produces its pairs, so the schema reports
+ * "choose a role" against the field rather than "choose a branch".
+ */
+function readGrants(form: FormData): { branchId: string; roleId: string }[] {
+  const perBranch = [...form.keys()].filter((key) => key.startsWith('role:'))
+  if (perBranch.length) {
+    return [...new Set(perBranch)]
+      .map((key) => ({ branchId: key.slice('role:'.length), roleId: read(form, key) ?? '' }))
+      .filter((grant) => grant.roleId !== '')
+  }
+  const roleId = read(form, 'roleId') ?? ''
+  return readAll(form, 'branchIds').map((branchId) => ({ branchId, roleId }))
+}
+
+/** The schema's errors, moved onto the controls that draw them. */
+function userFieldErrors(error: Parameters<typeof fieldErrors>[0]): Record<string, string> {
+  const errors = fieldErrors(error)
+  const grant = error.issues.find((issue) => issue.path[0] === 'grants')
+  if (grant) {
+    delete errors.grants
+    // A role missing on a pair is the role picker's to say; anything else
+    // about the list is "which branches".
+    if (grant.path[2] === 'roleId') errors.roleId = grant.message
+    else errors.branchIds = grant.message
+  }
+  return errors
+}
 
 export async function saveUser(_previous: ActionState, form: FormData): Promise<ActionState> {
   const session = await requireSession()
@@ -99,11 +140,10 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
     email: read(form, 'email') ?? '',
     phone: read(form, 'phone'),
     locale: read(form, 'locale') ?? 'en',
-    roleId: read(form, 'roleId'),
-    branchIds: readAll(form, 'branchIds'),
+    grants: readGrants(form),
     isActive: form.get('isActive') !== null,
   })
-  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+  if (!parsed.success) return fail(userFieldErrors(parsed.error), echo(form))
 
   const data = parsed.data
 
@@ -119,8 +159,14 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
    * this is ever skipped.
    */
   const administered = new Set(branchesWhere(session, 'admin.users.write'))
-  if (data.branchIds.some((id) => !administered.has(id))) {
+  if (data.grants.some((grant) => !administered.has(grant.branchId))) {
     return fail({ branchIds: tv('grantOwnBranchesOnly') }, echo(form))
+  }
+
+  // Suspending yourself from the edit form is the same lock-out as from the
+  // suspend button, and is refused for the same reason.
+  if (data.principalId === session.principal.id && !data.isActive) {
+    return failWith(tv('cannotSuspendSelf'), echo(form))
   }
 
   /*
@@ -214,13 +260,13 @@ export async function saveUser(_previous: ActionState, form: FormData): Promise<
           )
       }
 
-      for (const branchId of data.branchIds) {
+      for (const { branchId, roleId } of data.grants) {
         await tx
           .insert(principalBranchRoles)
-          .values({ principalId, branchId, roleId: data.roleId, isActive: true })
+          .values({ principalId, branchId, roleId, isActive: true })
           .onConflictDoUpdate({
             target: [principalBranchRoles.principalId, principalBranchRoles.branchId],
-            set: { roleId: data.roleId, isActive: true, updatedAt: new Date() },
+            set: { roleId, isActive: true, updatedAt: new Date() },
           })
       }
     })

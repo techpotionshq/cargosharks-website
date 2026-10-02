@@ -64,6 +64,8 @@ export interface UserRow {
   readonly nameEn: string
   readonly nameAr: string | null
   readonly email: string
+  /** Carried into the edit form, so saving a name does not clear it. */
+  readonly phone?: string | null
   readonly type: string
   readonly locale: string
   readonly isActive: boolean
@@ -79,7 +81,14 @@ export interface UserRow {
    */
   readonly hasPassword: boolean
   /** `KWI: Operations Manager`, one per branch — FR-ID-02. */
-  readonly assignments: { branchCode: string; roleKey: string; requiresTwoFactor: boolean }[]
+  readonly assignments: {
+    branchCode: string
+    roleKey: string
+    requiresTwoFactor: boolean
+    /** The ids the edit dialog pre-selects from; absent in the pilot fixtures. */
+    branchId?: string
+    roleId?: string
+  }[]
 }
 
 export async function listUsers(actor: Actor): Promise<UserRow[]> {
@@ -92,6 +101,7 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
         nameEn: principals.nameEn,
         nameAr: principals.nameAr,
         email: principals.email,
+        phone: principals.phone,
         type: principals.type,
         locale: principals.locale,
         isActive: principals.isActive,
@@ -118,6 +128,8 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
     const assignments = await tx
       .select({
         principalId: principalBranchRoles.principalId,
+        branchId: principalBranchRoles.branchId,
+        roleId: principalBranchRoles.roleId,
         branchCode: branches.code,
         roleKey: roles.key,
         requiresTwoFactor: roles.requiresTwoFactor,
@@ -125,12 +137,17 @@ export async function listUsers(actor: Actor): Promise<UserRow[]> {
       .from(principalBranchRoles)
       .innerJoin(branches, eq(branches.id, principalBranchRoles.branchId))
       .innerJoin(roles, eq(roles.id, principalBranchRoles.roleId))
+      // A revoked grant is a deactivated row (nothing is deleted), and it
+      // was still drawn as a role pill after the branch had been taken away.
+      .where(eq(principalBranchRoles.isActive, true))
       .orderBy(asc(branches.code))
 
     const byPrincipal = new Map<string, UserRow['assignments']>()
     for (const row of assignments) {
       const list = byPrincipal.get(row.principalId) ?? []
       list.push({
+        branchId: row.branchId,
+        roleId: row.roleId,
         branchCode: row.branchCode,
         roleKey: row.roleKey,
         requiresTwoFactor: row.requiresTwoFactor,

@@ -148,6 +148,121 @@ describe.skipIf(!enabled)('administration', () => {
     harness.session = null
   })
 
+  /**
+   * QA P1-3. The users page had no way to change anyone once invited. The
+   * edit form submits a role per branch, blank for none.
+   */
+  describe('editing a user', () => {
+    async function grantsOf(principalId: string) {
+      const rows = await withActor(adminActor, (tx) =>
+        tx
+          .select({
+            branchId: principalBranchRoles.branchId,
+            roleId: principalBranchRoles.roleId,
+            isActive: principalBranchRoles.isActive,
+          })
+          .from(principalBranchRoles)
+          .where(eq(principalBranchRoles.principalId, principalId)),
+      )
+      return Object.fromEntries(
+        rows.filter((r) => r.isActive).map((r) => [r.branchId, r.roleId]),
+      ) as Record<string, string>
+    }
+
+    it('sets a different role in each branch, and removes one left blank', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Edited Person',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+
+      const edited = await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Edited Person Renamed',
+          email,
+          locale: 'ar',
+          [`role:${HOME_BRANCH}`]: financeRoleId,
+          [`role:${AWAY_BRANCH}`]: coordinatorRoleId,
+          isActive: 'on',
+        }),
+      )
+      expect(edited.errors).toBeUndefined()
+      expect(edited.message).toBeUndefined()
+      expect((await principalByEmail(email))?.nameEn).toBe('Edited Person Renamed')
+      expect(await grantsOf(principal!.id)).toEqual({
+        [HOME_BRANCH]: financeRoleId,
+        [AWAY_BRANCH]: coordinatorRoleId,
+      })
+
+      await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Edited Person Renamed',
+          email,
+          locale: 'ar',
+          [`role:${HOME_BRANCH}`]: '',
+          [`role:${AWAY_BRANCH}`]: coordinatorRoleId,
+          isActive: 'on',
+        }),
+      )
+      expect(await grantsOf(principal!.id)).toEqual({ [AWAY_BRANCH]: coordinatorRoleId })
+    })
+
+    it('refuses an edit that leaves no branch at all', async () => {
+      const email = nextEmail()
+      await saveUser(
+        {},
+        form({
+          nameEn: 'Nowhere',
+          email,
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: [HOME_BRANCH],
+          isActive: 'on',
+        }),
+      )
+      const principal = await principalByEmail(email)
+      const state = await saveUser(
+        {},
+        form({
+          principalId: principal!.id,
+          nameEn: 'Nowhere',
+          email,
+          locale: 'en',
+          [`role:${HOME_BRANCH}`]: '',
+          [`role:${AWAY_BRANCH}`]: '',
+          isActive: 'on',
+        }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('refuses to let an administrator suspend themselves from the edit form', async () => {
+      const state = await saveUser(
+        {},
+        form({
+          principalId: ADMIN_PRINCIPAL,
+          nameEn: 'Fixture Administrator',
+          email: 'fixtures-admin@qabandi.test',
+          locale: 'en',
+          [`role:${HOME_BRANCH}`]: financeRoleId,
+        }),
+      )
+      expect(state.message).toBe('adminValidation.cannotSuspendSelf')
+    })
+  })
+
   describe('inviting a user', () => {
     it('creates the identity', async () => {
       const email = nextEmail()
@@ -209,6 +324,42 @@ describe.skipIf(!enabled)('administration', () => {
       expect(linked?.authUserId).toBe(login!.id)
       expect(credentials).toEqual([])
       expect(harness.linksSent).toEqual([email])
+    })
+
+    /**
+     * QA P1-3. Every branch switch submitted "on", so the action received
+     * ["on", "on"], failed a uuid check, and the dialog showed nothing. The
+     * failure now lands on `branchIds`, which the dialog draws.
+     */
+    it('reports a branch list that is not branch ids against the branch field', async () => {
+      const state = await saveUser(
+        {},
+        form({
+          nameEn: 'Switch Values',
+          email: nextEmail(),
+          locale: 'en',
+          roleId: coordinatorRoleId,
+          branchIds: ['on', 'on'],
+          isActive: 'on',
+        }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('asks for a branch when none was ticked', async () => {
+      const state = await saveUser(
+        {},
+        form({ nameEn: 'No Branch', email: nextEmail(), locale: 'en', roleId: coordinatorRoleId }),
+      )
+      expect(state.errors?.branchIds).toBe('adminValidation.atLeastOneBranch')
+    })
+
+    it('asks for a role against the role field', async () => {
+      const state = await saveUser(
+        {},
+        form({ nameEn: 'No Role', email: nextEmail(), locale: 'en', branchIds: [HOME_BRANCH] }),
+      )
+      expect(state.errors?.roleId).toBe('adminValidation.chooseRole')
     })
 
     /** "Sent" is said only when the mail service took it. */

@@ -59,11 +59,19 @@ export function fieldErrors(error: {
   return out
 }
 
-/** Everything the user typed, so a rejected form can be re-rendered intact. */
+/**
+ * Everything the user typed, so a rejected form can be re-rendered intact.
+ *
+ * A name submitted more than once — a group of switches — comes back as its
+ * values joined by newlines. Last-one-wins re-rendered a rejected invitation
+ * with only the last ticked branch still ticked. A newline because no value a
+ * grouped control submits (an id, a code) can contain one.
+ */
 export function echo(form: FormData): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [key, value] of form.entries()) {
-    if (typeof value === 'string') out[key] = value
+    if (typeof value !== 'string') continue
+    out[key] = key in out ? `${out[key]}\n${value}` : value
   }
   return out
 }

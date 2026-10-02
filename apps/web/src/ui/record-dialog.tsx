@@ -104,6 +104,11 @@ export type FieldSpec =
   | (BaseField & {
       readonly kind: 'switch'
       readonly defaultChecked?: boolean
+      /**
+       * For one switch of a group sharing a `name`: what this box submits.
+       * The form then posts the checked values as an array.
+       */
+      readonly value?: string
     })
   /**
    * A file the form posts as part of its `FormData`.
@@ -292,6 +297,9 @@ export function RecordDialog({
       <form id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} />
+          {unplaced(fields, state).map((message) => (
+            <FormError key={message} message={message} />
+          ))}
           {fields.map((field, index) => (
             <RenderField key={fieldKey(field, index)} field={field} state={state} />
           ))}
@@ -299,6 +307,36 @@ export function RecordDialog({
       </form>
     </Modal>
   )
+}
+
+/**
+ * Field errors no rendered control will show.
+ *
+ * A switch has no message band, a hidden field has no face, and an action may
+ * key a refusal on `_`. Each of those errors used to be returned and then
+ * drawn nowhere: an invitation with no branch ticked came back with
+ * `branchIds: "Choose at least one branch"` and the dialog simply stayed open
+ * (QA P1-3). Anything a field will not draw is drawn once, at the top.
+ */
+function unplaced(fields: readonly FieldSpec[], state: ActionState): string[] {
+  if (!state.errors) return []
+  const drawn = new Set<string>()
+  const walk = (list: readonly FieldSpec[]) => {
+    for (const field of list) {
+      if (field.kind === 'section') walk(field.fields)
+      else if (field.kind !== 'note' && field.kind !== 'hidden' && field.kind !== 'switch') {
+        drawn.add(field.name)
+      }
+    }
+  }
+  walk(fields)
+  return [
+    ...new Set(
+      Object.entries(state.errors)
+        .filter(([name]) => !drawn.has(name))
+        .map(([, message]) => message),
+    ),
+  ]
 }
 
 /** Sections and notes have no `name`, so the index stands in for one. */
@@ -400,12 +438,18 @@ function RenderField({ field, state }: { field: FieldSpec; state: ActionState })
         <Switch
           label={field.label}
           name={field.name}
+          value={field.value}
           hint={field.hint}
           span={field.span}
           // On a rejected submit an unchecked box is absent from the FormData
-          // entirely, so "present in values" is the only correct read.
+          // entirely, so "present in values" is the only correct read — and
+          // for a grouped switch, "its value among the echoed ones".
           defaultChecked={
-            state.values ? state.values[field.name] !== undefined : field.defaultChecked
+            state.values
+              ? field.value === undefined
+                ? echoed !== undefined
+                : (echoed?.split('\n').includes(field.value) ?? false)
+              : field.defaultChecked
           }
         />
       )
