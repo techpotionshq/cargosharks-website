@@ -2194,7 +2194,9 @@
       "route": "Route and dates"
     },
     "editChargeTitle": "Correct this cost",
-    "withdrawCharge": "Withdraw"
+    "withdrawCharge": "Withdraw",
+    "restoreCharge": "Restore",
+    "withdrawnCharges": "{count, plural, one {# withdrawn cost} other {# withdrawn costs}}"
   },
   "accountingExport": {
     "preview": "Preview journal",

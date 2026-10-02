@@ -562,6 +562,53 @@ export async function withdrawConsolCharge(form: FormData): Promise<void> {
   revalidatePath(`/consolidations/${consolidationId}`)
 }
 
+/**
+ * Put a withdrawn master cost back — O12.
+ *
+ * A withdrawal was one click with no way back: the wrong row withdrawn meant
+ * re-keying the cost, and the audit trail then showed two lines for one
+ * invoice from the carrier. Restoring clears the stamp on the same row, so the
+ * trail reads withdrawn-then-restored against one id — the audit trigger on
+ * `consol_charge_lines` records both updates without anything written here.
+ *
+ * The branch is the line's, read under RLS, and checked with `assertCanIn`:
+ * `consol.write` held in Dubai is not a licence to put a Kuwait cost back on a
+ * Kuwait master. Only an unsplit line can have been withdrawn, but the `where`
+ * says so again rather than trusting that.
+ */
+export async function restoreConsolCharge(form: FormData): Promise<void> {
+  const session = await requireSession()
+  assertCan(session, 'consol.write')
+
+  const chargeLineId = read(form, 'chargeLineId')
+  const consolidationId = read(form, 'consolidationId')
+  if (!chargeLineId || !consolidationId) throw new Error('Nothing to restore')
+
+  await withActor(session.actor, async (tx) => {
+    const [line] = await tx
+      .select({ branchId: consolChargeLines.branchId })
+      .from(consolChargeLines)
+      .where(eq(consolChargeLines.id, chargeLineId))
+      .limit(1)
+    // Invisible under RLS, or never there: nothing to put back either way.
+    if (!line) return
+    assertCanIn(session, 'consol.write', line.branchId)
+
+    await tx
+      .update(consolChargeLines)
+      .set({ withdrawnAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(consolChargeLines.id, chargeLineId),
+          isNull(consolChargeLines.allocatedAt),
+          isNotNull(consolChargeLines.withdrawnAt),
+        ),
+      )
+  })
+
+  revalidatePath(`/consolidations/${consolidationId}`)
+}
+
 // --- the allocation --------------------------------------------------------
 
 /**

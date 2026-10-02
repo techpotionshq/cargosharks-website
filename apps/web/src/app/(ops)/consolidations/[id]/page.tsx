@@ -31,6 +31,7 @@ import {
 } from '@/features/consolidation/ui/house-actions'
 import {
   closeConsolidation,
+  restoreConsolCharge,
   reverseConsolAllocation,
   withdrawConsolCharge,
 } from '@/features/consolidation/form-actions'
@@ -444,6 +445,47 @@ export default async function ConsolidationDetailPage({
               })}
             </ul>
           )}
+
+          {/*
+            Withdrawn costs, set apart and restorable (O12). A withdrawal had
+            no way back, so the wrong click meant re-keying the cost and an
+            audit trail with two rows for one carrier invoice. Collapsed by
+            default: on most masters it is empty, and when it is not it is
+            the exception rather than the work.
+          */}
+          {consol.withdrawn.length > 0 ? (
+            <details className="group border-t border-line p-4">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[0.6875rem] text-ink-muted [&::-webkit-details-marker]:hidden">
+                <Icon
+                  name="chevron-end"
+                  size={12}
+                  className="shrink-0 transition-transform group-open:rotate-90 rtl:-scale-x-100 rtl:group-open:-rotate-90"
+                />
+                <span>{t('withdrawnCharges', { count: consol.withdrawn.length })}</span>
+              </summary>
+              <ul className="mt-2 space-y-2 border-s border-line ps-3">
+                {consol.withdrawn.map((charge) => (
+                  <li key={charge.id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-[0.75rem] text-ink-muted">
+                      {charge.chargeTypeName} ·{' '}
+                      <span className="numeric">
+                        {formatMoney({ amount: charge.amount, currency: charge.currency }, locale)}
+                      </span>
+                    </span>
+                    {mayWrite ? (
+                      <form action={restoreConsolCharge}>
+                        <input type="hidden" name="consolidationId" value={id} />
+                        <input type="hidden" name="chargeLineId" value={charge.id} />
+                        <Button type="submit" size="sm" variant="ghost">
+                          {t('restoreCharge')}
+                        </Button>
+                      </form>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
 
           <p className="p-4 pt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
             {t('allocationNote')}

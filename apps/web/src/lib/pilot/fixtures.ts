@@ -8172,6 +8172,7 @@ function consolidationCharges(
       baseCurrency: home.currency,
       allocationBasis: charge.basis,
       allocatedAt: charge.allocated === null ? null : at(now, -charge.allocated, 10),
+      withdrawnAt: null,
       counterpartyName: pickName(locale, partner(charge.party).en, partner(charge.party).ar),
       shareCount:
         charge.allocated === null

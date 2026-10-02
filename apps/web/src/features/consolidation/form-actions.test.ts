@@ -40,8 +40,10 @@ const {
   withActor,
 } = await import('@qabandi/db')
 
-const { HOME_BRANCH, AWAY_BRANCH, PRINCIPAL, bothBranchesActor, world } =
+const { HOME_BRANCH, AWAY_BRANCH, PRINCIPAL, adminActor, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
+const { auditLog } = await import('@qabandi/db')
+const { getConsolidation } = await import('./queries')
 
 const {
   saveConsolidation,
@@ -52,6 +54,7 @@ const {
   allocateConsolCharge,
   reverseConsolAllocation,
   withdrawConsolCharge,
+  restoreConsolCharge,
 } = await import('./form-actions')
 
 const session = {
@@ -754,6 +757,60 @@ describe.skipIf(!enabled)('consolidations', () => {
       expect(gone!.withdrawnAt).not.toBeNull()
       const refused = await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
       expect(refused.ok).toBeUndefined()
+    })
+
+    /**
+     * O12. A withdrawal has a way back: the same row, the stamp cleared, both
+     * steps in the audit trail — and only for someone who holds
+     * `consol.write` in the master's own branch.
+     */
+    it('restores a withdrawn cost, audited, and only within the branch', async () => {
+      const consolidationId = await master()
+      await attachHouse({}, form({ consolidationId, jobId: await house('FXH-RST') }))
+      const chargeLineId = await cost(consolidationId, '420.000')
+      await withdrawConsolCharge(form({ consolidationId, chargeLineId }))
+
+      const before = await getConsolidation(bothBranchesActor, consolidationId)
+      expect(before!.charges.map((c) => c.id)).not.toContain(chargeLineId)
+      expect(before!.withdrawn.map((c) => c.id)).toEqual([chargeLineId])
+
+      // Dubai-only `consol.write` cannot put back a Kuwait cost.
+      const awayOnly = {
+        ...session,
+        branchRoles: new Map([[AWAY_BRANCH, 'operations_manager']]),
+      }
+      harness.session = awayOnly
+      await expect(restoreConsolCharge(form({ consolidationId, chargeLineId }))).rejects.toThrow()
+      harness.session = session
+
+      await restoreConsolCharge(form({ consolidationId, chargeLineId }))
+      const after = await getConsolidation(bothBranchesActor, consolidationId)
+      expect(after!.charges.map((c) => c.id)).toContain(chargeLineId)
+      expect(after!.withdrawn).toEqual([])
+      expect(after!.unallocatedCount).toBe(1)
+
+      // The trigger saw both: the stamp set, then cleared.
+      const trail = await withActor(adminActor, (tx) =>
+        tx
+          .select({ before: auditLog.before, after: auditLog.after })
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.tableName, 'consol_charge_lines'),
+              eq(auditLog.rowId, chargeLineId),
+              eq(auditLog.op, 'UPDATE'),
+            ),
+          )
+          .orderBy(auditLog.id),
+      )
+      expect(trail.length).toBeGreaterThanOrEqual(2)
+      const last = trail.at(-1)!
+      expect(last.before?.withdrawn_at).not.toBeNull()
+      expect(last.after?.withdrawn_at).toBeNull()
+
+      // Restored, it splits like any other cost.
+      const split = await allocateConsolCharge({}, form({ consolidationId, chargeLineId }))
+      expect(split.message).toBeUndefined()
     })
 
     it('says so plainly when there is nothing to allocate', async () => {

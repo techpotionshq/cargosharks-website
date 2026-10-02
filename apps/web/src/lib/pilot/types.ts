@@ -1661,6 +1661,7 @@ export interface ConsolidationChargeRow {
   readonly allocationBasis:
     'chargeable_weight' | 'volume' | 'gross_weight' | 'packages' | 'equal' | 'manual'
   readonly allocatedAt: Date | null
+  readonly withdrawnAt: Date | null
   readonly counterpartyName: string | null
   readonly shareCount: number
 }

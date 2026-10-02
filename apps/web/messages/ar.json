@@ -2194,7 +2194,9 @@
       "route": "المسار والتواريخ"
     },
     "editChargeTitle": "تصحيح هذه التكلفة",
-    "withdrawCharge": "سحب"
+    "withdrawCharge": "سحب",
+    "restoreCharge": "استعادة",
+    "withdrawnCharges": "{count, plural, zero {لا تكاليف مسحوبة} one {تكلفة مسحوبة واحدة} two {تكلفتان مسحوبتان} few {# تكاليف مسحوبة} many {# تكلفة مسحوبة} other {# تكلفة مسحوبة}}"
   },
   "accountingExport": {
     "preview": "معاينة القيد",

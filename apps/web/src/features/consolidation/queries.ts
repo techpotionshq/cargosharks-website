@@ -166,6 +166,8 @@ export interface ConsolidationCharge {
   readonly baseCurrency: string
   readonly allocationBasis: string
   readonly allocatedAt: Date | null
+  /** Set when an unsplit cost was taken off the master (O12); it can be put back. */
+  readonly withdrawnAt: Date | null
   readonly counterpartyName: string | null
   readonly shareCount: number
 }
@@ -189,6 +191,11 @@ export interface ConsolidationDetail extends ConsolidationSummary {
   readonly closedAt: Date | null
   readonly houses: readonly ConsolidationHouse[]
   readonly charges: readonly ConsolidationCharge[]
+  /**
+   * Costs withdrawn before they were split, listed apart so one entered on
+   * the wrong master by mistake can be restored rather than re-keyed (O12).
+   */
+  readonly withdrawn: readonly ConsolidationCharge[]
 }
 
 /** `locale` names ports, parties, customers and charges in the reader's language (F27). */
@@ -287,6 +294,7 @@ export async function getConsolidation(
         baseCurrency: consolChargeLines.baseCurrency,
         allocationBasis: consolChargeLines.allocationBasis,
         allocatedAt: consolChargeLines.allocatedAt,
+        withdrawnAt: consolChargeLines.withdrawnAt,
         counterpartyName: named(locale, partners.legalNameEn, partners.legalNameAr),
         shareCount: sql<number>`(
           select count(*)::int from consol_allocation_shares s
@@ -296,7 +304,8 @@ export async function getConsolidation(
       .from(consolChargeLines)
       .innerJoin(chargeTypes, eq(chargeTypes.id, consolChargeLines.chargeTypeId))
       .leftJoin(partners, eq(partners.id, consolChargeLines.counterpartyPartnerId))
-      .where(and(eq(consolChargeLines.consolidationId, id), isNull(consolChargeLines.withdrawnAt)))
+      // Withdrawn lines too: `consolidationOf` sets them apart for restoring.
+      .where(eq(consolChargeLines.consolidationId, id))
       .orderBy(asc(consolChargeLines.direction), asc(consolChargeLines.createdAt))
 
     return consolidationOf(row, houses as ConsolidationHouse[], charges as ConsolidationCharge[])
@@ -306,7 +315,13 @@ export async function getConsolidation(
 /** The master's row, with the four figures that are sums over what is under it. */
 type ConsolidationHead = Omit<
   ConsolidationDetail,
-  'houseCount' | 'volumeCbm' | 'grossWeightKg' | 'unallocatedCount' | 'houses' | 'charges'
+  | 'houseCount'
+  | 'volumeCbm'
+  | 'grossWeightKg'
+  | 'unallocatedCount'
+  | 'houses'
+  | 'charges'
+  | 'withdrawn'
 >
 
 /**
@@ -321,8 +336,11 @@ type ConsolidationHead = Omit<
 function consolidationOf(
   row: ConsolidationHead,
   houses: readonly ConsolidationHouse[],
-  charges: readonly ConsolidationCharge[],
+  all: readonly ConsolidationCharge[],
 ): ConsolidationDetail {
+  // A withdrawn cost is off the master: not counted, not split, only restorable.
+  const charges = all.filter((c) => c.withdrawnAt === null)
+  const withdrawn = all.filter((c) => c.withdrawnAt !== null)
   const totals = houses.reduce(
     (acc, h) => ({
       volume: acc.volume + Number(h.volumeCbm ?? 0),
@@ -339,6 +357,7 @@ function consolidationOf(
     unallocatedCount: charges.filter((c) => c.allocatedAt === null).length,
     houses,
     charges,
+    withdrawn,
   }
 }
 
