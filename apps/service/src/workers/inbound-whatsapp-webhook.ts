@@ -377,6 +377,7 @@ async function acknowledge(
     it. The thread is also simply more honest with it — the coordinator sees
     what the customer was told.
   */
+  const senderNumber = await whatsAppSenderNumber(message.mailbox)
   await withActor(systemActor(), async (tx) => {
     await tx.insert(messages).values({
       branchId: branch.id,
@@ -384,7 +385,8 @@ async function acknowledge(
       channel: 'whatsapp',
       direction: 'outbound',
       body,
-      fromAddress: message.mailbox,
+      // The number the customer sees, not the provider's id for it.
+      fromAddress: senderNumber,
       toAddresses: [message.from],
       ccAddresses: [],
       externalRef: sent.externalRef ?? null,
@@ -702,6 +704,7 @@ async function fileStaffEcho(
     throw new Error('outbound echo too recent to tell from our own send; retrying')
   }
 
+  const senderNumber = await whatsAppSenderNumber(phoneNumberId)
   const enquiryId = await withActor(systemActor(), async (tx) => {
     const [latest] = await tx
       .select({ enquiryId: messages.enquiryId })
@@ -725,7 +728,7 @@ async function fileStaffEcho(
       channel: 'whatsapp',
       direction: 'outbound',
       body,
-      fromAddress: phoneNumberId,
+      fromAddress: senderNumber,
       toAddresses: [customer],
       ccAddresses: [],
       externalRef: wamid,
@@ -778,4 +781,25 @@ export function whatsAppMediaRef(payload: Record<string, unknown>): WhatsAppMedi
     }
   }
   return null
+}
+
+/**
+ * The business number a WhatsApp message went out from, as a person reads it.
+ *
+ * Kapso addresses a send by `phone_number_id` — an opaque provider key — and
+ * that is what the outbound rows used to store as their sender, so the thread
+ * showed a customer a sixteen-digit id where the office's number belongs. The
+ * id stays where it is needed (the send itself, and the conversation's
+ * `business_address`); the row records `whatsapp_numbers.display_number`, and
+ * falls back to the id only for a number nobody entered a display number for.
+ */
+export async function whatsAppSenderNumber(phoneNumberId: string): Promise<string> {
+  const [row] = await withActor(systemActor(), (tx) =>
+    tx
+      .select({ displayNumber: whatsappNumbers.displayNumber })
+      .from(whatsappNumbers)
+      .where(eq(whatsappNumbers.phoneNumberId, phoneNumberId))
+      .limit(1),
+  )
+  return row?.displayNumber?.trim() || phoneNumberId
 }

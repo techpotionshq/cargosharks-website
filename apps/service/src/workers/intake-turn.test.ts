@@ -352,10 +352,15 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
 
       await tx
         .insert(whatsappNumbers)
-        .values({ branchId: BRANCH, phoneNumberId: PHONE_NUMBER_ID, label: 'ITK fixture' })
+        .values({
+          branchId: BRANCH,
+          phoneNumberId: PHONE_NUMBER_ID,
+          displayNumber: '+965 2200 1234',
+          label: 'ITK fixture',
+        })
         .onConflictDoUpdate({
           target: whatsappNumbers.phoneNumberId,
-          set: { isActive: true, branchId: BRANCH },
+          set: { isActive: true, branchId: BRANCH, displayNumber: '+965 2200 1234' },
         })
 
       // The agent on, for this branch only, with the shipped defaults otherwise.
@@ -476,6 +481,8 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     )
     expect(reply?.externalRef).toBe(wa.sent[0]!.ref)
     expect(reply?.authorId).toBe(SYSTEM_PRINCIPAL_ID)
+    // Sent by the provider's id; recorded from the number the customer sees.
+    expect(reply?.fromAddress).toBe('+965 2200 1234')
 
     const after = await conversationFor(enquiryId)
     expect(after.state).toBe('complete')

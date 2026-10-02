@@ -86,6 +86,7 @@ import {
 import type { NotificationChannel } from '../ports/index'
 import { resolveEmailChannel, resolveWhatsAppChannel } from '../adapters/index'
 import { sendWithRetry } from './send-retry'
+import { whatsAppSenderNumber } from './inbound-whatsapp-webhook'
 import {
   extractEnquiry,
   type ExtractEnquiryInput,
@@ -978,6 +979,10 @@ async function sendReply(input: {
     )
   }
 
+  const fromAddress =
+    channelKey === 'whatsapp'
+      ? await whatsAppSenderNumber(conversation.businessAddress)
+      : conversation.businessAddress
   const messageId = await withActor(systemActor(), async (tx) => {
     const [row] = await tx
       .insert(messages)
@@ -988,7 +993,9 @@ async function sendReply(input: {
         direction: 'outbound',
         subject: channelKey === 'email' ? subject : null,
         body,
-        fromAddress: conversation.businessAddress,
+        // The office's number as the customer sees it (the provider id stays on
+        // the conversation, where the next send needs it); the mailbox for email.
+        fromAddress,
         toAddresses: [conversation.customerAddress],
         ccAddresses: [],
         // The system principal marks it as the agent's — a person's reply has
