@@ -291,7 +291,7 @@ export function RecordDialog({
     >
       <form id={formId} action={formAction}>
         <FormGrid>
-          <FormError message={state.message} />
+          <FormError message={state.message} link={state.link} />
           {fields.map((field, index) => (
             <RenderField key={fieldKey(field, index)} field={field} state={state} />
           ))}

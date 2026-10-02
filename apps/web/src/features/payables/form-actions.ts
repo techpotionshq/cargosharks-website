@@ -1480,6 +1480,20 @@ export async function readSupplierBill(
 
     const body = (await response.json()) as BillReading
 
+    /*
+      Already on file (ai-10): the reading was fine and the bill exists. Said
+      as that, with a link to it — "could not be read, capture it by hand" was
+      an invitation to type the duplicate the constraint had just refused.
+    */
+    const existing =
+      body.refusalCode === 'already_captured' && body.refusalValues?.supplierInvoiceId
+    if (!body.supplierInvoiceId && existing) {
+      return {
+        ...failWith(billRefusal(tv, body) ?? tv('scanNotInvoice'), echo(form)),
+        link: { href: `/payables/${existing}`, label: tv('openCapturedBill') },
+      }
+    }
+
     if (!body.supplierInvoiceId) {
       /*
         The refusal code, worded here — never `body.refusal`, which is the
@@ -1544,6 +1558,7 @@ const BILL_REFUSALS = [
   'unreadable_fields',
   'low_confidence',
   'no_exchange_rate',
+  'already_captured',
 ] as const
 
 type BillRefusal = (typeof BILL_REFUSALS)[number]
@@ -1601,6 +1616,8 @@ function billRefusal(tv: Translate<'payablesValidation'>, body: BillReading): st
         currency: values.currency ?? '',
         base: values.base ?? '',
       })
+    case 'already_captured':
+      return tv('billAlreadyCaptured', { reference: values.reference ?? '' })
     default: {
       const unhandled: never = code
       return unhandled

@@ -503,7 +503,13 @@ export function ChoiceCards({
 // --- submission ------------------------------------------------------------
 
 /** The banner for a failure no single field owns. */
-export function FormError({ message }: { readonly message?: string }) {
+export function FormError({
+  message,
+  link,
+}: {
+  readonly message?: string
+  readonly link?: { readonly href: string; readonly label: string }
+}) {
   if (!message) return null
   return (
     <div
@@ -511,7 +517,17 @@ export function FormError({ message }: { readonly message?: string }) {
       className="col-span-12 flex items-start gap-2 rounded-sm border border-critical/40 bg-critical-soft/60 px-3 py-2.5 text-body-sm text-critical"
     >
       <Icon name="alert" size={15} className="mt-px shrink-0" />
-      <span>{message}</span>
+      <span>
+        {message}
+        {link ? (
+          <>
+            {' '}
+            <a href={link.href} className="font-medium underline underline-offset-2">
+              {link.label}
+            </a>
+          </>
+        ) : null}
+      </span>
     </div>
   )
 }

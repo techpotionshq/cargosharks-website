@@ -142,12 +142,18 @@ export interface ExtractInvoiceResult {
  *   `unreadable_fields`  a header field or a line did not parse
  *   `low_confidence`     nothing wrong with the reading; the model was unsure
  *   `no_exchange_rate`   a foreign-currency bill, and no rate to the base on file
+ *   `already_captured`   this supplier's bill with this number is on file already
  *
  * The web app translates these, and its switch has a `never` default, so a
  * code added here without a sentence there fails its typecheck.
  */
 export type InvoiceRefusal =
-  'scan_too_large' | 'not_reconciled' | 'unreadable_fields' | 'low_confidence' | 'no_exchange_rate'
+  | 'scan_too_large'
+  | 'not_reconciled'
+  | 'unreadable_fields'
+  | 'low_confidence'
+  | 'no_exchange_rate'
+  | 'already_captured'
 
 /**
  * Read one supplier invoice.
@@ -224,6 +230,19 @@ export async function extractSupplierInvoice(
 
   const base = { invocationId, extracted, findings, consistent }
 
+  /*
+    The same bill, read again (ai-10). `(partner_id, reference)` is unique, so
+    a second read of a captured bill reached the insert, failed it, and came
+    back as a 500 — which the screen worded "could not be read, capture it by
+    hand", inviting exactly the duplicate the constraint exists to stop, and
+    which the email path retried five times. Checked here, before any write and
+    on the attended read too, and answered as a terminal refusal naming the bill
+    that is already there.
+  */
+  const number = extracted.header.invoiceNumber
+  const existing = number ? await capturedAlready(actor, input.partnerId, number) : undefined
+  if (existing) return { ...base, ...alreadyCaptured(number!, existing) }
+
   if (!input.write) return base
   if (!consistent) {
     const code = refusalCodeFor(extracted, findings)
@@ -235,7 +254,16 @@ export async function extractSupplierInvoice(
     }
   }
 
-  const written = await write(input, extracted, spec!, asset.id, reference)
+  let written: Awaited<ReturnType<typeof write>>
+  try {
+    written = await write(input, extracted, spec!, asset.id, reference)
+  } catch (error) {
+    // Captured by somebody else between the check above and this insert.
+    const raced = number && isUniqueViolation(error)
+    const id = raced ? await capturedAlready(actor, input.partnerId, number) : undefined
+    if (id) return { ...base, ...alreadyCaptured(number!, id) }
+    throw error
+  }
   if ('noRateTo' in written) {
     const values = { currency: spec!.code, base: written.noRateTo }
     return {
@@ -262,6 +290,41 @@ export async function extractSupplierInvoice(
       refusalValues: values,
     }
   }
+}
+
+/** The bill this supplier already has on file under this number, if any. */
+async function capturedAlready(
+  actor: Actor,
+  partnerId: string,
+  number: string,
+): Promise<string | undefined> {
+  const [row] = await withActor(actor, (tx: Tx) =>
+    tx
+      .select({ id: supplierInvoices.id })
+      .from(supplierInvoices)
+      .where(and(eq(supplierInvoices.partnerId, partnerId), eq(supplierInvoices.reference, number)))
+      .limit(1),
+  )
+  return row?.id
+}
+
+function alreadyCaptured(
+  number: string,
+  supplierInvoiceId: string,
+): Pick<ExtractInvoiceResult, 'refusal' | 'refusalCode' | 'refusalValues'> {
+  return {
+    refusal: `Bill ${number} from this supplier is already captured (${supplierInvoiceId}); nothing was written.`,
+    refusalCode: 'already_captured',
+    refusalValues: { reference: number, supplierInvoiceId },
+  }
+}
+
+/** A unique violation, wherever Drizzle buried the driver's error (`.cause`). */
+function isUniqueViolation(error: unknown): boolean {
+  for (let e = error as { code?: unknown; cause?: unknown } | undefined; e; e = e.cause as never) {
+    if (e.code === '23505') return true
+  }
+  return false
 }
 
 /**

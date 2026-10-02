@@ -21,6 +21,11 @@ export interface ActionState {
   readonly ok?: string
   /** Echoed back so a rejected form does not lose what was typed. */
   readonly values?: Record<string, string>
+  /**
+   * Where the failure points, when it points somewhere — "this bill is already
+   * captured" is only half an answer without the way to it (ai-10).
+   */
+  readonly link?: { readonly href: string; readonly label: string }
 }
 
 /**
