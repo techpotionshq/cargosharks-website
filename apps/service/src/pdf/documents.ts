@@ -61,6 +61,9 @@ export class DocumentNotFoundError extends Error {
   }
 }
 
+/** The invoice a credit note credits, read beside it for the note's reference (N2). */
+const creditedInvoice = alias(invoices, 'credited_invoice')
+
 export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<InvoiceView> {
   return withActor(actor, async (tx) => {
     const [row] = await tx
@@ -76,6 +79,9 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
         amountCredited: invoices.amountCredited,
         notes: invoices.notes,
         language: invoices.language,
+        isCreditNote: invoices.isCreditNote,
+        creditsSeriesNo: creditedInvoice.seriesNo,
+        creditsIssuedAt: creditedInvoice.issuedAt,
         customerEn: customers.legalNameEn,
         customerAr: customers.legalNameAr,
         branchEn: branches.legalNameEn,
@@ -85,6 +91,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       .from(invoices)
       .innerJoin(customers, eq(customers.id, invoices.customerId))
       .innerJoin(branches, eq(branches.id, invoices.branchId))
+      .leftJoin(creditedInvoice, eq(creditedInvoice.id, invoices.creditsInvoiceId))
       .where(eq(invoices.id, invoiceId))
       .limit(1)
 
@@ -133,6 +140,9 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       amountCredited: row.amountCredited,
       notes: row.notes,
       language: row.language === 'ar' ? 'ar' : 'en',
+      creditNote: row.isCreditNote
+        ? { creditsSeriesNo: row.creditsSeriesNo, creditsIssuedAt: row.creditsIssuedAt }
+        : null,
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
       branch: {
         legalNameEn: row.branchEn,
