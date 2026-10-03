@@ -21,6 +21,7 @@ import { assertCanIn, canIn } from '@/lib/permissions'
 import { fail, failWith, succeed, type ActionState } from '@/lib/form-state'
 import { refuseForbidden } from '@/lib/refuse-forbidden'
 import { demoReadOnly } from '@/lib/pilot/read-only'
+import { billRefusal, type BillReading } from '@/lib/bill-refusal'
 
 /** The filed mail a form names, if the reader can see it at all. */
 async function filedMail(actor: Parameters<typeof withActor>[0], messageId: string) {
@@ -153,13 +154,26 @@ export const readPartnerMailAsBill = refuseForbidden(async function readPartnerM
         partnerId: mail.partnerId,
         jobId: null,
         write: true,
+        /*
+          A person asking. The automatic read on arrival may already have been
+          refused, and its cached answer would only be refused again (D1).
+        */
+        retry: true,
       }),
       cache: 'no-store',
       signal: AbortSignal.timeout(120_000),
     })
     if (!response.ok) return failWith(response.status === 503 ? t('noModel') : t('notABill'))
-    const body = (await response.json()) as { supplierInvoiceId?: string | null }
-    if (!body.supplierInvoiceId) return failWith(t('notABill'))
+    const body = (await response.json()) as BillReading
+    if (!body.supplierInvoiceId) {
+      /*
+        Why, in the reader's language: "did not read as a bill" alone, when the
+        service had said the invoice date was the only problem, sent people to
+        retype a bill whose figures had all been read.
+      */
+      const reason = billRefusal(await getTranslations('payablesValidation'), body)
+      return failWith(reason ? t('billRefused', { reason }) : t('notABill'))
+    }
 
     await withActor(session.actor, (tx) =>
       tx

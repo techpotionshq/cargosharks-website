@@ -195,6 +195,45 @@ describe('isoDate', () => {
     expect(isoDate('04/03/2026', ctx)).toEqual({ ok: true, value: '2026-03-04' })
   })
 
+  // D1: a supplier bill printed "03 Oct 2026" and was refused on that alone.
+  it('reads a date with its month written out, as bills print it', () => {
+    const read = (raw: string) => isoDate(raw, ctx)
+    for (const printed of [
+      '03 Oct 2026',
+      '3 October 2026',
+      '03-Oct-2026',
+      '03-OCT-26',
+      '03/Oct/2026',
+      '3rd October, 2026',
+      '3 Oct. 2026',
+      'Oct 3, 2026',
+      'October 03 2026',
+      'Sat, 03 Oct 2026',
+      'Saturday 3 October 2026',
+      '03-10-2026',
+      '03.10.2026',
+    ]) {
+      expect(read(printed), printed).toEqual({ ok: true, value: '2026-10-03' })
+    }
+    expect(read('1 Sept 2026')).toEqual({ ok: true, value: '2026-09-01' })
+    expect(read('٠٣ Oct ٢٠٢٦')).toEqual({ ok: true, value: '2026-10-03' })
+  })
+
+  it('refuses a written month it does not know, or a date without a day', () => {
+    for (const printed of [
+      'Oct 2026',
+      '03 Octember 2026',
+      '03 constructor 2026',
+      'tomorrow',
+      '31 Feb 2026',
+      '03 Oct',
+      'Oct 3, 26',
+    ]) {
+      expect(isoDate(printed, ctx).ok, printed).toBe(false)
+    }
+    expect(isoDate('31 Feb 2026', ctx)).toMatchObject({ code: 'dayOutOfRange' })
+  })
+
   it('rejects a day the month does not have', () => {
     expect(isoDate('31/02/2026', ctx)).toEqual({
       ok: false,

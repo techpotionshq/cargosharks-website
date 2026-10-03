@@ -4530,7 +4530,7 @@
   },
   "partnerMail": {
     "title": "Mail waiting for a person",
-    "explain": "Mail from this supplier that opened no enquiry and had no bill to read.",
+    "explain": "Mail from this supplier that opened no enquiry and was not filed as a bill, including a bill the assistant could not read. Read as a bill says why.",
     "noSubject": "No subject",
     "openBill": "Open the bill",
     "readAsBill": "Read as a bill",
@@ -4548,7 +4548,8 @@
     "serviceNotConfigured": "The background service is not configured, so the file cannot be read.",
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
-    "readTimedOut": "Reading the file took too long. Try again."
+    "readTimedOut": "Reading the file took too long. Try again.",
+    "billRefused": "The bill was not filed. {reason}"
   },
   "portalQuotes": {
     "title": "My quotations",

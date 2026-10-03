@@ -113,6 +113,11 @@ export interface ExtractInvoiceInput {
    * arrived by email with nobody looking.
    */
   readonly write?: boolean
+  /**
+   * A person asked again ("Read as a bill" after a refusal). A ledger answer
+   * that does not read as a bill is not reused; the model is asked afresh.
+   */
+  readonly retry?: boolean
 }
 
 export interface ExtractInvoiceResult {
@@ -193,37 +198,51 @@ export async function extractSupplierInvoice(
     )
   }
 
-  const { response, invocationId } = await invoke(
-    {
-      actor,
-      branchId,
-      surface: 'invoice_extract',
-      promptVersion: INVOICE_PROMPT_VERSION,
-      jobId: input.jobId ?? null,
-    },
-    {
-      surface: 'invoice_extract',
-      messages: [
-        { role: 'system', content: invoiceSystemPrompt(reference.chargeTypeKeys) },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: INVOICE_USER_PROMPT },
-            documentPart(bytes, asset.contentType, asset.fileName),
-          ],
-        },
-      ],
-      schema: INVOICE_EXTRACTION_SCHEMA,
-    },
-    /*
-      The same scan read twice — attached to a second job, or retried after
-      the first reading scrolled away — is answered from the ledger rather
-      than billed again. A revised prompt changes the hash and misses.
-    */
-    { reuse: true },
-  )
+  const ask = (reuse: boolean) =>
+    invoke(
+      {
+        actor,
+        branchId,
+        surface: 'invoice_extract',
+        promptVersion: INVOICE_PROMPT_VERSION,
+        jobId: input.jobId ?? null,
+      },
+      {
+        surface: 'invoice_extract',
+        messages: [
+          { role: 'system', content: invoiceSystemPrompt(reference.chargeTypeKeys) },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: INVOICE_USER_PROMPT },
+              documentPart(bytes, asset.contentType, asset.fileName),
+            ],
+          },
+        ],
+        schema: INVOICE_EXTRACTION_SCHEMA,
+      },
+      { reuse },
+    )
 
-  const extracted = readExtractedInvoice(parseModelJson(response.text), reference.lookups)
+  /*
+    The same scan read twice, attached to a second job or retried after the
+    first reading scrolled away, is answered from the ledger rather than billed
+    again. A revised prompt changes the hash and misses.
+
+    Except when a person retries a refusal (D1): the cached answer is the one
+    that was refused, so reusing it made "Read as a bill" repeat the refusal
+    forever without asking anyone. A reused answer that still does not read is
+    asked again, once; a reused answer that reads is kept, and costs nothing.
+  */
+  const first = await ask(true)
+  let invocationId = first.invocationId
+  let extracted = readExtractedInvoice(parseModelJson(first.response.text), reference.lookups)
+  if (input.retry && first.reused && !readsAsBill(extracted)) {
+    const fresh = await ask(false)
+    invocationId = fresh.invocationId
+    extracted = readExtractedInvoice(parseModelJson(fresh.response.text), reference.lookups)
+  }
+
   const spec = specFor(extracted.header.currency)
   const findings = spec ? reconcileInvoice(extracted, spec) : []
   const consistent = spec ? isSelfConsistent(extracted, spec, CONFIDENCE_FLOOR) : false
@@ -290,6 +309,15 @@ export async function extractSupplierInvoice(
       refusalValues: values,
     }
   }
+}
+
+/**
+ * Whether a reading came back as a bill at all: every header field read and
+ * the lines validated. Arithmetic is judged later; this is only "worth keeping
+ * rather than asking again".
+ */
+function readsAsBill(extracted: ExtractedInvoice): boolean {
+  return extracted.headerIssues.length === 0 && extracted.lines.ok
 }
 
 /** The bill this supplier already has on file under this number, if any. */
