@@ -58,7 +58,10 @@ const { AWAY_BRANCH, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
 
 const { createCustomer, updateCustomer, setCustomerActive } = await import('./actions')
 
-function sessionWith(permissions: readonly string[]) {
+function sessionWith(
+  permissions: readonly string[],
+  branches: readonly string[] = [HOME_BRANCH, AWAY_BRANCH],
+) {
   return {
     actor: bothBranchesActor,
     principal: {
@@ -69,10 +72,7 @@ function sessionWith(permissions: readonly string[]) {
       locale: 'en' as const,
     },
     permissions: new Set(permissions),
-    branchRoles: new Map([
-      [HOME_BRANCH, 'operations_manager'],
-      [AWAY_BRANCH, 'operations_manager'],
-    ]),
+    branchRoles: new Map(branches.map((branch) => [branch, 'operations_manager'])),
     requiresTwoFactor: false,
   }
 }
@@ -360,6 +360,87 @@ describe.skipIf(!enabled)('customers', () => {
           ?.defaultMarginKind,
       ).toBeDefined()
       expect((await termsFor(row.id, HOME_BRANCH))?.defaultMarginKind).toBeNull()
+    })
+
+    /**
+     * D2. Terms are per branch. A desk that works only in the away branch
+     * prices for a customer whose own branch is home, and needs its own house
+     * margin; it was refused on the customer's branch, and the form showed
+     * nothing, because it rendered only "saved".
+     */
+    describe("from a branch that is not the customer's own", () => {
+      const awayDesk = () => {
+        harness.session = sessionWith(['customer.write'], [AWAY_BRANCH])
+      }
+      const restore = () => {
+        harness.session = sessionWith(['customer.write'])
+      }
+
+      it("sets that branch's house margin without owning the customer", async () => {
+        const { code, row } = await existing()
+        awayDesk()
+        try {
+          const state = await updateCustomer(
+            {},
+            customerForm({
+              customerId: row.id,
+              code,
+              termsBranchId: AWAY_BRANCH,
+              paymentTermsDays: '21',
+              defaultMarginKind: 'percent',
+              defaultMarginValue: '20',
+            }),
+          )
+          expect(state.message).toBe('saved')
+        } finally {
+          restore()
+        }
+
+        const away = await termsFor(row.id, AWAY_BRANCH)
+        expect(away?.defaultMarginKind).toBe('percent')
+        expect(away?.defaultMarginValue).toBe('20.000000')
+        expect(away?.paymentTermsDays).toBe(21)
+        // The customer's own branch is untouched, and so is the record.
+        expect((await termsFor(row.id, HOME_BRANCH))?.defaultMarginKind).toBeNull()
+        expect((await byCode(code))?.primaryBranchId).toBe(HOME_BRANCH)
+      })
+
+      it('refuses a change to the record itself, in words, saving nothing', async () => {
+        const { code, row } = await existing()
+        awayDesk()
+        try {
+          const state = await updateCustomer(
+            {},
+            customerForm({
+              customerId: row.id,
+              code,
+              legalNameEn: 'Taken Over Trading',
+              termsBranchId: AWAY_BRANCH,
+              defaultMarginKind: 'percent',
+              defaultMarginValue: '20',
+            }),
+          )
+          expect(state.message).toBe('customersValidation.identityElsewhere')
+        } finally {
+          restore()
+        }
+        expect((await byCode(code))?.legalNameEn).toBe('Test Trading Company')
+        expect(await termsFor(row.id, AWAY_BRANCH)).toBeUndefined()
+      })
+
+      it('refuses terms for a branch the desk does not work in, as a message', async () => {
+        const { code, row } = await existing()
+        awayDesk()
+        try {
+          const state = await updateCustomer(
+            {},
+            customerForm({ customerId: row.id, code, termsBranchId: HOME_BRANCH }),
+          )
+          expect(state.message).toContain('forbiddenAction')
+        } finally {
+          restore()
+        }
+      })
     })
 
     it('reports a code taken by somebody else rather than raising', async () => {

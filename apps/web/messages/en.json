@@ -715,7 +715,10 @@
       "percent": "Percentage over cost",
       "absolute": "Fixed amount over cost",
       "target_sell": "Fixed selling price"
-    }
+    },
+    "termsBranch": "Terms for branch",
+    "termsBranchHint": "Each branch keeps its own terms and house margin. Choose one of the branches you work in.",
+    "identityLocked": "These details belong to {branch}, the customer's own branch. You can set your branch's terms below."
   },
   "setup": {
     "title": "Finish setting up",
@@ -4148,7 +4151,8 @@
     "nothingToUpdate": "Nothing to update.",
     "marginNeedsValue": "Enter the margin, or clear the kind",
     "marginNeedsKind": "Choose how the margin applies",
-    "marginPositive": "The margin must be more than zero"
+    "marginPositive": "The margin must be more than zero",
+    "identityElsewhere": "Only the customer's own branch can change these details, so nothing was saved. To set your branch's terms, leave the details as they were."
   },
   "podValidation": {
     "notCoordinate": "Not a coordinate",

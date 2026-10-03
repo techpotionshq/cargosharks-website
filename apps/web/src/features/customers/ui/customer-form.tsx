@@ -11,6 +11,7 @@
 
 import { useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
+import { usePathname, useRouter } from 'next/navigation'
 import type { CustomerFormState } from '../actions'
 import { FOCUS_RING } from '@/ui/control'
 
@@ -39,6 +40,9 @@ export interface CustomerFormLabels {
   readonly isActive: string
   readonly terms: string
   readonly termsHint: string
+  /** The branch picker over the terms card, on the edit page. */
+  readonly termsBranch: string
+  readonly termsBranchHint: string
   readonly paymentTermsDays: string
   readonly creditLimit: string
   readonly creditCurrency: string
@@ -144,14 +148,28 @@ export function CustomerForm({
   countries,
   labels,
   defaults = {},
+  termsBranches,
+  termsBranchId,
+  identityNote,
 }: {
   readonly action: (state: CustomerFormState, form: FormData) => Promise<CustomerFormState>
   readonly branches: readonly BranchOption[]
   readonly countries: readonly CountryOption[]
   readonly labels: CustomerFormLabels
   readonly defaults?: CustomerDefaults
+  /**
+   * The branches whose terms this person may set, and the one the card shows.
+   * Terms are per branch (D2): a Kuwait desk sets Kuwait's house margin for a
+   * customer whose own branch is Dubai. Absent on the create page.
+   */
+  readonly termsBranches?: readonly BranchOption[]
+  readonly termsBranchId?: string
+  /** Said over the record when it belongs to a branch this person cannot act in. */
+  readonly identityNote?: string
 }) {
   const [state, formAction] = useActionState<CustomerFormState, FormData>(action, {})
+  const router = useRouter()
+  const pathname = usePathname()
 
   // A rejected submission echoes what was typed; the first render uses the
   // record. `??` rather than `||` so an intentionally cleared field stays clear.
@@ -177,10 +195,26 @@ export function CustomerForm({
         >
           {labels.saved}
         </p>
+      ) : state.message ? (
+        /*
+          Any other message is a refusal, already in the reader's language: a
+          branch this person may not act in, or a record they may not change.
+          Only "saved" was rendered before, so a refused save looked like a
+          form that had quietly reset (D2).
+        */
+        <p
+          role="alert"
+          className="rounded-sm bg-critical-soft px-3 py-2 text-body-sm font-medium text-critical ring-1 ring-critical/25 ring-inset"
+        >
+          {state.message}
+        </p>
       ) : null}
 
       <section className="rounded-card border border-line bg-surface p-5 shadow-card">
         <h2 className="mb-4 font-display text-title font-semibold text-ink">{labels.identity}</h2>
+        {identityNote ? (
+          <p className="-mt-2 mb-4 text-body-sm text-ink-muted">{identityNote}</p>
+        ) : null}
 
         <div className="grid grid-cols-12 gap-4">
           <Field
@@ -322,9 +356,44 @@ export function CustomerForm({
         className="scroll-mt-20 rounded-card border border-line bg-surface p-5 shadow-card"
       >
         <h2 className="font-display text-title font-semibold text-ink">{labels.terms}</h2>
-        <p className="mt-1 mb-4 text-body-sm text-ink-muted">{labels.termsHint}</p>
+        <p className="mt-1 mb-4 text-body-sm text-ink-muted">
+          {termsBranches ? labels.termsBranchHint : labels.termsHint}
+        </p>
 
         <div className="grid grid-cols-12 gap-4">
+          {termsBranches && termsBranchId ? (
+            <Field
+              label={labels.termsBranch}
+              name="termsBranchId"
+              error={error('termsBranchId')}
+              span={4}
+            >
+              {/*
+                Choosing another branch reloads the card with that branch's
+                terms: the values below are per branch, and editing one
+                branch's figures under another's name is the mistake to avoid.
+              */}
+              <select
+                id="termsBranchId"
+                name="termsBranchId"
+                defaultValue={termsBranchId}
+                onChange={(event) =>
+                  router.replace(
+                    `${pathname}?terms=${encodeURIComponent(event.target.value)}#commercial-terms`,
+                    { scroll: false },
+                  )
+                }
+                className={FIELD}
+              >
+                {termsBranches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.code} · {branch.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
           <Field
             label={labels.paymentTermsDays}
             name="paymentTermsDays"

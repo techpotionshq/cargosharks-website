@@ -13,15 +13,21 @@
  * The customer and its per-branch terms are written in one transaction. A
  * customer that exists with no payment terms is a customer nobody can invoice,
  * and splitting the two writes is how that row gets created.
+ *
+ * The record is the group's and its terms are each branch's (FR-MD-01), so the
+ * two are permitted separately on edit: the record by the customer's own
+ * branch, a terms row by the branch it belongs to. A Kuwait desk pricing for a
+ * Dubai customer sets Kuwait's house margin without owning the customer (D2).
  */
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { eq } from 'drizzle-orm'
-import { customerBranchTerms, customers, withActor } from '@qabandi/db'
+import { z } from 'zod'
+import { customerBranchTerms, customers, withActor, type Tx } from '@qabandi/db'
 import { requireSession } from '@/lib/session'
-import { assertCan, assertCanIn } from '@/lib/permissions'
+import { assertCan, assertCanIn, canIn } from '@/lib/permissions'
 import { isUniqueViolation } from '@/lib/form-state'
 import { localeParse } from '@/lib/validate'
 import { customerFormData, customerFormSchema, updateCustomerSchema } from './schema'
@@ -142,17 +148,65 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
   }
 
   const data = parsed.data
-  assertCanIn(session, 'customer.write', data.primaryBranchId)
+
+  /*
+    Which branch's terms the card is editing. Absent (the create page, an older
+    tab) it is the primary branch, as it always was.
+  */
+  const termsBranch = String(form.get('termsBranchId') ?? '').trim() || data.primaryBranchId
+  if (!z.uuid().safeParse(termsBranch).success) {
+    return { errors: { termsBranchId: tv('chooseBranch') }, values: echo(form) }
+  }
+  assertCanIn(session, 'customer.write', termsBranch)
+
+  const [existing] = await withActor(session.actor, (tx) =>
+    tx
+      .select({
+        code: customers.code,
+        legalNameEn: customers.legalNameEn,
+        legalNameAr: customers.legalNameAr,
+        registration: customers.registration,
+        taxRegistration: customers.taxRegistration,
+        countryCode: customers.countryCode,
+        primaryBranchId: customers.primaryBranchId,
+        isActive: customers.isActive,
+      })
+      .from(customers)
+      .where(eq(customers.id, data.customerId))
+      .limit(1),
+  )
+  if (!existing) throw new Error('not_found')
+
+  /*
+    The record is written only when it changed, and then only by somebody who
+    may act in the customer's branch, before and after the change. A desk that
+    only came to set its own terms submits the record untouched and is not
+    asked to own it; one that did change it is told so, with nothing saved,
+    rather than having half the form quietly dropped.
+  */
+  const identity = {
+    code: data.code,
+    legalNameEn: data.legalNameEn,
+    legalNameAr: data.legalNameAr,
+    registration: data.registration,
+    taxRegistration: data.taxRegistration,
+    countryCode: data.countryCode ?? null,
+    primaryBranchId: data.primaryBranchId,
+    isActive: data.isActive,
+  }
+  const identityChanged = (Object.keys(identity) as (keyof typeof identity)[]).some(
+    (key) => (identity[key] ?? null) !== (existing[key] ?? null),
+  )
+  if (identityChanged) {
+    const owns = [existing.primaryBranchId, data.primaryBranchId].every(
+      (branch) => !branch || canIn(session, 'customer.write', branch),
+    )
+    if (!owns) return { message: tv('identityElsewhere'), values: echo(form) }
+  }
 
   try {
     await withActor(session.actor, async (tx) => {
-      const [existing] = await tx
-        .select({ id: customers.id })
-        .from(customers)
-        .where(eq(customers.id, data.customerId))
-        .limit(1)
-      if (!existing) throw new Error('not_found')
-
+      if (!identityChanged) return writeTerms(tx)
       await tx
         .update(customers)
         .set({
@@ -167,37 +221,7 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
           updatedAt: new Date(),
         })
         .where(eq(customers.id, data.customerId))
-
-      // Upsert rather than update: the primary branch may have moved to one
-      // that has no terms row yet.
-      await tx
-        .insert(customerBranchTerms)
-        .values({
-          customerId: data.customerId,
-          branchId: data.primaryBranchId,
-          paymentTermsDays: data.paymentTermsDays,
-          creditLimit: data.creditLimit,
-          creditCurrency: data.creditCurrency ?? null,
-          freeTimeDays: data.freeTimeDays ?? null,
-          defaultIncoterm: data.defaultIncoterm,
-          defaultMarginKind: data.defaultMarginKind ?? null,
-          defaultMarginValue: data.defaultMarginValue,
-        })
-        .onConflictDoUpdate({
-          target: [customerBranchTerms.customerId, customerBranchTerms.branchId],
-          set: {
-            paymentTermsDays: data.paymentTermsDays,
-            creditLimit: data.creditLimit,
-            creditCurrency: data.creditCurrency ?? null,
-            freeTimeDays: data.freeTimeDays ?? null,
-            defaultIncoterm: data.defaultIncoterm,
-            // Cleared when both fields are blank: "no house margin" is a
-            // choice an operator makes on this form, not only a default.
-            defaultMarginKind: data.defaultMarginKind ?? null,
-            defaultMarginValue: data.defaultMarginValue,
-            updatedAt: new Date(),
-          },
-        })
+      await writeTerms(tx)
     })
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -209,6 +233,39 @@ export const updateCustomer = refuseForbidden(async function updateCustomer(
   revalidatePath('/customers')
   revalidatePath(`/customers/${data.customerId}`)
   return { message: 'saved' }
+
+  // Upsert rather than update: the branch may have no terms row yet (a
+  // primary branch that moved, or a second branch setting its own).
+  async function writeTerms(tx: Tx) {
+    await tx
+      .insert(customerBranchTerms)
+      .values({
+        customerId: data.customerId,
+        branchId: termsBranch,
+        paymentTermsDays: data.paymentTermsDays,
+        creditLimit: data.creditLimit,
+        creditCurrency: data.creditCurrency ?? null,
+        freeTimeDays: data.freeTimeDays ?? null,
+        defaultIncoterm: data.defaultIncoterm,
+        defaultMarginKind: data.defaultMarginKind ?? null,
+        defaultMarginValue: data.defaultMarginValue,
+      })
+      .onConflictDoUpdate({
+        target: [customerBranchTerms.customerId, customerBranchTerms.branchId],
+        set: {
+          paymentTermsDays: data.paymentTermsDays,
+          creditLimit: data.creditLimit,
+          creditCurrency: data.creditCurrency ?? null,
+          freeTimeDays: data.freeTimeDays ?? null,
+          defaultIncoterm: data.defaultIncoterm,
+          // Cleared when both fields are blank: "no house margin" is a
+          // choice an operator makes on this form, not only a default.
+          defaultMarginKind: data.defaultMarginKind ?? null,
+          defaultMarginValue: data.defaultMarginValue,
+          updatedAt: new Date(),
+        },
+      })
+  }
 })
 
 /**

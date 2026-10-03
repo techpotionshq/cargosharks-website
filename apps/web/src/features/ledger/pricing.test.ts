@@ -577,7 +577,8 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
 
       expect(state.message).toBe('ledgerValidation.pricingNoMargin')
       // D8: the refusal leads to where the margin is set.
-      expect(state.link?.href).toBe(`/customers/${CUSTOMER}#commercial-terms`)
+      // D2: on that branch's terms, which need not be the customer's own.
+      expect(state.link?.href).toBe(`/customers/${CUSTOMER}?terms=${HOME_BRANCH}#commercial-terms`)
       expect(await quoteFor(id)).toBeUndefined()
     })
   })
