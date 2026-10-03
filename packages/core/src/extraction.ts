@@ -76,6 +76,7 @@ import {
   type Money,
 } from './money'
 import { BASES, calcCharge, type ChargeContext } from './rating'
+import { chargeableWeight, type ChargeableRule } from './chargeable'
 import { MissingChargeContextError } from './errors'
 import { AiError, confidence, type Confidence, type FieldProposal } from './ai'
 
@@ -1559,7 +1560,7 @@ export function replyIsPartial(response: unknown): boolean {
 }
 
 /** The context fields that are quantities of the consignment — see `partial`. */
-const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'containers'])
+const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'cbm', 'units', 'containers'])
 
 /**
  * The quantities a rate reply is priced against, from the enquiry's figures.
@@ -1570,21 +1571,44 @@ const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'contain
  *
  * Approximate by design: the figure is a *sort key* for the comparison view,
  * not the quote, which is struck later when `priceEnquiry` runs against the
- * promoted card. Weight is the gross. On a FCL lane the container count is the
- * enquiry's own `container_count` — never `pieces`, which counts packages (F39,
- * F66) — and with no count at all the per-container lines stay unpriced:
- * counted, not guessed. `days` is one, exactly as `pricing.ts` prices a
- * `per_day` line, so the two engines agree on what "priceable" means; a storage
- * charge per day costs one day in both.
+ * promoted card. On a FCL lane the container count is the enquiry's own
+ * `container_count`, never `pieces`, which counts packages (F39, F66), and
+ * with no count at all the per-container lines stay unpriced: counted, not
+ * guessed. `days` is one, exactly as `pricing.ts` prices a `per_day` line, so
+ * the two engines agree on what "priceable" means; a storage charge per day
+ * costs one day in both.
+ *
+ * A sort key still has to agree with the price that follows it. `kg` is the
+ * chargeable weight under the branch's rule for the mode, the same
+ * `chargeableWeight` call pricing makes, not the gross: an air reply priced on
+ * 336 kg gross ranked "Cheapest" at a figure the quote then struck on 380 kg
+ * chargeable (N3). The rule is the caller's to load (`chargeableRuleFor`), so a
+ * branch that agreed another divisor with its airline compares on it too; with
+ * no rule, or no figures to apply it to, the gross stands, as it always did.
+ * `cbm` and `grossKg` feed the LCL bases, `per_cbm` and `per_wm` (N1).
  */
-export function rateReplyContext(e: {
-  readonly mode: string | null
-  readonly grossWeightKg: string | null
-  readonly pieces: number | null
-  readonly containerCount: number | null
-}): ChargeContext {
+export function rateReplyContext(
+  e: {
+    readonly mode: string | null
+    readonly grossWeightKg: string | null
+    readonly volumeCbm?: string | null
+    readonly pieces: number | null
+    readonly containerCount: number | null
+  },
+  rule: ChargeableRule | null = null,
+): ChargeContext {
   const ctx: { -readonly [K in keyof ChargeContext]: ChargeContext[K] } = { days: 1 }
-  if (e.grossWeightKg != null) ctx.kg = e.grossWeightKg
+  if (e.grossWeightKg != null) {
+    ctx.kg = e.grossWeightKg
+    ctx.grossKg = e.grossWeightKg
+  }
+  if (e.volumeCbm != null) ctx.cbm = e.volumeCbm
+  if (rule && (e.grossWeightKg != null || e.volumeCbm != null)) {
+    ctx.kg = chargeableWeight(
+      { grossWeightKg: e.grossWeightKg ?? 0, volumeCbm: e.volumeCbm ?? 0 },
+      rule,
+    ).chargeableKg
+  }
   if (e.pieces != null) ctx.units = e.pieces
   if (e.mode === 'sea_fcl' && e.containerCount != null) ctx.containers = e.containerCount
   return ctx

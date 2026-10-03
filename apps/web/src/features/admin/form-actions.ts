@@ -834,7 +834,16 @@ const referenceSchema = (tv: Translate) =>
     nameAr: z.string().trim().min(1, tv('requiredArDocuments')).max(160),
     category: optional(60),
     defaultBasis: z
-      .enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'])
+      .enum([
+        'flat',
+        'per_unit',
+        'per_kg',
+        'per_cbm',
+        'per_wm',
+        'per_container',
+        'per_day',
+        'percent',
+      ])
       .optional(),
     defaultSeverity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
     hsCode: optional(20),

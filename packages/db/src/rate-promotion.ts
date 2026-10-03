@@ -17,7 +17,7 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { rateReplyContext, summariseRateReply } from '@qabandi/core'
+import { type Basis, rateReplyContext, summariseRateReply } from '@qabandi/core'
 import { groupRateCards, type ImportRow, type RateRowValues } from '@qabandi/core/import'
 import {
   chargeTypes,
@@ -28,6 +28,7 @@ import {
   rateRequests,
 } from './schema/index'
 import type { Tx } from './actor'
+import { chargeableRuleFor } from './chargeable'
 
 /**
  * Why a reply was not promoted, as a stable code.
@@ -316,8 +317,7 @@ export async function promoteRateReply(
         return {
           rateCardId: inserted!.id,
           chargeTypeId,
-          basis: line.basis as
-            'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent',
+          basis: line.basis as Basis,
           rate: line.rate,
           currency: line.currency,
           minimum: line.minimum,
@@ -352,7 +352,9 @@ export async function resummariseRateReplies(tx: Tx, enquiryId: string): Promise
   const [enquiry] = await tx
     .select({
       mode: enquiries.mode,
+      branchId: enquiries.branchId,
       grossWeightKg: enquiries.grossWeightKg,
+      volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
       containerCount: enquiries.containerCount,
     })
@@ -360,7 +362,9 @@ export async function resummariseRateReplies(tx: Tx, enquiryId: string): Promise
     .where(eq(enquiries.id, enquiryId))
     .limit(1)
   if (!enquiry) return 0
-  const ctx = rateReplyContext(enquiry)
+  // The branch's own volumetric rule, as pricing reads it, so a reply ranks on
+  // the chargeable weight the quote will be struck on (N3).
+  const ctx = rateReplyContext(enquiry, await chargeableRuleFor(tx, enquiry.mode, enquiry.branchId))
 
   const replies = await tx
     .select({ id: rateRequests.id, response: rateRequests.response })

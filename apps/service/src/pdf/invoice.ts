@@ -61,6 +61,14 @@ export interface InvoiceView {
    * in. Optional so a view built without it renders in English, as before.
    */
   readonly language?: DocumentLocale
+  /**
+   * Set when this document is a credit note, with the invoice it credits.
+   * Optional so a view built without it renders as an invoice, as before.
+   */
+  readonly creditNote?: {
+    readonly creditsSeriesNo: string | null
+    readonly creditsIssuedAt: Date | null
+  } | null
   readonly customer: { readonly nameEn: string; readonly nameAr: string | null }
   readonly branch: {
     readonly legalNameEn: string
@@ -136,6 +144,11 @@ const STRINGS = {
     trn: 'Tax registration',
     draft: 'DRAFT — not a valid tax invoice',
     billedFrom: 'Billed from',
+    creditTitle: 'Credit Note',
+    creditTo: 'Credit to',
+    credits: 'Credits invoice',
+    dated: 'dated',
+    creditTotal: 'Total credit',
   },
   ar: {
     title: 'فاتورة ضريبية',
@@ -155,13 +168,31 @@ const STRINGS = {
     trn: 'الرقم الضريبي',
     draft: 'مسودة — ليست فاتورة ضريبية صالحة',
     billedFrom: 'مفوترة من',
+    creditTitle: 'إشعار دائن',
+    creditTo: 'لصالح',
+    credits: 'إشعار دائن للفاتورة',
+    dated: 'بتاريخ',
+    creditTotal: 'إجمالي الإشعار الدائن',
   },
 } as const
 
 export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale): string {
   const t = STRINGS[locale]
   const dir = locale === 'ar' ? 'rtl' : 'ltr'
-  const money = (value: string): string => esc(formatMoney(value, invoice.currency, locale))
+  /*
+    A credit note is its own document, not an invoice with a second number
+    (N2). It printed as "Tax Invoice" with positive amounts and no word of the
+    invoice it reduces, and a customer reads that as a second bill. So it says
+    what it is, names the invoice and its date, and every amount is a credit,
+    shown negative. Its received and balance lines are left off: a note is
+    "paid" by construction (it carries its own total as settled), and
+    "Balance due 0.000" on a credit says nothing true.
+  */
+  const credit = invoice.creditNote ?? null
+  // Zero stays zero: a "-KWD 0.000" tax line reads as a typo.
+  const signed = (value: string): string =>
+    credit && !dec(value).isZero() ? dec(value).negated().toFixed(6) : value
+  const money = (value: string): string => esc(formatMoney(signed(value), invoice.currency, locale))
   /*
     A job-billed note in this document's language (NEW-6); the reference is
     isolated left-to-right so an Arabic line does not reverse its groups. A
@@ -211,10 +242,19 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
     ? `<tr><td colspan="3" class="label">${t.credited}</td><td class="n">${money(credited)}</td></tr>`
     : ''
   const settled =
-    paidRow || creditedRow
+    !credit && (paidRow || creditedRow)
       ? `${paidRow}${creditedRow}
          <tr class="grand"><td colspan="3" class="label">${t.balance}</td><td class="n">${money(balance)}</td></tr>`
       : ''
+
+  // The series number isolated left-to-right, as the billed-from note's is.
+  const creditsRow = credit
+    ? `<div class="credits"><span class="muted">${t.credits}</span> <bdi dir="ltr">${esc(
+        credit.creditsSeriesNo ?? '—',
+      )}</bdi> <span class="muted">${t.dated}</span> ${esc(
+        formatDate(credit.creditsIssuedAt, locale),
+      )}</div>`
+    : ''
 
   return `<!doctype html>
 <html lang="${locale}" dir="${dir}" ${PRINT_THEME_ATTR}>
@@ -251,7 +291,7 @@ ${draft}
 
 <div class="head">
   <div>
-    <h1>${t.title}</h1>
+    <h1>${credit ? t.creditTitle : t.title}</h1>
     <div class="muted">${esc(invoice.seriesNo ?? '—')}</div>
   </div>
   <div class="entity">
@@ -261,9 +301,14 @@ ${draft}
 </div>
 
 <div class="meta">
-  <div><span class="muted">${t.billTo}:</span> <strong>${esc(customerName)}</strong></div>
-  <div><span class="muted">${t.issued}:</span> ${esc(formatDate(invoice.issuedAt, locale))}
-       &nbsp;·&nbsp; <span class="muted">${t.due}:</span> ${esc(formatDate(invoice.dueOn, locale))}</div>
+  <div><span class="muted">${credit ? t.creditTo : t.billTo}:</span> <strong>${esc(customerName)}</strong></div>
+  ${creditsRow}
+  <div><span class="muted">${t.issued}:</span> ${esc(formatDate(invoice.issuedAt, locale))}${
+    credit
+      ? ''
+      : `
+       &nbsp;·&nbsp; <span class="muted">${t.due}:</span> ${esc(formatDate(invoice.dueOn, locale))}`
+  }</div>
 </div>
 
 <table>
@@ -275,7 +320,7 @@ ${draft}
   <tfoot>
     <tr><td colspan="3" class="label">${t.subtotal}</td><td class="n">${money(invoice.subtotal)}</td></tr>
     <tr><td colspan="3" class="label">${t.tax}</td><td class="n">${money(invoice.taxAmount)}</td></tr>
-    <tr class="grand"><td colspan="3" class="label">${t.total}</td><td class="n">${money(invoice.total)}</td></tr>
+    <tr class="grand"><td colspan="3" class="label">${credit ? t.creditTotal : t.total}</td><td class="n">${money(invoice.total)}</td></tr>
     ${settled}
   </tfoot>
 </table>

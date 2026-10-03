@@ -31,13 +31,25 @@ import {
 import { MissingChargeContextError, UnknownCurrencyError } from './errors'
 import type { Decimal } from 'decimal.js'
 
-/** The six calculation shapes. Everything in FR-RT-05 is one of these. */
-export type Basis = 'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent'
+/**
+ * The calculation shapes. Everything in FR-RT-05 is one of these.
+ *
+ * `per_cbm` and `per_wm` are the LCL pair, and were missing: an agent's "EUR 85
+ * per cbm" had nowhere to go but `per_unit`, which multiplies by the package
+ * count, so 8 cbm on 6 pallets was priced as 6 and every per-cbm LCL charge came
+ * out short by the ratio of pallets to cubic metres, silently (N1). `per_wm` is
+ * "weight or measure", the revenue ton: the greater of cubic metres and metric
+ * tonnes, which is how most LCL freight is actually quoted.
+ */
+export type Basis =
+  'flat' | 'per_unit' | 'per_kg' | 'per_cbm' | 'per_wm' | 'per_container' | 'per_day' | 'percent'
 
 export const BASES: readonly Basis[] = [
   'flat',
   'per_unit',
   'per_kg',
+  'per_cbm',
+  'per_wm',
   'per_container',
   'per_day',
   'percent',
@@ -53,7 +65,7 @@ export interface RateLine {
 }
 
 /**
- * Everything the six bases can need. Fields are optional because a given line
+ * Everything the bases can need. Fields are optional because a given line
  * consumes exactly one of them — a `per_kg` line asks for `kg` and throws if
  * the caller has not supplied it, rather than quietly treating absence as zero
  * and producing a free shipment.
@@ -61,6 +73,14 @@ export interface RateLine {
 export interface ChargeContext {
   readonly units?: Numeric
   readonly kg?: Numeric
+  /** Cubic metres, for `per_cbm` and the measure half of `per_wm`. */
+  readonly cbm?: Numeric
+  /**
+   * Actual gross kilograms, for the weight half of `per_wm`. Not `kg`: on an
+   * air or courier lane `kg` is the chargeable weight, which already contains
+   * the volume, and a revenue ton counted from it would count the volume twice.
+   */
+  readonly grossKg?: Numeric
   readonly containers?: Numeric
   readonly days?: Numeric
   /** The base a `percent` line applies to — insurance on declared value, say. */
@@ -73,7 +93,23 @@ function require_(value: Numeric | undefined, basis: Basis, field: string): Deci
 }
 
 /**
- * Six branches. This is the whole charge engine.
+ * Revenue tons: the greater of cubic metres and gross tonnes.
+ *
+ * Only the volume is required. An LCL enquiry nearly always states its cbm and
+ * often omits the weight, and a rate per W/M on 8 cbm is 8 revenue tons unless
+ * the cargo is heavier than 8 tonnes, which a missing weight cannot claim. A
+ * missing volume is refused, as every other missing quantity is, because
+ * tonnes alone would undercharge a light, bulky consignment.
+ */
+export function revenueTonsFor(ctx: ChargeContext): Decimal {
+  const cbm = require_(ctx.cbm, 'per_wm', 'cbm')
+  if (ctx.grossKg === undefined || ctx.grossKg === null) return cbm
+  const tonnes = dec(ctx.grossKg).dividedBy(1000)
+  return tonnes.greaterThan(cbm) ? tonnes : cbm
+}
+
+/**
+ * One branch per basis. This is the whole charge engine.
  *
  * The result is unrounded: rounding is per currency and belongs at the invoice
  * line (NFR-02), so callers finish with `round`/`roundWith`. Rounding here
@@ -91,6 +127,12 @@ export function calcCharge(line: RateLine, ctx: ChargeContext = {}): Money {
       break
     case 'per_kg':
       amount = multiply(money(line.rate, line.currency), require_(ctx.kg, 'per_kg', 'kg'))
+      break
+    case 'per_cbm':
+      amount = multiply(money(line.rate, line.currency), require_(ctx.cbm, 'per_cbm', 'cbm'))
+      break
+    case 'per_wm':
+      amount = multiply(money(line.rate, line.currency), revenueTonsFor(ctx))
       break
     case 'per_container':
       amount = multiply(
@@ -165,6 +207,10 @@ function quantityFor(basis: Basis, ctx: ChargeContext): Decimal {
       return dec(ctx.units ?? 1)
     case 'per_kg':
       return dec(ctx.kg ?? 1)
+    case 'per_cbm':
+      return dec(ctx.cbm ?? 1)
+    case 'per_wm':
+      return ctx.cbm === undefined || ctx.cbm === null ? dec(1) : revenueTonsFor(ctx)
     case 'per_container':
       return dec(ctx.containers ?? 1)
     case 'per_day':

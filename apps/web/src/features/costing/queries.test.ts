@@ -14,9 +14,9 @@ const APP_URL = process.env.TEST_DATABASE_URL
 const enabled = Boolean(APP_URL)
 if (APP_URL) process.env.DATABASE_URL = APP_URL
 
-const { chargeLines, jobs, withActor } = await import('@qabandi/db')
+const { chargeLines, invoices, jobs, withActor } = await import('@qabandi/db')
 const { CUSTOMER, HOME_BRANCH, bothBranchesActor, world } = await import('@/lib/testing/fixtures')
-const { listMatchCandidates } = await import('./queries')
+const { getJobLedger, listMatchCandidates } = await import('./queries')
 
 describe.skipIf(!enabled)('match candidates', () => {
   let chargeTypeId: string
@@ -88,5 +88,88 @@ describe.skipIf(!enabled)('match candidates', () => {
     expect(offered).toContain(reallocated)
     expect(offered).not.toContain(undone)
     expect(offered).not.toContain(reversal)
+  })
+
+  /**
+   * N6: a credit note writes invoice lines and no charge line, so the job's
+   * P&L kept the whole sell figure after one. The credit is taken off revenue
+   * in base, and only the job's share of it where an invoice bills two jobs.
+   */
+  it('nets credit notes against the job’s revenue, in base, by its share', async () => {
+    const jobId = await aJob()
+    const otherJobId = await aJob()
+    const run = Math.random().toString(36).slice(2, 8).toUpperCase()
+
+    await withActor(bothBranchesActor, async (tx) => {
+      // A USD invoice of 2,000.00 billing 600 KWD of this job and 400 of another.
+      const [invoice] = await tx
+        .insert(invoices)
+        .values({
+          branchId: HOME_BRANCH,
+          customerId: CUSTOMER,
+          seriesNo: `N6-${run}-1`,
+          status: 'issued',
+          currency: 'USD',
+          subtotal: '2000.00',
+          total: '2000.00',
+        })
+        .returning({ id: invoices.id })
+      const revenue = (job: string, usd: string, kwd: string) => ({
+        branchId: HOME_BRANCH,
+        jobId: job,
+        chargeTypeId,
+        direction: 'revenue' as const,
+        basis: 'flat' as const,
+        quantity: '1',
+        rate: usd,
+        amount: usd,
+        currency: 'USD',
+        fxRate: '0.3',
+        amountBase: kwd,
+        baseCurrency: 'KWD',
+        invoiceId: invoice!.id,
+      })
+      await tx
+        .insert(chargeLines)
+        .values([revenue(jobId, '1200.00', '600.000'), revenue(otherJobId, '800.00', '400.000')])
+      // A tenth of the invoice credited, and a void note that credited nothing.
+      await tx.insert(invoices).values([
+        {
+          branchId: HOME_BRANCH,
+          customerId: CUSTOMER,
+          seriesNo: `N6-${run}-2`,
+          status: 'credited',
+          isCreditNote: true,
+          creditsInvoiceId: invoice!.id,
+          currency: 'USD',
+          subtotal: '200.00',
+          total: '200.00',
+          amountPaid: '200.00',
+        },
+        {
+          branchId: HOME_BRANCH,
+          customerId: CUSTOMER,
+          seriesNo: `N6-${run}-3`,
+          status: 'void',
+          isCreditNote: true,
+          creditsInvoiceId: invoice!.id,
+          currency: 'USD',
+          subtotal: '500.00',
+          total: '500.00',
+        },
+      ])
+    })
+    await aCost(jobId, '450.000')
+
+    const ledger = await getJobLedger(bothBranchesActor, jobId)
+    expect(ledger!.creditedRevenue).toMatch(/^60\.0+$/)
+    expect(ledger!.margin.revenue.amount.toFixed(3)).toBe('540.000')
+    expect(ledger!.margin.gross.amount.toFixed(3)).toBe('90.000')
+    expect(ledger!.margin.grossPercent?.toFixed(1)).toBe('16.7')
+    // The charge lines themselves are untouched; the credit is not a line.
+    expect(ledger!.lines.filter((l) => l.direction === 'revenue')).toHaveLength(1)
+
+    const other = await getJobLedger(bothBranchesActor, otherJobId)
+    expect(other!.margin.revenue.amount.toFixed(3)).toBe('360.000')
   })
 })

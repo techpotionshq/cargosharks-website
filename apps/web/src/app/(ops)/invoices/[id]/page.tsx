@@ -30,6 +30,7 @@ import { recordId } from '@/lib/ids'
 import { getInvoiceDetail } from '@/features/ledger/queries'
 import {
   CreditNoteDialog,
+  InvoiceLanguageDialog,
   InvoiceLineDialog,
   InvoiceStatusActions,
 } from '@/features/ledger/ui/invoice-actions'
@@ -169,6 +170,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 {t('pdfAr')}
               </Button>
               {isDraft ? <InvoiceLineDialog invoiceId={invoice.id} /> : null}
+              <InvoiceLanguageDialog
+                invoiceId={invoice.id}
+                branchId={invoice.branchId}
+                status={invoice.status}
+                language={invoice.language}
+              />
               {/* Only where a receipt can land: issued and still owed. A draft,
                 an approved-but-unnumbered, a credited or a voided invoice was
                 offered "Record a receipt" and every one failed with a 500. */}

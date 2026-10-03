@@ -139,7 +139,7 @@ export const INVOICE_USER_PROMPT =
  *     first-class field the model must set, rather than an empty reply we guess
  *     the meaning of.
  */
-export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@1'
+export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@2'
 
 export function rateExtractSystemPrompt(vocabulary: {
   chargeCodes: readonly string[]
@@ -168,7 +168,9 @@ export function rateExtractSystemPrompt(vocabulary: {
     '',
     '4. For each charge, return its `basis` — how it is calculated — as one of exactly:',
     `   ${vocabulary.bases.join(', ')}. A flat lump sum is "flat"; a per-container rate`,
-    '   is "per_container"; a rate per kilo is "per_kg".',
+    '   is "per_container"; a rate per kilo is "per_kg"; a rate per cubic metre (cbm, m3)',
+    '   is "per_cbm"; a rate per W/M, revenue ton or "freight ton" is "per_wm". "Per unit"',
+    '   is only for a rate per package, pallet or piece, never for a rate per cbm.',
     '',
     '5. Put the currency on the header if the whole quote is in one currency. Only set a',
     '   line’s own currency when it differs from the header. Never guess a currency the',

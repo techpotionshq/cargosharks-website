@@ -58,10 +58,13 @@ export const rateDirectionEnum = pgEnum('rate_direction', ['buy', 'sell'])
 
 export const chargeDirectionEnum = pgEnum('charge_direction', ['cost', 'revenue'])
 
+// `per_cbm` and `per_wm` are the LCL bases (N1); see `Basis` in core's rating.ts.
 export const basisEnum = pgEnum('charge_basis', [
   'flat',
   'per_unit',
   'per_kg',
+  'per_cbm',
+  'per_wm',
   'per_container',
   'per_day',
   'percent',

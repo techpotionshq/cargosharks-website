@@ -1405,7 +1405,8 @@ export type InvoiceStatus =
 export type TaxTreatment = 'out_of_scope' | 'zero_rated' | 'exempt' | 'standard' | 'reverse_charge'
 
 /** `charge_basis`. Printed as-is on a quotation line, so no message key. */
-export type ChargeBasis = 'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent'
+export type ChargeBasis =
+  'flat' | 'per_unit' | 'per_kg' | 'per_cbm' | 'per_wm' | 'per_container' | 'per_day' | 'percent'
 
 /**
  * `payments.method`, which is a text column and not an enum.
@@ -1595,6 +1596,8 @@ export interface JobLedgerRows {
   readonly baseCurrency: string
   readonly marginFloorPercent: string | null
   readonly lines: readonly LedgerLineRow[]
+  /** Credit notes against the job's invoices, in base; `jobMargin` nets them. */
+  readonly creditedRevenue: string
 }
 
 /** Mirrors `MatchCandidate` — the cost lines a supplier line can be matched to. */

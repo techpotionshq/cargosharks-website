@@ -425,12 +425,18 @@ interface EnquiryRow {
 }
 
 /**
- * What the six bases are calculated against, from the enquiry's own figures.
+ * What the bases are calculated against, from the enquiry's own figures.
  *
- * `containers` is the enquiry's container count on a FCL lane — never `pieces`,
+ * `containers` is the enquiry's container count on a FCL lane, never `pieces`,
  * which counts packages (F39). The caller has already refused a FCL enquiry
  * without one; the `?? 1` is only for the type. Other modes keep one container,
  * as they always have: a per-container line on an LCL or air card is a flat fee.
+ *
+ * `cbm` and `grossKg` are the enquiry's volume and actual weight, for the LCL
+ * bases `per_cbm` and `per_wm`. Before they existed an agent's per-cbm rate was
+ * stored as `per_unit` and multiplied by `pieces`: 8 cbm on 6 pallets at EUR 85
+ * was EUR 510, not 680 (N1). A missing volume is left missing, so a per-cbm
+ * line refuses to price rather than pricing as free.
  */
 function contextFor(
   mode: string,
@@ -445,6 +451,8 @@ function contextFor(
   const pieces = cargo.pieces ?? 1
   return {
     kg: chargeableKg ?? cargo.grossWeightKg ?? 0,
+    ...(cargo.volumeCbm === null ? {} : { cbm: cargo.volumeCbm }),
+    ...(cargo.grossWeightKg === null ? {} : { grossKg: cargo.grossWeightKg }),
     units: pieces,
     containers: mode === 'sea_fcl' ? (cargo.containerCount ?? 1) : 1,
     days: 1,

@@ -68,7 +68,16 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t('title') }
 }
 
-const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const BASES = [
+  'flat',
+  'per_unit',
+  'per_kg',
+  'per_cbm',
+  'per_wm',
+  'per_container',
+  'per_day',
+  'percent',
+] as const
 
 /** The categories the seed writes; an administrator may add others. */
 const CATEGORIES = [
