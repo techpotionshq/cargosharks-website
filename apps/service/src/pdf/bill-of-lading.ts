@@ -67,6 +67,7 @@ import {
   formatDate,
   formatQuantity,
   letterhead,
+  customerSide,
   localised,
   ltr,
   page,
@@ -328,12 +329,22 @@ function renderFace(
   */
   const freightPayableAt = place(view.freightTerm === 'prepaid' ? view.origin : view.destination)
 
+  /*
+    The customer goes in its own box when the job has no party record there
+    (NEW-8, as on the packing list): consignee on an import, shipper on an
+    export. An empty consignee box still reads TO ORDER, the trade's default
+    for a bill with no named consignee; an empty shipper box stays blank
+    rather than naming the importer as its own supplier.
+  */
+  const customerName = localised(view.customer.nameEn, view.customer.nameAr, locale)
+  const side = customerSide(view)
+
   return `
 ${letterhead(view, t.title, view.houseBillNumber ?? view.reference, locale)}
 
 <div class="grid">
-  ${partyBlock(shipper, t.shipper, locale, view.customer.nameEn)}
-  ${partyBlock(consignee, t.consignee, locale, 'TO ORDER')}
+  ${partyBlock(shipper, t.shipper, locale, side === 'shipper' ? customerName : '—')}
+  ${partyBlock(consignee, t.consignee, locale, side === 'consignee' ? customerName : 'TO ORDER')}
   ${partyBlock(notify[0], t.notify, locale, 'SAME AS CONSIGNEE')}
   ${partyBlock(notify[1] ?? agent, notify[1] ? t.notify : t.agent, locale)}
 </div>
