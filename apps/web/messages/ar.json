@@ -445,7 +445,11 @@
     "documentsPortalHint": "هذه المستندات جاهزة. سجّل الدخول إلى بوابة العملاء لتنزيلها، أو اطلبها منا ونرسلها إليك.",
     "throttled": "عدد كبير من عمليات البحث حاليًا.",
     "throttledHint": "حاول مرة أخرى بعد {minutes, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتين} few {# دقائق} many {# دقيقة} other {# دقيقة}}، أو تواصل معنا وسنبحث عنها لك.",
-    "departureEstimated": "المغادرة المتوقعة"
+    "departureEstimated": "المغادرة المتوقعة",
+    "documentLanguage": {
+      "en": "الإنجليزية",
+      "ar": "العربية"
+    }
   },
   "public": {
     "footerRights": "جميع الحقوق محفوظة."

@@ -221,6 +221,7 @@ async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
         .select({
           id: documents.id,
           version: documents.version,
+          locale: documents.locale,
           releasedAt: documents.releasedAt,
           code: documentTypes.code,
           nameEn: documentTypes.nameEn,
@@ -309,6 +310,7 @@ async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
       nameEn: d.nameEn,
       nameAr: d.nameAr,
       version: d.version,
+      locale: d.locale,
       releasedAt: d.releasedAt,
       sizeKb: d.byteSize === null ? null : Math.round(d.byteSize / 1024),
     })),

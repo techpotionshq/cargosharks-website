@@ -445,7 +445,11 @@
     "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over.",
     "throttled": "Too many lookups for now.",
     "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you.",
-    "departureEstimated": "Estimated departure"
+    "departureEstimated": "Estimated departure",
+    "documentLanguage": {
+      "en": "English",
+      "ar": "Arabic"
+    }
   },
   "public": {
     "footerRights": "All rights reserved."

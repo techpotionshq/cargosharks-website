@@ -397,6 +397,7 @@ export async function getJobDetail(
             .select({
               id: documents.id,
               version: documents.version,
+              locale: documents.locale,
               releasedAt: documents.releasedAt,
               code: documentTypes.code,
               nameEn: documentTypes.nameEn,
@@ -503,6 +504,7 @@ export async function getJobDetail(
         nameEn: d.nameEn,
         nameAr: d.nameAr,
         version: d.version,
+        locale: d.locale,
         releasedAt: d.releasedAt,
         sizeKb: Math.round(d.byteSize / 1024),
       })),
