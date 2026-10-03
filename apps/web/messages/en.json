@@ -2274,7 +2274,8 @@
       "packing_list": "Grouped by container, with net weight.",
       "customs_pack": "What the broker would otherwise retype.",
       "air_waybill": "Not negotiable. Names the consignee — no order bills in the air."
-    }
+    },
+    "issueIn": "Issue in {language, select, ar {Arabic} other {English}}"
   },
   "consolidations": {
     "eyebrow": "Groupage",
