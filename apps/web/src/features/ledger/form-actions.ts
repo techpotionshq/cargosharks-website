@@ -319,7 +319,16 @@ export const addQuoteLine = refuseForbidden(async function addQuoteLine(
   const schema = z.object({
     quoteId: z.uuid(),
     chargeTypeId: z.uuid(tv('chooseCharge')),
-    basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
+    basis: z.enum([
+      'flat',
+      'per_unit',
+      'per_kg',
+      'per_cbm',
+      'per_wm',
+      'per_container',
+      'per_day',
+      'percent',
+    ]),
     quantity: money(tv('quantityNumber')),
     rate: money(tv('rateNumber')),
     currency: z

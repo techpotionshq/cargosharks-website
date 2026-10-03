@@ -81,7 +81,16 @@ const PARTNER_TYPES = ['agent', 'haulier', 'carrier', 'broker', 'terminal'] as c
 
 const LOCATION_KINDS = ['seaport', 'airport', 'inland', 'warehouse', 'border', 'city'] as const
 
-const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const BASES = [
+  'flat',
+  'per_unit',
+  'per_kg',
+  'per_cbm',
+  'per_wm',
+  'per_container',
+  'per_day',
+  'percent',
+] as const
 
 /** Names used on a real tariff for each basis. */
 const BASIS_SYNONYMS = {
@@ -93,8 +102,13 @@ const BASIS_SYNONYMS = {
   perkilo: 'per_kg',
   perkilogram: 'per_kg',
   perton: 'per_kg',
-  perwm: 'per_unit',
-  percbm: 'per_unit',
+  // A W/M or cbm rate is not a per-package rate: mapped to `per_unit` it was
+  // multiplied by the pallet count (N1).
+  perwm: 'per_wm',
+  perrt: 'per_wm',
+  perrevenueton: 'per_wm',
+  percbm: 'per_cbm',
+  perm3: 'per_cbm',
   perunit: 'per_unit',
   perday: 'per_day',
   lumpsum: 'flat',

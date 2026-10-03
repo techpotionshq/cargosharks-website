@@ -177,6 +177,8 @@ const BASES: Record<string, readonly [string, string]> = {
   flat: ['Flat', 'مقطوع'],
   per_unit: ['Per unit', 'للوحدة'],
   per_kg: ['Per kg', 'للكيلوغرام'],
+  per_cbm: ['Per cbm', 'للمتر المكعب'],
+  per_wm: ['Per W/M', 'لكل طن شحن (وزن/حجم)'],
   per_container: ['Per container', 'للحاوية'],
   per_day: ['Per day', 'لليوم'],
   percent: ['Percent', 'نسبة مئوية'],

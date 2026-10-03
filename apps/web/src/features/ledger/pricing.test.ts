@@ -296,6 +296,44 @@ describe.skipIf(!enabled)('pricing an enquiry off a rate card', () => {
     })
 
     /*
+      N1: an LCL card quoted per cbm and per W/M is priced on the enquiry's
+      volume. The run's reply, 62 per W/M + 18 per cbm + 40 flat on 8 cbm in
+      6 pallets, was priced as `per_unit` on the pallets: 520, not 680.
+    */
+    it('prices an LCL card on the volume, not the package count', async () => {
+      const on = await lane()
+      const id = await enquiry(on, {
+        mode: 'sea_lcl',
+        containerCount: null,
+        pieces: 6,
+        volumeCbm: '8.000',
+        grossWeightKg: '2400.000',
+      })
+      await card(
+        on,
+        'sell',
+        [
+          { chargeTypeId: oceanFreight, basis: 'per_wm', rate: '62.000' },
+          { chargeTypeId: oceanFreight, basis: 'per_cbm', rate: '18.000' },
+          { chargeTypeId: documentation, basis: 'flat', rate: '40.000' },
+        ],
+        { mode: 'sea_lcl' },
+      )
+
+      const state = await priceEnquiry({}, form({ enquiryId: id }))
+      expect(state.message).toBeUndefined()
+
+      const quote = await quoteFor(id)
+      expect(quote!.totalSell).toBe('680.000000')
+      const lines = await linesOf(quote!.id)
+      expect(lines.map((line) => [line.basis, Number(line.quantity), line.amount])).toEqual([
+        ['per_wm', 8, '496.000000'],
+        ['per_cbm', 8, '144.000000'],
+        ['flat', 1, '40.000000'],
+      ])
+    })
+
+    /*
       A card in another currency is converted into the branch's, and the
       quotation says so. The totals are the sum of each line in the base
       currency; they used to be stored under the card's currency code — KWD

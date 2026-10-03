@@ -21,7 +21,16 @@ import { loadOptions } from '@/lib/options'
 import { RecordDialog, type FieldSpec } from '@/ui/record-dialog'
 import { saveChargeLine } from '../form-actions'
 
-const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const BASES = [
+  'flat',
+  'per_unit',
+  'per_kg',
+  'per_cbm',
+  'per_wm',
+  'per_container',
+  'per_day',
+  'percent',
+] as const
 
 export interface ChargeLineDefaults {
   readonly id?: string

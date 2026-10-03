@@ -293,7 +293,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percent"
+      "percent": "Percent",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "priceIt": "Price it",
     "pricing": "Pricing…",
@@ -1092,7 +1094,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percentage"
+      "percent": "Percentage",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "categories": {
       "freight": "Freight",
@@ -1454,7 +1458,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percent"
+      "percent": "Percent",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "revisionNote": "The current version's lines are carried onto the revision, where you can change them. Once a quotation has lines, its sell price is their total."
   },
@@ -1717,7 +1723,9 @@
       "per_kg": "Per kilogram",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percentage of another line"
+      "percent": "Percentage of another line",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "severities": {
       "low": "Low",

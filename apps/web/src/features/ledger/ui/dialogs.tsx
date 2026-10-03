@@ -29,7 +29,16 @@ import {
 } from '../form-actions'
 
 /** The charge bases a quotation line can carry — `rating.ts` in core. */
-const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const BASES = [
+  'flat',
+  'per_unit',
+  'per_kg',
+  'per_cbm',
+  'per_wm',
+  'per_container',
+  'per_day',
+  'percent',
+] as const
 
 const TAX_TREATMENTS = [
   'out_of_scope',

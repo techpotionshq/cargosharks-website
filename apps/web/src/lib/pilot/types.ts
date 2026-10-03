@@ -1405,7 +1405,8 @@ export type InvoiceStatus =
 export type TaxTreatment = 'out_of_scope' | 'zero_rated' | 'exempt' | 'standard' | 'reverse_charge'
 
 /** `charge_basis`. Printed as-is on a quotation line, so no message key. */
-export type ChargeBasis = 'flat' | 'per_unit' | 'per_kg' | 'per_container' | 'per_day' | 'percent'
+export type ChargeBasis =
+  'flat' | 'per_unit' | 'per_kg' | 'per_cbm' | 'per_wm' | 'per_container' | 'per_day' | 'percent'
 
 /**
  * `payments.method`, which is a text column and not an enum.

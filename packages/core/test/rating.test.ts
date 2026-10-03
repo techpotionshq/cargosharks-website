@@ -50,6 +50,45 @@ describe('the six bases (FR-RT-05)', () => {
     expect(toDb(calcCharge(line, { days: 6 }))).toBe('75')
   })
 
+  /**
+   * N1: 8 cbm on 6 pallets at EUR 85 per cbm was priced as `per_unit`, on the
+   * pallet count, at EUR 510. The volume is the quantity; the pieces are not.
+   */
+  it('per_cbm prices the volume, not the package count', () => {
+    const line = { basis: 'per_cbm' as const, rate: new D('85'), currency: 'EUR' }
+    expect(toDb(calcCharge(line, { cbm: '8.000', units: 6 }))).toBe('680')
+  })
+
+  it('per_wm takes the greater of cubic metres and tonnes', () => {
+    const line = { basis: 'per_wm' as const, rate: new D('62'), currency: 'EUR' }
+    // Light and bulky: 8 cbm outweighs 2.4 t.
+    expect(toDb(calcCharge(line, { cbm: '8', grossKg: '2400' }))).toBe('496')
+    // Dense: 3.5 t outweighs 2 cbm.
+    expect(toDb(calcCharge(line, { cbm: '2', grossKg: '3500' }))).toBe('217')
+    // No weight stated: the volume stands.
+    expect(toDb(calcCharge(line, { cbm: '1.250' }))).toBe('77.5')
+  })
+
+  it('per_wm applies the minimum the rate carries', () => {
+    const line = {
+      basis: 'per_wm' as const,
+      rate: new D('62'),
+      currency: 'EUR',
+      minimum: new D('62'),
+    }
+    expect(toDb(calcCharge(line, { cbm: '0.4', grossKg: '150' }))).toBe('62')
+    expect(toDb(calcCharge(line, { cbm: '3', grossKg: '150' }))).toBe('186')
+  })
+
+  it('refuses a volume basis with no volume', () => {
+    expect(() =>
+      calcCharge({ basis: 'per_cbm', rate: new D('85'), currency: 'EUR' }, { units: 6 }),
+    ).toThrow(MissingChargeContextError)
+    expect(() =>
+      calcCharge({ basis: 'per_wm', rate: new D('62'), currency: 'EUR' }, { grossKg: '900' }),
+    ).toThrow(MissingChargeContextError)
+  })
+
   it('percent takes the currency of the base it applies to', () => {
     const line = { basis: 'percent' as const, rate: new D('15'), currency: 'KWD' }
     const result = calcCharge(line, { of: money('1000', 'USD') })
@@ -269,6 +308,8 @@ describe('the quantity written onto the line', () => {
     expect(priced('per_kg', { kg: '1250.500' }).quantity.toFixed()).toBe('1250.5')
     expect(priced('per_container', { containers: 3 }).quantity.toFixed()).toBe('3')
     expect(priced('per_day', { days: 12 }).quantity.toFixed()).toBe('12')
+    expect(priced('per_cbm', { cbm: '8', units: 6 }).quantity.toFixed()).toBe('8')
+    expect(priced('per_wm', { cbm: '2', grossKg: '3500' }).quantity.toFixed()).toBe('3.5')
   })
 
   /**

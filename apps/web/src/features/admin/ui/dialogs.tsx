@@ -23,7 +23,16 @@ import {
 } from '../form-actions'
 
 const REFERENCE_TABLES = ['commodity', 'charge_type', 'document_type', 'exception_code'] as const
-const BASES = ['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent'] as const
+const BASES = [
+  'flat',
+  'per_unit',
+  'per_kg',
+  'per_cbm',
+  'per_wm',
+  'per_container',
+  'per_day',
+  'percent',
+] as const
 const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const
 
 export interface UserDefaults {
