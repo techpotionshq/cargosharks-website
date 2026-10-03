@@ -143,14 +143,34 @@ export function renderPackingListHtml(view: JobDocumentView, locale: DocumentLoc
     })
     .join('')
 
+  /*
+    Which side of the movement our customer is on, for a job with no party
+    record on that side (NEW-8).
+
+    This fell back to the customer as shipper on every job, so an import with
+    no bill parties printed "SHIPPER Jahra Industries, CONSIGNEE -", naming
+    the Kuwaiti buyer as the overseas supplier on the document customs reads.
+    On an import our customer receives the goods, so it is the consignee and
+    the shipper is the overseas supplier, which only a party record can name;
+    on an export it is the reverse. A cross-trade customer may be either, so
+    neither side is guessed. A party record, where there is one, always wins.
+  */
+  const customerName = localised(view.customer.nameEn, view.customer.nameAr, locale)
+  const sides =
+    view.tradeDirection === 'import'
+      ? { shipper: '—', consignee: customerName }
+      : view.tradeDirection === 'export'
+        ? { shipper: customerName, consignee: '—' }
+        : { shipper: '—', consignee: '—' }
+
   return page(
     locale,
     `
 ${letterhead(view, t.title, view.reference, locale)}
 
 <div class="grid">
-  ${partyBlock(partyOf(view, 'shipper'), t.shipper, locale, view.customer.nameEn)}
-  ${partyBlock(partyOf(view, 'consignee'), t.consignee, locale)}
+  ${partyBlock(partyOf(view, 'shipper'), t.shipper, locale, sides.shipper)}
+  ${partyBlock(partyOf(view, 'consignee'), t.consignee, locale, sides.consignee)}
 </div>
 
 <div class="row" style="margin-top:4mm">
