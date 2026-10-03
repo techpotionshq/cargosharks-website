@@ -178,6 +178,17 @@ export interface RecordDialogProps {
   readonly iconOnly?: boolean
   /** Replaces the built-in trigger entirely. */
   readonly trigger?: (props: { onClick: () => void }) => ReactNode
+  /**
+   * The record's version (its `updated_at`), for an edit dialog.
+   *
+   * The dialog is mounted with the page and only shown and hidden, and every
+   * field is uncontrolled, so a `defaultValue` that changes after mount is
+   * ignored. Without this, a record changed elsewhere on the page (a
+   * suggestion accepted, a count set) kept its old values in the form, and
+   * saving the form wrote them back. Part of the form's key, so a new version
+   * remounts the fields with the new defaults.
+   */
+  readonly version?: string
 }
 
 /*
@@ -208,6 +219,7 @@ export function RecordDialog({
   variant = 'primary',
   iconOnly = false,
   trigger,
+  version,
 }: RecordDialogProps) {
   /*
     Say so when it worked.
@@ -297,7 +309,7 @@ export function RecordDialog({
         ))
       }
     >
-      <form key={attempt} id={formId} action={formAction}>
+      <form key={`${version ?? ''}:${attempt}`} id={formId} action={formAction}>
         <FormGrid>
           <FormError message={state.message} link={state.link} />
           {unplaced(fields, state).map((message) => (

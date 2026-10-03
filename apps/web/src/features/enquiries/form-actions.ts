@@ -302,6 +302,7 @@ export const updateEnquiry = refuseForbidden(async function updateEnquiry(
 
   const { branchId: _branch, channel: _channel, ...data } = parsed.data
   const containerType = read('containerType')?.toUpperCase() ?? null
+  const version = read('version')
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [before] = await tx
@@ -312,6 +313,16 @@ export const updateEnquiry = refuseForbidden(async function updateEnquiry(
       .for('update')
     if (!before) return 'not_found' as const
     if (isTerminal(enquiryMachine, before.status)) return 'closed' as const
+    /*
+      A form filled from an older row is refused, not saved.
+
+      The form posts every field, so one opened before "Accept all" posts the
+      empty values the suggestions had just filled, and saving it cleared them.
+      Compared under the row lock, so a write landing between the read and the
+      update cannot slip past. A form with no version (an older client) is let
+      through, as it was before this check existed.
+    */
+    if (version && before.updatedAt.toISOString() !== version) return 'stale' as const
 
     /*
       The container type is a code we hold, and the column's foreign key would
@@ -367,6 +378,12 @@ export const updateEnquiry = refuseForbidden(async function updateEnquiry(
 
   if (outcome === 'not_found') return failWith(tv('enquiryNotFound'))
   if (outcome === 'closed') return failWith(tv('editClosed'), echo(form))
+  if (outcome === 'stale') {
+    // Refreshed so the form comes back holding the row as it is now, with the
+    // version that will save, rather than the stale values a second time.
+    revalidatePath(`/enquiries/${enquiryId}`)
+    return failWith(tv('editStale'))
+  }
   if (outcome === 'container_type') {
     return fail({ containerType: tv('containerTypeUnknown') }, echo(form))
   }

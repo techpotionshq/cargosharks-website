@@ -30,7 +30,12 @@ export function ContainerCountForm({
   const error = state.errors?.containerCount ?? state.message
 
   return (
-    <form action={action} className="flex flex-wrap items-end gap-2">
+    /*
+      Keyed on the stored count: the input is uncontrolled, so a count that
+      arrives from elsewhere (an accepted suggestion, the edit dialog) would
+      otherwise leave the old number in the box until a reload.
+    */
+    <form key={current ?? 'none'} action={action} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="enquiryId" value={enquiryId} />
       <label className="flex flex-col gap-1">
         <span className="eyebrow">{labels.field}</span>

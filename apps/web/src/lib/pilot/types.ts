@@ -2209,6 +2209,12 @@ export interface EnquiryEditLike {
   readonly containerType: string | null
   readonly isDangerous: boolean
   readonly notes: string | null
+  /**
+   * The row's `updated_at` as ISO text: the version the form was filled from.
+   * The dialog remounts on it and the save refuses a form older than the row,
+   * so a suggestion accepted after the page loaded is never cleared by it.
+   */
+  readonly version: string
 }
 
 /** A file that came with, or went with, one message on the thread. */

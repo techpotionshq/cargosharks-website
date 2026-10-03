@@ -1056,6 +1056,42 @@ describe.skipIf(!enabled)('the enquiry queue', () => {
     })
 
     /*
+      The dialog is filled when the page loads and posts every field. Opened
+      before "Accept all", it carried the empty values the suggestions then
+      filled, and saving it cleared them; its version is what tells the two
+      apart.
+    */
+    it('refuses a form filled before the suggestions were accepted, and keeps them', async () => {
+      const row = await raise()
+      const versionOf = async () => {
+        const [current] = await withActor(bothBranchesActor, (tx) =>
+          tx
+            .select({ updatedAt: enquiries.updatedAt })
+            .from(enquiries)
+            .where(eq(enquiries.id, row.id))
+            .limit(1),
+        )
+        return current!.updatedAt.toISOString()
+      }
+      const opened = await versionOf()
+      await propose(row.id, 'incoterm', 'CIF')
+      expect((await acceptAllProposals({}, form({ enquiryId: row.id }))).ok).toBeTruthy()
+
+      const stale = await updateEnquiry({}, editForm(row.id, { version: opened }))
+      expect(stale.message).toBe('enquiriesValidation.editStale')
+      expect((await facts(row.id)).incoterm).toBe('CIF')
+
+      // The refreshed form carries the new version, and that one saves.
+      const fresh = await updateEnquiry(
+        {},
+        editForm(row.id, { version: await versionOf(), incoterm: 'CIF', grossWeightKg: '900' }),
+      )
+      expect(fresh.message).toBeUndefined()
+      expect(fresh.errors).toBeUndefined()
+      expect((await facts(row.id)).grossWeightKg).toMatch(/^900\.?0*$/)
+    })
+
+    /*
       A WhatsApp lead from an unknown number has no customer and no email: its
       way to answer is the thread. Editing one must not demand a customer.
     */

@@ -4070,7 +4070,8 @@
     "volumeAmount": "Enter the volume in cubic metres as plain digits, such as 12.25.",
     "notPermitted": "Your role does not allow this in this enquiry's branch.",
     "editClosed": "This enquiry is closed, so its details can no longer be changed.",
-    "containerTypeUnknown": "Choose a container type from the list."
+    "containerTypeUnknown": "Choose a container type from the list.",
+    "editStale": "This enquiry changed after you opened the form. The form now shows its latest details, so make your change again."
   },
   "consolidationValidation": {
     "notValidDateTime": "Not a valid date and time",
