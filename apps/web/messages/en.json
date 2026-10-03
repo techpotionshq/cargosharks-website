@@ -2922,6 +2922,12 @@
       },
       "partner": {
         "mail_filed": "A supplier writes in with no bill"
+      },
+      "credit_note": {
+        "issued": "A credit note is issued"
+      },
+      "payment": {
+        "received": "A payment is received"
       }
     },
     "log": "Delivery",

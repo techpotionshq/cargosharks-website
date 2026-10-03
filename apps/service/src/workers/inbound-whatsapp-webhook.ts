@@ -103,7 +103,7 @@ export async function runInboundWhatsAppWebhook(
   sendDelays?: readonly number[],
   /** Where media bytes come from — Kapso's media call, or a test's local mock. */
   resolveMedia: () => Promise<WhatsAppMediaSource | null> = resolveWhatsAppMedia,
-  /** Where a partner's WhatsApp rate reply is queued for reading — pg-boss, or a test's list. */
+  /** Where a partner's WhatsApp rate reply is queued for reading: pg-boss, or a test's list. */
   rfqEnqueue?: EnqueueRateExtract,
 ): Promise<InboundWhatsAppWebhookResult> {
   const [event] = await withActor(systemActor(), async (tx) =>

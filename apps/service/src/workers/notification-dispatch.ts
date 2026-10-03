@@ -656,20 +656,20 @@ async function noLongerApplies(delivery: ClaimedDelivery): Promise<string | null
   const reference = delivery.payload[subject.field]
   if (typeof reference !== 'string' || reference === '') return null
 
-  const rows = await withActor(systemActor(), (tx) =>
+  const rows: { status: string }[] = await withActor(systemActor(), async (tx) =>
     subject.record === 'quote'
-      ? tx
+      ? await tx
           .select({ status: quotes.status })
           .from(quotes)
           .where(and(eq(quotes.branchId, delivery.branchId), eq(quotes.reference, reference)))
           .limit(2)
-      : tx
+      : await tx
           .select({ status: invoices.status })
           .from(invoices)
           .where(and(eq(invoices.branchId, delivery.branchId), eq(invoices.seriesNo, reference)))
           .limit(2),
   )
-  const status = rows.length === 1 ? (rows[0]!.status as string) : null
+  const status = rows.length === 1 ? rows[0]!.status : null
   return noticeNoLongerApplies(delivery.eventKey, reference, status)
 }
 

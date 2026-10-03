@@ -143,7 +143,7 @@ describe('channelDecision', () => {
   })
 })
 
-describe('noticeNoLongerApplies — a held notice, re-read at send time', () => {
+describe('noticeNoLongerApplies, a held notice re-read at send time', () => {
   it('drops a quotation notice once the customer has answered it', () => {
     expect(noticeNoLongerApplies('quote.sent', 'QUO-1', 'accepted')).toBe(
       'no longer applies: quotation QUO-1 is accepted',
