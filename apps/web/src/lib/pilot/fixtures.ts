@@ -8002,6 +8002,18 @@ export function pilotJobLedger(
     baseCurrency: home.currency,
     marginFloorPercent: MARGIN_FLOOR_PERCENT,
     lines: [...costs, ...revenues],
+    /*
+      The credit notes the invoice register shows against this job, so the
+      demo's P&L nets them as the live one does (N6). Fixture invoices are in
+      the branch's own currency, so the subtotal is already the base figure.
+    */
+    creditedRevenue: numeric(
+      sum(
+        INVOICE_SEEDS.filter((inv) => inv.isCreditNote === true && inv.job === seed.seq).map(
+          (inv) => inv.subtotal,
+        ),
+      ),
+    ),
   }
 }
 

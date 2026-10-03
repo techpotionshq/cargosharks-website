@@ -2443,7 +2443,8 @@
       "part": "Part billed",
       "agreed": "Agrees",
       "over": "Billed over"
-    }
+    },
+    "creditedHint": "After {amount} in credit notes"
   },
   "chargeForm": {
     "add": "Add charge",

@@ -28,6 +28,7 @@ import {
   jobs,
   partners,
   customers,
+  creditedRevenueFor,
   withActor,
   type Actor,
 } from '@qabandi/db'
@@ -69,6 +70,8 @@ export interface JobLedger {
   readonly baseCurrency: string
   readonly marginFloorPercent: string | null
   readonly lines: readonly ChargeLineRow[]
+  /** Credit notes against the job's invoices, in base; `margin` already nets them. */
+  readonly creditedRevenue: string
   readonly margin: LedgerMargin
 }
 
@@ -189,6 +192,7 @@ export async function getJobLedger(
       baseCurrency: job.baseCurrency,
       marginFloorPercent: job.marginFloorPercent,
       lines: rows as ChargeLineRow[],
+      creditedRevenue: await creditedRevenueFor(tx, job.id),
     })
   })
 }
@@ -218,6 +222,7 @@ function ledgerOf(read: Omit<JobLedger, 'margin'>): JobLedger {
               isAccrual: l.isAccrual,
             })),
             read.baseCurrency,
+            read.creditedRevenue,
           ),
   }
 }

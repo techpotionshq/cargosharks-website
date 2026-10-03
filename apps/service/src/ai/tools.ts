@@ -48,6 +48,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import {
   branches,
   chargeLines,
+  creditedRevenueFor,
   creditStanding,
   customerBranchTerms,
   customers,
@@ -1029,8 +1030,11 @@ async function margin(actor: Actor, args: ToolArgs): Promise<unknown> {
       .from(chargeLines)
       .where(eq(chargeLines.jobId, job.id))
 
+    // Net of credit notes, as the costing card reads it (N6).
     const result =
-      lines.length === 0 ? emptyLedgerMargin(job.baseCurrency) : jobMargin(lines, job.baseCurrency)
+      lines.length === 0
+        ? emptyLedgerMargin(job.baseCurrency)
+        : jobMargin(lines, job.baseCurrency, await creditedRevenueFor(tx, job.id))
 
     return {
       found: true,
@@ -1043,6 +1047,7 @@ async function margin(actor: Actor, args: ToolArgs): Promise<unknown> {
       // How much of the cost is still an estimate rather than a supplier's bill.
       accruedCost: toScale(result.accruedCost),
       billedCost: toScale(result.billedCost),
+      creditedRevenue: toScale(result.creditedRevenue),
     }
   })
 }

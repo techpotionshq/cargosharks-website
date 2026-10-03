@@ -1596,6 +1596,8 @@ export interface JobLedgerRows {
   readonly baseCurrency: string
   readonly marginFloorPercent: string | null
   readonly lines: readonly LedgerLineRow[]
+  /** Credit notes against the job's invoices, in base; `jobMargin` nets them. */
+  readonly creditedRevenue: string
 }
 
 /** Mirrors `MatchCandidate` — the cost lines a supplier line can be matched to. */

@@ -113,7 +113,20 @@ export async function JobLedgerCard({
       */}
       <div className="@container">
         <dl className="grid grid-cols-2 gap-px border-y border-line bg-line @xl:grid-cols-4">
-          <Figure label={t('revenue')}>
+          {/*
+            Net of credit notes (N6), and saying so: a revenue figure lower than
+            the revenue lines below it reads as an arithmetic error otherwise.
+          */}
+          <Figure
+            label={t('revenue')}
+            {...(margin.creditedRevenue.amount.isZero()
+              ? {}
+              : {
+                  hint: t('creditedHint', {
+                    amount: display(margin.creditedRevenue.amount.toString(), baseCurrency, locale),
+                  }),
+                })}
+          >
             {display(margin.revenue.amount.toString(), baseCurrency, locale)}
           </Figure>
           <Figure label={t('cost')}>
