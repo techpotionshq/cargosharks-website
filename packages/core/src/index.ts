@@ -37,6 +37,7 @@ export * from './labels'
 export * from './time'
 export * from './correspondence'
 export * from './thread-sides'
+export * from './provider-errors'
 
 /**
  * `./import` is deliberately *not* re-exported here.

@@ -54,6 +54,7 @@
  */
 
 import { eq, sql } from 'drizzle-orm'
+import { isWhatsAppWindowClosed } from '@qabandi/core'
 import {
   customerReplyTarget,
   enquiries,
@@ -95,15 +96,11 @@ export type EnquiryReplyResult =
   | { readonly ok: true; readonly messageId: string; readonly channel: 'whatsapp' | 'email' }
   | { readonly ok: false; readonly code: EnquiryReplyRefusal; readonly detail?: string }
 
-/**
- * Meta's "re-engagement" refusal: more than 24 hours since the customer wrote.
- * Matched on the error code Kapso passes through, and on Meta's words for it in
- * case a proxy reformats the body.
- */
-export function isWhatsAppWindowClosed(error: string | undefined): boolean {
-  if (!error) return false
-  return /\b131047\b|re-?engagement|24 hours|customer service window/i.test(error)
-}
+/*
+  Meta's 24-hour refusal, in every shape Kapso has returned it (NEW-2), is read
+  by one rule in core so the intake panel reads it the same way.
+*/
+export { isWhatsAppWindowClosed } from '@qabandi/core'
 
 export async function sendEnquiryReply(
   input: {
@@ -182,6 +179,15 @@ export async function sendEnquiryReply(
   )
   if (!sent.accepted) {
     const detail = (sent.error ?? 'the provider refused the message').slice(0, 300)
+    /*
+      The provider's words are logged here and travel to the web only as
+      `detail` for its log: the screen says the code's sentence in the
+      reader's language and never prints a provider's JSON (NEW-2).
+    */
+    console.warn(
+      { enquiryId: thread.enquiry.id, channel: target.channel, detail },
+      'enquiry reply: provider refused',
+    )
     if (target.channel === 'whatsapp' && isWhatsAppWindowClosed(sent.error)) {
       return { ok: false, code: 'whatsapp_window', detail }
     }

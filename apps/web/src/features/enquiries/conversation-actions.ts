@@ -108,10 +108,17 @@ export const replyToCustomer = refuseForbidden(async function replyToCustomer(
       case 'too_long':
         return fail({ body: t('bodyTooLong', { max: MAX_REPLY_CHARS }) }, echo(form))
       default:
-        return failWith(
-          t('sendFailed', { detail: refusal.detail ?? String(response.status) }),
-          echo(form),
+        /*
+          Never the provider's words on the screen: they are English JSON on an
+          Arabic page (NEW-2). The service logged them; the web logs them too,
+          beside the request that failed, and says a sentence in the reader's
+          language.
+        */
+        console.warn(
+          { enquiryId, status: response.status, error: refusal.error, detail: refusal.detail },
+          'reply to customer: not sent',
         )
+        return failWith(t('sendFailed'), echo(form))
     }
   }
 

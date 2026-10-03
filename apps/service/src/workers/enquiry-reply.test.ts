@@ -165,6 +165,12 @@ describe('reading Meta’s 24-hour refusal', () => {
     expect(isWhatsAppWindowClosed('kapso 400: {"error":{"code":131047}}')).toBe(true)
     expect(isWhatsAppWindowClosed('Re-engagement message')).toBe(true)
     expect(isWhatsAppWindowClosed('kapso 401: invalid api key')).toBe(false)
+    // Kapso's own refusal, exactly as the live run recorded it (NEW-2).
+    expect(
+      isWhatsAppWindowClosed(
+        'kapso 422: {"error":"Cannot send non-template messages outside the 24-hour window."}',
+      ),
+    ).toBe(true)
     expect(isWhatsAppWindowClosed(undefined)).toBe(false)
   })
 })
@@ -326,6 +332,27 @@ describe.skipIf(!enabled)('a coordinator’s reply from the enquiry screen', () 
     expect(wa.sent[0]).toMatchObject({ to: '96550002222', from: PHONE_NUMBER_ID })
     expect(await outbound(id)).toHaveLength(0)
     expect(await responded(id)).toBeNull()
+  })
+
+  it('reads Kapso’s own 24-hour refusal as the window closing (NEW-2)', async () => {
+    const id = await enquiry({ channel: 'whatsapp' })
+    await inbound(id, {
+      channel: 'whatsapp',
+      fromAddress: '96550005555',
+      toAddresses: [PHONE_NUMBER_ID],
+    })
+    const wa = channel('whatsapp', {
+      accepted: false,
+      error: 'kapso 422: {"error":"Cannot send non-template messages outside the 24-hour window."}',
+    })
+
+    const result = await sendEnquiryReply(
+      { actor: staff, enquiryId: id, body: 'Hello' },
+      { resolveWhatsApp: wa.resolve, sendDelays: [] },
+    )
+
+    expect(result).toMatchObject({ ok: false, code: 'whatsapp_window' })
+    expect(await outbound(id)).toHaveLength(0)
   })
 
   it('passes any other refusal on with the provider’s words', async () => {

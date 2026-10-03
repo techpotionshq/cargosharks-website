@@ -315,13 +315,19 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
       expect(state.values?.body).toBe('KWD 1,150')
     })
 
-    it('passes any other refusal on in the provider’s words', async () => {
+    it('says any other refusal in a sentence, never the provider’s JSON (NEW-2)', async () => {
       const id = await enquiry()
-      fetchMock.mockResolvedValue(answer(502, { error: 'send_failed', detail: '550 no mailbox' }))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      fetchMock.mockResolvedValue(
+        answer(502, { error: 'send_failed', detail: 'kapso 500: {"error":"boom"}' }),
+      )
 
       const state = await replyToCustomer({}, form({ enquiryId: id, body: 'Hello' }))
 
-      expect(state.message).toBe('conversation.sendFailed:{"detail":"550 no mailbox"}')
+      expect(state.message).toBe('conversation.sendFailed')
+      // The provider's words go to the log instead.
+      expect(JSON.stringify(warn.mock.calls)).toContain('boom')
+      warn.mockRestore()
       expect(state.values?.body).toBe('Hello')
     })
 
