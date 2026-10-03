@@ -27,6 +27,8 @@ export async function customerFormLabels(): Promise<CustomerFormLabels> {
     isActive: t('isActiveLabel'),
     terms: t('terms'),
     termsHint: t('termsHint'),
+    termsBranch: t('termsBranch'),
+    termsBranchHint: t('termsBranchHint'),
     paymentTermsDays: t('paymentTermsDays'),
     creditLimit: t('creditLimit'),
     creditCurrency: t('creditCurrency'),

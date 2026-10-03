@@ -147,6 +147,12 @@ export interface DocumentView {
   readonly nameEn: string
   readonly nameAr: string
   readonly version: number
+  /**
+   * Which language this copy is printed in. A document is issued per language
+   * (`documents.locale`), and the English and Arabic copies of one type were
+   * listed identically, name, version and size alone (D5).
+   */
+  readonly locale: 'en' | 'ar'
   readonly releasedAt: Date | null
   /**
    * Null where the reader may see the document but not its asset row: a

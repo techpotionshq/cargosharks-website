@@ -1,0 +1,1 @@
+ALTER TABLE "notification_templates" ADD COLUMN "customised_at" timestamp with time zone;

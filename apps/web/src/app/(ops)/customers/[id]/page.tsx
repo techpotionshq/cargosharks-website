@@ -11,7 +11,7 @@ import { notFound } from 'next/navigation'
 import { getLocale, getTranslations } from 'next-intl/server'
 import { requireSession } from '@/lib/session'
 import { recordId } from '@/lib/ids'
-import { can } from '@/lib/permissions'
+import { can, canIn } from '@/lib/permissions'
 import { getCustomer, loadFormReference } from '@/features/customers/queries'
 import { updateCustomer } from '@/features/customers/actions'
 import { CustomerForm } from '@/features/customers/ui/customer-form'
@@ -44,9 +44,16 @@ export async function generateMetadata({
   return { title: `${customer.code} · ${name}` }
 }
 
-export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ terms?: string }>
+}) {
   const session = await requireSession()
   const id = recordId((await params).id)
+  const { terms: requestedTermsBranch } = await searchParams
 
   const customer = await getCustomer(session.actor, id)
   if (!customer) notFound()
@@ -57,12 +64,32 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const locale = isLocale(resolved) ? resolved : DEFAULT_LOCALE
   const mayWrite = can(session, 'customer.write')
 
-  const primaryTerms = customer.terms.find((term) => term.branchId === customer.primaryBranchId)
-
   const [reference, labels] = await Promise.all([
     loadFormReference(session.actor, locale),
     customerFormLabels(),
   ])
+
+  /*
+    Whose terms the form edits (D2). Terms are per branch, so the choice is any
+    branch this person may act in, not only the customer's own: a Kuwait desk
+    pricing for a Dubai customer needs Kuwait's house margin. The customer's
+    own branch first when that is one of them, else the first that is.
+  */
+  const termsBranches = reference.branches.filter((branch) =>
+    canIn(session, 'customer.write', branch.id),
+  )
+  const termsBranch =
+    termsBranches.find((branch) => branch.id === requestedTermsBranch) ??
+    termsBranches.find((branch) => branch.id === customer.primaryBranchId) ??
+    termsBranches[0]
+  const shownTerms = customer.terms.find(
+    (term) => term.branchId === (termsBranch?.id ?? customer.primaryBranchId),
+  )
+  const ownBranch = reference.branches.find((branch) => branch.id === customer.primaryBranchId)
+  const identityNote =
+    ownBranch && !canIn(session, 'customer.write', ownBranch.id)
+      ? t('identityLocked', { branch: ownBranch.code })
+      : undefined
 
   /*
     Credit is read for the primary branch, not for all of them.
@@ -197,10 +224,15 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
 
       {mayWrite ? (
         <CustomerForm
+          // Remounted per branch, so the uncontrolled inputs take that branch's terms.
+          key={termsBranch?.id ?? 'primary'}
           action={updateCustomer}
           branches={reference.branches}
           countries={reference.countries}
           labels={labels}
+          termsBranches={termsBranch ? termsBranches : undefined}
+          termsBranchId={termsBranch?.id}
+          identityNote={identityNote}
           defaults={{
             customerId: customer.id,
             code: customer.code,
@@ -211,13 +243,13 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             countryCode: customer.countryCode,
             primaryBranchId: customer.primaryBranchId,
             isActive: customer.isActive,
-            paymentTermsDays: primaryTerms?.paymentTermsDays ?? 30,
-            creditLimit: trimDecimal(primaryTerms?.creditLimit),
-            creditCurrency: primaryTerms?.creditCurrency ?? null,
-            freeTimeDays: primaryTerms?.freeTimeDays ?? null,
-            defaultIncoterm: primaryTerms?.defaultIncoterm ?? null,
-            defaultMarginKind: primaryTerms?.defaultMarginKind ?? null,
-            defaultMarginValue: trimDecimal(primaryTerms?.defaultMarginValue),
+            paymentTermsDays: shownTerms?.paymentTermsDays ?? 30,
+            creditLimit: trimDecimal(shownTerms?.creditLimit),
+            creditCurrency: shownTerms?.creditCurrency ?? null,
+            freeTimeDays: shownTerms?.freeTimeDays ?? null,
+            defaultIncoterm: shownTerms?.defaultIncoterm ?? null,
+            defaultMarginKind: shownTerms?.defaultMarginKind ?? null,
+            defaultMarginValue: trimDecimal(shownTerms?.defaultMarginValue),
           }}
         />
       ) : (

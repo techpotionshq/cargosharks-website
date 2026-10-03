@@ -1217,6 +1217,7 @@ function documentsFor(seed: JobSeed, now: number): DocumentView[] {
     nameEn,
     nameAr,
     version: index === 0 && seed.done > 3 ? 2 : 1,
+    locale: 'en' as const,
     /** A draft is not a release. The last one stays unreleased on live jobs. */
     releasedAt: index < count - (seed.done >= 5 ? 0 : 1) ? at(now, -3 - index, 12) : null,
     sizeKb: 120 + index * 47 + (seed.seq % 90),

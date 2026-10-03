@@ -70,7 +70,13 @@ async function jobWithDocuments(branchId: string, customerId: string) {
     }
     const visible = await typeOf(true)
     const internal = await typeOf(false)
-    const add = async (name: string, typeId: string, released: boolean, version = 1) => {
+    const add = async (
+      name: string,
+      typeId: string,
+      released: boolean,
+      version = 1,
+      locale: 'en' | 'ar' = 'en',
+    ) => {
       const [asset] = await tx
         .insert(assets)
         .values({
@@ -88,6 +94,7 @@ async function jobWithDocuments(branchId: string, customerId: string) {
           documentTypeId: typeId,
           assetId: asset!.id,
           version,
+          locale,
           releasedAt: released ? new Date() : null,
         })
         .returning({ id: documents.id })
@@ -98,7 +105,8 @@ async function jobWithDocuments(branchId: string, customerId: string) {
     await tx.update(documents).set({ supersededById: current }).where(eq(documents.id, old))
     await add('draft', visible, false, 3)
     await add('internal', internal, true, 1)
-    return { jobId: job!.id, current }
+    const arabic = await add('current-ar', visible, true, 2, 'ar')
+    return { jobId: job!.id, current, arabic }
   })
 }
 
@@ -121,11 +129,20 @@ describe.skipIf(!enabled)('a customer tracking their own shipment', () => {
     contact nothing, so the portal never listed a released document.
   */
   it('lists exactly the released, current, customer-visible documents', async () => {
-    const { jobId, current } = await jobWithDocuments(HOME_BRANCH, CUSTOMER)
+    const { jobId, current, arabic } = await jobWithDocuments(HOME_BRANCH, CUSTOMER)
     const result = await trackOwnShipment(contact, jobId)
-    expect(result?.documents.map((d) => d.id)).toEqual([current])
+    expect(result?.documents.map((d) => d.id).sort()).toEqual([current, arabic].sort())
     // The size comes from the asset row the contact cannot read.
     expect(result?.documents[0]?.sizeKb).toBeNull()
+  })
+
+  // D5: the English and Arabic copies of one document were indistinguishable.
+  it('says which language each copy of a document is in', async () => {
+    const { jobId, current, arabic } = await jobWithDocuments(HOME_BRANCH, CUSTOMER)
+    const result = await trackOwnShipment(contact, jobId)
+    const localeOf = (id: string) => result?.documents.find((d) => d.id === id)?.locale
+    expect(localeOf(current)).toBe('en')
+    expect(localeOf(arabic)).toBe('ar')
   })
 
   it('shows another customer none of them, and each only its own', async () => {
@@ -134,6 +151,6 @@ describe.skipIf(!enabled)('a customer tracking their own shipment', () => {
     expect(await trackOwnShipment(awayContact, home.jobId)).toBeUndefined()
     expect(await trackOwnShipment(contact, away.jobId)).toBeUndefined()
     const own = await trackOwnShipment(awayContact, away.jobId)
-    expect(own?.documents.map((d) => d.id)).toEqual([away.current])
+    expect(own?.documents.map((d) => d.id).sort()).toEqual([away.current, away.arabic].sort())
   })
 })

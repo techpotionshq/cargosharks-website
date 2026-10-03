@@ -445,7 +445,11 @@
     "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over.",
     "throttled": "Too many lookups for now.",
     "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you.",
-    "departureEstimated": "Estimated departure"
+    "departureEstimated": "Estimated departure",
+    "documentLanguage": {
+      "en": "English",
+      "ar": "Arabic"
+    }
   },
   "public": {
     "footerRights": "All rights reserved."
@@ -715,7 +719,10 @@
       "percent": "Percentage over cost",
       "absolute": "Fixed amount over cost",
       "target_sell": "Fixed selling price"
-    }
+    },
+    "termsBranch": "Terms for branch",
+    "termsBranchHint": "Each branch keeps its own terms and house margin. Choose one of the branches you work in.",
+    "identityLocked": "These details belong to {branch}, the customer's own branch. You can set your branch's terms below."
   },
   "setup": {
     "title": "Finish setting up",
@@ -4148,7 +4155,8 @@
     "nothingToUpdate": "Nothing to update.",
     "marginNeedsValue": "Enter the margin, or clear the kind",
     "marginNeedsKind": "Choose how the margin applies",
-    "marginPositive": "The margin must be more than zero"
+    "marginPositive": "The margin must be more than zero",
+    "identityElsewhere": "Only the customer's own branch can change these details, so nothing was saved. To set your branch's terms, leave the details as they were."
   },
   "podValidation": {
     "notCoordinate": "Not a coordinate",
@@ -4530,7 +4538,7 @@
   },
   "partnerMail": {
     "title": "Mail waiting for a person",
-    "explain": "Mail from this supplier that opened no enquiry and had no bill to read.",
+    "explain": "Mail from this supplier that opened no enquiry and was not filed as a bill, including a bill the assistant could not read. Read as a bill says why.",
     "noSubject": "No subject",
     "openBill": "Open the bill",
     "readAsBill": "Read as a bill",
@@ -4548,7 +4556,8 @@
     "serviceNotConfigured": "The background service is not configured, so the file cannot be read.",
     "noModel": "No model is configured to read the file.",
     "notABill": "The file did not read as a bill. Enter it on the payables screen.",
-    "readTimedOut": "Reading the file took too long. Try again."
+    "readTimedOut": "Reading the file took too long. Try again.",
+    "billRefused": "The bill was not filed. {reason}"
   },
   "portalQuotes": {
     "title": "My quotations",

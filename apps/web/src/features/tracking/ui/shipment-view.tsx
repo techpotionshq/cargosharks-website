@@ -192,6 +192,12 @@ export async function ShipmentView({
                       <span className="min-w-0 flex-1 truncate text-body-sm text-ink">
                         {nameOf(document.nameEn, document.nameAr)}
                       </span>
+                      {/* Which copy (D5): the English and Arabic ones were identical rows. */}
+                      <span className="shrink-0 rounded-sm bg-surface-sunken px-1.5 text-micro text-ink-muted">
+                        {document.locale === 'ar'
+                          ? t('documentLanguage.ar')
+                          : t('documentLanguage.en')}
+                      </span>
                       {document.sizeKb === null ? null : (
                         <span className="numeric shrink-0 text-micro text-ink-subtle">
                           {formatNumber(document.sizeKb, locale)} KB
