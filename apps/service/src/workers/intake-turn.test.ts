@@ -27,6 +27,8 @@ const model = vi.hoisted(() => ({
   calls: [] as string[],
   documents: [] as number[],
   fail: null as null | 'transient' | 'unconfigured',
+  /** Answer the next read with the empty extraction a live provider returned once. */
+  emptyOnce: false,
 }))
 vi.mock('../adapters/index', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../adapters/index')>()
@@ -54,6 +56,19 @@ vi.mock('../adapters/index', async (importOriginal) => {
         .join('\n')
       model.calls.push(text)
       if (model.fail === 'transient') throw new Error('provider returned 502')
+      if (model.emptyOnce) {
+        model.emptyOnce = false
+        // Verbatim from `ai_invocations.response` of the live LCL enquiry.
+        return {
+          model: 'fake/intake-model',
+          text: '{"fields":[],"confidence":0.0}',
+          toolCalls: [],
+          inputTokens: 1233,
+          outputTokens: 13,
+          finishReason: 'stop' as const,
+          raw: {},
+        }
+      }
       return {
         model: 'fake/intake-model',
         text: JSON.stringify({ fields: readFacts(text), confidence: 0.9 }),
@@ -766,6 +781,33 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     expect(wa.sent).toHaveLength(0)
     // An operator who took over owns the pipeline too.
     expect(await isHeld(enquiryId)).toBe(false)
+  })
+
+  /*
+    The live LCL enquiry stated everything and the model read nothing from it,
+    so the agent asked four questions the customer had answered. An empty read
+    of a message that names a shipment is read once more.
+  */
+  it('reads again when the model returns nothing from a message that names a shipment', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    model.calls.length = 0
+    const first = await say(
+      sender,
+      'Hello, we need LCL rates from Hamburg to Shuwaikh please. Office furniture, 6 pallets, 2.4 tons, about 8 cbm, FCA Hamburg, ready 15 October.',
+      0,
+    )
+    const { id } = await conversationFor(first.enquiryId!)
+
+    model.emptyOnce = true
+    await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+
+    expect(model.calls).toHaveLength(2)
+    expect(model.calls[1]).toContain('A first read of this message returned no facts')
+    expect(await invocationsFor(first.enquiryId!)).toBe(2)
+    expect(await openProposalFields(first.enquiryId!)).toEqual(
+      expect.arrayContaining(['origin', 'destination', 'commodity']),
+    )
   })
 
   it('withdraws its reply when the agent is switched off while the model reads', async () => {
