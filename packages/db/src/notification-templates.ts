@@ -899,7 +899,13 @@ It is on the exception register and its resolution clock is running.
 `,
   ),
 
-  // --- document.released (customer) -----------------------------------------
+  /*
+    document.released (customer).
+
+    The Arabic names the document through "مستند", so "الخاص" agrees with a
+    masculine noun whatever the type is: "قائمة التعبئة الخاص" was a gender
+    error on every feminine document type (D4).
+  */
   t(
     'document.released',
     'en',
@@ -920,8 +926,8 @@ available to you on the customer portal.
     `
 مرحباً {{recipientName}}
 
-تم إصدار {{documentTypeAr}} الخاص بالشحنة {{reference}}، وهو متاح لكم الآن عبر
-بوابة العملاء.
+تم إصدار مستند «{{documentTypeAr}}» الخاص بالشحنة {{reference}}، وهو متاح لكم الآن
+عبر بوابة العملاء.
 
 {{senderName}}
 `,

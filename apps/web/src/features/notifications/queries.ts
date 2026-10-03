@@ -34,7 +34,7 @@ import {
   withActor,
   type Actor,
 } from '@qabandi/db'
-import { renderTemplate } from '@qabandi/core'
+import { localisePayload, renderTemplate } from '@qabandi/core'
 import type { NotificationView } from '@/lib/pilot/types'
 import { usePilotFixtures } from '@/lib/pilot/source'
 import { pilotNotifications } from '@/lib/pilot/fixtures'
@@ -83,6 +83,7 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
           id: notificationDeliveries.id,
           readAt: notificationDeliveries.readAt,
           createdAt: notificationDeliveries.createdAt,
+          locale: notificationDeliveries.locale,
           eventKey: notificationOutbox.eventKey,
           payload: notificationOutbox.payload,
           jobId: notificationOutbox.jobId,
@@ -120,7 +121,8 @@ export async function getInbox(actor: Actor, locale: 'en' | 'ar'): Promise<Inbox
     ])
 
     const items = rows.map((row): InboxItem => {
-      const payload = row.payload ?? {}
+      // Dates, money and codes as the mail path writes them, in the alert's language.
+      const payload = localisePayload(row.payload ?? {}, row.locale)
       return {
         id: row.id,
         eventKey: row.eventKey,

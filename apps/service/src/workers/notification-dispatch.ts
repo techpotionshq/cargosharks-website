@@ -64,6 +64,7 @@ import {
 } from '@qabandi/db'
 import {
   channelDecision,
+  localisePayload,
   noticeNoLongerApplies,
   noticeSubject,
   notificationEvent,
@@ -586,7 +587,8 @@ async function flush(
 
     const arabic = delivery.locale === 'ar'
     const merged = {
-      ...delivery.payload,
+      // Dates, money, the currency and the mode as a letter writes them (D4).
+      ...localisePayload(delivery.payload, delivery.locale),
       recipientName: (arabic ? delivery.recipientNameAr : null) ?? delivery.recipientNameEn ?? '',
       senderName: arabic ? delivery.senderNameAr : delivery.senderNameEn,
     }
