@@ -71,6 +71,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
         amountPaid: invoices.amountPaid,
         amountCredited: invoices.amountCredited,
         notes: invoices.notes,
+        language: invoices.language,
         customerEn: customers.legalNameEn,
         customerAr: customers.legalNameAr,
         branchEn: branches.legalNameEn,
@@ -127,6 +128,7 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
       amountPaid: row.amountPaid,
       amountCredited: row.amountCredited,
       notes: row.notes,
+      language: row.language === 'ar' ? 'ar' : 'en',
       customer: { nameEn: row.customerEn, nameAr: row.customerAr },
       branch: {
         legalNameEn: row.branchEn,
@@ -151,9 +153,12 @@ export async function loadInvoiceView(actor: Actor, invoiceId: string): Promise<
 export async function renderInvoicePdf(
   actor: Actor,
   invoiceId: string,
-  locale: DocumentLocale,
+  requested?: DocumentLocale,
 ): Promise<{ pdf: Buffer; filename: string }> {
   const view = await loadInvoiceView(actor, invoiceId)
+  // The language asked for, else the invoice's own (NEW-6): a download that
+  // names none is the document as issued, not an English copy of it.
+  const locale: DocumentLocale = requested ?? view.language ?? 'en'
   const renderer = createRenderer()
 
   const pdf = await renderer.render({

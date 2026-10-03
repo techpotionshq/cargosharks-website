@@ -178,4 +178,17 @@ describe('invoice document', () => {
     )
     expect(html).not.toContain('Tax registration')
   })
+
+  it('says a job-billed note in the document’s language, whoever drafted it (NEW-6)', () => {
+    const billed = view({ notes: 'Billed from KWI-JOB-2026-00001' })
+    expect(renderInvoiceHtml(billed, 'ar')).toContain('مفوترة من')
+    expect(renderInvoiceHtml(billed, 'ar')).not.toContain('Billed from')
+    expect(renderInvoiceHtml(billed, 'en')).toContain('Billed from')
+    // An Arabic draft's stored note reads in English on the English copy.
+    expect(renderInvoiceHtml(view({ notes: 'مفوترة من KWI-JOB-2026-00001' }), 'en')).toContain(
+      'Billed from',
+    )
+    // A note a person typed prints as typed.
+    expect(renderInvoiceHtml(view({ notes: 'Pay by KNET' }), 'ar')).toContain('Pay by KNET')
+  })
 })
