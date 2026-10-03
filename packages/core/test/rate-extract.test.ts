@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   MODES,
   RATE_EXTRACTION_SCHEMA,
+  rateReplyContext,
   readExtractedRateReply,
   summariseRateReply,
   type RateReplyLane,
@@ -9,6 +10,7 @@ import {
   type RawRateLine,
 } from '../src/extraction'
 import { EXTRACTABLE_FIELDS } from '../src/ai'
+import { SEED_CHARGEABLE_RULES } from '../src/chargeable'
 import type { ImportLookups } from '../src/import'
 
 /*
@@ -242,5 +244,63 @@ describe('summariseRateReply', () => {
     const summary = summariseRateReply(result.lines.rows, { containers: 1 })
     expect(summary.unpriced).toBe(1)
     expect(summary.totals).toHaveLength(0)
+  })
+})
+
+describe('rateReplyContext', () => {
+  const rule = (mode: string) => SEED_CHARGEABLE_RULES.find((r) => r.mode === mode)!
+
+  /**
+   * N1, the run's own reply: "EUR 62 per cbm W/M, EUR 18 per cbm, EUR 40 per
+   * shipment" on 8 cbm / 6 pallets was totalled on the pallets at EUR 520.
+   */
+  it('prices an LCL reply on the volume, not the pallets', () => {
+    const lcl: RateReplyLane = { mode: 'sea_lcl', originCode: 'AEJEA', destinationCode: 'KWSWK' }
+    const result = readExtractedRateReply(
+      reply({
+        currency: 'EUR',
+        mode: 'sea_lcl',
+        lines: [
+          rline({ basis: 'per_wm', rate: '62', containerType: null }),
+          rline({ chargeType: 'THC', basis: 'per_cbm', rate: '18', containerType: null }),
+          rline({ chargeType: 'DOC', basis: 'flat', rate: '40', containerType: null }),
+        ],
+      }),
+      { ...lookups, currencies: new Set(['EUR', 'KWD']) },
+      lcl,
+    )
+    const ctx = rateReplyContext(
+      {
+        mode: 'sea_lcl',
+        grossWeightKg: '2400',
+        volumeCbm: '8.000',
+        pieces: 6,
+        containerCount: null,
+      },
+      rule('sea_lcl'),
+    )
+    const summary = summariseRateReply(result.lines.rows, ctx)
+    expect(summary.unpriced).toBe(0)
+    expect(summary.primary?.amount.amount.toString()).toBe('680')
+  })
+
+  /**
+   * N3: 336 kg gross in 2.28 cbm is 380 kg chargeable at the air divisor, and
+   * pricing strikes the quote on 380. The comparison ranked it on 336.
+   */
+  it('weighs an air reply at the chargeable weight pricing uses', () => {
+    const e = {
+      mode: 'air',
+      grossWeightKg: '336',
+      volumeCbm: '2.28',
+      pieces: 4,
+      containerCount: null,
+    }
+    expect(rateReplyContext(e, rule('air')).kg?.toString()).toBe('380')
+    // A branch rule that is heavier per cbm, as an airline may agree, moves it.
+    const divisor5000 = { ...rule('air'), divisorCm3PerKg: rule('courier').divisorCm3PerKg }
+    expect(rateReplyContext(e, divisor5000).kg?.toString()).toBe('456')
+    // With no rule loaded, the gross stands rather than a guessed divisor.
+    expect(rateReplyContext(e).kg?.toString()).toBe('336')
   })
 })

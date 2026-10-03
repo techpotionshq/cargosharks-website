@@ -226,6 +226,26 @@ describe.skipIf(!enabled)('loading an invoice for print', () => {
       expect(view.branch.taxRegistration).toBe('KW-TRN-DCP')
     })
 
+    // N2: a credit note carries the invoice it credits, for its face.
+    it('carries the invoice a credit note credits', async () => {
+      const original = await invoice()
+      const originalNo = `INV-${RUN}-${seq}`
+      const note = await invoice({
+        status: 'credited',
+        isCreditNote: true,
+        creditsInvoiceId: original,
+        amountPaid: '250.000',
+        issuedAt: new Date('2026-06-10T07:30:00Z'),
+      })
+
+      expect((await loadInvoiceView(actor, original)).creditNote).toBeNull()
+      const view = await loadInvoiceView(actor, note)
+      expect(view.creditNote).toEqual({
+        creditsSeriesNo: originalNo,
+        creditsIssuedAt: new Date('2026-06-02T07:30:00Z'),
+      })
+    })
+
     /**
      * Read, never re-added. The engine that produced these ran once against
      * charge lines that may since have been re-costed, and a document that

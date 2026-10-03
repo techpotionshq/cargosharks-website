@@ -48,15 +48,43 @@ export interface LedgerLine {
 }
 
 export interface LedgerMargin extends MarginSummary {
+  /** Credit notes against the job's invoices, already taken off `revenue`. */
+  readonly creditedRevenue: Money
   /** The part of `cost` still standing on an accrual rather than a bill. */
   readonly accruedCost: Money
   /** The part of `cost` a supplier has actually invoiced for. */
   readonly billedCost: Money
 }
 
-export function jobMargin(lines: readonly LedgerLine[], baseCurrency: CurrencyCode): LedgerMargin {
+/**
+ * `creditedRevenue` is what credit notes have handed back on the job's
+ * invoices, in the base currency. A credit note writes invoice lines and no
+ * charge line, so a P&L over the charge ledger alone kept the whole sell
+ * figure after a KWD 50 credit: revenue 604.022 and 20.0% margin where the
+ * job had really earned 554.022 and 12.8% (N6). It is taken off revenue here,
+ * once, so the gross and its percentage follow it.
+ */
+export function jobMargin(
+  lines: readonly LedgerLine[],
+  baseCurrency: CurrencyCode,
+  creditedRevenue: Numeric = 0,
+): LedgerMargin {
+  const credited = money(creditedRevenue, baseCurrency)
   const summary = summariseMargin(
-    lines.map((l) => ({ direction: l.direction, amountInBase: money(l.amountBase, baseCurrency) })),
+    [
+      ...lines.map((l) => ({
+        direction: l.direction,
+        amountInBase: money(l.amountBase, baseCurrency),
+      })),
+      ...(isZero(credited)
+        ? []
+        : [
+            {
+              direction: 'revenue' as const,
+              amountInBase: money(credited.amount.negated(), baseCurrency),
+            },
+          ]),
+    ],
     baseCurrency,
   )
 
@@ -68,7 +96,12 @@ export function jobMargin(lines: readonly LedgerLine[], baseCurrency: CurrencyCo
       baseCurrency,
     )
 
-  return { ...summary, accruedCost: costsWhere(true), billedCost: costsWhere(false) }
+  return {
+    ...summary,
+    creditedRevenue: credited,
+    accruedCost: costsWhere(true),
+    billedCost: costsWhere(false),
+  }
 }
 
 /** An empty P&L, for a job whose ledger has not been written yet. */
@@ -78,6 +111,7 @@ export function emptyLedgerMargin(baseCurrency: CurrencyCode): LedgerMargin {
     revenue: zero(baseCurrency),
     gross: zero(baseCurrency),
     grossPercent: null,
+    creditedRevenue: zero(baseCurrency),
     accruedCost: zero(baseCurrency),
     billedCost: zero(baseCurrency),
   }

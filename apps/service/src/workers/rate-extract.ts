@@ -29,6 +29,7 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import {
   assets,
+  chargeableRuleFor,
   enquiries,
   inSeries,
   locationCodes,
@@ -439,7 +440,8 @@ async function cardLaneFor(tx: Tx, rateCardId: string): Promise<{ lane: RateRepl
  * Approximate by design, and the schema comment on `quoted_total` says why: the
  * figure this produces is a *sort key* for the comparison view, not the quote.
  * The authoritative price is struck later, when a person accepts a reply and
- * `priceEnquiry` runs against the promoted card. Weight is the gross, and a
+ * `priceEnquiry` runs against the promoted card. Weight is the chargeable
+ * weight under the branch's rule, as pricing reads it (N3), and a
  * `percent` line — which needs a base this context cannot supply — is counted
  * as unpriced rather than guessed.
  *
@@ -463,7 +465,9 @@ async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
   const rows = await tx
     .select({
       mode: enquiries.mode,
+      branchId: enquiries.branchId,
       grossWeightKg: enquiries.grossWeightKg,
+      volumeCbm: enquiries.volumeCbm,
       pieces: enquiries.pieces,
       containerCount: enquiries.containerCount,
     })
@@ -471,7 +475,7 @@ async function contextFor(tx: Tx, enquiryId: string): Promise<ChargeContext> {
     .where(eq(enquiries.id, enquiryId))
     .limit(1)
   const e = rows[0]
-  return e ? chargeContextFor(e) : {}
+  return e ? chargeContextFor(e, await chargeableRuleFor(tx, e.mode, e.branchId)) : {}
 }
 
 /** The pure half of `contextFor`, exported so the rule is tested without a database. */

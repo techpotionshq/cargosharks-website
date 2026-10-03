@@ -319,7 +319,16 @@ export const addQuoteLine = refuseForbidden(async function addQuoteLine(
   const schema = z.object({
     quoteId: z.uuid(),
     chargeTypeId: z.uuid(tv('chooseCharge')),
-    basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
+    basis: z.enum([
+      'flat',
+      'per_unit',
+      'per_kg',
+      'per_cbm',
+      'per_wm',
+      'per_container',
+      'per_day',
+      'percent',
+    ]),
     quantity: money(tv('quantityNumber')),
     rate: money(tv('rateNumber')),
     currency: z
@@ -917,6 +926,87 @@ export const addInvoiceLine = refuseForbidden(async function addInvoiceLine(
   return succeed(data.descriptionEn)
 })
 
+/**
+ * The language a new invoice for this customer is drafted in.
+ *
+ * An invoice drafted from the unbilled register was always English, with no
+ * way to change it, so an Arabic-speaking customer's statutory document came
+ * out in the wrong language. There is no "preferred language" column on a
+ * customer or a default on a branch, and adding one would be a field nobody
+ * fills in; the customer already says it in two places:
+ *
+ *   1. the language their portal users read, the primary contact's first,
+ *      which the language switch writes to each account;
+ *   2. the language of their latest invoice at this branch, which is what
+ *      somebody last chose for them, now that a draft's language can change.
+ *
+ * Else English, the column's own default. SQL rather than a read first, so it
+ * lands in the same insert; a contact RLS hides simply reads as no answer.
+ */
+function customerInvoiceLanguage(customerId: string, branchId: string) {
+  return sql<'en' | 'ar'>`coalesce(
+    (select p.locale from principals p
+       left join customer_contacts c on c.principal_id = p.id and c.is_active
+      where p.customer_id = ${customerId} and p.type = 'customer_contact' and p.is_active
+      order by c.is_primary desc nulls last, p.created_at
+      limit 1),
+    (select i.language from invoices i
+      where i.customer_id = ${customerId} and i.branch_id = ${branchId}
+        and not i.is_credit_note and i.status <> 'void'
+      order by i.created_at desc
+      limit 1),
+    'en'
+  )::locale`
+}
+
+/**
+ * Change the language a draft invoice is printed in.
+ *
+ * Only a draft: an issued invoice's language is the document of record, and
+ * its stored PDF was rendered in it. The update's own `where` holds that
+ * against an approval landing between the read and the write. The permission
+ * is the one that drafts and edits invoices, in the invoice's own branch.
+ */
+export const setInvoiceLanguage = refuseForbidden(async function setInvoiceLanguage(
+  _previous: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  const session = await requireSession()
+  assertCan(session, 'invoice.approve')
+  const demo = await demoReadOnly(form)
+  if (demo) return demo
+  const tv = await getTranslations('ledgerValidation')
+
+  const parsed = z
+    .object({ invoiceId: z.uuid(), language: z.enum(['en', 'ar']) })
+    .safeParse({ invoiceId: read(form, 'invoiceId'), language: read(form, 'language') })
+  if (!parsed.success) return fail(fieldErrors(parsed.error), echo(form))
+  const { invoiceId, language } = parsed.data
+
+  const changed = await withActor(session.actor, async (tx) => {
+    const [invoice] = await tx
+      .select({ branchId: invoices.branchId })
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1)
+    if (!invoice) throw new Error('not_found')
+    assertCanIn(session, 'invoice.approve', invoice.branchId)
+
+    const rows = await tx
+      .update(invoices)
+      .set({ language, updatedAt: new Date() })
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.status, 'draft')))
+      .returning({ id: invoices.id })
+    return rows.length > 0
+  })
+
+  if (!changed) return failWith(tv('invoiceLanguageDraftOnly'), echo(form))
+
+  revalidatePath(`/invoices/${invoiceId}`)
+  revalidatePath('/invoices')
+  return succeed(language)
+})
+
 /** Approve, issue, void or credit. Each is a different permission. */
 export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
   _previous: ActionState,
@@ -1091,7 +1181,8 @@ export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
         the operator makes, often within minutes, and a customer who receives
         "invoice raised" followed by "invoice voided" learns that the sender's
         accounting is unstable rather than that it is careful. The credit note
-        is itself an invoice and announces itself when *it* is issued.
+        is itself a document and announces itself as `credit_note.issued`
+        (`raiseCreditNote`), with what is still owed.
 
         The number is used rather than the id, because `series_no` is what the
         customer can quote back — and it was allocated immediately above, so it
@@ -1176,6 +1267,7 @@ async function raiseCreditNote(
     .select({
       branchId: invoices.branchId,
       customerId: invoices.customerId,
+      seriesNo: invoices.seriesNo,
       currency: invoices.currency,
       subtotal: invoices.subtotal,
       taxAmount: invoices.taxAmount,
@@ -1306,7 +1398,71 @@ async function raiseCreditNote(
     where id = ${invoiceId}
   `)
 
+  /*
+    FR-NT-01: the customer is told, in this transaction, so a note that rolls
+    back never announces itself. The note is born `credited` and never passes
+    through `issued`, which is the only move that raised `invoice.issued`, so
+    until this a customer learned of their credit from the statement.
+  */
+  await notifyCustomer(tx, {
+    branchId: original.branchId,
+    customerId: original.customerId,
+    eventKey: 'credit_note.issued',
+    invoiceId,
+    currency: original.currency,
+    minorUnits: spec.minorUnits,
+    payload: {
+      seriesNo,
+      invoiceSeriesNo: original.seriesNo ?? '',
+      total: dec(plan.total).toFixed(spec.minorUnits),
+    },
+  })
+
   return { seriesNo, total: plan.total, closes: plan.closes }
+}
+
+/**
+ * Raise a customer notice about one invoice, closing with what is still owed on it.
+ *
+ * Read after the caller has re-derived the invoice, so `outstanding` is the
+ * balance the customer is left with, at the currency's own places: a KWD
+ * balance reads 554.022, not 554.022000 and not 554.02.
+ */
+async function notifyCustomer(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  input: {
+    branchId: string
+    customerId: string
+    eventKey: 'credit_note.issued' | 'payment.received'
+    invoiceId: string
+    currency: string
+    minorUnits: number
+    payload: Record<string, string>
+  },
+): Promise<void> {
+  const [after] = await tx
+    .select({
+      total: invoices.total,
+      amountPaid: invoices.amountPaid,
+      amountCredited: invoices.amountCredited,
+    })
+    .from(invoices)
+    .where(eq(invoices.id, input.invoiceId))
+    .limit(1)
+  const owed = after
+    ? dec(after.total).minus(dec(after.amountPaid)).minus(dec(after.amountCredited))
+    : dec(0)
+  await tx.insert(notificationOutbox).values({
+    branchId: input.branchId,
+    eventKey: input.eventKey,
+    customerId: input.customerId,
+    payload: {
+      ...input.payload,
+      currency: input.currency,
+      outstanding: (owed.isNegative() ? dec(0) : owed).toFixed(input.minorUnits),
+    },
+  })
 }
 
 /** A partial credit the invoice cannot take, with what it can. */
@@ -1691,6 +1847,7 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
       currency: payments.currency,
       customerId: payments.customerId,
       branchId: payments.branchId,
+      receivedOn: payments.receivedOn,
     })
     .from(payments)
     .where(eq(payments.id, paymentId))
@@ -1771,6 +1928,26 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
   // Paid-to-date and status re-derived from everything set against it —
   // receipts and agreed set-offs alike (`packages/db/src/settled.ts`).
   await rederiveInvoiceSettlement(tx, invoiceId)
+
+  /*
+    FR-NT-01: the customer is told their money arrived and where the invoice
+    now stands. Raised per allocation, which is per invoice, because that is
+    what the customer can match against their own remittance.
+  */
+  const places = await minorUnits(tx, invoice.currency)
+  await notifyCustomer(tx, {
+    branchId: invoice.branchId,
+    customerId: invoice.customerId,
+    eventKey: 'payment.received',
+    invoiceId,
+    currency: invoice.currency,
+    minorUnits: places,
+    payload: {
+      seriesNo: invoice.seriesNo,
+      amount: dec(amount).toFixed(places),
+      receivedOn: String(payment.receivedOn ?? ''),
+    },
+  })
 }
 
 // --- billing what was earned ----------------------------------------------
@@ -1900,6 +2077,7 @@ export const billJob = refuseForbidden(async function billJob(
         // One stored form, said in each reader's language on the way out
         // (NEW-6): in the drafter's language, the Arabic PDF printed English.
         notes: billedFromNote(job.reference),
+        language: customerInvoiceLanguage(customerId, jobBranchId),
       })
       .returning({ id: invoices.id })
 

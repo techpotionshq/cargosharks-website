@@ -139,7 +139,7 @@ export const INVOICE_USER_PROMPT =
  *     first-class field the model must set, rather than an empty reply we guess
  *     the meaning of.
  */
-export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@1'
+export const RATE_EXTRACT_PROMPT_VERSION = 'rate-extract@2'
 
 export function rateExtractSystemPrompt(vocabulary: {
   chargeCodes: readonly string[]
@@ -168,7 +168,9 @@ export function rateExtractSystemPrompt(vocabulary: {
     '',
     '4. For each charge, return its `basis` — how it is calculated — as one of exactly:',
     `   ${vocabulary.bases.join(', ')}. A flat lump sum is "flat"; a per-container rate`,
-    '   is "per_container"; a rate per kilo is "per_kg".',
+    '   is "per_container"; a rate per kilo is "per_kg"; a rate per cubic metre (cbm, m3)',
+    '   is "per_cbm"; a rate per W/M, revenue ton or "freight ton" is "per_wm". "Per unit"',
+    '   is only for a rate per package, pallet or piece, never for a rate per cbm.',
     '',
     '5. Put the currency on the header if the whole quote is in one currency. Only set a',
     '   line’s own currency when it differs from the header. Never guess a currency the',
@@ -452,7 +454,13 @@ export function quoteCoverNoteUserPrompt(facts: {
 // @2: `containerCount` joined the fields (F50) — a model on @1 was never asked for it.
 // @3: `containerType` joined them, and a chat transcript became a thing it reads —
 //     the intake agent sends a whole WhatsApp conversation as one source.
-export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@3'
+// @4: the fields are named in the prompt, and silence is right only for a message
+//     that states no shipment. A strict-schema read of a complete LCL enquiry came
+//     back `{"fields":[]}` in thirteen tokens; rule 1 led with "silence is a correct
+//     and useful answer", and nothing in the instructions said which names the
+//     list could hold, so a provider that leans on the prompt over the schema had
+//     an empty list as its easiest valid answer.
+export const ENQUIRY_PROMPT_VERSION = 'enquiry-extract@4'
 
 export function enquirySystemPrompt(vocabulary: {
   readonly modes: readonly string[]
@@ -467,12 +475,17 @@ export function enquirySystemPrompt(vocabulary: {
     'first. Read them together as one enquiry; where a later message corrects an earlier',
     'one ("sorry, 3 containers not 2"), the later one is the fact.',
     '',
-    'Return one entry per fact you actually find. Rules, in order of importance:',
+    'Return one entry per fact you actually find, using these field names and no',
+    'others: mode, tradeDirection, origin, destination, commodity, incoterm, readyOn,',
+    'grossWeightKg, volumeCbm, pieces, containerCount, containerType, dimensions,',
+    'isDangerous. Rules, in order of importance:',
     '',
     '1. OMIT WHAT IS NOT THERE. Do not return an entry for a field the mail does not',
-    '   state. Silence is a correct and useful answer; a guess is a shipment planned',
-    '   around a date or a weight nobody agreed. Most enquiries state three or four of',
-    '   these fields and no more.',
+    '   state; a guess is a shipment planned around a date or a weight nobody agreed.',
+    '   But return every field it does state: a message that names a route, the goods,',
+    '   a weight, a volume, a package count or a mode always has facts to return, and',
+    '   an empty list is right only for a message with no shipment in it at all: a',
+    '   greeting, a thank-you, an out-of-office reply.',
     '',
     '2. NAME A CANDIDATE, NEVER AN IDENTIFIER. For origin, destination and commodity,',
     '   write what the mail calls it — "Shanghai", "Shuwaikh", "CNSHA", "aluminium',
@@ -530,6 +543,15 @@ export function enquirySystemPrompt(vocabulary: {
 /** What the user turn says, beside the mail itself. */
 export const ENQUIRY_USER_PROMPT =
   'Read this enquiry email and return the shipment facts it states.'
+
+/**
+ * Said on the second read only, when the first returned nothing from a message
+ * that plainly names a shipment (`namesAShipment`). Stated as a fact about the
+ * previous answer, so the reader re-reads the mail rather than the instructions.
+ */
+export const ENQUIRY_REREAD_NOTE =
+  'A first read of this message returned no facts at all, although it describes a ' +
+  'shipment. Read it again and return each fact it states.'
 
 /**
  * Said only when documents ride along, so a text-only read is byte-for-byte

@@ -293,7 +293,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percent"
+      "percent": "Percent",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "priceIt": "Price it",
     "pricing": "Pricing…",
@@ -1092,7 +1094,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percentage"
+      "percent": "Percentage",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "categories": {
       "freight": "Freight",
@@ -1454,7 +1458,9 @@
       "per_kg": "Per kg",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percent"
+      "percent": "Percent",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "revisionNote": "The current version's lines are carried onto the revision, where you can change them. Once a quotation has lines, its sell price is their total."
   },
@@ -1717,7 +1723,9 @@
       "per_kg": "Per kilogram",
       "per_container": "Per container",
       "per_day": "Per day",
-      "percent": "Percentage of another line"
+      "percent": "Percentage of another line",
+      "per_cbm": "Per cbm",
+      "per_wm": "Per W/M (revenue ton)"
     },
     "severities": {
       "low": "Low",
@@ -1953,7 +1961,14 @@
     "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
     "creditsInvoice": "Credits invoice",
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "languageChange": {
+      "open": "Change language",
+      "title": "Change the document language",
+      "description": "The invoice prints in this language. You can change it until the invoice is approved.",
+      "submit": "Save",
+      "done": "Language changed"
+    }
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
@@ -2274,7 +2289,8 @@
       "packing_list": "Grouped by container, with net weight.",
       "customs_pack": "What the broker would otherwise retype.",
       "air_waybill": "Not negotiable. Names the consignee — no order bills in the air."
-    }
+    },
+    "issueIn": "Issue in {language, select, ar {Arabic} other {English}}"
   },
   "consolidations": {
     "eyebrow": "Groupage",
@@ -2435,7 +2451,8 @@
       "part": "Part billed",
       "agreed": "Agrees",
       "over": "Billed over"
-    }
+    },
+    "creditedHint": "After {amount} in credit notes"
   },
   "chargeForm": {
     "add": "Add charge",
@@ -2921,6 +2938,12 @@
       },
       "partner": {
         "mail_filed": "A supplier writes in with no bill"
+      },
+      "credit_note": {
+        "issued": "A credit note is issued"
+      },
+      "payment": {
+        "received": "A payment is received"
       }
     },
     "log": "Delivery",
@@ -2987,6 +3010,12 @@
       },
       "partner": {
         "mail_filed": "A known supplier wrote in with nothing to read as a bill."
+      },
+      "credit_note": {
+        "issued": "A credit note has been issued against one of the customer’s invoices."
+      },
+      "payment": {
+        "received": "A customer’s payment has been received and set against an invoice."
       }
     }
   },
@@ -4229,7 +4258,8 @@
     "creditAmountNumber": "Enter the amount to credit, in figures.",
     "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
     "creditTooPrecise": "This currency does not have that many decimal places.",
-    "openCustomerTerms": "Set the house margin"
+    "openCustomerTerms": "Set the house margin",
+    "invoiceLanguageDraftOnly": "This invoice is no longer a draft, so its language cannot change."
   },
   "validation": {
     "invalidType": "Enter a valid value.",

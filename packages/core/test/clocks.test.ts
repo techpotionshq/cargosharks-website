@@ -3,10 +3,12 @@ import {
   D,
   KUWAIT_CALENDAR,
   accrue,
+  clockKindWords,
   addWorkingDays,
   elapsedWorkingHours,
   freeTimeExpiresOn,
   freeTimeRemaining,
+  freeTimeRunsOut,
   isPlausibleClockStart,
   isWorkingDay,
   slaDueAt,
@@ -183,5 +185,35 @@ describe('clock start plausibility', () => {
     expect(isPlausibleClockStart('2024-08-21', today)).toBe(false)
     expect(isPlausibleClockStart('2027-08-22', today)).toBe(true)
     expect(isPlausibleClockStart('2027-08-23', today)).toBe(false)
+  })
+})
+
+describe('freeTimeRunsOut (N7)', () => {
+  it('words a lapsed clock in the past, not as "in 0 days"', () => {
+    expect(freeTimeRunsOut('2026-10-03', '2026-09-28')).toEqual({
+      en: 'ran out 5 days ago',
+      ar: 'انتهى منذ 5 أيام',
+    })
+  })
+
+  it('words the last free day and the days before it', () => {
+    expect(freeTimeRunsOut('2026-10-03', '2026-10-03').en).toBe('runs out today')
+    expect(freeTimeRunsOut('2026-10-03', '2026-10-04')).toEqual({
+      en: 'runs out in 1 day',
+      ar: 'ينتهي خلال يوم واحد',
+    })
+    expect(freeTimeRunsOut('2026-10-03', '2026-10-05')).toEqual({
+      en: 'runs out in 2 days',
+      ar: 'ينتهي خلال يومين',
+    })
+  })
+
+  it('takes the Arabic plural form CLDR gives, not one form for every count', () => {
+    expect(freeTimeRunsOut('2026-10-03', '2026-09-22').ar).toBe('انتهى منذ 11 يومًا')
+    expect(freeTimeRunsOut('2026-10-03', '2026-06-25').ar).toBe('انتهى منذ 100 يوم')
+  })
+
+  it('names the charge in each language', () => {
+    expect(clockKindWords('demurrage')).toEqual({ en: 'demurrage', ar: 'الأرضيات' })
   })
 })

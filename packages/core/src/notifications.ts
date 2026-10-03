@@ -191,9 +191,11 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: [
       'reference',
       'kind',
+      'kindAr',
       'containerNo',
-      'daysRemaining',
       'expiresOn',
+      'runsOut',
+      'runsOutAr',
       'perDiem',
       'currency',
     ],
@@ -312,6 +314,29 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: ['seriesNo', 'total', 'currency', 'dueOn', 'daysOverdue'],
   }),
 
+  /*
+    The two letters a customer was never sent: their bill reduced, and their
+    money received. A credit note is a statutory document in their name and a
+    receipt is the answer to "did you get it"; both were silent, so the first a
+    customer heard of either was the statement. `outstanding` is what is still
+    owed on the invoice afterwards, at the currency's precision, because that
+    is the number the customer acts on.
+  */
+  event({
+    key: 'credit_note.issued',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A credit note has been issued against one of the customer’s invoices.',
+    fields: ['seriesNo', 'invoiceSeriesNo', 'total', 'currency', 'outstanding'],
+  }),
+  event({
+    key: 'payment.received',
+    audience: 'customer',
+    requirement: 'FR-NT-01',
+    summary: 'A customer’s payment has been received and set against an invoice.',
+    fields: ['seriesNo', 'amount', 'currency', 'receivedOn', 'outstanding'],
+  }),
+
   // --- supplier invoice ----------------------------------------------------
   /*
     A supplier billed over what the job accrued, caught the moment the bill was
@@ -410,6 +435,65 @@ export function channelDecision(
   }
 
   return ON
+}
+
+// --- whether a held notice still applies -------------------------------------
+
+/**
+ * The record a customer notice is about, where that record can move on before
+ * the notice goes out.
+ *
+ * Quiet hours hold a customer's mail until the morning, and the run that found
+ * it held sent it without looking again: "Quotation QUO-2026-00006, tell us if
+ * you would like to proceed" arrived after the customer had accepted it, and
+ * "Invoice KWI-2026-00004 has been issued" after it was paid. A retry after a
+ * relay outage has the same gap. So the send re-reads the record these name.
+ *
+ * Only these four. A milestone reached stays reached and an issued document
+ * stays released; an acknowledgement or a receipt is a statement of something
+ * that happened, and never goes stale.
+ */
+export interface NoticeSubject {
+  readonly record: 'quote' | 'invoice'
+  /** The payload field that names it: what the customer can quote back. */
+  readonly field: 'reference' | 'seriesNo'
+}
+
+const NOTICE_SUBJECTS: Readonly<Record<string, NoticeSubject>> = {
+  'quote.sent': { record: 'quote', field: 'reference' },
+  'quote.expiring': { record: 'quote', field: 'reference' },
+  'invoice.issued': { record: 'invoice', field: 'seriesNo' },
+  'invoice.overdue': { record: 'invoice', field: 'seriesNo' },
+}
+
+export function noticeSubject(eventKey: string): NoticeSubject | null {
+  return NOTICE_SUBJECTS[eventKey] ?? null
+}
+
+/** Invoice states after which "issued" and "overdue" are both wrong to send. */
+const SETTLED_INVOICE = new Set(['paid', 'credited', 'void'])
+
+/**
+ * Why a held notice no longer applies, or null to send it.
+ *
+ * `status` is the record's state at send time, null where it could not be
+ * found. Not found sends: a notice is dropped on evidence that it is wrong,
+ * never on the absence of evidence that it is right. A quotation notice applies
+ * while the quotation is `sent` and nothing else (accepted, declined, expired
+ * or replaced by a revision all make "would you like to proceed" wrong); an
+ * invoice notice applies until the invoice is paid, credited or voided.
+ */
+export function noticeNoLongerApplies(
+  eventKey: string,
+  reference: string,
+  status: string | null,
+): string | null {
+  const subject = noticeSubject(eventKey)
+  if (!subject || status === null) return null
+  if (subject.record === 'quote') {
+    return status === 'sent' ? null : `no longer applies: quotation ${reference} is ${status}`
+  }
+  return SETTLED_INVOICE.has(status) ? `no longer applies: invoice ${reference} is ${status}` : null
 }
 
 /**

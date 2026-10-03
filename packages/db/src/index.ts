@@ -13,6 +13,7 @@ export { createDatabase, createPool, db, type Database, type PoolConfig } from '
 export * from './validation'
 export * from './credit'
 export * from './settled'
+export * from './job-credits'
 export * from './branch-time'
 export * from './fx-latest'
 export * from './chargeable'
@@ -41,5 +42,9 @@ export {
   SecretKeyError,
   SealedSecretError,
 } from './secrets'
-export { NOTIFICATION_TEMPLATES, type NotificationTemplateSeed } from './notification-templates'
+export {
+  NOTIFICATION_TEMPLATES,
+  syncNotificationTemplates,
+  type NotificationTemplateSeed,
+} from './notification-templates'
 export { loadEnv, workspaceRoot } from './env'

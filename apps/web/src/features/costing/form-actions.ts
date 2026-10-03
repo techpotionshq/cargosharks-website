@@ -84,7 +84,16 @@ const chargeLineSchema = (tv: Translate) =>
       .max(300)
       .optional()
       .transform((v) => v || null),
-    basis: z.enum(['flat', 'per_unit', 'per_kg', 'per_container', 'per_day', 'percent']),
+    basis: z.enum([
+      'flat',
+      'per_unit',
+      'per_kg',
+      'per_cbm',
+      'per_wm',
+      'per_container',
+      'per_day',
+      'percent',
+    ]),
     quantity: decimalString(tv('enterQuantity')),
     rate: decimalString(tv('enterRate')),
     currency: z.string().trim().length(3),

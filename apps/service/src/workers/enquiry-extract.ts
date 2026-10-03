@@ -84,6 +84,7 @@ import {
   admissible,
   decideProposal,
   ENQUIRY_FIELDS,
+  namesAShipment,
   parseModelJson,
   readExtractedEnquiry,
   withoutStrayContainerCount,
@@ -96,6 +97,7 @@ import { integration, type LiveIntegration } from '../settings'
 import {
   ENQUIRY_DOCUMENTS_NOTE,
   ENQUIRY_PROMPT_VERSION,
+  ENQUIRY_REREAD_NOTE,
   ENQUIRY_USER_PROMPT,
   enquirySystemPrompt,
 } from '../ai/prompts'
@@ -247,49 +249,68 @@ export async function extractEnquiry(
     allowlist below is what makes it harmless — but concatenating hostile text
     into the instruction block would remove a boundary that costs nothing.
   */
-  const { response, invocationId } = await invoke(
-    {
-      actor,
-      branchId: input.branchId,
-      surface: 'enquiry_extract',
-      promptVersion: ENQUIRY_PROMPT_VERSION,
-      enquiryId: input.enquiryId,
-    },
-    {
-      surface: 'enquiry_extract',
-      schema: ENQUIRY_EXTRACTION_SCHEMA,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            {
-              type: 'text',
-              text: enquirySystemPrompt({
-                modes: MODES,
-                directions: DIRECTIONS,
-                incoterms: context.incoterms,
-              }),
-            },
-          ],
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text:
-                documents.length > 0
-                  ? `${ENQUIRY_USER_PROMPT} ${ENQUIRY_DOCUMENTS_NOTE}\n\n${source}`
-                  : `${ENQUIRY_USER_PROMPT}\n\n${source}`,
-            },
-            ...documents,
-          ],
-        },
-      ],
-    },
-  )
+  const read = (reread: boolean) => {
+    const ask = [
+      ENQUIRY_USER_PROMPT,
+      ...(documents.length > 0 ? [ENQUIRY_DOCUMENTS_NOTE] : []),
+      ...(reread ? [ENQUIRY_REREAD_NOTE] : []),
+    ].join(' ')
+    return invoke(
+      {
+        actor,
+        branchId: input.branchId,
+        surface: 'enquiry_extract',
+        promptVersion: ENQUIRY_PROMPT_VERSION,
+        enquiryId: input.enquiryId,
+      },
+      {
+        surface: 'enquiry_extract',
+        schema: ENQUIRY_EXTRACTION_SCHEMA,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              {
+                type: 'text',
+                text: enquirySystemPrompt({
+                  modes: MODES,
+                  directions: DIRECTIONS,
+                  incoterms: context.incoterms,
+                }),
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: [{ type: 'text', text: `${ask}\n\n${source}` }, ...documents],
+          },
+        ],
+      },
+    )
+  }
 
-  const extracted = readExtractedEnquiry(parseModelJson(response.text))
+  let { response, invocationId } = await read(false)
+  let extracted = readExtractedEnquiry(parseModelJson(response.text))
+
+  /*
+    Nothing read from a message that plainly names a shipment is a bad read,
+    not an answer, and it is read once more.
+
+    The live case was a complete LCL enquiry answered `{"fields":[],
+    "confidence":0.0}` in thirteen tokens, while the same prompt read ten facts
+    from the follow-up a minute later; the agent then asked the customer four
+    questions they had already answered. One more call, only on an empty read
+    of a message `namesAShipment` vouches for, both on the ledger. A second
+    empty answer stands: the coordinator reads the mail, as before.
+  */
+  if (
+    extracted.fields.length === 0 &&
+    extracted.unknownFields.length === 0 &&
+    namesAShipment(source)
+  ) {
+    ;({ response, invocationId } = await read(true))
+    extracted = readExtractedEnquiry(parseModelJson(response.text))
+  }
 
   /*
     Refusals are kept, not filtered.

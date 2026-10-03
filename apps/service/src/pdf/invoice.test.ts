@@ -192,3 +192,64 @@ describe('invoice document', () => {
     expect(renderInvoiceHtml(view({ notes: 'Pay by KNET' }), 'ar')).toContain('Pay by KNET')
   })
 })
+
+/**
+ * N2: a credit note printed as "Tax Invoice", positive, with no word of the
+ * invoice it credits; a customer read it as a second bill.
+ */
+describe('credit note document', () => {
+  const note = view({
+    seriesNo: 'KWI-2026-00006',
+    subtotal: '50.000000',
+    taxAmount: '0',
+    total: '50.000000',
+    amountPaid: '50.000000',
+    dueOn: null,
+    creditNote: {
+      creditsSeriesNo: 'KWI-2026-00005',
+      creditsIssuedAt: new Date('2026-09-28T09:00:00Z'),
+    },
+    lines: [
+      {
+        descriptionEn: 'Air freight',
+        descriptionAr: 'أجرة الشحن الجوي',
+        quantity: '1',
+        unitPrice: '38.628000',
+        amount: '38.628000',
+        taxAmount: '0',
+      },
+    ],
+  })
+
+  it('says what it is and which invoice it credits, in English', () => {
+    const html = renderInvoiceHtml(note, 'en')
+    expect(html).toContain('<h1>Credit Note</h1>')
+    expect(html).not.toContain('Tax Invoice')
+    expect(html).toContain('Credits invoice')
+    expect(html).toContain('KWI-2026-00005')
+    expect(html).toContain('28 Sept 2026')
+    // Amounts as credits, and no balance line on a document that owes nothing.
+    expect(html).toMatch(/-KWD\s50\.000/)
+    expect(html).toMatch(/-KWD\s38\.628/)
+    expect(html).toContain('Total credit')
+    expect(html).not.toContain('Balance due')
+    expect(html).not.toContain('Due:')
+  })
+
+  it('and in Arabic', () => {
+    const html = renderInvoiceHtml(note, 'ar')
+    expect(html).toContain('<h1>إشعار دائن</h1>')
+    expect(html).not.toContain('فاتورة ضريبية')
+    expect(html).toContain('إشعار دائن للفاتورة')
+    expect(html).toContain('<bdi dir="ltr">KWI-2026-00005</bdi>')
+    expect(html).toContain('بتاريخ')
+    expect(html).toContain('إجمالي الإشعار الدائن')
+    expect(html).not.toContain('الرصيد المستحق')
+  })
+
+  it('leaves an ordinary invoice as it was', () => {
+    const html = renderInvoiceHtml(base, 'en')
+    expect(html).toContain('<h1>Tax Invoice</h1>')
+    expect(html).not.toContain('Credits invoice')
+  })
+})

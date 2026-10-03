@@ -396,7 +396,11 @@ export async function receivablesAgeing(actor: Actor): Promise<{ byCurrency: Cur
     const result = await tx.execute(sql`
       with open_invoices as (
         -- Less partial credit notes too (F9), as in the summary above.
-        select due_on, currency, (total - amount_paid - amount_credited) as balance
+        -- An invoice issued with no due date is not yet late, so it ages as
+        -- current; left null it fell in the total and in no bucket, and the
+        -- buckets stopped adding up to the figure printed beside them.
+        select coalesce(due_on, current_date) as due_on, currency,
+               (total - amount_paid - amount_credited) as balance
           from invoices
          where status in ('issued', 'part_paid')
            and total > amount_paid + amount_credited

@@ -76,6 +76,7 @@ import {
   type Money,
 } from './money'
 import { BASES, calcCharge, type ChargeContext } from './rating'
+import { chargeableWeight, type ChargeableRule } from './chargeable'
 import { MissingChargeContextError } from './errors'
 import { AiError, confidence, type Confidence, type FieldProposal } from './ai'
 
@@ -832,6 +833,36 @@ export const ENQUIRY_EXTRACTION_SCHEMA: Record<string, unknown> = {
   },
 }
 
+/**
+ * Whether a message plainly describes a shipment, so that reading no facts in
+ * it is a bad read rather than a correct silence.
+ *
+ * The live case: "we need LCL rates from Hamburg to Shuwaikh please. Office
+ * furniture, 6 pallets, 2.4 tons, about 8 cbm, FCA Hamburg, ready 15 October"
+ * came back `{"fields":[],"confidence":0.0}` in thirteen tokens, a valid answer
+ * to the schema that the same prompt answered with ten facts on the next call.
+ * Silence is a correct answer for "Hi" or "thanks", and the reader is told so;
+ * for a message carrying a quantity with a freight unit, a mode or a lane it
+ * is a failure worth one more read. Deliberately coarse: a false positive costs
+ * one cheap call, a false negative leaves the coordinator where they were.
+ */
+export function namesAShipment(text: string): boolean {
+  const signals = [
+    // A quantity in a freight unit: "8 cbm", "2.4 tons", "6 pallets", "2x40HC".
+    /\d[\d.,]*\s*(?:cbm|m3|m³|kgs?|kilos?|tons?|tonnes?|mt|pallets?|cartons?|ctns?|pkgs?|packages?|pcs|boxes|crates|containers?)\b/i,
+    /\b\d+\s*[x×]\s*(?:20|40|45)/i,
+    /\b(?:20|40|45)\s*(?:'|ft|gp|hc|dv|rf|hq)\b/i,
+    // A mode by name.
+    /\b(?:lcl|fcl|air ?freight|sea ?freight|by (?:air|sea|road)|groupage|consol)\b/i,
+    // A lane: "from Hamburg to Shuwaikh", "Shanghai to Shuwaikh".
+    /\bfrom\s+\S+.{0,40}?\bto\s+\S+/i,
+    // The same in Arabic: a lane, a container, a weight or a volume.
+    /من\s+\S+.{0,40}?إلى\s+\S+/,
+    /حاوي|طن|كيلو|كغ|متر مكعب|طبلي|بالت|شحن (?:جوي|بحري)/,
+  ]
+  return signals.some((re) => re.test(text))
+}
+
 export interface ExtractedEnquiry {
   readonly fields: readonly FieldProposal[]
   readonly confidence: Confidence
@@ -1559,7 +1590,7 @@ export function replyIsPartial(response: unknown): boolean {
 }
 
 /** The context fields that are quantities of the consignment — see `partial`. */
-const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'containers'])
+const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'cbm', 'units', 'containers'])
 
 /**
  * The quantities a rate reply is priced against, from the enquiry's figures.
@@ -1570,21 +1601,44 @@ const CONSIGNMENT_FIELDS: ReadonlySet<string> = new Set(['kg', 'units', 'contain
  *
  * Approximate by design: the figure is a *sort key* for the comparison view,
  * not the quote, which is struck later when `priceEnquiry` runs against the
- * promoted card. Weight is the gross. On a FCL lane the container count is the
- * enquiry's own `container_count` — never `pieces`, which counts packages (F39,
- * F66) — and with no count at all the per-container lines stay unpriced:
- * counted, not guessed. `days` is one, exactly as `pricing.ts` prices a
- * `per_day` line, so the two engines agree on what "priceable" means; a storage
- * charge per day costs one day in both.
+ * promoted card. On a FCL lane the container count is the enquiry's own
+ * `container_count`, never `pieces`, which counts packages (F39, F66), and
+ * with no count at all the per-container lines stay unpriced: counted, not
+ * guessed. `days` is one, exactly as `pricing.ts` prices a `per_day` line, so
+ * the two engines agree on what "priceable" means; a storage charge per day
+ * costs one day in both.
+ *
+ * A sort key still has to agree with the price that follows it. `kg` is the
+ * chargeable weight under the branch's rule for the mode, the same
+ * `chargeableWeight` call pricing makes, not the gross: an air reply priced on
+ * 336 kg gross ranked "Cheapest" at a figure the quote then struck on 380 kg
+ * chargeable (N3). The rule is the caller's to load (`chargeableRuleFor`), so a
+ * branch that agreed another divisor with its airline compares on it too; with
+ * no rule, or no figures to apply it to, the gross stands, as it always did.
+ * `cbm` and `grossKg` feed the LCL bases, `per_cbm` and `per_wm` (N1).
  */
-export function rateReplyContext(e: {
-  readonly mode: string | null
-  readonly grossWeightKg: string | null
-  readonly pieces: number | null
-  readonly containerCount: number | null
-}): ChargeContext {
+export function rateReplyContext(
+  e: {
+    readonly mode: string | null
+    readonly grossWeightKg: string | null
+    readonly volumeCbm?: string | null
+    readonly pieces: number | null
+    readonly containerCount: number | null
+  },
+  rule: ChargeableRule | null = null,
+): ChargeContext {
   const ctx: { -readonly [K in keyof ChargeContext]: ChargeContext[K] } = { days: 1 }
-  if (e.grossWeightKg != null) ctx.kg = e.grossWeightKg
+  if (e.grossWeightKg != null) {
+    ctx.kg = e.grossWeightKg
+    ctx.grossKg = e.grossWeightKg
+  }
+  if (e.volumeCbm != null) ctx.cbm = e.volumeCbm
+  if (rule && (e.grossWeightKg != null || e.volumeCbm != null)) {
+    ctx.kg = chargeableWeight(
+      { grossWeightKg: e.grossWeightKg ?? 0, volumeCbm: e.volumeCbm ?? 0 },
+      rule,
+    ).chargeableKg
+  }
   if (e.pieces != null) ctx.units = e.pieces
   if (e.mode === 'sea_fcl' && e.containerCount != null) ctx.containers = e.containerCount
   return ctx

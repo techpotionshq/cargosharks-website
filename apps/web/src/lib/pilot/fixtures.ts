@@ -1618,12 +1618,12 @@ export function pilotNotifications(locale: 'en' | 'ar', now = Date.now()): Notif
       id: 'ntf-2',
       eventKey: 'free_time.expiring',
       title: pick(
-        `Detention on TCLU7627384 in 2 day(s) — KWI-${year}-01036`,
-        `بدء احتساب الاحتجاز على TCLU7627384 خلال يومين — KWI-${year}-01036`,
+        `KWI-${year}-01036: free time on TCLU7627384 runs out in 2 days`,
+        `KWI-${year}-01036: وقت السماح للحاوية TCLU7627384 ينتهي خلال يومين`,
       ),
       body: pick(
-        'Free time runs out on Thursday. After that 12.500 KWD per day, ours until the container moves.',
-        'ينتهي وقت السماح يوم الخميس، وبعده 12.500 دينار عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+        'Last free day Thursday. After that detention at 12.500 KWD per day, ours until the container moves.',
+        'آخر يوم مجاني الخميس، وبعده التأخير بواقع 12.500 KWD عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
       ),
       href: '/jobs/job-1036',
       createdAt: hours(now, -3),
@@ -8002,6 +8002,18 @@ export function pilotJobLedger(
     baseCurrency: home.currency,
     marginFloorPercent: MARGIN_FLOOR_PERCENT,
     lines: [...costs, ...revenues],
+    /*
+      The credit notes the invoice register shows against this job, so the
+      demo's P&L nets them as the live one does (N6). Fixture invoices are in
+      the branch's own currency, so the subtotal is already the base figure.
+    */
+    creditedRevenue: numeric(
+      sum(
+        INVOICE_SEEDS.filter((inv) => inv.isCreditNote === true && inv.job === seed.seq).map(
+          (inv) => inv.subtotal,
+        ),
+      ),
+    ),
   }
 }
 

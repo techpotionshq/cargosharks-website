@@ -45,13 +45,22 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { chargeLines, chargeTypes, invoiceLines, invoices, jobs, withActor } =
-  await import('@qabandi/db')
+const {
+  chargeLines,
+  chargeTypes,
+  customerContacts,
+  customers,
+  invoiceLines,
+  invoices,
+  jobs,
+  principals,
+  withActor,
+} = await import('@qabandi/db')
 
 const { AWAY_BRANCH, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 
-const { billJob, setInvoiceStatus } = await import('./form-actions')
+const { billJob, setInvoiceLanguage, setInvoiceStatus } = await import('./form-actions')
 const { unbilledRevenue, unbilledLinesFor } = await import('./unbilled')
 
 const session = {
@@ -139,14 +148,14 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
    * what stops these cases from deciding each other's outcome when the suite
    * runs beside its siblings.
    */
-  async function aJob(): Promise<string> {
+  async function aJob(customerId: string = CUSTOMER): Promise<string> {
     return withActor(bothBranchesActor, async (tx) => {
       const [row] = await tx
         .insert(jobs)
         .values({
           reference: `UNB-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
           branchId: HOME_BRANCH,
-          customerId: CUSTOMER,
+          customerId,
           mode: 'sea_fcl',
           tradeDirection: 'import',
           status: 'in_transit',
@@ -391,5 +400,97 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
     const row = summary.jobs.find((job) => job.jobId === jobId)
 
     expect([...(row?.currencies ?? [])].sort()).toEqual(['KWD', 'USD'])
+  })
+
+  /*
+    A draft from this register was always English and could not be changed.
+    Each case has a customer of its own, because the default reads the
+    customer's own contacts and invoices.
+  */
+  describe('the document language', () => {
+    async function aCustomer(contactLocale?: 'en' | 'ar'): Promise<string> {
+      const tag = Math.random().toString(36).slice(2, 10).toUpperCase()
+      return withActor({ ...bothBranchesActor, type: 'system' }, async (tx) => {
+        const [customer] = await tx
+          .insert(customers)
+          .values({ code: `CUST-LANG-${tag}`, legalNameEn: `Language ${tag}` })
+          .returning({ id: customers.id })
+        if (contactLocale) {
+          const [principal] = await tx
+            .insert(principals)
+            .values({
+              type: 'customer_contact',
+              email: `lang-${tag.toLowerCase()}@qabandi.test`,
+              nameEn: `Contact ${tag}`,
+              locale: contactLocale,
+              customerId: customer!.id,
+            })
+            .returning({ id: principals.id })
+          await tx.insert(customerContacts).values({
+            customerId: customer!.id,
+            principalId: principal!.id,
+            nameEn: `Contact ${tag}`,
+            isPrimary: true,
+          })
+        }
+        return customer!.id
+      })
+    }
+
+    const draftFor = async (customerId: string) => {
+      const jobId = await aJob(customerId)
+      const line = await aLine(jobId)
+      expect((await billJob({}, form({ jobId }))).message).toBeUndefined()
+      return (await readLine(line))!.invoiceId!
+    }
+
+    const languageOf = async (invoiceId: string) =>
+      (
+        await withActor(bothBranchesActor, (tx) =>
+          tx
+            .select({ language: invoices.language })
+            .from(invoices)
+            .where(eq(invoices.id, invoiceId)),
+        )
+      )[0]!.language
+
+    it('drafts in the language the customer’s primary contact reads', async () => {
+      const invoiceId = await draftFor(await aCustomer('ar'))
+      expect(await languageOf(invoiceId)).toBe('ar')
+    })
+
+    it('drafts in English with nothing to go on, and follows a changed draft after', async () => {
+      const customerId = await aCustomer()
+      const first = await draftFor(customerId)
+      expect(await languageOf(first)).toBe('en')
+
+      const changed = await setInvoiceLanguage({}, form({ invoiceId: first, language: 'ar' }))
+      expect(changed.message).toBeUndefined()
+      expect(await languageOf(first)).toBe('ar')
+
+      // The next draft for this customer takes what somebody last chose.
+      expect(await languageOf(await draftFor(customerId))).toBe('ar')
+    })
+
+    it('refuses to change an invoice that is no longer a draft', async () => {
+      const invoiceId = await draftFor(await aCustomer())
+      await setInvoiceStatus({}, form({ invoiceId, status: 'approved' }))
+
+      const refused = await setInvoiceLanguage({}, form({ invoiceId, language: 'ar' }))
+      expect(refused.message).toBe('ledgerValidation.invoiceLanguageDraftOnly')
+      expect(await languageOf(invoiceId)).toBe('en')
+    })
+
+    it('refuses someone without the right in the invoice’s branch', async () => {
+      const invoiceId = await draftFor(await aCustomer())
+      harness.session = { ...session, branchRoles: new Map([[AWAY_BRANCH, 'finance']]) }
+      try {
+        const refused = await setInvoiceLanguage({}, form({ invoiceId, language: 'ar' }))
+        expect(refused.message).toBe('common.forbiddenAction')
+      } finally {
+        harness.session = session
+      }
+      expect(await languageOf(invoiceId)).toBe('en')
+    })
   })
 })

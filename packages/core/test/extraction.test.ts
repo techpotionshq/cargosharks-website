@@ -5,6 +5,7 @@ import {
   invoiceLinesGrid,
   invoiceReadingIssues,
   invoiceTotal,
+  namesAShipment,
   isSelfConsistent,
   ENQUIRY_EXTRACTION_SCHEMA,
   ENQUIRY_FIELDS,
@@ -16,7 +17,7 @@ import {
   type RawExtractedInvoice,
   type RawInvoiceLine,
 } from '../src/extraction'
-import { EXTRACTABLE_FIELDS } from '../src/ai'
+import { EXTRACTABLE_FIELDS, parseModelJson } from '../src/ai'
 import { SEED_CURRENCIES, toDb } from '../src/money'
 import type { ImportLookups } from '../src/import'
 
@@ -570,5 +571,38 @@ describe('a quantity the model proposed', () => {
       ['containerCount', '2'],
       ['dimensions', '1.2 x 0.8 m'],
     ])
+  })
+})
+
+/*
+  The live LCL enquiry that came back empty. The recorded answer parses cleanly
+  to no facts, so the fault was the read and not the parser; `namesAShipment`
+  is what tells the worker to read it again.
+*/
+describe('an empty read of a message that names a shipment', () => {
+  const LCL =
+    'Hello, we need LCL rates from Hamburg to Shuwaikh please. Office furniture, 6 pallets, 2.4 tons, about 8 cbm, FCA Hamburg, ready 15 October.'
+
+  it('parses the recorded response as no facts, not as a failure', () => {
+    const read = readExtractedEnquiry(parseModelJson('{"fields":[],"confidence":0.0}'))
+    expect(read.fields).toEqual([])
+    expect(read.unknownFields).toEqual([])
+  })
+
+  it('knows the message describes a shipment', () => {
+    expect(namesAShipment(LCL)).toBe(true)
+    expect(namesAShipment('نحتاج سعر شحن من شنغهاي إلى الشويخ')).toBe(true)
+    expect(namesAShipment('2x40HC please')).toBe(true)
+  })
+
+  it('leaves a greeting, a thank-you and the transcript header alone', () => {
+    for (const text of [
+      'Hi, Yousef from Jahra Industries',
+      'thanks 👍',
+      "Enquiry KWI-ENQ-2026-00017: a WhatsApp conversation. The customer's messages, oldest first.\n\n[1] Hello",
+      'مرحبا',
+    ]) {
+      expect(namesAShipment(text)).toBe(false)
+    }
   })
 })

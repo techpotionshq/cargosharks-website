@@ -25,6 +25,7 @@ import { Icon } from '@/ui/icon'
 import { TBody, TD, TH, THead, TR, TableShell } from '@/ui/table'
 import { CargoDialog, PartyDialog } from './dialogs'
 import { IssueDocumentButton, SurrenderBillButton } from './document-buttons'
+import { issueLocales } from '../issue-locale'
 import type { CargoRow, PartyRow } from '../queries'
 
 export async function PartiesCard({
@@ -268,6 +269,7 @@ export async function DocumentActionsCard({
   const session = await requireSession()
   const [t, locale] = await Promise.all([getTranslations('documentActions'), getLocale()])
   const lang = isLocale(locale) ? locale : DEFAULT_LOCALE
+  const issueIn = issueLocales(locale)
   const mayIssue = can(session, 'document.generate')
   const mayRelease = can(session, 'document.release')
   const surrenderable = mode !== 'air' && houseBillNumber !== null
@@ -343,7 +345,14 @@ export async function DocumentActionsCard({
                 </span>
 
                 {mayIssue ? (
-                  <IssueDocumentButton jobId={jobId} kind={kind} label={t('issue')} />
+                  <IssueDocumentButton
+                    jobId={jobId}
+                    kind={kind}
+                    label={t('issue')}
+                    locale={issueIn.primary}
+                    other={issueIn.other}
+                    otherLabel={t('issueIn', { language: issueIn.other })}
+                  />
                 ) : null}
               </div>
 

@@ -68,6 +68,18 @@ describe('the job P&L', () => {
     expect(margin.grossPercent).toBeNull()
   })
 
+  /** N6: the run's job, 604.022 sold, 483.218 cost, then a 50.000 credit note. */
+  it('takes credit notes off revenue, so the margin follows them', () => {
+    const before = jobMargin([revenue('604.022'), cost('483.218')], 'KWD')
+    expect(before.grossPercent?.toFixed(1)).toBe('20.0')
+
+    const margin = jobMargin([revenue('604.022'), cost('483.218')], 'KWD', '50.000')
+    expect(toScale(margin.revenue)).toBe('554.022')
+    expect(toScale(margin.gross)).toBe('70.804')
+    expect(margin.grossPercent?.toFixed(1)).toBe('12.8')
+    expect(toScale(margin.creditedRevenue)).toBe('50.000')
+  })
+
   it('keeps three decimals — a KWD margin rounded to two is wrong by a fils a line', () => {
     const margin = jobMargin([revenue('8.700'), cost('8.600')], 'KWD')
     expect(toScale(margin.gross)).toBe('0.100')
