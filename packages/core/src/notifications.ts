@@ -191,9 +191,11 @@ export const NOTIFICATION_EVENTS: readonly NotificationEvent[] = [
     fields: [
       'reference',
       'kind',
+      'kindAr',
       'containerNo',
-      'daysRemaining',
       'expiresOn',
+      'runsOut',
+      'runsOutAr',
       'perDiem',
       'currency',
     ],
