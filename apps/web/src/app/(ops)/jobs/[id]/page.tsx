@@ -563,7 +563,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                       {nameOf(document.nameEn, document.nameAr)}
                     </p>
                     <p className="text-micro text-ink-subtle">
-                      {t('version', { version: document.version })} · {document.sizeKb} KB
+                      {/* Which copy: the English and Arabic ones are otherwise identical rows. */}
+                      <span className="font-medium text-ink-muted">
+                        {document.locale === 'ar'
+                          ? tTrack('documentLanguage.ar')
+                          : tTrack('documentLanguage.en')}
+                      </span>{' '}
+                      · {t('version', { version: document.version })} · {document.sizeKb} KB
                     </p>
                   </div>
                   {/*

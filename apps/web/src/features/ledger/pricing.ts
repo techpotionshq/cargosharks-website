@@ -65,7 +65,7 @@ export const priceEnquiry = refuseForbidden(async function priceEnquiry(
     if (outcome.error === 'no_margin') {
       const [row] = await withActor(session.actor, (tx) =>
         tx
-          .select({ customerId: enquiries.customerId })
+          .select({ customerId: enquiries.customerId, branchId: enquiries.branchId })
           .from(enquiries)
           .where(eq(enquiries.id, enquiryId))
           .limit(1),
@@ -74,7 +74,8 @@ export const priceEnquiry = refuseForbidden(async function priceEnquiry(
         return {
           message: refusal(tv, outcome.error),
           link: {
-            href: `/customers/${row.customerId}#commercial-terms`,
+            // The enquiry's branch: the margin it lacks is that branch's (D2).
+            href: `/customers/${row.customerId}?terms=${row.branchId}#commercial-terms`,
             label: tv('openCustomerTerms'),
           },
         }

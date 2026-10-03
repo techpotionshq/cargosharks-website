@@ -374,13 +374,59 @@ export const integer =
   }
 
 /**
+ * English month names and the abbreviations bills print, to their number.
+ * "sept" is there because airline and shipping-line invoices print it. A Map
+ * rather than an object literal, so `MONTHS['constructor']` is not a month.
+ */
+const MONTHS: ReadonlyMap<string, number> = new Map(
+  Object.entries({
+    jan: 1,
+    january: 1,
+    feb: 2,
+    february: 2,
+    mar: 3,
+    march: 3,
+    apr: 4,
+    april: 4,
+    may: 5,
+    jun: 6,
+    june: 6,
+    jul: 7,
+    july: 7,
+    aug: 8,
+    august: 8,
+    sep: 9,
+    sept: 9,
+    september: 9,
+    oct: 10,
+    october: 10,
+    nov: 11,
+    november: 11,
+    dec: 12,
+    december: 12,
+  }),
+)
+
+/** A year as printed: four digits, or two with a month name beside it (20xx). */
+const yearOf = (printed: string): number =>
+  printed.length === 2 ? 2000 + Number(printed) : Number(printed)
+
+/**
  * A date, normalised to `YYYY-MM-DD`.
  *
- * Accepts ISO, `DD/MM/YYYY` and `DD-MM-YYYY`, which is what the region writes
- * and what Excel exports under an en-GB or ar-KW locale. Deliberately does
- * *not* accept `MM/DD/YYYY`: the two are indistinguishable for the first
- * twelve days of a month, and silently reading 03/04 as March would put a
- * tariff's validity a month wrong without any error to notice.
+ * Accepts ISO, and day-first numeric dates (`DD/MM/YYYY`, `DD-MM-YYYY`,
+ * `DD.MM.YYYY`), which is what the region writes and what Excel exports under
+ * an en-GB or ar-KW locale. Deliberately does *not* accept `MM/DD/YYYY`: the
+ * two are indistinguishable for the first twelve days of a month, and silently
+ * reading 03/04 as March would put a tariff's validity a month wrong without
+ * any error to notice.
+ *
+ * Also accepts a date with its month written out, which is how most supplier
+ * bills print it ("03 Oct 2026", "3 October 2026", "03-Oct-26", "Oct 3, 2026",
+ * optionally after a weekday). A month name is never ambiguous, so either
+ * order is safe there, and a two-digit year is read as 20xx only beside one.
+ * Without this a bill the model read correctly was refused on its date alone,
+ * because the model reports a date as printed (D1).
  */
 export const isoDate: CellParser<string> = (raw) => {
   const value = normaliseDigits(raw).trim()
@@ -388,8 +434,18 @@ export const isoDate: CellParser<string> = (raw) => {
 
   let year: number, month: number, day: number
 
+  // A leading weekday ("Sat, 03 Oct 2026") says nothing the date does not.
+  const named = value
+    .toLowerCase()
+    .replace(/^(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*,?\s+/, '')
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value)
   const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(value)
+  // 03 Oct 2026, 3 October 2026, 03-Oct-26, 03/Oct/2026, 3rd October, 2026
+  const dayMonth = /^(\d{1,2})(?:st|nd|rd|th)?[\s/.-]+([a-z]+)\.?,?[\s/.-]+(\d{4}|\d{2})$/.exec(
+    named,
+  )
+  // Oct 3, 2026, October 03 2026, Oct-03-2026
+  const monthDay = /^([a-z]+)\.?[\s/.-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s/.-]+(\d{4})$/.exec(named)
 
   if (iso) {
     year = Number(iso[1])
@@ -399,6 +455,14 @@ export const isoDate: CellParser<string> = (raw) => {
     day = Number(dmy[1])
     month = Number(dmy[2])
     year = Number(dmy[3])
+  } else if (dayMonth && MONTHS.has(dayMonth[2]!)) {
+    day = Number(dayMonth[1])
+    month = MONTHS.get(dayMonth[2]!)!
+    year = yearOf(dayMonth[3]!)
+  } else if (monthDay && MONTHS.has(monthDay[1]!)) {
+    month = MONTHS.get(monthDay[1]!)!
+    day = Number(monthDay[2])
+    year = Number(monthDay[3])
   } else {
     return cellFail('notDate', 'Must be a date, as YYYY-MM-DD or DD/MM/YYYY')
   }

@@ -36,6 +36,8 @@
  * included. `enquiry.sla_breached` carries no customer.
  */
 
+import { SEED_CURRENCIES } from './money'
+
 /** Who an event is for. Recipient resolution reads this and nothing else. */
 export type NotificationAudience = 'customer' | 'internal'
 
@@ -510,6 +512,115 @@ export function renderTemplate(template: string, payload: Record<string, unknown
     const value = payload[key]
     return value === undefined || value === null ? '' : String(value)
   })
+}
+
+/**
+ * The merge fields that carry money, formatted beside `{{currency}}`.
+ *
+ * Named rather than detected: `{{count}}` and `{{daysOverdue}}` are numbers
+ * too, and giving them three decimal places would be its own bug.
+ */
+const MONEY_FIELDS: readonly string[] = [
+  'total',
+  'amount',
+  'outstanding',
+  'perDiem',
+  'totalVariance',
+  'worstVariance',
+]
+
+/** A transport mode code as a sentence says it, in each language. */
+const MODE_WORDS: Readonly<Record<string, Readonly<Record<'en' | 'ar', string>>>> = {
+  sea_fcl: { en: 'sea freight, full container (FCL)', ar: 'بحري حاوية كاملة' },
+  sea_lcl: { en: 'sea freight, shared container (LCL)', ar: 'بحري بضاعة مجمعة' },
+  air: { en: 'air freight', ar: 'جوي' },
+  land: { en: 'land freight', ar: 'بري' },
+  courier: { en: 'courier', ar: 'بريد سريع' },
+}
+
+const LTR_ISOLATE = '\u2066'
+const POP_ISOLATE = '\u2069'
+
+/** Western digits in both languages, as on every screen (`apps/web` format.ts). */
+const intlLocale = (locale: 'en' | 'ar'): string => (locale === 'ar' ? 'ar-KW-u-nu-latn' : 'en-GB')
+
+/**
+ * The currency's own minor units: the money engine's table first, then CLDR
+ * for a real ISO code the seed does not carry; null for anything else, which
+ * then passes through as it was.
+ */
+function placesOf(currency: string): number | null {
+  const seeded = SEED_CURRENCIES.find((spec) => spec.code === currency)
+  if (seeded) return seeded.minorUnits
+  if (!Intl.supportedValuesOf('currency').includes(currency)) return null
+  return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
+    .maximumFractionDigits!
+}
+
+/**
+ * The event's raw values, as a letter to a person writes them (D4).
+ *
+ * Raisers put codes and machine values in the payload, and should: the same
+ * payload feeds the "no longer applies" check and the delivery log. But the
+ * mail rendered them as they were, so customers read "the mode is sea_fcl" in
+ * both languages, "Due: 2026-11-02", "1143.882 KWD" and, in Arabic, "KWD".
+ * This runs at render time, in the recipient's language:
+ *
+ *   - a `YYYY-MM-DD` value is written "02 Nov 2026" / "02 نوفمبر 2026";
+ *   - a money field is grouped at its currency's places ("1,143.882");
+ *   - in Arabic, `{{currency}}` is the Arabic symbol ("د.ك.");
+ *   - `{{mode}}` is a phrase, not a code.
+ *
+ * Only values in the exact machine shape are touched, so a value a raiser
+ * already worded (a per-diem "28.000", a "—") passes through unchanged, and so
+ * does anything Intl cannot place. Digits stay Western in Arabic, as on every
+ * screen.
+ */
+export function localisePayload(
+  payload: Readonly<Record<string, unknown>>,
+  locale: 'en' | 'ar',
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...payload }
+  const currency = typeof payload['currency'] === 'string' ? payload['currency'] : null
+  const places = currency ? placesOf(currency) : null
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value !== 'string') continue
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const date = new Date(`${value}T00:00:00Z`)
+      if (Number.isNaN(date.getTime())) continue
+      out[key] = new Intl.DateTimeFormat(intlLocale(locale), {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(date)
+    } else if (MONEY_FIELDS.includes(key) && places !== null && /^-?\d+(\.\d+)?$/.test(value)) {
+      // A string operand, so the figure never passes through a float.
+      out[key] = new Intl.NumberFormat(intlLocale(locale), {
+        minimumFractionDigits: places,
+        maximumFractionDigits: places,
+      }).format(value as Intl.StringNumericLiteral)
+    } else if (key === 'mode' && MODE_WORDS[value]) {
+      out[key] = MODE_WORDS[value]![locale]
+    }
+  }
+
+  if (locale === 'ar' && currency && places !== null) {
+    const symbol = new Intl.NumberFormat(intlLocale('ar'), { style: 'currency', currency })
+      .formatToParts(0)
+      .find((part) => part.type === 'currency')?.value
+    /*
+      A Latin symbol ("US$") is isolated left-to-right, or the bidi algorithm
+      reorders it around the figure in a right-to-left sentence.
+    */
+    if (symbol) {
+      out['currency'] = /[A-Za-z]/.test(symbol) ? `${LTR_ISOLATE}${symbol}${POP_ISOLATE}` : symbol
+    }
+  }
+
+  return out
 }
 
 /** Which `{{fields}}` a template body uses. */

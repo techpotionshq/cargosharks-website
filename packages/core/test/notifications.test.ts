@@ -23,7 +23,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   NOTIFICATION_EVENTS,
+  localisePayload,
   noticeNoLongerApplies,
+  renderTemplate,
   channelDecision,
   notificationEvent,
   notificationEventKeys,
@@ -163,5 +165,72 @@ describe('noticeNoLongerApplies, a held notice re-read at send time', () => {
   it('sends when the record cannot be found, and for events that never go stale', () => {
     expect(noticeNoLongerApplies('invoice.issued', 'KWI-1', null)).toBeNull()
     expect(noticeNoLongerApplies('job.milestone_reached', 'KWI-JOB-1', 'closed')).toBeNull()
+  })
+})
+
+/*
+  D4: customers read "the mode is sea_fcl", "Due: 2026-11-02", "1143.882 KWD"
+  and, in Arabic, "KWD". The payload keeps its machine values; the letter does
+  not.
+*/
+describe('localisePayload', () => {
+  const invoice = {
+    seriesNo: 'KWI-2026-00004',
+    total: '1143.882',
+    outstanding: '3900.000000',
+    currency: 'KWD',
+    dueOn: '2026-11-02',
+    mode: 'sea_fcl',
+    count: '12',
+    daysOverdue: '5',
+  }
+
+  it('writes dates, money and the mode as an English letter does', () => {
+    const out = localisePayload(invoice, 'en')
+    expect(out).toMatchObject({
+      total: '1,143.882',
+      outstanding: '3,900.000',
+      currency: 'KWD',
+      dueOn: '02 Nov 2026',
+      mode: 'sea freight, full container (FCL)',
+    })
+    expect(renderTemplate('Amount: {{total}} {{currency}}\nDue: {{dueOn}}', out)).toBe(
+      'Amount: 1,143.882 KWD\nDue: 02 Nov 2026',
+    )
+  })
+
+  it('writes them in Arabic with the Arabic currency symbol and Western digits', () => {
+    const out = localisePayload(invoice, 'ar')
+    expect(out['currency']).toBe('د.ك.')
+    expect(out['total']).toBe('1,143.882')
+    expect(out['dueOn']).toBe('02 نوفمبر 2026')
+    expect(out['mode']).toBe('بحري حاوية كاملة')
+  })
+
+  it("keeps each currency's own places", () => {
+    expect(localisePayload({ amount: '1617', currency: 'USD' }, 'en')['amount']).toBe('1,617.00')
+    expect(localisePayload({ amount: '1617', currency: 'KWD' }, 'en')['amount']).toBe('1,617.000')
+  })
+
+  it('isolates a Latin symbol inside Arabic text', () => {
+    expect(localisePayload({ currency: 'USD', total: '5' }, 'ar')['currency']).toBe(
+      '\u2066US$\u2069',
+    )
+  })
+
+  it('leaves counts, worded values, references and the payload itself alone', () => {
+    const payload = { ...invoice, perDiem: '28.000 a day', containerNo: '—' }
+    const out = localisePayload(payload, 'en')
+    expect(out['count']).toBe('12')
+    expect(out['daysOverdue']).toBe('5')
+    expect(out['perDiem']).toBe('28.000 a day')
+    expect(out['containerNo']).toBe('—')
+    expect(out['seriesNo']).toBe('KWI-2026-00004')
+    expect(payload.total).toBe('1143.882')
+  })
+
+  it('passes an unknown currency or mode through unchanged', () => {
+    const out = localisePayload({ total: '10.5', currency: 'XXZ', mode: 'rail' }, 'ar')
+    expect(out).toMatchObject({ total: '10.5', currency: 'XXZ', mode: 'rail' })
   })
 })

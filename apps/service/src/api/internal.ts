@@ -125,6 +125,8 @@ interface ExtractInvoiceRequest {
   readonly partnerId?: string
   readonly jobId?: string | null
   readonly write?: boolean
+  /** A person asking again after a refusal; see `ExtractInvoiceInput.retry`. */
+  readonly retry?: boolean
 }
 
 interface QuoteCoverNoteRequest {
@@ -859,7 +861,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
   })
 
   app.post<{ Body: ExtractInvoiceRequest }>('/ai/supplier-invoice', async (request, reply) => {
-    const { actor, branchId, assetId, partnerId, jobId, write } = request.body ?? {}
+    const { actor, branchId, assetId, partnerId, jobId, write, retry } = request.body ?? {}
 
     if (!actor || !branchId || !assetId || !partnerId) {
       return reply.code(400).send({ error: 'incomplete_request' })
@@ -873,6 +875,7 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         partnerId,
         jobId: jobId ?? null,
         write: write === true,
+        retry: retry === true,
       })
 
       return reply.send({
