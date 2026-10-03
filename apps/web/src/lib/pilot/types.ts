@@ -366,8 +366,10 @@ export interface TrackingResult {
   readonly destinationName: string
   readonly destinationNameAr: string
   readonly vesselOrFlight: string | null
+  /** Planned. Never shown as "Departed": see `features/tracking/journey.ts`. */
   readonly etd: Date | null
   readonly eta: Date | null
+  readonly atd: Date | null
   readonly ata: Date | null
   readonly containers: readonly ContainerView[]
   readonly milestones: readonly MilestoneView[]

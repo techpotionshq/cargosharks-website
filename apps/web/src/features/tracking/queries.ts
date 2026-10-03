@@ -169,6 +169,7 @@ function jobRow(tx: Tx) {
       mode: jobs.mode,
       etd: jobs.etd,
       eta: jobs.eta,
+      atd: jobs.atd,
       ata: jobs.ata,
       vesselName: jobs.vesselName,
       voyageNumber: jobs.voyageNumber,
@@ -284,6 +285,7 @@ async function project(tx: Tx, row: JobRow): Promise<TrackingResult> {
         : null),
     etd: row.etd,
     eta: row.eta,
+    atd: row.atd,
     ata: row.ata,
     containers: containerRows.map((c) => ({
       containerNo: c.containerNo ?? '—',
