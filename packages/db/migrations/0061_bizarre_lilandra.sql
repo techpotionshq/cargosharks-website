@@ -13,14 +13,8 @@
 -- rewriting them: each one constrains only `customer_contact`, so staff,
 -- system and support behaviour is unchanged by construction.
 
--- ---------------------------------------------------------------------------
--- The decline reason
--- ---------------------------------------------------------------------------
---
--- Nullable, and set only when a customer declines with a reason. No backfill:
--- every existing quote was decided by staff, who gave none.
-
-alter table quotes add column decision_note text;
+-- The decline reason column, `quotes.decision_note`, is added by 0060 (generated
+-- from the schema). Nullable, set only when a customer declines with a reason.
 
 -- ---------------------------------------------------------------------------
 -- Quotations: what a customer may read
