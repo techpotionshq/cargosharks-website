@@ -23,6 +23,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   NOTIFICATION_EVENTS,
+  noticeNoLongerApplies,
   channelDecision,
   notificationEvent,
   notificationEventKeys,
@@ -139,5 +140,28 @@ describe('channelDecision', () => {
     expect(master.enabled === false && master.reason).not.toBe(
       event.enabled === false && event.reason,
     )
+  })
+})
+
+describe('noticeNoLongerApplies — a held notice, re-read at send time', () => {
+  it('drops a quotation notice once the customer has answered it', () => {
+    expect(noticeNoLongerApplies('quote.sent', 'QUO-1', 'accepted')).toBe(
+      'no longer applies: quotation QUO-1 is accepted',
+    )
+    expect(noticeNoLongerApplies('quote.expiring', 'QUO-1', 'superseded')).toContain('superseded')
+    expect(noticeNoLongerApplies('quote.sent', 'QUO-1', 'sent')).toBeNull()
+  })
+
+  it('drops an invoice notice once the invoice is settled, not while part paid', () => {
+    expect(noticeNoLongerApplies('invoice.issued', 'KWI-1', 'paid')).toBe(
+      'no longer applies: invoice KWI-1 is paid',
+    )
+    expect(noticeNoLongerApplies('invoice.overdue', 'KWI-1', 'void')).not.toBeNull()
+    expect(noticeNoLongerApplies('invoice.overdue', 'KWI-1', 'part_paid')).toBeNull()
+  })
+
+  it('sends when the record cannot be found, and for events that never go stale', () => {
+    expect(noticeNoLongerApplies('invoice.issued', 'KWI-1', null)).toBeNull()
+    expect(noticeNoLongerApplies('job.milestone_reached', 'KWI-JOB-1', 'closed')).toBeNull()
   })
 })

@@ -51,16 +51,24 @@ import { and, asc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import {
   branches,
   customerContacts,
+  invoices,
   notificationChannelSettings,
   notificationDeliveries,
   notificationOutbox,
   notificationTemplates,
   principalBranchRoles,
   principals,
+  quotes,
   systemActor,
   withActor,
 } from '@qabandi/db'
-import { channelDecision, notificationEvent, renderTemplate } from '@qabandi/core'
+import {
+  channelDecision,
+  noticeNoLongerApplies,
+  noticeSubject,
+  notificationEvent,
+  renderTemplate,
+} from '@qabandi/core'
 import type { NotificationChannel } from '../ports/index'
 
 /** Registered adapters. Adding a channel is one entry and a column value. */
@@ -139,8 +147,8 @@ export async function runNotificationDispatch(
 ): Promise<DispatchResult> {
   const outboxId = typeof data?.outboxId === 'string' ? data.outboxId : null
   const { expanded, suppressed } = await expand(outboxId, asOf)
-  const { sent, failed, deferred } = await flush(asOf)
-  return { expanded, sent, failed, deferred, suppressed }
+  const { sent, failed, deferred, stale } = await flush(asOf)
+  return { expanded, sent, failed, deferred, suppressed: suppressed + stale }
 }
 
 // --- pass one: event -> delivery rows ---------------------------------------
@@ -532,14 +540,38 @@ async function resolveTemplate(
 
 // --- pass two: delivery rows -> sent -----------------------------------------
 
-async function flush(asOf: Date): Promise<{ sent: number; failed: number; deferred: number }> {
+async function flush(
+  asOf: Date,
+): Promise<{ sent: number; failed: number; deferred: number; stale: number }> {
   const claimed = await claim(asOf)
 
   let sent = 0
   let failed = 0
   let deferred = 0
+  let stale = 0
 
   for (const delivery of claimed) {
+    /*
+      Still true? Read at the moment of sending, not when the event was raised.
+
+      A customer notice held by quiet hours (or by a relay that was down) went
+      out hours later as it was worded then: a quotation "to proceed with"
+      after the customer had accepted it, an issued invoice after it was paid.
+      The record is re-read here and a notice it contradicts is closed as
+      `suppressed` with the reason, the same row and vocabulary quiet hours and
+      opt-outs write, so the log still answers "why was the customer not told".
+    */
+    const noLonger = await noLongerApplies(delivery)
+    if (noLonger) {
+      await finish(delivery.id, {
+        status: 'suppressed',
+        suppressedReason: noLonger,
+        deferredUntil: null,
+      })
+      stale++
+      continue
+    }
+
     const adapter = channels.get(delivery.channel)
 
     if (!adapter) {
@@ -608,7 +640,37 @@ async function flush(asOf: Date): Promise<{ sent: number; failed: number; deferr
     }
   }
 
-  return { sent, failed, deferred }
+  return { sent, failed, deferred, stale }
+}
+
+/**
+ * Why a claimed delivery should not go out after all, or null.
+ *
+ * The record is found the way the customer would name it, by the reference in
+ * the payload, on the event's branch. Two matches or none is "not found",
+ * which sends (`noticeNoLongerApplies`).
+ */
+async function noLongerApplies(delivery: ClaimedDelivery): Promise<string | null> {
+  const subject = noticeSubject(delivery.eventKey)
+  if (!subject) return null
+  const reference = delivery.payload[subject.field]
+  if (typeof reference !== 'string' || reference === '') return null
+
+  const rows = await withActor(systemActor(), (tx) =>
+    subject.record === 'quote'
+      ? tx
+          .select({ status: quotes.status })
+          .from(quotes)
+          .where(and(eq(quotes.branchId, delivery.branchId), eq(quotes.reference, reference)))
+          .limit(2)
+      : tx
+          .select({ status: invoices.status })
+          .from(invoices)
+          .where(and(eq(invoices.branchId, delivery.branchId), eq(invoices.seriesNo, reference)))
+          .limit(2),
+  )
+  const status = rows.length === 1 ? (rows[0]!.status as string) : null
+  return noticeNoLongerApplies(delivery.eventKey, reference, status)
 }
 
 function backoff(attempts: number): number {
@@ -617,6 +679,8 @@ function backoff(attempts: number): number {
 
 interface ClaimedDelivery {
   readonly id: string
+  readonly eventKey: string
+  readonly branchId: string
   readonly channel: string
   readonly toAddress: string
   readonly locale: 'en' | 'ar'
@@ -688,6 +752,8 @@ async function claim(asOf: Date): Promise<ClaimedDelivery[]> {
     return tx
       .select({
         id: notificationDeliveries.id,
+        eventKey: notificationOutbox.eventKey,
+        branchId: notificationOutbox.branchId,
         channel: notificationDeliveries.channel,
         toAddress: notificationDeliveries.toAddress,
         locale: notificationDeliveries.locale,
