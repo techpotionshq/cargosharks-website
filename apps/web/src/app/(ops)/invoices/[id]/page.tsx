@@ -44,7 +44,7 @@ import { Panel } from '@/ui/panel'
 import { Badge, invoiceTone } from '@/ui/status'
 import { TableShell, TBody, TD, TH, THead, TR } from '@/ui/table'
 import { MoreMenu } from '@/ui/menu'
-import { dec } from '@qabandi/core'
+import { dec, readInvoiceNote } from '@qabandi/core'
 
 export async function generateMetadata({
   params,
@@ -107,6 +107,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   // Built here rather than inline: `check-links.mjs` reads an interpolated
   // href only up to its first `${`.
   const pdf = `/api/invoices/${invoice.id}/pdf`
+  const note = readInvoiceNote(invoice.notes)
 
   return (
     <>
@@ -161,7 +162,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 prints too, marked as one, which is how it is checked before
                 issue.
               */}
-              <Button variant="menu" href={pdf} download icon="download">
+              <Button variant="menu" href={`${pdf}?locale=en`} download icon="download">
                 {t('pdf')}
               </Button>
               <Button variant="menu" href={`${pdf}?locale=ar`} download icon="download">
@@ -324,10 +325,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </Field>
               <Field label={t('issuedBy')}>{invoice.issuedBy ?? '—'}</Field>
             </dl>
-            {invoice.notes ? (
-              // Free text, in whatever language it was typed: its own direction.
+            {note ? (
+              // A job-billed note in the reader's language (NEW-6); anything a
+              // person typed is free text in its own language and direction.
               <p dir="auto" className="mt-4 border-t border-line pt-4 text-body-sm text-ink-muted">
-                {invoice.notes}
+                {note.kind === 'billedFrom'
+                  ? ti('billedFrom', { reference: note.reference })
+                  : note.text}
               </p>
             ) : null}
             {invoice.isCreditNote && invoice.creditsInvoiceId ? (

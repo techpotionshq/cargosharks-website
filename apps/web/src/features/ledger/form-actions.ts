@@ -27,6 +27,7 @@ import {
   SettlementError,
   assertTransition,
   checkSettlement,
+  billedFromNote,
   creditableAmount,
   dec,
   fromDb,
@@ -1819,7 +1820,6 @@ export const billJob = refuseForbidden(async function billJob(
 
   const jobId = read(form, 'jobId')
   if (!jobId) return failWith(tv('nothingToDo'))
-  const ti = await getTranslations('invoices')
 
   const outcome = await withActor(session.actor, async (tx) => {
     const [job] = await tx
@@ -1897,9 +1897,9 @@ export const billJob = refuseForbidden(async function billJob(
           select t.payment_terms_days from customer_branch_terms t
            where t.customer_id = ${customerId} and t.branch_id = ${jobBranchId}
         ), 30)`,
-        // In the language of whoever billed it; it was English whatever the
-        // screen, and the invoice page shows it.
-        notes: ti('billedFrom', { reference: job.reference }),
+        // One stored form, said in each reader's language on the way out
+        // (NEW-6): in the drafter's language, the Arabic PDF printed English.
+        notes: billedFromNote(job.reference),
       })
       .returning({ id: invoices.id })
 

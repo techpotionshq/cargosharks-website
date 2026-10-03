@@ -16,6 +16,7 @@
  */
 
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
+import { isWhatsAppWindowClosed } from '@qabandi/core'
 import { requireSession } from '@/lib/session'
 import { canIn } from '@/lib/permissions'
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/request'
@@ -179,9 +180,13 @@ export async function IntakeAgentPanel({ enquiryId }: { readonly enquiryId: stri
                 </p>
               ) : null}
               {turn.sendError ? (
-                /* The provider's own words — rendered as data, never markup. */
+                /*
+                  A sentence, never the provider's own words: those are English
+                  JSON on an Arabic screen (NEW-2), and they stay in the turn's
+                  row and the service log for whoever debugs the channel.
+                */
                 <p className="mt-1 text-body-sm text-critical">
-                  {t('sendFailed', { error: turn.sendError })}
+                  {isWhatsAppWindowClosed(turn.sendError) ? t('sendFailedWindow') : t('sendFailed')}
                 </p>
               ) : null}
             </li>

@@ -87,7 +87,7 @@ export default async function PortalInvoicePage({ params }: { params: Promise<{ 
         }
         actions={
           <>
-            <Button href={pdf} variant="ghost" icon="download" download>
+            <Button href={`${pdf}?locale=en`} variant="ghost" icon="download" download>
               {t('pdf')}
             </Button>
             <Button href={`${pdf}?locale=ar`} variant="ghost" icon="download" download>

@@ -39,7 +39,10 @@ export async function GET(
   const { id } = await context.params
   // Not a uuid is not a record, and used to reach the service as a 500 (A17).
   if (!isUuid(id)) return fileRefusal(request, 'not_found')
-  const locale = new URL(request.url).searchParams.get('locale') === 'ar' ? 'ar' : 'en'
+  // Named by the EN and AR buttons; a link that names neither gets the
+  // invoice's own language, which the service reads (NEW-6).
+  const requested = new URL(request.url).searchParams.get('locale')
+  const locale = requested === 'ar' || requested === 'en' ? requested : undefined
 
   const serviceUrl = process.env.SERVICE_URL
   const secret = process.env.INTERNAL_API_SECRET
@@ -74,7 +77,8 @@ export async function GET(
     headers: {
       'content-type': 'application/pdf',
       'content-disposition':
-        response.headers.get('content-disposition') ?? `inline; filename="invoice-${locale}.pdf"`,
+        response.headers.get('content-disposition') ??
+        `inline; filename="invoice-${locale ?? 'en'}.pdf"`,
       'cache-control': 'private, no-store',
     },
   })

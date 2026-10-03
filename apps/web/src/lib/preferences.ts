@@ -34,6 +34,17 @@ export async function setLocalePreference(formData: FormData): Promise<void> {
     path: '/',
     httpOnly: false,
   })
+  /*
+    Kept on the account too, as the zone is, so the choice follows the person
+    to a machine that has no cookie yet (NEW-5). Scoped to the principal's own
+    row, which `principals_scope` permits; the demo has no row to keep.
+  */
+  const session = usePilotFixtures() ? null : await getSession()
+  if (session) {
+    await withActor(session.actor, async (tx) => {
+      await tx.update(principals).set({ locale }).where(eq(principals.id, session.principal.id))
+    })
+  }
   revalidatePath('/', 'layout')
 }
 

@@ -259,7 +259,7 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
   })
 
   /** F11. No due date meant no ageing bucket, and never overdue. */
-  it('gives the draft a due date from the terms, and a note in the reader’s language', async () => {
+  it('gives the draft a due date from the terms, and a note stored for every language', async () => {
     const jobId = await aJob()
     const line = await aLine(jobId)
     await billJob({}, form({ jobId }))
@@ -269,7 +269,9 @@ describe.skipIf(!enabled)('revenue that was never billed', () => {
       tx.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1),
     )
     expect(invoice?.dueOn).toBeTruthy()
-    expect(invoice?.notes).toMatch(/^invoices\.billedFrom:/)
+    // One stored form, rendered in each reader's language (NEW-6), never the
+    // drafting user's translation.
+    expect(invoice?.notes).toMatch(/^Billed from \S+$/)
   })
 
   it('leaves an accrual alone', async () => {

@@ -36,6 +36,9 @@ export * from './assistant'
 export * from './labels'
 export * from './time'
 export * from './correspondence'
+export * from './thread-sides'
+export * from './provider-errors'
+export * from './invoice-note'
 
 /**
  * `./import` is deliberately *not* re-exported here.

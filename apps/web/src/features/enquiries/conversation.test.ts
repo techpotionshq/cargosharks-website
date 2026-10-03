@@ -25,9 +25,9 @@ vi.mock('next-intl/server', () => ({
     values ? `${namespace}.${key}:${JSON.stringify(values)}` : `${namespace}.${key}`,
 }))
 
-const { enquiries, intakeConversations, messages, withActor, SYSTEM_PRINCIPAL_ID } =
+const { enquiries, intakeConversations, messages, rateRequests, withActor, SYSTEM_PRINCIPAL_ID } =
   await import('@qabandi/db')
-const { AWAY_BRANCH, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
+const { AWAY_BRANCH, HOME_BRANCH, PARTNER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 const { enquiryConversation } = await import('./conversation')
 const { replyToCustomer } = await import('./conversation-actions')
@@ -139,7 +139,7 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
         'We will price it today.',
         'From my phone',
       ])
-      expect(thread!.messages.map((m) => m.author)).toEqual([null, 'agent', 'staff', 'staff'])
+      expect(thread!.messages.map((m) => m.author)).toEqual(['customer', 'agent', 'staff', 'staff'])
       expect(thread!.messages[2]!.authorName).toBeTruthy()
       expect(thread!.messages[3]!.authorName).toBeNull()
       // No intake conversation: the reply goes back to whoever wrote in, on WhatsApp.
@@ -163,6 +163,73 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
       const thread = await enquiryConversation(bothBranchesActor, id)
 
       expect(thread).toMatchObject({ replyChannel: 'email', replyTo: 'buyer@customer.test' })
+    })
+
+    /** An agent's rate reply, filed as `inbound-mail.ts` files one. */
+    async function rateReply(enquiryId: string, at: Date) {
+      seq += 1
+      const [row] = await withActor(system, (tx) =>
+        tx
+          .insert(messages)
+          .values({
+            branchId: HOME_BRANCH,
+            enquiryId,
+            channel: 'email',
+            direction: 'inbound',
+            subject: 'Re: Rate request Ningbo to Shuwaikh',
+            body: 'USD 2,900 per 40HC',
+            fromAddress: 'pricing@shaco-agent.test',
+            sentAt: at,
+          })
+          .returning({ id: messages.id }),
+      )
+      await withActor(system, (tx) =>
+        tx.insert(rateRequests).values({
+          branchId: HOME_BRANCH,
+          enquiryId,
+          partnerId: PARTNER,
+          token: `cnv${RUN.toLowerCase()}${seq}`.padEnd(12, '0'),
+          status: 'responded',
+          messageId: row!.id,
+        }),
+      )
+    }
+
+    it('never offers to answer an agent’s rate reply (NEW-1)', async () => {
+      const id = await enquiry()
+      await rateReply(id, new Date(Date.UTC(2040, 0, 1, 9)))
+
+      const thread = await enquiryConversation(bothBranchesActor, id)
+
+      expect(thread).toMatchObject({ replyChannel: null, replyTo: null, replyRefused: true })
+      // Labelled as the partner it came from, never as the customer (NEW-4).
+      expect(thread!.messages[0]).toMatchObject({ author: 'partner', authorName: 'Fixture Agent' })
+    })
+
+    it('answers the customer, not the newer rate reply (NEW-1)', async () => {
+      const id = await enquiry()
+      await withActor(system, (tx) =>
+        tx.insert(messages).values({
+          branchId: HOME_BRANCH,
+          enquiryId: id,
+          channel: 'whatsapp',
+          direction: 'inbound',
+          body: 'Quote please',
+          fromAddress: '96550008888',
+          toAddresses: ['wa-home'],
+          sentAt: new Date(Date.UTC(2040, 0, 1, 8)),
+        }),
+      )
+      await rateReply(id, new Date(Date.UTC(2040, 0, 1, 9)))
+
+      const thread = await enquiryConversation(bothBranchesActor, id)
+
+      expect(thread).toMatchObject({
+        replyChannel: 'whatsapp',
+        replyTo: '96550008888',
+        replyRefused: false,
+      })
+      expect(thread!.lastInboundAt?.getTime()).toBe(Date.UTC(2040, 0, 1, 8))
     })
 
     it('has nobody to answer on an enquiry nobody wrote in on', async () => {
@@ -240,13 +307,29 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
       expect(state.values?.body).toBe('Still there?')
     })
 
-    it('passes any other refusal on in the provider’s words', async () => {
+    it('says a thread with only partners and staff on it has nobody to answer', async () => {
       const id = await enquiry()
-      fetchMock.mockResolvedValue(answer(502, { error: 'send_failed', detail: '550 no mailbox' }))
+      fetchMock.mockResolvedValue(answer(422, { error: 'not_customer', detail: null }))
+
+      const state = await replyToCustomer({}, form({ enquiryId: id, body: 'KWD 1,150' }))
+
+      expect(state.message).toBe('conversation.notCustomer')
+      expect(state.values?.body).toBe('KWD 1,150')
+    })
+
+    it('says any other refusal in a sentence, never the provider’s JSON (NEW-2)', async () => {
+      const id = await enquiry()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      fetchMock.mockResolvedValue(
+        answer(502, { error: 'send_failed', detail: 'kapso 500: {"error":"boom"}' }),
+      )
 
       const state = await replyToCustomer({}, form({ enquiryId: id, body: 'Hello' }))
 
-      expect(state.message).toBe('conversation.sendFailed:{"detail":"550 no mailbox"}')
+      expect(state.message).toBe('conversation.sendFailed')
+      // The provider's words go to the log instead.
+      expect(JSON.stringify(warn.mock.calls)).toContain('boom')
+      warn.mockRestore()
       expect(state.values?.body).toBe('Hello')
     })
 

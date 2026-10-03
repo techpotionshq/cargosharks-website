@@ -14,10 +14,14 @@
 
 import { randomBytes } from 'node:crypto'
 
-/** The token as it appears in a subject. Hex, so it survives every mail client. */
-const RFQ_TAG_RE = /\[RFQ:([A-Za-z0-9]{8,40})\]/
+/*
+  The reading half lives in `@qabandi/core` (`thread-sides.ts`), because the
+  enquiry thread needs it too: a mail carrying our RFQ tag is a partner's, and
+  must never be taken for the customer's when a coordinator replies.
+*/
+export { rfqTokenIn } from '@qabandi/core'
 
-/** A fresh RFQ token — hex, matched by `RFQ_TAG_RE`. The web action has its own. */
+/** A fresh RFQ token — hex, matched by `rfqTokenIn`. The web action has its own. */
 export function newRfqToken(): string {
   return randomBytes(12).toString('hex')
 }
@@ -25,18 +29,4 @@ export function newRfqToken(): string {
 /** The tag to stamp into an outbound RFQ subject. */
 export function rfqSubjectTag(token: string): string {
   return `[RFQ:${token}]`
-}
-
-/**
- * The RFQ token a reply carries, or null.
- *
- * Reads the subject first and the body second, because a broker who starts a
- * fresh mail rather than hitting reply still often pastes the subject line — and
- * a forward that mangles the subject can leave the tag only in the quoted body.
- */
-export function rfqTokenIn(subject: string | null, body: string): string | null {
-  const inSubject = subject ? RFQ_TAG_RE.exec(subject) : null
-  if (inSubject) return inSubject[1] ?? null
-  const inBody = RFQ_TAG_RE.exec(body)
-  return inBody ? (inBody[1] ?? null) : null
 }

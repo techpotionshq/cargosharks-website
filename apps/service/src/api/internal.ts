@@ -327,7 +327,8 @@ export async function internalApi(app: FastifyInstance): Promise<void> {
         const { pdf, filename } = await renderInvoicePdf(
           actor,
           request.params.id,
-          locale === 'ar' ? 'ar' : 'en',
+          // Neither named: the invoice's own language decides.
+          locale === 'ar' || locale === 'en' ? locale : undefined,
         )
 
         return (

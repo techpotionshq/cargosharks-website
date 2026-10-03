@@ -9653,7 +9653,7 @@ export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationL
     fromAddress: customer,
     subject: null,
     body,
-    author: null,
+    author: 'customer',
     authorName: null,
     attachments,
   })
@@ -9661,6 +9661,7 @@ export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationL
     branchId: BRANCHES[0]!.id,
     replyChannel: 'whatsapp',
     replyTo: customer,
+    replyRefused: false,
     lastInboundAt: minutesAgo(6),
     messages: [
       inbound('conv-demo-1', minutesAgo(20), 'Good morning 👋'),
