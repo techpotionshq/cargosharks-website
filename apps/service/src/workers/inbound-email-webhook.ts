@@ -72,7 +72,7 @@ export interface InboundEmailWebhookInput {
 
 export interface InboundEmailWebhookResult {
   readonly outcome:
-    'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply' | 'filed'
+    'created' | 'threaded' | 'duplicate' | 'ignored' | 'skipped' | 'rate_reply' | 'filed' | 'held'
   readonly enquiryId?: string | null
   /** Why nothing happened, where nothing did. */
   readonly reason?: string

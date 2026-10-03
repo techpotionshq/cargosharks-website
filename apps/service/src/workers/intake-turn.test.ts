@@ -470,17 +470,23 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
       'from Shanghai to Shuwaikh',
       'furniture',
     ]
-    const results = []
+    const results: Awaited<ReturnType<typeof say>>[] = []
     for (const [i, line] of lines.entries()) results.push(await say(sender, line, 10 * i, ack))
-    const enquiryId = results[0]!.enquiryId!
+    // "Hi" alone opens nothing; the request does, and takes the greeting onto its thread.
+    const enquiryId = results[1]!.enquiryId!
     expect(results.map((r) => r.outcome)).toEqual([
+      'held',
       'created',
       'threaded',
       'threaded',
       'threaded',
-      'threaded',
     ])
-    expect(results.every((r) => r.enquiryId === enquiryId)).toBe(true)
+    expect(results[0]!.enquiryId).toBeNull()
+    expect(results.slice(1).every((r) => r.enquiryId === enquiryId)).toBe(true)
+    const [greeting] = await withActor(sys, (tx) =>
+      tx.select().from(messages).where(eq(messages.externalRef, results[0]!.wamid)),
+    )
+    expect(greeting!.enquiryId).toBe(enquiryId)
 
     // No acknowledgement: the agent answers once the customer stops.
     expect(ack.sent).toHaveLength(0)
@@ -679,15 +685,29 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
   it('answers neither a greeting alone nor anything once a person has replied', async () => {
     const sender = newSender()
     const wa = recorder('whatsapp')
+    const ack = recorder('whatsapp')
     model.calls.length = 0
-    const first = await say(sender, 'السلام عليكم', 0)
+    /*
+      A greeting with nothing open opens nothing: no enquiry, so no
+      conversation, no turn and no model call. It used to open all three, and
+      the turn then decided to say nothing.
+    */
+    const greeting = await say(sender, 'السلام عليكم', 0, ack)
+    expect(greeting.outcome).toBe('held')
+    expect(greeting.enquiryId).toBeNull()
+    const opened = await withActor(sys, (tx) =>
+      tx
+        .select({ id: intakeConversations.id })
+        .from(intakeConversations)
+        .where(eq(intakeConversations.customerAddress, sender)),
+    )
+    expect(opened).toEqual([])
+
+    const first = await say(sender, 'I need 2 containers from Ningbo to Kuwait', 60, ack)
+    expect(first.outcome).toBe('created')
     const enquiryId = first.enquiryId!
     const { id } = await conversationFor(enquiryId)
-
-    const greeting = await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
-    expect(greeting.decision?.reason).toBe('chit_chat')
-    expect(model.calls).toHaveLength(0)
-    expect(wa.sent).toHaveLength(0)
+    expect(ack.sent).toHaveLength(0)
 
     // A coordinator writes to the customer from the product.
     await withActor(sys, (tx) =>
@@ -699,10 +719,9 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
         body: 'Hello, this is Sara from the desk.',
         authorId: STAFF,
         toAddresses: [sender],
-        sentAt: at(200),
+        sentAt: at(100),
       }),
     )
-    await say(sender, 'I need 2 containers from Ningbo to Kuwait', 300)
     const human = await runIntakeTurn(id, at(450), { resolveWhatsApp: wa.resolve })
     expect(human.decision?.reason).toBe('human_active')
     expect(wa.sent).toHaveLength(0)
@@ -714,6 +733,26 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
     )
   })
 
+  it('takes a greeting onto the open enquiry and answers it with nothing', async () => {
+    const sender = newSender()
+    const wa = recorder('whatsapp')
+    const ack = recorder('whatsapp')
+    const first = await say(sender, '2x40HC Ningbo to Shuwaikh, furniture', 0, ack)
+    const { id } = await conversationFor(first.enquiryId!)
+    await runIntakeTurn(id, at(130), { resolveWhatsApp: wa.resolve })
+    const replies = wa.sent.length
+    model.calls.length = 0
+
+    const thanks = await say(sender, 'شكرا 👍', 300, ack)
+    expect(thanks.outcome).toBe('threaded')
+    expect(thanks.enquiryId).toBe(first.enquiryId)
+    const turn = await runIntakeTurn(id, at(430), { resolveWhatsApp: wa.resolve })
+    expect(turn.decision?.reason).toBe('chit_chat')
+    expect(model.calls).toHaveLength(0)
+    expect(wa.sent).toHaveLength(replies)
+    expect(ack.sent).toHaveLength(0)
+  })
+
   /*
     D5: a reply sent from the enquiry screen is the coordinator's, not the
     agent's. It goes out from the branch number, files under their own id and
@@ -722,7 +761,8 @@ describe.skipIf(!enabled)('the intake agent against a database', () => {
   it('stands down after a coordinator replies from the enquiry screen', async () => {
     const sender = newSender()
     const wa = recorder('whatsapp')
-    const first = await say(sender, 'السلام عليكم', 0)
+    // A greeting alone would open nothing; this one asks for a price.
+    const first = await say(sender, 'السلام عليكم، اريد سعر شحن', 0)
     const enquiryId = first.enquiryId!
     const { id } = await conversationFor(enquiryId)
 
