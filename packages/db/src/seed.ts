@@ -821,10 +821,9 @@ async function main(): Promise<void> {
         leaving those alone is right; overwriting a sentence we wrote is not
         the same act.
 
-        The administrator's own wording is safe because it lives on a *branch*
-        row (`branch_id` not null), which wins over the default at resolution
-        time and is never matched by the conflict target below. When a template
-        editor is built, it must write branch rows for exactly this reason.
+        The administrator's own wording is safe: a branch row is never matched
+        by the conflict target, and a default row the template editor has saved
+        carries `customised_at`, which the sync leaves alone.
       */
       await syncNotificationTemplates(db)
 

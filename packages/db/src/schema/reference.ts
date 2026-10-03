@@ -384,6 +384,16 @@ export const notificationTemplates = pgTable(
     /** WhatsApp templates need pre-approval; this is the approved name. */
     providerTemplateName: text('provider_template_name'),
     isActive: boolean('is_active').notNull().default(true),
+    /**
+     * When a person last saved this row from the template editor; null while
+     * it still holds the shipped copy.
+     *
+     * The editor saves a default (`branch_id` null) row in place, and the boot
+     * sync refreshes default rows to the vendor copy. Without this marker the
+     * next deploy silently put an administrator's wording back. The sync
+     * refreshes only rows where this is null.
+     */
+    customisedAt: tsz('customised_at'),
     ...timestamps,
   },
   // `branch_id` is NULL for the default template of an event — see 0006.

@@ -918,7 +918,7 @@ export const saveReferenceRecord = refuseForbidden(async function saveReferenceR
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await tx
           .update(target as any)
-          .set({ ...values, updatedAt: new Date() })
+          .set({ ...values, updatedAt: now })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .where(eq((target as any).id, data.recordId))
       } else {
@@ -1067,6 +1067,11 @@ export const saveNotificationTemplate = refuseForbidden(async function saveNotif
   }
 
   await withActor(session.actor, async (tx) => {
+    /*
+      `customisedAt` is what keeps this wording through a deploy: the boot sync
+      refreshes a default row to the shipped copy only while it is null.
+    */
+    const now = new Date()
     const values = {
       eventKey: data.eventKey,
       channel: 'email' as const,
@@ -1075,12 +1080,13 @@ export const saveNotificationTemplate = refuseForbidden(async function saveNotif
       subject: data.subject,
       body: data.body,
       isActive: data.isActive,
+      customisedAt: now,
     }
 
     if (data.templateId) {
       await tx
         .update(notificationTemplates)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, updatedAt: now })
         .where(eq(notificationTemplates.id, data.templateId))
     } else {
       /*
@@ -1101,7 +1107,13 @@ export const saveNotificationTemplate = refuseForbidden(async function saveNotif
             notificationTemplates.locale,
             notificationTemplates.branchId,
           ],
-          set: { subject: values.subject, body: values.body, isActive: values.isActive },
+          set: {
+            subject: values.subject,
+            body: values.body,
+            isActive: values.isActive,
+            customisedAt: now,
+            updatedAt: now,
+          },
         })
     }
   })

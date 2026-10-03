@@ -32,7 +32,7 @@
  * which reads as a broken mail merge — which is exactly what it is.
  */
 
-import { sql } from 'drizzle-orm'
+import { isNull, sql } from 'drizzle-orm'
 import type { Tx } from './actor'
 import { notificationTemplates } from './schema/index'
 
@@ -1143,9 +1143,12 @@ reference so that we can match it.
  * there, and the dispatcher failed every delivery of it with "no template".
  * The service now calls this at boot, so every deploy carries its own copy.
  *
- * Same upsert, same reasoning as the seed: these rows are vendor copy, and
- * only the default (`branch_id` null) row is written. An administrator's
- * wording lives on a branch row, which this never matches.
+ * Missing default rows are inserted. An existing default row is refreshed to
+ * the copy above only while nobody has edited it (`customised_at` null): a
+ * typo fixed in the vendor copy still reaches an old deployment, but the
+ * template editor saves the default row in place, and an administrator's
+ * sentence must not be put back by the next restart. Branch rows are never
+ * matched by the conflict target.
  */
 export async function syncNotificationTemplates(tx: Tx): Promise<number> {
   await tx
@@ -1169,6 +1172,7 @@ export async function syncNotificationTemplates(tx: Tx): Promise<number> {
         notificationTemplates.branchId,
       ],
       set: { subject: sql`excluded.subject`, body: sql`excluded.body`, updatedAt: new Date() },
+      setWhere: isNull(notificationTemplates.customisedAt),
     })
   return NOTIFICATION_TEMPLATES.length
 }
