@@ -34,7 +34,7 @@
  * caller. Object tagging would have been tidier; R2 does not implement it.
  */
 
-import { createHash, createHmac } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { FileStore, StoredFile } from '../ports/index'
 
 /* -------------------------------------------------------------------------
@@ -262,6 +262,54 @@ export class FileStoreError extends Error {
   }
 }
 
+/**
+ * Something already lives at that key, and `put` will not replace it — NEW-10.
+ *
+ * Every store refuses to overwrite. The bucket holds a customer's live
+ * documents and may be shared by more than one deployment (a staging copy, a
+ * re-seeded database whose references start again at 00001), and an
+ * unconditional PUT let any of them silently replace another's issued bill of
+ * lading. A refusal is loud and recoverable; a replaced original is neither.
+ */
+export class FileExistsError extends FileStoreError {
+  constructor(key: string) {
+    super(`refusing to overwrite ${key}: an object already exists there`, 412)
+    this.name = 'FileExistsError'
+  }
+}
+
+/**
+ * The random part of a storage key: 48 bits, hex, short enough to read.
+ *
+ * Keys stay human-readable (branch, reference, kind, version) because an
+ * operator with bucket access finds a shipment's files by browsing; this is
+ * what makes two deployments, or two runs of one, never name the same object.
+ */
+export function storageNonce(): string {
+  return randomBytes(6).toString('hex')
+}
+
+/**
+ * Put under a key with a fresh random component, retrying a refused one.
+ *
+ * A clash on 48 random bits means something is wrong rather than unlucky, so
+ * three attempts is generous; the third refusal is thrown.
+ */
+export async function putUnique(
+  store: FileStore,
+  keyFor: (nonce: string) => string,
+  body: Buffer,
+  contentType: string,
+): Promise<StoredFile> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await store.put(keyFor(storageNonce()), body, contentType)
+    } catch (error) {
+      if (!(error instanceof FileExistsError) || attempt >= 3) throw error
+    }
+  }
+}
+
 /* -------------------------------------------------------------------------
    The S3 adapter.
    ------------------------------------------------------------------------- */
@@ -369,12 +417,35 @@ export function s3FileStore(options: S3Options): FileStore {
   return {
     key: 's3',
 
-    async put(key: string, body: Buffer, contentType: string): Promise<StoredFile> {
+    async put(
+      key: string,
+      body: Buffer,
+      contentType: string,
+      putOptions?: { readonly ifExists?: 'refuse' | 'keep' },
+    ): Promise<StoredFile> {
       const target = resolveKey(key)
-      await send('PUT', target, {
-        body,
-        headers: { 'content-type': contentType, 'content-length': String(body.byteLength) },
-      })
+      try {
+        /*
+          A conditional write: `If-None-Match: *` makes the store refuse with
+          412 when the key already exists, atomically, which a HEAD-then-PUT
+          could not (two writers both see "absent"). AWS S3 and Cloudflare R2
+          both honour it. A 409 is S3's answer to two conditional writes of one
+          key in flight at once, and means the same thing to the caller.
+        */
+        await send('PUT', target, {
+          body,
+          headers: {
+            'content-type': contentType,
+            'content-length': String(body.byteLength),
+            'if-none-match': '*',
+          },
+        })
+      } catch (error) {
+        const clash =
+          error instanceof FileStoreError && (error.status === 412 || error.status === 409)
+        if (!clash) throw error
+        if (putOptions?.ifExists !== 'keep') throw new FileExistsError(target)
+      }
 
       return {
         storageKey: qualifyKey(options.bucket, target),
@@ -474,10 +545,21 @@ export function memoryFileStore(): FileStore & { readonly contents: Map<string, 
     key: 'memory',
     contents,
 
-    put(key: string, body: Buffer, contentType: string): Promise<StoredFile> {
+    put(
+      key: string,
+      body: Buffer,
+      contentType: string,
+      options?: { readonly ifExists?: 'refuse' | 'keep' },
+    ): Promise<StoredFile> {
       const target = resolve(key)
-      contents.set(target, body)
-      types.set(target, contentType)
+      // The same refusal as the S3 driver's conditional write, so a test of
+      // a caller means the same thing under both.
+      if (contents.has(target)) {
+        if (options?.ifExists !== 'keep') return Promise.reject(new FileExistsError(target))
+      } else {
+        contents.set(target, body)
+        types.set(target, contentType)
+      }
       return Promise.resolve({
         storageKey: qualifyKey('memory', target),
         byteSize: body.byteLength,

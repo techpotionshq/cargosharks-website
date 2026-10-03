@@ -15,6 +15,7 @@
 
 import {
   cargoTotals,
+  customerSide,
   esc,
   escBlock,
   field,
@@ -143,14 +144,22 @@ export function renderPackingListHtml(view: JobDocumentView, locale: DocumentLoc
     })
     .join('')
 
+  // Party records win; otherwise the customer goes on its own side (NEW-8).
+  const customerName = localised(view.customer.nameEn, view.customer.nameAr, locale)
+  const side = customerSide(view)
+  const sides = {
+    shipper: side === 'shipper' ? customerName : '—',
+    consignee: side === 'consignee' ? customerName : '—',
+  }
+
   return page(
     locale,
     `
 ${letterhead(view, t.title, view.reference, locale)}
 
 <div class="grid">
-  ${partyBlock(partyOf(view, 'shipper'), t.shipper, locale, view.customer.nameEn)}
-  ${partyBlock(partyOf(view, 'consignee'), t.consignee, locale)}
+  ${partyBlock(partyOf(view, 'shipper'), t.shipper, locale, sides.shipper)}
+  ${partyBlock(partyOf(view, 'consignee'), t.consignee, locale, sides.consignee)}
 </div>
 
 <div class="row" style="margin-top:4mm">

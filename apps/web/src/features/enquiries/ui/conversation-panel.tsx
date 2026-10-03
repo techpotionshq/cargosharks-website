@@ -94,7 +94,8 @@ export async function ConversationPanel({ enquiryId }: { readonly enquiryId: str
               when={formatDateTime(message.at, locale, timeZone)}
               labels={{
                 channel: channelName(message.channel),
-                from: message.direction === 'inbound' ? t('fromCustomer') : authorLabel(t, message),
+                from: authorLabel(t, message),
+                partnerNote: t('partnerNote'),
                 showQuoted: t('showQuoted'),
                 attachments: t('attachments'),
                 noFile: t('noFile'),
@@ -131,6 +132,10 @@ export async function ConversationPanel({ enquiryId }: { readonly enquiryId: str
             }}
           />
         </div>
+      ) : conversation.replyRefused && canIn(session, 'enquiry.assign', conversation.branchId) ? (
+        <p className="border-t border-line px-4 py-3 text-body-sm text-ink-muted">
+          {t('notCustomer')}
+        </p>
       ) : null}
     </Card>
   )
@@ -140,6 +145,12 @@ function authorLabel(
   t: Awaited<ReturnType<typeof getTranslations<'conversation'>>>,
   message: ConversationMessageLike,
 ): string {
+  if (message.author === 'customer') return t('fromCustomer')
+  if (message.author === 'partner') {
+    return message.authorName
+      ? t('fromPartner', { name: message.authorName })
+      : t('fromPartnerUnnamed')
+  }
   if (message.author === 'agent') return t('byAgent')
   if (message.authorName) return t('byStaff', { name: message.authorName })
   return t('byStaffOutside')
@@ -155,12 +166,14 @@ function MessageItem({
   readonly labels: {
     readonly channel: string
     readonly from: string
+    readonly partnerNote: string
     readonly showQuoted: string
     readonly attachments: string
     readonly noFile: string
   }
 }) {
   const outbound = message.direction === 'outbound'
+  const partner = message.author === 'partner'
   // Only email carries a quoted history worth folding; a WhatsApp ">" is the customer's own.
   const split =
     message.channel === 'email'
@@ -191,9 +204,24 @@ function MessageItem({
       </div>
       <div
         className={`max-w-full min-w-0 rounded-card border px-3 py-2 ${
-          outbound ? 'border-brand/20 bg-brand-soft' : 'border-line bg-surface-sunken'
+          outbound
+            ? 'border-brand/20 bg-brand-soft'
+            : partner
+              ? 'border-caution/30 bg-caution-soft'
+              : 'border-line bg-surface-sunken'
         }`}
       >
+        {partner ? (
+          /*
+            Buy prices are internal. Staff need to read them here, beside the
+            customer's words, but never mistake them for the customer's, and
+            no customer-facing surface reads this table.
+          */
+          <p className="mb-1 flex items-center gap-1.5 text-caption font-medium text-caution">
+            <Icon name="alert" size={14} className="shrink-0" />
+            <span>{labels.partnerNote}</span>
+          </p>
+        ) : null}
         {message.subject && message.channel === 'email' ? (
           <p className="mb-1 text-body-sm font-semibold break-words text-ink" dir="auto">
             {message.subject}

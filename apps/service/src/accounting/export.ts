@@ -730,8 +730,15 @@ export async function buildAccountingExport(
     A preview somebody downloaded and circulated is a file that exists in the
     world; being able to say which one it was is worth the object.
   */
+  /*
+    Content-addressed: the checksum is in the key, so a second write of it is
+    the same bytes, and the store keeps what is there instead of refusing
+    (NEW-10). Re-running an unchanged period depends on that, see below.
+  */
   const storageKey = `accounting/${branch.code}/${request.from}-${request.to}-${checksum.slice(0, 12)}.csv`
-  const stored = await (await fileStore()).put(storageKey, bytes, 'text/csv; charset=utf-8')
+  const stored = await (
+    await fileStore()
+  ).put(storageKey, bytes, 'text/csv; charset=utf-8', { ifExists: 'keep' })
 
   return withActor(actor, async (tx) => {
     /*

@@ -442,7 +442,8 @@
     },
     "documentsPortalHint": "These are ready. Sign in to the customer portal to download them, or ask us and we will send them over.",
     "throttled": "Too many lookups for now.",
-    "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you."
+    "throttledHint": "Try again in {minutes, plural, one {# minute} other {# minutes}}, or contact us and we will look it up for you.",
+    "departureEstimated": "Estimated departure"
   },
   "public": {
     "footerRights": "All rights reserved."
@@ -4410,7 +4411,7 @@
     },
     "read": "{count, plural, one {# message read} other {# messages read}}",
     "modelCalled": "model called",
-    "sendFailed": "Not sent: {error}",
+    "sendFailed": "Not sent: the provider refused the reply, or the channel is not set up. The details are in the service log.",
     "noTurnsYet": "The agent reads the conversation when the customer stops typing.",
     "takeOver": "Take over",
     "takeOverHint": "The agent stops writing to this customer. You answer them yourself.",
@@ -4455,7 +4456,8 @@
       "dimensions": "Dimensions",
       "weightOrVolume": "Weight or volume",
       "weight": "Weight"
-    }
+    },
+    "sendFailedWindow": "Not sent: WhatsApp accepts a free-text reply only within 24 hours of the customer's last message. The customer needs to write first, or an approved template must reopen the conversation."
   },
   "intakeSettings": {
     "eyebrow": "Intake",
@@ -4646,7 +4648,11 @@
     "windowClosed": "WhatsApp refused the reply: it has been more than 24 hours since the customer last wrote. They need to send a message first, or the conversation must be reopened with an approved template.",
     "noThread": "There is no message from the customer to answer on this enquiry, so there is nowhere to send a reply.",
     "channelOff": "This channel is not switched on for this deployment, so the reply was not sent. An administrator can turn it on under Settings › Integrations.",
-    "sendFailed": "The reply was not sent. The provider said: {detail}"
+    "sendFailed": "The reply was not sent: the provider refused it. The details are in the service log. Try again in a moment, or contact the customer another way.",
+    "notCustomer": "Replies from here go only to the customer, and every message on this thread is from a partner, a colleague or this office, so there is nobody to send one to. Contact the customer directly.",
+    "fromPartner": "{name}, partner",
+    "fromPartnerUnnamed": "Partner",
+    "partnerNote": "From a partner, not the customer. Prices here are buy-side and internal; the customer never sees this message."
   },
   "customerContacts": {
     "eyebrow": "People",

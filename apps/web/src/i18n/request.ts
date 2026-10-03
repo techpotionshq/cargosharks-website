@@ -2,8 +2,8 @@
  * Locale resolution — Architecture §11.
  *
  * Bilingual from the first commit, not from R1.3. The locale comes from the
- * signed-in principal's `locale` column, falling back to a cookie for the
- * unauthenticated tracking page, and finally to English.
+ * reader's explicit choice (the switch's cookie), then the signed-in
+ * principal's `locale` column, and finally English (`resolveRequestLocale`).
  *
  * SRS §10.2 argues that retrofitting RTL produces a worse result. The
  * corollary this file exists to protect: R1.3 must be a *translation and
@@ -54,10 +54,36 @@ async function requestTimeZone(cookieValue: string | undefined): Promise<string>
   return resolveTimeZone(cookieValue)
 }
 
+/**
+ * The language a request renders in.
+ *
+ * An explicit choice first: the cookie is written only by the language switch,
+ * so a reader who picked English on an Arabic account keeps English. Then the
+ * signed-in principal's saved `locale`, which is what makes the setting follow
+ * the person: an account created in Arabic used to open in English on every
+ * machine that had not yet been switched by hand (NEW-5). English last.
+ *
+ * Exported for its test, and wrapped like the zone: a session read that throws
+ * costs the reader their saved language, never the page.
+ */
+export async function resolveRequestLocale(
+  cookieValue: string | undefined,
+  readSession: () => Promise<{ principal: { locale: string } } | null> = getSession,
+): Promise<Locale> {
+  if (isLocale(cookieValue)) return cookieValue
+  try {
+    const session = await readSession()
+    const saved = session?.principal.locale
+    if (isLocale(saved)) return saved
+  } catch {
+    // Fall through to the default.
+  }
+  return DEFAULT_LOCALE
+}
+
 export default getRequestConfig(async () => {
   const store = await cookies()
-  const cookieLocale = store.get(LOCALE_COOKIE)?.value
-  const locale: Locale = isLocale(cookieLocale) ? cookieLocale : DEFAULT_LOCALE
+  const locale = await resolveRequestLocale(store.get(LOCALE_COOKIE)?.value)
 
   return {
     locale,

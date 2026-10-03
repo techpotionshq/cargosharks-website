@@ -281,6 +281,19 @@ export function partyOf(view: JobDocumentView, role: PartyView['role']): PartyVi
   return view.parties.find((p) => p.role === role)
 }
 
+/**
+ * Which side of the movement our customer is on, for a party box with no
+ * party record (NEW-8): the consignee on an import, the shipper on an export,
+ * and unknown on a cross-trade, where it may be either and is not guessed.
+ * The templates fell back to the customer as shipper on every job, which
+ * named a Kuwaiti importer as its own overseas supplier.
+ */
+export function customerSide(view: JobDocumentView): 'shipper' | 'consignee' | null {
+  if (view.tradeDirection === 'import') return 'consignee'
+  if (view.tradeDirection === 'export') return 'shipper'
+  return null
+}
+
 export function partiesOf(view: JobDocumentView, role: PartyView['role']): PartyView[] {
   return view.parties.filter((p) => p.role === role)
 }

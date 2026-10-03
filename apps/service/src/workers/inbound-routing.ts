@@ -28,35 +28,6 @@
 const REFERENCE_RE = /\b([A-Z]{2,5})-(ENQ|JOB)-(\d{4})-(\d{5})\b/g
 
 /**
- * Domains nobody may be identified by.
- *
- * A customer contact at `gmail.com` must never make every other Gmail sender
- * that customer. The domain rule below is a convenience for corporate mail and
- * a hazard everywhere else, so the shared providers are named and excluded
- * rather than being left to the "exactly one customer" check — which a small
- * deployment with one Gmail-using customer would pass, wrongly, on its first
- * cold enquiry.
- */
-const PUBLIC_MAIL_DOMAINS = new Set([
-  'gmail.com',
-  'googlemail.com',
-  'hotmail.com',
-  'outlook.com',
-  'live.com',
-  'yahoo.com',
-  'yahoo.co.uk',
-  'icloud.com',
-  'me.com',
-  'aol.com',
-  'proton.me',
-  'protonmail.com',
-  'gmx.com',
-  'yandex.com',
-  'qq.com',
-  '163.com',
-])
-
-/**
  * Every reference this mail quotes, in the order it quotes them.
  *
  * Pure, and exported, because it is the decision most likely to be wrong and
@@ -73,27 +44,12 @@ export function referencesIn(subject: string, body: string): string[] {
   return dedupe([...`${subject}\n${body}`.matchAll(REFERENCE_RE)].map((m) => m[0]))
 }
 
-/**
- * The domain an address may be identified by, or null.
- *
- * Null for a shared provider, and that is the whole point of the function:
- * FR-MD-10 treats an email domain as identifying, which is true of
- * `shipper.com.kw` and catastrophic for `gmail.com` — one customer contact
- * with a Gmail address would otherwise make every cold enquiry from any Gmail
- * user that customer's, complete with their rates.
- */
-export function identifyingDomain(address: string): string | null {
-  const at = address.trim().toLowerCase().lastIndexOf('@')
-  if (at < 1) return null
-
-  const domain = address
-    .trim()
-    .toLowerCase()
-    .slice(at + 1)
-  if (!domain || !domain.includes('.')) return null
-
-  return PUBLIC_MAIL_DOMAINS.has(domain) ? null : domain
-}
+/*
+  The domain rule moved to `@qabandi/core` (`thread-sides.ts`) once the reply
+  rule needed it too: which partner an address belongs to is the same question
+  as which customer, and two copies of the shared-provider list would drift.
+*/
+export { identifyingDomain } from '@qabandi/core'
 
 /**
  * Where an inbound attachment lives in the bucket.
@@ -102,6 +58,11 @@ export function identifyingDomain(address: string): string | null {
  * a customer's documents without joining anything — the same reasoning as
  * `storageKeyFor` in `pdf/store.ts`. The filename is sanitised on the way in:
  * it is the sender's, and a sender may call a file `../../etc/passwd`.
+ *
+ * The `nonce` is what makes it unique (NEW-10). The Message-ID is the
+ * sender's too: a client that reuses one, a re-delivered message, or a second
+ * deployment polling the same mailbox into the same bucket all produced the
+ * same key, and the PUT replaced the first file with the second.
  */
 export function inboundStorageKey(
   branchCode: string,
@@ -109,6 +70,7 @@ export function inboundStorageKey(
   externalId: string,
   filename: string,
   index: number,
+  nonce: string,
 ): string {
   /*
     Dots are collapsed as well as separators replaced, and both are needed.
@@ -126,7 +88,7 @@ export function inboundStorageKey(
       .replace(/\.{2,}/g, '.')
       .slice(0, 100)
   const thread = safe(externalId.replace(/[<>]/g, ''))
-  return `inbound/${safe(branchCode)}/${receivedAt.getUTCFullYear()}/${thread}/${index}-${safe(filename)}`
+  return `inbound/${safe(branchCode)}/${receivedAt.getUTCFullYear()}/${thread}/${index}-${safe(nonce)}-${safe(filename)}`
 }
 
 function dedupe(values: readonly string[]): string[] {

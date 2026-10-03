@@ -1211,15 +1211,15 @@ describe.skipIf(!enabled)('assembling a job’s documents', () => {
 
   describe('storing what was issued', () => {
     describe('where it goes in the bucket', () => {
-      it('keys by shipment and version, so a re-render of one is idempotent', () => {
-        expect(storageKeyFor('KWI', 'KWI-JOB-2026-00042', 'house_bill', 2, 'en')).toBe(
-          'documents/KWI/KWI-JOB-2026-00042/house_bill-v2-en.pdf',
+      it('keys by shipment and version, readable, and unique by its nonce', () => {
+        expect(storageKeyFor('KWI', 'KWI-JOB-2026-00042', 'house_bill', 2, 'en', 'a1b2c3')).toBe(
+          'documents/KWI/KWI-JOB-2026-00042/house_bill-v2-en-a1b2c3.pdf',
         )
       })
 
       it('keeps a slash in a reference out of the path', () => {
-        expect(storageKeyFor('KWI', 'A/B C', 'hbl', 1, 'ar')).toBe(
-          'documents/KWI/A-B-C/hbl-v1-ar.pdf',
+        expect(storageKeyFor('KWI', 'A/B C', 'hbl', 1, 'ar', 'n0')).toBe(
+          'documents/KWI/A-B-C/hbl-v1-ar-n0.pdf',
         )
       })
     })

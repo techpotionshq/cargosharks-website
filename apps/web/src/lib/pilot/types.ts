@@ -148,7 +148,11 @@ export interface DocumentView {
   readonly nameAr: string
   readonly version: number
   readonly releasedAt: Date | null
-  readonly sizeKb: number
+  /**
+   * Null where the reader may see the document but not its asset row: a
+   * customer contact, under whose actor `assets_scope` hides every file.
+   */
+  readonly sizeKb: number | null
 }
 
 export interface JobSummary {
@@ -362,8 +366,10 @@ export interface TrackingResult {
   readonly destinationName: string
   readonly destinationNameAr: string
   readonly vesselOrFlight: string | null
+  /** Planned. Never shown as "Departed": see `features/tracking/journey.ts`. */
   readonly etd: Date | null
   readonly eta: Date | null
+  readonly atd: Date | null
   readonly ata: Date | null
   readonly containers: readonly ContainerView[]
   readonly milestones: readonly MilestoneView[]
@@ -2213,12 +2219,14 @@ export interface ConversationMessageLike {
   readonly subject: string | null
   readonly body: string
   /**
-   * Who wrote an outbound message: the intake agent or another automation
-   * (`agent`), a named member of staff (`staff` with `authorName`), or a person
-   * outside the product, from their own phone (`staff` with no name).
-   * Null on inbound.
+   * Which side wrote it (NEW-4): the customer; a partner, such as an agent's
+   * rate reply with buy prices (`authorName` the partner's name, where known);
+   * the intake agent or another automation (`agent`); or staff, a named person
+   * (`authorName`) or one outside the product, from their own phone (no name).
+   * Inbound is not the customer by default: rate replies are filed on the
+   * enquiry they price.
    */
-  readonly author: 'agent' | 'staff' | null
+  readonly author: 'customer' | 'partner' | 'agent' | 'staff'
   readonly authorName: string | null
   readonly attachments: readonly ConversationAttachmentLike[]
 }
@@ -2234,6 +2242,12 @@ export interface EnquiryConversationLike {
    */
   readonly replyChannel: 'whatsapp' | 'email' | null
   readonly replyTo: string | null
+  /**
+   * True when the thread has messages but none from anyone a reply may reach:
+   * only an agent's rate reply, a colleague, or the office itself (NEW-1). The
+   * panel says why there is no box rather than offering one to the agent.
+   */
+  readonly replyRefused: boolean
   /**
    * When the customer last wrote on WhatsApp. Meta refuses free text more than
    * 24 hours after it, so the panel can warn before the send fails.

@@ -94,7 +94,20 @@ export interface StoredFile {
 export interface FileStore {
   /** Which driver answered, for the boot log — as on the other six ports. */
   readonly key: string
-  put(key: string, body: Buffer, contentType: string): Promise<StoredFile>
+  /**
+   * Write a new object. Never overwrites (NEW-10): an existing key is refused
+   * with `FileExistsError`, unless the caller says the key is content-addressed
+   * (`ifExists: 'keep'`), in which case whatever is there is by construction the
+   * same bytes and the existing object is reported as stored. `putUnique` in
+   * `adapters/s3.ts` is the usual way in: it retries a refused key with a
+   * fresh random component.
+   */
+  put(
+    key: string,
+    body: Buffer,
+    contentType: string,
+    options?: { readonly ifExists?: 'refuse' | 'keep' },
+  ): Promise<StoredFile>
   get(key: string): Promise<Buffer>
   /**
    * Time-limited URL, so document bytes never pass through the application.

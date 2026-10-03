@@ -29,7 +29,7 @@
  * invoice is issued by whichever operator `BRAND` selects.
  */
 
-import { dec } from '@qabandi/core'
+import { dec, readInvoiceNote } from '@qabandi/core'
 import { documentBrandCss, PRINT_THEME_ATTR } from './brand'
 
 interface InvoiceLineView {
@@ -56,6 +56,11 @@ export interface InvoiceView {
    */
   readonly amountCredited?: string
   readonly notes: string | null
+  /**
+   * The invoice's own language, which a download that asks for none renders
+   * in. Optional so a view built without it renders in English, as before.
+   */
+  readonly language?: DocumentLocale
   readonly customer: { readonly nameEn: string; readonly nameAr: string | null }
   readonly branch: {
     readonly legalNameEn: string
@@ -130,6 +135,7 @@ const STRINGS = {
     balance: 'Balance due',
     trn: 'Tax registration',
     draft: 'DRAFT — not a valid tax invoice',
+    billedFrom: 'Billed from',
   },
   ar: {
     title: 'فاتورة ضريبية',
@@ -148,6 +154,7 @@ const STRINGS = {
     balance: 'الرصيد المستحق',
     trn: 'الرقم الضريبي',
     draft: 'مسودة — ليست فاتورة ضريبية صالحة',
+    billedFrom: 'مفوترة من',
   },
 } as const
 
@@ -155,6 +162,17 @@ export function renderInvoiceHtml(invoice: InvoiceView, locale: DocumentLocale):
   const t = STRINGS[locale]
   const dir = locale === 'ar' ? 'rtl' : 'ltr'
   const money = (value: string): string => esc(formatMoney(value, invoice.currency, locale))
+  /*
+    A job-billed note in this document's language (NEW-6); the reference is
+    isolated left-to-right so an Arabic line does not reverse its groups. A
+    note a person typed prints as typed, in its own direction.
+  */
+  const note = readInvoiceNote(invoice.notes)
+  const noteHtml = !note
+    ? ''
+    : note.kind === 'billedFrom'
+      ? `<div class="notes">${t.billedFrom} <bdi dir="ltr">${esc(note.reference)}</bdi></div>`
+      : `<div class="notes" dir="auto">${esc(note.text)}</div>`
 
   // In decimal, as every other balance: KWD's third place does not survive a float.
   const credited = invoice.amountCredited ?? '0'
@@ -262,6 +280,6 @@ ${draft}
   </tfoot>
 </table>
 
-${invoice.notes ? `<div class="notes">${esc(invoice.notes)}</div>` : ''}
+${noteHtml}
 </html>`
 }
