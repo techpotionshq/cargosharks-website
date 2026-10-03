@@ -139,7 +139,7 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
         'We will price it today.',
         'From my phone',
       ])
-      expect(thread!.messages.map((m) => m.author)).toEqual([null, 'agent', 'staff', 'staff'])
+      expect(thread!.messages.map((m) => m.author)).toEqual(['customer', 'agent', 'staff', 'staff'])
       expect(thread!.messages[2]!.authorName).toBeTruthy()
       expect(thread!.messages[3]!.authorName).toBeNull()
       // No intake conversation: the reply goes back to whoever wrote in, on WhatsApp.
@@ -202,6 +202,8 @@ describe.skipIf(!enabled)('the conversation on an enquiry', () => {
       const thread = await enquiryConversation(bothBranchesActor, id)
 
       expect(thread).toMatchObject({ replyChannel: null, replyTo: null, replyRefused: true })
+      // Labelled as the partner it came from, never as the customer (NEW-4).
+      expect(thread!.messages[0]).toMatchObject({ author: 'partner', authorName: 'Fixture Agent' })
     })
 
     it('answers the customer, not the newer rate reply (NEW-1)', async () => {

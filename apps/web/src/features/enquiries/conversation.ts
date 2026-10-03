@@ -91,26 +91,37 @@ export async function enquiryConversation(
     }
 
     const thread: ConversationMessageLike[] = rows.map((row) => {
-      const outbound = row.direction === 'outbound'
       /*
-        Who wrote it. The system principal is the agent (and the automatic
-        acknowledgement); any other principal is a named person in the product;
-        `staff_authored` with no principal is a person answering from outside
-        it, their own phone or the Kapso inbox. An outbound row with neither
-        was written by an automation that names nobody, so it reads as the
-        system too.
+        Who wrote it, by side (NEW-4), from the same rule the reply is sent by.
+        An agent's rate reply sits on this thread with its buy prices; it reads
+        as the partner it came from, never as "Customer". A person in the
+        product is named; `staff_authored` with no principal is a person
+        answering from outside it, their own phone or the Kapso inbox.
       */
-      const person = outbound && row.authorId !== null && row.authorId !== SYSTEM_PRINCIPAL_ID
+      const person = row.authorId !== null && row.authorId !== SYSTEM_PRINCIPAL_ID
+      const partner = row.partnerId ? sided.partnerNames.get(row.partnerId) : undefined
+      const authorName =
+        row.side === 'partner'
+          ? partner
+            ? locale === 'ar'
+              ? partner.ar || partner.en
+              : partner.en
+            : null
+          : row.side === 'staff' && person
+            ? locale === 'ar'
+              ? row.authorAr || row.authorEn
+              : row.authorEn
+            : null
       return {
         id: row.id,
         channel: row.channel === 'whatsapp' || row.channel === 'email' ? row.channel : 'other',
-        direction: outbound ? 'outbound' : 'inbound',
+        direction: row.direction,
         at: row.at ?? row.createdAt,
         fromAddress: row.fromAddress,
         subject: row.subject,
         body: row.body,
-        author: !outbound ? null : person || row.staffAuthored ? 'staff' : 'agent',
-        authorName: person ? (locale === 'ar' ? row.authorAr || row.authorEn : row.authorEn) : null,
+        author: row.side,
+        authorName,
         attachments: filesOf.get(row.id) ?? [],
       }
     })

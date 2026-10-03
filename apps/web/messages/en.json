@@ -4648,7 +4648,10 @@
     "noThread": "There is no message from the customer to answer on this enquiry, so there is nowhere to send a reply.",
     "channelOff": "This channel is not switched on for this deployment, so the reply was not sent. An administrator can turn it on under Settings › Integrations.",
     "sendFailed": "The reply was not sent: the provider refused it. The details are in the service log. Try again in a moment, or contact the customer another way.",
-    "notCustomer": "Replies from here go only to the customer, and every message on this thread is from a partner, a colleague or this office, so there is nobody to send one to. Contact the customer directly."
+    "notCustomer": "Replies from here go only to the customer, and every message on this thread is from a partner, a colleague or this office, so there is nobody to send one to. Contact the customer directly.",
+    "fromPartner": "{name}, partner",
+    "fromPartnerUnnamed": "Partner",
+    "partnerNote": "From a partner, not the customer. Prices here are buy-side and internal; the customer never sees this message."
   },
   "customerContacts": {
     "eyebrow": "People",

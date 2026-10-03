@@ -2213,12 +2213,14 @@ export interface ConversationMessageLike {
   readonly subject: string | null
   readonly body: string
   /**
-   * Who wrote an outbound message: the intake agent or another automation
-   * (`agent`), a named member of staff (`staff` with `authorName`), or a person
-   * outside the product, from their own phone (`staff` with no name).
-   * Null on inbound.
+   * Which side wrote it (NEW-4): the customer; a partner, such as an agent's
+   * rate reply with buy prices (`authorName` the partner's name, where known);
+   * the intake agent or another automation (`agent`); or staff, a named person
+   * (`authorName`) or one outside the product, from their own phone (no name).
+   * Inbound is not the customer by default: rate replies are filed on the
+   * enquiry they price.
    */
-  readonly author: 'agent' | 'staff' | null
+  readonly author: 'customer' | 'partner' | 'agent' | 'staff'
   readonly authorName: string | null
   readonly attachments: readonly ConversationAttachmentLike[]
 }

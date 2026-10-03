@@ -9653,7 +9653,7 @@ export function pilotEnquiryConversation(now = Date.now()): EnquiryConversationL
     fromAddress: customer,
     subject: null,
     body,
-    author: null,
+    author: 'customer',
     authorName: null,
     attachments,
   })
