@@ -1961,7 +1961,14 @@
     "creditNotesExplain": "Each one is its own numbered document. What they credit is off the balance as surely as a receipt.",
     "creditsInvoice": "Credits invoice",
     "pdf": "PDF (EN)",
-    "pdfAr": "PDF (AR)"
+    "pdfAr": "PDF (AR)",
+    "languageChange": {
+      "open": "Change language",
+      "title": "Change the document language",
+      "description": "The invoice prints in this language. You can change it until the invoice is approved.",
+      "submit": "Save",
+      "done": "Language changed"
+    }
   },
   "partnerDetail": {
     "openJobs": "Shipments with them now",
@@ -4238,7 +4245,8 @@
     "creditAmountNumber": "Enter the amount to credit, in figures.",
     "creditExceedsOwed": "That is more than is still owed on this invoice. At most {creditable} {currency} can be credited.",
     "creditTooPrecise": "This currency does not have that many decimal places.",
-    "openCustomerTerms": "Set the house margin"
+    "openCustomerTerms": "Set the house margin",
+    "invoiceLanguageDraftOnly": "This invoice is no longer a draft, so its language cannot change."
   },
   "validation": {
     "invalidType": "Enter a valid value.",

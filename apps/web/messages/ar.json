@@ -1961,7 +1961,14 @@
     "creditNotesExplain": "كل إشعار مستند مرقّم مستقل، وما يُشعَر به يُخصم من الرصيد كما يُخصم المقبوض.",
     "creditsInvoice": "إشعار دائن للفاتورة",
     "pdf": "PDF (إنجليزي)",
-    "pdfAr": "PDF (عربي)"
+    "pdfAr": "PDF (عربي)",
+    "languageChange": {
+      "open": "تغيير اللغة",
+      "title": "تغيير لغة المستند",
+      "description": "تُطبع الفاتورة بهذه اللغة. يمكنك تغييرها حتى تتم الموافقة على الفاتورة.",
+      "submit": "حفظ",
+      "done": "تم تغيير اللغة"
+    }
   },
   "partnerDetail": {
     "openJobs": "شحنات معهم الآن",
@@ -4238,7 +4245,8 @@
     "creditAmountNumber": "أدخل المبلغ المراد إضافته كإشعار دائن، بالأرقام.",
     "creditExceedsOwed": "هذا أكثر من المبلغ المتبقي على هذه الفاتورة. الحد الأقصى للإشعار الدائن هو {creditable} {currency}.",
     "creditTooPrecise": "هذه العملة لا تحتمل هذا العدد من المنازل العشرية.",
-    "openCustomerTerms": "حدّد هامش الربح"
+    "openCustomerTerms": "حدّد هامش الربح",
+    "invoiceLanguageDraftOnly": "لم تعد هذه الفاتورة مسودة، لذا لا يمكن تغيير لغتها."
   },
   "validation": {
     "invalidType": "أدخل قيمة صالحة.",

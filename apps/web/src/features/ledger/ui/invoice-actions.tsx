@@ -15,7 +15,12 @@ import { can, canIn } from '@/lib/permissions'
 import { loadOptions } from '@/lib/options'
 import { RecordDialog } from '@/ui/record-dialog'
 import { formatMoney } from '@/lib/format'
-import { addInvoiceLine, creditInvoice, setInvoiceStatus } from '../form-actions'
+import {
+  addInvoiceLine,
+  creditInvoice,
+  setInvoiceLanguage,
+  setInvoiceStatus,
+} from '../form-actions'
 
 const MOVES: Partial<
   Record<
@@ -182,6 +187,66 @@ export async function InvoiceLineDialog({ invoiceId }: { readonly invoiceId: str
         submit: t('addLineSubmit'),
         submitting: tc('saving'),
         cancel: tc('cancel'),
+      }}
+    />
+  )
+}
+
+/**
+ * Change a draft's document language.
+ *
+ * A draft from the unbilled register took a language nobody chose and could
+ * not be changed, so a customer who reads Arabic was issued English. Offered
+ * on a draft only, to whoever may edit invoices in its branch; the action
+ * re-checks both.
+ */
+export async function InvoiceLanguageDialog({
+  invoiceId,
+  branchId,
+  status,
+  language,
+}: {
+  readonly invoiceId: string
+  readonly branchId: string
+  readonly status: string
+  readonly language: string
+}) {
+  if (status !== 'draft') return null
+  const session = await requireSession()
+  if (!canIn(session, 'invoice.approve', branchId)) return null
+
+  const [t, tc] = await Promise.all([getTranslations('invoiceDetail'), getTranslations('common')])
+
+  return (
+    <RecordDialog
+      action={setInvoiceLanguage}
+      icon="globe"
+      size="sm"
+      variant="secondary"
+      submitIcon="check"
+      fields={[
+        { kind: 'hidden', name: 'invoiceId', value: invoiceId },
+        {
+          kind: 'select',
+          name: 'language',
+          label: t('language'),
+          span: 12,
+          required: true,
+          defaultValue: language,
+          options: [
+            { value: 'en', label: t('languages.en') },
+            { value: 'ar', label: t('languages.ar') },
+          ],
+        },
+      ]}
+      labels={{
+        open: t('languageChange.open'),
+        title: t('languageChange.title'),
+        description: t('languageChange.description'),
+        submit: t('languageChange.submit'),
+        submitting: tc('saving'),
+        cancel: tc('cancel'),
+        success: t('languageChange.done'),
       }}
     />
   )
