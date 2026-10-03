@@ -31,9 +31,14 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import {
   FREE_TIME_WARNING_DAYS,
+  clockKindWords,
   dec,
   freeTimeExpiresOn,
   freeTimeRemaining,
+  freeTimeRunsOut,
+  fromDb,
+  toCalendarDate,
+  toScale,
   type ClockConfig,
 } from '@qabandi/core'
 import {
@@ -111,6 +116,10 @@ export async function runFreeTimeWarnings(
         .set({ warnedAt: asOf })
         .where(eq(freeTimeClocks.id, row.clock.id))
 
+      const expiresOn = freeTimeExpiresOn(cfg, window, calendar)
+      const runsOut = freeTimeRunsOut(toCalendarDate(asOf, calendar), expiresOn)
+      const kindWords = clockKindWords(row.clock.kind)
+
       await tx.insert(notificationOutbox).values({
         branchId: row.branchId,
         eventKey: 'free_time.expiring',
@@ -122,13 +131,23 @@ export async function runFreeTimeWarnings(
           the hole its own header describes closing.
         */
         customerId: row.customerId,
+        /*
+          Worded here, in both languages, because the template only substitutes.
+          The mail read "28.000000 KWD per day", "بدء احتساب demurrage" and "in 0
+          day(s)" for free time that ran out five days earlier (N7): the raw
+          column, the enum and a count that stops at zero. `daysRemaining` stays
+          on the row as the number the run decided on, for whoever reads it.
+        */
         payload: {
           reference: row.reference,
-          kind: row.clock.kind,
+          kind: kindWords.en,
+          kindAr: kindWords.ar,
           containerNo: row.containerNo ?? '—',
           daysRemaining: String(daysRemaining),
-          expiresOn: freeTimeExpiresOn(cfg, window, calendar),
-          perDiem: row.clock.perDiem,
+          expiresOn,
+          runsOut: runsOut.en,
+          runsOutAr: runsOut.ar,
+          perDiem: atScale(row.clock.perDiem, row.clock.currency),
           currency: row.clock.currency,
         },
       })
@@ -138,6 +157,21 @@ export async function runFreeTimeWarnings(
 
     return { examined: open.length, warned }
   })
+}
+
+/**
+ * A per-diem at its currency's decimals: 28.000 KWD, 75.00 USD.
+ *
+ * A currency the seed table does not know falls back to the stored figure with
+ * its padding trimmed, because one odd clock must not stop every other
+ * container's warning in the same run.
+ */
+function atScale(amount: string, currency: string): string {
+  try {
+    return toScale(fromDb(amount, currency))
+  } catch {
+    return dec(amount).toString()
+  }
 }
 
 /**

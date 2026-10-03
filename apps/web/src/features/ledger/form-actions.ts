@@ -1181,7 +1181,8 @@ export const setInvoiceStatus = refuseForbidden(async function setInvoiceStatus(
         the operator makes, often within minutes, and a customer who receives
         "invoice raised" followed by "invoice voided" learns that the sender's
         accounting is unstable rather than that it is careful. The credit note
-        is itself an invoice and announces itself when *it* is issued.
+        is itself a document and announces itself as `credit_note.issued`
+        (`raiseCreditNote`), with what is still owed.
 
         The number is used rather than the id, because `series_no` is what the
         customer can quote back — and it was allocated immediately above, so it
@@ -1266,6 +1267,7 @@ async function raiseCreditNote(
     .select({
       branchId: invoices.branchId,
       customerId: invoices.customerId,
+      seriesNo: invoices.seriesNo,
       currency: invoices.currency,
       subtotal: invoices.subtotal,
       taxAmount: invoices.taxAmount,
@@ -1396,7 +1398,71 @@ async function raiseCreditNote(
     where id = ${invoiceId}
   `)
 
+  /*
+    FR-NT-01: the customer is told, in this transaction, so a note that rolls
+    back never announces itself. The note is born `credited` and never passes
+    through `issued`, which is the only move that raised `invoice.issued`, so
+    until this a customer learned of their credit from the statement.
+  */
+  await notifyCustomer(tx, {
+    branchId: original.branchId,
+    customerId: original.customerId,
+    eventKey: 'credit_note.issued',
+    invoiceId,
+    currency: original.currency,
+    minorUnits: spec.minorUnits,
+    payload: {
+      seriesNo,
+      invoiceSeriesNo: original.seriesNo ?? '',
+      total: dec(plan.total).toFixed(spec.minorUnits),
+    },
+  })
+
   return { seriesNo, total: plan.total, closes: plan.closes }
+}
+
+/**
+ * Raise a customer notice about one invoice, closing with what is still owed on it.
+ *
+ * Read after the caller has re-derived the invoice, so `outstanding` is the
+ * balance the customer is left with, at the currency's own places: a KWD
+ * balance reads 554.022, not 554.022000 and not 554.02.
+ */
+async function notifyCustomer(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  input: {
+    branchId: string
+    customerId: string
+    eventKey: 'credit_note.issued' | 'payment.received'
+    invoiceId: string
+    currency: string
+    minorUnits: number
+    payload: Record<string, string>
+  },
+): Promise<void> {
+  const [after] = await tx
+    .select({
+      total: invoices.total,
+      amountPaid: invoices.amountPaid,
+      amountCredited: invoices.amountCredited,
+    })
+    .from(invoices)
+    .where(eq(invoices.id, input.invoiceId))
+    .limit(1)
+  const owed = after
+    ? dec(after.total).minus(dec(after.amountPaid)).minus(dec(after.amountCredited))
+    : dec(0)
+  await tx.insert(notificationOutbox).values({
+    branchId: input.branchId,
+    eventKey: input.eventKey,
+    customerId: input.customerId,
+    payload: {
+      ...input.payload,
+      currency: input.currency,
+      outstanding: (owed.isNegative() ? dec(0) : owed).toFixed(input.minorUnits),
+    },
+  })
 }
 
 /** A partial credit the invoice cannot take, with what it can. */
@@ -1781,6 +1847,7 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
       currency: payments.currency,
       customerId: payments.customerId,
       branchId: payments.branchId,
+      receivedOn: payments.receivedOn,
     })
     .from(payments)
     .where(eq(payments.id, paymentId))
@@ -1861,6 +1928,26 @@ async function allocate(tx: any, paymentId: string, invoiceId: string, amount: s
   // Paid-to-date and status re-derived from everything set against it —
   // receipts and agreed set-offs alike (`packages/db/src/settled.ts`).
   await rederiveInvoiceSettlement(tx, invoiceId)
+
+  /*
+    FR-NT-01: the customer is told their money arrived and where the invoice
+    now stands. Raised per allocation, which is per invoice, because that is
+    what the customer can match against their own remittance.
+  */
+  const places = await minorUnits(tx, invoice.currency)
+  await notifyCustomer(tx, {
+    branchId: invoice.branchId,
+    customerId: invoice.customerId,
+    eventKey: 'payment.received',
+    invoiceId,
+    currency: invoice.currency,
+    minorUnits: places,
+    payload: {
+      seriesNo: invoice.seriesNo,
+      amount: dec(amount).toFixed(places),
+      receivedOn: String(payment.receivedOn ?? ''),
+    },
+  })
 }
 
 // --- billing what was earned ----------------------------------------------

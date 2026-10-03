@@ -2289,7 +2289,8 @@
       "packing_list": "Grouped by container, with net weight.",
       "customs_pack": "What the broker would otherwise retype.",
       "air_waybill": "Not negotiable. Names the consignee — no order bills in the air."
-    }
+    },
+    "issueIn": "Issue in {language, select, ar {Arabic} other {English}}"
   },
   "consolidations": {
     "eyebrow": "Groupage",
@@ -2937,6 +2938,12 @@
       },
       "partner": {
         "mail_filed": "A supplier writes in with no bill"
+      },
+      "credit_note": {
+        "issued": "A credit note is issued"
+      },
+      "payment": {
+        "received": "A payment is received"
       }
     },
     "log": "Delivery",
@@ -3003,6 +3010,12 @@
       },
       "partner": {
         "mail_filed": "A known supplier wrote in with nothing to read as a bill."
+      },
+      "credit_note": {
+        "issued": "A credit note has been issued against one of the customer’s invoices."
+      },
+      "payment": {
+        "received": "A customer’s payment has been received and set against an invoice."
       }
     }
   },

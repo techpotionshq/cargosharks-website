@@ -275,6 +275,16 @@ describe.skipIf(!enabled)('the nightly and quarter-hourly schedules', () => {
         (row) => (row.payload as { daysRemaining?: string }).daysRemaining === '0',
       )
       expect(raised.length).toBeGreaterThan(0)
+      /*
+        And worded as lapsed, not "in 0 day(s)" (N7): the last free day was
+        2034-03-02, eighteen days before the run, with the charge named in
+        Arabic rather than as the enum.
+      */
+      const lapsed = raised
+        .map((row) => row.payload as Record<string, string>)
+        .find((p) => p.runsOut === 'ran out 18 days ago')
+      expect(lapsed?.runsOutAr).toBe('انتهى منذ 18 يومًا')
+      expect(lapsed?.kindAr).toBe('الأرضيات')
     })
 
     /** A warning that arrives three nights running gets a mail rule written. */
@@ -306,8 +316,12 @@ describe.skipIf(!enabled)('the nightly and quarter-hourly schedules', () => {
       await runFreeTimeWarnings(at('2034-03-08'))
 
       const payloads = (await warnings()).map((row) => row.payload as Record<string, string>)
-      const mine = payloads.find((p) => p.perDiem === '45.000000')
+      // At the currency's three decimals, not the column's six (N7).
+      const mine = payloads.find((p) => p.perDiem === '45.000')
       expect(mine?.containerNo).toBe('MSCU7781234')
+      // Last free day 2034-03-10, two days after the run.
+      expect(mine?.runsOut).toBe('runs out in 2 days')
+      expect(mine?.runsOutAr).toBe('ينتهي خلال يومين')
       expect(mine?.currency).toBe('KWD')
       expect(mine?.expiresOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
       expect(mine?.reference).toContain('SCH-JOB-')

@@ -404,6 +404,36 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
       expect(row.status).toBe('paid')
     })
 
+    /*
+      The customer is told their money arrived, and what is left (FR-NT-01).
+      Nothing was raised for a receipt before, so a customer heard of it only
+      from the statement.
+    */
+    it('tells the customer what was received and what is still owed', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const [issued] = await withActor(actor, (tx) =>
+        tx.select({ no: invoices.seriesNo }).from(invoices).where(eq(invoices.id, invoiceId)),
+      )
+
+      await recordPayment({}, receiptFor(invoiceId, { amount: '60.000' }))
+
+      const events = await withActor(actor, (tx) =>
+        tx.execute(
+          sql`select payload, customer_id from notification_outbox
+               where branch_id = ${BRANCH}::uuid and event_key = 'payment.received'
+                 and payload->>'seriesNo' = ${issued!.no}`,
+        ),
+      )
+      expect(events.rows).toHaveLength(1)
+      const row = events.rows[0] as { payload: Record<string, string>; customer_id: string }
+      expect(row.customer_id).toBe(CUSTOMER)
+      expect(row.payload).toMatchObject({
+        amount: '60.000',
+        currency: 'KWD',
+        outstanding: '40.000',
+      })
+    })
+
     it('records a receipt with no invoice attached', async () => {
       const state = await recordPayment(
         {},
@@ -521,6 +551,29 @@ describe.skipIf(!enabled)('ledger money mutations', () => {
         tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, note!.id)),
       )
       expect(lines.map((l) => Number(l.amount))).toEqual([40])
+    })
+
+    /* And the credit note, which is born credited and so never raised `invoice.issued`. */
+    it('tells the customer about a credit note, the invoice it credits and what is left', async () => {
+      const invoiceId = await issuedInvoice('100.000')
+      const [issued] = await withActor(actor, (tx) =>
+        tx.select({ no: invoices.seriesNo }).from(invoices).where(eq(invoices.id, invoiceId)),
+      )
+
+      await creditInvoice({}, form({ invoiceId, amount: '25.000' }))
+
+      const events = await withActor(actor, (tx) =>
+        tx.execute(
+          sql`select payload from notification_outbox
+               where branch_id = ${BRANCH}::uuid and event_key = 'credit_note.issued'
+                 and payload->>'invoiceSeriesNo' = ${issued!.no}`,
+        ),
+      )
+      expect(events.rows).toHaveLength(1)
+      const payload = (events.rows[0] as { payload: Record<string, string> }).payload
+      expect(payload).toMatchObject({ total: '25.000', currency: 'KWD', outstanding: '75.000' })
+      expect(payload.seriesNo).toBeTruthy()
+      expect(payload.seriesNo).not.toBe(issued!.no)
     })
 
     it('refuses to settle a credited invoice', async () => {

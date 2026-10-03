@@ -449,3 +449,56 @@ export function freeTimeExpiresOn(
     ? addWorkingDays(addCalendarDays(start, -1), cfg.freeDays, calendar)
     : addCalendarDays(start, cfg.freeDays - 1)
 }
+
+/** What a free-time clock is called in a sentence, in each language. */
+const CLOCK_KIND_WORDS: Readonly<Record<string, { readonly en: string; readonly ar: string }>> = {
+  // The Arabic the job screen already uses (`job.clockKinds`), with the article
+  // a sentence needs: "بدء احتساب الأرضيات".
+  demurrage: { en: 'demurrage', ar: 'الأرضيات' },
+  detention: { en: 'detention', ar: 'التأخير' },
+  storage: { en: 'storage', ar: 'التخزين' },
+}
+
+export function clockKindWords(kind: string): { readonly en: string; readonly ar: string } {
+  return CLOCK_KIND_WORDS[kind] ?? { en: kind, ar: kind }
+}
+
+/**
+ * "runs out in 2 days", "runs out today", "ran out 5 days ago", in both languages.
+ *
+ * The warning mail said "in 0 day(s)" for free time that had run out five days
+ * earlier (N7), because `freeTimeRemaining` stops at zero and a clock entered
+ * late is warned once, already lapsed. So the sentence is built from the signed
+ * distance to the last free day instead, and worded past or future.
+ *
+ * The plural is the CLDR category `Intl.PluralRules` gives, the rule ICU uses,
+ * because Arabic has six forms and "{n} يوم" is right for almost none of them:
+ * يوم واحد، يومين، 3 أيام، 11 يومًا، 100 يوم. The template carries a merge field,
+ * not a message format, because templates are rows an administrator edits.
+ */
+export function freeTimeRunsOut(
+  today: CalendarDate,
+  lastFreeDay: CalendarDate,
+): { readonly en: string; readonly ar: string } {
+  const offset = calendarDaysBetween(today, lastFreeDay)
+  const n = Math.abs(offset)
+  if (offset === 0) return { en: 'runs out today', ar: 'ينتهي اليوم' }
+  const en = new Intl.PluralRules('en').select(n) === 'one' ? '1 day' : `${n} days`
+  const ar = ((): string => {
+    switch (new Intl.PluralRules('ar').select(n)) {
+      case 'one':
+        return 'يوم واحد'
+      case 'two':
+        return 'يومين'
+      case 'few':
+        return `${n} أيام`
+      case 'many':
+        return `${n} يومًا`
+      default:
+        return `${n} يوم`
+    }
+  })()
+  return offset > 0
+    ? { en: `runs out in ${en}`, ar: `ينتهي خلال ${ar}` }
+    : { en: `ran out ${en} ago`, ar: `انتهى منذ ${ar}` }
+}

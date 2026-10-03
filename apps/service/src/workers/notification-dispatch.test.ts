@@ -49,6 +49,7 @@ const {
   branches,
   customerContacts,
   customers,
+  invoices,
   notificationChannelSettings,
   notificationDeliveries,
   notificationOutbox,
@@ -703,6 +704,75 @@ describe.skipIf(!enabled)('the notification dispatcher', () => {
       const rows = await deliveriesFor(id)
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every((d) => d.status === 'sent')).toBe(true)
+    })
+  })
+
+  /*
+    A notice held overnight is re-read before it goes. Quiet hours once sent
+    "Invoice KWI-2026-00004 has been issued" the morning after it was paid.
+  */
+  describe('a held notice that no longer applies', () => {
+    const MORNING = new Date('2033-05-11T05:00:00Z')
+
+    async function invoiceIn(status: 'issued' | 'paid'): Promise<string> {
+      seq += 1
+      const seriesNo = `NDK-${RUN}-${seq}`
+      await withActor(systemActor, (tx) =>
+        tx.insert(invoices).values({
+          branchId: BRANCH,
+          customerId: CUSTOMER,
+          seriesNo,
+          status,
+          currency: 'KWD',
+          total: '100',
+          amountPaid: status === 'paid' ? '100' : '0',
+        }),
+      )
+      return seriesNo
+    }
+
+    async function heldNotice(seriesNo: string): Promise<string> {
+      const [row] = await withActor(systemActor, (tx) =>
+        tx
+          .insert(notificationOutbox)
+          .values({
+            branchId: BRANCH,
+            eventKey: 'invoice.issued',
+            customerId: CUSTOMER,
+            payload: { seriesNo, total: '100.000', currency: 'KWD', dueOn: '' },
+          })
+          .returning({ id: notificationOutbox.id }),
+      )
+      await runNotificationDispatch({ outboxId: row!.id }, NIGHT)
+      return row!.id
+    }
+
+    it('drops it with the reason when the invoice was paid overnight', async () => {
+      const channel = fakeChannel({ accepted: true })
+      registerChannel(channel)
+      const seriesNo = await invoiceIn('paid')
+      const id = await heldNotice(seriesNo)
+
+      await flushOnly(MORNING)
+
+      // The contact who opted out of invoice notices is suppressed for that.
+      const [row] = (await deliveriesFor(id)).filter((d) => d.toAddress === CONTACT_EMAIL)
+      expect(row?.status).toBe('suppressed')
+      expect(row?.suppressedReason).toBe(`no longer applies: invoice ${seriesNo} is paid`)
+      expect(channel.sent).toEqual([])
+    })
+
+    it('still sends it when the invoice is still open', async () => {
+      const channel = fakeChannel({ accepted: true })
+      registerChannel(channel)
+      const seriesNo = await invoiceIn('issued')
+      const id = await heldNotice(seriesNo)
+
+      await flushOnly(MORNING)
+
+      const [row] = (await deliveriesFor(id)).filter((d) => d.toAddress === CONTACT_EMAIL)
+      expect(row?.status).toBe('sent')
+      expect(channel.sent.map((m) => m.to)).toContain(CONTACT_EMAIL)
     })
   })
 

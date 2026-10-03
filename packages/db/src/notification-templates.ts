@@ -191,19 +191,21 @@ It needs a response now.
     arrives in a coordinator's inbox alongside forty others and the decision —
     move it or pay — is made from the subject or not at all.
 
-    `{{daysRemaining}}` is zero on the day free time runs out, and the wording
-    has to survive that without reading like a bug. "0 day(s) remaining" is
-    ugly but honest; a template that says "expires in 0 days" is worse.
+    The day count is worded by the worker (`runsOut`, `runsOutAr`), past or
+    future with the plural each language needs: "ran out 5 days ago", "ينتهي
+    خلال يومين". `{{daysRemaining}}` stopped at zero, so a clock entered after
+    its free time had lapsed read "in 0 day(s)" (N7). The charge kind arrives
+    worded in each language too, and the per-diem at its currency's decimals.
   */
   t(
     'free_time.expiring',
     'en',
-    '{{kind}} starts on {{containerNo}} in {{daysRemaining}} day(s) — {{reference}}',
+    '{{reference}}: free time on {{containerNo}} {{runsOut}}, then {{kind}} at {{perDiem}} {{currency}} a day',
     `
 Hello {{recipientName}}
 
-Free time on container {{containerNo}} ({{reference}}) runs out on {{expiresOn}} —
-{{daysRemaining}} day(s) from today.
+Free time on container {{containerNo}} ({{reference}}) {{runsOut}}; the last free
+day is {{expiresOn}}.
 
 After that the {{kind}} clock charges {{perDiem}} {{currency}} per day, and the
 charge is ours until the container moves.
@@ -214,15 +216,83 @@ charge is ours until the container moves.
   t(
     'free_time.expiring',
     'ar',
-    'بدء احتساب {{kind}} على الحاوية {{containerNo}} خلال {{daysRemaining}} يوم — {{reference}}',
+    '{{reference}}: وقت السماح للحاوية {{containerNo}} {{runsOutAr}}، ثم {{kindAr}} بواقع {{perDiem}} {{currency}} يومياً',
     `
 مرحباً {{recipientName}}
 
-ينتهي وقت السماح للحاوية {{containerNo}} ({{reference}}) بتاريخ {{expiresOn}}،
-أي خلال {{daysRemaining}} يوم من اليوم.
+وقت السماح للحاوية {{containerNo}} ({{reference}}) {{runsOutAr}}، وآخر يوم مجاني هو
+{{expiresOn}}.
 
-وبعد ذلك يبدأ احتساب {{kind}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع هذه
+وبعد ذلك يبدأ احتساب {{kindAr}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع هذه
 التكلفة علينا إلى أن تتحرك الحاوية.
+
+{{senderName}}
+`,
+  ),
+
+  /*
+    credit_note.issued and payment.received (customer).
+
+    Both close with what is still owed, because that is the number a customer
+    acts on: a reduction or a receipt that does not say where the account now
+    stands sends them to the statement to work it out.
+  */
+  t(
+    'credit_note.issued',
+    'en',
+    'Credit note {{seriesNo}} against invoice {{invoiceSeriesNo}}',
+    `
+Hello {{recipientName}}
+
+We have issued credit note {{seriesNo}} for {{total}} {{currency}} against invoice
+{{invoiceSeriesNo}}.
+
+The amount still due on invoice {{invoiceSeriesNo}} is now {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'credit_note.issued',
+    'ar',
+    'إشعار دائن {{seriesNo}} على الفاتورة {{invoiceSeriesNo}}',
+    `
+مرحباً {{recipientName}}
+
+أصدرنا لكم إشعاراً دائناً رقم {{seriesNo}} بمبلغ {{total}} {{currency}} على الفاتورة
+{{invoiceSeriesNo}}.
+
+وأصبح المبلغ المستحق على الفاتورة {{invoiceSeriesNo}} الآن {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'payment.received',
+    'en',
+    'Payment received for invoice {{seriesNo}}',
+    `
+Hello {{recipientName}}
+
+Thank you. We have received {{amount}} {{currency}} on {{receivedOn}} and set it
+against invoice {{seriesNo}}.
+
+The amount still due on invoice {{seriesNo}} is now {{outstanding}} {{currency}}.
+
+{{senderName}}
+`,
+  ),
+  t(
+    'payment.received',
+    'ar',
+    'استلام دفعة للفاتورة {{seriesNo}}',
+    `
+مرحباً {{recipientName}}
+
+شكراً لكم. استلمنا مبلغ {{amount}} {{currency}} بتاريخ {{receivedOn}} وخصمناه من
+الفاتورة {{seriesNo}}.
+
+وأصبح المبلغ المستحق على الفاتورة {{seriesNo}} الآن {{outstanding}} {{currency}}.
 
 {{senderName}}
 `,
@@ -993,14 +1063,14 @@ reference so that we can match it.
   ia(
     'free_time.expiring',
     'en',
-    '{{kind}} on {{containerNo}} in {{daysRemaining}} day(s) — {{reference}}',
-    'Free time ends {{expiresOn}}. After that {{perDiem}} {{currency}} per day, ours until the container moves.',
+    '{{reference}}: free time on {{containerNo}} {{runsOut}}',
+    'Last free day {{expiresOn}}. After that {{kind}} at {{perDiem}} {{currency}} per day, ours until the container moves.',
   ),
   ia(
     'free_time.expiring',
     'ar',
-    'بدء احتساب {{kind}} على {{containerNo}} خلال {{daysRemaining}} يوم — {{reference}}',
-    'ينتهي وقت السماح بتاريخ {{expiresOn}}، وبعده {{perDiem}} {{currency}} عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
+    '{{reference}}: وقت السماح للحاوية {{containerNo}} {{runsOutAr}}',
+    'آخر يوم مجاني {{expiresOn}}، وبعده {{kindAr}} بواقع {{perDiem}} {{currency}} عن كل يوم، وتقع علينا حتى تتحرك الحاوية.',
   ),
 
   // --- rate_card.expiring ---------------------------------------------------

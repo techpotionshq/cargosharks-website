@@ -286,7 +286,10 @@ const {
   inboundWebhookEvents,
   messages,
   notificationOutbox,
+  partnerContacts,
+  partners,
   principals,
+  rateRequests,
   systemActor,
   whatsappNumbers,
   withActor,
@@ -304,6 +307,10 @@ const KNOWN_PHONE = '96599554433'
 const LOCAL_CUSTOMER = '00000000-0000-7000-8000-0000000aa004'
 const LOCAL_PHONE_STORED = '6612 3478'
 const LOCAL_PHONE_E164 = '96566123478'
+/** An overseas agent whose contact phone was typed with punctuation (N4). */
+const PARTNER = '00000000-0000-7000-8000-0000000aa005'
+const PARTNER_PHONE_STORED = '+1 (555) 019-8765'
+const PARTNER_PHONE_E164 = '15550198765'
 
 const sys = systemActor()
 const RUN = process.hrtime.bigint().toString(36).toUpperCase().slice(-6)
@@ -451,6 +458,34 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
           isPrimary: true,
         })
       }
+
+      await tx
+        .insert(partners)
+        .values({
+          id: PARTNER,
+          code: 'AGT-INBOUND-WA',
+          type: 'agent',
+          legalNameEn: 'Inbound WhatsApp Fixture Agent',
+        })
+        .onConflictDoNothing()
+      const partnerContact = await tx
+        .select({ id: partnerContacts.id })
+        .from(partnerContacts)
+        .where(eq(partnerContacts.partnerId, PARTNER))
+        .limit(1)
+      if (partnerContact.length === 0) {
+        await tx.insert(partnerContacts).values({
+          partnerId: PARTNER,
+          nameEn: 'Pricing Desk',
+          email: 'pricing@wa-agent.test',
+          phone: PARTNER_PHONE_STORED,
+        })
+      }
+      // An earlier run's open request would make this run's match ambiguous.
+      await tx
+        .update(rateRequests)
+        .set({ status: 'expired' })
+        .where(and(eq(rateRequests.partnerId, PARTNER), eq(rateRequests.branchId, BRANCH)))
 
       await tx
         .insert(whatsappNumbers)
@@ -869,6 +904,84 @@ describe.skipIf(!enabled)('inbound whatsapp against a database', () => {
 
     expect(result.outcome).toBe('created')
     expect(ack.sent).toHaveLength(0)
+  })
+
+  /*
+    N4: a partner writing on WhatsApp is not a customer enquiry. Matched on the
+    contact phone the way a customer is, it is filed to the partner with no
+    enquiry and no intake turn, or read as the rate reply when exactly one
+    request to them is open.
+  */
+  it('files a partner’s WhatsApp to the partner, never as an enquiry', async () => {
+    const result = await runInboundWhatsAppWebhook(
+      {
+        eventId: await fileReceipt(
+          from(PARTNER_PHONE_E164, `wamid.${RUN}-P0`, `About your request ${RUN}`, 600),
+        ),
+      },
+      RUN_AT,
+      noEnqueue,
+      capturingChannel().resolve,
+    )
+
+    expect(result.outcome).toBe('filed')
+    expect(result.enquiryId).toBeNull()
+    const [row] = await withActor(sys, (tx) =>
+      tx
+        .select({ enquiryId: messages.enquiryId, partnerId: messages.partnerId })
+        .from(messages)
+        .where(eq(messages.externalRef, `wamid.${RUN}-P0`)),
+    )
+    expect(row).toEqual({ enquiryId: null, partnerId: PARTNER })
+  })
+
+  it('reads a partner’s WhatsApp as the reply to their one open rate request', async () => {
+    const opened = await runInboundWhatsAppWebhook(
+      { eventId: await fileReceipt(from(senderNo(601), `wamid.${RUN}-P1`, `Lane ${RUN}`, 601)) },
+      RUN_AT,
+      noEnqueue,
+      capturingChannel().resolve,
+    )
+    const token = `wa${RUN}p1`.toLowerCase().padEnd(12, '0')
+    const [request] = await withActor(sys, (tx) =>
+      tx
+        .insert(rateRequests)
+        .values({
+          branchId: BRANCH,
+          enquiryId: opened.enquiryId!,
+          partnerId: PARTNER,
+          status: 'sent',
+          token,
+        })
+        .returning({ id: rateRequests.id }),
+    )
+
+    const queued: { rateRequestId: string; messageId: string }[] = []
+    const result = await runInboundWhatsAppWebhook(
+      {
+        eventId: await fileReceipt(
+          from(PARTNER_PHONE_E164, `wamid.${RUN}-P2`, 'USD 3,100 all in, valid 14 days', 602),
+        ),
+      },
+      RUN_AT,
+      noEnqueue,
+      capturingChannel().resolve,
+      undefined,
+      [],
+      undefined,
+      async (input) => void queued.push(input),
+    )
+
+    expect(result.outcome).toBe('rate_reply')
+    expect(result.enquiryId).toBe(opened.enquiryId)
+    expect(queued.map((q) => q.rateRequestId)).toEqual([request!.id])
+    const [after] = await withActor(sys, (tx) =>
+      tx
+        .select({ status: rateRequests.status })
+        .from(rateRequests)
+        .where(eq(rateRequests.id, request!.id)),
+    )
+    expect(after!.status).toBe('responded')
   })
 
   /* V13: most Kuwaiti contacts are typed without the country code. */

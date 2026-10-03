@@ -833,6 +833,36 @@ export const ENQUIRY_EXTRACTION_SCHEMA: Record<string, unknown> = {
   },
 }
 
+/**
+ * Whether a message plainly describes a shipment, so that reading no facts in
+ * it is a bad read rather than a correct silence.
+ *
+ * The live case: "we need LCL rates from Hamburg to Shuwaikh please. Office
+ * furniture, 6 pallets, 2.4 tons, about 8 cbm, FCA Hamburg, ready 15 October"
+ * came back `{"fields":[],"confidence":0.0}` in thirteen tokens, a valid answer
+ * to the schema that the same prompt answered with ten facts on the next call.
+ * Silence is a correct answer for "Hi" or "thanks", and the reader is told so;
+ * for a message carrying a quantity with a freight unit, a mode or a lane it
+ * is a failure worth one more read. Deliberately coarse: a false positive costs
+ * one cheap call, a false negative leaves the coordinator where they were.
+ */
+export function namesAShipment(text: string): boolean {
+  const signals = [
+    // A quantity in a freight unit: "8 cbm", "2.4 tons", "6 pallets", "2x40HC".
+    /\d[\d.,]*\s*(?:cbm|m3|m³|kgs?|kilos?|tons?|tonnes?|mt|pallets?|cartons?|ctns?|pkgs?|packages?|pcs|boxes|crates|containers?)\b/i,
+    /\b\d+\s*[x×]\s*(?:20|40|45)/i,
+    /\b(?:20|40|45)\s*(?:'|ft|gp|hc|dv|rf|hq)\b/i,
+    // A mode by name.
+    /\b(?:lcl|fcl|air ?freight|sea ?freight|by (?:air|sea|road)|groupage|consol)\b/i,
+    // A lane: "from Hamburg to Shuwaikh", "Shanghai to Shuwaikh".
+    /\bfrom\s+\S+.{0,40}?\bto\s+\S+/i,
+    // The same in Arabic: a lane, a container, a weight or a volume.
+    /من\s+\S+.{0,40}?إلى\s+\S+/,
+    /حاوي|طن|كيلو|كغ|متر مكعب|طبلي|بالت|شحن (?:جوي|بحري)/,
+  ]
+  return signals.some((re) => re.test(text))
+}
+
 export interface ExtractedEnquiry {
   readonly fields: readonly FieldProposal[]
   readonly confidence: Confidence
