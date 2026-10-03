@@ -1,5 +1,5 @@
 /**
- * Accept or decline — the customer's two answers to a sent quotation (D12).
+ * Accept or decline: the customer's two answers to a sent quotation (D12).
  *
  * Rendered only while the offer stands: sent, current, and inside its
  * validity day. The server checks all three again under the customer's own

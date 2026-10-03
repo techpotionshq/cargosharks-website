@@ -2344,7 +2344,7 @@ export function pilotPortalShipments(
 }
 
 /*
-  The portal customer's quotations and invoices (D12) — the registers' own
+  The portal customer's quotations and invoices (D12), the registers' own
   rows, filtered the way `quotes_customer_reads` and `invoices_customer_reads`
   filter a real database: this customer only, sent and current quotations,
   issued invoices. Derived rather than restated, so the portal and the staff

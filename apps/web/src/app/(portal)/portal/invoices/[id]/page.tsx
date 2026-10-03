@@ -1,5 +1,5 @@
 /**
- * One of the customer's invoices or credit notes — `FR-CP-09`, D12.
+ * One of the customer's invoices or credit notes, `FR-CP-09`, D12.
  *
  * The lines, the totals and what is left to pay, in the invoice's own
  * currency. A credit note says so in its header and names the invoice it

@@ -1,5 +1,5 @@
 /**
- * The customer portal's reads — `FR-CP-03`, `FR-CP-04`, `FR-CP-07`, `FR-CP-09`.
+ * The customer portal's reads, `FR-CP-03`, `FR-CP-04`, `FR-CP-07`, `FR-CP-09`.
  *
  * The same tables and the same shapes as the operations board, run under a
  * different principal. A customer contact sees their own shipments because the
@@ -148,7 +148,7 @@ const isCustomer = (actor: Actor): boolean => actor.type === 'customer_contact'
 /** What a customer may hold: an offer that was sent, and is still the current version. */
 const OFFERED = sql`q.status in ('sent', 'accepted', 'rejected', 'expired') and q.superseded_by_id is null`
 
-/** Issued documents only — never a draft, an approved-but-unissued or a void invoice. */
+/** Issued documents only, never a draft, an approved-but-unissued or a void invoice. */
 const ISSUED = sql`i.status in ('issued', 'part_paid', 'paid', 'credited')`
 
 function quoteColumns(locale: 'en' | 'ar') {
@@ -225,7 +225,7 @@ export async function getPortalQuote(
 function invoiceColumns() {
   /*
     What is owed, worked out by PostgreSQL in `numeric` and handed over as
-    text — never a JS number, since the third decimal of a KWD balance does
+    text, never a JS number, since the third decimal of a KWD balance does
     not survive a float. A credit note owes nothing; it is what reduced the
     balance of the invoice it names.
   */

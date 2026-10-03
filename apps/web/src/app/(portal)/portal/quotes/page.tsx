@@ -1,5 +1,5 @@
 /**
- * The customer's quotations — `FR-CP-07`, D12.
+ * The customer's quotations, `FR-CP-07`, D12.
  *
  * Every offer we sent them and what became of it. The same cards as the
  * shipments list beside it, so the portal reads as one place: reference and
@@ -7,7 +7,7 @@
  *
  * Nothing here filters by customer. The read runs as the contact, and
  * `quotes_customer_reads` is what keeps it to their company's sent, current
- * quotations — a draft or a superseded version is not hidden by this page,
+ * quotations, a draft or a superseded version is not hidden by this page,
  * it is not in the result.
  */
 
@@ -40,7 +40,7 @@ export default async function PortalQuotesPage() {
   const t = await getTranslations('portalQuotes')
   const tMode = await getTranslations('mode')
   // Validity is a day in Kuwait, where the offer was made, whatever zone the
-  // reader's browser is in — the rule the server refuses an answer by.
+  // reader's browser is in, the rule the server refuses an answer by.
   const today = todayIn()
 
   const label = {

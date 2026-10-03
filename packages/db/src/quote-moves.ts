@@ -131,8 +131,8 @@ export async function moveQuote(
   /*
     A lapsed quotation is not an offer anyone can send or accept (S9). The
     validity is a calendar day, compared in the branch's zone, so the last
-    valid day is valid all day. Rejecting one stays allowed for staff — a
-    customer may well have said no to an offer that ran out — but the portal
+    valid day is valid all day. Rejecting one stays allowed for staff, a
+    customer may well have said no to an offer that ran out, but the portal
     refuses both answers on an expired offer, and says it has expired.
   */
   const lapsed = current.validUntil !== null && current.validUntil < todayIn()
@@ -181,8 +181,8 @@ export async function moveQuote(
 
     /*
       Sending the quotation is what makes the enquiry `quoted` (S1).
-      Nothing moved it out of `rating` — pricing only ever moved `new` and
-      `assigned` — and `won` is legal only from `quoted`, so an enquiry
+      Nothing moved it out of `rating`, pricing only ever moved `new` and
+      `assigned`, and `won` is legal only from `quoted`, so an enquiry
       that went through an RFQ could be sent, accepted and then never
       closed as won. `rating → quoted` is the machine's own transition,
       gated on the `quote.send` the caller already asserted.
@@ -220,7 +220,8 @@ export async function moveQuote(
         customerAr: current.customerAr || current.customerEn || '',
         total,
         currency: current.currency,
-        ...(status === 'rejected' ? { reason: reason ?? '—' } : {}),
+        // A hyphen when none was given, so the notice's "Reason given" line never ends bare.
+        ...(status === 'rejected' ? { reason: reason ?? '-' } : {}),
       },
     })
   }

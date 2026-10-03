@@ -110,7 +110,7 @@ const customerAContact: Actor = {
   branchIds: [],
   customerId: CUSTOMER_A,
 }
-/** The second company's portal user — D12's "a second customer sees nothing". */
+/** The second company's portal user, D12's "a second customer sees nothing". */
 const customerBContact: Actor = {
   principalId: '00000000-0000-7000-8000-0000000001a5',
   type: 'customer_contact',
@@ -747,7 +747,7 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
 
   /**
    * A customer contact sees their own issued invoice and not the other
-   * customer's — and not their own draft either, since D12: a draft can still
+   * customer's, and not their own draft either, since D12: a draft can still
    * change and has no number, and the portal now reads this table.
    */
   it("scopes invoices to the contact's own customer, issued only", async () => {
@@ -764,7 +764,7 @@ describe.skipIf(!enabled)('RLS negative matrix', () => {
   })
 
   // ------------------------------------------------------------------------
-  // The portal's quotations and invoices — D12
+  // The portal's quotations and invoices, D12
   // ------------------------------------------------------------------------
 
   const visible = async (actor: Actor, table: 'quotes' | 'quote_lines', ids: string[]) => {

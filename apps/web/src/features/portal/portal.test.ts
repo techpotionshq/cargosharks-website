@@ -26,13 +26,32 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: string) => (key: string) => `${namespace}.${key}`,
 }))
 
-const { enquiries, invoiceLines, invoices, notificationOutbox, quoteLines, quotes, withActor } =
-  await import('@qabandi/db')
-const { AWAY_BRANCH, AWAY_CUSTOMER, CUSTOMER, HOME_BRANCH, PRINCIPAL, bothBranchesActor, world } =
+const {
+  auditLog,
+  branches,
+  enquiries,
+  invoiceLines,
+  invoices,
+  notificationOutbox,
+  quoteLines,
+  quotes,
+  withActor,
+  workingCalendars,
+} = await import('@qabandi/db')
+const { AWAY_CUSTOMER, CUSTOMER, PRINCIPAL, bothBranchesActor, world } =
   await import('@/lib/testing/fixtures')
 const { getPortalInvoice, getPortalQuote, listPortalInvoices, listPortalQuotes } =
   await import('./queries')
 const { decidePortalQuote } = await import('./form-actions')
+
+/*
+  A branch of this file's own. The shared fixture branches are counted by the
+  ledger suites (`quoteStatusCounts` expects exactly one rejection at home),
+  and every run here leaves a declined, an accepted and two issued documents
+  behind. Customer scope does not care which branch priced an offer, so
+  nothing this file proves depends on the branch being one of theirs.
+*/
+const PORTAL_BRANCH = '00000000-0000-7000-8000-00000000e101'
 
 const RUN = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 const system = { ...bothBranchesActor, type: 'system' as const }
@@ -176,7 +195,7 @@ async function outboxFor(enquiryId: string) {
       .where(
         and(
           eq(notificationOutbox.enquiryId, enquiryId),
-          eq(notificationOutbox.branchId, HOME_BRANCH),
+          eq(notificationOutbox.branchId, PORTAL_BRANCH),
         ),
       ),
   )
@@ -197,27 +216,48 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
   beforeAll(async () => {
     const built = await world()
     chargeTypeId = built.chargeTypeId
+    await withActor(system, async (tx) => {
+      const [calendar] = await tx
+        .select({ id: workingCalendars.id })
+        .from(workingCalendars)
+        .limit(1)
+      await tx
+        .insert(branches)
+        .values({
+          id: PORTAL_BRANCH,
+          code: 'PTL',
+          legalNameEn: 'Portal Test Branch',
+          legalNameAr: 'فرع اختبار البوابة',
+          country: 'KW',
+          baseCurrency: 'KWD',
+          invoiceSeries: 'PTL',
+          calendarId: calendar!.id,
+        })
+        .onConflictDoNothing()
+    })
 
-    myEnquiry = await enquiryFor(CUSTOMER, HOME_BRANCH)
-    replaced = await quote(myEnquiry, HOME_BRANCH, { status: 'superseded', version: 1 })
-    sent = await quote(myEnquiry, HOME_BRANCH, { status: 'sent', version: 2 })
+    myEnquiry = await enquiryFor(CUSTOMER, PORTAL_BRANCH)
+    replaced = await quote(myEnquiry, PORTAL_BRANCH, { status: 'superseded', version: 1 })
+    sent = await quote(myEnquiry, PORTAL_BRANCH, { status: 'sent', version: 2 })
     await withActor(system, (tx) =>
       tx.update(quotes).set({ supersededById: sent }).where(eq(quotes.id, replaced)),
     )
-    draft = await quote(await enquiryFor(CUSTOMER, HOME_BRANCH), HOME_BRANCH, { status: 'draft' })
+    draft = await quote(await enquiryFor(CUSTOMER, PORTAL_BRANCH), PORTAL_BRANCH, {
+      status: 'draft',
+    })
     // Yesterday in Kuwait: the offer stood all of that day and no longer.
-    lapsed = await quote(await enquiryFor(CUSTOMER, HOME_BRANCH), HOME_BRANCH, {
+    lapsed = await quote(await enquiryFor(CUSTOMER, PORTAL_BRANCH), PORTAL_BRANCH, {
       status: 'sent',
       validUntil: dayFromToday(-1),
     })
-    theirQuote = await quote(await enquiryFor(AWAY_CUSTOMER, AWAY_BRANCH), AWAY_BRANCH, {
+    theirQuote = await quote(await enquiryFor(AWAY_CUSTOMER, PORTAL_BRANCH), PORTAL_BRANCH, {
       status: 'sent',
     })
 
-    myIssued = await invoice(CUSTOMER, HOME_BRANCH, 'issued')
-    myDraftInvoice = await invoice(CUSTOMER, HOME_BRANCH, 'draft')
-    myVoid = await invoice(CUSTOMER, HOME_BRANCH, 'void')
-    theirInvoice = await invoice(AWAY_CUSTOMER, AWAY_BRANCH, 'issued')
+    myIssued = await invoice(CUSTOMER, PORTAL_BRANCH, 'issued')
+    myDraftInvoice = await invoice(CUSTOMER, PORTAL_BRANCH, 'draft')
+    myVoid = await invoice(CUSTOMER, PORTAL_BRANCH, 'void')
+    theirInvoice = await invoice(AWAY_CUSTOMER, PORTAL_BRANCH, 'issued')
   })
 
   describe('reads', () => {
@@ -314,6 +354,17 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
       const events = await outboxFor(myEnquiry)
       expect(events.map((e) => e.eventKey)).toEqual(['quote.accepted'])
       expect(events[0]?.payload).toMatchObject({ total: '1150.500', currency: 'KWD' })
+
+      // The audit trigger stamps the contact, not a system or staff principal:
+      // FR-CP-07's "who accepted, when, from where".
+      const trail = await withActor(system, (tx) =>
+        tx
+          .select({ principalId: auditLog.principalId, type: auditLog.principalType })
+          .from(auditLog)
+          .where(and(eq(auditLog.tableName, 'quotes'), eq(auditLog.rowId, sent)))
+          .orderBy(auditLog.id),
+      )
+      expect(trail.at(-1)).toEqual({ principalId: mine.principalId, type: 'customer_contact' })
     })
 
     it('refuses a second answer to a decided quotation', async () => {
@@ -324,8 +375,8 @@ describe.skipIf(!enabled)('the customer portal: quotations and invoices', () => 
     })
 
     it('declines with the reason kept on the quote and in the notice', async () => {
-      const enquiryId = await enquiryFor(CUSTOMER, HOME_BRANCH)
-      const id = await quote(enquiryId, HOME_BRANCH, { status: 'sent' })
+      const enquiryId = await enquiryFor(CUSTOMER, PORTAL_BRANCH)
+      const id = await quote(enquiryId, PORTAL_BRANCH, { status: 'sent' })
       harness.session = sessionFor(mine)
 
       const state = await decidePortalQuote(

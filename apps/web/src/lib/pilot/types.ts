@@ -426,7 +426,7 @@ export interface PortalShipment {
 }
 
 /**
- * A quotation as the customer holds it (D12) — `features/portal/queries.ts`.
+ * A quotation as the customer holds it (D12), `features/portal/queries.ts`.
  *
  * Sell side only. There is no cost, margin, preparer or covering-note draft
  * here, and no field to put one in: the portal's projection is what a

@@ -1,5 +1,5 @@
 /**
- * The customer's invoices — `FR-CP-09`, D12.
+ * The customer's invoices, `FR-CP-09`, D12.
  *
  * What we billed, what they paid, and what is still owed, for issued
  * documents only: `invoices_customer_reads` keeps drafts, approved-but-unissued

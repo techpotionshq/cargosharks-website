@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * The portal's three sections — shipments, quotations, invoices (D12).
+ * The portal's three sections: shipments, quotations, invoices (D12).
  *
  * A row of tabs under the header rather than three more icons in it. The
  * header already carries the wordmark, tracking, the language switch and sign

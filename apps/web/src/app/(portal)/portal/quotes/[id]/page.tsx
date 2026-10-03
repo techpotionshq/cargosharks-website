@@ -1,5 +1,5 @@
 /**
- * One of the customer's quotations — `FR-CP-07`, D12.
+ * One of the customer's quotations, `FR-CP-07`, D12.
  *
  * What they were offered, line by line, in the quotation's own currency, and
  * the two answers they can give while it stands. The cost, the margin and the
@@ -45,7 +45,7 @@ export default async function PortalQuotePage({ params }: { params: Promise<{ id
   const id = recordId((await params).id)
 
   // Another company's quotation, a draft and a replaced version all land
-  // here as not found — no enumeration signal (FR-ID-04).
+  // here as not found, no enumeration signal (FR-ID-04).
   const quote = await getPortalQuote(session.actor, id, locale)
   if (!quote) notFound()
 

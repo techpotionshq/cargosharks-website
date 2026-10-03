@@ -1,7 +1,7 @@
 'use server'
 
 /**
- * The customer's answer to a quotation — `FR-CP-07`, D12.
+ * The customer's answer to a quotation, `FR-CP-07`, D12.
  *
  * Accept and Decline from the portal, run through `moveQuote`, the same
  * transition the operations screen's Accept and Reject use. The state machine,
