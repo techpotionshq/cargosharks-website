@@ -281,9 +281,10 @@ describe('the rate card sheet', () => {
       validTo: '2026-03-31',
       transitDays: 18,
     })
+    // A W/M rate is the revenue ton, not a per-package rate (N1).
     expect(report.rows[2]!.values).toMatchObject({
       mode: 'sea_lcl',
-      basis: 'per_unit',
+      basis: 'per_wm',
       rate: '45.500',
       minimum: '75',
       validTo: null,
