@@ -428,6 +428,13 @@
       "when": 1790988651365,
       "tag": "0061_bizarre_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791002364768,
+      "tag": "0062_strong_clint_barton",
+      "breakpoints": true
     }
   ]
 }

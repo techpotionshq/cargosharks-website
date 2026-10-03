@@ -28,6 +28,7 @@ import { registerWorkers } from './workers/index'
 import { publicApi } from './api/public'
 import { internalApi } from './api/internal'
 import { webhooks } from './webhooks/index'
+import { syncNotificationTemplates, systemActor, withActor } from '@qabandi/db'
 
 const app = Fastify({
   logger:
@@ -64,6 +65,19 @@ await app.register(publicApi, { prefix: '/api/v1' })
 */
 await app.register(internalApi, { prefix: '/internal' })
 await app.register(webhooks, { prefix: '/webhooks' })
+
+/*
+  The default notification templates follow the code on every boot. A deploy
+  runs migrations but not the seed, so without this an event added after the
+  database was seeded had no template and every delivery of it failed.
+*/
+try {
+  const templates = await withActor(systemActor(), (tx) => syncNotificationTemplates(tx))
+  app.log.info({ templates }, 'notification templates synced')
+} catch (error) {
+  // Old copy is better than no service: log it and carry on.
+  app.log.error({ err: error }, 'notification templates could not be synced')
+}
 
 await registerWorkers(app.log)
 await registerSchedules()

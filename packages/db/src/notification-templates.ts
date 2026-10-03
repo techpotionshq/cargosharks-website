@@ -32,6 +32,10 @@
  * which reads as a broken mail merge — which is exactly what it is.
  */
 
+import { sql } from 'drizzle-orm'
+import type { Tx } from './actor'
+import { notificationTemplates } from './schema/index'
+
 export interface NotificationTemplateSeed {
   readonly eventKey: string
   readonly channel: 'email' | 'in_app' | 'whatsapp'
@@ -1129,3 +1133,42 @@ reference so that we can match it.
     '{{reference}} على {{jobReference}}: {{flaggedCount}} بنداً أعلى من المستحق. راجعها قبل اعتمادها للدفع.',
   ),
 ]
+
+/**
+ * Bring the default templates in the database up to the copy above.
+ *
+ * The seed used to be the only writer, and a deployment runs migrations, not
+ * the seed. So an event added after a database was seeded (the portal's
+ * quotation decisions, the credit note and receipt notices) had no template
+ * there, and the dispatcher failed every delivery of it with "no template".
+ * The service now calls this at boot, so every deploy carries its own copy.
+ *
+ * Same upsert, same reasoning as the seed: these rows are vendor copy, and
+ * only the default (`branch_id` null) row is written. An administrator's
+ * wording lives on a branch row, which this never matches.
+ */
+export async function syncNotificationTemplates(tx: Tx): Promise<number> {
+  await tx
+    .insert(notificationTemplates)
+    .values(
+      NOTIFICATION_TEMPLATES.map((template) => ({
+        eventKey: template.eventKey,
+        channel: template.channel,
+        locale: template.locale,
+        branchId: null,
+        subject: template.subject,
+        body: template.body,
+        isActive: true,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [
+        notificationTemplates.eventKey,
+        notificationTemplates.channel,
+        notificationTemplates.locale,
+        notificationTemplates.branchId,
+      ],
+      set: { subject: sql`excluded.subject`, body: sql`excluded.body`, updatedAt: new Date() },
+    })
+  return NOTIFICATION_TEMPLATES.length
+}

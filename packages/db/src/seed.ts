@@ -21,7 +21,7 @@ import {
   permissionKeys,
 } from '@qabandi/core'
 import { createDatabase } from './client'
-import { NOTIFICATION_TEMPLATES } from './notification-templates'
+import { NOTIFICATION_TEMPLATES, syncNotificationTemplates } from './notification-templates'
 import { locationSeedRows } from './places'
 import { SYSTEM_PRINCIPAL_ID, systemActor, withActor } from './actor'
 import {
@@ -36,7 +36,6 @@ import {
   incoterms,
   locations,
   milestoneTemplates,
-  notificationTemplates,
   intakeRequirements,
   intakeSettings,
   principals,
@@ -827,32 +826,7 @@ async function main(): Promise<void> {
         time and is never matched by the conflict target below. When a template
         editor is built, it must write branch rows for exactly this reason.
       */
-      await db
-        .insert(notificationTemplates)
-        .values(
-          NOTIFICATION_TEMPLATES.map((template) => ({
-            eventKey: template.eventKey,
-            channel: template.channel,
-            locale: template.locale,
-            branchId: null,
-            subject: template.subject,
-            body: template.body,
-            isActive: true,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [
-            notificationTemplates.eventKey,
-            notificationTemplates.channel,
-            notificationTemplates.locale,
-            notificationTemplates.branchId,
-          ],
-          set: {
-            subject: sql`excluded.subject`,
-            body: sql`excluded.body`,
-            updatedAt: new Date(),
-          },
-        })
+      await syncNotificationTemplates(db)
 
       /*
         The intake agent's defaults — the rows every branch inherits until an
